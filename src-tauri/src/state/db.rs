@@ -1,1 +1,166 @@
-//! SQLite connection + migrations (Phase 1 task 1.1). Stub.
+//! SQLite connection + schema migrations (Phase 1 task 1.1).
+//!
+//! The database file lives under the platform `Paths::app_data_dir()` so each OS
+//! uses its native convention. Migrations are applied with the `user_version`
+//! pragma: each step bumps the version, so opening an existing db only runs the
+//! steps it hasn't seen.
+
+use crate::error::Result;
+use crate::platform::traits::Paths;
+use rusqlite::Connection;
+use std::path::Path;
+
+/// File name of the app-state database inside `app_data_dir`.
+pub const DB_FILE: &str = "rexenv.db";
+
+/// Ordered schema migrations. Index + 1 is the resulting `user_version`.
+const MIGRATIONS: &[&str] = &[
+    // v1 — initial schema
+    "CREATE TABLE sites (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        domain       TEXT NOT NULL UNIQUE,
+        type         TEXT NOT NULL,
+        status       TEXT NOT NULL DEFAULT 'stopped',
+        php_version  TEXT NOT NULL,
+        web_server   TEXT NOT NULL DEFAULT 'nginx',
+        ssl          INTEGER NOT NULL DEFAULT 1,
+        path         TEXT NOT NULL,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );",
+];
+
+/// Open the app database at `path`, creating parent dirs and applying migrations.
+pub fn open(path: &Path) -> Result<Connection> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let conn = Connection::open(path)?;
+    configure(&conn)?;
+    migrate(&conn)?;
+    Ok(conn)
+}
+
+/// Open the database at the platform-resolved app-data location.
+pub fn open_for_platform(paths: &dyn Paths) -> Result<Connection> {
+    let path = paths.app_data_dir()?.join(DB_FILE);
+    open(&path)
+}
+
+/// Connection-level pragmas applied on every open.
+fn configure(conn: &Connection) -> Result<()> {
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    Ok(())
+}
+
+/// Apply any migrations newer than the current `user_version`.
+fn migrate(conn: &Connection) -> Result<()> {
+    let current: i64 =
+        conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    for (i, stmt) in MIGRATIONS.iter().enumerate() {
+        let version = (i + 1) as i64;
+        if version > current {
+            conn.execute_batch(stmt)?;
+            // user_version takes a literal, not a bound parameter.
+            conn.pragma_update(None, "user_version", version)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build an in-memory db with migrations applied (no filesystem needed).
+    fn memory_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn migrations_create_tables_and_set_version() {
+        let conn = memory_db();
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.len() as i64);
+
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master
+                 WHERE type='table' AND name IN ('sites','settings')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(table_count, 2);
+    }
+
+    #[test]
+    fn site_insert_read_round_trips() {
+        let conn = memory_db();
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params!["s1", "Acme", "acme.test", "wordpress", "8.3", "~/Sites/acme"],
+        )
+        .unwrap();
+
+        let (name, domain, ssl): (String, String, i64) = conn
+            .query_row(
+                "SELECT name, domain, ssl FROM sites WHERE id = ?1",
+                ["s1"],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(name, "Acme");
+        assert_eq!(domain, "acme.test");
+        assert_eq!(ssl, 1); // schema default
+    }
+
+    #[test]
+    fn migrate_is_idempotent() {
+        let conn = memory_db();
+        // Running again must not error or re-run create statements.
+        migrate(&conn).unwrap();
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, MIGRATIONS.len() as i64);
+    }
+
+    #[test]
+    fn open_creates_file_and_persists() {
+        let dir = std::env::temp_dir().join("rexenv-test-db");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("nested").join(DB_FILE);
+
+        {
+            let conn = open(&path).unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('theme', 'dark')",
+                [],
+            )
+            .unwrap();
+        }
+        assert!(path.exists(), "db file should be created");
+
+        // Reopen: migrations skip, data persists.
+        let conn = open(&path).unwrap();
+        let value: String = conn
+            .query_row("SELECT value FROM settings WHERE key='theme'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(value, "dark");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
