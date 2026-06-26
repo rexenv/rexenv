@@ -1,0 +1,63 @@
+/* Self-hosted fonts (no CDN — desktop app must work offline) */
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/600.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--rex-font-ui);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Desktop app: no text selection / native drag feel unless opted in */
+    overflow: hidden;
+  }
+
+  /* Visible keyboard focus everywhere (quality floor from DESIGN_BRIEF) */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--rex-focus-ring);
+  }
+
+  ::placeholder {
+    color: var(--rex-text-faint);
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: var(--rex-font-mono);
+  }
+  .font-display {
+    font-family: var(--rex-font-display);
+  }
+  /* macOS title-bar drag region */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+}

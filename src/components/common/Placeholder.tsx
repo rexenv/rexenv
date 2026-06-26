@@ -1,0 +1,32 @@
+import type { ReactNode } from "react";
+
+/** Hatched content-region placeholder used while screens are unbuilt. */
+export function Placeholder({
+  icon,
+  label,
+  hint,
+}: {
+  icon: ReactNode;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <div className="min-h-0 flex-1 p-[18px]">
+      <div
+        className="flex h-full flex-col items-center justify-center gap-3 rounded-xl border border-[#181C23] bg-[#0B0C10]"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg,rgba(255,255,255,.014) 0 1px,transparent 1px 12px)",
+        }}
+      >
+        <div className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-[#232831] bg-rex-surface-1 text-rex-text-faint">
+          {icon}
+        </div>
+        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-rex-text-faint">
+          {label}
+        </div>
+        <div className="text-[13px] text-rex-text-dim">{hint}</div>
+      </div>
+    </div>
+  );
+}

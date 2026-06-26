@@ -1,0 +1,11 @@
+//! Tauri IPC handlers — THIN. Each command translates an IPC call into a
+//! `core/` call and returns serializable data. No business logic here.
+
+pub mod database;
+pub mod mail;
+pub mod services;
+pub mod settings;
+pub mod sites;
+pub mod system;
+pub mod tunnels;
+pub mod wordpress;

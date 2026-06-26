@@ -1,0 +1,163 @@
+//! Windows implementations — Phase 4. Stubs only: every method is `todo!()`.
+//! Filling these in is the entire Windows port; `core/` does not change.
+#![allow(dead_code)]
+
+use crate::error::Result;
+use crate::platform::traits::*;
+use std::path::{Path, PathBuf};
+use std::process::Child;
+
+pub struct WindowsPaths;
+impl Paths for WindowsPaths {
+    fn app_data_dir(&self) -> Result<PathBuf> {
+        todo!("windows app_data_dir")
+    }
+    fn config_dir(&self) -> Result<PathBuf> {
+        todo!("windows config_dir")
+    }
+    fn log_dir(&self) -> Result<PathBuf> {
+        todo!("windows log_dir")
+    }
+    fn bin_dir(&self) -> Result<PathBuf> {
+        todo!("windows bin_dir")
+    }
+    fn hosts_file(&self) -> PathBuf {
+        PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts")
+    }
+}
+
+pub struct WindowsDns;
+impl DnsManager for WindowsDns {
+    fn configure_resolver(&self, _port: u16) -> Result<()> {
+        todo!("windows DNS")
+    }
+    fn teardown_resolver(&self) -> Result<()> {
+        todo!("windows DNS")
+    }
+}
+
+pub struct WindowsCertTrust;
+impl CertTrustManager for WindowsCertTrust {
+    fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
+        todo!("windows certutil trust")
+    }
+    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
+        todo!("windows certutil untrust")
+    }
+}
+
+pub struct WindowsPrivileges;
+impl PrivilegeManager for WindowsPrivileges {
+    fn ensure_port_privileges(&self) -> Result<()> {
+        todo!("windows UAC elevation")
+    }
+}
+
+pub struct WindowsSupervisor;
+impl ProcessSupervisor for WindowsSupervisor {
+    fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Child> {
+        todo!("windows spawn")
+    }
+    fn stop(&self, _pid: u32) -> Result<()> {
+        todo!("windows stop")
+    }
+}
+
+pub struct WindowsAutostart;
+impl AutostartManager for WindowsAutostart {
+    fn enable(&self) -> Result<()> {
+        todo!("windows service / task scheduler")
+    }
+    fn disable(&self) -> Result<()> {
+        todo!("windows service / task scheduler")
+    }
+}
+
+pub struct WindowsPermissions;
+impl PermissionManager for WindowsPermissions {
+    fn set_executable(&self, _path: &Path) -> Result<()> {
+        // No-op on Windows (executability is by extension), but kept for parity.
+        todo!("windows ACLs")
+    }
+}
+
+pub struct WindowsShell;
+impl ShellRunner for WindowsShell {
+    fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
+        todo!("windows PowerShell runner")
+    }
+}
+
+pub struct WindowsBinaryProvider;
+impl BinaryProvider for WindowsBinaryProvider {
+    fn arch(&self) -> Arch {
+        Arch::X86_64
+    }
+    fn resolve(&self, _name: &str, _version: &str) -> Result<PathBuf> {
+        todo!("windows binary provider")
+    }
+}
+
+pub struct WindowsPlatform {
+    paths: WindowsPaths,
+    dns: WindowsDns,
+    cert_trust: WindowsCertTrust,
+    privileges: WindowsPrivileges,
+    supervisor: WindowsSupervisor,
+    autostart: WindowsAutostart,
+    permissions: WindowsPermissions,
+    shell: WindowsShell,
+    binaries: WindowsBinaryProvider,
+}
+
+impl WindowsPlatform {
+    pub fn new() -> Self {
+        Self {
+            paths: WindowsPaths,
+            dns: WindowsDns,
+            cert_trust: WindowsCertTrust,
+            privileges: WindowsPrivileges,
+            supervisor: WindowsSupervisor,
+            autostart: WindowsAutostart,
+            permissions: WindowsPermissions,
+            shell: WindowsShell,
+            binaries: WindowsBinaryProvider,
+        }
+    }
+}
+
+impl Default for WindowsPlatform {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Platform for WindowsPlatform {
+    fn paths(&self) -> &dyn Paths {
+        &self.paths
+    }
+    fn dns(&self) -> &dyn DnsManager {
+        &self.dns
+    }
+    fn cert_trust(&self) -> &dyn CertTrustManager {
+        &self.cert_trust
+    }
+    fn privileges(&self) -> &dyn PrivilegeManager {
+        &self.privileges
+    }
+    fn supervisor(&self) -> &dyn ProcessSupervisor {
+        &self.supervisor
+    }
+    fn autostart(&self) -> &dyn AutostartManager {
+        &self.autostart
+    }
+    fn permissions(&self) -> &dyn PermissionManager {
+        &self.permissions
+    }
+    fn shell(&self) -> &dyn ShellRunner {
+        &self.shell
+    }
+    fn binaries(&self) -> &dyn BinaryProvider {
+        &self.binaries
+    }
+}

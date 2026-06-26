@@ -1,0 +1,50 @@
+/**
+ * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
+ * as backend tasks land. Kept in one place so it's easy to delete later.
+ */
+import type { GlobalStatus, Site } from "@/types";
+
+export const mockSites: Site[] = [
+  {
+    id: "1",
+    name: "Acme Store",
+    domain: "acme.test",
+    type: "wordpress",
+    status: "running",
+    phpVersion: "8.3",
+    webServer: "nginx",
+    ssl: true,
+    path: "~/Sites/acme",
+  },
+  {
+    id: "2",
+    name: "Portfolio",
+    domain: "portfolio.test",
+    type: "laravel",
+    status: "running",
+    phpVersion: "8.2",
+    webServer: "nginx",
+    ssl: true,
+    path: "~/Sites/portfolio",
+  },
+  {
+    id: "3",
+    name: "Blog Network",
+    domain: "network.test",
+    type: "wordpress",
+    status: "stopped",
+    phpVersion: "8.1",
+    webServer: "apache",
+    ssl: true,
+    path: "~/Sites/network",
+  },
+];
+
+export const mockGlobalStatus: GlobalStatus = {
+  summary: "partial",
+  running: 3,
+  total: 12,
+  cpuPercent: 14,
+  ramMb: 612,
+  ramTotalMb: 16384,
+};

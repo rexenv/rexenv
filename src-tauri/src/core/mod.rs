@@ -1,0 +1,16 @@
+//! Domain logic — PLATFORM-AGNOSTIC ("the what"). Modules here orchestrate
+//! sites, services, DNS, SSL, the edge router, etc. by calling `platform/`
+//! traits. They must NEVER import OS-specific code directly.
+//!
+//! Submodules start as files and grow into folders as each Phase 1 task lands.
+
+pub mod binaries;
+pub mod database;
+pub mod dns;
+pub mod mail;
+pub mod proxy;
+pub mod services;
+pub mod sites;
+pub mod ssl;
+pub mod tunnels;
+pub mod wordpress;
