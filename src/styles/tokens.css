@@ -1,0 +1,87 @@
+/**
+ * rexenv design tokens — single source of truth for color, type, radius, spacing.
+ * Values come from DESIGN_BRIEF.md, cross-checked against design/*.dc.html.
+ * Do NOT hardcode hex values in components — reference these vars (or the Tailwind
+ * theme keys that map to them).
+ */
+
+:root {
+  /* ── Surfaces (dark-first) ── */
+  --rex-bg: #0d0e12;
+  --rex-surface-1: #15171d;
+  --rex-surface-2: #1c1f27;
+  --rex-surface-3: #21252e; /* raised rows / inputs-on-surface */
+  --rex-well: #0e1015; /* recessed track (meter background) */
+
+  /* ── Borders ── */
+  --rex-border: #262a33;
+  --rex-border-subtle: #20242c; /* sidebar / header dividers */
+  --rex-border-strong: #2e323c;
+
+  /* ── Text ── */
+  --rex-text: #e7e9ee;
+  --rex-text-bright: #c7cbd4;
+  --rex-text-muted: #8a90a0;
+  --rex-text-dim: #6e7681;
+  --rex-text-faint: #5f6675;
+  --rex-text-label: #525a68; /* mono section labels */
+
+  /* ── Brand (royal violet — used sparingly) ── */
+  --rex-brand: #7c5cff;
+  --rex-brand-hover: #8e72ff;
+  --rex-brand-strong: #6b4ae8;
+  --rex-brand-light: #9277ff;
+  --rex-brand-tint: #c9bcff; /* crown highlight / on-violet text accents */
+  --rex-focus-ring: rgba(124, 92, 255, 0.45);
+
+  /* ── Status ── */
+  --rex-running: #3fb950;
+  --rex-running-bright: #4fc065;
+  --rex-stopped: #6e7681;
+  --rex-error: #f85149;
+  --rex-warning: #d29922;
+
+  /* ── macOS traffic lights ── */
+  --rex-mac-close: #ff5f57;
+  --rex-mac-min: #febc2e;
+  --rex-mac-max: #28c840;
+
+  /* ── Typography ── */
+  --rex-font-display: "Space Grotesk", sans-serif;
+  --rex-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter",
+    system-ui, sans-serif;
+  --rex-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+
+  /* ── Radius ── */
+  --rex-radius-sm: 6px;
+  --rex-radius: 9px; /* default control radius (buttons, nav, inputs) */
+  --rex-radius-lg: 13px; /* cards / panels */
+  --rex-radius-xl: 14px;
+
+  /* ── Elevation ── */
+  --rex-shadow-card: 0 28px 80px rgba(0, 0, 0, 0.5),
+    0 8px 24px rgba(0, 0, 0, 0.38);
+  --rex-glow-primary: 0 4px 14px rgba(124, 92, 255, 0.35);
+
+  /* ── shadcn/ui semantic mapping (so ui/ primitives inherit the palette) ── */
+  --background: var(--rex-bg);
+  --foreground: var(--rex-text);
+  --card: var(--rex-surface-1);
+  --card-foreground: var(--rex-text);
+  --popover: var(--rex-surface-2);
+  --popover-foreground: var(--rex-text);
+  --primary: var(--rex-brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--rex-surface-2);
+  --secondary-foreground: var(--rex-text);
+  --muted: var(--rex-surface-2);
+  --muted-foreground: var(--rex-text-muted);
+  --accent: var(--rex-surface-3);
+  --accent-foreground: var(--rex-text);
+  --destructive: var(--rex-error);
+  --destructive-foreground: #ffffff;
+  --border: var(--rex-border);
+  --input: var(--rex-border);
+  --ring: var(--rex-brand);
+}
