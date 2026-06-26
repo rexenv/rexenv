@@ -51,6 +51,15 @@ pub fn open_for_platform(paths: &dyn Paths) -> Result<Connection> {
     open(&path)
 }
 
+/// Open an in-memory database with migrations applied. Used by unit tests
+/// across modules that need a ready schema without touching the filesystem.
+#[cfg(test)]
+pub(crate) fn open_in_memory() -> Result<Connection> {
+    let conn = Connection::open_in_memory()?;
+    migrate(&conn)?;
+    Ok(conn)
+}
+
 /// Connection-level pragmas applied on every open.
 fn configure(conn: &Connection) -> Result<()> {
     conn.pragma_update(None, "journal_mode", "WAL")?;

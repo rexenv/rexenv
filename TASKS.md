@@ -28,8 +28,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] **1.1 SQLite store + schema**
   *Done when:* DB file is created in the macOS app-data path (via `Paths` trait); `sites` + `settings` tables exist via migration; insert/read round-trips in a Rust test. ✓ `state/db.rs` user_version migration runner + `open_for_platform`; 4 passing tests (schema, round-trip, idempotent, file-persist).
-- [ ] **1.2 Site model + repository**
-  *Done when:* `Site` struct (name, domain, php_version, server, path, status) persists and lists from SQLite through `core/sites`.
+- [x] **1.2 Site model + repository**
+  *Done when:* `Site` struct (name, domain, php_version, server, path, status) persists and lists from SQLite through `core/sites`. ✓ `state/models.rs` (Site/NewSite + enums, serde camelCase mirroring TS), `state/store.rs` repository, `core/sites.rs` create/list/get/delete. 4 passing tests (round-trip, dup-domain reject, get/delete, enum TEXT storage).
 
 ## 2. DNS (embedded resolver)
 
