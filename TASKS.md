@@ -31,40 +31,44 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] **1.2 Site model + repository**
   *Done when:* `Site` struct (name, domain, php_version, server, path, status) persists and lists from SQLite through `core/sites`. ✓ `state/models.rs` (Site/NewSite + enums, serde camelCase mirroring TS), `state/store.rs` repository, `core/sites.rs` create/list/get/delete. 4 passing tests (round-trip, dup-domain reject, get/delete, enum TEXT storage).
 
-## 2. DNS (embedded resolver)
+## 2. DNS (embedded resolver) & privileges
 
 - [x] **2.1 hickory-dns resolver for `*.test`**
   *Done when:* the embedded resolver answers A queries for any `*.test` host with `127.0.0.1` (verified with `dig @127.0.0.1 -p <port> foo.test`). ✓ `core/dns.rs` `DnsHandler` + `serve_udp`; 3 passing UDP tests; dig on port 15353 returns 127.0.0.1 for `foo.test` & `site1.mysite.test`, NXDOMAIN for `example.com`. Manual check: `cargo run --example dns_serve`.
-- [ ] **2.2 macOS `DnsManager` (resolver hookup)**
-  *Done when:* `/etc/resolver/test` is written so the OS routes `.test` to our resolver; `ping foo.test` resolves to `127.0.0.1`. (windows/linux = `todo!()`.)
+- [ ] **2.2 macOS `PrivilegeManager` (admin auth prompt)** — prerequisite for 2.3, 3.3, 3.4
+  *Done when:* `PrivilegeManager` runs a privileged shell op via a macOS admin auth prompt (e.g. `osascript -e 'do shell script "…" with administrator privileges'` or a privileged helper); a no-op privileged command (e.g. writing a root-owned temp file) succeeds after a single password prompt, and success/failure is reported cleanly. (windows/linux = `todo!()`.)
+- [ ] **2.3 macOS `DnsManager` (resolver file → PrivilegeManager)**
+  *Done when:* `DnsManager` generates the correct `/etc/resolver/test` contents (`nameserver 127.0.0.1` + `port <resolver port>`) and installs/removes it **through `PrivilegeManager`** (never writing `/etc` directly); file contents asserted in a unit test (no sudo). Live install + `ping foo.test` → `127.0.0.1` is verified in the batched system-setup step (3.4). Depends on 2.2. (windows/linux = `todo!()`.)
 
-## 3. Local CA & certificates
+## 3. Local CA, certificates & system trust setup
 
 - [ ] **3.1 Local CA generation (rcgen)**
   *Done when:* a root CA key+cert is generated once and stored under app-data; regeneration is idempotent.
 - [ ] **3.2 Per-site cert with wildcard SAN**
   *Done when:* given `mysite.test`, a cert signed by the CA is issued with SAN `mysite.test` + `*.mysite.test` (verify with `openssl x509 -text`).
-- [ ] **3.3 macOS `CertTrustManager`**
-  *Done when:* `security add-trusted-cert` adds the CA to the login keychain as trusted; a served site shows a valid lock in the browser. (windows/linux = `todo!()`.)
+- [ ] **3.3 macOS `CertTrustManager` (trust CA → PrivilegeManager)**
+  *Done when:* `CertTrustManager` builds the `security add-trusted-cert …` (and untrust) invocation for the local CA and runs it **through `PrivilegeManager`** (no direct privileged calls); command construction is unit-tested. Actual keychain trust + the browser "valid lock" check happen in the batched system-setup step (3.4). Depends on 2.2, 3.1. (windows/linux = `todo!()`.)
+- [ ] **3.4 Batched system setup (single auth prompt)**
+  *Done when:* one "system setup" action runs the DnsManager resolver-file install (2.3) **and** the CertTrustManager CA trust (3.3) together through a **single** `PrivilegeManager` elevation — the user is prompted for a password **once**. Afterwards `ping foo.test` resolves to `127.0.0.1` and a served `.test` site shows a valid lock in the browser. Depends on 2.2, 2.3, 3.1–3.3.
 
 ## 4. Edge router (Caddy)
 
 - [ ] **4.1 Caddy binary provider**
-  *Done when:* `BinaryProvider` downloads the correct macOS (arm64/x86_64) Caddy binary on demand, verifies checksum, and caches it under app-data.
+  *Done when:* `BinaryProvider` downloads the correct macOS (arm64/x86_64) Caddy binary on demand, verifies checksum, caches it under app-data, then **ad-hoc code-signs (`codesign --force --sign - <path>`) and de-quarantines (`xattr -d com.apple.quarantine <path>` if present) before first exec** (else Apple Silicon kills it); `caddy version` runs from the cached path.
 - [ ] **4.2 Caddy config generation + supervise**
   *Done when:* `core/proxy` writes a Caddyfile and `ProcessSupervisor` starts/stops Caddy holding :80/:443; a hardcoded route proxies to a test backend over HTTPS with the trusted cert.
 
 ## 5. PHP-FPM (one version)
 
 - [ ] **5.1 PHP static binary provider**
-  *Done when:* a static PHP (static-php-cli build) for macOS is downloaded/cached and `php -v` runs from the app-data path.
+  *Done when:* a static PHP (static-php-cli build) for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `php -v` runs from the app-data path.
 - [ ] **5.2 One PHP-FPM pool**
   *Done when:* a single php-fpm master starts on a loopback port via `ProcessSupervisor`, with a generated pool config; status reflects in the UI/services layer.
 
 ## 6. Web server (Nginx)
 
 - [ ] **6.1 Nginx binary provider**
-  *Done when:* prebuilt Nginx for macOS is downloaded/cached and `nginx -v` runs.
+  *Done when:* prebuilt Nginx for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `nginx -v` runs.
 - [ ] **6.2 Shared Nginx + per-site server block**
   *Done when:* one Nginx process serves a site from its docroot via a generated server block (FastCGI → php-fpm); the config generator leaves slots for single / subdomain / subdirectory rewrite templates.
 
@@ -74,11 +78,15 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
   *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block + Caddy route, reloads both; `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock.
 - [ ] **7.2 Sites list + start/stop**
   *Done when:* the Sites screen lists real sites from SQLite (via typed IPC) and start/stop toggles drive the backend, reflecting real status.
+- [ ] **7.3 Delete site (full teardown)**
+  *Done when:* deleting a site removes its DB row, generated configs (Nginx server block + Caddy route), its cert, and its docroot, then reloads Caddy + Nginx; the site leaves the list and `https://<name>.test` no longer serves. Site management is now full create / list / start / stop / delete.
+- [ ] **7.4 Resource monitor (real metrics via `sysinfo`)**
+  *Done when:* the `sysinfo` crate provides real per-service RAM/CPU (by supervised PID) plus totals, surfaced through typed IPC; the sidebar status footer and the Services view show **live** values, replacing the mock data in `StatusFooter`/`mock.ts`.
 
 ## 8. Database service (MySQL)
 
 - [ ] **8.1 MySQL binary provider + lifecycle**
-  *Done when:* MySQL is downloaded/cached, initialized to an app-data datadir, and `ProcessSupervisor` starts/stops it on a known port; a client connects.
+  *Done when:* MySQL is downloaded/cached (**signed + de-quarantined via `BinaryProvider`, see 4.1**), initialized to an app-data datadir, and `ProcessSupervisor` starts/stops it on a known port; a client connects.
 
 ## 9. One-click WordPress (phase goal)
 
@@ -89,7 +97,21 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
+## 10. Optional / later (Phase 1+)
+
+> Not required for the Phase 1 goal, but cheap to design for early. Pick up when the listed prerequisite lands.
+
+- [ ] **10.1 Port allocation + conflict detection**
+  *Done when:* a central allocator hands out / records ports for :80/:443 and per-service loopback ports, detects an already-bound port before spawn, and surfaces a clear error instead of a silent crash. *Ideally designed in from the first spawned service (§4).*
+- [ ] **10.2 Configurable sites folder (Paths + settings)**
+  *Done when:* the sites root is read from a `settings` value (falling back to the `Paths` default), is editable in Settings, and new sites are created under it. *Touches `Paths` + `state` (§1) and the create flow (§7).*
+- [ ] **10.3 Per-service log capture**
+  *Done when:* every supervised process has its stdout/stderr redirected to a per-service log file under the `Paths` log dir from the moment it spawns, ready for the Phase 3 log viewer. *Ideally wired into `ProcessSupervisor` from the first spawned service (§4).*
+
+---
+
 ## Notes / decisions
 - Keep `commands/` thin → `core/` (platform-agnostic) → `platform/` traits. No OS code in `core/`.
-- Every binary goes through `BinaryProvider` (manifest: os+arch+version → url+checksum). No bundling.
+- Every binary goes through `BinaryProvider` (manifest: os+arch+version → url+checksum). No bundling. **macOS:** after download/extract, `BinaryProvider` must ad-hoc code-sign (`codesign --force --sign - <path>`) and de-quarantine (`xattr -d com.apple.quarantine <path>` if present) before first exec — unsigned binaries are killed on Apple Silicon.
+- All privileged OS changes (writing `/etc/resolver/test`, trusting the CA) go **through `PrivilegeManager`**, never direct — and are batched so the user authenticates **once** (see 3.4).
 - Config generator must support 3 rewrite modes from the start (single / subdomain / subdirectory).
