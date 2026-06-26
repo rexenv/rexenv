@@ -1,0 +1,54 @@
+# CLAUDE.md — rexenv
+
+rexenv is a native, lightweight, NO-Docker local development environment for web &
+WordPress developers. Tauri 2 desktop app (Rust backend + React/TS frontend). It runs
+a developer's whole local stack — web servers, multiple PHP versions, databases,
+one-click WordPress, local `.test` domains with auto-HTTPS, mail catching, public
+sharing — from one UI. **macOS first**, then Windows, then Linux.
+
+## Architecture rule (non-negotiable)
+- `commands/` are **thin** Tauri IPC handlers — they only translate calls and invoke `core/`.
+- `core/` is **platform-agnostic** ("the what") — domain logic, never imports OS-specific code.
+- ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind **Rust traits**
+  (`traits.rs`), with impls selected via `#[cfg(target_os = "...")]`.
+- Build the **macOS** impls now. Leave `platform/windows/` and `platform/linux/` as
+  `todo!()` stubs — adding those OSes later means filling stubs, NOT restructuring.
+- Platform traits: `DnsManager`, `CertTrustManager`, `PrivilegeManager`,
+  `ProcessSupervisor`, `AutostartManager`, `PermissionManager`, `ShellRunner`,
+  `Paths`, `BinaryProvider`.
+
+## Non-negotiables (foundational decisions — don't relitigate)
+- **No Docker.** Services are **native static binaries**, downloaded on demand (small installer).
+- One shared **Nginx** process (a server block per site) is the default site server.
+- **One PHP-FPM pool per PHP version** (not per site) — shared master, low memory.
+- An internal **Caddy** edge router holds :80/:443, terminates SSL, routes by Host header
+  (invisible to the user; Phase 1 choice — may become custom Rust/Pingora later).
+- Embedded DNS via **hickory-dns** resolves `*.test → 127.0.0.1` (wildcard ⇒ multisite works free).
+- Local **CA via rcgen** issues a trusted cert per domain; must support wildcard SAN (`*.site.test`).
+- **SQLite** for all app state (site list, settings, per-site config).
+- Leave room in the config generator for THREE rewrite templates from the start:
+  single / subdomain-multisite / subdirectory-multisite.
+
+## Tech stack
+- Backend: Tauri 2, Rust, tokio, hickory-dns, rcgen, reqwest, rusqlite/sqlx, sysinfo, which, notify.
+- Frontend: React + TypeScript + Vite, Tailwind + shadcn/ui (Radix), TanStack Query
+  (IPC/server state), Zustand (UI state), lucide-react, xterm.js.
+- **Full folder tree: see README.md** ("Project structure"). Don't duplicate it here.
+
+## Conventions
+- **TypeScript strict** mode.
+- All Tauri IPC goes through **typed wrappers in `src/lib/ipc/`** — UI never calls raw `invoke`.
+- Design tokens come from **DESIGN_BRIEF.md** (palette + 3 type roles); surfaced as
+  CSS vars in `src/styles/tokens.css` and the Tailwind theme. Don't hardcode hex values.
+- `src/routes/` map **1:1** to the screens in DESIGN_BRIEF.md
+  (Sites, SiteDetail, Services, Databases, Mail, Tunnels, Settings, Onboarding).
+- JetBrains Mono for ALL technical values (domains, paths, versions, ports, commands).
+  Space Grotesk for hero/onboarding only. Inter (SF Pro Text) for UI/body.
+
+## Pointers
+- Full detail in **PROJECT_SPEC.md**. Screen designs in **DESIGN_BRIEF.md** and **design/** (.dc.html).
+- Phase plan: PROJECT_SPEC.md §5. Current: **Phase 1 (macOS MVP)**. Task list in **TASKS.md**.
+
+## Working rule
+- Work in **small, verifiable steps. One task at a time. Verify before moving on.**
+- Surface assumptions before non-trivial work; keep changes surgical (scope discipline).
