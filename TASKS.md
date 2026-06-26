@@ -33,8 +33,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 2. DNS (embedded resolver)
 
-- [ ] **2.1 hickory-dns resolver for `*.test`**
-  *Done when:* the embedded resolver answers A queries for any `*.test` host with `127.0.0.1` (verified with `dig @127.0.0.1 -p <port> foo.test`).
+- [x] **2.1 hickory-dns resolver for `*.test`**
+  *Done when:* the embedded resolver answers A queries for any `*.test` host with `127.0.0.1` (verified with `dig @127.0.0.1 -p <port> foo.test`). ✓ `core/dns.rs` `DnsHandler` + `serve_udp`; 3 passing UDP tests; dig on port 15353 returns 127.0.0.1 for `foo.test` & `site1.mysite.test`, NXDOMAIN for `example.com`. Manual check: `cargo run --example dns_serve`.
 - [ ] **2.2 macOS `DnsManager` (resolver hookup)**
   *Done when:* `/etc/resolver/test` is written so the OS routes `.test` to our resolver; `ping foo.test` resolves to `127.0.0.1`. (windows/linux = `todo!()`.)
 

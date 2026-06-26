@@ -1,2 +1,204 @@
-//! core::dns — platform-agnostic domain logic (Phase 1 stub).
-//! Talks to `platform/` traits only; never imports OS-specific code.
+//! core::dns — embedded DNS resolver (Phase 1 task 2.1).
+//!
+//! Answers A queries for any `*.test` host with `127.0.0.1`. Because every name
+//! under `.test` resolves to loopback, WordPress subdomain multisite
+//! (`*.mysite.test`) works for free. This is platform-agnostic; pointing the OS
+//! resolver at this server is the per-OS `DnsManager` step (task 2.2).
+
+use crate::error::Result;
+use async_trait::async_trait;
+use hickory_proto::op::{Header, MessageType, OpCode, ResponseCode};
+use hickory_proto::rr::rdata::A;
+use hickory_proto::rr::{Name, RData, Record, RecordType};
+use hickory_server::authority::MessageResponseBuilder;
+use hickory_server::server::{Request, RequestHandler, ResponseHandler, ResponseInfo};
+use hickory_server::ServerFuture;
+use std::net::{Ipv4Addr, SocketAddr};
+use tokio::net::UdpSocket;
+
+/// Default loopback port for the embedded resolver. Not :53 (privileged) — the
+/// OS resolver config (task 2.2) points `.test` lookups here.
+pub const DEFAULT_DNS_PORT: u16 = 15353;
+
+/// The local development TLD this resolver is authoritative for.
+pub const LOCAL_TLD: &str = "test";
+
+/// TTL (seconds) on answers. Short, since these are local and may change.
+const ANSWER_TTL: u32 = 60;
+
+/// Request handler that maps `*.test` → a single loopback address.
+pub struct DnsHandler {
+    answer: Ipv4Addr,
+}
+
+impl DnsHandler {
+    pub fn new(answer: Ipv4Addr) -> Self {
+        Self { answer }
+    }
+
+    /// Build and send the response for one request. Errors are turned into
+    /// SERVFAIL by the caller.
+    async fn respond<R: ResponseHandler>(
+        &self,
+        request: &Request,
+        response_handle: &mut R,
+    ) -> Result<ResponseInfo> {
+        let query = request.query();
+        let name: Name = query.original().name().clone();
+        let qtype = query.query_type();
+
+        let is_query = request.op_code() == OpCode::Query
+            && request.message_type() == MessageType::Query;
+        let under_tld = name_under_tld(&name, LOCAL_TLD);
+
+        let mut header = Header::response_from_request(request.header());
+        header.set_authoritative(true);
+
+        let mut answers: Vec<Record> = Vec::new();
+        if !is_query {
+            header.set_response_code(ResponseCode::Refused);
+        } else if !under_tld {
+            // We are not authoritative for anything outside `.test`.
+            header.set_response_code(ResponseCode::NXDomain);
+        } else if qtype == RecordType::A {
+            answers.push(Record::from_rdata(
+                name.clone(),
+                ANSWER_TTL,
+                RData::A(A(self.answer)),
+            ));
+        }
+        // Under `.test` but non-A (e.g. AAAA): NOERROR with no records, so
+        // clients fall back to the A record instead of failing.
+
+        let builder = MessageResponseBuilder::from_message_request(request);
+        let empty: Vec<Record> = Vec::new();
+        let response = builder.build(
+            header,
+            answers.iter(),
+            empty.iter(),
+            empty.iter(),
+            empty.iter(),
+        );
+        Ok(response_handle.send_response(response).await?)
+    }
+}
+
+impl Default for DnsHandler {
+    fn default() -> Self {
+        Self::new(Ipv4Addr::LOCALHOST)
+    }
+}
+
+#[async_trait]
+impl RequestHandler for DnsHandler {
+    async fn handle_request<R: ResponseHandler>(
+        &self,
+        request: &Request,
+        mut response_handle: R,
+    ) -> ResponseInfo {
+        match self.respond(request, &mut response_handle).await {
+            Ok(info) => info,
+            Err(e) => {
+                log::warn!("dns: failed to handle request: {e}");
+                let mut header = Header::response_from_request(request.header());
+                header.set_response_code(ResponseCode::ServFail);
+                header.into()
+            }
+        }
+    }
+}
+
+/// True if `name`'s last label equals `tld` (case-insensitive). Matches the TLD
+/// itself and every subdomain of it (`foo.test`, `a.b.mysite.test`).
+fn name_under_tld(name: &Name, tld: &str) -> bool {
+    name.iter()
+        .last()
+        .is_some_and(|label| label.eq_ignore_ascii_case(tld.as_bytes()))
+}
+
+/// Bind a UDP socket and build a resolver server on it. Returns the actually
+/// bound address (useful when `addr` uses port 0) plus the server; the caller
+/// drives it with `server.block_until_done().await`.
+pub async fn serve_udp(addr: SocketAddr) -> Result<(SocketAddr, ServerFuture<DnsHandler>)> {
+    let socket = UdpSocket::bind(addr).await?;
+    let local = socket.local_addr()?;
+    let mut server = ServerFuture::new(DnsHandler::default());
+    server.register_socket(socket);
+    Ok((local, server))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hickory_proto::op::{Message, Query};
+    use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    /// Start the resolver on an ephemeral loopback port; return its address and
+    /// the spawned server task handle.
+    async fn start() -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let (addr, mut server) = serve_udp("127.0.0.1:0".parse().unwrap()).await.unwrap();
+        let handle = tokio::spawn(async move {
+            let _ = server.block_until_done().await;
+        });
+        (addr, handle)
+    }
+
+    /// Send a single query for `host` to `server` and return the parsed reply.
+    async fn query(server: SocketAddr, host: &str, qtype: RecordType) -> Message {
+        let mut msg = Message::new();
+        msg.set_id(0x1234)
+            .set_message_type(MessageType::Query)
+            .set_op_code(OpCode::Query)
+            .set_recursion_desired(true);
+        let name = Name::from_ascii(host).unwrap();
+        msg.add_query(Query::query(name, qtype));
+        let bytes = msg.to_bytes().unwrap();
+
+        let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        client.connect(server).await.unwrap();
+        client.send(&bytes).await.unwrap();
+
+        let mut buf = [0u8; 512];
+        let n = timeout(Duration::from_secs(2), client.recv(&mut buf))
+            .await
+            .expect("dns reply timed out")
+            .unwrap();
+        Message::from_bytes(&buf[..n]).unwrap()
+    }
+
+    fn first_a(msg: &Message) -> Option<Ipv4Addr> {
+        msg.answers().iter().find_map(|r| match r.data() {
+            Some(RData::A(a)) => Some(a.0),
+            _ => None,
+        })
+    }
+
+    #[tokio::test]
+    async fn resolves_test_domain_to_loopback() {
+        let (addr, handle) = start().await;
+        let reply = query(addr, "foo.test.", RecordType::A).await;
+        assert_eq!(reply.response_code(), ResponseCode::NoError);
+        assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST));
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn resolves_wildcard_subdomains() {
+        let (addr, handle) = start().await;
+        // Deep subdomain (subdomain multisite) must also reach loopback.
+        let reply = query(addr, "site1.mysite.test.", RecordType::A).await;
+        assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST));
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn non_test_domain_is_nxdomain() {
+        let (addr, handle) = start().await;
+        let reply = query(addr, "example.com.", RecordType::A).await;
+        assert_eq!(reply.response_code(), ResponseCode::NXDomain);
+        assert!(first_a(&reply).is_none());
+        handle.abort();
+    }
+}
