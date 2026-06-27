@@ -5,7 +5,7 @@
 
 export type ServiceStatus = "running" | "stopped" | "starting" | "error";
 
-export type WebServer = "nginx" | "apache" | "openlitespeed";
+export type WebServer = "nginx" | "apache" | "frankenphp" | "openlitespeed";
 
 export type SiteType = "wordpress" | "laravel" | "php";
 

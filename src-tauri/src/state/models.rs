@@ -45,6 +45,7 @@ str_enum!(ServiceStatus {
 str_enum!(WebServer {
     Nginx => "nginx",
     Apache => "apache",
+    Frankenphp => "frankenphp",
     Openlitespeed => "openlitespeed",
 });
 

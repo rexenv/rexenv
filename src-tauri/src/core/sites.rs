@@ -5,10 +5,10 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{php, proxy, services, ssl};
+use crate::core::{frankenphp, php, proxy, services, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use crate::state::models::{NewSite, ServiceStatus, Site, SiteType};
+use crate::state::models::{NewSite, ServiceStatus, Site, SiteType, WebServer};
 use crate::state::store;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
@@ -166,6 +166,21 @@ pub fn provision(
     create(conn, new)
 }
 
+/// Whether a site is served by the shared nginx. Override servers (FrankenPHP —
+/// §2; Apache — §3) run their own backend process and are excluded.
+fn is_nginx_served(s: &Site) -> bool {
+    !matches!(s.web_server, WebServer::Frankenphp)
+}
+
+/// The edge (Caddy) upstream for a site: a FrankenPHP-override site points at its
+/// own backend port; every other site goes to the shared nginx port.
+fn site_upstream(s: &Site, nginx_http_port: u16) -> String {
+    match s.web_server {
+        WebServer::Frankenphp => format!("127.0.0.1:{}", frankenphp::site_port(&s.domain)),
+        _ => format!("127.0.0.1:{nginx_http_port}"),
+    }
+}
+
 /// Map a site to its shared-nginx server block, routing `.php` to the FastCGI
 /// pool of the site's PHP version (Phase 2 §1.3). An unrecognized version falls
 /// back to the default pool so a site is never left pointing at a dead port.
@@ -226,16 +241,25 @@ pub fn rebuild_configs_for(
     caddy_http_port: u16,
     caddy_https_port: u16,
 ) -> Result<RebuiltConfigs> {
-    let nginx_sites = sites.iter().map(nginx_site_for).collect();
+    // Only nginx-served sites get a server block; override servers (§2/§3) have
+    // their own backend process.
+    let nginx_sites = sites
+        .iter()
+        .filter(|s| is_nginx_served(s))
+        .map(nginx_site_for)
+        .collect();
     let (nginx_conf, nginx_prefix) =
         services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
 
+    // Every site (nginx- or override-served) gets a Caddy edge route: TLS with the
+    // local CA, reverse-proxy to that site's upstream (shared nginx, or its own
+    // override backend port).
     let mut routes = Vec::with_capacity(sites.len());
     for s in sites {
         let cert = ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &s.domain)?;
         routes.push(proxy::SiteRoute {
             host: s.domain.clone(),
-            upstream: format!("127.0.0.1:{nginx_http_port}"),
+            upstream: site_upstream(s, nginx_http_port),
             cert_path: cert.cert_path,
             key_path: cert.key_path,
         });
@@ -374,6 +398,33 @@ mod tests {
             sites_dir(&conn, &*platform).unwrap(),
             PathBuf::from("/tmp/custom-sites")
         );
+    }
+
+    #[test]
+    fn override_sites_route_to_backend_and_skip_nginx() {
+        let conn = db::open_in_memory().unwrap();
+        let mut ng = sample("NG", "ng.test");
+        ng.site_type = SiteType::Php;
+        ng.web_server = WebServer::Nginx;
+        let mut fp = sample("FP", "fp.test");
+        fp.site_type = SiteType::Php;
+        fp.web_server = WebServer::Frankenphp;
+        let ng = create(&conn, ng).unwrap();
+        let fp = create(&conn, fp).unwrap();
+
+        // Nginx serves only the nginx site; the FrankenPHP site is excluded.
+        assert!(is_nginx_served(&ng));
+        assert!(!is_nginx_served(&fp));
+
+        // Edge upstream: nginx site → shared nginx port; FrankenPHP site → its backend.
+        assert_eq!(site_upstream(&ng, 8088), "127.0.0.1:8088");
+        assert_eq!(
+            site_upstream(&fp, 8088),
+            format!("127.0.0.1:{}", frankenphp::site_port("fp.test"))
+        );
+        // The FrankenPHP backend port is in the override range, not the nginx port.
+        assert!(frankenphp::site_port("fp.test") >= frankenphp::FRANKENPHP_BASE_PORT);
+        assert_ne!(frankenphp::site_port("fp.test"), 8088);
     }
 
     #[test]

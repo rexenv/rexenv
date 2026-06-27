@@ -19,9 +19,21 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::time::Duration;
 
-/// Base loopback port for per-site FrankenPHP backends (the override range). The
-/// per-site allocator (§4) hands out `BASE + n`; §2 uses the base directly.
+/// Base loopback port for per-site FrankenPHP backends (the override range).
 pub const FRANKENPHP_BASE_PORT: u16 = 8200;
+
+/// Deterministic loopback backend port for a FrankenPHP-override site, in the
+/// override range `8200..8300`. Stable for a given domain so the edge route and
+/// the running backend agree without a side channel. (FNV-1a hash; §4's allocator
+/// will replace this with recorded, collision-free ports.)
+pub fn site_port(domain: &str) -> u16 {
+    let mut h: u32 = 2166136261;
+    for b in domain.bytes() {
+        h ^= b as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    FRANKENPHP_BASE_PORT + (h % 100) as u16
+}
 
 /// The site block body for a rewrite mode. Single/subdomain use the high-level
 /// `php_server` (its built-in `try_files … /index.php` is the single-site rule);
