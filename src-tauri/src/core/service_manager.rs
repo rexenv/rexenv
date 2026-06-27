@@ -170,6 +170,18 @@ impl ServiceManager {
         Ok(())
     }
 
+    /// Whether the shared stack is currently started (so reloads / pool changes
+    /// take effect). False before `start_all` / after `stop_all`.
+    pub fn is_running(&self) -> bool {
+        self.nginx.is_some()
+    }
+
+    /// Ensure a php-fpm pool for `minor` is running, starting it if needed. Used
+    /// when a site switches to a PHP version whose pool isn't up yet (§1.4).
+    pub async fn ensure_php_pool(&mut self, platform: &dyn Platform, minor: &str) -> Result<()> {
+        self.pools.ensure(platform, minor).await
+    }
+
     /// Reload Nginx + Caddy from the current site set (after create/delete).
     pub fn reload(
         &self,

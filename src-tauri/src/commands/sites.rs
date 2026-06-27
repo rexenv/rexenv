@@ -36,6 +36,31 @@ pub fn stop_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>>
     core::sites::set_status(&conn, &id, ServiceStatus::Stopped)
 }
 
+/// Switch a site's PHP version (§1.4): update the DB row, then — if the stack is
+/// running — ensure that version's php-fpm pool is up and reload nginx so the
+/// switch takes effect. No docroot/cert/DB rebuild. Returns the updated site.
+#[tauri::command]
+pub async fn set_site_php_version(
+    state: State<'_, AppState>,
+    id: String,
+    version: String,
+) -> Result<Option<Site>> {
+    let (site, sites) = {
+        let conn = lock(&state)?;
+        let updated = core::sites::set_php_version(&conn, &id, &version)?;
+        (updated, core::sites::list(&conn)?)
+    };
+    if let Some(ref s) = site {
+        let minor = core::php::minor_of(&s.php_version);
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites)?;
+        }
+    }
+    Ok(site)
+}
+
 /// Delete a site: remove its DB row, cert, and docroot, then reload the running
 /// stack so it stops being served. Returns whether it existed.
 #[tauri::command]

@@ -91,6 +91,15 @@ pub fn set_site_status(conn: &Connection, id: &str, status: ServiceStatus) -> Re
     Ok(affected > 0)
 }
 
+/// Update only a site's `php_version` column; returns whether a row was updated.
+pub fn set_site_php_version(conn: &Connection, id: &str, version: &str) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET php_version = ?1 WHERE id = ?2",
+        params![version, id],
+    )?;
+    Ok(affected > 0)
+}
+
 /// Read a setting value by key, or `None` if unset.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;

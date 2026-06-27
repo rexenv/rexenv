@@ -60,6 +60,22 @@ pub fn set_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<
     get(conn, id)
 }
 
+/// Switch a site's PHP version (Phase 2 §1.4): update ONLY the `php_version`
+/// column — no docroot, cert, or DB rebuild — and return the updated site (or
+/// `None` if it doesn't exist). The version must have a pinned build and is
+/// normalized to its minor series (`8.3.31` → `8.3`). The caller ensures the
+/// target pool is running and reloads nginx so the change takes effect.
+pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Option<Site>> {
+    let minor = php::minor_of(version);
+    if php::patch_for_minor(&minor).is_none() {
+        return Err(Error::Other(format!("unsupported PHP version: {version}")));
+    }
+    if !store::set_site_php_version(conn, id, &minor)? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// Full teardown of a site: remove its DB row, cert material, and docroot.
 /// Returns `false` if the site didn't exist. Does NOT rewrite the shared configs
 /// — call [`rebuild_configs`] + reload after so the site stops being served.
@@ -358,6 +374,29 @@ mod tests {
             sites_dir(&conn, &*platform).unwrap(),
             PathBuf::from("/tmp/custom-sites")
         );
+    }
+
+    #[test]
+    fn set_php_version_updates_only_the_column() {
+        let conn = db::open_in_memory().unwrap();
+        let mut new = sample("Sw", "sw.test");
+        new.php_version = "8.1".into();
+        let site = create(&conn, new).unwrap();
+
+        // Switch 8.1 → 8.3: only php_version changes; path/domain/type untouched.
+        let updated = set_php_version(&conn, &site.id, "8.3").unwrap().expect("exists");
+        assert_eq!(updated.php_version, "8.3");
+        assert_eq!(updated.path, site.path);
+        assert_eq!(updated.domain, site.domain);
+        assert_eq!(updated.id, site.id);
+
+        // A patch-form value normalizes to its minor.
+        let u2 = set_php_version(&conn, &site.id, "8.2.31").unwrap().unwrap();
+        assert_eq!(u2.php_version, "8.2");
+
+        // Unsupported version is rejected; unknown id is a no-op (None).
+        assert!(set_php_version(&conn, &site.id, "7.4").is_err());
+        assert!(set_php_version(&conn, "nope", "8.3").unwrap().is_none());
     }
 
     #[test]
