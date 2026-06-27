@@ -217,6 +217,70 @@ impl ShellRunner for MacosShell {
 }
 
 pub struct MacosBinaryProvider;
+
+impl MacosBinaryProvider {
+    /// Map a non-system dylib dependency (e.g. a Homebrew path) to the macOS
+    /// system equivalent under `/usr/lib`, if known. macOS system dylibs live in
+    /// the dyld shared cache (not real files), so we can't stat them — instead we
+    /// match a known list by library-name prefix. Unknown deps return `None` so
+    /// relinking fails loudly rather than shipping a binary that won't load.
+    fn system_lib_for(dep: &str) -> Option<String> {
+        let base = Path::new(dep).file_name()?.to_str()?;
+        const KNOWN: &[(&str, &str)] = &[
+            ("libpcre2-8", "/usr/lib/libpcre2-8.dylib"),
+            ("libpcre.", "/usr/lib/libpcre.dylib"),
+            ("libz.", "/usr/lib/libz.dylib"),
+            ("libiconv", "/usr/lib/libiconv.dylib"),
+        ];
+        KNOWN
+            .iter()
+            .find(|(prefix, _)| base.starts_with(prefix))
+            .map(|(_, target)| target.to_string())
+    }
+
+    /// Rewrite any non-system (e.g. Homebrew) dylib dependencies to macOS system
+    /// libs so the binary runs without Homebrew. Errors if a dep has no system
+    /// equivalent (so we never ship a binary that will fail to load).
+    fn relink_to_system_libs(path: &Path) -> Result<()> {
+        let out = std::process::Command::new("otool")
+            .arg("-L")
+            .arg(path)
+            .output()?;
+        if !out.status.success() {
+            return Err(Error::Other(format!(
+                "otool -L failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )));
+        }
+        let listing = String::from_utf8_lossy(&out.stdout);
+        for line in listing.lines().skip(1) {
+            let dep = match line.trim().split_whitespace().next() {
+                Some(d) => d,
+                None => continue,
+            };
+            if dep.starts_with("/usr/lib/") || dep.starts_with("/System/") {
+                continue; // already a system lib
+            }
+            let target = Self::system_lib_for(dep).ok_or_else(|| {
+                Error::Other(format!("no macOS system lib for dependency {dep}"))
+            })?;
+            let st = std::process::Command::new("install_name_tool")
+                .arg("-change")
+                .arg(dep)
+                .arg(&target)
+                .arg(path)
+                .output()?;
+            if !st.status.success() {
+                return Err(Error::Other(format!(
+                    "install_name_tool -change {dep} {target} failed: {}",
+                    String::from_utf8_lossy(&st.stderr).trim()
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 impl BinaryProvider for MacosBinaryProvider {
     fn arch(&self) -> Arch {
         if cfg!(target_arch = "aarch64") {
@@ -232,7 +296,10 @@ impl BinaryProvider for MacosBinaryProvider {
             .arg("com.apple.quarantine")
             .arg(path)
             .output();
-        // Ad-hoc code-sign so Apple Silicon will exec the downloaded binary.
+        // Make self-contained: rewrite Homebrew dylib deps to system libs.
+        Self::relink_to_system_libs(path)?;
+        // Ad-hoc code-sign LAST — install_name_tool invalidates any signature,
+        // and Apple Silicon needs a valid signature to exec the binary.
         let out = std::process::Command::new("codesign")
             .arg("--force")
             .arg("--sign")
@@ -380,6 +447,16 @@ mod tests {
     fn cert_untrust_args_remove_trust() {
         let args = MacosCertTrust::untrust_args(Path::new("/tmp/ca.pem"));
         assert_eq!(args, vec!["remove-trusted-cert", "/tmp/ca.pem"]);
+    }
+
+    #[test]
+    fn system_lib_for_maps_homebrew_pcre2_to_usr_lib() {
+        // macOS ships /usr/lib/libpcre2-8.dylib; Homebrew's is libpcre2-8.0.dylib.
+        let mapped =
+            MacosBinaryProvider::system_lib_for("/opt/homebrew/opt/pcre2/lib/libpcre2-8.0.dylib");
+        assert_eq!(mapped.as_deref(), Some("/usr/lib/libpcre2-8.dylib"));
+        // Nonexistent lib → no mapping.
+        assert!(MacosBinaryProvider::system_lib_for("/opt/homebrew/lib/libnope-9.dylib").is_none());
     }
 
     #[test]

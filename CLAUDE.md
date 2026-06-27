@@ -19,10 +19,12 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 
 ## Non-negotiables (foundational decisions — don't relitigate)
 - **No Docker.** Services are **native static binaries**, downloaded on demand (small installer).
-- All binaries go through **`BinaryProvider`** (manifest: os+arch+version → url+checksum).
-  **macOS:** after download, ad-hoc code-sign (`codesign --force --sign - <path>`) and
-  de-quarantine (`xattr -d com.apple.quarantine <path>`) before first exec — else Apple
-  Silicon kills unsigned binaries.
+- All binaries go through **`BinaryProvider`** (manifest: os+arch+version → url+checksum;
+  checksum is SHA-256 or SHA-512 depending on source). **macOS `prepare_binary`:**
+  de-quarantine (`xattr -d com.apple.quarantine`), **relink any Homebrew dylib deps to macOS
+  system libs** (`install_name_tool -change … /usr/lib/…`, so the binary is self-contained — no
+  Homebrew at runtime), then ad-hoc code-sign LAST (`codesign --force --sign -`; relinking
+  invalidates the signature, and Apple Silicon kills unsigned binaries).
 - **Request topology (default sites):** browser → **Caddy** (:443, TLS termination with
   local-CA certs; auto-HTTPS/internal issuer DISABLED) → one shared **Nginx** on an internal
   HTTP port (vhost by `server_name`) → **php-fpm** (FastCGI). Caddy proxies all `*.test` to

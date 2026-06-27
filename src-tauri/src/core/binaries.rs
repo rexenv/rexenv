@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 pub const CADDY_VERSION: &str = "2.11.4";
 /// Pinned PHP version (static-php build; provides `php` cli and `php-fpm`).
 pub const PHP_VERSION: &str = "8.3.31";
+/// Pinned nginx version (jirutka/nginx-binaries static build).
+pub const NGINX_VERSION: &str = "1.30.3";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +54,11 @@ const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "c3b3b9507e3559fcd8df60aaee6207fcc
 const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "e683ff6c2b4760d8e6ecb6f700dc2fde8a9702744868dda4467c7c8362d86865";
 const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "f533184a7e1a044f13f8bcb980620a9eabd9bd40124a946916e02199fc04d71e";
 
+// jirutka/nginx-binaries SHA-256 (computed at pin time; cross-checked vs the
+// project's published SHA-1).
+const NGINX_1_30_3_MAC_ARM64_SHA256: &str = "b6c4e80357977457b9395a43497f5709dc989ff8fce9102bb558ed5d2e066b15";
+const NGINX_1_30_3_MAC_AMD64_SHA256: &str = "fe1df1fdf5de7c5b778a16b1c73aa73d0c22d48219bd712e51094c0e8655a641";
+
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
     match arch {
@@ -62,6 +69,12 @@ fn caddy_arch(arch: Arch) -> &'static str {
 fn php_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "aarch64",
+        Arch::X86_64 => "x86_64",
+    }
+}
+fn nginx_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "arm64",
         Arch::X86_64 => "x86_64",
     }
 }
@@ -116,6 +129,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             )),
             archive: Archive::TarGz,
             member: "php-fpm",
+        }),
+        ("nginx", "macos", "1.30.3") => Some(BinarySpec {
+            // jirutka/nginx-binaries ships a single static binary (not an archive).
+            url: format!(
+                "https://jirutka.github.io/nginx-binaries/nginx-{version}-{}-darwin",
+                nginx_arch(arch)
+            ),
+            checksum: Checksum::Sha256(pick(
+                arch,
+                NGINX_1_30_3_MAC_ARM64_SHA256,
+                NGINX_1_30_3_MAC_AMD64_SHA256,
+            )),
+            archive: Archive::Raw,
+            member: "nginx",
         }),
         _ => None,
     }
@@ -259,6 +286,18 @@ mod tests {
         assert!(fpm.url.ends_with("php-8.3.31-fpm-macos-x86_64.tar.gz"));
         assert_eq!(fpm.member, "php-fpm");
         assert_ne!(checksum_hex(&cli.checksum), checksum_hex(&fpm.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_nginx_as_raw_binary() {
+        let arm = manifest("nginx", NGINX_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(arm.url.ends_with("nginx-1.30.3-arm64-darwin"));
+        assert_eq!(arm.archive, Archive::Raw);
+        assert!(matches!(arm.checksum, Checksum::Sha256(_)));
+
+        let amd = manifest("nginx", NGINX_VERSION, "macos", Arch::X86_64).unwrap();
+        assert!(amd.url.ends_with("nginx-1.30.3-x86_64-darwin"));
+        assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 
     #[test]
