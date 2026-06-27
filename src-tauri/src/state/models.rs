@@ -71,6 +71,25 @@ pub struct Site {
     pub created_at: String,
 }
 
+/// A PHP version in the installed-versions registry (Phase 2 §1.2). Keyed by the
+/// minor series (`8.3`); `patch` is the pinned build (`8.3.31`); `fpm_port` is the
+/// deterministic loopback port of that version's php-fpm pool. `installed` is true
+/// once the user has added the version (its binaries are fetched on first start).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhpVersion {
+    /// Minor series, e.g. `8.3` — the primary key and what a `Site.php_version` references.
+    pub minor: String,
+    /// Pinned patch build, e.g. `8.3.31`.
+    pub patch: String,
+    /// Deterministic loopback FastCGI port of this version's pool.
+    pub fpm_port: u16,
+    /// Whether this version is enabled (the app starts a pool for it).
+    pub installed: bool,
+    /// Whether this is the default version for new sites.
+    pub is_default: bool,
+}
+
 /// Input for creating a site. `id`, `status`, `ssl`, and `created_at` are
 /// assigned by `core::sites::create`, not supplied by the caller.
 #[derive(Debug, Clone, Deserialize)]

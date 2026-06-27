@@ -45,6 +45,11 @@ pub fn run() {
                 core::ssl::load_or_create(platform.paths(), platform.permissions()),
             ) {
                 (Ok(conn), Ok(ca)) => {
+                    // Seed/refresh the PHP version registry (Phase 2 §1.2);
+                    // preserves the user's installed choices on re-run.
+                    if let Err(e) = core::php::seed_registry(&conn) {
+                        log::error!("php: failed to seed version registry: {e}");
+                    }
                     app.manage(state::app::AppState::new(conn, platform, ca));
                 }
                 (Err(e), _) => log::error!("db: failed to open app database: {e}"),

@@ -2,7 +2,7 @@
 //! shape. `core/` calls these functions; it never writes SQL itself.
 
 use crate::error::Result;
-use crate::state::models::{ServiceStatus, Site, SiteType, WebServer};
+use crate::state::models::{PhpVersion, ServiceStatus, Site, SiteType, WebServer};
 use rusqlite::{params, Connection, Row};
 
 /// Columns selected for a full `Site`, in struct order. Shared so every query
@@ -126,4 +126,58 @@ pub fn domain_exists(conn: &Connection, domain: &str) -> Result<bool> {
         |r| r.get(0),
     )?;
     Ok(count > 0)
+}
+
+// ── PHP version registry (Phase 2 §1.2) ───────────────────────────────────────
+
+fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
+    Ok(PhpVersion {
+        minor: row.get(0)?,
+        patch: row.get(1)?,
+        fpm_port: row.get::<_, i64>(2)? as u16,
+        installed: row.get::<_, i64>(3)? != 0,
+        is_default: row.get::<_, i64>(4)? != 0,
+    })
+}
+
+/// Insert a PHP version, or update its `patch`/`fpm_port`/`is_default` if it
+/// already exists. The `installed` flag is **preserved** on update so re-seeding
+/// never clobbers a user's enable/disable choice.
+pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
+    conn.execute(
+        "INSERT INTO php_versions (minor, patch, fpm_port, installed, is_default)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(minor) DO UPDATE SET
+             patch = excluded.patch,
+             fpm_port = excluded.fpm_port,
+             is_default = excluded.is_default",
+        params![
+            v.minor,
+            v.patch,
+            v.fpm_port as i64,
+            v.installed as i64,
+            v.is_default as i64,
+        ],
+    )?;
+    Ok(())
+}
+
+/// All registered PHP versions, ordered by minor series.
+pub fn list_php_versions(conn: &Connection) -> Result<Vec<PhpVersion>> {
+    let mut stmt = conn.prepare(
+        "SELECT minor, patch, fpm_port, installed, is_default
+         FROM php_versions ORDER BY minor",
+    )?;
+    let rows = stmt.query_map([], row_to_php_version)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Enable/disable a PHP version (whether a pool is started for it). Returns
+/// whether a row was updated.
+pub fn set_php_installed(conn: &Connection, minor: &str, installed: bool) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE php_versions SET installed = ?1 WHERE minor = ?2",
+        params![installed as i64, minor],
+    )?;
+    Ok(affected > 0)
 }

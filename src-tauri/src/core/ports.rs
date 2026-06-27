@@ -8,7 +8,7 @@
 //!    for something already *listening* (a connect attempt);
 //!  - **high ports** are bind-tested directly (free iff the bind succeeds).
 
-use crate::core::{database, dns, proxy, services};
+use crate::core::{database, dns, php, proxy, services};
 use crate::error::{Error, Result};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::time::Duration;
@@ -79,16 +79,22 @@ pub fn ensure_free(port: u16, proto: Proto, service: &str) -> Result<()> {
     }
 }
 
-/// The canonical ports rexenv's services use, in startup order.
+/// The canonical ports rexenv's services use, in startup order. One php-fpm port
+/// per pinned PHP version (8.1→9781, 8.2→9782, 8.3→9783).
 pub fn default_ports() -> Vec<PortReq> {
-    vec![
+    let mut reqs = vec![
         PortReq { service: "DNS resolver", port: dns::DEFAULT_DNS_PORT, proto: Proto::Udp },
         PortReq { service: "Caddy (HTTP)", port: proxy::DEFAULT_HTTP_PORT, proto: Proto::Tcp },
         PortReq { service: "Caddy (HTTPS)", port: proxy::DEFAULT_HTTPS_PORT, proto: Proto::Tcp },
         PortReq { service: "Nginx", port: services::NGINX_HTTP_PORT, proto: Proto::Tcp },
-        PortReq { service: "PHP-FPM", port: services::PHP_FPM_PORT, proto: Proto::Tcp },
-        PortReq { service: "MySQL", port: database::MYSQL_PORT, proto: Proto::Tcp },
-    ]
+    ];
+    for minor in php::all_minors() {
+        if let Some(port) = php::fpm_port(&minor) {
+            reqs.push(PortReq { service: "PHP-FPM", port, proto: Proto::Tcp });
+        }
+    }
+    reqs.push(PortReq { service: "MySQL", port: database::MYSQL_PORT, proto: Proto::Tcp });
+    reqs
 }
 
 /// Probe every requested port.
@@ -141,6 +147,11 @@ mod tests {
         assert!(names.contains(&"DNS resolver"));
         // HTTPS uses 443.
         assert!(reqs.iter().any(|r| r.port == 443 && r.proto == Proto::Tcp));
-        assert_eq!(reqs.len(), 6);
+        // One php-fpm port per pinned PHP version (e.g. 9783 for 8.3).
+        let fpm = reqs.iter().filter(|r| r.service == "PHP-FPM").count();
+        assert_eq!(fpm, crate::core::php::all_minors().len());
+        assert!(reqs.iter().any(|r| r.port == 9783 && r.proto == Proto::Tcp));
+        // DNS + 2 Caddy + Nginx + MySQL = 5 fixed, plus one php-fpm per version.
+        assert_eq!(reqs.len(), 5 + fpm);
     }
 }

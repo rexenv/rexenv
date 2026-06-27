@@ -24,7 +24,6 @@ async fn main() {
         http: if real443 { 80 } else { 8080 },
         https: https_port,
         nginx: services::NGINX_HTTP_PORT,
-        php_fpm: services::PHP_FPM_PORT,
         mysql: rexenv_lib::core::database::MYSQL_PORT,
     };
 
@@ -53,7 +52,8 @@ async fn main() {
     let mut mgr = ServiceManager::with_ports(ports);
     println!("starting stack (Caddy on :{https_port})…");
     let all = sites::list(&conn).unwrap();
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all).await {
+    let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors).await {
         eprintln!("start_all failed: {e}");
         return;
     }

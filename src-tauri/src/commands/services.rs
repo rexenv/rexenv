@@ -18,22 +18,28 @@ pub struct ServiceStatus {
     pub ram_mb: u64,
 }
 
-/// Snapshot the current site list (locking the DB briefly, never across `.await`).
-fn site_list(state: &State<'_, AppState>) -> Result<Vec<crate::state::models::Site>> {
+/// Snapshot the site list + installed PHP minors (locking the DB briefly, never
+/// across `.await`).
+fn start_inputs(
+    state: &State<'_, AppState>,
+) -> Result<(Vec<crate::state::models::Site>, Vec<String>)> {
     let conn = state
         .db
         .lock()
         .map_err(|_| Error::Other("database lock poisoned".into()))?;
-    core::sites::list(&conn)
+    let sites = core::sites::list(&conn)?;
+    let minors = core::php::installed_minors(&conn)?;
+    Ok((sites, minors))
 }
 
-/// Start the shared stack (MySQL + php-fpm + Nginx + Caddy). Downloads binaries
-/// on first run; gated on free ports.
+/// Start the shared stack (MySQL + a php-fpm pool per installed PHP version +
+/// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
-    let sites = site_list(&state)?;
+    let (sites, php_minors) = start_inputs(&state)?;
     let mut mgr = state.services.lock().await;
-    mgr.start_all(state.platform.as_ref(), &state.ca, &sites).await
+    mgr.start_all(state.platform.as_ref(), &state.ca, &sites, &php_minors)
+        .await
 }
 
 /// Stop the shared stack.
@@ -59,7 +65,7 @@ pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceSt
         .map(|i| {
             let m = i.pid.and_then(|p| monitor.process(p));
             ServiceStatus {
-                name: i.name.to_string(),
+                name: i.name,
                 running: i.running,
                 pid: i.pid,
                 port: i.port,

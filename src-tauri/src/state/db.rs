@@ -32,6 +32,16 @@ const MIGRATIONS: &[&str] = &[
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );",
+    // v2 — PHP version registry (Phase 2 §1.2): one row per minor series, the
+    // pinned patch build, that version's deterministic php-fpm port, whether it's
+    // enabled (a pool is started for it), and whether it's the default for new sites.
+    "CREATE TABLE php_versions (
+        minor      TEXT PRIMARY KEY,
+        patch      TEXT NOT NULL,
+        fpm_port   INTEGER NOT NULL,
+        installed  INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

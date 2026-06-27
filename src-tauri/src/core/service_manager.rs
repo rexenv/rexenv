@@ -8,7 +8,7 @@
 //! root via `PrivilegeManager` (one prompt) and driven afterward through its
 //! admin API; on a high port it's a supervised child.
 
-use crate::core::{binaries, database, ports, proxy, services, sites, ssl};
+use crate::core::{binaries, database, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::Site;
@@ -23,7 +23,6 @@ pub struct Ports {
     pub http: u16,
     pub https: u16,
     pub nginx: u16,
-    pub php_fpm: u16,
     pub mysql: u16,
 }
 
@@ -33,14 +32,12 @@ impl Default for Ports {
             http: proxy::DEFAULT_HTTP_PORT,
             https: proxy::DEFAULT_HTTPS_PORT,
             nginx: services::NGINX_HTTP_PORT,
-            php_fpm: services::PHP_FPM_PORT,
             mysql: database::MYSQL_PORT,
         }
     }
 }
 
 struct Bins {
-    php_fpm: PathBuf,
     nginx: PathBuf,
     caddy: PathBuf,
     mysql_base: PathBuf,
@@ -57,10 +54,11 @@ enum CaddyHandle {
     Child(Child),
 }
 
-/// One service's status for the UI / metrics.
+/// One service's status for the UI / metrics. `name` is owned because php-fpm
+/// pools are named per version (e.g. `PHP-FPM 8.1`).
 #[derive(Debug, Clone)]
 pub struct ServiceInfo {
-    pub name: &'static str,
+    pub name: String,
     pub running: bool,
     pub pid: Option<u32>,
     pub port: u16,
@@ -71,7 +69,7 @@ pub struct ServiceManager {
     bins: Option<Bins>,
     ports: Ports,
     mysql: Option<Child>,
-    php_fpm: Option<Child>,
+    pools: php::PhpFpmPools,
     nginx: Option<Child>,
     caddy: CaddyHandle,
 }
@@ -82,7 +80,7 @@ impl ServiceManager {
             bins: None,
             ports,
             mysql: None,
-            php_fpm: None,
+            pools: php::PhpFpmPools::default(),
             nginx: None,
             caddy: CaddyHandle::Stopped,
         }
@@ -93,12 +91,11 @@ impl ServiceManager {
         if self.bins.is_some() {
             return Ok(());
         }
-        let php_fpm = binaries::resolve(platform, "php-fpm", binaries::PHP_VERSION).await?;
+        // php-fpm is resolved per version by the pool manager (PhpFpmPools).
         let nginx = binaries::resolve(platform, "nginx", binaries::NGINX_VERSION).await?;
         let caddy = binaries::resolve(platform, "caddy", binaries::CADDY_VERSION).await?;
         let mysql_base = binaries::resolve_dir(platform, "mysql", binaries::MYSQL_VERSION).await?;
         self.bins = Some(Bins {
-            php_fpm,
             nginx,
             caddy,
             mysql_base,
@@ -113,12 +110,13 @@ impl ServiceManager {
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
         sites: &[Site],
+        php_minors: &[String],
     ) -> Result<()> {
         self.ensure_bins(platform).await?;
-        let bins = self.bins.as_ref().expect("bins resolved");
 
         // MySQL.
         if self.mysql.is_none() {
+            let bins = self.bins.as_ref().expect("bins resolved");
             ports::ensure_free(self.ports.mysql, ports::Proto::Tcp, "MySQL")?;
             let datadir = database::data_dir(platform)?;
             let socket = database::socket_path(platform)?;
@@ -131,12 +129,16 @@ impl ServiceManager {
             wait_until(|| database::mysql_running(self.ports.mysql), 30);
         }
 
-        // PHP-FPM.
-        if self.php_fpm.is_none() {
-            ports::ensure_free(self.ports.php_fpm, ports::Proto::Tcp, "PHP-FPM")?;
-            let conf = services::write_fpm_config(platform, "8.3", self.ports.php_fpm)?;
-            self.php_fpm = Some(services::start_fpm(platform, &bins.php_fpm, &conf)?);
+        // PHP-FPM: one pool per installed PHP version (always at least the default,
+        // so the single-site path keeps working). Pools own their deterministic ports.
+        let mut minors: Vec<String> = php_minors.to_vec();
+        let default_minor = php::minor_of(binaries::PHP_VERSION);
+        if !minors.iter().any(|m| *m == default_minor) {
+            minors.push(default_minor);
         }
+        self.pools.start(platform, &minors).await?;
+
+        let bins = self.bins.as_ref().expect("bins resolved");
 
         // Configs derived from all sites.
         let cfg = sites::rebuild_configs_for(
@@ -206,7 +208,8 @@ impl ServiceManager {
             }
             CaddyHandle::Stopped => {}
         }
-        for child in [&mut self.nginx, &mut self.php_fpm, &mut self.mysql] {
+        self.pools.stop_all(platform);
+        for child in [&mut self.nginx, &mut self.mysql] {
             if let Some(mut c) = child.take() {
                 let _ = services::stop(platform, c.id());
                 let _ = c.wait();
@@ -215,45 +218,48 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// Per-service status (for the Services view + metrics).
+    /// Per-service status (for the Services view + metrics): MySQL, one row per
+    /// running php-fpm pool (named `PHP-FPM <version>`), Nginx, Caddy.
     pub fn status(&self) -> Vec<ServiceInfo> {
-        vec![
-            ServiceInfo {
-                name: "MySQL",
-                running: database::mysql_running(self.ports.mysql),
-                pid: self.mysql.as_ref().map(Child::id),
-                port: self.ports.mysql,
+        let mut infos = vec![ServiceInfo {
+            name: "MySQL".to_string(),
+            running: database::mysql_running(self.ports.mysql),
+            pid: self.mysql.as_ref().map(Child::id),
+            port: self.ports.mysql,
+        }];
+        for p in self.pools.status() {
+            infos.push(ServiceInfo {
+                name: format!("PHP-FPM {}", p.minor),
+                running: p.running,
+                pid: Some(p.pid),
+                port: p.port,
+            });
+        }
+        infos.push(ServiceInfo {
+            name: "Nginx".to_string(),
+            running: services::nginx_running(self.ports.nginx),
+            pid: self.nginx.as_ref().map(Child::id),
+            port: self.ports.nginx,
+        });
+        infos.push(ServiceInfo {
+            name: "Caddy".to_string(),
+            running: ports::is_listening(self.ports.https),
+            pid: match &self.caddy {
+                CaddyHandle::Child(c) => Some(c.id()),
+                _ => None,
             },
-            ServiceInfo {
-                name: "PHP-FPM",
-                running: services::fpm_running(self.ports.php_fpm),
-                pid: self.php_fpm.as_ref().map(Child::id),
-                port: self.ports.php_fpm,
-            },
-            ServiceInfo {
-                name: "Nginx",
-                running: services::nginx_running(self.ports.nginx),
-                pid: self.nginx.as_ref().map(Child::id),
-                port: self.ports.nginx,
-            },
-            ServiceInfo {
-                name: "Caddy",
-                running: ports::is_listening(self.ports.https),
-                pid: match &self.caddy {
-                    CaddyHandle::Child(c) => Some(c.id()),
-                    _ => None,
-                },
-                port: self.ports.https,
-            },
-        ]
+            port: self.ports.https,
+        });
+        infos
     }
 }
 
 impl Drop for ServiceManager {
     fn drop(&mut self) {
         // Best-effort: SIGKILL our child processes so nothing is orphaned if
-        // stop_all wasn't called. (A privileged-root Caddy can't be killed here.)
-        for child in [&mut self.nginx, &mut self.php_fpm, &mut self.mysql] {
+        // stop_all wasn't called. (A privileged-root Caddy can't be killed here;
+        // the php-fpm pools clean themselves up via PhpFpmPools::drop.)
+        for child in [&mut self.nginx, &mut self.mysql] {
             if let Some(c) = child {
                 let _ = c.kill();
             }
@@ -288,11 +294,14 @@ mod tests {
     }
 
     #[test]
-    fn status_lists_all_services_when_stopped() {
+    fn status_lists_core_services_when_stopped() {
         let m = ServiceManager::default();
         let s = m.status();
-        let names: Vec<_> = s.iter().map(|i| i.name).collect();
-        assert_eq!(names, vec!["MySQL", "PHP-FPM", "Nginx", "Caddy"]);
+        let names: Vec<_> = s.iter().map(|i| i.name.as_str()).collect();
+        // No pools are running when stopped, so only the always-present services
+        // appear (php-fpm pools are added per running version).
+        assert_eq!(names, vec!["MySQL", "Nginx", "Caddy"]);
         assert!(s.iter().all(|i| i.pid.is_none()));
+        assert!(m.pools.is_empty());
     }
 }
