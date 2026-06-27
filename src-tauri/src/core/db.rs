@@ -7,7 +7,7 @@
 //! its behavior is unchanged. MariaDB / PostgreSQL / Redis fill the stubbed arms
 //! in §5.2–§5.4.
 
-use crate::core::{binaries, database, ports};
+use crate::core::{binaries, database, ports, postgres};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::process::Child;
@@ -82,8 +82,15 @@ impl DbEngine {
                 database::initialize(platform, &basedir, &datadir)?;
                 database::start(platform, &basedir, &datadir, self.port(), &socket)
             }
+            DbEngine::Postgres => {
+                let basedir =
+                    binaries::resolve_dir(platform, "postgres", binaries::POSTGRES_VERSION).await?;
+                let datadir = postgres::data_dir(platform)?;
+                postgres::initialize(platform, &basedir, &datadir)?;
+                postgres::start(platform, &basedir, &datadir, self.port())
+            }
             other => Err(Error::Other(format!(
-                "{} is not implemented yet (Phase 2 §5.2–§5.4)",
+                "{} is not implemented yet (deferred — see TASKS-PHASE2 §7)",
                 other.label()
             ))),
         }

@@ -1,16 +1,38 @@
-//! Manual check for the DbEngine abstraction (Phase 2 task 5.1).
+//! Manual check for the DbEngine abstraction + PostgreSQL (Phase 2 §5.1, §5.3).
 //! Run: `cargo run --example db_engine_serve`
 //!
 //! Proves every built-in DB engine is modeled behind one shape (key · port ·
-//! start · running · stop). MySQL is started through `DbEngine::Mysql` (delegating
-//! to the Phase-1 `core::database`, behavior unchanged): start → port listening →
-//! stop. The not-yet-implemented engines (§5.2–§5.4) return the same-shaped error.
+//! start · running · stop). MySQL and PostgreSQL are started THROUGH `DbEngine`
+//! (delegating to `core::database` / `core::postgres`): start → port listening →
+//! (Postgres) `psql 'SELECT version();'` → stop. MariaDB/Redis are deferred (§7)
+//! and return the same-shaped error.
 
 use rexenv_lib::core::db::DbEngine;
-use rexenv_lib::core::ports;
+use rexenv_lib::core::{binaries, ports, postgres};
 use rexenv_lib::platform;
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
+
+/// Start an engine via DbEngine, wait for its port, return (pid, up).
+async fn bring_up(
+    plat: &dyn rexenv_lib::platform::traits::Platform,
+    engine: DbEngine,
+) -> Option<(u32, std::process::Child)> {
+    if let Err(e) = ports::ensure_free(engine.port(), ports::Proto::Tcp, engine.label()) {
+        eprintln!("{} port busy: {e}", engine.label());
+        return None;
+    }
+    let child = engine.start(plat).await.expect("start via DbEngine");
+    let pid = child.id();
+    for _ in 0..40 {
+        if engine.running() {
+            return Some((pid, child));
+        }
+        thread::sleep(Duration::from_millis(500));
+    }
+    Some((pid, child))
+}
 
 #[tokio::main]
 async fn main() {
@@ -21,43 +43,55 @@ async fn main() {
         println!("  {:<10} key={:<9} port={}", e.label(), e.key(), e.port());
     }
 
+    let mut ok = true;
+
     // MySQL through the abstraction.
-    println!("\n=== DbEngine::Mysql lifecycle ===");
-    if let Err(e) = ports::ensure_free(DbEngine::Mysql.port(), ports::Proto::Tcp, "MySQL") {
-        eprintln!("MySQL port busy: {e}");
-        std::process::exit(1);
-    }
-    let mut child = DbEngine::Mysql.start(&*plat).await.expect("start MySQL via DbEngine");
-    let mut up = false;
-    for _ in 0..30 {
-        if DbEngine::Mysql.running() {
-            up = true;
-            break;
-        }
-        thread::sleep(Duration::from_millis(500));
-    }
-    println!("  started pid {} · listening on :{} = {up}", child.id(), DbEngine::Mysql.port());
-    let _ = DbEngine::Mysql.stop(&*plat, child.id());
-    let _ = child.wait();
-    println!("  stopped");
-
-    // The other engines share the shape; not implemented until §5.2–§5.4.
-    println!("\n=== not-yet-implemented engines (uniform shape) ===");
-    for e in [DbEngine::Mariadb, DbEngine::Postgres, DbEngine::Redis] {
-        match e.start(&*plat).await {
-            Ok(mut c) => {
-                let _ = e.stop(&*plat, c.id());
-                let _ = c.wait();
-                println!("  {} started (unexpected)", e.label());
-            }
-            Err(err) => println!("  {:<10} → {err}", e.label()),
-        }
-    }
-
-    if up {
-        println!("\nOK — MySQL runs through DbEngine; the shape is ready for MariaDB/PostgreSQL/Redis.");
+    println!("\n=== DbEngine::Mysql ===");
+    if let Some((pid, mut child)) = bring_up(&*plat, DbEngine::Mysql).await {
+        let up = DbEngine::Mysql.running();
+        println!("  pid {pid} · listening on :{} = {up}", DbEngine::Mysql.port());
+        ok &= up;
+        let _ = DbEngine::Mysql.stop(&*plat, pid);
+        let _ = child.wait();
+        println!("  stopped");
     } else {
-        eprintln!("\nFAILED — MySQL did not come up via DbEngine.");
+        ok = false;
+    }
+
+    // PostgreSQL through the abstraction + a real query via bundled psql.
+    println!("\n=== DbEngine::Postgres ===");
+    if let Some((pid, mut child)) = bring_up(&*plat, DbEngine::Postgres).await {
+        let up = DbEngine::Postgres.running();
+        println!("  pid {pid} · listening on :{} = {up}", DbEngine::Postgres.port());
+        let basedir = binaries::resolve_dir(&*plat, "postgres", binaries::POSTGRES_VERSION).await.unwrap();
+        let out = Command::new(postgres::psql_bin(&basedir))
+            .args(["-h", "127.0.0.1", "-p", &DbEngine::Postgres.port().to_string(),
+                   "-U", "postgres", "-tAc", "SELECT version();"])
+            .output().expect("run psql");
+        let ver = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let queried = out.status.success() && ver.starts_with("PostgreSQL");
+        println!("  psql SELECT version() → {ver}");
+        ok &= up && queried;
+        let _ = DbEngine::Postgres.stop(&*plat, pid);
+        let _ = child.wait();
+        println!("  stopped");
+    } else {
+        ok = false;
+    }
+
+    // Deferred engines share the shape; not implemented on macOS (§7.5/§7.6).
+    println!("\n=== deferred engines (uniform shape) ===");
+    for e in [DbEngine::Mariadb, DbEngine::Redis] {
+        match e.start(&*plat).await {
+            Ok(mut c) => { let _ = e.stop(&*plat, c.id()); let _ = c.wait(); println!("  {} started (unexpected)", e.label()); }
+            Err(err) => println!("  {:<8} → {err}", e.label()),
+        }
+    }
+
+    if ok {
+        println!("\nOK — MySQL + PostgreSQL run through DbEngine; PostgreSQL answered a query.");
+    } else {
+        eprintln!("\nFAILED — see above.");
         std::process::exit(1);
     }
 }

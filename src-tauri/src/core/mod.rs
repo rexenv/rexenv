@@ -13,6 +13,7 @@ pub mod mail;
 pub mod monitor;
 pub mod php;
 pub mod ports;
+pub mod postgres;
 pub mod proxy;
 pub mod service_manager;
 pub mod services;

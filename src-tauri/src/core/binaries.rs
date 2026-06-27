@@ -28,6 +28,9 @@ pub const WP_CLI_VERSION: &str = "2.12.0";
 /// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
 /// per-site override server on an internal loopback port — Phase 2 §2.
 pub const FRANKENPHP_VERSION: &str = "1.12.4";
+/// Pinned PostgreSQL version (theseus-rs portable build — a full bin/lib/share
+/// tree, like MySQL). Phase 2 §5.3.
+pub const POSTGRES_VERSION: &str = "18.4.0";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +100,12 @@ const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a461
 const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "dd08f3a5ff45780fd0498afae8530bcd548a7e5d4dab7402934aeb622f6faeb8";
 const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "a262f0003447363b91f032706748998f206cd7038f1100f7b0952bdb93d5daf1";
 
+// PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
+// PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
+// relocatable bin/lib/share tree (unsigned Mach-O that runs as-is on Apple Silicon).
+const POSTGRES_18_4_0_MAC_ARM64_SHA256: &str = "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2";
+const POSTGRES_18_4_0_MAC_AMD64_SHA256: &str = "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d";
+
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
     match arch {
@@ -125,6 +134,12 @@ fn mysql_arch(arch: Arch) -> &'static str {
 fn frankenphp_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "arm64",
+        Arch::X86_64 => "x86_64",
+    }
+}
+fn postgres_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "aarch64",
         Arch::X86_64 => "x86_64",
     }
 }
@@ -220,6 +235,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             )),
             archive: Archive::TarGzTree,
             member: "bin/mysqld", // primary binary within the extracted tree
+        }),
+        ("postgres", "macos", "18.4.0") => Some(BinarySpec {
+            // theseus-rs portable PostgreSQL — a bin/lib/share tree (one top dir).
+            url: format!(
+                "https://github.com/theseus-rs/postgresql-binaries/releases/download/{version}/postgresql-{version}-{}-apple-darwin.tar.gz",
+                postgres_arch(arch)
+            ),
+            checksum: Checksum::Sha256(pick(
+                arch,
+                POSTGRES_18_4_0_MAC_ARM64_SHA256,
+                POSTGRES_18_4_0_MAC_AMD64_SHA256,
+            )),
+            archive: Archive::TarGzTree,
+            member: "bin/postgres", // primary binary within the extracted tree
         }),
         ("frankenphp", "macos", "1.12.4") => Some(BinarySpec {
             // One static binary per arch (raw, not an archive).
@@ -554,6 +583,18 @@ mod tests {
         assert_eq!(arm.member, "bin/mysqld");
         let amd = manifest("mysql", MYSQL_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("mysql-8.4.6-macos15-x86_64.tar.gz"));
+        assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_postgres_as_tree() {
+        let arm = manifest("postgres", POSTGRES_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(arm.url.ends_with("postgresql-18.4.0-aarch64-apple-darwin.tar.gz"));
+        assert_eq!(arm.archive, Archive::TarGzTree);
+        assert_eq!(arm.member, "bin/postgres");
+        assert!(matches!(arm.checksum, Checksum::Sha256(_)));
+        let amd = manifest("postgres", POSTGRES_VERSION, "macos", Arch::X86_64).unwrap();
+        assert!(amd.url.ends_with("postgresql-18.4.0-x86_64-apple-darwin.tar.gz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 
