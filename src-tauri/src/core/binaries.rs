@@ -25,6 +25,9 @@ pub const NGINX_VERSION: &str = "1.30.3";
 pub const MYSQL_VERSION: &str = "8.4.6";
 /// Pinned WP-CLI version (a .phar run via the bundled PHP; OS-agnostic).
 pub const WP_CLI_VERSION: &str = "2.12.0";
+/// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
+/// per-site override server on an internal loopback port — Phase 2 §2.
+pub const FRANKENPHP_VERSION: &str = "1.12.4";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +92,11 @@ const MYSQL_8_4_6_MAC_AMD64_SHA256: &str = "257d36d7ae26c4d1cc616dacf58cd1498c9b
 // WP-CLI phar SHA-256 (GitHub release; same artifact on every OS/arch).
 const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c";
 
+// FrankenPHP static binary SHA-256 (computed at pin time from the GitHub release).
+// A fully static Mach-O (embeds PHP + Caddy), so no Homebrew relink is needed.
+const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "dd08f3a5ff45780fd0498afae8530bcd548a7e5d4dab7402934aeb622f6faeb8";
+const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "a262f0003447363b91f032706748998f206cd7038f1100f7b0952bdb93d5daf1";
+
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
     match arch {
@@ -109,6 +117,12 @@ fn nginx_arch(arch: Arch) -> &'static str {
     }
 }
 fn mysql_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "arm64",
+        Arch::X86_64 => "x86_64",
+    }
+}
+fn frankenphp_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "arm64",
         Arch::X86_64 => "x86_64",
@@ -206,6 +220,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             )),
             archive: Archive::TarGzTree,
             member: "bin/mysqld", // primary binary within the extracted tree
+        }),
+        ("frankenphp", "macos", "1.12.4") => Some(BinarySpec {
+            // One static binary per arch (raw, not an archive).
+            url: format!(
+                "https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-mac-{}",
+                frankenphp_arch(arch)
+            ),
+            checksum: Checksum::Sha256(pick(
+                arch,
+                FRANKENPHP_1_12_4_MAC_ARM64_SHA256,
+                FRANKENPHP_1_12_4_MAC_AMD64_SHA256,
+            )),
+            archive: Archive::Raw,
+            member: "frankenphp",
         }),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
         ("wp-cli", _, "2.12.0") => Some(BinarySpec {
@@ -526,6 +554,19 @@ mod tests {
         assert_eq!(arm.member, "bin/mysqld");
         let amd = manifest("mysql", MYSQL_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("mysql-8.4.6-macos15-x86_64.tar.gz"));
+        assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_frankenphp_as_raw_binary() {
+        let arm = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(arm.url.ends_with("v1.12.4/frankenphp-mac-arm64"));
+        assert_eq!(arm.archive, Archive::Raw);
+        assert_eq!(arm.member, "frankenphp");
+        assert!(matches!(arm.checksum, Checksum::Sha256(_)));
+
+        let amd = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::X86_64).unwrap();
+        assert!(amd.url.ends_with("frankenphp-mac-x86_64"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 
