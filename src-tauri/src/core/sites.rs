@@ -5,10 +5,13 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
+use crate::core::{proxy, services, ssl};
 use crate::error::{Error, Result};
-use crate::state::models::{NewSite, ServiceStatus, Site};
+use crate::platform::traits::Platform;
+use crate::state::models::{NewSite, ServiceStatus, Site, SiteType};
 use crate::state::store;
 use rusqlite::Connection;
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Create a site: assign an id, default to stopped + SSL on, persist, return it.
@@ -49,6 +52,114 @@ pub fn get(conn: &Connection, id: &str) -> Result<Option<Site>> {
 /// Delete a site by id; returns whether it existed.
 pub fn delete(conn: &Connection, id: &str) -> Result<bool> {
     store::delete_site(conn, id)
+}
+
+/// Whether a site type needs a database provisioned (the pluggable DB stage —
+/// Blank PHP: none; WordPress/Laravel: MySQL, done in §8/§9).
+pub fn needs_database(site_type: SiteType) -> bool {
+    matches!(site_type, SiteType::Wordpress | SiteType::Laravel)
+}
+
+/// Root directory for site docroots under app-data.
+fn sites_dir(platform: &dyn Platform) -> Result<PathBuf> {
+    Ok(platform.paths().app_data_dir()?.join("sites"))
+}
+
+/// Provision a new site end-to-end (filesystem + cert + DB row). The docroot is
+/// `<sites_dir>/<domain>`; for Blank PHP a `phpinfo()` `index.php` is dropped in.
+/// The DB-provisioning step branches on [`needs_database`] (a hook for 9.2).
+/// Does NOT (re)write the shared server configs — call [`rebuild_configs`] +
+/// reload after, so one apply covers any number of changes.
+pub fn provision(
+    conn: &Connection,
+    platform: &dyn Platform,
+    ca: &ssl::LocalCa,
+    mut new: NewSite,
+) -> Result<Site> {
+    if store::domain_exists(conn, &new.domain)? {
+        return Err(Error::Other(format!(
+            "domain already in use: {}",
+            new.domain
+        )));
+    }
+
+    let docroot = sites_dir(platform)?.join(&new.domain);
+    std::fs::create_dir_all(&docroot)?;
+    if matches!(new.site_type, SiteType::Php) {
+        std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
+    }
+
+    // Issue the per-site cert (wildcard SAN) signed by our CA.
+    ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &new.domain)?;
+
+    // Database branch (pluggable): Blank PHP needs none. WordPress/Laravel will
+    // provision MySQL here (9.2) — left as a hook so that flow reuses provision.
+    if needs_database(new.site_type) {
+        // TODO(§8/§9): create the site's database before persisting.
+    }
+
+    new.path = docroot.display().to_string();
+    create(conn, new)
+}
+
+/// Paths of the regenerated shared configs (nginx + Caddy).
+#[derive(Debug, Clone)]
+pub struct RebuiltConfigs {
+    pub nginx_conf: PathBuf,
+    pub nginx_prefix: PathBuf,
+    pub caddyfile: PathBuf,
+}
+
+/// Regenerate the shared nginx + Caddy configs from ALL sites in the DB. The
+/// configs are derived state: one shared nginx (server block per site, by
+/// `server_name`, FastCGI → php-fpm) and Caddy routes (`*.test` host → nginx,
+/// TLS with each site's cert). Caller reloads the services afterwards.
+pub fn rebuild_configs(
+    conn: &Connection,
+    platform: &dyn Platform,
+    ca: &ssl::LocalCa,
+    nginx_http_port: u16,
+    caddy_http_port: u16,
+    caddy_https_port: u16,
+) -> Result<RebuiltConfigs> {
+    let sites = list(conn)?;
+
+    let nginx_sites = sites
+        .iter()
+        .map(|s| services::NginxSite {
+            domain: s.domain.clone(),
+            docroot: PathBuf::from(&s.path),
+            php_fpm_port: services::PHP_FPM_PORT,
+            rewrite: services::RewriteMode::Single,
+        })
+        .collect();
+    let (nginx_conf, nginx_prefix) =
+        services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
+
+    let mut routes = Vec::with_capacity(sites.len());
+    for s in &sites {
+        let cert = ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &s.domain)?;
+        routes.push(proxy::SiteRoute {
+            host: s.domain.clone(),
+            upstream: format!("127.0.0.1:{nginx_http_port}"),
+            cert_path: cert.cert_path,
+            key_path: cert.key_path,
+        });
+    }
+    let caddyfile = proxy::write_caddyfile(
+        platform,
+        &proxy::CaddyConfig {
+            http_port: caddy_http_port,
+            https_port: caddy_https_port,
+            routes,
+        },
+    )?;
+
+    Ok(RebuiltConfigs {
+        nginx_conf,
+        nginx_prefix,
+        caddyfile,
+    })
 }
 
 #[cfg(test)]
@@ -109,6 +220,13 @@ mod tests {
         assert!(delete(&conn, &site.id).unwrap());
         assert!(get(&conn, &site.id).unwrap().is_none());
         assert!(!delete(&conn, &site.id).unwrap(), "second delete is a no-op");
+    }
+
+    #[test]
+    fn needs_database_by_type() {
+        assert!(!needs_database(SiteType::Php));
+        assert!(needs_database(SiteType::Wordpress));
+        assert!(needs_database(SiteType::Laravel));
     }
 
     #[test]

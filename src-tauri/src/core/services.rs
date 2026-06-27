@@ -332,6 +332,28 @@ pub fn start_nginx(
         .spawn(nginx_bin, &nginx_args(conf, prefix, None))
 }
 
+/// Reload a running nginx's config (`nginx -s reload`) after the config changes
+/// (e.g. a site was added/removed).
+pub fn reload_nginx(
+    platform: &dyn Platform,
+    nginx_bin: &Path,
+    conf: &Path,
+    prefix: &Path,
+) -> Result<()> {
+    let mut args = vec!["-s".to_string(), "reload".to_string()];
+    args.extend(nginx_args(conf, prefix, None));
+    let mut child = platform.supervisor().spawn(nginx_bin, &args)?;
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "nginx -s reload failed (exit {:?})",
+            status.code()
+        )))
+    }
+}
+
 /// True if the shared nginx is accepting connections on its loopback port.
 pub fn nginx_running(port: u16) -> bool {
     TcpStream::connect_timeout(

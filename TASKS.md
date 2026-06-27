@@ -76,8 +76,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 7. Site create / list (end-to-end wiring)
 
-- [ ] **7.1 `create site` flow (Blank PHP)**
-  *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block (internal HTTP) + a Caddy `*.test`→Nginx TLS route, reloads both; the request flows **browser → Caddy (TLS) → shared Nginx (by `server_name`) → php-fpm**, and `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock (issuer = local CA). The flow **branches on whether the site needs a database** (Blank PHP = no DB; WordPress = needs MySQL, §8/§9) — the DB-provisioning step is an optional, pluggable stage so 9.2 hooks into the same create flow cleanly.
+- [x] **7.1 `create site` flow (Blank PHP)**
+  *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block (internal HTTP) + a Caddy `*.test`→Nginx TLS route, reloads both; the request flows **browser → Caddy (TLS) → shared Nginx (by `server_name`) → php-fpm**, and `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock (issuer = local CA). The flow **branches on whether the site needs a database** (Blank PHP = no DB; WordPress = needs MySQL, §8/§9) — the DB-provisioning step is an optional, pluggable stage so 9.2 hooks into the same create flow cleanly. ✓ `core/sites.rs` `provision` (docroot + phpinfo index.php + cert + DB row; `needs_database` DB branch hook) + `rebuild_configs` (regenerates shared nginx.conf + Caddyfile from all DB sites); `services::reload_nginx`. Live: provisioned blankphp.test, full chain Caddy(TLS)→nginx(server_name)→php-fpm serves **phpinfo PHP 8.3.31** over HTTPS, issuer=rexenv Local CA, `$_SERVER['HTTPS']=on`. **Verified on :8443** (real :443 blocked by external nginx — see 4.2/memory). 1 unit test; 40 lib tests green. Manual: `cargo run --example create_site_serve`.
 - [ ] **7.2 Sites list + start/stop**
   *Done when:* the Sites screen lists real sites from SQLite (via typed IPC) and start/stop toggles drive the backend, reflecting real status.
 - [ ] **7.3 Delete site (full teardown)**
