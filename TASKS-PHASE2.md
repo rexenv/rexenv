@@ -67,9 +67,10 @@ version**, with sites mapping to the right version's pool.
 ## 2. Per-site server override — FrankenPHP (primary alt server)
 
 Override servers run as **separate processes on internal loopback ports**; the edge Caddy routes to them.
-Default sites stay on the shared Nginx. FrankenPHP goes first because it's a **single static binary** — it
-proves the override architecture (edge → internal port → alt server) with the least macOS-binary friction;
-Apache's relocatable httpd + dylib relink (§3) is the harder case, attempted once the path is proven.
+Default sites stay on the shared Nginx. FrankenPHP is the Phase-2 alt server because it's a **single static
+binary** — it proves the override architecture (edge → internal port → alt server) with the least
+macOS-binary friction. Apache is **deferred (§7.4)**: macOS has no portable httpd, the same packaging pain
+as OpenLiteSpeed; the override path is proven, so Apache adds no Phase-2 architecture.
 
 > FrankenPHP is itself built on Caddy + an **embedded PHP** runtime. Here it is used **only as a backend
 > server on an internal loopback port** — NOT as an edge. Our Phase-1 edge Caddy keeps :443, terminates
@@ -97,43 +98,29 @@ Apache's relocatable httpd + dylib relink (§3) is the harder case, attempted on
   edge ↔ backend separation: the served cert is our local CA's (the edge's), not anything FrankenPHP issued.
   Depends on 2.2.
 
-## 3. Per-site server override — Apache (httpd)
+## 3. Per-site server override — Apache (httpd) — DEFERRED → §7.4
 
-The harder override case (relocatable httpd + Homebrew dylib relink), attempted after FrankenPHP (§2) has
-proven the override path. Same shape: a separate process on an internal loopback port, the edge routes to it.
-
-- [ ] **3.1 Apache binary provider**
-  *Done when:* `BinaryProvider` downloads/caches a relocatable macOS Apache (httpd) for arm64+x86_64,
-  checksum-pinned, through the Phase-1 `prepare_binary` order (de-quarantine → relink any Homebrew dylibs to
-  `/usr/lib` → ad-hoc codesign LAST); `httpd -v` runs from the cached path.
-
-- [ ] **3.2 Apache per-site config + supervise (internal loopback port)**
-  *Done when:* `core/` generates a **self-contained** Apache config for one site (`DocumentRoot` = the site
-  docroot, `Listen 127.0.0.1:<internal port>`, plain HTTP — TLS stays the edge's job) wired to PHP via
-  `mod_proxy_fcgi` → the site's **per-version php-fpm pool** (§1.2); `ProcessSupervisor::spawn_logged`
-  starts/stops it (tracked by `ServiceManager`); `curl -H 'Host: <site>' http://127.0.0.1:<port>` serves PHP
-  via FastCGI (200). The generator leaves the same 3 rewrite-template slots as Nginx. Depends on 1.2, 3.1.
-
-- [ ] **3.3 Edge routes Apache override sites; defaults stay on Nginx**
-  *Done when:* `rebuild_configs` emits a Caddy route for an Apache-override site's Host → that site's
-  **Apache internal port**, while every other `*.test` still goes to the shared Nginx port; an Apache-override
-  site loads at `https://<site>.test` (TLS by local CA, `openssl s_client` issuer = our CA) **and** a default
-  Nginx site still loads — both 200, routed to different backends. Depends on 3.2.
+> **Deferred (decision 2026-06).** macOS has no prebuilt portable Apache: Homebrew `httpd` links a tree of
+> non-system dylibs (`apr`, `apr-util`, `pcre2`, `openssl@3`, `brotli`, `libnghttp2`) with no `/usr/lib`
+> equivalent, so `prepare_binary`'s relink-to-system path can't make it self-contained — shipping it needs a
+> new "bundle the dylib tree + rewrite install names to `@loader_path`" mechanism. The per-site override
+> architecture is already proven by FrankenPHP (§2), so Apache moves to **§7.4** (same rationale as
+> OpenLiteSpeed §7.2): revisit on the Linux/Windows ports (clean apache binaries) or as dedicated macOS
+> packaging work.
 
 ## 4. Per-site server selection (wiring + UI)
 
 - [ ] **4.1 Server select in create + live switch (backend)**
-  *Done when:* the site model's `web_server` enum is extended (Nginx | FrankenPHP | Apache) and drives
+  *Done when:* the site model's `web_server` enum (Nginx | FrankenPHP; Apache when §7.4 lands) drives
   provisioning: choosing an override at create brings up that server's config + process + its edge route;
   **switching** a live site's server tears down the old backend config, brings the new one up (and the old
   one down if no other site uses it), and reloads the edge — **no docroot/cert/DB rebuild**. Verified by
-  switching one site Nginx → FrankenPHP → Apache → Nginx, each serving 200 at the same URL. **Pools stay
-  per-version, never per-server:** switching a site between Nginx and Apache keeps it on the same shared
-  per-version php-fpm pool (§1.2) — no per-server pool is spawned (verify the pool PID/port is unchanged
-  across the switch; FrankenPHP is exempt — it serves via its embedded PHP, not a pool). Depends on 2.3, 3.3.
+  switching one site Nginx → FrankenPHP → Nginx, each serving 200 at the same URL. **Pools stay per-version,
+  never per-server:** an Nginx site keeps using its version's shared php-fpm pool across the switch — no
+  per-server pool is spawned (FrankenPHP is exempt — it serves via its embedded PHP, not a pool). Depends on 2.3.
 
 - [ ] **4.2 Server-select UI (create + SiteDetail)**
-  *Done when:* the create flow and SiteDetail expose a server dropdown (Nginx default / FrankenPHP / Apache),
+  *Done when:* the create flow and SiteDetail expose a server dropdown (Nginx default / FrankenPHP),
   the switch drives 4.1 via typed IPC, and the Sites list shows the active server badge (the Phase-1 mock
   already renders a server badge). Mock fallback outside Tauri. Depends on 4.1.
 
@@ -187,9 +174,8 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
 
 - [ ] **6.1 Monitor covers all Phase-2 services**
   *Done when:* `services_status` reports live RAM/CPU rows for **every** service the app now supervises —
-  each per-version php-fpm pool (§1), each per-site FrankenPHP/Apache override (§2/§3), and MariaDB/
-  PostgreSQL/Redis (§5) — and the Services view + sidebar footer totals reflect them. Depends on 1.2, 2.2,
-  3.2, 5.5.
+  each per-version php-fpm pool (§1), each per-site FrankenPHP override (§2), and MariaDB/PostgreSQL/Redis
+  (§5) — and the Services view + sidebar footer totals reflect them. Depends on 1.2, 2.2, 5.5.
 
 ---
 
@@ -202,7 +188,7 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   mirrors the §1.2 registry pattern for DB engines. Heavier feature — kept out of core §5 deliberately.
   (PROJECT_SPEC Tier 1: DB "version switch".)
 - [ ] **7.2 OpenLiteSpeed override server**
-  *Done when:* OpenLiteSpeed is available as a per-site override via the same override pattern (§2/§3/§4 —
+  *Done when:* OpenLiteSpeed is available as a per-site override via the same override pattern (§2/§4 —
   separate process on an internal loopback port, edge routes to it). **Deferred from Phase 2:** OLS is Linux-first and its
   macOS binary distribution is painful; revisit when it's actually needed, or during the Windows/Linux ports
   (§4/§5 of PROJECT_SPEC) where official binaries are easier.
@@ -212,6 +198,14 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   uses a non-default/derived admin address), and surfaces a clear error if it can't. *Found during §1.3:*
   an orphaned root Caddy on `:2019` made a fresh Caddy fail to start (`bind: address already in use`); the
   dev workaround was a foreground `sudo pkill` of the stray.
+- [ ] **7.4 Apache (httpd) override server** *(deferred from §3)*
+  *Done when:* Apache is a per-site override via the §2/§4 pattern — a self-contained `httpd` on an internal
+  loopback port, `mod_proxy_fcgi` → the site's per-version php-fpm pool, edge routes to it. **Blocked on macOS
+  packaging:** no portable httpd exists; Homebrew `httpd` links a tree of non-system dylibs (`apr`, `apr-util`,
+  `pcre2`, `openssl@3`, `brotli`, `libnghttp2`) with no `/usr/lib` equivalent, so this needs a new
+  `prepare_binary` path that **bundles the dylib tree and rewrites install names to `@loader_path`**. Easiest
+  on the Linux/Windows ports (clean apache binaries) or as dedicated macOS packaging work. Decided 2026-06
+  to defer (override architecture already proven by FrankenPHP §2).
 
 ---
 
@@ -221,9 +215,9 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   - *Default sites (unchanged):* browser → **Caddy** (:443, local-CA TLS) → shared **Nginx** (vhost by
     `server_name`) → the **php-fpm pool for that site's PHP version** (FastCGI).
   - *Override sites:* browser → **edge Caddy** (:443, local-CA TLS) → the site's **own alt-server process**
-    on a dedicated internal loopback port → PHP. **FrankenPHP** (primary) serves PHP from its **embedded
-    runtime** (no php-fpm pool) — a plain-HTTP backend with its own auto-HTTPS DISABLED, never the edge.
-    **Apache** proxies to the site's per-version php-fpm pool (`mod_proxy_fcgi`).
+    on a dedicated internal loopback port → PHP. **FrankenPHP** (the Phase-2 override) serves PHP from its
+    **embedded runtime** (no php-fpm pool) — a plain-HTTP backend with its own auto-HTTPS DISABLED, never the
+    edge. (Apache, when §7.4 lands, instead proxies to the site's per-version php-fpm pool via `mod_proxy_fcgi`.)
   - Edge Caddy routes **by Host**: all default `*.test` → the one shared Nginx port; each override site's
     Host → its dedicated backend port. TLS always terminates at the edge with the local CA (auto-HTTPS /
     internal issuer stays **DISABLED**). **No direct edge→php path; no backend terminates TLS.**
@@ -231,12 +225,12 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   conflate them: don't. The edge Caddy owns :80/:443, TLS, and Host routing (Phase 1). FrankenPHP is just
   one possible per-site backend on an internal loopback port. A FrankenPHP backend must never bind :443 or
   issue/serve its own certs.
-- **One php-fpm pool per PHP version, never per site** (applies to Nginx + Apache backends). A site
+- **One php-fpm pool per PHP version, never per site** (applies to Nginx; Apache too when §7.4 lands). A site
   references its version's pool port. Switching a site's PHP **version** or its **server** is a config regen
   + edge/Nginx reload — never a docroot/cert/DB rebuild. (FrankenPHP's PHP version = its embedded build.)
-- All Phase-2 binaries (multi-PHP, Apache, FrankenPHP, MariaDB, PostgreSQL, Redis) go through the same
+- All Phase-2 binaries (multi-PHP, FrankenPHP, MariaDB, PostgreSQL, Redis) go through the same
   `BinaryProvider` + macOS `prepare_binary` (de-quarantine → relink Homebrew dylibs → codesign LAST) and
-  `ProcessSupervisor::spawn_logged` as Phase 1.
+  `ProcessSupervisor::spawn_logged` as Phase 1. (Apache §7.4 needs a new dylib-tree-bundling path — why it's deferred.)
 - **Ports:** every new service gets a deterministic loopback port in `core/ports` (a range for per-version
   pools and per-site overrides; one each for MariaDB/PostgreSQL/Redis), gated by `ensure_free` before spawn;
   `ServiceManager` owns their lifecycle.
