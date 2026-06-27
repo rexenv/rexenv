@@ -1,9 +1,12 @@
 # TASKS — Phase 1 (macOS MVP)
 
-> ✅ **Phase 1 goal MET** (9.2): one-click WordPress served over HTTPS via the full
-> chain browser → Caddy (TLS, local CA) → shared nginx (by `server_name`) → php-fpm
-> → WordPress → MySQL. Verified on high ports (real :443 needs the app service
-> manager + a free :443 — see 10.5). Remaining unchecked items are optional/later.
+> ✅ **Phase 1 goal MET — verified on REAL :443.** One-click WordPress served at
+> `https://wpdemo.test` (no port) via the full chain browser → Caddy (:443, TLS with
+> the local CA) → shared nginx (by `server_name`) → php-fpm → WordPress → MySQL:
+> homepage **HTTP 200** (`<title>rexenv WP Demo</title>`, Twenty Twenty-Five theme),
+> `wp-login.php` 200, served cert issuer = our CA, all validated against the CA.
+> (Caddy's privileged :443 bind is started with `sudo`/admin once; everything else
+> is the app service manager from 10.5.) Remaining unchecked items are optional.
 >
 > **Phase goal:** a WordPress site running locally over HTTPS at `https://<name>.test`.
 > Scope: macOS only. Build `platform/` macOS impls; leave windows/linux as `todo!()`.
