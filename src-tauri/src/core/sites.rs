@@ -54,6 +54,12 @@ pub fn delete(conn: &Connection, id: &str) -> Result<bool> {
     store::delete_site(conn, id)
 }
 
+/// Set a site's status, returning the updated site (or `None` if it doesn't exist).
+pub fn set_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<Option<Site>> {
+    store::set_site_status(conn, id, status)?;
+    get(conn, id)
+}
+
 /// Whether a site type needs a database provisioned (the pluggable DB stage —
 /// Blank PHP: none; WordPress/Laravel: MySQL, done in §8/§9).
 pub fn needs_database(site_type: SiteType) -> bool {
@@ -207,6 +213,27 @@ mod tests {
         let err = create(&conn, sample("Two", "dup.test")).unwrap_err();
         assert!(err.to_string().contains("domain already in use"));
         assert_eq!(list(&conn).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn set_status_updates_and_returns_site() {
+        let conn = db::open_in_memory().unwrap();
+        let site = create(&conn, sample("Acme", "acme.test")).unwrap();
+        assert!(matches!(site.status, ServiceStatus::Stopped));
+
+        let updated = set_status(&conn, &site.id, ServiceStatus::Running)
+            .unwrap()
+            .expect("exists");
+        assert!(matches!(updated.status, ServiceStatus::Running));
+        // persisted
+        assert!(matches!(
+            get(&conn, &site.id).unwrap().unwrap().status,
+            ServiceStatus::Running
+        ));
+        // unknown id → None
+        assert!(set_status(&conn, "nope", ServiceStatus::Running)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

@@ -19,6 +19,7 @@ export interface Site {
   webServer: WebServer;
   ssl: boolean;
   path: string;
+  createdAt: string; // SQLite datetime, mirrors the Rust Site struct
 }
 
 export interface GlobalStatus {

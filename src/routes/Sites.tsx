@@ -1,8 +1,11 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Globe, FolderOpen, Database, Lock, MoreHorizontal } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { Placeholder } from "@/components/common/Placeholder";
 import { Button } from "@/components/ui/button";
-import { mockSites } from "@/lib/mock";
+import { listSites, startSite, stopSite } from "@/lib/ipc";
 import type { Site } from "@/types";
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -13,7 +16,16 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SiteRow({ site }: { site: Site }) {
+function SiteRow({
+  site,
+  busy,
+  onToggle,
+}: {
+  site: Site;
+  busy: boolean;
+  onToggle: () => void;
+}) {
+  const running = site.status === "running";
   return (
     <div className="group flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5 transition-colors hover:bg-white/[0.02]">
       <div className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-rex-border bg-rex-surface-2 text-rex-text-muted">
@@ -29,6 +41,7 @@ function SiteRow({ site }: { site: Site }) {
       <Badge>PHP {site.phpVersion}</Badge>
       <Badge>{site.webServer}</Badge>
       <StatusPill status={site.status} />
+      <StartStopToggle running={running} busy={busy} onToggle={onToggle} />
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <Button variant="ghost" size="icon" aria-label="Open in browser">
           <Globe className="h-4 w-4" />
@@ -48,25 +61,67 @@ function SiteRow({ site }: { site: Site }) {
 }
 
 export function Sites() {
-  const running = mockSites.filter((s) => s.status === "running").length;
+  const qc = useQueryClient();
+  const { data: sites = [], isLoading } = useQuery({
+    queryKey: ["sites"],
+    queryFn: listSites,
+  });
+
+  const toggle = useMutation({
+    mutationFn: (site: Site) =>
+      site.status === "running" ? stopSite(site.id) : startSite(site.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+  });
+
+  const running = sites.filter((s) => s.status === "running").length;
+  const newSiteButton = (
+    <Button variant="primary">
+      <Plus className="h-[15px] w-[15px]" strokeWidth={2.2} />
+      New site
+    </Button>
+  );
+
   return (
     <>
       <TopBar
         title="Sites"
-        subtitle={`${mockSites.length} sites · ${running} running`}
-        action={
-          <Button variant="primary">
-            <Plus className="h-[15px] w-[15px]" strokeWidth={2.2} />
-            New site
-          </Button>
+        subtitle={
+          isLoading ? "Loading…" : `${sites.length} sites · ${running} running`
         }
+        action={newSiteButton}
       />
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
-        <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
-          {mockSites.map((site) => (
-            <SiteRow key={site.id} site={site} />
-          ))}
-        </div>
+        {isLoading ? (
+          <Placeholder
+            icon={<Globe className="h-[22px] w-[22px]" strokeWidth={1.6} />}
+            label="Loading sites…"
+            hint="Reading your local sites"
+          />
+        ) : sites.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 rounded-xl border border-rex-border bg-rex-surface-1 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-rex-border bg-rex-surface-2 text-rex-text-muted">
+              <Globe className="h-6 w-6" strokeWidth={1.6} />
+            </div>
+            <div>
+              <div className="text-[15px] font-semibold text-rex-text">No sites yet</div>
+              <div className="mt-1 text-[13px] text-rex-text-muted">
+                Create your first local site to get started.
+              </div>
+            </div>
+            {newSiteButton}
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
+            {sites.map((site) => (
+              <SiteRow
+                key={site.id}
+                site={site}
+                busy={toggle.isPending && toggle.variables?.id === site.id}
+                onToggle={() => toggle.mutate(site)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

@@ -1,5 +1,6 @@
-//! App state — SQLite-backed (Phase 1 §1). Modules start as stubs.
+//! App state — SQLite-backed (Phase 1 §1).
 
+pub mod app;
 pub mod db;
 pub mod models;
 pub mod store;

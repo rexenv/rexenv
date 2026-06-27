@@ -82,6 +82,15 @@ pub fn delete_site(conn: &Connection, id: &str) -> Result<bool> {
     Ok(affected > 0)
 }
 
+/// Update a site's status; returns whether a row was updated.
+pub fn set_site_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET status = ?1 WHERE id = ?2",
+        params![status.as_db(), id],
+    )?;
+    Ok(affected > 0)
+}
+
 /// The database's current timestamp string, matching the `created_at` column
 /// default (`datetime('now')`). Lets `core/` stamp rows without a time crate
 /// and keeps the format identical to DB-generated values.

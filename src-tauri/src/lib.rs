@@ -36,9 +36,26 @@ pub fn run() {
                     log::error!("dns: failed to start embedded resolver: {e}");
                 }
             }
+
+            // Open the app SQLite database (creating it + running migrations) and
+            // hold it in app state for the IPC commands.
+            let platform = platform::current();
+            match state::db::open_for_platform(platform.paths()) {
+                Ok(conn) => {
+                    app.manage(state::app::AppState::new(conn));
+                }
+                Err(e) => {
+                    log::error!("db: failed to open app database: {e}");
+                }
+            }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::system::app_info])
+        .invoke_handler(tauri::generate_handler![
+            commands::system::app_info,
+            commands::sites::list_sites,
+            commands::sites::start_site,
+            commands::sites::stop_site,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

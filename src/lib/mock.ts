@@ -15,6 +15,7 @@ export const mockSites: Site[] = [
     webServer: "nginx",
     ssl: true,
     path: "~/Sites/acme",
+    createdAt: "2026-06-01 10:00:00",
   },
   {
     id: "2",
@@ -26,6 +27,7 @@ export const mockSites: Site[] = [
     webServer: "nginx",
     ssl: true,
     path: "~/Sites/portfolio",
+    createdAt: "2026-06-02 11:00:00",
   },
   {
     id: "3",
@@ -37,6 +39,7 @@ export const mockSites: Site[] = [
     webServer: "apache",
     ssl: true,
     path: "~/Sites/network",
+    createdAt: "2026-06-03 12:00:00",
   },
 ];
 
