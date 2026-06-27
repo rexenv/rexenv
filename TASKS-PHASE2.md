@@ -124,10 +124,13 @@ as OpenLiteSpeed; the override path is proven, so Apache adds no Phase-2 archite
   the switch drives 4.1 via typed IPC, and the Sites list shows the active server badge (the Phase-1 mock
   already renders a server badge). Mock fallback outside Tauri. Depends on 4.1.
 
-## 5. Database engines (MariaDB · PostgreSQL · Redis)
+## 5. Database engines (PostgreSQL; MariaDB & Redis deferred)
 
-Each new engine goes through the same `BinaryProvider` (sign + de-quarantine) + `ProcessSupervisor`
-lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-version is optional §7.1).
+Each engine goes through the same `BinaryProvider` (sign + de-quarantine) + `ProcessSupervisor` lifecycle as
+Phase-1 MySQL (§8), via the §5.1 `DbEngine`. **One version per engine** (multi-version is optional §7.1).
+**macOS-binary reality (decision 2026-06):** only PostgreSQL has a clean portable macOS binary. MariaDB ships
+**no** macOS binary (any arch) and Redis needs a dylib-bundle (openssl@3) — both deferred to §7 (same call as
+Apache); MySQL covers the MySQL-compatible case meanwhile.
 
 - [ ] **5.1 DB engine abstraction**
   *Done when:* a `DbEngine` abstraction (enum/trait in `core/`) unifies MySQL + the new engines behind one
@@ -135,37 +138,30 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   `core/ports::default_ports`) via `spawn_logged`, and a running-probe; **Phase-1 MySQL is refactored onto it
   with behavior unchanged** (existing MySQL example + tests stay green).
 
-- [ ] **5.2 MariaDB binary provider + lifecycle**
-  *Done when:* MariaDB (official macOS tarball, arm64+x86_64, checksum-pinned) resolves through
-  `BinaryProvider`, initializes a datadir (`mariadb-install-db` or equivalent, idempotent), starts/stops on
-  its own loopback port via the §5.1 engine; the bundled client connects and `SELECT VERSION()` returns the
-  MariaDB version. Depends on 5.1.
+- [ ] **5.2 MariaDB binary provider + lifecycle** — DEFERRED → §7.5
+  > **Deferred (decision 2026-06).** MariaDB ships **no** macOS binary tarball (checked 10.4–11.8, no arch;
+  > Apple Silicon never), and its Homebrew tree is large (groonga/mecab/simdjson/…). Needs the dylib-bundling
+  > mechanism (see §7.4/§7.5). MySQL is a drop-in MySQL-compatible substitute, so nothing is blocked.
 
 - [ ] **5.3 PostgreSQL binary provider + lifecycle**
-  *Done when:* PostgreSQL (official macOS binary, checksum-pinned) resolves through `BinaryProvider`, runs
-  `initdb` once (idempotent) into an app-data datadir, starts/stops `postgres` on its own loopback port via
-  the §5.1 engine; bundled `psql -c 'SELECT version();'` succeeds. Depends on 5.1.
+  *Done when:* PostgreSQL (portable macOS binary — `theseus-rs/postgresql-binaries`, arm64+x86_64, published
+  SHA-256) resolves through `BinaryProvider` (a `TarGzTree`), runs `initdb` once (idempotent) into an app-data
+  datadir, starts/stops `postgres` on its own loopback port via the §5.1 engine; bundled
+  `psql -c 'SELECT version();'` succeeds. Depends on 5.1.
 
-- [ ] **5.4 Redis binary provider + lifecycle**
-  *Done when:* Redis (official macOS build, checksum-pinned — note: a shared cache service, **no per-site
-  DB**) resolves through `BinaryProvider`, starts/stops `redis-server` on its own loopback port via the §5.1
-  engine; `redis-cli PING` → `PONG`. Depends on 5.1.
-  **Scope note:** Phase 2 runs Redis as a managed *service* only — no site/app consumes it yet (object-cache /
-  app integration is later, Phase 3+). Its "running but unused" state is intentional, not a gap.
+- [ ] **5.4 Redis binary provider + lifecycle** — DEFERRED → §7.6
+  > **Deferred (decision 2026-06).** No official macOS Redis binary; the Homebrew bottle links `openssl@3`
+  > (libssl/libcrypto.3 — no `/usr/lib` equivalent), so it needs the small dylib-bundle path (§7.6). Redis is a
+  > shared cache service with no Phase-2 consumer anyway (app/object-cache integration is Phase 3+).
 
 - [ ] **5.5 Databases UI (multi-engine start/stop/status)**
-  *Done when:* the Databases screen (Phase-1 placeholder) lists MySQL, MariaDB, PostgreSQL, Redis with
-  per-engine status, port, version + start/stop, on live `services_status` via typed IPC (2s poll, mock
-  fallback in dev); footer totals include them. Depends on 5.2, 5.3, 5.4.
+  *Done when:* the Databases screen (Phase-1 placeholder) lists the available engines (MySQL, PostgreSQL) with
+  per-engine status, port, version + start/stop, on live IPC (2s poll, mock fallback in dev); footer totals
+  include them. (MariaDB/Redis appear once §7.5/§7.6 land.) Depends on 5.3.
 
-- [ ] **5.6 Site → DB engine selection at create (MySQL | MariaDB)**
-  *Done when:* a site that needs a database (e.g. WordPress) can choose its **relational** engine — MySQL or
-  MariaDB — at create, and the DB is provisioned on **that** engine via the §5.1 `DbEngine`, reusing the
-  Phase-1 "needs a database" pluggable stage in the create flow (engine selection on the existing hook — no
-  new branch); a WordPress site created on MariaDB installs + loads (HTTP 200) with its DB on the MariaDB
-  instance, not MySQL. Surfaced in the create UI (mock fallback outside Tauri). Depends on 5.2.
-  **Deferred:** PostgreSQL + Redis aren't WordPress/relational-app targets here, so site-to-engine wiring for
-  them is out of Phase 2 — they stay standalone services (5.3/5.4); revisit when a consumer exists.
+- [ ] **5.6 Site → DB engine selection at create** — DEFERRED → §7.5
+  > **Deferred.** With MariaDB out (§5.2), MySQL is the only relational engine, so there's no choice to make;
+  > PostgreSQL isn't a WordPress/relational-app target here. Revisit when MariaDB lands (§7.5).
 
 ## 6. Resource monitor (extend to Phase-2 services)
 
@@ -174,8 +170,8 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
 
 - [ ] **6.1 Monitor covers all Phase-2 services**
   *Done when:* `services_status` reports live RAM/CPU rows for **every** service the app now supervises —
-  each per-version php-fpm pool (§1), each per-site FrankenPHP override (§2), and MariaDB/PostgreSQL/Redis
-  (§5) — and the Services view + sidebar footer totals reflect them. Depends on 1.2, 2.2, 5.5.
+  each per-version php-fpm pool (§1), each per-site FrankenPHP override (§2), and the running DB engines
+  (MySQL, PostgreSQL §5) — and the Services view + sidebar footer totals reflect them. Depends on 1.2, 2.2, 5.5.
 
 ---
 
@@ -206,6 +202,16 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   `prepare_binary` path that **bundles the dylib tree and rewrites install names to `@loader_path`**. Easiest
   on the Linux/Windows ports (clean apache binaries) or as dedicated macOS packaging work. Decided 2026-06
   to defer (override architecture already proven by FrankenPHP §2).
+- [ ] **7.5 MariaDB engine** *(deferred from §5.2; includes site → DB-engine select §5.6)*
+  *Done when:* MariaDB runs through `DbEngine` (datadir init + start/stop on its port, client `SELECT
+  VERSION()`), and a site that needs a DB can pick MySQL **or** MariaDB at create (§5.6). **Blocked on macOS
+  packaging:** no MariaDB macOS binary exists, so this needs the §7.4 dylib-tree-bundling path (its tree is
+  large — groonga/mecab/simdjson/openssl@3/…). Easiest on Linux/Windows ports.
+- [ ] **7.6 Redis engine** *(deferred from §5.4)*
+  *Done when:* Redis runs through `DbEngine` (`redis-server` on its port, `redis-cli PING` → `PONG`) as a
+  shared cache service. **Blocked on macOS packaging:** no official macOS binary; the Homebrew bottle links
+  `openssl@3` (no `/usr/lib` equivalent), so it needs the dylib-bundle path (§7.4) — small here (2 dylibs).
+  No Phase-2 consumer (app/object-cache integration is Phase 3+).
 
 ---
 
@@ -228,9 +234,9 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
 - **One php-fpm pool per PHP version, never per site** (applies to Nginx; Apache too when §7.4 lands). A site
   references its version's pool port. Switching a site's PHP **version** or its **server** is a config regen
   + edge/Nginx reload — never a docroot/cert/DB rebuild. (FrankenPHP's PHP version = its embedded build.)
-- All Phase-2 binaries (multi-PHP, FrankenPHP, MariaDB, PostgreSQL, Redis) go through the same
-  `BinaryProvider` + macOS `prepare_binary` (de-quarantine → relink Homebrew dylibs → codesign LAST) and
-  `ProcessSupervisor::spawn_logged` as Phase 1. (Apache §7.4 needs a new dylib-tree-bundling path — why it's deferred.)
+- All Phase-2 binaries (multi-PHP, FrankenPHP, PostgreSQL) go through the same `BinaryProvider` + macOS
+  `prepare_binary` (de-quarantine → relink Homebrew dylibs → codesign LAST) and `ProcessSupervisor::spawn_logged`
+  as Phase 1. (Apache §7.4, MariaDB §7.5, Redis §7.6 need a new dylib-tree-bundling path — why they're deferred.)
 - **Ports:** every new service gets a deterministic loopback port in `core/ports` (a range for per-version
   pools and per-site overrides; one each for MariaDB/PostgreSQL/Redis), gated by `ensure_free` before spawn;
   `ServiceManager` owns their lifecycle.
