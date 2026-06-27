@@ -19,12 +19,23 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 
 ## Non-negotiables (foundational decisions — don't relitigate)
 - **No Docker.** Services are **native static binaries**, downloaded on demand (small installer).
+- All binaries go through **`BinaryProvider`** (manifest: os+arch+version → url+checksum).
+  **macOS:** after download, ad-hoc code-sign (`codesign --force --sign - <path>`) and
+  de-quarantine (`xattr -d com.apple.quarantine <path>`) before first exec — else Apple
+  Silicon kills unsigned binaries.
+- **Request topology (default sites):** browser → **Caddy** (:443, TLS termination with
+  local-CA certs; auto-HTTPS/internal issuer DISABLED) → one shared **Nginx** on an internal
+  HTTP port (vhost by `server_name`) → **php-fpm** (FastCGI). Caddy proxies all `*.test` to
+  the single Nginx port. **No direct Caddy→php-fpm path for default sites.**
 - One shared **Nginx** process (a server block per site) is the default site server.
 - **One PHP-FPM pool per PHP version** (not per site) — shared master, low memory.
-- An internal **Caddy** edge router holds :80/:443, terminates SSL, routes by Host header
-  (invisible to the user; Phase 1 choice — may become custom Rust/Pingora later).
-- Embedded DNS via **hickory-dns** resolves `*.test → 127.0.0.1` (wildcard ⇒ multisite works free).
+- Caddy is the Phase 1 edge router (invisible to the user; may become custom Rust/Pingora later).
+- Embedded DNS via **hickory-dns** resolves `*.test → 127.0.0.1` (wildcard ⇒ multisite works
+  free). Runs as a managed task on a fixed loopback port (`DEFAULT_DNS_PORT`).
 - Local **CA via rcgen** issues a trusted cert per domain; must support wildcard SAN (`*.site.test`).
+- **Privileged OS changes** (writing `/etc/resolver/test`, trusting the CA) go ONLY through
+  the **`PrivilegeManager`** trait — never write `/etc` or call `security` directly — and are
+  batched into one "system setup" step so the user authenticates **once**.
 - **SQLite** for all app state (site list, settings, per-site config).
 - Leave room in the config generator for THREE rewrite templates from the start:
   single / subdomain-multisite / subdirectory-multisite.
