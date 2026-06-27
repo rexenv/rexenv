@@ -71,8 +71,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] **6.1 Nginx binary provider**
   *Done when:* prebuilt Nginx for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `nginx -v` runs. ✓ Manifest entry `nginx` (jirutka/nginx-binaries static build, pinned 1.30.3, SHA-256 cross-checked vs published SHA-1; `Archive::Raw`). The jirutka macOS build links Homebrew `libpcre2`, so `prepare_binary` now also **relinks Homebrew dylib deps → macOS system libs** (`install_name_tool -change … /usr/lib/libpcre2-8.dylib`) then re-signs → self-contained (otool shows system libs only). Live: `nginx -v` → nginx/1.30.3. 2 new unit tests (manifest + lib mapping); 36 lib tests green. Manual: `cargo run --example nginx_fetch`.
-- [ ] **6.2 Shared Nginx + per-site server block**
-  *Done when:* one shared Nginx process (listening on an **internal HTTP port**, plain HTTP — TLS is Caddy's job) serves a site from its docroot via a generated server block selected by `server_name` (FastCGI → php-fpm); the config generator leaves slots for single / subdomain / subdirectory rewrite templates.
+- [x] **6.2 Shared Nginx + per-site server block**
+  *Done when:* one shared Nginx process (listening on an **internal HTTP port**, plain HTTP — TLS is Caddy's job) serves a site from its docroot via a generated server block selected by `server_name` (FastCGI → php-fpm); the config generator leaves slots for single / subdomain / subdirectory rewrite templates. ✓ `core/services.rs` `generate_nginx_config`/`write_nginx_config` (self-contained: inline mime types + fastcgi params, quoted paths, `daemon off`, internal port 8088, `map`→HTTPS from Caddy's X-Forwarded-Proto), `RewriteMode` {Single, SubdomainMultisite, SubdirectoryMultisite}, `start_nginx`/`test_nginx_config`/`stop`/`nginx_running`. Live: `nginx -t` OK; `curl -H 'Host: test6.test'` → PHP via FastCGI `rexenv-php-ok 8.3.31` (200) + static file (200), routed by server_name. 4 unit tests; 39 lib tests green. Manual: `cargo run --example nginx_php_serve`.
 
 ## 7. Site create / list (end-to-end wiring)
 
