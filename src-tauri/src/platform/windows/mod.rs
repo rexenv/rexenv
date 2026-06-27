@@ -48,8 +48,8 @@ impl CertTrustManager for WindowsCertTrust {
 
 pub struct WindowsPrivileges;
 impl PrivilegeManager for WindowsPrivileges {
-    fn ensure_port_privileges(&self) -> Result<()> {
-        todo!("windows UAC elevation")
+    fn run_privileged(&self, _script: &str) -> Result<String> {
+        todo!("windows UAC elevation (runas / ShellExecute 'runas')")
     }
 }
 

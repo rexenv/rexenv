@@ -46,10 +46,15 @@ pub trait CertTrustManager: Send + Sync {
     fn untrust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
 }
 
-/// Handles privilege elevation needed to bind :80/:443.
+/// Runs privileged shell operations behind a single OS authentication prompt.
+/// Consumers (`DnsManager`, `CertTrustManager`) build their privileged command
+/// strings; the system-setup step batches them into ONE call so the user
+/// authenticates only once (e.g. writing `/etc/resolver/test` + trusting the CA
+/// together). Also covers privilege needs like binding :80/:443.
 pub trait PrivilegeManager: Send + Sync {
-    /// Ensure the current process (or a helper) may bind low ports.
-    fn ensure_port_privileges(&self) -> Result<()>;
+    /// Run `script` (a `/bin/sh` script) with administrator privileges, showing
+    /// the OS auth prompt once. Returns captured stdout on success.
+    fn run_privileged(&self, script: &str) -> Result<String>;
 }
 
 /// Spawns and supervises long-running child processes (web servers, php-fpm,

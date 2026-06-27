@@ -58,10 +58,34 @@ impl CertTrustManager for MacosCertTrust {
 }
 
 pub struct MacosPrivileges;
+
+impl MacosPrivileges {
+    /// Build the `osascript -e` program that runs `script` as admin. Factored
+    /// out so escaping can be unit-tested without triggering the auth prompt.
+    fn osascript_program(script: &str) -> String {
+        // Escape for an AppleScript double-quoted string literal.
+        let escaped = script.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("do shell script \"{escaped}\" with administrator privileges")
+    }
+}
+
 impl PrivilegeManager for MacosPrivileges {
-    fn ensure_port_privileges(&self) -> Result<()> {
-        // Task 4.2: elevate to let the edge router bind :80/:443.
-        todo!("macOS privileged port binding")
+    fn run_privileged(&self, script: &str) -> Result<String> {
+        // `do shell script … with administrator privileges` shows one macOS
+        // auth dialog and runs the script as root via /bin/sh.
+        let program = Self::osascript_program(script);
+        let out = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&program)
+            .output()?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        } else {
+            Err(Error::Other(format!(
+                "privileged operation failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )))
+        }
     }
 }
 
@@ -190,5 +214,28 @@ impl Platform for MacosPlatform {
     }
     fn binaries(&self) -> &dyn BinaryProvider {
         &self.binaries
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn osascript_program_wraps_and_escapes() {
+        let program = MacosPrivileges::osascript_program(r#"echo "hi" \ there"#);
+        assert!(program.starts_with("do shell script \""));
+        assert!(program.ends_with("\" with administrator privileges"));
+        // Quotes and backslashes are escaped for the AppleScript string literal.
+        assert!(program.contains(r#"echo \"hi\" \\ there"#));
+    }
+
+    #[test]
+    fn osascript_program_handles_multi_command_batch() {
+        // Batching: multiple privileged commands joined into one script => one prompt.
+        let script = "mkdir -p /etc/resolver\ncp /tmp/test /etc/resolver/test";
+        let program = MacosPrivileges::osascript_program(script);
+        assert!(program.contains("mkdir -p /etc/resolver"));
+        assert!(program.contains("cp /tmp/test /etc/resolver/test"));
     }
 }

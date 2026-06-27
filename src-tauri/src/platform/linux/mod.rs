@@ -48,8 +48,8 @@ impl CertTrustManager for LinuxCertTrust {
 
 pub struct LinuxPrivileges;
 impl PrivilegeManager for LinuxPrivileges {
-    fn ensure_port_privileges(&self) -> Result<()> {
-        todo!("linux setcap / sudo")
+    fn run_privileged(&self, _script: &str) -> Result<String> {
+        todo!("linux pkexec / sudo elevation")
     }
 }
 
