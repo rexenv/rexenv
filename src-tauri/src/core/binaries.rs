@@ -18,6 +18,8 @@ pub const PHP_VERSION: &str = "8.3.31";
 pub const NGINX_VERSION: &str = "1.30.3";
 /// Pinned MySQL version (official macOS tarball — a full bin/lib/share tree).
 pub const MYSQL_VERSION: &str = "8.4.6";
+/// Pinned WP-CLI version (a .phar run via the bundled PHP; OS-agnostic).
+pub const WP_CLI_VERSION: &str = "2.12.0";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +69,9 @@ const NGINX_1_30_3_MAC_AMD64_SHA256: &str = "fe1df1fdf5de7c5b778a16b1c73aa73d0c2
 // Official MySQL macOS tarball SHA-256 (computed at pin time from dev.mysql.com).
 const MYSQL_8_4_6_MAC_ARM64_SHA256: &str = "56ac9150b9d8fc757a36a2661a1214f5b09e5352d0a220e7a6c302685a5fca10";
 const MYSQL_8_4_6_MAC_AMD64_SHA256: &str = "257d36d7ae26c4d1cc616dacf58cd1498c9b3b6dc592f90a63d7e7ecd83be844";
+
+// WP-CLI phar SHA-256 (GitHub release; same artifact on every OS/arch).
+const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c";
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
@@ -173,6 +178,15 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGzTree,
             member: "bin/mysqld", // primary binary within the extracted tree
         }),
+        // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
+        ("wp-cli", _, "2.12.0") => Some(BinarySpec {
+            url: format!(
+                "https://github.com/wp-cli/wp-cli/releases/download/v{version}/wp-cli-{version}.phar"
+            ),
+            checksum: Checksum::Sha256(WP_CLI_2_12_0_SHA256.to_string()),
+            archive: Archive::Raw,
+            member: "wp-cli.phar",
+        }),
         _ => None,
     }
 }
@@ -214,6 +228,30 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     platform.permissions().set_executable(&bin_path)?;
     platform.binaries().prepare_binary(&bin_path)?;
     Ok(bin_path)
+}
+
+/// Resolve a raw, non-executable artifact (a `Raw` archive that is NOT a native
+/// binary — e.g. the WP-CLI `.phar`, run via the bundled PHP). Downloads +
+/// verifies + writes it under `bin_dir/<name>-<version>/<member>`; does NOT
+/// chmod +x or codesign (it's a script, not a Mach-O). Idempotent.
+pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let arch = platform.binaries().arch();
+    let os = std::env::consts::OS;
+    let spec = manifest(name, version, os, arch)
+        .ok_or_else(|| Error::Other(format!("no binary manifest for {name} {version}")))?;
+    if spec.archive != Archive::Raw {
+        return Err(Error::Other(format!("{name} is not a raw file artifact")));
+    }
+    let dir = platform.paths().bin_dir()?.join(format!("{name}-{version}"));
+    let path = dir.join(spec.member);
+    if path.exists() {
+        return Ok(path);
+    }
+    let bytes = http_get(&spec.url).await?;
+    verify_checksum(&bytes, &spec.checksum)?;
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(&path, &bytes)?;
+    Ok(path)
 }
 
 /// Resolve a directory-distribution (`TarGzTree`, e.g. MySQL) to its extracted
@@ -417,6 +455,17 @@ mod tests {
         let amd = manifest("mysql", MYSQL_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("mysql-8.4.6-macos15-x86_64.tar.gz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_wp_cli_os_agnostic() {
+        // Same phar on every OS/arch.
+        let a = manifest("wp-cli", WP_CLI_VERSION, "macos", Arch::Arm64).unwrap();
+        let b = manifest("wp-cli", WP_CLI_VERSION, "linux", Arch::X86_64).unwrap();
+        assert!(a.url.ends_with("wp-cli-2.12.0.phar"));
+        assert_eq!(a.member, "wp-cli.phar");
+        assert_eq!(a.archive, Archive::Raw);
+        assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
     }
 
     #[test]

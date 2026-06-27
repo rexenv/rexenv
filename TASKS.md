@@ -92,8 +92,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 9. One-click WordPress (phase goal)
 
-- [ ] **9.1 WP-CLI via bundled PHP**
-  *Done when:* `wp-cli.phar` runs through the bundled PHP (`wp --info`) from the app.
+- [x] **9.1 WP-CLI via bundled PHP**
+  *Done when:* `wp-cli.phar` runs through the bundled PHP (`wp --info`) from the app. ✓ Added `binaries::resolve_file` (download+verify a raw script artifact — no chmod/codesign, since a .phar isn't a Mach-O) + manifest entry for WP-CLI 2.12.0 (OS-agnostic, pinned SHA-256). `core/wordpress.rs` `wp_cli`/`wp_cli_checked` run `php wp-cli.phar <args>` capturing output. Live: `wp --info` → PHP binary = bundled php-8.3.31 (8.3.31), WP_CLI phar = our resolved wp-cli.phar, WP-CLI version 2.12.0. 1 unit test; 49 lib tests green. Manual: `cargo run --example wpcli_check`.
 - [ ] **9.2 One-click WordPress install**
   *Done when:* choosing "WordPress" on create installs WordPress in **single-site mode** (downloads core, creates a MySQL DB via the §8 step, writes `wp-config.php`, runs `wp core install`), and `https://<name>.test` loads a working WP site reachable in the browser with a trusted cert. The 3 rewrite-template slots from 6.2 (single / subdomain / subdirectory) **exist and are wired**, with only the "single" path exercised now — so Phase 3 multisite needs no refactor. **← Phase 1 goal met.**
 
