@@ -62,8 +62,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 5. PHP-FPM (one version)
 
-- [ ] **5.1 PHP static binary provider**
-  *Done when:* a static PHP (static-php-cli build) for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `php -v` runs from the app-data path.
+- [x] **5.1 PHP static binary provider**
+  *Done when:* a static PHP (static-php-cli build) for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `php -v` runs from the app-data path. ✓ Manifest entries `php` (cli) + `php-fpm` from static-php.dev (pinned 8.3.31, SHA-256 computed at pin time — source has no checksums); generalized `Checksum` enum (SHA-256/512). Live: downloaded, checksum OK, `php -v` → PHP 8.3.31 (cli), Signature=adhoc, executable. 5 unit tests; 32 lib tests green. Manual: `cargo run --example php_fetch`.
 - [ ] **5.2 One PHP-FPM pool**
   *Done when:* a single php-fpm master starts on a loopback port via `ProcessSupervisor`, with a generated pool config; status reflects in the UI/services layer.
 
