@@ -87,8 +87,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 8. Database service (MySQL)
 
-- [ ] **8.1 MySQL binary provider + lifecycle**
-  *Done when:* MySQL is downloaded/cached (**signed + de-quarantined via `BinaryProvider`, see 4.1**), initialized to an app-data datadir, and `ProcessSupervisor` starts/stops it on a known port; a client connects.
+- [x] **8.1 MySQL binary provider + lifecycle**
+  *Done when:* MySQL is downloaded/cached (**signed + de-quarantined via `BinaryProvider`, see 4.1**), initialized to an app-data datadir, and `ProcessSupervisor` starts/stops it on a known port; a client connects. ✓ MySQL is a directory distribution, so added `Archive::TarGzTree` + `binaries::resolve_dir` (whole-tree extract, strip top dir) + manifest entry (official 8.4.6 macOS, pinned SHA-256 arm64+x86_64; direct CDN URL since the get-redirector 403s non-curl; browser UA on `http_get`). MySQL is Oracle-signed + reqwest adds no quarantine, so no re-sign needed. `core/database.rs`: `initialize` (`--initialize-insecure`, idempotent), `start`/`stop` mysqld on :13306, `mysql_running`. Live: download→init→start→bundled client `SELECT VERSION()`→8.4.6, 1+1=2→stop. 4 unit tests; 48 lib tests green. Manual: `cargo run --example mysql_serve`.
 
 ## 9. One-click WordPress (phase goal)
 

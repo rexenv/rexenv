@@ -16,14 +16,19 @@ pub const CADDY_VERSION: &str = "2.11.4";
 pub const PHP_VERSION: &str = "8.3.31";
 /// Pinned nginx version (jirutka/nginx-binaries static build).
 pub const NGINX_VERSION: &str = "1.30.3";
+/// Pinned MySQL version (official macOS tarball — a full bin/lib/share tree).
+pub const MYSQL_VERSION: &str = "8.4.6";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Archive {
-    /// gzip-compressed tar; extract `member` from it.
+    /// gzip-compressed tar; extract `member` from it (single binary).
     TarGz,
     /// the download is the binary itself.
     Raw,
+    /// gzip-compressed tar of a full directory tree; extracted whole (the
+    /// single top-level dir is stripped). Used for MySQL (bin/lib/share).
+    TarGzTree,
 }
 
 /// Pinned content hash of a downloaded artifact (digest varies by source:
@@ -59,6 +64,10 @@ const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "f533184a7e1a044f13f8bcb980620a9ea
 const NGINX_1_30_3_MAC_ARM64_SHA256: &str = "b6c4e80357977457b9395a43497f5709dc989ff8fce9102bb558ed5d2e066b15";
 const NGINX_1_30_3_MAC_AMD64_SHA256: &str = "fe1df1fdf5de7c5b778a16b1c73aa73d0c22d48219bd712e51094c0e8655a641";
 
+// Official MySQL macOS tarball SHA-256 (computed at pin time from dev.mysql.com).
+const MYSQL_8_4_6_MAC_ARM64_SHA256: &str = "56ac9150b9d8fc757a36a2661a1214f5b09e5352d0a220e7a6c302685a5fca10";
+const MYSQL_8_4_6_MAC_AMD64_SHA256: &str = "257d36d7ae26c4d1cc616dacf58cd1498c9b3b6dc592f90a63d7e7ecd83be844";
+
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
     match arch {
@@ -73,6 +82,12 @@ fn php_arch(arch: Arch) -> &'static str {
     }
 }
 fn nginx_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "arm64",
+        Arch::X86_64 => "x86_64",
+    }
+}
+fn mysql_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "arm64",
         Arch::X86_64 => "x86_64",
@@ -144,6 +159,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::Raw,
             member: "nginx",
         }),
+        ("mysql", "macos", "8.4.6") => Some(BinarySpec {
+            // Direct CDN URL (the dev.mysql.com/get redirector 403s non-curl clients).
+            url: format!(
+                "https://cdn.mysql.com/archives/mysql-8.4/mysql-{version}-macos15-{}.tar.gz",
+                mysql_arch(arch)
+            ),
+            checksum: Checksum::Sha256(pick(
+                arch,
+                MYSQL_8_4_6_MAC_ARM64_SHA256,
+                MYSQL_8_4_6_MAC_AMD64_SHA256,
+            )),
+            archive: Archive::TarGzTree,
+            member: "bin/mysqld", // primary binary within the extracted tree
+        }),
         _ => None,
     }
 }
@@ -175,6 +204,11 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     match spec.archive {
         Archive::TarGz => extract_tar_gz_member(&bytes, spec.member, &bin_path)?,
         Archive::Raw => std::fs::write(&bin_path, &bytes)?,
+        Archive::TarGzTree => {
+            return Err(Error::Other(format!(
+                "{name} is a directory distribution — use resolve_dir"
+            )))
+        }
     }
 
     platform.permissions().set_executable(&bin_path)?;
@@ -182,8 +216,53 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     Ok(bin_path)
 }
 
+/// Resolve a directory-distribution (`TarGzTree`, e.g. MySQL) to its extracted
+/// base dir, downloading + verifying + extracting on first use. The single
+/// top-level dir in the tarball is stripped, so the base dir directly contains
+/// `bin/`, `lib/`, `share/`. Idempotent: a cached tree is returned as-is.
+pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let arch = platform.binaries().arch();
+    let os = std::env::consts::OS;
+
+    let dir = platform.paths().bin_dir()?.join(format!("{name}-{version}"));
+    if dir.join("bin").is_dir() {
+        return Ok(dir);
+    }
+
+    let spec = manifest(name, version, os, arch).ok_or_else(|| {
+        Error::Other(format!(
+            "no binary manifest for {name} {version} on {os}/{}",
+            php_arch(arch)
+        ))
+    })?;
+    if spec.archive != Archive::TarGzTree {
+        return Err(Error::Other(format!(
+            "{name} is not a directory distribution — use resolve"
+        )));
+    }
+
+    let bytes = http_get(&spec.url).await?;
+    verify_checksum(&bytes, &spec.checksum)?;
+    std::fs::create_dir_all(&dir)?;
+    extract_tar_gz_tree(&bytes, &dir)?;
+    // MySQL's binaries are Oracle-signed + notarized, and a reqwest download adds
+    // no quarantine attribute, so no ad-hoc re-signing is needed.
+    Ok(dir)
+}
+
 async fn http_get(url: &str) -> Result<Vec<u8>> {
-    let resp = reqwest::get(url)
+    // Some CDNs (e.g. dev.mysql.com) reject the default reqwest User-Agent with
+    // 403; present a browser-like UA so downloads are accepted everywhere.
+    let client = reqwest::Client::builder()
+        .user_agent(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+             AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        )
+        .build()
+        .map_err(|e| Error::Other(format!("http client: {e}")))?;
+    let resp = client
+        .get(url)
+        .send()
         .await
         .map_err(|e| Error::Other(format!("download {url}: {e}")))?
         .error_for_status()
@@ -250,6 +329,35 @@ fn extract_tar_gz_member(bytes: &[u8], member: &str, dest: &Path) -> Result<()> 
     )))
 }
 
+/// Extract an entire tar.gz tree into `dest`, stripping the single top-level
+/// directory (e.g. `mysql-8.4.6-macos15-arm64/bin/mysqld` → `<dest>/bin/mysqld`).
+/// Preserves file modes (executables) and symlinks via tar's `unpack`.
+fn extract_tar_gz_tree(bytes: &[u8], dest: &Path) -> Result<()> {
+    use flate2::read::GzDecoder;
+    use std::path::PathBuf;
+    use tar::Archive as TarArchive;
+
+    let mut archive = TarArchive::new(GzDecoder::new(bytes));
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        // Drop the leading top-level component.
+        let rel: PathBuf = entry.path()?.components().skip(1).collect();
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let out = dest.join(&rel);
+        if entry.header().entry_type().is_dir() {
+            std::fs::create_dir_all(&out)?;
+        } else {
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            entry.unpack(&out)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +405,17 @@ mod tests {
 
         let amd = manifest("nginx", NGINX_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("nginx-1.30.3-x86_64-darwin"));
+        assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_mysql_as_tree() {
+        let arm = manifest("mysql", MYSQL_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(arm.url.ends_with("mysql-8.4.6-macos15-arm64.tar.gz"));
+        assert_eq!(arm.archive, Archive::TarGzTree);
+        assert_eq!(arm.member, "bin/mysqld");
+        let amd = manifest("mysql", MYSQL_VERSION, "macos", Arch::X86_64).unwrap();
+        assert!(amd.url.ends_with("mysql-8.4.6-macos15-x86_64.tar.gz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 
