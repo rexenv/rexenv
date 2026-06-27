@@ -44,8 +44,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 3. Local CA, certificates & system trust setup
 
-- [ ] **3.1 Local CA generation (rcgen)**
-  *Done when:* a root CA key+cert is generated once and stored under app-data; regeneration is idempotent.
+- [x] **3.1 Local CA generation (rcgen)**
+  *Done when:* a root CA key+cert is generated once and stored under app-data; regeneration is idempotent. ✓ `core/ssl.rs` `generate_ca` + idempotent `load_or_create` (key hardened 0600 via new `PermissionManager::set_private`). openssl confirms CA:TRUE (critical), `CN=rexenv Local CA`; rerun yields identical fingerprint; key file `-rw-------`. 4 unit tests; 20 lib tests green. Manual: `cargo run --example ca_gen`.
 - [ ] **3.2 Per-site cert with wildcard SAN**
   *Done when:* given `mysite.test`, a cert signed by the CA is issued with SAN `mysite.test` + `*.mysite.test` (verify with `openssl x509 -text`).
 - [ ] **3.3 macOS `CertTrustManager` (trust CA → PrivilegeManager)**

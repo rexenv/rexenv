@@ -85,6 +85,9 @@ impl PermissionManager for WindowsPermissions {
         // No-op on Windows (executability is by extension), but kept for parity.
         todo!("windows ACLs")
     }
+    fn set_private(&self, _path: &Path) -> Result<()> {
+        todo!("windows ACLs (owner-only)")
+    }
 }
 
 pub struct WindowsShell;

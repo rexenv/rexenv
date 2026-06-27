@@ -148,6 +148,13 @@ impl PermissionManager for MacosPermissions {
         std::fs::set_permissions(path, perms)?;
         Ok(())
     }
+    fn set_private(&self, path: &Path) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(path, perms)?;
+        Ok(())
+    }
 }
 
 pub struct MacosShell;
@@ -283,5 +290,16 @@ mod tests {
     #[test]
     fn dns_uninstall_command_removes_file() {
         assert_eq!(MacosDns.uninstall_command(), "rm -f /etc/resolver/test");
+    }
+
+    #[test]
+    fn set_private_sets_owner_only_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join("rexenv-perm-test");
+        std::fs::write(&path, b"secret").unwrap();
+        MacosPermissions.set_private(&path).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let _ = std::fs::remove_file(&path);
     }
 }

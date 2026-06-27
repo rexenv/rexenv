@@ -87,6 +87,9 @@ pub trait AutostartManager: Send + Sync {
 pub trait PermissionManager: Send + Sync {
     /// Make `path` executable (e.g. a downloaded binary).
     fn set_executable(&self, path: &std::path::Path) -> Result<()>;
+    /// Restrict `path` to owner-only access (0600 on Unix; ACL on Windows).
+    /// Used for private keys (e.g. the local CA key).
+    fn set_private(&self, path: &std::path::Path) -> Result<()>;
 }
 
 /// Runs shell commands and backs the built-in terminal. bash/zsh vs PowerShell.

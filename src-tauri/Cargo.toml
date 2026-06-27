@@ -31,3 +31,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "
 async-trait = "0.1"
 hickory-server = "0.24"
 hickory-proto = "0.24"
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem", "x509-parser"] }

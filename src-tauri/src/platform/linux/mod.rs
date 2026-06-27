@@ -84,6 +84,9 @@ impl PermissionManager for LinuxPermissions {
     fn set_executable(&self, _path: &Path) -> Result<()> {
         todo!("linux chmod")
     }
+    fn set_private(&self, _path: &Path) -> Result<()> {
+        todo!("linux chmod 0600")
+    }
 }
 
 pub struct LinuxShell;
