@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{proxy, services, ssl};
+use crate::core::{php, proxy, services, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{NewSite, ServiceStatus, Site, SiteType};
@@ -150,6 +150,25 @@ pub fn provision(
     create(conn, new)
 }
 
+/// Map a site to its shared-nginx server block, routing `.php` to the FastCGI
+/// pool of the site's PHP version (Phase 2 §1.3). An unrecognized version falls
+/// back to the default pool so a site is never left pointing at a dead port.
+fn nginx_site_for(s: &Site) -> services::NginxSite {
+    let minor = php::minor_of(&s.php_version);
+    // Only versions with a pinned build run a pool; an unsupported version falls
+    // back to the default pool rather than pointing nginx at a dead port.
+    let port = match php::patch_for_minor(&minor) {
+        Some(_) => php::fpm_port(&minor).unwrap_or(services::PHP_FPM_PORT),
+        None => services::PHP_FPM_PORT,
+    };
+    services::NginxSite {
+        domain: s.domain.clone(),
+        docroot: PathBuf::from(&s.path),
+        php_fpm_port: port,
+        rewrite: services::RewriteMode::Single,
+    }
+}
+
 /// Paths of the regenerated shared configs (nginx + Caddy).
 #[derive(Debug, Clone)]
 pub struct RebuiltConfigs {
@@ -191,15 +210,7 @@ pub fn rebuild_configs_for(
     caddy_http_port: u16,
     caddy_https_port: u16,
 ) -> Result<RebuiltConfigs> {
-    let nginx_sites = sites
-        .iter()
-        .map(|s| services::NginxSite {
-            domain: s.domain.clone(),
-            docroot: PathBuf::from(&s.path),
-            php_fpm_port: services::PHP_FPM_PORT,
-            rewrite: services::RewriteMode::Single,
-        })
-        .collect();
+    let nginx_sites = sites.iter().map(nginx_site_for).collect();
     let (nginx_conf, nginx_prefix) =
         services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
 
@@ -347,6 +358,38 @@ mod tests {
             sites_dir(&conn, &*platform).unwrap(),
             PathBuf::from("/tmp/custom-sites")
         );
+    }
+
+    #[test]
+    fn nginx_site_maps_php_version_to_its_pool_port() {
+        let conn = db::open_in_memory().unwrap();
+        let mut a = sample("A", "a.test");
+        a.site_type = SiteType::Php;
+        a.php_version = "8.1".into();
+        let mut b = sample("B", "b.test");
+        b.site_type = SiteType::Php;
+        b.php_version = "8.3".into();
+        let a = create(&conn, a).unwrap();
+        let b = create(&conn, b).unwrap();
+
+        let na = nginx_site_for(&a);
+        let nb = nginx_site_for(&b);
+        // Each site routes to its own version's pool port — not a hardcoded one.
+        assert_eq!(na.php_fpm_port, php::fpm_port("8.1").unwrap()); // 9781
+        assert_eq!(nb.php_fpm_port, php::fpm_port("8.3").unwrap()); // 9783
+        assert_ne!(na.php_fpm_port, nb.php_fpm_port);
+
+        // A patch-form version still resolves to its minor's pool.
+        let mut c = sample("C", "c.test");
+        c.php_version = "8.2.31".into();
+        let c = create(&conn, c).unwrap();
+        assert_eq!(nginx_site_for(&c).php_fpm_port, php::fpm_port("8.2").unwrap());
+
+        // An unknown version falls back to the default pool.
+        let mut d = sample("D", "d.test");
+        d.php_version = "7.4".into();
+        let d = create(&conn, d).unwrap();
+        assert_eq!(nginx_site_for(&d).php_fpm_port, services::PHP_FPM_PORT);
     }
 
     #[test]
