@@ -44,11 +44,11 @@ impl DnsManager for WindowsDns {
 
 pub struct WindowsCertTrust;
 impl CertTrustManager for WindowsCertTrust {
-    fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("windows certutil trust")
+    fn trust_command(&self, _ca_cert_path: &Path) -> String {
+        todo!("windows certutil -addstore Root")
     }
-    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("windows certutil untrust")
+    fn untrust_command(&self, _ca_cert_path: &Path) -> String {
+        todo!("windows certutil -delstore Root")
     }
 }
 

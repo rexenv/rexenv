@@ -68,13 +68,24 @@ impl DnsManager for MacosDns {
 }
 
 pub struct MacosCertTrust;
+
+/// Single-quote a path for safe use in the /bin/sh command (app-data paths
+/// contain spaces). Paths won't contain single quotes in practice.
+fn sh_quote(path: &Path) -> String {
+    format!("'{}'", path.display())
+}
+
 impl CertTrustManager for MacosCertTrust {
-    fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        // Task 3.3: `security add-trusted-cert` into the login keychain.
-        todo!("macOS keychain trust via `security`")
+    fn trust_command(&self, ca_cert_path: &Path) -> String {
+        // Add as a trusted root in the System keychain (system-wide trust for
+        // Safari/Chrome). Requires root → run via PrivilegeManager.
+        format!(
+            "security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain {}",
+            sh_quote(ca_cert_path)
+        )
     }
-    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
-        todo!("macOS keychain untrust")
+    fn untrust_command(&self, ca_cert_path: &Path) -> String {
+        format!("security remove-trusted-cert -d {}", sh_quote(ca_cert_path))
     }
 }
 
@@ -290,6 +301,21 @@ mod tests {
     #[test]
     fn dns_uninstall_command_removes_file() {
         assert_eq!(MacosDns.uninstall_command(), "rm -f /etc/resolver/test");
+    }
+
+    #[test]
+    fn cert_trust_command_targets_system_keychain_as_root() {
+        let cmd = MacosCertTrust.trust_command(Path::new("/tmp/My CA/rexenv-ca.pem"));
+        assert!(cmd.starts_with("security add-trusted-cert -d -r trustRoot -k "));
+        assert!(cmd.contains("/Library/Keychains/System.keychain"));
+        // Path is single-quoted (handles the space in app-data paths).
+        assert!(cmd.ends_with("'/tmp/My CA/rexenv-ca.pem'"));
+    }
+
+    #[test]
+    fn cert_untrust_command_removes_trust() {
+        let cmd = MacosCertTrust.untrust_command(Path::new("/tmp/ca.pem"));
+        assert_eq!(cmd, "security remove-trusted-cert -d '/tmp/ca.pem'");
     }
 
     #[test]

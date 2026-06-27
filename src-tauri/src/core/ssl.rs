@@ -5,7 +5,7 @@
 //! certs signed by this CA is task 3.2.
 
 use crate::error::{Error, Result};
-use crate::platform::traits::{Paths, PermissionManager};
+use crate::platform::traits::{Paths, PermissionManager, Platform};
 use rcgen::{
     date_time_ymd, BasicConstraints, CertificateParams, DistinguishedName, DnType,
     ExtendedKeyUsagePurpose, IsCa, KeyPair, KeyUsagePurpose,
@@ -181,6 +181,22 @@ pub fn ensure_site_cert(
     let cert = ensure_site_cert_at(&dir.join(SITE_CERT_FILE), &dir.join(SITE_KEY_FILE), ca, domain)?;
     perms.set_private(&cert.key_path)?;
     Ok(cert)
+}
+
+/// Trust the local CA in the OS store via `PrivilegeManager` (one auth prompt).
+/// Standalone helper; the batched system-setup step (3.4) instead concatenates
+/// this command with the DNS resolver install to share a single prompt.
+pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
+    let cmd = platform.cert_trust().trust_command(&ca.cert_path);
+    platform.privileges().run_privileged(&cmd)?;
+    Ok(())
+}
+
+/// Remove the local CA's trust via `PrivilegeManager`.
+pub fn untrust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
+    let cmd = platform.cert_trust().untrust_command(&ca.cert_path);
+    platform.privileges().run_privileged(&cmd)?;
+    Ok(())
 }
 
 #[cfg(test)]
