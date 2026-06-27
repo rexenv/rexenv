@@ -37,3 +37,13 @@ export interface AppInfo {
   version: string;
   tauriVersion: string;
 }
+
+/** One shared service's status + live metrics (mirrors the Rust ServiceStatus DTO). */
+export interface ServiceInfo {
+  name: string;
+  running: boolean;
+  pid: number | null;
+  port: number;
+  cpuPercent: number;
+  ramMb: number;
+}

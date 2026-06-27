@@ -155,7 +155,26 @@ pub fn rebuild_configs(
     caddy_https_port: u16,
 ) -> Result<RebuiltConfigs> {
     let sites = list(conn)?;
+    rebuild_configs_for(
+        &sites,
+        platform,
+        ca,
+        nginx_http_port,
+        caddy_http_port,
+        caddy_https_port,
+    )
+}
 
+/// Like [`rebuild_configs`] but from an explicit site list (so callers holding
+/// an async lock don't keep the DB connection borrowed across `.await`).
+pub fn rebuild_configs_for(
+    sites: &[Site],
+    platform: &dyn Platform,
+    ca: &ssl::LocalCa,
+    nginx_http_port: u16,
+    caddy_http_port: u16,
+    caddy_https_port: u16,
+) -> Result<RebuiltConfigs> {
     let nginx_sites = sites
         .iter()
         .map(|s| services::NginxSite {
@@ -169,7 +188,7 @@ pub fn rebuild_configs(
         services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
 
     let mut routes = Vec::with_capacity(sites.len());
-    for s in &sites {
+    for s in sites {
         let cert = ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &s.domain)?;
         routes.push(proxy::SiteRoute {
             host: s.domain.clone(),

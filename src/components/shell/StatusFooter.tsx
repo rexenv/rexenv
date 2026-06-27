@@ -1,5 +1,7 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { startServices, stopServices } from "@/lib/ipc";
 import type { GlobalStatus } from "@/types";
 
 const SUMMARY_META = {
@@ -30,6 +32,15 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
 export function StatusFooter({ status }: { status: GlobalStatus }) {
   const meta = SUMMARY_META[status.summary];
   const allRunning = status.summary === "all";
+
+  const qc = useQueryClient();
+  const toggleAll = useMutation({
+    mutationFn: () => (allRunning ? stopServices() : startServices()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["services"] });
+      qc.invalidateQueries({ queryKey: ["global-status"] });
+    },
+  });
 
   return (
     <div className="flex-none p-2.5 pb-3">
@@ -67,8 +78,10 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
           </div>
 
           <button
+            onClick={() => toggleAll.mutate()}
+            disabled={toggleAll.isPending}
             className={cn(
-              "flex h-[34px] w-full items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[filter] hover:brightness-110 focus-visible:outline-none",
+              "flex h-[34px] w-full items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
               allRunning
                 ? "border border-rex-border bg-rex-surface-3 text-rex-text"
                 : "bg-primary text-white shadow-glow-primary",

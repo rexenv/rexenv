@@ -40,13 +40,15 @@ pub fn run() {
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.
             let platform = platform::current();
-            match state::db::open_for_platform(platform.paths()) {
-                Ok(conn) => {
-                    app.manage(state::app::AppState::new(conn, platform));
+            match (
+                state::db::open_for_platform(platform.paths()),
+                core::ssl::load_or_create(platform.paths(), platform.permissions()),
+            ) {
+                (Ok(conn), Ok(ca)) => {
+                    app.manage(state::app::AppState::new(conn, platform, ca));
                 }
-                Err(e) => {
-                    log::error!("db: failed to open app database: {e}");
-                }
+                (Err(e), _) => log::error!("db: failed to open app database: {e}"),
+                (_, Err(e)) => log::error!("ssl: failed to load/create CA: {e}"),
             }
             Ok(())
         })
@@ -58,6 +60,9 @@ pub fn run() {
             commands::sites::start_site,
             commands::sites::stop_site,
             commands::sites::delete_site,
+            commands::services::start_services,
+            commands::services::stop_services,
+            commands::services::services_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

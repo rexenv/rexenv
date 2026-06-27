@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { GlobalStatus, Site } from "@/types";
+import type { GlobalStatus, ServiceInfo, Site } from "@/types";
 
 export const mockSites: Site[] = [
   {
@@ -41,6 +41,13 @@ export const mockSites: Site[] = [
     path: "~/Sites/network",
     createdAt: "2026-06-03 12:00:00",
   },
+];
+
+export const mockServices: ServiceInfo[] = [
+  { name: "MySQL", running: true, pid: 1234, port: 13306, cpuPercent: 0.4, ramMb: 480 },
+  { name: "PHP-FPM", running: true, pid: 1235, port: 9783, cpuPercent: 0.1, ramMb: 28 },
+  { name: "Nginx", running: true, pid: 1236, port: 8088, cpuPercent: 0.0, ramMb: 7 },
+  { name: "Caddy", running: false, pid: null, port: 443, cpuPercent: 0.0, ramMb: 0 },
 ];
 
 export const mockGlobalStatus: GlobalStatus = {

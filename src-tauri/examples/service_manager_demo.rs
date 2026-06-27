@@ -52,7 +52,8 @@ async fn main() {
 
     let mut mgr = ServiceManager::with_ports(ports);
     println!("starting stack (Caddy on :{https_port})…");
-    if let Err(e) = mgr.start_all(&*plat, &ca, &conn).await {
+    let all = sites::list(&conn).unwrap();
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all).await {
         eprintln!("start_all failed: {e}");
         return;
     }

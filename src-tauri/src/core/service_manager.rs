@@ -11,7 +11,7 @@
 use crate::core::{binaries, database, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use rusqlite::Connection;
+use crate::state::models::Site;
 use std::path::PathBuf;
 use std::process::Child;
 use std::time::Duration;
@@ -112,7 +112,7 @@ impl ServiceManager {
         &mut self,
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
-        conn: &Connection,
+        sites: &[Site],
     ) -> Result<()> {
         self.ensure_bins(platform).await?;
         let bins = self.bins.as_ref().expect("bins resolved");
@@ -139,8 +139,14 @@ impl ServiceManager {
         }
 
         // Configs derived from all sites.
-        let cfg =
-            sites::rebuild_configs(conn, platform, ca, self.ports.nginx, self.ports.http, self.ports.https)?;
+        let cfg = sites::rebuild_configs_for(
+            sites,
+            platform,
+            ca,
+            self.ports.nginx,
+            self.ports.http,
+            self.ports.https,
+        )?;
 
         // Shared Nginx.
         if self.nginx.is_none() {
@@ -167,14 +173,20 @@ impl ServiceManager {
         &self,
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
-        conn: &Connection,
+        sites: &[Site],
     ) -> Result<()> {
         let bins = self
             .bins
             .as_ref()
             .ok_or_else(|| Error::Other("services not started".into()))?;
-        let cfg =
-            sites::rebuild_configs(conn, platform, ca, self.ports.nginx, self.ports.http, self.ports.https)?;
+        let cfg = sites::rebuild_configs_for(
+            sites,
+            platform,
+            ca,
+            self.ports.nginx,
+            self.ports.http,
+            self.ports.https,
+        )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile)?;
         Ok(())

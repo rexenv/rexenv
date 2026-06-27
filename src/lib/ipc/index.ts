@@ -6,8 +6,8 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, GlobalStatus, Site } from "@/types";
-import { mockGlobalStatus, mockSites } from "@/lib/mock";
+import type { AppInfo, GlobalStatus, ServiceInfo, Site } from "@/types";
+import { mockGlobalStatus, mockServices, mockSites } from "@/lib/mock";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -52,4 +52,22 @@ export async function stopSite(id: string): Promise<Site | null> {
 export async function deleteSite(id: string): Promise<boolean> {
   if (!isTauri()) return false;
   return invoke<boolean>("delete_site", { id });
+}
+
+/** Per-service status + live metrics. Mock fallback outside Tauri. */
+export async function servicesStatus(): Promise<ServiceInfo[]> {
+  if (!isTauri()) return mockServices;
+  return invoke<ServiceInfo[]>("services_status");
+}
+
+/** Start the shared stack (MySQL + php-fpm + nginx + Caddy). */
+export async function startServices(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("start_services");
+}
+
+/** Stop the shared stack. */
+export async function stopServices(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("stop_services");
 }
