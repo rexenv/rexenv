@@ -134,7 +134,8 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 ## Pointers
 - Full detail in **PROJECT_SPEC.md**. Screen designs in **DESIGN_BRIEF.md** and **design/** (.dc.html).
 - Phase plan: PROJECT_SPEC.md §5. **Phase 1 COMPLETE · Phase 2 core COMPLETE** (see Status above);
-  next is Phase 3. Task logs + "Done when" evidence: **TASKS.md** (Phase 1), **TASKS-PHASE2.md** (Phase 2).
+  next is Phase 3. Task logs + "Done when" evidence: **TASKS.md** (Phase 1), **TASKS-PHASE2.md** (Phase 2),
+  **TASKS-PHASE3.md** (Phase 3 — planned: WordPress Manager, Mailpit, Adminer, Xdebug, logs, tunnels, terminal).
 
 ## Working rule
 - Work in **small, verifiable steps. One task at a time. Verify before moving on.**
