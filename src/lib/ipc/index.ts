@@ -6,8 +6,14 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, GlobalStatus, PhpVersion, ServiceInfo, Site } from "@/types";
-import { mockGlobalStatus, mockPhpVersions, mockServices, mockSites } from "@/lib/mock";
+import type { AppInfo, DbStatus, GlobalStatus, PhpVersion, ServiceInfo, Site } from "@/types";
+import {
+  mockDatabases,
+  mockGlobalStatus,
+  mockPhpVersions,
+  mockServices,
+  mockSites,
+} from "@/lib/mock";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -76,6 +82,24 @@ export async function setPhpVersionInstalled(minor: string, installed: boolean):
 export async function servicesStatus(): Promise<ServiceInfo[]> {
   if (!isTauri()) return mockServices;
   return invoke<ServiceInfo[]>("services_status");
+}
+
+/** Per-engine database status + live metrics. Mock fallback outside Tauri. */
+export async function databasesStatus(): Promise<DbStatus[]> {
+  if (!isTauri()) return mockDatabases;
+  return invoke<DbStatus[]>("databases_status");
+}
+
+/** Start a database engine by key (e.g. "postgres"). No-op outside Tauri. */
+export async function startDatabase(key: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("start_database", { key });
+}
+
+/** Stop a database engine by key. No-op outside Tauri. */
+export async function stopDatabase(key: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("stop_database", { key });
 }
 
 /** Start the shared stack (MySQL + php-fpm + nginx + Caddy). */

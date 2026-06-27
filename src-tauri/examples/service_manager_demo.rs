@@ -24,7 +24,6 @@ async fn main() {
         http: if real443 { 80 } else { 8080 },
         https: https_port,
         nginx: services::NGINX_HTTP_PORT,
-        mysql: rexenv_lib::core::database::MYSQL_PORT,
     };
 
     let conn = {

@@ -19,7 +19,7 @@ pub const POSTGRES_PORT: u16 = 15432;
 pub const REDIS_PORT: u16 = 16379;
 
 /// A built-in database engine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DbEngine {
     Mysql,
     Mariadb,
@@ -64,6 +64,27 @@ impl DbEngine {
             DbEngine::Postgres => POSTGRES_PORT,
             DbEngine::Redis => REDIS_PORT,
         }
+    }
+
+    /// The pinned version of the engine, or `""` for engines not yet shipped on
+    /// this platform (MariaDB/Redis — deferred to §7).
+    pub fn version(&self) -> &'static str {
+        match self {
+            DbEngine::Mysql => binaries::MYSQL_VERSION,
+            DbEngine::Postgres => binaries::POSTGRES_VERSION,
+            DbEngine::Mariadb | DbEngine::Redis => "",
+        }
+    }
+
+    /// Whether this engine has a working macOS binary + lifecycle (so it can be
+    /// listed/started). MariaDB/Redis are deferred (§7.5/§7.6) on macOS.
+    pub fn available(&self) -> bool {
+        matches!(self, DbEngine::Mysql | DbEngine::Postgres)
+    }
+
+    /// Look up an engine by its `key`, or `None`.
+    pub fn from_key(key: &str) -> Option<DbEngine> {
+        DbEngine::ALL.into_iter().find(|e| e.key() == key)
     }
 
     /// Resolve the binary, initialize its data dir if needed, and start the
@@ -133,5 +154,18 @@ mod tests {
     fn running_false_on_closed_port() {
         // Nothing should be listening on a DB port during a unit test run.
         assert!(!DbEngine::Postgres.running());
+    }
+
+    #[test]
+    fn availability_versions_and_key_lookup() {
+        // Implemented engines are available + carry a pinned version.
+        assert!(DbEngine::Mysql.available() && !DbEngine::Mysql.version().is_empty());
+        assert!(DbEngine::Postgres.available() && !DbEngine::Postgres.version().is_empty());
+        // Deferred engines are not available (no macOS binary yet).
+        assert!(!DbEngine::Mariadb.available());
+        assert!(!DbEngine::Redis.available());
+        // Key round-trips.
+        assert_eq!(DbEngine::from_key("postgres"), Some(DbEngine::Postgres));
+        assert_eq!(DbEngine::from_key("nope"), None);
     }
 }

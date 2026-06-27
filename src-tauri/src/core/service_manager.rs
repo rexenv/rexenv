@@ -8,10 +8,12 @@
 //! root via `PrivilegeManager` (one prompt) and driven afterward through its
 //! admin API; on a high port it's a supervised child.
 
-use crate::core::{binaries, database, php, ports, proxy, services, sites, ssl};
+use crate::core::db::DbEngine;
+use crate::core::{binaries, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::Site;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Child;
 use std::time::Duration;
@@ -23,7 +25,6 @@ pub struct Ports {
     pub http: u16,
     pub https: u16,
     pub nginx: u16,
-    pub mysql: u16,
 }
 
 impl Default for Ports {
@@ -32,7 +33,6 @@ impl Default for Ports {
             http: proxy::DEFAULT_HTTP_PORT,
             https: proxy::DEFAULT_HTTPS_PORT,
             nginx: services::NGINX_HTTP_PORT,
-            mysql: database::MYSQL_PORT,
         }
     }
 }
@@ -40,7 +40,6 @@ impl Default for Ports {
 struct Bins {
     nginx: PathBuf,
     caddy: PathBuf,
-    mysql_base: PathBuf,
 }
 
 /// How Caddy is being run (privileged-root vs supervised child vs not running).
@@ -64,11 +63,19 @@ pub struct ServiceInfo {
     pub port: u16,
 }
 
+/// One database engine's status (for the Databases view).
+#[derive(Debug, Clone)]
+pub struct DbInfo {
+    pub engine: DbEngine,
+    pub running: bool,
+    pub pid: Option<u32>,
+}
+
 #[derive(Default)]
 pub struct ServiceManager {
     bins: Option<Bins>,
     ports: Ports,
-    mysql: Option<Child>,
+    dbs: HashMap<DbEngine, Child>,
     pools: php::PhpFpmPools,
     nginx: Option<Child>,
     caddy: CaddyHandle,
@@ -79,11 +86,46 @@ impl ServiceManager {
         Self {
             bins: None,
             ports,
-            mysql: None,
+            dbs: HashMap::new(),
             pools: php::PhpFpmPools::default(),
             nginx: None,
             caddy: CaddyHandle::Stopped,
         }
+    }
+
+    /// Ensure a database engine is running (start it if we don't already manage
+    /// it), port-gated. Used by `start_all` (MySQL) and the Databases UI.
+    pub async fn ensure_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
+        if self.dbs.contains_key(&engine) {
+            return Ok(());
+        }
+        ports::ensure_free(engine.port(), ports::Proto::Tcp, engine.label())?;
+        let child = engine.start(platform).await?;
+        self.dbs.insert(engine, child);
+        wait_until(|| engine.running(), 30);
+        Ok(())
+    }
+
+    /// Stop a database engine we manage (no-op if not running).
+    pub fn stop_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
+        if let Some(mut child) = self.dbs.remove(&engine) {
+            let _ = engine.stop(platform, child.id());
+            let _ = child.wait();
+        }
+        Ok(())
+    }
+
+    /// Per-engine status for the Databases view (available engines only).
+    pub fn db_status(&self) -> Vec<DbInfo> {
+        DbEngine::ALL
+            .into_iter()
+            .filter(|e| e.available())
+            .map(|engine| DbInfo {
+                engine,
+                running: engine.running(),
+                pid: self.dbs.get(&engine).map(Child::id),
+            })
+            .collect()
     }
 
     /// Resolve (download + cache) the service binaries once.
@@ -91,15 +133,11 @@ impl ServiceManager {
         if self.bins.is_some() {
             return Ok(());
         }
-        // php-fpm is resolved per version by the pool manager (PhpFpmPools).
+        // php-fpm is resolved per version by the pool manager; DB engines resolve
+        // their own binaries via `DbEngine::start`.
         let nginx = binaries::resolve(platform, "nginx", binaries::NGINX_VERSION).await?;
         let caddy = binaries::resolve(platform, "caddy", binaries::CADDY_VERSION).await?;
-        let mysql_base = binaries::resolve_dir(platform, "mysql", binaries::MYSQL_VERSION).await?;
-        self.bins = Some(Bins {
-            nginx,
-            caddy,
-            mysql_base,
-        });
+        self.bins = Some(Bins { nginx, caddy });
         Ok(())
     }
 
@@ -114,20 +152,8 @@ impl ServiceManager {
     ) -> Result<()> {
         self.ensure_bins(platform).await?;
 
-        // MySQL.
-        if self.mysql.is_none() {
-            let bins = self.bins.as_ref().expect("bins resolved");
-            ports::ensure_free(self.ports.mysql, ports::Proto::Tcp, "MySQL")?;
-            let datadir = database::data_dir(platform)?;
-            let socket = database::socket_path(platform)?;
-            if let Some(parent) = socket.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            database::initialize(platform, &bins.mysql_base, &datadir)?;
-            let child = database::start(platform, &bins.mysql_base, &datadir, self.ports.mysql, &socket)?;
-            self.mysql = Some(child);
-            wait_until(|| database::mysql_running(self.ports.mysql), 30);
-        }
+        // MySQL — the site stack needs it (started via the DB engine manager).
+        self.ensure_db(platform, DbEngine::Mysql).await?;
 
         // PHP-FPM: one pool per installed PHP version (always at least the default,
         // so the single-site path keeps working). Pools own their deterministic ports.
@@ -221,11 +247,13 @@ impl ServiceManager {
             CaddyHandle::Stopped => {}
         }
         self.pools.stop_all(platform);
-        for child in [&mut self.nginx, &mut self.mysql] {
-            if let Some(mut c) = child.take() {
-                let _ = services::stop(platform, c.id());
-                let _ = c.wait();
-            }
+        for (engine, mut child) in std::mem::take(&mut self.dbs) {
+            let _ = engine.stop(platform, child.id());
+            let _ = child.wait();
+        }
+        if let Some(mut c) = self.nginx.take() {
+            let _ = services::stop(platform, c.id());
+            let _ = c.wait();
         }
         Ok(())
     }
@@ -235,9 +263,9 @@ impl ServiceManager {
     pub fn status(&self) -> Vec<ServiceInfo> {
         let mut infos = vec![ServiceInfo {
             name: "MySQL".to_string(),
-            running: database::mysql_running(self.ports.mysql),
-            pid: self.mysql.as_ref().map(Child::id),
-            port: self.ports.mysql,
+            running: DbEngine::Mysql.running(),
+            pid: self.dbs.get(&DbEngine::Mysql).map(Child::id),
+            port: DbEngine::Mysql.port(),
         }];
         for p in self.pools.status() {
             infos.push(ServiceInfo {
@@ -271,10 +299,11 @@ impl Drop for ServiceManager {
         // Best-effort: SIGKILL our child processes so nothing is orphaned if
         // stop_all wasn't called. (A privileged-root Caddy can't be killed here;
         // the php-fpm pools clean themselves up via PhpFpmPools::drop.)
-        for child in [&mut self.nginx, &mut self.mysql] {
-            if let Some(c) = child {
-                let _ = c.kill();
-            }
+        for child in self.dbs.values_mut() {
+            let _ = child.kill();
+        }
+        if let Some(c) = &mut self.nginx {
+            let _ = c.kill();
         }
         if let CaddyHandle::Child(c) = &mut self.caddy {
             let _ = c.kill();
@@ -302,7 +331,16 @@ mod tests {
         let p = Ports::default();
         assert_eq!(p.https, 443);
         assert_eq!(p.http, 80);
-        assert_eq!(p.mysql, database::MYSQL_PORT);
+        assert_eq!(p.nginx, services::NGINX_HTTP_PORT);
+    }
+
+    #[test]
+    fn db_status_lists_available_engines_when_stopped() {
+        let m = ServiceManager::default();
+        let dbs: Vec<_> = m.db_status().iter().map(|d| d.engine).collect();
+        // Only the shipped engines are listed (MariaDB/Redis deferred on macOS).
+        assert_eq!(dbs, vec![DbEngine::Mysql, DbEngine::Postgres]);
+        assert!(m.db_status().iter().all(|d| d.pid.is_none()));
     }
 
     #[test]

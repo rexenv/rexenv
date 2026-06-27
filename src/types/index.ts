@@ -56,3 +56,15 @@ export interface ServiceInfo {
   cpuPercent: number;
   ramMb: number;
 }
+
+/** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */
+export interface DbStatus {
+  key: string; // "mysql" | "postgres" | …
+  label: string; // "MySQL" | "PostgreSQL"
+  port: number;
+  version: string; // pinned version, e.g. "8.4.6"
+  running: boolean;
+  pid: number | null;
+  cpuPercent: number;
+  ramMb: number;
+}
