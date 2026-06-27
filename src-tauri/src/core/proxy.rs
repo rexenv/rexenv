@@ -91,9 +91,61 @@ pub fn start(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Res
     platform.supervisor().spawn(caddy_bin, &args)
 }
 
-/// Stop a running Caddy by pid.
+/// Stop a running Caddy by pid (for the non-privileged `start`).
 pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
     platform.supervisor().stop(pid)
+}
+
+/// Single-quote a path for the /bin/sh command (app-data paths contain spaces).
+fn sh_quote(path: &Path) -> String {
+    format!("'{}'", path.display())
+}
+
+/// Start Caddy on privileged ports (:80/:443) as root via `PrivilegeManager`
+/// (one admin prompt). `caddy start` backgrounds the server and returns once
+/// it's up, so the prompt doesn't block. Afterwards, [`reload`] and [`stop_admin`]
+/// drive it through Caddy's localhost admin API — no further prompts.
+pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Result<()> {
+    let cmd = format!(
+        "{} start --config {} --adapter caddyfile",
+        sh_quote(caddy_bin),
+        sh_quote(caddyfile)
+    );
+    platform.privileges().run_privileged(&cmd)?;
+    Ok(())
+}
+
+/// Reload Caddy's config via its admin API (no privilege needed even though
+/// Caddy may run as root). Run after writing a new Caddyfile (e.g. site added).
+pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Result<()> {
+    let args = vec![
+        "reload".to_string(),
+        "--config".to_string(),
+        caddyfile.display().to_string(),
+        "--adapter".to_string(),
+        "caddyfile".to_string(),
+    ];
+    wait_ok(platform.supervisor().spawn(caddy_bin, &args)?, "caddy reload")
+}
+
+/// Stop Caddy via its admin API (no privilege).
+pub fn stop_admin(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
+    wait_ok(
+        platform.supervisor().spawn(caddy_bin, &["stop".to_string()])?,
+        "caddy stop",
+    )
+}
+
+fn wait_ok(mut child: Child, what: &str) -> Result<()> {
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(crate::error::Error::Other(format!(
+            "{what} failed (exit {:?})",
+            status.code()
+        )))
+    }
 }
 
 #[cfg(test)]
