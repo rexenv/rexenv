@@ -64,8 +64,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] **5.1 PHP static binary provider**
   *Done when:* a static PHP (static-php-cli build) for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `php -v` runs from the app-data path. ✓ Manifest entries `php` (cli) + `php-fpm` from static-php.dev (pinned 8.3.31, SHA-256 computed at pin time — source has no checksums); generalized `Checksum` enum (SHA-256/512). Live: downloaded, checksum OK, `php -v` → PHP 8.3.31 (cli), Signature=adhoc, executable. 5 unit tests; 32 lib tests green. Manual: `cargo run --example php_fetch`.
-- [ ] **5.2 One PHP-FPM pool**
-  *Done when:* a single php-fpm master starts on a loopback port via `ProcessSupervisor`, with a generated pool config; status reflects in the UI/services layer.
+- [x] **5.2 One PHP-FPM pool**
+  *Done when:* a single php-fpm master starts on a loopback port via `ProcessSupervisor`, with a generated pool config; status reflects in the UI/services layer. ✓ `core/services.rs` `generate_fpm_config` (one `[global]` foreground master + one `[www]` pool, no user/group), `write_fpm_config`, `start_fpm`/`test_fpm_config`/`stop` via `ProcessSupervisor`, `fpm_running(port)` status. Live: `php-fpm -t` successful, master+2 workers listening on 127.0.0.1:9783, status running=true→false on stop. 2 unit tests; 34 lib tests green. (Services-screen IPC wiring lands with 7.4.) Manual: `cargo run --example php_fpm_serve`.
 
 ## 6. Web server (Nginx)
 
