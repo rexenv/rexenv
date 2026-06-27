@@ -46,8 +46,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] **3.1 Local CA generation (rcgen)**
   *Done when:* a root CA key+cert is generated once and stored under app-data; regeneration is idempotent. ✓ `core/ssl.rs` `generate_ca` + idempotent `load_or_create` (key hardened 0600 via new `PermissionManager::set_private`). openssl confirms CA:TRUE (critical), `CN=rexenv Local CA`; rerun yields identical fingerprint; key file `-rw-------`. 4 unit tests; 20 lib tests green. Manual: `cargo run --example ca_gen`.
-- [ ] **3.2 Per-site cert with wildcard SAN**
-  *Done when:* given `mysite.test`, a cert signed by the CA is issued with SAN `mysite.test` + `*.mysite.test` (verify with `openssl x509 -text`).
+- [x] **3.2 Per-site cert with wildcard SAN**
+  *Done when:* given `mysite.test`, a cert signed by the CA is issued with SAN `mysite.test` + `*.mysite.test` (verify with `openssl x509 -text`). ✓ `core/ssl.rs` `generate_site_cert` + idempotent `ensure_site_cert` (key 0600). openssl: SAN `DNS:mysite.test, DNS:*.mysite.test`, issuer `rexenv Local CA`, `openssl verify` OK, EKU=ServerAuth. 2 unit tests (x509-parser SAN/issuer + idempotency); 22 lib tests green. Manual: `cargo run --example site_cert_gen`.
 - [ ] **3.3 macOS `CertTrustManager` (trust CA → PrivilegeManager)**
   *Done when:* `CertTrustManager` builds the `security add-trusted-cert …` (and untrust) invocation for the local CA and runs it **through `PrivilegeManager`** (no direct privileged calls); command construction is unit-tested. Actual keychain trust + the browser "valid lock" check happen in the batched system-setup step (3.4). Depends on 2.3, 3.1. (windows/linux = `todo!()`.)
 - [ ] **3.4 Batched system setup (single auth prompt)**
