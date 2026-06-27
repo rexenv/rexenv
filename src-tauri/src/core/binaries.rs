@@ -55,11 +55,13 @@ pub struct BinarySpec {
 const CADDY_2_11_4_MAC_ARM64_SHA512: &str = "3190ae0df98b59ab4b6021556fa35adc3c526a4f3e138776b0eaec8a037cc26121cbbb1ad53453f565551b47d37d5ba4755e2c2c3652256737fe2ce9e53c8ec0";
 const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164888d1edbb1a49e5d15be4eab691b57e89ed36bb29c65ba43f1ba8d9279e0967b1003991c13fe4cb78384c3caf25de";
 
-// static-php.dev SHA-256 (computed at pin time — source publishes no checksums).
-const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "5a173ce3b1cbffab395b4984f84b6cbc0347bab35d774c45e98e1a39526c44de";
-const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "c3b3b9507e3559fcd8df60aaee6207fcc05f258c325b902b182ea7a7fae52724";
-const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "e683ff6c2b4760d8e6ecb6f700dc2fde8a9702744868dda4467c7c8362d86865";
-const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "f533184a7e1a044f13f8bcb980620a9eabd9bd40124a946916e02199fc04d71e";
+// static-php.dev "bulk" build SHA-256 (computed at pin time — source publishes
+// no checksums). The bulk build includes mysqli (required by WordPress) + a wide
+// extension set, unlike "common".
+const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "058e11878840ad42eb5e59fe111eb49a712d512fad383b28aef1b8bbd498a44e";
+const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "15b6e94f4d5f1c7e3ba7a646095bfe4a7bdae8f7480c4129152096b4a6f1652e";
+const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "6b0605c82a8126e6431fce70cb9488fb35c35126eef238ece339e93afb356bc4";
+const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "08958f8c80a2c380eff1b7584fed09136fb1ce8b51a73981e382d255fc134b14";
 
 // jirutka/nginx-binaries SHA-256 (computed at pin time; cross-checked vs the
 // project's published SHA-1).
@@ -126,7 +128,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         ("php", "macos", "8.3.31") => Some(BinarySpec {
             url: format!(
-                "https://dl.static-php.dev/static-php-cli/common/php-{version}-cli-macos-{}.tar.gz",
+                "https://dl.static-php.dev/static-php-cli/bulk/php-{version}-cli-macos-{}.tar.gz",
                 php_arch(arch)
             ),
             checksum: Checksum::Sha256(pick(
@@ -139,7 +141,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         ("php-fpm", "macos", "8.3.31") => Some(BinarySpec {
             url: format!(
-                "https://dl.static-php.dev/static-php-cli/common/php-{version}-fpm-macos-{}.tar.gz",
+                "https://dl.static-php.dev/static-php-cli/bulk/php-{version}-fpm-macos-{}.tar.gz",
                 php_arch(arch)
             ),
             checksum: Checksum::Sha256(pick(
