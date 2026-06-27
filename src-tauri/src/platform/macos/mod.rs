@@ -166,6 +166,21 @@ impl ProcessSupervisor for MacosSupervisor {
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
         Ok(std::process::Command::new(program).args(args).spawn()?)
     }
+    fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
+        if let Some(parent) = log_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let out = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)?;
+        let err = out.try_clone()?;
+        Ok(std::process::Command::new(program)
+            .args(args)
+            .stdout(out)
+            .stderr(err)
+            .spawn()?)
+    }
     fn stop(&self, pid: u32) -> Result<()> {
         // SIGTERM via kill(2). Refined with a proper supervisor in §4–6.
         let status = std::process::Command::new("kill")
@@ -457,6 +472,23 @@ mod tests {
         assert_eq!(mapped.as_deref(), Some("/usr/lib/libpcre2-8.dylib"));
         // Nonexistent lib → no mapping.
         assert!(MacosBinaryProvider::system_lib_for("/opt/homebrew/lib/libnope-9.dylib").is_none());
+    }
+
+    #[test]
+    fn spawn_logged_captures_output() {
+        let path = std::env::temp_dir().join("rexenv-spawnlog-test.log");
+        let _ = std::fs::remove_file(&path);
+        let mut child = MacosSupervisor
+            .spawn_logged(
+                Path::new("/bin/echo"),
+                &["rexenv-log-ok".to_string()],
+                &path,
+            )
+            .unwrap();
+        let _ = child.wait();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("rexenv-log-ok"));
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

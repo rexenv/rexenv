@@ -90,7 +90,10 @@ pub fn start(
         "--mysqlx=OFF".to_string(), // skip the X protocol (avoids :33060)
         format!("--log-error={}", log.display()),
     ];
-    platform.supervisor().spawn(&mysqld_bin(basedir), &args)
+    let stdout_log = platform.paths().log_dir()?.join("mysql-stdout.log");
+    platform
+        .supervisor()
+        .spawn_logged(&mysqld_bin(basedir), &args, &stdout_log)
 }
 
 /// Stop a running MySQL by pid (SIGTERM → graceful shutdown).

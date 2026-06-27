@@ -63,7 +63,8 @@ pub fn start_fpm(platform: &dyn Platform, php_fpm_bin: &Path, conf: &Path) -> Re
         "-y".to_string(),
         conf.display().to_string(),
     ];
-    platform.supervisor().spawn(php_fpm_bin, &args)
+    let log = platform.paths().log_dir()?.join("php-fpm-stdout.log");
+    platform.supervisor().spawn_logged(php_fpm_bin, &args, &log)
 }
 
 /// Validate a php-fpm config without starting it (`php-fpm -t -y <conf>`).
@@ -327,9 +328,10 @@ pub fn start_nginx(
     conf: &Path,
     prefix: &Path,
 ) -> Result<Child> {
+    let log = platform.paths().log_dir()?.join("nginx-stdout.log");
     platform
         .supervisor()
-        .spawn(nginx_bin, &nginx_args(conf, prefix, None))
+        .spawn_logged(nginx_bin, &nginx_args(conf, prefix, None), &log)
 }
 
 /// Reload a running nginx's config (`nginx -s reload`) after the config changes

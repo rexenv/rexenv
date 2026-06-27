@@ -76,8 +76,17 @@ pub trait PrivilegeManager: Send + Sync {
 /// databases, the edge router). Spawning is similar across OSes; this wraps it
 /// behind a trait so supervision policy stays in one place.
 pub trait ProcessSupervisor: Send + Sync {
-    /// Spawn `program` with `args`; returns the child handle.
+    /// Spawn `program` with `args`; returns the child handle (stdio inherited).
     fn spawn(&self, program: &std::path::Path, args: &[String]) -> Result<Child>;
+    /// Spawn `program` with its stdout+stderr redirected (appended) to `log_path`
+    /// — used for long-running services so their output is captured to a per-
+    /// service log file from the moment they start (Phase 3 log viewer).
+    fn spawn_logged(
+        &self,
+        program: &std::path::Path,
+        args: &[String],
+        log_path: &std::path::Path,
+    ) -> Result<Child>;
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
 }

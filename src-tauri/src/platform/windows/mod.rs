@@ -64,6 +64,9 @@ impl ProcessSupervisor for WindowsSupervisor {
     fn spawn(&self, _program: &Path, _args: &[String]) -> Result<Child> {
         todo!("windows spawn")
     }
+    fn spawn_logged(&self, _program: &Path, _args: &[String], _log_path: &Path) -> Result<Child> {
+        todo!("windows spawn_logged")
+    }
     fn stop(&self, _pid: u32) -> Result<()> {
         todo!("windows stop")
     }

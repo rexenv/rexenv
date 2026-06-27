@@ -88,7 +88,9 @@ pub fn start(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Res
         "--adapter".to_string(),
         "caddyfile".to_string(),
     ];
-    platform.supervisor().spawn(caddy_bin, &args)
+    // Caddy logs (JSON) to stderr — capture it to a per-service log file.
+    let log = platform.paths().log_dir()?.join("caddy-stdout.log");
+    platform.supervisor().spawn_logged(caddy_bin, &args, &log)
 }
 
 /// Stop a running Caddy by pid (for the non-privileged `start`).
