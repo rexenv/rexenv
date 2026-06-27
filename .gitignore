@@ -46,3 +46,9 @@ Desktop.ini
 # Logs / temp
 *.log
 *.tmp
+
+# Tooling / MCP artifacts (screenshots, browser sandboxes)
+.playwright-mcp/
+.chrome-devtools-mcp/
+/sites.png
+/*.screenshot.png
