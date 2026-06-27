@@ -194,6 +194,9 @@ impl ServiceManager {
 
         // Caddy edge router.
         if matches!(self.caddy, CaddyHandle::Stopped) {
+            // Clear a leftover edge holding the admin port (§7.3) so our start
+            // isn't blocked by `bind: address already in use` on :2019.
+            proxy::recover_stale_edge(platform, &bins.caddy)?;
             ports::ensure_free(self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
             if self.ports.https < 1024 {
                 // Privileged port → start as root (one auth prompt), drive via admin API.

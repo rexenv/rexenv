@@ -14,6 +14,9 @@ use std::process::Child;
 pub const CADDYFILE: &str = "Caddyfile";
 pub const DEFAULT_HTTP_PORT: u16 = 80;
 pub const DEFAULT_HTTPS_PORT: u16 = 443;
+/// Caddy's admin endpoint port (its default). A single fixed port so a leftover
+/// edge can be found + stopped deterministically — see [`recover_stale_edge`].
+pub const CADDY_ADMIN_PORT: u16 = 2019;
 
 /// One site's TLS termination + upstream.
 #[derive(Debug, Clone)]
@@ -138,6 +141,46 @@ pub fn stop_admin(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
     )
 }
 
+/// True if Caddy's admin endpoint port is currently bound (i.e. some Caddy — or
+/// another process — is already there).
+pub fn admin_in_use() -> bool {
+    crate::core::ports::is_listening(CADDY_ADMIN_PORT)
+}
+
+/// Recover from a LEFTOVER edge before starting ours (Phase 2 §7.3).
+///
+/// A Caddy orphaned by a prior run (commonly a **root** edge from a `:443` start)
+/// keeps its admin endpoint on `:2019`, which makes a fresh `caddy run` die with
+/// `bind: address already in use`. Caddy's admin API lets any local user stop it
+/// without privilege (even a root edge stops itself on request), so here we detect
+/// that case and stop the stale edge so startup isn't blocked.
+///
+/// No-op when `:2019` is free. Returns an actionable error if the port is held and
+/// can't be freed (e.g. a non-Caddy process is squatting on it).
+pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
+    if !admin_in_use() {
+        return Ok(());
+    }
+    log::warn!(
+        "rexenv: a leftover Caddy is holding admin port :{CADDY_ADMIN_PORT}; \
+         stopping it via the admin API so startup isn't blocked"
+    );
+    // Best-effort: `caddy stop` POSTs to the admin endpoint; ignore its exit code
+    // (we judge success by the port actually freeing below).
+    let _ = stop_admin(platform, caddy_bin);
+    for _ in 0..10 {
+        if !admin_in_use() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    Err(crate::error::Error::Other(format!(
+        "Caddy admin port :{CADDY_ADMIN_PORT} is held and could not be freed — a non-Caddy \
+         process may be using it, or a stale edge won't stop. Free it and retry (e.g. \
+         `caddy stop`, or kill the process listening on :{CADDY_ADMIN_PORT})."
+    )))
+}
+
 fn wait_ok(mut child: Child, what: &str) -> Result<()> {
     let status = child.wait()?;
     if status.success() {
@@ -178,6 +221,12 @@ mod tests {
         assert!(f.contains("reverse_proxy 127.0.0.1:9999"));
         // Never falls back to Caddy's internal CA.
         assert!(!f.to_lowercase().contains("internal"));
+    }
+
+    #[test]
+    fn admin_port_is_caddy_default() {
+        // Fixed so a leftover edge is found + stopped deterministically (§7.3).
+        assert_eq!(CADDY_ADMIN_PORT, 2019);
     }
 
     #[test]

@@ -213,12 +213,16 @@ Apache); MySQL covers the MySQL-compatible case meanwhile.
   separate process on an internal loopback port, edge routes to it). **Deferred from Phase 2:** OLS is Linux-first and its
   macOS binary distribution is painful; revisit when it's actually needed, or during the Windows/Linux ports
   (§4/§5 of PROJECT_SPEC) where official binaries are easier.
-- [ ] **7.3 Caddy admin-port robustness (lingering-edge recovery)**
+- [x] **7.3 Caddy admin-port robustness (lingering-edge recovery)**
   *Done when:* a leftover Caddy (especially a privileged/root one from a prior real-:443 run) holding the
   fixed admin port `:2019` no longer blocks startup — the app detects a stale edge and adopts/stops it (or
   uses a non-default/derived admin address), and surfaces a clear error if it can't. *Found during §1.3:*
   an orphaned root Caddy on `:2019` made a fresh Caddy fail to start (`bind: address already in use`); the
   dev workaround was a foreground `sudo pkill` of the stray.
+  ✓ **Done (this commit):** `proxy::recover_stale_edge` — if `:2019` is held, stop the stale edge via the
+  admin API (`caddy stop`, **no privilege — stops a root edge too**), wait for it to free, else return an
+  actionable error. `ServiceManager::start_all` calls it before binding the edge. `examples/caddy_recovery_demo`:
+  stale edge on :2019 → recovered → fresh edge starts cleanly. Removes the recurring `sudo pkill` workaround.
 - [ ] **7.4 Apache (httpd) override server** *(deferred from §3)*
   *Done when:* Apache is a per-site override via the §2/§4 pattern — a self-contained `httpd` on an internal
   loopback port, `mod_proxy_fcgi` → the site's per-version php-fpm pool, edge routes to it. **Blocked on macOS
