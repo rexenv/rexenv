@@ -55,8 +55,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## 4. Edge router (Caddy)
 
-- [ ] **4.1 Caddy binary provider**
-  *Done when:* `BinaryProvider` downloads the correct macOS (arm64/x86_64) Caddy binary on demand, verifies checksum, caches it under app-data, then **ad-hoc code-signs (`codesign --force --sign - <path>`) and de-quarantines (`xattr -d com.apple.quarantine <path>` if present) before first exec** (else Apple Silicon kills it); `caddy version` runs from the cached path.
+- [x] **4.1 Caddy binary provider**
+  *Done when:* `BinaryProvider` downloads the correct macOS (arm64/x86_64) Caddy binary on demand, verifies checksum, caches it under app-data, then **ad-hoc code-signs (`codesign --force --sign - <path>`) and de-quarantines (`xattr -d com.apple.quarantine <path>` if present) before first exec** (else Apple Silicon kills it); `caddy version` runs from the cached path. ✓ `core/binaries.rs` manifest (pinned Caddy 2.11.4 + SHA-512) + async `resolve` (download→verify→extract→`set_executable`→`prepare_binary`); `BinaryProvider` trait now `arch()` + `prepare_binary()` (macOS codesign+dequarantine). Live: downloaded, checksum OK, `caddy version => v2.11.4`, `Signature=adhoc`, idempotent cache. 4 unit tests; 29 lib tests green. Manual: `cargo run --example caddy_fetch`.
 - [ ] **4.2 Caddy config generation + supervise**
   *Done when:* `core/proxy` writes a Caddyfile and `ProcessSupervisor` starts/stops Caddy holding :80/:443. Caddy terminates TLS using the **per-site certs issued by our local CA (3.2)** via explicit `tls <cert> <key>` directives, with Caddy's **automatic HTTPS / internal issuer DISABLED** (so the chain the browser sees matches the CA trusted in 3.4). A hardcoded `*.test` route proxies to a test backend; `openssl s_client -connect <host>:443` (or browser cert inspect) shows the served cert's **issuer is our local CA**.
 

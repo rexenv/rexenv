@@ -111,14 +111,16 @@ pub enum Arch {
     X86_64,
 }
 
-/// Resolves the correct native binary for this OS+arch, downloading and caching
-/// it on demand. Source URL, archive format, and extraction differ per OS.
+/// OS-specific primitives for provisioning native binaries. The manifest +
+/// download + extract + checksum orchestration is platform-agnostic and lives in
+/// `core::binaries`, which calls these primitives.
 pub trait BinaryProvider: Send + Sync {
     /// The detected CPU architecture for the running machine.
     fn arch(&self) -> Arch;
-    /// Path to a ready-to-run binary for `name` at `version`, downloading and
-    /// extracting it into `bin_dir` if not already cached.
-    fn resolve(&self, name: &str, version: &str) -> Result<PathBuf>;
+    /// Prepare a freshly downloaded binary for execution. macOS: ad-hoc
+    /// code-sign (`codesign --force --sign -`) + de-quarantine
+    /// (`xattr -d com.apple.quarantine`), else Apple Silicon kills it.
+    fn prepare_binary(&self, path: &std::path::Path) -> Result<()>;
 }
 
 /// Aggregate of every platform capability. `core/` is handed one of these and

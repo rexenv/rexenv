@@ -225,9 +225,28 @@ impl BinaryProvider for MacosBinaryProvider {
             Arch::X86_64
         }
     }
-    fn resolve(&self, _name: &str, _version: &str) -> Result<PathBuf> {
-        // Task 4.1+: download from the binary manifest, verify checksum, extract.
-        todo!("macOS binary download/extract via manifest")
+    fn prepare_binary(&self, path: &Path) -> Result<()> {
+        // De-quarantine (no-op/ignored if the attribute isn't present).
+        let _ = std::process::Command::new("xattr")
+            .arg("-d")
+            .arg("com.apple.quarantine")
+            .arg(path)
+            .output();
+        // Ad-hoc code-sign so Apple Silicon will exec the downloaded binary.
+        let out = std::process::Command::new("codesign")
+            .arg("--force")
+            .arg("--sign")
+            .arg("-")
+            .arg(path)
+            .output()?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "codesign failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )))
+        }
     }
 }
 

@@ -102,8 +102,8 @@ impl BinaryProvider for WindowsBinaryProvider {
     fn arch(&self) -> Arch {
         Arch::X86_64
     }
-    fn resolve(&self, _name: &str, _version: &str) -> Result<PathBuf> {
-        todo!("windows binary provider")
+    fn prepare_binary(&self, _path: &Path) -> Result<()> {
+        todo!("windows binary prepare (no codesign needed)")
     }
 }
 

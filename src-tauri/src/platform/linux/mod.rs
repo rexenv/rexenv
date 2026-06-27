@@ -105,8 +105,8 @@ impl BinaryProvider for LinuxBinaryProvider {
             Arch::X86_64
         }
     }
-    fn resolve(&self, _name: &str, _version: &str) -> Result<PathBuf> {
-        todo!("linux binary provider")
+    fn prepare_binary(&self, _path: &Path) -> Result<()> {
+        todo!("linux binary prepare (chmod handled via PermissionManager)")
     }
 }
 
