@@ -333,15 +333,25 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// Per-service status (for the Services view + metrics): MySQL, one row per
-    /// running php-fpm pool (named `PHP-FPM <version>`), Nginx, Caddy.
+    /// Per-service status for the Services view + metrics (§6.1): every service the
+    /// app supervises — the available DB engines (MySQL, PostgreSQL), one row per
+    /// running php-fpm pool (`PHP-FPM <version>`), one per per-site FrankenPHP
+    /// backend (`FrankenPHP <domain>`), then Nginx and Caddy. The command layer
+    /// enriches each row with live RAM/CPU from the monitor (by pid).
     pub fn status(&self) -> Vec<ServiceInfo> {
-        let mut infos = vec![ServiceInfo {
-            name: "MySQL".to_string(),
-            running: DbEngine::Mysql.running(),
-            pid: self.dbs.get(&DbEngine::Mysql).map(Child::id),
-            port: DbEngine::Mysql.port(),
-        }];
+        let mut infos = Vec::new();
+
+        // Database engines (available ones) — always listed, running-state per port.
+        for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
+            infos.push(ServiceInfo {
+                name: engine.label().to_string(),
+                running: engine.running(),
+                pid: self.dbs.get(&engine).map(Child::id),
+                port: engine.port(),
+            });
+        }
+
+        // One row per running php-fpm pool.
         for p in self.pools.status() {
             infos.push(ServiceInfo {
                 name: format!("PHP-FPM {}", p.minor),
@@ -350,6 +360,20 @@ impl ServiceManager {
                 port: p.port,
             });
         }
+
+        // One row per per-site FrankenPHP override backend (sorted for stable display).
+        let mut overrides: Vec<(&String, &Child)> = self.overrides.iter().collect();
+        overrides.sort_by(|a, b| a.0.cmp(b.0));
+        for (domain, child) in overrides {
+            let port = frankenphp::site_port(domain);
+            infos.push(ServiceInfo {
+                name: format!("FrankenPHP {domain}"),
+                running: frankenphp::running(port),
+                pid: Some(child.id()),
+                port,
+            });
+        }
+
         infos.push(ServiceInfo {
             name: "Nginx".to_string(),
             running: services::nginx_running(self.ports.nginx),
@@ -426,9 +450,9 @@ mod tests {
         let m = ServiceManager::default();
         let s = m.status();
         let names: Vec<_> = s.iter().map(|i| i.name.as_str()).collect();
-        // No pools are running when stopped, so only the always-present services
-        // appear (php-fpm pools are added per running version).
-        assert_eq!(names, vec!["MySQL", "Nginx", "Caddy"]);
+        // When stopped: the available DB engines (always listed) + Nginx + Caddy.
+        // No php-fpm pools or FrankenPHP overrides (those appear only when running).
+        assert_eq!(names, vec!["MySQL", "PostgreSQL", "Nginx", "Caddy"]);
         assert!(s.iter().all(|i| i.pid.is_none()));
         assert!(m.pools.is_empty());
     }

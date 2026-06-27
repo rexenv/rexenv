@@ -189,10 +189,14 @@ Apache); MySQL covers the MySQL-compatible case meanwhile.
 > The monitor core was built in Phase 1 (7.4 per-PID `sysinfo` API + 10.5 Services view). Phase 2 only
 > extends coverage — no new monitor engine.
 
-- [ ] **6.1 Monitor covers all Phase-2 services**
+- [x] **6.1 Monitor covers all Phase-2 services**
   *Done when:* `services_status` reports live RAM/CPU rows for **every** service the app now supervises —
   each per-version php-fpm pool (§1), each per-site FrankenPHP override (§2), and the running DB engines
   (MySQL, PostgreSQL §5) — and the Services view + sidebar footer totals reflect them. Depends on 1.2, 2.2, 5.5.
+  ✓ **Done (this commit):** `ServiceManager::status()` now emits all available DB engines, every running
+  php-fpm pool, and each per-site FrankenPHP backend (then Nginx/Caddy); the command enriches each by pid via
+  the monitor. `examples/monitor_coverage_demo` — MySQL/PostgreSQL/PHP-FPM 8.3/FrankenPHP/Nginx/Caddy all
+  report live RAM/CPU. (A stray root Caddy on :2019 is the §7.3 gap — cleared with a foreground `sudo pkill`.)
 
 ---
 
