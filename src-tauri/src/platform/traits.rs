@@ -30,12 +30,21 @@ pub trait Paths: Send + Sync {
 
 /// Points the OS resolver at our embedded `hickory-dns` server so `*.test`
 /// resolves to `127.0.0.1`. The embedded server is platform-agnostic; only the
-/// "trust/point the OS at it" step differs per OS.
+/// "point the OS at it" step differs per OS.
+///
+/// These are pure command BUILDERS (no privilege, no side effects) so the
+/// install/remove can be unit-tested without sudo AND batched with other
+/// privileged ops into a single `PrivilegeManager` elevation (see core::dns +
+/// the batched system-setup step). The actual run goes through `PrivilegeManager`.
 pub trait DnsManager: Send + Sync {
-    /// Configure the OS to route `.test` lookups to our resolver on `port`.
-    fn configure_resolver(&self, port: u16) -> Result<()>;
-    /// Remove the OS resolver configuration.
-    fn teardown_resolver(&self) -> Result<()>;
+    /// Path of the OS resolver file (e.g. `/etc/resolver/test`).
+    fn resolver_path(&self) -> PathBuf;
+    /// Contents of the resolver file pointing `.test` at our resolver on `port`.
+    fn resolver_contents(&self, port: u16) -> String;
+    /// Shell command(s) that install the resolver file — run via `PrivilegeManager`.
+    fn install_command(&self, port: u16) -> String;
+    /// Shell command(s) that remove the resolver file — run via `PrivilegeManager`.
+    fn uninstall_command(&self) -> String;
 }
 
 /// Installs / removes the local CA in the system (and browser) trust store.

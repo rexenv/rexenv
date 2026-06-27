@@ -6,6 +6,7 @@
 //! resolver at this server is the per-OS `DnsManager` step (task 2.2).
 
 use crate::error::Result;
+use crate::platform::traits::Platform;
 use async_trait::async_trait;
 use hickory_proto::op::{Header, MessageType, OpCode, ResponseCode};
 use hickory_proto::rr::rdata::A;
@@ -173,6 +174,23 @@ impl Drop for DnsService {
     fn drop(&mut self) {
         self.handle.abort();
     }
+}
+
+/// Install the `.test` OS resolver file (pointing at our resolver on `port`)
+/// through `PrivilegeManager` — one auth prompt. Standalone helper; the batched
+/// system-setup step (3.4) instead concatenates this with the CA-trust command
+/// to share a single prompt.
+pub fn configure_resolver(platform: &dyn Platform, port: u16) -> Result<()> {
+    let cmd = platform.dns().install_command(port);
+    platform.privileges().run_privileged(&cmd)?;
+    Ok(())
+}
+
+/// Remove the `.test` OS resolver file through `PrivilegeManager`.
+pub fn remove_resolver(platform: &dyn Platform) -> Result<()> {
+    let cmd = platform.dns().uninstall_command();
+    platform.privileges().run_privileged(&cmd)?;
+    Ok(())
 }
 
 #[cfg(test)]

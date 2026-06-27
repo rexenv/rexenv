@@ -28,11 +28,17 @@ impl Paths for LinuxPaths {
 
 pub struct LinuxDns;
 impl DnsManager for LinuxDns {
-    fn configure_resolver(&self, _port: u16) -> Result<()> {
+    fn resolver_path(&self) -> PathBuf {
         todo!("linux systemd-resolved / dnsmasq")
     }
-    fn teardown_resolver(&self) -> Result<()> {
-        todo!("linux DNS teardown")
+    fn resolver_contents(&self, _port: u16) -> String {
+        todo!("linux DNS")
+    }
+    fn install_command(&self, _port: u16) -> String {
+        todo!("linux DNS")
+    }
+    fn uninstall_command(&self) -> String {
+        todo!("linux DNS")
     }
 }
 

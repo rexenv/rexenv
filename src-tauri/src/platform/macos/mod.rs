@@ -37,12 +37,33 @@ impl Paths for MacosPaths {
 
 pub struct MacosDns;
 impl DnsManager for MacosDns {
-    fn configure_resolver(&self, _port: u16) -> Result<()> {
-        // Task 2.2: write /etc/resolver/test pointing at the embedded resolver.
-        todo!("macOS /etc/resolver/test setup")
+    fn resolver_path(&self) -> PathBuf {
+        // macOS reads /etc/resolver/<domain>; our local TLD is `test`.
+        PathBuf::from("/etc/resolver/test")
     }
-    fn teardown_resolver(&self) -> Result<()> {
-        todo!("macOS /etc/resolver/test teardown")
+
+    fn resolver_contents(&self, port: u16) -> String {
+        // macOS resolver(5): send `.test` to our loopback resolver on `port`.
+        format!("nameserver 127.0.0.1\nport {port}\n")
+    }
+
+    fn install_command(&self, port: u16) -> String {
+        let path = self.resolver_path();
+        let dir = path
+            .parent()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "/etc/resolver".into());
+        // Use printf so the content survives the AppleScript→sh escaping chain
+        // (literal newlines in the file are written as \n for printf).
+        let printf_arg = self.resolver_contents(port).replace('\n', "\\n");
+        format!(
+            "mkdir -p {dir} && printf '{printf_arg}' > {}",
+            path.display()
+        )
+    }
+
+    fn uninstall_command(&self) -> String {
+        format!("rm -f {}", self.resolver_path().display())
     }
 }
 
@@ -237,5 +258,30 @@ mod tests {
         let program = MacosPrivileges::osascript_program(script);
         assert!(program.contains("mkdir -p /etc/resolver"));
         assert!(program.contains("cp /tmp/test /etc/resolver/test"));
+    }
+
+    #[test]
+    fn dns_resolver_path_and_contents() {
+        let dns = MacosDns;
+        assert_eq!(dns.resolver_path(), PathBuf::from("/etc/resolver/test"));
+        assert_eq!(
+            dns.resolver_contents(15353),
+            "nameserver 127.0.0.1\nport 15353\n"
+        );
+    }
+
+    #[test]
+    fn dns_install_command_creates_dir_and_writes_file() {
+        let dns = MacosDns;
+        let cmd = dns.install_command(15353);
+        assert!(cmd.contains("mkdir -p /etc/resolver"));
+        // printf carries the file content with escaped newlines for sh.
+        assert!(cmd.contains(r"printf 'nameserver 127.0.0.1\nport 15353\n'"));
+        assert!(cmd.contains("> /etc/resolver/test"));
+    }
+
+    #[test]
+    fn dns_uninstall_command_removes_file() {
+        assert_eq!(MacosDns.uninstall_command(), "rm -f /etc/resolver/test");
     }
 }
