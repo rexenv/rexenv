@@ -3,6 +3,7 @@
 
 pub mod database;
 pub mod mail;
+pub mod php;
 pub mod services;
 pub mod settings;
 pub mod sites;

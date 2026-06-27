@@ -6,8 +6,8 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, GlobalStatus, ServiceInfo, Site } from "@/types";
-import { mockGlobalStatus, mockServices, mockSites } from "@/lib/mock";
+import type { AppInfo, GlobalStatus, PhpVersion, ServiceInfo, Site } from "@/types";
+import { mockGlobalStatus, mockPhpVersions, mockServices, mockSites } from "@/lib/mock";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -48,10 +48,28 @@ export async function stopSite(id: string): Promise<Site | null> {
   return invoke<Site | null>("stop_site", { id });
 }
 
+/** Switch a site's PHP version (DB + reload, no rebuild). Returns the updated site. */
+export async function setSitePhpVersion(id: string, version: string): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site | null>("set_site_php_version", { id, version });
+}
+
 /** Delete a site (DB row + cert + docroot). No-op outside Tauri. */
 export async function deleteSite(id: string): Promise<boolean> {
   if (!isTauri()) return false;
   return invoke<boolean>("delete_site", { id });
+}
+
+/** All registered PHP versions (installed + available). Mock fallback outside Tauri. */
+export async function listPhpVersions(): Promise<PhpVersion[]> {
+  if (!isTauri()) return mockPhpVersions;
+  return invoke<PhpVersion[]>("list_php_versions");
+}
+
+/** Install (enable) or remove (disable) a PHP version. No-op outside Tauri. */
+export async function setPhpVersionInstalled(minor: string, installed: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_php_version_installed", { minor, installed });
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

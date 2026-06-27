@@ -53,11 +53,16 @@ version**, with sites mapping to the right version's pool.
   rebuild**; after the switch the same URL reports the new version in phpinfo. Proves the "config change +
   reload" requirement. Depends on 1.3.
 
-- [ ] **1.5 Multi-PHP UI (install versions · per-site select · default)**
-  *Done when:* a PHP-versions area (Settings or Services) lists installed/available versions with
-  install/remove actions; the Site-create + SiteDetail screens pick the PHP version from installed ones;
-  switching drives 1.4 via typed IPC (`src/lib/ipc/`); the Sites list badge reflects the active version.
-  Mock fallback outside Tauri. Depends on 1.4.
+- [ ] **1.5 Multi-PHP UI (manage versions · per-site switch · default)**
+  *Done when:* a PHP-versions card (Settings) lists installed/available versions with install/remove
+  actions + a default marker; **SiteDetail** picks the PHP version from the installed ones and switching
+  drives 1.4 via typed IPC (`src/lib/ipc/`); the Sites list badge reflects the active version. Mock
+  fallback outside Tauri. Depends on 1.4. **Create-flow PHP select deferred to §1.6** (no New Site form yet).
+- [ ] **1.6 New Site form (create dialog + `create_site` IPC)**
+  *Done when:* the "New site" button opens a dialog (name, domain, type, **PHP version** from installed
+  versions, web server) wired to a new `create_site` command (provision + reload); creating a site adds it
+  to the list and serves it. This is the dedicated create form that §4.2 (server select) and §5.6 (DB-engine
+  select) plug into. Depends on 1.5; extended by §4/§5.
 
 ## 2. Per-site server override — FrankenPHP (primary alt server)
 

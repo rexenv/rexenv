@@ -90,6 +90,37 @@ pub fn seed_registry(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// All registered PHP versions (installed + available), for the UI.
+pub fn list_versions(conn: &Connection) -> Result<Vec<PhpVersion>> {
+    store::list_php_versions(conn)
+}
+
+/// Enable (install) or disable (remove) a PHP version. Guards on removal: the
+/// default version can't be removed, nor can one a site currently uses (it would
+/// silently fall back to the default pool). The version must be in the registry.
+pub fn set_installed(conn: &Connection, minor: &str, installed: bool) -> Result<()> {
+    if !installed {
+        let versions = store::list_php_versions(conn)?;
+        if versions.iter().any(|v| v.minor == minor && v.is_default) {
+            return Err(Error::Other(format!(
+                "cannot remove the default PHP version ({minor})"
+            )));
+        }
+        let in_use = crate::core::sites::list(conn)?
+            .iter()
+            .any(|s| minor_of(&s.php_version) == minor);
+        if in_use {
+            return Err(Error::Other(format!(
+                "PHP {minor} is in use by a site — switch those sites first"
+            )));
+        }
+    }
+    if !store::set_php_installed(conn, minor, installed)? {
+        return Err(Error::Other(format!("unknown PHP version: {minor}")));
+    }
+    Ok(())
+}
+
 /// The minor series the app should start pools for: every registry row marked
 /// `installed`. Falls back to the default minor if none are (so there is always a
 /// working pool).
@@ -261,6 +292,38 @@ mod tests {
         got.sort();
         assert!(got.contains(&"8.1".to_string()));
         assert!(got.contains(&default_minor));
+    }
+
+    #[test]
+    fn set_installed_guards_default_and_in_use() {
+        use crate::core::sites;
+        use crate::state::models::{NewSite, SiteType, WebServer};
+
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let default_minor = minor_of(binaries::PHP_VERSION); // "8.3"
+
+        // The default version can't be removed.
+        assert!(set_installed(&conn, &default_minor, false).is_err());
+
+        // Install 8.1, then put a site on it → it can't be removed.
+        set_installed(&conn, "8.1", true).unwrap();
+        sites::create(
+            &conn,
+            NewSite {
+                name: "S".into(),
+                domain: "s.test".into(),
+                site_type: SiteType::Php,
+                php_version: "8.1".into(),
+                web_server: WebServer::Nginx,
+                path: "~/Sites/s".into(),
+            },
+        )
+        .unwrap();
+        assert!(set_installed(&conn, "8.1", false).is_err());
+
+        // An unknown version is rejected.
+        assert!(set_installed(&conn, "9.9", true).is_err());
     }
 
     #[test]

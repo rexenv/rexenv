@@ -32,6 +32,15 @@ export interface GlobalStatus {
   ramTotalMb: number;
 }
 
+/** A PHP version in the registry (mirrors the Rust PhpVersion). */
+export interface PhpVersion {
+  minor: string; // "8.3" — the key + what Site.phpVersion references
+  patch: string; // "8.3.31"
+  fpmPort: number;
+  installed: boolean;
+  isDefault: boolean;
+}
+
 export interface AppInfo {
   name: string;
   version: string;
