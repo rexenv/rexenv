@@ -35,10 +35,12 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [x] **2.1 hickory-dns resolver for `*.test`**
   *Done when:* the embedded resolver answers A queries for any `*.test` host with `127.0.0.1` (verified with `dig @127.0.0.1 -p <port> foo.test`). ✓ `core/dns.rs` `DnsHandler` + `serve_udp`; 3 passing UDP tests; dig on port 15353 returns 127.0.0.1 for `foo.test` & `site1.mysite.test`, NXDOMAIN for `example.com`. Manual check: `cargo run --example dns_serve`.
-- [ ] **2.2 macOS `PrivilegeManager` (admin auth prompt)** — prerequisite for 2.3, 3.3, 3.4
+- [ ] **2.2 Run the embedded resolver as a managed service**
+  *Done when:* the resolver binds a **fixed** loopback UDP port (>1024, no privilege — the `DEFAULT_DNS_PORT` constant) and is started on app launch via `ProcessSupervisor` / a managed background task, and stopped cleanly on exit. 2.4's `/etc/resolver/test` references **this exact port**. With the app running (not the manual example), `dig @127.0.0.1 -p <port> foo.test` returns `127.0.0.1`; after 3.4, `ping foo.test` works. Depends on 2.1.
+- [ ] **2.3 macOS `PrivilegeManager` (admin auth prompt)** — prerequisite for 2.4, 3.3, 3.4
   *Done when:* `PrivilegeManager` runs a privileged shell op via a macOS admin auth prompt (e.g. `osascript -e 'do shell script "…" with administrator privileges'` or a privileged helper); a no-op privileged command (e.g. writing a root-owned temp file) succeeds after a single password prompt, and success/failure is reported cleanly. (windows/linux = `todo!()`.)
-- [ ] **2.3 macOS `DnsManager` (resolver file → PrivilegeManager)**
-  *Done when:* `DnsManager` generates the correct `/etc/resolver/test` contents (`nameserver 127.0.0.1` + `port <resolver port>`) and installs/removes it **through `PrivilegeManager`** (never writing `/etc` directly); file contents asserted in a unit test (no sudo). Live install + `ping foo.test` → `127.0.0.1` is verified in the batched system-setup step (3.4). Depends on 2.2. (windows/linux = `todo!()`.)
+- [ ] **2.4 macOS `DnsManager` (resolver file → PrivilegeManager)**
+  *Done when:* `DnsManager` generates the correct `/etc/resolver/test` contents (`nameserver 127.0.0.1` + `port <resolver port>`, the **fixed port from 2.2**) and installs/removes it **through `PrivilegeManager`** (never writing `/etc` directly); file contents asserted in a unit test (no sudo). Live install + `ping foo.test` → `127.0.0.1` is verified in the batched system-setup step (3.4). Depends on 2.2, 2.3. (windows/linux = `todo!()`.)
 
 ## 3. Local CA, certificates & system trust setup
 
@@ -47,16 +49,16 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] **3.2 Per-site cert with wildcard SAN**
   *Done when:* given `mysite.test`, a cert signed by the CA is issued with SAN `mysite.test` + `*.mysite.test` (verify with `openssl x509 -text`).
 - [ ] **3.3 macOS `CertTrustManager` (trust CA → PrivilegeManager)**
-  *Done when:* `CertTrustManager` builds the `security add-trusted-cert …` (and untrust) invocation for the local CA and runs it **through `PrivilegeManager`** (no direct privileged calls); command construction is unit-tested. Actual keychain trust + the browser "valid lock" check happen in the batched system-setup step (3.4). Depends on 2.2, 3.1. (windows/linux = `todo!()`.)
+  *Done when:* `CertTrustManager` builds the `security add-trusted-cert …` (and untrust) invocation for the local CA and runs it **through `PrivilegeManager`** (no direct privileged calls); command construction is unit-tested. Actual keychain trust + the browser "valid lock" check happen in the batched system-setup step (3.4). Depends on 2.3, 3.1. (windows/linux = `todo!()`.)
 - [ ] **3.4 Batched system setup (single auth prompt)**
-  *Done when:* one "system setup" action runs the DnsManager resolver-file install (2.3) **and** the CertTrustManager CA trust (3.3) together through a **single** `PrivilegeManager` elevation — the user is prompted for a password **once**. Afterwards `ping foo.test` resolves to `127.0.0.1` and a served `.test` site shows a valid lock in the browser. Depends on 2.2, 2.3, 3.1–3.3.
+  *Done when:* one "system setup" action runs the DnsManager resolver-file install (2.4) **and** the CertTrustManager CA trust (3.3) together through a **single** `PrivilegeManager` elevation — the user is prompted for a password **once**. Afterwards `ping foo.test` resolves to `127.0.0.1` and a served `.test` site shows a valid lock in the browser. Depends on 2.3, 2.4, 3.1–3.3.
 
 ## 4. Edge router (Caddy)
 
 - [ ] **4.1 Caddy binary provider**
   *Done when:* `BinaryProvider` downloads the correct macOS (arm64/x86_64) Caddy binary on demand, verifies checksum, caches it under app-data, then **ad-hoc code-signs (`codesign --force --sign - <path>`) and de-quarantines (`xattr -d com.apple.quarantine <path>` if present) before first exec** (else Apple Silicon kills it); `caddy version` runs from the cached path.
 - [ ] **4.2 Caddy config generation + supervise**
-  *Done when:* `core/proxy` writes a Caddyfile and `ProcessSupervisor` starts/stops Caddy holding :80/:443; a hardcoded route proxies to a test backend over HTTPS with the trusted cert.
+  *Done when:* `core/proxy` writes a Caddyfile and `ProcessSupervisor` starts/stops Caddy holding :80/:443. Caddy terminates TLS using the **per-site certs issued by our local CA (3.2)** via explicit `tls <cert> <key>` directives, with Caddy's **automatic HTTPS / internal issuer DISABLED** (so the chain the browser sees matches the CA trusted in 3.4). A hardcoded `*.test` route proxies to a test backend; `openssl s_client -connect <host>:443` (or browser cert inspect) shows the served cert's **issuer is our local CA**.
 
 ## 5. PHP-FPM (one version)
 
@@ -70,12 +72,12 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] **6.1 Nginx binary provider**
   *Done when:* prebuilt Nginx for macOS is downloaded/cached, **signed + de-quarantined via `BinaryProvider` (see 4.1)**, and `nginx -v` runs.
 - [ ] **6.2 Shared Nginx + per-site server block**
-  *Done when:* one Nginx process serves a site from its docroot via a generated server block (FastCGI → php-fpm); the config generator leaves slots for single / subdomain / subdirectory rewrite templates.
+  *Done when:* one shared Nginx process (listening on an **internal HTTP port**, plain HTTP — TLS is Caddy's job) serves a site from its docroot via a generated server block selected by `server_name` (FastCGI → php-fpm); the config generator leaves slots for single / subdomain / subdirectory rewrite templates.
 
 ## 7. Site create / list (end-to-end wiring)
 
 - [ ] **7.1 `create site` flow (Blank PHP)**
-  *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block + Caddy route, reloads both; `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock.
+  *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block (internal HTTP) + a Caddy `*.test`→Nginx TLS route, reloads both; the request flows **browser → Caddy (TLS) → shared Nginx (by `server_name`) → php-fpm**, and `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock (issuer = local CA).
 - [ ] **7.2 Sites list + start/stop**
   *Done when:* the Sites screen lists real sites from SQLite (via typed IPC) and start/stop toggles drive the backend, reflecting real status.
 - [ ] **7.3 Delete site (full teardown)**
@@ -114,4 +116,5 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 - Keep `commands/` thin → `core/` (platform-agnostic) → `platform/` traits. No OS code in `core/`.
 - Every binary goes through `BinaryProvider` (manifest: os+arch+version → url+checksum). No bundling. **macOS:** after download/extract, `BinaryProvider` must ad-hoc code-sign (`codesign --force --sign - <path>`) and de-quarantine (`xattr -d com.apple.quarantine <path>` if present) before first exec — unsigned binaries are killed on Apple Silicon.
 - All privileged OS changes (writing `/etc/resolver/test`, trusting the CA) go **through `PrivilegeManager`**, never direct — and are batched so the user authenticates **once** (see 3.4).
+- **Request topology (default sites):** browser → Caddy (`:443`, TLS termination with local-CA certs) → one **shared Nginx** on an internal HTTP port (vhost by `server_name`) → php-fpm (FastCGI). Caddy proxies all `*.test` to the single Nginx port; Nginx dispatches by `server_name`. **No direct Caddy→php-fpm path for default sites.** (4.2, 6.2, 7.1 follow this.)
 - Config generator must support 3 rewrite modes from the start (single / subdomain / subdirectory).
