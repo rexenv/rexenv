@@ -1,7 +1,9 @@
 import { NavLink } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
+import { getGlobalStatus } from "@/lib/ipc";
 import { mockGlobalStatus } from "@/lib/mock";
 
 function CrownMark() {
@@ -61,6 +63,14 @@ export function Sidebar() {
   const footer = NAV_ITEMS.filter((i) => i.footer);
   const groups: NavItem["group"][] = ["Environment", "Network"];
 
+  // Live system CPU/RAM + running/total, polled every 2s (mock fallback in dev).
+  const { data: status } = useQuery({
+    queryKey: ["global-status"],
+    queryFn: getGlobalStatus,
+    refetchInterval: 2000,
+    initialData: mockGlobalStatus,
+  });
+
   return (
     <aside className="flex w-[220px] flex-none flex-col border-r border-rex-border-subtle bg-rex-surface-1">
       {/* Header: wordmark (drag region). The macOS traffic lights are the real
@@ -96,7 +106,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <StatusFooter status={mockGlobalStatus} />
+      <StatusFooter status={status} />
     </aside>
   );
 }

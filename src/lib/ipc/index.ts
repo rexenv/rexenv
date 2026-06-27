@@ -6,8 +6,8 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Site } from "@/types";
-import { mockSites } from "@/lib/mock";
+import type { AppInfo, GlobalStatus, Site } from "@/types";
+import { mockGlobalStatus, mockSites } from "@/lib/mock";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -22,6 +22,12 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 /** Round-trip smoke test for the IPC bridge (task 0.5). */
 export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("app_info");
+}
+
+/** Live global status for the sidebar footer. Mock fallback outside Tauri. */
+export async function getGlobalStatus(): Promise<GlobalStatus> {
+  if (!isTauri()) return mockGlobalStatus;
+  return invoke<GlobalStatus>("global_status");
 }
 
 /** List all sites. Falls back to mock data in a plain browser (vite dev). */
