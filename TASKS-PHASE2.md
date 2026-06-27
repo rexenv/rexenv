@@ -201,6 +201,12 @@ lifecycle as Phase-1 MySQL (§8). **One version per engine** in Phase 2 (multi-v
   separate process on an internal loopback port, edge routes to it). **Deferred from Phase 2:** OLS is Linux-first and its
   macOS binary distribution is painful; revisit when it's actually needed, or during the Windows/Linux ports
   (§4/§5 of PROJECT_SPEC) where official binaries are easier.
+- [ ] **7.3 Caddy admin-port robustness (lingering-edge recovery)**
+  *Done when:* a leftover Caddy (especially a privileged/root one from a prior real-:443 run) holding the
+  fixed admin port `:2019` no longer blocks startup — the app detects a stale edge and adopts/stops it (or
+  uses a non-default/derived admin address), and surfaces a clear error if it can't. *Found during §1.3:*
+  an orphaned root Caddy on `:2019` made a fresh Caddy fail to start (`bind: address already in use`); the
+  dev workaround was a foreground `sudo pkill` of the stray.
 
 ---
 
