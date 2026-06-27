@@ -66,6 +66,7 @@ pub fn run() {
             commands::sites::start_site,
             commands::sites::stop_site,
             commands::sites::set_site_php_version,
+            commands::sites::set_site_web_server,
             commands::sites::delete_site,
             commands::php::list_php_versions,
             commands::php::set_php_version_installed,

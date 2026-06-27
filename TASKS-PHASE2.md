@@ -122,7 +122,7 @@ as OpenLiteSpeed; the override path is proven, so Apache adds no Phase-2 archite
 
 ## 4. Per-site server selection (wiring + UI)
 
-- [ ] **4.1 Server select in create + live switch (backend)**
+- [x] **4.1 Server select in create + live switch (backend)**
   *Done when:* the site model's `web_server` enum (Nginx | FrankenPHP; Apache when §7.4 lands) drives
   provisioning: choosing an override at create brings up that server's config + process + its edge route;
   **switching** a live site's server tears down the old backend config, brings the new one up (and the old
@@ -130,6 +130,10 @@ as OpenLiteSpeed; the override path is proven, so Apache adds no Phase-2 archite
   switching one site Nginx → FrankenPHP → Nginx, each serving 200 at the same URL. **Pools stay per-version,
   never per-server:** an Nginx site keeps using its version's shared php-fpm pool across the switch — no
   per-server pool is spawned (FrankenPHP is exempt — it serves via its embedded PHP, not a pool). Depends on 2.3.
+  ✓ **Done (this commit):** `ServiceManager` owns per-site FrankenPHP backends (`overrides` map, lazy bin) +
+  `reconcile_overrides`; `reload` is now async and reconciles them (create/switch/delete go through it).
+  `sites::set_web_server` (DB-only) + `commands::sites::set_site_web_server`. `examples/server_switch_serve`:
+  nginx(8.3.31) → FrankenPHP(8.5.7) → nginx(8.3.31), all 200 at the same URL, shared pool reused.
 
 - [ ] **4.2 Server-select UI (create + SiteDetail)**
   *Done when:* the create flow and SiteDetail expose a server dropdown (Nginx default / FrankenPHP),

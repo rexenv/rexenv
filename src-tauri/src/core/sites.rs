@@ -60,6 +60,23 @@ pub fn set_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<
     get(conn, id)
 }
 
+/// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
+/// — no docroot/cert/DB rebuild — and return the updated site. Only Nginx and
+/// FrankenPHP have backends in Phase 2 (Apache/OLS are deferred). The caller
+/// brings the new backend up / old down and reloads the edge.
+pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
+    if !matches!(server, WebServer::Nginx | WebServer::Frankenphp) {
+        return Err(Error::Other(format!(
+            "web server {} is not available on this platform yet",
+            server.as_db()
+        )));
+    }
+    if !store::set_site_web_server(conn, id, server.as_db())? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// Switch a site's PHP version (Phase 2 §1.4): update ONLY the `php_version`
 /// column — no docroot, cert, or DB rebuild — and return the updated site (or
 /// `None` if it doesn't exist). The version must have a pinned build and is
@@ -448,6 +465,25 @@ mod tests {
         // Unsupported version is rejected; unknown id is a no-op (None).
         assert!(set_php_version(&conn, &site.id, "7.4").is_err());
         assert!(set_php_version(&conn, "nope", "8.3").unwrap().is_none());
+    }
+
+    #[test]
+    fn set_web_server_updates_only_the_column() {
+        let conn = db::open_in_memory().unwrap();
+        let mut new = sample("SW", "sws.test");
+        new.web_server = WebServer::Nginx;
+        let site = create(&conn, new).unwrap();
+
+        // Nginx → FrankenPHP → Nginx: only web_server changes; path/domain untouched.
+        let fp = set_web_server(&conn, &site.id, WebServer::Frankenphp).unwrap().expect("exists");
+        assert!(matches!(fp.web_server, WebServer::Frankenphp));
+        assert_eq!(fp.path, site.path);
+        let back = set_web_server(&conn, &site.id, WebServer::Nginx).unwrap().unwrap();
+        assert!(matches!(back.web_server, WebServer::Nginx));
+
+        // Deferred servers are rejected; unknown id is a no-op (None).
+        assert!(set_web_server(&conn, &site.id, WebServer::Apache).is_err());
+        assert!(set_web_server(&conn, "nope", WebServer::Nginx).unwrap().is_none());
     }
 
     #[test]

@@ -100,6 +100,15 @@ pub fn set_site_php_version(conn: &Connection, id: &str, version: &str) -> Resul
     Ok(affected > 0)
 }
 
+/// Update only a site's `web_server` column; returns whether a row was updated.
+pub fn set_site_web_server(conn: &Connection, id: &str, server: &str) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET web_server = ?1 WHERE id = ?2",
+        params![server, id],
+    )?;
+    Ok(affected > 0)
+}
+
 /// Read a setting value by key, or `None` if unset.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;

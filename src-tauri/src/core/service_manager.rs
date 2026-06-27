@@ -9,10 +9,10 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{binaries, php, ports, proxy, services, sites, ssl};
+use crate::core::{binaries, frankenphp, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use crate::state::models::Site;
+use crate::state::models::{Site, WebServer};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Child;
@@ -77,6 +77,11 @@ pub struct ServiceManager {
     ports: Ports,
     dbs: HashMap<DbEngine, Child>,
     pools: php::PhpFpmPools,
+    /// Per-site override backends (FrankenPHP), keyed by domain (§4.1).
+    overrides: HashMap<String, Child>,
+    /// FrankenPHP binary, resolved lazily on first override (avoids a download
+    /// when no site uses it).
+    frankenphp_bin: Option<PathBuf>,
     nginx: Option<Child>,
     caddy: CaddyHandle,
 }
@@ -88,6 +93,8 @@ impl ServiceManager {
             ports,
             dbs: HashMap::new(),
             pools: php::PhpFpmPools::default(),
+            overrides: HashMap::new(),
+            frankenphp_bin: None,
             nginx: None,
             caddy: CaddyHandle::Stopped,
         }
@@ -164,6 +171,9 @@ impl ServiceManager {
         }
         self.pools.start(platform, &minors).await?;
 
+        // Per-site override backends (FrankenPHP) for the current site set.
+        self.reconcile_overrides(platform, sites).await?;
+
         let bins = self.bins.as_ref().expect("bins resolved");
 
         // Configs derived from all sites.
@@ -208,13 +218,74 @@ impl ServiceManager {
         self.pools.ensure(platform, minor).await
     }
 
-    /// Reload Nginx + Caddy from the current site set (after create/delete).
-    pub fn reload(
-        &self,
+    /// FrankenPHP binary, resolved + cached on first use.
+    async fn ensure_frankenphp_bin(&mut self, platform: &dyn Platform) -> Result<PathBuf> {
+        if let Some(p) = &self.frankenphp_bin {
+            return Ok(p.clone());
+        }
+        let p = binaries::resolve(platform, "frankenphp", binaries::FRANKENPHP_VERSION).await?;
+        self.frankenphp_bin = Some(p.clone());
+        Ok(p)
+    }
+
+    /// Bring the running per-site override backends (FrankenPHP) in line with the
+    /// site set: start one for each FrankenPHP site that isn't up, stop any whose
+    /// site was deleted or switched away. Each backend listens on the site's
+    /// deterministic override port (`frankenphp::site_port`).
+    async fn reconcile_overrides(&mut self, platform: &dyn Platform, sites: &[Site]) -> Result<()> {
+        // Desired FrankenPHP backends: domain → (docroot, port).
+        let desired: HashMap<String, (PathBuf, u16)> = sites
+            .iter()
+            .filter(|s| matches!(s.web_server, WebServer::Frankenphp))
+            .map(|s| {
+                (
+                    s.domain.clone(),
+                    (PathBuf::from(&s.path), frankenphp::site_port(&s.domain)),
+                )
+            })
+            .collect();
+
+        // Stop backends that are no longer wanted.
+        let stale: Vec<String> = self
+            .overrides
+            .keys()
+            .filter(|d| !desired.contains_key(*d))
+            .cloned()
+            .collect();
+        for domain in stale {
+            if let Some(mut child) = self.overrides.remove(&domain) {
+                let _ = frankenphp::stop(platform, child.id());
+                let _ = child.wait();
+            }
+        }
+
+        // Start backends that are wanted but not yet running.
+        for (domain, (docroot, port)) in &desired {
+            if self.overrides.contains_key(domain) {
+                continue;
+            }
+            ports::ensure_free(*port, ports::Proto::Tcp, "FrankenPHP")?;
+            let bin = self.ensure_frankenphp_bin(platform).await?;
+            let conf =
+                frankenphp::write_config(platform, domain, docroot, *port, services::RewriteMode::Single)?;
+            let child = frankenphp::start(platform, &bin, domain, &conf)?;
+            self.overrides.insert(domain.clone(), child);
+            wait_until(|| frankenphp::running(*port), 20);
+        }
+        Ok(())
+    }
+
+    /// Reload the edge from the current site set (after create / delete / server
+    /// switch): reconcile per-site override backends, then regenerate + reload
+    /// Nginx and Caddy. The edge routes each site to its backend (shared Nginx or
+    /// its own override port) via `rebuild_configs`.
+    pub async fn reload(
+        &mut self,
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
         sites: &[Site],
     ) -> Result<()> {
+        self.reconcile_overrides(platform, sites).await?;
         let bins = self
             .bins
             .as_ref()
@@ -247,6 +318,10 @@ impl ServiceManager {
             CaddyHandle::Stopped => {}
         }
         self.pools.stop_all(platform);
+        for (_domain, mut child) in std::mem::take(&mut self.overrides) {
+            let _ = frankenphp::stop(platform, child.id());
+            let _ = child.wait();
+        }
         for (engine, mut child) in std::mem::take(&mut self.dbs) {
             let _ = engine.stop(platform, child.id());
             let _ = child.wait();
@@ -300,6 +375,9 @@ impl Drop for ServiceManager {
         // stop_all wasn't called. (A privileged-root Caddy can't be killed here;
         // the php-fpm pools clean themselves up via PhpFpmPools::drop.)
         for child in self.dbs.values_mut() {
+            let _ = child.kill();
+        }
+        for child in self.overrides.values_mut() {
             let _ = child.kill();
         }
         if let Some(c) = &mut self.nginx {
