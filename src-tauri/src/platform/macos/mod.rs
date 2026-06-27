@@ -54,10 +54,12 @@ impl DnsManager for MacosDns {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "/etc/resolver".into());
         // Use printf so the content survives the AppleScript→sh escaping chain
-        // (literal newlines in the file are written as \n for printf).
+        // (literal newlines in the file are written as \n for printf). Then flush
+        // the DNS cache so macOS picks up the new resolver file immediately.
         let printf_arg = self.resolver_contents(port).replace('\n', "\\n");
         format!(
-            "mkdir -p {dir} && printf '{printf_arg}' > {}",
+            "mkdir -p {dir} && printf '{printf_arg}' > {} \
+             && dscacheutil -flushcache && killall -HUP mDNSResponder",
             path.display()
         )
     }
@@ -69,23 +71,61 @@ impl DnsManager for MacosDns {
 
 pub struct MacosCertTrust;
 
-/// Single-quote a path for safe use in the /bin/sh command (app-data paths
-/// contain spaces). Paths won't contain single quotes in practice.
-fn sh_quote(path: &Path) -> String {
-    format!("'{}'", path.display())
+impl MacosCertTrust {
+    /// Path to the user's login keychain. Targeting it explicitly is required:
+    /// without `-k`, `security add-trusted-cert` references whichever keychain
+    /// already holds the cert, which is non-deterministic.
+    fn login_keychain() -> String {
+        directories::BaseDirs::new()
+            .map(|b| {
+                b.home_dir()
+                    .join("Library/Keychains/login.keychain-db")
+                    .display()
+                    .to_string()
+            })
+            .unwrap_or_else(|| "login.keychain-db".into())
+    }
+
+    /// `security` args to trust the CA as a root in the user login keychain.
+    /// No `-d`/System keychain ⇒ no root; `security` shows its own native auth
+    /// dialog. Factored out so the arg construction is unit-testable.
+    fn trust_args(ca_cert_path: &Path) -> Vec<String> {
+        vec![
+            "add-trusted-cert".into(),
+            "-r".into(),
+            "trustRoot".into(),
+            "-k".into(),
+            Self::login_keychain(),
+            ca_cert_path.display().to_string(),
+        ]
+    }
+    fn untrust_args(ca_cert_path: &Path) -> Vec<String> {
+        vec![
+            "remove-trusted-cert".into(),
+            ca_cert_path.display().to_string(),
+        ]
+    }
+
+    fn run_security(args: &[String]) -> Result<()> {
+        let out = std::process::Command::new("security").args(args).output()?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "security {} failed: {}",
+                args.first().map(String::as_str).unwrap_or(""),
+                String::from_utf8_lossy(&out.stderr).trim()
+            )))
+        }
+    }
 }
 
 impl CertTrustManager for MacosCertTrust {
-    fn trust_command(&self, ca_cert_path: &Path) -> String {
-        // Add as a trusted root in the System keychain (system-wide trust for
-        // Safari/Chrome). Requires root → run via PrivilegeManager.
-        format!(
-            "security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain {}",
-            sh_quote(ca_cert_path)
-        )
+    fn trust_ca(&self, ca_cert_path: &Path) -> Result<()> {
+        Self::run_security(&Self::trust_args(ca_cert_path))
     }
-    fn untrust_command(&self, ca_cert_path: &Path) -> String {
-        format!("security remove-trusted-cert -d {}", sh_quote(ca_cert_path))
+    fn untrust_ca(&self, ca_cert_path: &Path) -> Result<()> {
+        Self::run_security(&Self::untrust_args(ca_cert_path))
     }
 }
 
@@ -296,6 +336,9 @@ mod tests {
         // printf carries the file content with escaped newlines for sh.
         assert!(cmd.contains(r"printf 'nameserver 127.0.0.1\nport 15353\n'"));
         assert!(cmd.contains("> /etc/resolver/test"));
+        // flushes the DNS cache so the new resolver file takes effect at once.
+        assert!(cmd.contains("dscacheutil -flushcache"));
+        assert!(cmd.contains("killall -HUP mDNSResponder"));
     }
 
     #[test]
@@ -304,18 +347,20 @@ mod tests {
     }
 
     #[test]
-    fn cert_trust_command_targets_system_keychain_as_root() {
-        let cmd = MacosCertTrust.trust_command(Path::new("/tmp/My CA/rexenv-ca.pem"));
-        assert!(cmd.starts_with("security add-trusted-cert -d -r trustRoot -k "));
-        assert!(cmd.contains("/Library/Keychains/System.keychain"));
-        // Path is single-quoted (handles the space in app-data paths).
-        assert!(cmd.ends_with("'/tmp/My CA/rexenv-ca.pem'"));
+    fn cert_trust_args_use_login_keychain_no_root() {
+        let args = MacosCertTrust::trust_args(Path::new("/tmp/My CA/rexenv-ca.pem"));
+        assert_eq!(&args[0..4], &["add-trusted-cert", "-r", "trustRoot", "-k"]);
+        // Targets the login keychain explicitly; never the System keychain / -d.
+        assert!(args[4].ends_with("login.keychain-db"));
+        assert_eq!(args[5], "/tmp/My CA/rexenv-ca.pem");
+        assert!(!args.iter().any(|a| a == "-d"));
+        assert!(!args.iter().any(|a| a.contains("System.keychain")));
     }
 
     #[test]
-    fn cert_untrust_command_removes_trust() {
-        let cmd = MacosCertTrust.untrust_command(Path::new("/tmp/ca.pem"));
-        assert_eq!(cmd, "security remove-trusted-cert -d '/tmp/ca.pem'");
+    fn cert_untrust_args_remove_trust() {
+        let args = MacosCertTrust::untrust_args(Path::new("/tmp/ca.pem"));
+        assert_eq!(args, vec!["remove-trusted-cert", "/tmp/ca.pem"]);
     }
 
     #[test]

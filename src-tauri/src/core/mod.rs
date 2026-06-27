@@ -10,6 +10,7 @@ pub mod dns;
 pub mod mail;
 pub mod proxy;
 pub mod services;
+pub mod setup;
 pub mod sites;
 pub mod ssl;
 pub mod tunnels;

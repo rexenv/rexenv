@@ -33,9 +33,12 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 - Embedded DNS via **hickory-dns** resolves `*.test → 127.0.0.1` (wildcard ⇒ multisite works
   free). Runs as a managed task on a fixed loopback port (`DEFAULT_DNS_PORT`).
 - Local **CA via rcgen** issues a trusted cert per domain; must support wildcard SAN (`*.site.test`).
-- **Privileged OS changes** (writing `/etc/resolver/test`, trusting the CA) go ONLY through
-  the **`PrivilegeManager`** trait — never write `/etc` or call `security` directly — and are
-  batched into one "system setup" step so the user authenticates **once**.
+- **System changes go through platform traits, never direct.** The `/etc/resolver/test` write
+  is a root op via **`PrivilegeManager`** (macOS osascript admin prompt). The CA **trust** is a
+  USER op via **`CertTrustManager`** (macOS: login keychain — `security add-trusted-cert` shows
+  its own native dialog, no root; System-keychain trust can't be set from a detached-root
+  osascript session). So system setup is ~2 prompts; a true single prompt needs a privileged
+  helper (SMAppService) — deferred.
 - **SQLite** for all app state (site list, settings, per-site config).
 - Leave room in the config generator for THREE rewrite templates from the start:
   single / subdomain-multisite / subdirectory-multisite.

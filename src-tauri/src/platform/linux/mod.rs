@@ -44,10 +44,10 @@ impl DnsManager for LinuxDns {
 
 pub struct LinuxCertTrust;
 impl CertTrustManager for LinuxCertTrust {
-    fn trust_command(&self, _ca_cert_path: &Path) -> String {
+    fn trust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
         todo!("linux update-ca-certificates (+ NSS for Firefox)")
     }
-    fn untrust_command(&self, _ca_cert_path: &Path) -> String {
+    fn untrust_ca(&self, _ca_cert_path: &Path) -> Result<()> {
         todo!("linux untrust")
     }
 }

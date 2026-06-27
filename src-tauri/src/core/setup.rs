@@ -1,0 +1,59 @@
+//! core::setup — one-time system setup (Phase 1 task 3.4).
+//!
+//! Two privileged-ish OS changes are needed for `.test` HTTPS to work:
+//!  1. install the `/etc/resolver/test` file (root) — via `PrivilegeManager`
+//!     (one admin prompt);
+//!  2. trust the local CA — on macOS this writes the USER login keychain and
+//!     `security` shows its OWN native auth dialog (no root).
+//!
+//! A true single prompt for both isn't possible with osascript (System-keychain
+//! trust needs a UI session a detached-root shell lacks), so we deliberately use
+//! the login keychain for trust. A privileged-helper (SMAppService) would enable
+//! a single prompt later.
+
+use crate::core::{dns, ssl};
+use crate::error::Result;
+use crate::platform::traits::Platform;
+
+/// The privileged part of setup (resolver file install) as a shell script —
+/// run via `PrivilegeManager`. Pure; exposed for inspection/testing.
+pub fn resolver_install_script(platform: &dyn Platform, dns_port: u16) -> String {
+    platform.dns().install_command(dns_port)
+}
+
+/// Run system setup: ensure the CA exists, install the `.test` resolver file
+/// (admin prompt), then trust the CA (native trust dialog). Returns the CA.
+pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
+    let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
+    // 1) privileged: install the resolver file (one admin prompt).
+    let script = resolver_install_script(platform, dns::DEFAULT_DNS_PORT);
+    platform.privileges().run_privileged(&script)?;
+    // 2) user: trust the CA (native dialog; login keychain, no root).
+    ssl::trust_ca(platform, &ca)?;
+    Ok(ca)
+}
+
+/// Reverse system setup: remove the resolver file (admin prompt) and untrust the CA.
+pub fn run_system_teardown(platform: &dyn Platform) -> Result<()> {
+    let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
+    platform
+        .privileges()
+        .run_privileged(&platform.dns().uninstall_command())?;
+    ssl::untrust_ca(platform, &ca)?;
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolver_install_script_writes_resolver_for_port() {
+        let platform = crate::platform::current();
+        let script = resolver_install_script(&*platform, 15353);
+        assert!(script.contains("/etc/resolver/test"));
+        assert!(script.contains(r"printf 'nameserver 127.0.0.1\nport 15353\n'"));
+        // DNS cache flush so the resolver file takes effect immediately.
+        assert!(script.contains("dscacheutil -flushcache"));
+    }
+}

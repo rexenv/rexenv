@@ -183,20 +183,15 @@ pub fn ensure_site_cert(
     Ok(cert)
 }
 
-/// Trust the local CA in the OS store via `PrivilegeManager` (one auth prompt).
-/// Standalone helper; the batched system-setup step (3.4) instead concatenates
-/// this command with the DNS resolver install to share a single prompt.
+/// Trust the local CA in the user trust store (macOS: login keychain — shows a
+/// native auth dialog; no root).
 pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
-    let cmd = platform.cert_trust().trust_command(&ca.cert_path);
-    platform.privileges().run_privileged(&cmd)?;
-    Ok(())
+    platform.cert_trust().trust_ca(&ca.cert_path)
 }
 
-/// Remove the local CA's trust via `PrivilegeManager`.
+/// Remove the local CA's trust.
 pub fn untrust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
-    let cmd = platform.cert_trust().untrust_command(&ca.cert_path);
-    platform.privileges().run_privileged(&cmd)?;
-    Ok(())
+    platform.cert_trust().untrust_ca(&ca.cert_path)
 }
 
 #[cfg(test)]

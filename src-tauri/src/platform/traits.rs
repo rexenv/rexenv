@@ -47,18 +47,18 @@ pub trait DnsManager: Send + Sync {
     fn uninstall_command(&self) -> String;
 }
 
-/// Installs / removes the local CA in the system (and browser) trust store.
+/// Installs / removes the local CA in the trust store.
 ///
-/// Pure command BUILDERS (no privilege, no side effects) — so they're
-/// unit-testable without sudo AND batchable with other privileged ops into a
-/// single `PrivilegeManager` elevation (see core::ssl + the batched system-setup
-/// step). The actual run goes through `PrivilegeManager`.
+/// On macOS the trust setting is written to the USER login keychain (no root):
+/// `security add-trusted-cert` presents its own native authorization dialog, so
+/// this is NOT a `PrivilegeManager` op. (System-keychain trust can't be set from
+/// a detached-root osascript session — see the system-setup notes.) These
+/// methods execute the trust change and manage that dialog themselves.
 pub trait CertTrustManager: Send + Sync {
-    /// Shell command that adds the CA at `ca_cert_path` to the system trust
-    /// store as a trusted root — run via `PrivilegeManager`.
-    fn trust_command(&self, ca_cert_path: &std::path::Path) -> String;
-    /// Shell command that removes the CA's trust — run via `PrivilegeManager`.
-    fn untrust_command(&self, ca_cert_path: &std::path::Path) -> String;
+    /// Trust the CA at `ca_cert_path` as a root (shows a native auth dialog).
+    fn trust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
+    /// Remove the CA's trust setting.
+    fn untrust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
 }
 
 /// Runs privileged shell operations behind a single OS authentication prompt.
