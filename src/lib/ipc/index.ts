@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, NewSiteInput, PhpVersion, ServiceInfo, Site } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -64,6 +64,12 @@ export async function createSite(input: NewSiteInput): Promise<Site | null> {
 export async function setSitePhpVersion(id: string, version: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("set_site_php_version", { id, version });
+}
+
+/** Switch a site's web server (Nginx | FrankenPHP). Returns the updated site. */
+export async function setSiteWebServer(id: string, server: WebServer): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site | null>("set_site_web_server", { id, server });
 }
 
 /** Delete a site (DB row + cert + docroot). No-op outside Tauri. */

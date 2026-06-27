@@ -3,7 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { LayoutGrid } from "lucide-react";
-import { listPhpVersions, listSites, setSitePhpVersion } from "@/lib/ipc";
+import { listPhpVersions, listSites, setSitePhpVersion, setSiteWebServer } from "@/lib/ipc";
+import type { WebServer } from "@/types";
+
+/** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
+const SERVERS: { value: WebServer; label: string }[] = [
+  { value: "nginx", label: "Nginx" },
+  { value: "frankenphp", label: "FrankenPHP" },
+];
+
+const SELECT_CLS =
+  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -40,6 +50,12 @@ export function SiteDetail() {
     onError: (e) => window.alert(String(e)),
   });
 
+  const switchServer = useMutation({
+    mutationFn: (server: WebServer) => setSiteWebServer(id!, server),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+    onError: (e) => window.alert(String(e)),
+  });
+
   if (!site) {
     return (
       <>
@@ -69,7 +85,7 @@ export function SiteDetail() {
                 value={site.phpVersion}
                 disabled={switchPhp.isPending}
                 onChange={(e) => switchPhp.mutate(e.target.value)}
-                className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+                className={SELECT_CLS}
               >
                 {options.map((m) => (
                   <option key={m} value={m}>
@@ -78,7 +94,25 @@ export function SiteDetail() {
                 ))}
               </select>
             </div>
-            <Field label="Web server" value={site.webServer} />
+            <div className="flex items-center justify-between border-b border-rex-border-subtle py-2">
+              <span className="text-[12.5px] text-rex-text-muted">Web server</span>
+              <select
+                value={site.webServer}
+                disabled={switchServer.isPending}
+                onChange={(e) => switchServer.mutate(e.target.value as WebServer)}
+                className={SELECT_CLS}
+              >
+                {/* Include the current value even if deferred (apache/ols) so it shows. */}
+                {!SERVERS.some((s) => s.value === site.webServer) && (
+                  <option value={site.webServer}>{site.webServer}</option>
+                )}
+                {SERVERS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Field label="Type" value={site.type} />
             <Field label="Domain" value={site.domain} />
             <Field label="Document root" value={site.path} />

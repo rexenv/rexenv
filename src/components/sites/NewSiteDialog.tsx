@@ -3,11 +3,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createSite, listPhpVersions } from "@/lib/ipc";
+import type { WebServer } from "@/types";
+
+/** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
+const SERVERS: { value: WebServer; label: string }[] = [
+  { value: "nginx", label: "Nginx" },
+  { value: "frankenphp", label: "FrankenPHP" },
+];
 
 /**
- * New Site dialog (Phase 2 §1.6). Creates a Blank-PHP site with a chosen PHP
- * version; the server dropdown lands in §4.2 and WordPress one-click is a
- * follow-up, so this sends type=php / webServer=nginx.
+ * New Site dialog (Phase 2 §1.6 + §4.2). Creates a Blank-PHP site with a chosen
+ * PHP version and web server (Nginx or FrankenPHP). WordPress one-click is a
+ * follow-up, so this sends type=php.
  */
 export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
@@ -21,6 +28,7 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [phpVersion, setPhpVersion] = useState(defaultVersion);
+  const [webServer, setWebServer] = useState<WebServer>("nginx");
   const [domainEdited, setDomainEdited] = useState(false);
 
   useEffect(() => setPhpVersion(defaultVersion), [defaultVersion]);
@@ -36,7 +44,7 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
         domain: effectiveDomain.trim(),
         type: "php",
         phpVersion,
-        webServer: "nginx",
+        webServer,
         path: "",
       }),
     onSuccess: () => {
@@ -99,6 +107,20 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
               {installed.map((v) => (
                 <option key={v.minor} value={v.minor}>
                   PHP {v.minor}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Web server">
+            <select
+              value={webServer}
+              onChange={(e) => setWebServer(e.target.value as WebServer)}
+              className="h-[34px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none focus:border-brand"
+            >
+              {SERVERS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
                 </option>
               ))}
             </select>

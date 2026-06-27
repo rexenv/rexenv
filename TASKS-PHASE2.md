@@ -135,10 +135,12 @@ as OpenLiteSpeed; the override path is proven, so Apache adds no Phase-2 archite
   `sites::set_web_server` (DB-only) + `commands::sites::set_site_web_server`. `examples/server_switch_serve`:
   nginx(8.3.31) → FrankenPHP(8.5.7) → nginx(8.3.31), all 200 at the same URL, shared pool reused.
 
-- [ ] **4.2 Server-select UI (create + SiteDetail)**
+- [x] **4.2 Server-select UI (create + SiteDetail)**
   *Done when:* the create flow and SiteDetail expose a server dropdown (Nginx default / FrankenPHP),
   the switch drives 4.1 via typed IPC, and the Sites list shows the active server badge (the Phase-1 mock
   already renders a server badge). Mock fallback outside Tauri. Depends on 4.1.
+  ✓ **Done (this commit):** SiteDetail "Web server" dropdown (Nginx/FrankenPHP) → `setSiteWebServer` (§4.1);
+  New Site dialog gained a Web server select; Sites-list badge already renders `webServer`. `pnpm build` green.
 
 ## 5. Database engines (PostgreSQL; MariaDB & Redis deferred)
 
