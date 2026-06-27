@@ -6,6 +6,20 @@ a developer's whole local stack — web servers, multiple PHP versions, database
 one-click WordPress, local `.test` domains with auto-HTTPS, mail catching, public
 sharing — from one UI. **macOS first**, then Windows, then Linux.
 
+## Status — Phase 1 (macOS MVP) COMPLETE
+- **Phase 1 goal MET, verified on real :443:** one-click WordPress at `https://wpdemo.test`
+  over the full chain browser → Caddy (:443, local-CA TLS) → shared Nginx (by `server_name`)
+  → php-fpm → WordPress → MySQL (homepage HTTP 200, served cert issuer = our CA).
+- **Done:** scaffold + design tokens + app shell; SQLite store; embedded DNS (managed, `:15353`)
+  + `/etc/resolver/test`; local CA + per-site wildcard certs + login-keychain trust; Caddy edge;
+  static PHP + one php-fpm pool; shared Nginx; site create/list/start/stop/delete; sysinfo
+  metrics; MySQL; WP-CLI + one-click WordPress; port allocator; configurable sites folder;
+  per-service logs; app service manager (owns the stack). Per-task "Done when" evidence in **TASKS.md**.
+- **Pending:** 10.4 privileged helper (SMAppService → single prompt + System-keychain trust) —
+  ⏸ packaging-era, needs a signed+notarized bundle. New-Site UI form (backend create flow done).
+  In-window visual pass via `pnpm tauri dev` (stack so far verified via `examples/`).
+- **Next:** Phase 2 (multi-PHP, Apache/OpenLiteSpeed, MariaDB/PostgreSQL/Redis) — PROJECT_SPEC.md §5.
+
 ## Architecture rule (non-negotiable)
 - `commands/` are **thin** Tauri IPC handlers — they only translate calls and invoke `core/`.
 - `core/` is **platform-agnostic** ("the what") — domain logic, never imports OS-specific code.
@@ -61,9 +75,40 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 - JetBrains Mono for ALL technical values (domains, paths, versions, ports, commands).
   Space Grotesk for hero/onboarding only. Inter (SF Pro Text) for UI/body.
 
+## Implementation notes (as built — macOS)
+- **Fixed loopback ports:** DNS `15353` (`DEFAULT_DNS_PORT`), shared Nginx `8088`, php-fpm `9783`,
+  MySQL `13306`; edge Caddy on real `:80`/`:443`. Every service start is port-gated via
+  `core/ports::ensure_free`.
+- **Pinned, checksum-locked binaries** (`core/binaries.rs`): Caddy `2.11.4`, PHP `8.3.31`
+  (**static-php "bulk" build — "common" lacks `mysqli`, which WP requires**), Nginx `1.30.3`
+  (jirutka static), MySQL `8.4.6` (official), WP-CLI `2.12.0`.
+- **`prepare_binary` order: de-quarantine → relink Homebrew dylibs → codesign LAST.** Nginx
+  (jirutka) links Homebrew `libpcre2` → relinked to `/usr/lib`. MySQL is a dir tree
+  (`Archive::TarGzTree` + `resolve_dir`), Oracle-signed (no re-sign), pulled from a direct CDN
+  URL with a browser UA (the redirector 403s reqwest). WP-CLI `.phar` uses `resolve_file` —
+  NO chmod/codesign (not a Mach-O).
+- **WP-CLI runs PHP with `-d memory_limit=512M`** — WP core extraction OOMs at the 128M default.
+- **Quote all paths in generated Caddy/Nginx configs** — app-data paths contain spaces.
+- **CA trust is login-keychain (dev), not System keychain** — osascript detached-root can't set
+  `SecTrustSettings`. System-wide trust + single prompt = SMAppService (10.4, deferred).
+- **Backgrounded osascript can't show the admin dialog** — run privileged steps foreground / `sudo`.
+- **Long-running processes spawn via `ProcessSupervisor::spawn_logged`** → per-service
+  `<log_dir>/<svc>-stdout.log`.
+- **Verification pattern:** lib unit tests + standalone `src-tauri/examples/*.rs` for live checks.
+
+## Module map (as built)
+- `core/`: `binaries` · `dns` · `ssl` · `proxy` (Caddy) · `services` (nginx + php-fpm) ·
+  `database` (MySQL) · `wordpress` · `sites` (provision / rebuild_configs / teardown) ·
+  `setup` (system setup) · `ports` · `monitor` (sysinfo) · `service_manager` (owns the stack).
+- `state/`: `db` (migrations) · `models` · `store` (repo) · `app` (`AppState` = db + platform +
+  monitor + CA + `ServiceManager`, behind an async Mutex).
+- `commands/` (thin): `system` · `sites` · `services` · `settings`.
+- `platform/macos/mod.rs`: all 9 trait impls real; `windows`/`linux` = `todo!()`.
+
 ## Pointers
 - Full detail in **PROJECT_SPEC.md**. Screen designs in **DESIGN_BRIEF.md** and **design/** (.dc.html).
-- Phase plan: PROJECT_SPEC.md §5. Current: **Phase 1 (macOS MVP)**. Task list in **TASKS.md**.
+- Phase plan: PROJECT_SPEC.md §5. **Phase 1 (macOS MVP) COMPLETE** (see Status above); next is
+  Phase 2. Full task log + "Done when" evidence in **TASKS.md**.
 
 ## Working rule
 - Work in **small, verifiable steps. One task at a time. Verify before moving on.**
