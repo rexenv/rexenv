@@ -10,6 +10,8 @@ pub mod platform;
 pub mod state;
 pub mod utils;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -20,6 +22,19 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // Start the embedded DNS resolver as a managed background task on a
+            // fixed loopback port. Held in app state so it lives for the app's
+            // lifetime and is aborted cleanly on exit (DnsService::drop). A bind
+            // failure is logged, not fatal — the app still runs.
+            match tauri::async_runtime::block_on(core::dns::DnsService::start_default()) {
+                Ok(dns) => {
+                    app.manage(dns);
+                }
+                Err(e) => {
+                    log::error!("dns: failed to start embedded resolver: {e}");
+                }
             }
             Ok(())
         })

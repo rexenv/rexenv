@@ -127,6 +127,54 @@ pub async fn serve_udp(addr: SocketAddr) -> Result<(SocketAddr, ServerFuture<Dns
     Ok((local, server))
 }
 
+/// The running embedded resolver, managed as a background task. Created once on
+/// app launch (held in Tauri state) and aborted on `stop()` / drop, giving a
+/// clean shutdown on app exit. Must be created within a tokio runtime context.
+pub struct DnsService {
+    addr: SocketAddr,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl DnsService {
+    /// Bind `addr` and spawn the resolver on the current tokio runtime.
+    pub async fn start(addr: SocketAddr) -> Result<Self> {
+        let (local, mut server) = serve_udp(addr).await?;
+        let handle = tokio::spawn(async move {
+            if let Err(e) = server.block_until_done().await {
+                log::error!("dns: resolver task ended with error: {e}");
+            }
+        });
+        log::info!("dns: embedded resolver listening on {local} (udp)");
+        Ok(Self { addr: local, handle })
+    }
+
+    /// Start on the fixed default loopback port (`DEFAULT_DNS_PORT`).
+    pub async fn start_default() -> Result<Self> {
+        Self::start(SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_DNS_PORT))).await
+    }
+
+    /// The address the resolver is actually bound to.
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// Whether the resolver task is still running.
+    pub fn is_running(&self) -> bool {
+        !self.handle.is_finished()
+    }
+
+    /// Abort the resolver task (clean stop).
+    pub fn stop(&self) {
+        self.handle.abort();
+    }
+}
+
+impl Drop for DnsService {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +248,20 @@ mod tests {
         assert_eq!(reply.response_code(), ResponseCode::NXDomain);
         assert!(first_a(&reply).is_none());
         handle.abort();
+    }
+
+    #[tokio::test]
+    async fn managed_service_starts_serves_and_stops() {
+        let svc = DnsService::start("127.0.0.1:0".parse().unwrap())
+            .await
+            .unwrap();
+        assert!(svc.is_running());
+
+        let reply = query(svc.addr(), "foo.test.", RecordType::A).await;
+        assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST));
+
+        svc.stop();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!svc.is_running(), "service should stop cleanly");
     }
 }
