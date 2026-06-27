@@ -53,6 +53,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::system::app_info,
             commands::system::global_status,
+            commands::system::port_status,
             commands::sites::list_sites,
             commands::sites::start_site,
             commands::sites::stop_site,

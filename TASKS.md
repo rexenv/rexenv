@@ -108,8 +108,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 
 > Not required for the Phase 1 goal, but cheap to design for early. Pick up when the listed prerequisite lands.
 
-- [ ] **10.1 Port allocation + conflict detection**
-  *Done when:* a central allocator hands out / records ports for :80/:443 and per-service loopback ports, detects an already-bound port before spawn, and surfaces a clear error instead of a silent crash. *Ideally designed in from the first spawned service (§4).*
+- [x] **10.1 Port allocation + conflict detection**
+  *Done when:* a central allocator hands out / records ports for :80/:443 and per-service loopback ports, detects an already-bound port before spawn, and surfaces a clear error instead of a silent crash. *Ideally designed in from the first spawned service (§4).* ✓ `core/ports.rs`: `default_ports()` registry (DNS/Caddy 80+443/Nginx/PHP-FPM/MySQL), `is_free`/`ensure_free` (privileged <1024 TCP → connect-probe; high ports → bind-probe), `check`/`conflicts`; `port_status` command for the UI. 3 unit tests (in-use vs free detection); 53 lib tests green. Live: probe accurate (correctly read all ports free — DBngin's nginx was down at the time; its MySQL on :3306 doesn't clash with our :13306). Manual: `cargo run --example port_check`. **10.5 next will gate each service start on `ensure_free`.**
 - [ ] **10.2 Configurable sites folder (Paths + settings)**
   *Done when:* the sites root is read from a `settings` value (falling back to the `Paths` default), is editable in Settings, and new sites are created under it. *Touches `Paths` + `state` (§1) and the create flow (§7).*
 - [ ] **10.3 Per-service log capture**

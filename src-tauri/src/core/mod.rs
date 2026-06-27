@@ -9,6 +9,7 @@ pub mod database;
 pub mod dns;
 pub mod mail;
 pub mod monitor;
+pub mod ports;
 pub mod proxy;
 pub mod services;
 pub mod setup;
