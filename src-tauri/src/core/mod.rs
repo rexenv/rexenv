@@ -6,6 +6,7 @@
 
 pub mod binaries;
 pub mod database;
+pub mod db;
 pub mod dns;
 pub mod frankenphp;
 pub mod mail;

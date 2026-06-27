@@ -8,7 +8,7 @@
 //!    for something already *listening* (a connect attempt);
 //!  - **high ports** are bind-tested directly (free iff the bind succeeds).
 
-use crate::core::{database, dns, php, proxy, services};
+use crate::core::{db, dns, php, proxy, services};
 use crate::error::{Error, Result};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::time::Duration;
@@ -93,7 +93,9 @@ pub fn default_ports() -> Vec<PortReq> {
             reqs.push(PortReq { service: "PHP-FPM", port, proto: Proto::Tcp });
         }
     }
-    reqs.push(PortReq { service: "MySQL", port: database::MYSQL_PORT, proto: Proto::Tcp });
+    for engine in db::DbEngine::ALL {
+        reqs.push(PortReq { service: engine.label(), port: engine.port(), proto: Proto::Tcp });
+    }
     reqs
 }
 
@@ -151,7 +153,11 @@ mod tests {
         let fpm = reqs.iter().filter(|r| r.service == "PHP-FPM").count();
         assert_eq!(fpm, crate::core::php::all_minors().len());
         assert!(reqs.iter().any(|r| r.port == 9783 && r.proto == Proto::Tcp));
-        // DNS + 2 Caddy + Nginx + MySQL = 5 fixed, plus one php-fpm per version.
-        assert_eq!(reqs.len(), 5 + fpm);
+        // One port per DB engine (MySQL 13306 … Redis 16379).
+        let dbs = crate::core::db::DbEngine::ALL.len();
+        assert!(reqs.iter().any(|r| r.port == 13306 && r.proto == Proto::Tcp));
+        assert!(reqs.iter().any(|r| r.port == crate::core::db::REDIS_PORT));
+        // DNS + 2 Caddy + Nginx = 4 fixed, plus one php-fpm per version + one per DB engine.
+        assert_eq!(reqs.len(), 4 + fpm + dbs);
     }
 }
