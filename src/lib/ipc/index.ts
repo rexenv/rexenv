@@ -41,3 +41,9 @@ export async function stopSite(id: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("stop_site", { id });
 }
+
+/** Delete a site (DB row + cert + docroot). No-op outside Tauri. */
+export async function deleteSite(id: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("delete_site", { id });
+}

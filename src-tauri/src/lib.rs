@@ -42,7 +42,7 @@ pub fn run() {
             let platform = platform::current();
             match state::db::open_for_platform(platform.paths()) {
                 Ok(conn) => {
-                    app.manage(state::app::AppState::new(conn));
+                    app.manage(state::app::AppState::new(conn, platform));
                 }
                 Err(e) => {
                     log::error!("db: failed to open app database: {e}");
@@ -55,6 +55,7 @@ pub fn run() {
             commands::sites::list_sites,
             commands::sites::start_site,
             commands::sites::stop_site,
+            commands::sites::delete_site,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

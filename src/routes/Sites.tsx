@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, Lock, MoreHorizontal } from "lucide-react";
+import { Plus, Globe, FolderOpen, Database, Lock, Trash2, MoreHorizontal } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Placeholder } from "@/components/common/Placeholder";
 import { Button } from "@/components/ui/button";
-import { listSites, startSite, stopSite } from "@/lib/ipc";
+import { listSites, startSite, stopSite, deleteSite } from "@/lib/ipc";
 import type { Site } from "@/types";
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -20,10 +20,12 @@ function SiteRow({
   site,
   busy,
   onToggle,
+  onDelete,
 }: {
   site: Site;
   busy: boolean;
   onToggle: () => void;
+  onDelete: () => void;
 }) {
   const running = site.status === "running";
   return (
@@ -52,6 +54,15 @@ function SiteRow({
         <Button variant="ghost" size="icon" aria-label="Open database">
           <Database className="h-4 w-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Delete site"
+          onClick={onDelete}
+          className="hover:text-status-error"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" aria-label="More actions">
           <MoreHorizontal className="h-4 w-4" />
         </Button>
@@ -72,6 +83,17 @@ export function Sites() {
       site.status === "running" ? stopSite(site.id) : startSite(site.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
   });
+
+  const remove = useMutation({
+    mutationFn: (site: Site) => deleteSite(site.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+  });
+
+  const confirmDelete = (site: Site) => {
+    if (window.confirm(`Delete "${site.name}" (${site.domain})? This removes its files and certificate.`)) {
+      remove.mutate(site);
+    }
+  };
 
   const running = sites.filter((s) => s.status === "running").length;
   const newSiteButton = (
@@ -118,6 +140,7 @@ export function Sites() {
                 site={site}
                 busy={toggle.isPending && toggle.variables?.id === site.id}
                 onToggle={() => toggle.mutate(site)}
+                onDelete={() => confirmDelete(site)}
               />
             ))}
           </div>

@@ -35,3 +35,11 @@ pub fn stop_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>>
     let conn = lock(&state)?;
     core::sites::set_status(&conn, &id, ServiceStatus::Stopped)
 }
+
+/// Delete a site: remove its DB row, cert, and docroot. Returns whether it
+/// existed. (Reloading the shared configs is handled by the service layer.)
+#[tauri::command]
+pub fn delete_site(state: State<'_, AppState>, id: String) -> Result<bool> {
+    let conn = lock(&state)?;
+    core::sites::teardown(&conn, state.platform.as_ref(), &id)
+}

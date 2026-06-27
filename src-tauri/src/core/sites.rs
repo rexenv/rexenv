@@ -11,7 +11,7 @@ use crate::platform::traits::Platform;
 use crate::state::models::{NewSite, ServiceStatus, Site, SiteType};
 use crate::state::store;
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 /// Create a site: assign an id, default to stopped + SSL on, persist, return it.
@@ -58,6 +58,32 @@ pub fn delete(conn: &Connection, id: &str) -> Result<bool> {
 pub fn set_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<Option<Site>> {
     store::set_site_status(conn, id, status)?;
     get(conn, id)
+}
+
+/// Full teardown of a site: remove its DB row, cert material, and docroot.
+/// Returns `false` if the site didn't exist. Does NOT rewrite the shared configs
+/// — call [`rebuild_configs`] + reload after so the site stops being served.
+/// (The docroot is only removed if it lives under our sites dir — a safety guard
+/// against deleting an arbitrary path.)
+pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<bool> {
+    let site = match get(conn, id)? {
+        Some(s) => s,
+        None => return Ok(false),
+    };
+
+    store::delete_site(conn, id)?;
+
+    // Remove the per-site cert dir (best-effort).
+    let cert_dir = ssl::site_cert_dir(platform.paths(), &site.domain)?;
+    let _ = std::fs::remove_dir_all(&cert_dir);
+
+    // Remove the docroot, but only if it's under our managed sites dir.
+    let sites_root = sites_dir(platform)?;
+    if !site.path.is_empty() && Path::new(&site.path).starts_with(&sites_root) {
+        let _ = std::fs::remove_dir_all(&site.path);
+    }
+
+    Ok(true)
 }
 
 /// Whether a site type needs a database provisioned (the pluggable DB stage —
@@ -247,6 +273,20 @@ mod tests {
         assert!(delete(&conn, &site.id).unwrap());
         assert!(get(&conn, &site.id).unwrap().is_none());
         assert!(!delete(&conn, &site.id).unwrap(), "second delete is a no-op");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn teardown_removes_row() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        // sample() path is "~/Sites/<name>" (not under the sites dir), so the
+        // docroot-removal guard skips it — the test won't touch real dirs.
+        let site = create(&conn, sample("Teardown", "teardown.test")).unwrap();
+        assert!(teardown(&conn, &*platform, &site.id).unwrap());
+        assert!(get(&conn, &site.id).unwrap().is_none());
+        // Deleting again is a no-op.
+        assert!(!teardown(&conn, &*platform, &site.id).unwrap());
     }
 
     #[test]
