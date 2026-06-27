@@ -6,19 +6,27 @@ a developer's whole local stack — web servers, multiple PHP versions, database
 one-click WordPress, local `.test` domains with auto-HTTPS, mail catching, public
 sharing — from one UI. **macOS first**, then Windows, then Linux.
 
-## Status — Phase 1 (macOS MVP) COMPLETE
-- **Phase 1 goal MET, verified on real :443:** one-click WordPress at `https://wpdemo.test`
-  over the full chain browser → Caddy (:443, local-CA TLS) → shared Nginx (by `server_name`)
-  → php-fpm → WordPress → MySQL (homepage HTTP 200, served cert issuer = our CA).
-- **Done:** scaffold + design tokens + app shell; SQLite store; embedded DNS (managed, `:15353`)
-  + `/etc/resolver/test`; local CA + per-site wildcard certs + login-keychain trust; Caddy edge;
-  static PHP + one php-fpm pool; shared Nginx; site create/list/start/stop/delete; sysinfo
-  metrics; MySQL; WP-CLI + one-click WordPress; port allocator; configurable sites folder;
-  per-service logs; app service manager (owns the stack). Per-task "Done when" evidence in **TASKS.md**.
-- **Pending:** 10.4 privileged helper (SMAppService → single prompt + System-keychain trust) —
-  ⏸ packaging-era, needs a signed+notarized bundle. New-Site UI form (backend create flow done).
-  In-window visual pass via `pnpm tauri dev` (stack so far verified via `examples/`).
-- **Next:** Phase 2 (multi-PHP, Apache/OpenLiteSpeed, MariaDB/PostgreSQL/Redis) — PROJECT_SPEC.md §5.
+## Status — Phase 1 COMPLETE · Phase 2 core COMPLETE (macOS)
+- **Phase 1 (MVP) — done, verified on real :443:** one-click WordPress at `https://wpdemo.test`
+  over browser → Caddy (local-CA TLS) → shared Nginx (by `server_name`) → php-fpm → WordPress →
+  MySQL. Per-task evidence in **TASKS.md**.
+- **Phase 2 core — done** (per-task evidence in **TASKS-PHASE2.md**):
+  - **Multi-PHP** — 8.1/8.2/8.3, one php-fpm pool per version, per-site one-click switch, registry
+    + Settings UI, New Site dialog.
+  - **Per-site server override** — **FrankenPHP** (single static binary) as a loopback backend
+    behind the edge; live Nginx↔FrankenPHP switch + UI.
+  - **Databases** — **PostgreSQL** alongside MySQL via a `DbEngine` abstraction; Databases UI
+    (live status, start/stop).
+  - **Resource monitor** — live RAM/CPU for every supervised service (pools, FrankenPHP backends,
+    DB engines).
+  - **Edge recovery** — a stale Caddy on `:2019` is auto-stopped via its admin API on startup
+    (no more `sudo pkill`).
+- **Deferred to §7 (need a macOS dylib-tree-bundling step):** Apache, MariaDB, Redis, OpenLiteSpeed;
+  plus DB multi-version switch. None has a clean portable macOS binary (MariaDB ships none; Apache/
+  Redis link non-system dylibs like openssl@3/apr). FrankenPHP + PostgreSQL prove the patterns.
+- **Also pending:** 10.4 SMAppService single-prompt helper (packaging-era).
+- **Next:** Phase 3 — WordPress Manager, Mailpit, Adminer, log viewer, Cloudflare Tunnel, terminal
+  (PROJECT_SPEC.md §5).
 
 ## Architecture rule (non-negotiable)
 - `commands/` are **thin** Tauri IPC handlers — they only translate calls and invoke `core/`.
@@ -95,20 +103,38 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 - **Long-running processes spawn via `ProcessSupervisor::spawn_logged`** → per-service
   `<log_dir>/<svc>-stdout.log`.
 - **Verification pattern:** lib unit tests + standalone `src-tauri/examples/*.rs` for live checks.
+- **Multi-PHP (Phase 2):** pinned `8.1.34` / `8.2.31` / `8.3.31`; one php-fpm pool per minor on
+  `9781`/`9782`/`9783` (`9700 + major*10 + minor`, so 8.3 keeps the Phase-1 port); the installed set
+  lives in the `php_versions` table (migration v2); a site's nginx block `fastcgi_pass`es its version's
+  pool. Switching a site's version **or** server = config regen + reload, never a docroot/cert/DB rebuild.
+- **Per-site override (Phase 2):** **FrankenPHP `1.12.4`** (one static binary, embeds its OWN PHP — not the
+  §1 pools) runs as a loopback backend on a per-site port in `8200..8300` (FNV-1a of the domain), with
+  `auto_https off` + `admin off` — it must never be the edge, never bind `:443`/`:2019`. The edge routes an
+  override site's Host → its backend; default sites stay on the shared Nginx pool. `ServiceManager` owns the
+  per-site backends (`reconcile_overrides` on start/reload).
+- **Databases (Phase 2):** `core/db.rs` `DbEngine` unifies engines (MySQL delegates to `core/database`).
+  **PostgreSQL `18.4.0`** (theseus-rs portable, `TarGzTree`, runs unsigned on Apple Silicon) on `15432`,
+  **TCP-only** (`unix_socket_directories=` empty — sidesteps macOS's ~104-char Unix-socket-path limit).
+  MariaDB/Redis deferred (§7) — no clean macOS binary.
+- **Edge recovery (§7.3):** before binding the edge, `proxy::recover_stale_edge` stops a leftover Caddy on
+  `:2019` via the admin API (`caddy stop`) — works on a **root** edge with no privilege (admin API has no
+  owner check), then errors clearly if the port still can't be freed.
 
 ## Module map (as built)
-- `core/`: `binaries` · `dns` · `ssl` · `proxy` (Caddy) · `services` (nginx + php-fpm) ·
-  `database` (MySQL) · `wordpress` · `sites` (provision / rebuild_configs / teardown) ·
-  `setup` (system setup) · `ports` · `monitor` (sysinfo) · `service_manager` (owns the stack).
+- `core/`: `binaries` · `dns` · `ssl` · `proxy` (Caddy edge + stale-edge recovery) ·
+  `services` (nginx + php-fpm) · `php` (multi-version pools + registry) · `frankenphp` (per-site
+  override backend) · `database` (MySQL) · `postgres` · `db` (`DbEngine` abstraction) · `wordpress` ·
+  `sites` (provision / rebuild_configs / set_php_version / set_web_server / teardown) · `setup` ·
+  `ports` · `monitor` (sysinfo) · `service_manager` (owns the whole stack: dbs, pools, overrides, edge).
 - `state/`: `db` (migrations) · `models` · `store` (repo) · `app` (`AppState` = db + platform +
   monitor + CA + `ServiceManager`, behind an async Mutex).
-- `commands/` (thin): `system` · `sites` · `services` · `settings`.
+- `commands/` (thin): `system` · `sites` · `services` · `database` · `php` · `settings`.
 - `platform/macos/mod.rs`: all 9 trait impls real; `windows`/`linux` = `todo!()`.
 
 ## Pointers
 - Full detail in **PROJECT_SPEC.md**. Screen designs in **DESIGN_BRIEF.md** and **design/** (.dc.html).
-- Phase plan: PROJECT_SPEC.md §5. **Phase 1 (macOS MVP) COMPLETE** (see Status above); next is
-  Phase 2. Full task log + "Done when" evidence in **TASKS.md**.
+- Phase plan: PROJECT_SPEC.md §5. **Phase 1 COMPLETE · Phase 2 core COMPLETE** (see Status above);
+  next is Phase 3. Task logs + "Done when" evidence: **TASKS.md** (Phase 1), **TASKS-PHASE2.md** (Phase 2).
 
 ## Working rule
 - Work in **small, verifiable steps. One task at a time. Verify before moving on.**
