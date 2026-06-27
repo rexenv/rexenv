@@ -59,6 +59,14 @@ pub fn is_free(port: u16, proto: Proto) -> bool {
     }
 }
 
+/// True if something is currently listening on `127.0.0.1:port` (TCP connect
+/// probe). Use this for "is the service up?" — unlike a bind probe it's reliable
+/// for servers that bind dual-stack / all interfaces (e.g. Caddy).
+pub fn is_listening(port: u16) -> bool {
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+}
+
 /// Error if `port` is not free, naming the service so the message is actionable.
 pub fn ensure_free(port: u16, proto: Proto, service: &str) -> Result<()> {
     if is_free(port, proto) {

@@ -116,7 +116,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
   *Done when:* every supervised process has its stdout/stderr redirected to a per-service log file under the `Paths` log dir from the moment it spawns, ready for the Phase 3 log viewer. *Ideally wired into `ProcessSupervisor` from the first spawned service (§4).*
 - [ ] **10.4 Privileged helper for single-prompt setup (macOS SMAppService)**
   *Done when:* a privileged helper installed once performs ALL privileged setup ops (resolver file + **System-keychain** CA trust) under a single authorization, so system setup (3.4) needs only one prompt and trust is system-wide. *Replaces the current ~2-prompt login-keychain approach; ties into packaging/notarization (§4.9).*
-- [ ] **10.5 App service manager (own the shared stack lifecycle)**
+- [~] **10.5 App service manager (own the shared stack lifecycle)**
   *Done when:* the app starts/stops the shared services (Caddy edge router on :80/:443, shared Nginx, php-fpm pools) and holds their `Child`/PIDs in app state; site create/delete reloads the running Caddy + Nginx in-app; the Services view shows real per-service status + live RAM/CPU (via the 7.4 per-PID monitor API). *Currently the stack is exercised only via examples; this wires it into the running app. Unblocks: 7.4 Services rows, in-app reload on 7.1/7.3, and the Phase-1 `https://<name>.test` on real :443 (needs the §4.2 privileged start + the machine's :443 free).* 
 
 > **Note:** several Phase-1 tasks verified the stack via standalone examples (`create_site_serve`, etc.) because the app doesn't yet own the shared-service lifecycle. 10.5 closes that gap.

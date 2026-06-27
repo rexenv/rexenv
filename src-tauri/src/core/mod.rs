@@ -11,6 +11,7 @@ pub mod mail;
 pub mod monitor;
 pub mod ports;
 pub mod proxy;
+pub mod service_manager;
 pub mod services;
 pub mod setup;
 pub mod sites;
