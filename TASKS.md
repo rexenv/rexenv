@@ -77,7 +77,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 ## 7. Site create / list (end-to-end wiring)
 
 - [ ] **7.1 `create site` flow (Blank PHP)**
-  *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block (internal HTTP) + a Caddy `*.test`→Nginx TLS route, reloads both; the request flows **browser → Caddy (TLS) → shared Nginx (by `server_name`) → php-fpm**, and `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock (issuer = local CA).
+  *Done when:* creating a site writes the DB row, makes the docroot, issues the cert, adds the Nginx server block (internal HTTP) + a Caddy `*.test`→Nginx TLS route, reloads both; the request flows **browser → Caddy (TLS) → shared Nginx (by `server_name`) → php-fpm**, and `https://<name>.test` serves a PHP `phpinfo()` page with a valid lock (issuer = local CA). The flow **branches on whether the site needs a database** (Blank PHP = no DB; WordPress = needs MySQL, §8/§9) — the DB-provisioning step is an optional, pluggable stage so 9.2 hooks into the same create flow cleanly.
 - [ ] **7.2 Sites list + start/stop**
   *Done when:* the Sites screen lists real sites from SQLite (via typed IPC) and start/stop toggles drive the backend, reflecting real status.
 - [ ] **7.3 Delete site (full teardown)**
@@ -95,7 +95,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] **9.1 WP-CLI via bundled PHP**
   *Done when:* `wp-cli.phar` runs through the bundled PHP (`wp --info`) from the app.
 - [ ] **9.2 One-click WordPress install**
-  *Done when:* choosing "WordPress" on create downloads core, creates a MySQL DB, writes `wp-config.php`, runs `wp core install`, and `https://<name>.test` loads a working WP site reachable in the browser with a trusted cert. **← Phase 1 goal met.**
+  *Done when:* choosing "WordPress" on create installs WordPress in **single-site mode** (downloads core, creates a MySQL DB via the §8 step, writes `wp-config.php`, runs `wp core install`), and `https://<name>.test` loads a working WP site reachable in the browser with a trusted cert. The 3 rewrite-template slots from 6.2 (single / subdomain / subdirectory) **exist and are wired**, with only the "single" path exercised now — so Phase 3 multisite needs no refactor. **← Phase 1 goal met.**
 
 ---
 
