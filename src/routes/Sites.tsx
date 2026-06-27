@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Globe, FolderOpen, Database, Lock, Trash2, MoreHorizontal } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Placeholder } from "@/components/common/Placeholder";
+import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
 import { listSites, startSite, stopSite, deleteSite } from "@/lib/ipc";
 import type { Site } from "@/types";
@@ -73,6 +75,7 @@ function SiteRow({
 
 export function Sites() {
   const qc = useQueryClient();
+  const [showNew, setShowNew] = useState(false);
   const { data: sites = [], isLoading } = useQuery({
     queryKey: ["sites"],
     queryFn: listSites,
@@ -97,7 +100,7 @@ export function Sites() {
 
   const running = sites.filter((s) => s.status === "running").length;
   const newSiteButton = (
-    <Button variant="primary">
+    <Button variant="primary" onClick={() => setShowNew(true)}>
       <Plus className="h-[15px] w-[15px]" strokeWidth={2.2} />
       New site
     </Button>
@@ -146,6 +149,7 @@ export function Sites() {
           </div>
         )}
       </div>
+      {showNew && <NewSiteDialog onClose={() => setShowNew(false)} />}
     </>
   );
 }

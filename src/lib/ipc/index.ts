@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, PhpVersion, ServiceInfo, Site } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, NewSiteInput, PhpVersion, ServiceInfo, Site } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -52,6 +52,12 @@ export async function startSite(id: string): Promise<Site | null> {
 export async function stopSite(id: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("stop_site", { id });
+}
+
+/** Create a site (provision + bring up if the stack is running). No-op outside Tauri. */
+export async function createSite(input: NewSiteInput): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site | null>("create_site", { site: input });
 }
 
 /** Switch a site's PHP version (DB + reload, no rebuild). Returns the updated site. */

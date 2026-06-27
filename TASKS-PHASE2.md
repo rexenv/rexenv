@@ -63,11 +63,15 @@ version**, with sites mapping to the right version's pool.
   drives 1.4 via typed IPC (`src/lib/ipc/`); the Sites list badge reflects the active version. Mock
   fallback outside Tauri. Depends on 1.4. **Create-flow PHP select deferred to §1.6** (no New Site form yet).
   ✓ **Done (8091fae):** Settings "PHP versions" card (install/remove/Default) + SiteDetail version selector → 1.4; guards in `core::php::set_installed` (no removing default/in-use). `commands/php.rs`.
-- [ ] **1.6 New Site form (create dialog + `create_site` IPC)**
+- [x] **1.6 New Site form (create dialog + `create_site` IPC)**
   *Done when:* the "New site" button opens a dialog (name, domain, type, **PHP version** from installed
   versions, web server) wired to a new `create_site` command (provision + reload); creating a site adds it
   to the list and serves it. This is the dedicated create form that §4.2 (server select) and §5.6 (DB-engine
   select) plug into. Depends on 1.5; extended by §4/§5.
+  ✓ **Done (scoped to Blank PHP, per decision):** `commands::sites::create_site` (provision + ensure pool +
+  reload if running); `NewSiteDialog` (name · auto-suggested domain · installed-PHP-version select) wired to
+  the "New site" button. **Follow-ups extend this same dialog:** server dropdown = §4.2, type/WordPress
+  one-click = a later wire of §9.2, DB-engine select = §5.6.
 
 ## 2. Per-site server override — FrankenPHP (primary alt server)
 

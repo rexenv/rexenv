@@ -3,7 +3,7 @@
 use crate::core;
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::{ServiceStatus, Site};
+use crate::state::models::{NewSite, ServiceStatus, Site};
 use tauri::State;
 
 fn lock<'a>(
@@ -34,6 +34,25 @@ pub fn start_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>
 pub fn stop_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>> {
     let conn = lock(&state)?;
     core::sites::set_status(&conn, &id, ServiceStatus::Stopped)
+}
+
+/// Create a site (§1.6): provision it (docroot + cert + DB row), then — if the
+/// stack is running — ensure its PHP version's pool is up and reload the edge so
+/// it serves immediately. Returns the new site.
+#[tauri::command]
+pub async fn create_site(state: State<'_, AppState>, site: NewSite) -> Result<Site> {
+    let (created, sites) = {
+        let conn = lock(&state)?;
+        let created = core::sites::provision(&conn, state.platform.as_ref(), &state.ca, site)?;
+        (created, core::sites::list(&conn)?)
+    };
+    let minor = core::php::minor_of(&created.php_version);
+    let mut mgr = state.services.lock().await;
+    if mgr.is_running() {
+        mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+        mgr.reload(state.platform.as_ref(), &state.ca, &sites)?;
+    }
+    Ok(created)
 }
 
 /// Switch a site's PHP version (§1.4): update the DB row, then — if the stack is

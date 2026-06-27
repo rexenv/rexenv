@@ -62,6 +62,7 @@ pub fn run() {
             commands::system::global_status,
             commands::system::port_status,
             commands::sites::list_sites,
+            commands::sites::create_site,
             commands::sites::start_site,
             commands::sites::stop_site,
             commands::sites::set_site_php_version,

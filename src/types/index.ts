@@ -22,6 +22,16 @@ export interface Site {
   createdAt: string; // SQLite datetime, mirrors the Rust Site struct
 }
 
+/** Input for creating a site (mirrors the Rust NewSite). */
+export interface NewSiteInput {
+  name: string;
+  domain: string;
+  type: SiteType;
+  phpVersion: string;
+  webServer: WebServer;
+  path: string; // empty → core computes the docroot under the sites dir
+}
+
 export interface GlobalStatus {
   /** "All running" | "Partial" | "Stopped" derived from service states */
   summary: "all" | "partial" | "stopped";
