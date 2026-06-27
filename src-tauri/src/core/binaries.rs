@@ -12,8 +12,13 @@ use std::path::{Path, PathBuf};
 
 /// Pinned Caddy version (edge router).
 pub const CADDY_VERSION: &str = "2.11.4";
-/// Pinned PHP version (static-php build; provides `php` cli and `php-fpm`).
+/// Default PHP version (static-php build; provides `php` cli and `php-fpm`).
+/// Used where a single version is implied (Phase 1 paths). Must be in [`PHP_VERSIONS`].
 pub const PHP_VERSION: &str = "8.3.31";
+/// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
+/// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
+/// this set; each caches independently under `bin_dir/php-<version>/`.
+pub const PHP_VERSIONS: &[&str] = &["8.1.34", "8.2.31", "8.3.31"];
 /// Pinned nginx version (jirutka/nginx-binaries static build).
 pub const NGINX_VERSION: &str = "1.30.3";
 /// Pinned MySQL version (official macOS tarball — a full bin/lib/share tree).
@@ -56,8 +61,17 @@ const CADDY_2_11_4_MAC_ARM64_SHA512: &str = "3190ae0df98b59ab4b6021556fa35adc3c5
 const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164888d1edbb1a49e5d15be4eab691b57e89ed36bb29c65ba43f1ba8d9279e0967b1003991c13fe4cb78384c3caf25de";
 
 // static-php.dev "bulk" build SHA-256 (computed at pin time — source publishes
-// no checksums). The bulk build includes mysqli (required by WordPress) + a wide
-// extension set, unlike "common".
+// no checksums; downloaded and hashed each artifact). The bulk build includes
+// mysqli (required by WordPress) + a wide extension set, unlike "common".
+// One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned together.
+const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "b721271659d6e3448c29c0dc5755ffc4b8a1498c4709e1aba6602cfb584a84e4";
+const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "5fe69256365f96a270e34208ec574be7012c8c08a23bdf52948d0d16d4d8ec6a";
+const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "c5faad9eac5ce9753c30a17fb2a2023dcf72e5b367e0ac76b81d006647ea0e52";
+const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "eab87df298d83c8182f296e3f56ac4025cdb2a74baa4b6587d27ea39ac31b5e6";
+const PHP_8_2_31_CLI_MAC_ARM64_SHA256: &str = "6d200388047dcc1f6296775d54ff250dcbacf0afccb208b651c242de588b074e";
+const PHP_8_2_31_CLI_MAC_AMD64_SHA256: &str = "6eb5901e0ea85f621951a5813eeac88917e827e89f6a8ffc6b74234b184cefd3";
+const PHP_8_2_31_FPM_MAC_ARM64_SHA256: &str = "52043aa04dc70c929e3aebe306f5de77e18e7d3ffe6c28f0c7cd50f0958d6474";
+const PHP_8_2_31_FPM_MAC_AMD64_SHA256: &str = "aaca332df658e3a5e0d58e94980aae6c285e5cd7b6291192173224abebd75598";
 const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "058e11878840ad42eb5e59fe111eb49a712d512fad383b28aef1b8bbd498a44e";
 const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "15b6e94f4d5f1c7e3ba7a646095bfe4a7bdae8f7480c4129152096b4a6f1652e";
 const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "6b0605c82a8126e6431fce70cb9488fb35c35126eef238ece339e93afb356bc4";
@@ -109,6 +123,25 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
     .to_string()
 }
 
+/// Pinned SHA-256 for a static-php "bulk" artifact, or `None` if the
+/// version isn't pinned. `kind` is `"cli"` or `"fpm"`. Both arches are pinned
+/// together, so a `Some` for one arch implies a `Some` for the other.
+fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match (kind, version) {
+        ("cli", "8.1.34") => (PHP_8_1_34_CLI_MAC_ARM64_SHA256, PHP_8_1_34_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.1.34") => (PHP_8_1_34_FPM_MAC_ARM64_SHA256, PHP_8_1_34_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.2.31") => (PHP_8_2_31_CLI_MAC_ARM64_SHA256, PHP_8_2_31_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.2.31") => (PHP_8_2_31_FPM_MAC_ARM64_SHA256, PHP_8_2_31_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.3.31") => (PHP_8_3_31_CLI_MAC_ARM64_SHA256, PHP_8_3_31_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.3.31") => (PHP_8_3_31_FPM_MAC_ARM64_SHA256, PHP_8_3_31_FPM_MAC_AMD64_SHA256),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
+}
+
 /// Look up the download spec for `name`@`version` on `os`+`arch`, or `None` if
 /// unknown. `php` resolves the CLI build; `php-fpm` the FPM build.
 pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<BinarySpec> {
@@ -126,29 +159,23 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGz,
             member: "caddy",
         }),
-        ("php", "macos", "8.3.31") => Some(BinarySpec {
+        // PHP is version-driven: any version pinned in `php_sha256` resolves (the
+        // static-php URL is templated; only the checksum varies per version/arch).
+        ("php", "macos", v) if php_sha256("cli", v, arch).is_some() => Some(BinarySpec {
             url: format!(
-                "https://dl.static-php.dev/static-php-cli/bulk/php-{version}-cli-macos-{}.tar.gz",
+                "https://dl.static-php.dev/static-php-cli/bulk/php-{v}-cli-macos-{}.tar.gz",
                 php_arch(arch)
             ),
-            checksum: Checksum::Sha256(pick(
-                arch,
-                PHP_8_3_31_CLI_MAC_ARM64_SHA256,
-                PHP_8_3_31_CLI_MAC_AMD64_SHA256,
-            )),
+            checksum: Checksum::Sha256(php_sha256("cli", v, arch).unwrap().to_string()),
             archive: Archive::TarGz,
             member: "php",
         }),
-        ("php-fpm", "macos", "8.3.31") => Some(BinarySpec {
+        ("php-fpm", "macos", v) if php_sha256("fpm", v, arch).is_some() => Some(BinarySpec {
             url: format!(
-                "https://dl.static-php.dev/static-php-cli/bulk/php-{version}-fpm-macos-{}.tar.gz",
+                "https://dl.static-php.dev/static-php-cli/bulk/php-{v}-fpm-macos-{}.tar.gz",
                 php_arch(arch)
             ),
-            checksum: Checksum::Sha256(pick(
-                arch,
-                PHP_8_3_31_FPM_MAC_ARM64_SHA256,
-                PHP_8_3_31_FPM_MAC_AMD64_SHA256,
-            )),
+            checksum: Checksum::Sha256(php_sha256("fpm", v, arch).unwrap().to_string()),
             archive: Archive::TarGz,
             member: "php-fpm",
         }),
@@ -434,6 +461,49 @@ mod tests {
         assert!(fpm.url.ends_with("php-8.3.31-fpm-macos-x86_64.tar.gz"));
         assert_eq!(fpm.member, "php-fpm");
         assert_ne!(checksum_hex(&cli.checksum), checksum_hex(&fpm.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_every_pinned_php_version() {
+        for v in PHP_VERSIONS {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                let cli = manifest("php", v, "macos", arch).unwrap();
+                assert!(cli.url.contains(&format!("php-{v}-cli-macos-")));
+                assert_eq!(cli.member, "php");
+                assert!(matches!(cli.checksum, Checksum::Sha256(_)));
+                assert_eq!(checksum_hex(&cli.checksum).len(), 64); // SHA-256 hex
+
+                let fpm = manifest("php-fpm", v, "macos", arch).unwrap();
+                assert!(fpm.url.contains(&format!("php-{v}-fpm-macos-")));
+                assert_eq!(fpm.member, "php-fpm");
+                // cli and fpm of the same version/arch are distinct artifacts.
+                assert_ne!(checksum_hex(&cli.checksum), checksum_hex(&fpm.checksum));
+            }
+            // arm64 and x86_64 builds of a version are distinct artifacts.
+            let arm = manifest("php", v, "macos", Arch::Arm64).unwrap();
+            let amd = manifest("php", v, "macos", Arch::X86_64).unwrap();
+            assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+        }
+    }
+
+    #[test]
+    fn php_versions_distinct_and_include_default() {
+        assert!(PHP_VERSIONS.contains(&PHP_VERSION));
+        assert!(PHP_VERSIONS.len() >= 2);
+        let mut seen = std::collections::HashSet::new();
+        for v in PHP_VERSIONS {
+            assert!(seen.insert(v), "duplicate PHP version pinned: {v}");
+        }
+        // Every pinned version's digests resolve for both kinds + arches.
+        for v in PHP_VERSIONS {
+            for kind in ["cli", "fpm"] {
+                assert!(php_sha256(kind, v, Arch::Arm64).is_some());
+                assert!(php_sha256(kind, v, Arch::X86_64).is_some());
+            }
+        }
+        // An unpinned version is rejected.
+        assert!(manifest("php", "8.0.0", "macos", Arch::Arm64).is_none());
+        assert!(php_sha256("cli", "8.0.0", Arch::Arm64).is_none());
     }
 
     #[test]
