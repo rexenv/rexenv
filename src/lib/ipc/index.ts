@@ -71,3 +71,21 @@ export async function stopServices(): Promise<void> {
   if (!isTauri()) return;
   await invoke("stop_services");
 }
+
+/** Read a setting (or null). */
+export async function getSetting(key: string): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("get_setting", { key });
+}
+
+/** Insert/update a setting. No-op outside Tauri. */
+export async function setSetting(key: string, value: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_setting", { key, value });
+}
+
+/** The resolved sites folder (setting or app-data default). */
+export async function sitesFolder(): Promise<string> {
+  if (!isTauri()) return "~/Library/Application Support/dev.rexenv.app/sites";
+  return invoke<string>("sites_folder");
+}

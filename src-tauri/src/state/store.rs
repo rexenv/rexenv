@@ -91,6 +91,26 @@ pub fn set_site_status(conn: &Connection, id: &str, status: ServiceStatus) -> Re
     Ok(affected > 0)
 }
 
+/// Read a setting value by key, or `None` if unset.
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+    let mut rows = stmt.query_map([key], |r| r.get::<_, String>(0))?;
+    match rows.next() {
+        Some(v) => Ok(Some(v?)),
+        None => Ok(None),
+    }
+}
+
+/// Insert or update a setting.
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
 /// The database's current timestamp string, matching the `created_at` column
 /// default (`datetime('now')`). Lets `core/` stamp rows without a time crate
 /// and keeps the format identical to DB-generated values.

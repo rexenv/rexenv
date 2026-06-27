@@ -77,10 +77,14 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     let cert_dir = ssl::site_cert_dir(platform.paths(), &site.domain)?;
     let _ = std::fs::remove_dir_all(&cert_dir);
 
-    // Remove the docroot, but only if it's under our managed sites dir.
-    let sites_root = sites_dir(platform)?;
-    if !site.path.is_empty() && Path::new(&site.path).starts_with(&sites_root) {
-        let _ = std::fs::remove_dir_all(&site.path);
+    // Remove the docroot, but only if it's under a managed sites dir — the
+    // configured one OR the app-data default (so changing the setting doesn't
+    // strand teardown of pre-existing sites).
+    let configured = sites_dir(conn, platform)?;
+    let default_dir = default_sites_dir(platform)?;
+    let path = Path::new(&site.path);
+    if !site.path.is_empty() && (path.starts_with(&configured) || path.starts_with(&default_dir)) {
+        let _ = std::fs::remove_dir_all(path);
     }
 
     Ok(true)
@@ -92,9 +96,21 @@ pub fn needs_database(site_type: SiteType) -> bool {
     matches!(site_type, SiteType::Wordpress | SiteType::Laravel)
 }
 
-/// Root directory for site docroots under app-data.
-fn sites_dir(platform: &dyn Platform) -> Result<PathBuf> {
+/// Settings key for the configurable sites root.
+pub const SITES_DIR_KEY: &str = "sites_dir";
+
+/// Default site docroot root under app-data.
+fn default_sites_dir(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().app_data_dir()?.join("sites"))
+}
+
+/// Root directory for site docroots: the `sites_dir` setting if set, else the
+/// app-data default.
+pub fn sites_dir(conn: &Connection, platform: &dyn Platform) -> Result<PathBuf> {
+    match store::get_setting(conn, SITES_DIR_KEY)? {
+        Some(p) if !p.trim().is_empty() => Ok(PathBuf::from(p)),
+        _ => default_sites_dir(platform),
+    }
 }
 
 /// Provision a new site end-to-end (filesystem + cert + DB row). The docroot is
@@ -115,7 +131,7 @@ pub fn provision(
         )));
     }
 
-    let docroot = sites_dir(platform)?.join(&new.domain);
+    let docroot = sites_dir(conn, platform)?.join(&new.domain);
     std::fs::create_dir_all(&docroot)?;
     if matches!(new.site_type, SiteType::Php) {
         std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
@@ -306,6 +322,31 @@ mod tests {
         assert!(get(&conn, &site.id).unwrap().is_none());
         // Deleting again is a no-op.
         assert!(!teardown(&conn, &*platform, &site.id).unwrap());
+    }
+
+    #[test]
+    fn setting_round_trips_and_upserts() {
+        let conn = db::open_in_memory().unwrap();
+        assert!(store::get_setting(&conn, "k").unwrap().is_none());
+        store::set_setting(&conn, "k", "v").unwrap();
+        assert_eq!(store::get_setting(&conn, "k").unwrap().as_deref(), Some("v"));
+        store::set_setting(&conn, "k", "v2").unwrap();
+        assert_eq!(store::get_setting(&conn, "k").unwrap().as_deref(), Some("v2"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn sites_dir_uses_setting_or_default() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        // Default ends in "sites".
+        assert!(sites_dir(&conn, &*platform).unwrap().ends_with("sites"));
+        // A configured value overrides it.
+        store::set_setting(&conn, SITES_DIR_KEY, "/tmp/custom-sites").unwrap();
+        assert_eq!(
+            sites_dir(&conn, &*platform).unwrap(),
+            PathBuf::from("/tmp/custom-sites")
+        );
     }
 
     #[test]
