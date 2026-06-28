@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
+import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import {
   listPhpVersions,
   listSites,
@@ -36,7 +37,7 @@ const SERVERS: { value: WebServer; label: string }[] = [
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
-type TabKey = "overview" | "wordpress" | "database" | "logs" | "settings";
+type TabKey = "overview" | "wordpress" | "database" | "logs" | "terminal" | "settings";
 
 export function SiteDetail() {
   const { id, tab } = useParams<{ id: string; tab?: TabKey }>();
@@ -85,6 +86,7 @@ export function SiteDetail() {
     { key: "wordpress", label: "WordPress", show: isWordpress },
     { key: "database", label: "Database", show: true },
     { key: "logs", label: "Logs", show: true },
+    { key: "terminal", label: "Terminal", show: true },
     { key: "settings", label: "Settings", show: true },
   ];
 
@@ -116,8 +118,12 @@ export function SiteDetail() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-[18px]">
-        <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <div className={`min-h-0 flex-1 p-[18px] ${active === "terminal" ? "overflow-hidden" : "overflow-auto"}`}>
+        <div
+          className={`mx-auto flex flex-col gap-4 ${
+            active === "terminal" ? "h-full max-w-none" : "max-w-2xl"
+          }`}
+        >
           {active === "overview" && (
             <Overview
               site={site}
@@ -129,6 +135,7 @@ export function SiteDetail() {
               onPhp={(v) => switchPhp.mutate(v)}
               onServer={(s) => switchServer.mutate(s)}
               onDatabase={() => navigate("/databases")}
+              onTerminal={() => navigate(`/sites/${site.id}/terminal`)}
             />
           )}
 
@@ -147,6 +154,7 @@ export function SiteDetail() {
             />
           )}
           {active === "logs" && <LogsTab siteId={site.id} />}
+          {active === "terminal" && <SiteTerminal siteId={site.id} />}
           {active === "settings" && (
             <Placeholder
               icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
@@ -170,6 +178,7 @@ function Overview({
   onPhp,
   onServer,
   onDatabase,
+  onTerminal,
 }: {
   site: Site;
   wp?: WpInfo;
@@ -180,6 +189,7 @@ function Overview({
   onPhp: (v: string) => void;
   onServer: (s: WebServer) => void;
   onDatabase: () => void;
+  onTerminal: () => void;
 }) {
   const url = `https://${site.domain}`;
   const wpConfig = `${site.path}/wp-config.php`;
@@ -200,8 +210,7 @@ function Overview({
           <QuickLink
             icon={<TerminalSquare className="h-4 w-4" />}
             label="Terminal"
-            disabled
-            title="Built-in terminal lands in §4"
+            onClick={onTerminal}
           />
           <QuickLink
             icon={<FolderOpen className="h-4 w-4" />}

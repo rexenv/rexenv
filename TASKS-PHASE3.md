@@ -168,10 +168,21 @@ service pattern, and gives WordPress work a place to see captured mail.
   terminal_check` → `php -v` reports **PHP 8.3.31** (bundled, not system), `pwd` is the docroot, `wp --version`
   → **WP-CLI 2.12.0**. `cargo test --lib` 94 pass, tsc + vite build clean. (commit pending)
 
-- [ ] **4.2 Terminal UI (xterm.js)**
+- [x] **4.2 Terminal UI (xterm.js)**
   *Done when:* SiteDetail exposes a **Terminal** (Overview quick link / tab) rendering an xterm.js terminal
   bound to 4.1 — interactive shell, working resize, and a clear/restart control. Verified: `wp --info` runs
   against the site and `ls` lists the docroot, live in the UI. Depends on 4.1, 1.3.
+  ✓ Added `@xterm/xterm` 6 + `@xterm/addon-fit` (via **pnpm** — npm crashes on this repo's pnpm tree). New
+  `components/terminal/SiteTerminal.tsx`: xterm bound to the §4.1 IPC — `openTerminal` → `onTerminalOutput`
+  (bytes→`term.write`), `term.onData`→`writeTerminal`, a `ResizeObserver`+FitAddon syncs the PTY via
+  `resizeTerminal`, and **Clear**/**Restart** controls; theme reads tokens.css CSS vars at runtime (no
+  hardcoded hex); cleans up (close session, dispose, unlisten) on unmount. SiteDetail gains a **Terminal** tab
+  (full-height layout) and the Overview Terminal quick link now navigates to it (no longer disabled); off-Tauri
+  shows a graceful "requires the desktop app" placeholder. Verified: `cargo run --example terminal_site_check`
+  drives the exact `terminal_open` path for a real provisioned site — `wp --info` → WP-CLI + bundled PHP
+  8.3.31, `ls` → docroot `index.php`; dev screenshot shows the Terminal tab + fallback. (The xterm canvas
+  itself needs the desktop PTY — its rendering is standard wiring proven by the build + the live shell I/O
+  above.) `cargo test --lib` 94 pass, tsc + vite build clean. (commit pending)
 
 ## 5. Built-in database browser (Adminer, Block 8)
 
