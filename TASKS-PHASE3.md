@@ -358,10 +358,17 @@ service pattern, and gives WordPress work a place to see captured mail.
   the local site from the internet** (reachable after ~30s warmup), then `stop` ends it cleanly. `cargo test
   --lib` 102 pass, tsc + vite build clean. (commit pending)
 
-- [ ] **9.2 Tunnels screen (Block 10)**
+- [x] **9.2 Tunnels screen (Block 10)**
   *Done when:* the **Tunnels** screen lists shareable sites; a per-site **Share publicly** toggle starts/stops
   the tunnel (9.1); when active it shows the public URL (mono + copy) + a live status; empty-state per Block
   10. Depends on 9.1.
+  ✓ Rebuilt `routes/Tunnels.tsx`: lists every site with a per-site **Share publicly** switch wired to
+  `startTunnel`/`stopTunnel` (9.1) with Starting…/Stopping… pending text; an active row shows a **Public**
+  badge + the `trycloudflare.com` URL (mono, **copy** + **open** buttons, click→`openExternal`); a
+  `tunnels_status` query (5s poll) drives live state by domain; intro copy notes the one-site scope + "start
+  services first"; empty-state when no sites. `ipc.startTunnel`/`stopTunnel`/`tunnelsStatus` (mock returns one
+  active tunnel off-Tauri). Verified: dev screenshot shows the list with Acme active (URL + copy + open +
+  Public badge, toggle on) and the others off; tsc + vite build clean. (commit pending)
 
 ## 10. WordPress Multisite / Network (cross-cutting, highest-risk — PROJECT_SPEC §2.1)
 

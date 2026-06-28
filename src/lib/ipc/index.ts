@@ -414,7 +414,9 @@ export async function stopTunnel(id: string): Promise<void> {
 
 /** All active public tunnels (domain → URL). Mock fallback outside Tauri. */
 export async function tunnelsStatus(): Promise<TunnelInfo[]> {
-  if (!isTauri()) return [];
+  if (!isTauri()) {
+    return [{ domain: "acme.test", url: "https://blue-cat-runs-fast.trycloudflare.com", running: true }];
+  }
   return invoke<TunnelInfo[]>("tunnels_status");
 }
 
