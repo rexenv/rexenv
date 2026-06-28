@@ -16,6 +16,8 @@ import {
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
+import { AdminerFrame } from "@/components/database/AdminerFrame";
+import { adminerUrl, siteDbName } from "@/lib/adminer";
 import {
   listPhpVersions,
   listSites,
@@ -118,10 +120,14 @@ export function SiteDetail() {
         </div>
       </div>
 
-      <div className={`min-h-0 flex-1 p-[18px] ${active === "terminal" ? "overflow-hidden" : "overflow-auto"}`}>
+      <div
+        className={`min-h-0 flex-1 p-[18px] ${
+          active === "terminal" || active === "database" ? "overflow-hidden" : "overflow-auto"
+        }`}
+      >
         <div
           className={`mx-auto flex flex-col gap-4 ${
-            active === "terminal" ? "h-full max-w-none" : "max-w-2xl"
+            active === "terminal" || active === "database" ? "h-full max-w-none" : "max-w-2xl"
           }`}
         >
           {active === "overview" && (
@@ -146,13 +152,16 @@ export function SiteDetail() {
               hint="Plugins, themes, users & tools land in §6/§7."
             />
           )}
-          {active === "database" && (
-            <Placeholder
-              icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-              label="Database browser"
-              hint="Adminer embeds here in §5."
-            />
-          )}
+          {active === "database" &&
+            (site.type === "php" ? (
+              <Placeholder
+                icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
+                label="No database"
+                hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
+              />
+            ) : (
+              <AdminerFrame src={adminerUrl({ engine: "mysql", db: siteDbName(site.domain) })} />
+            ))}
           {active === "logs" && <LogsTab siteId={site.id} />}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}
           {active === "settings" && (

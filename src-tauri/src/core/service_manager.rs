@@ -167,6 +167,10 @@ impl ServiceManager {
         // MySQL — the site stack needs it (started via the DB engine manager).
         self.ensure_db(platform, DbEngine::Mysql).await?;
 
+        // Adminer docroot (§5.2): download + stage `adminer.php` so the internal
+        // vhost the configs reference is actually served.
+        crate::core::adminer::ensure(platform).await?;
+
         // Mailpit BEFORE the pools so each pool's config can route PHP `mail()` to
         // it (§2.2): resolves the binary (sets `mailpit_bin`) and starts the sink.
         self.ensure_mailpit(platform).await?;

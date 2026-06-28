@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{frankenphp, php, proxy, services, ssl};
+use crate::core::{adminer, frankenphp, php, proxy, services, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{NewSite, ServiceStatus, Site, SiteType, WebServer};
@@ -260,11 +260,19 @@ pub fn rebuild_configs_for(
 ) -> Result<RebuiltConfigs> {
     // Only nginx-served sites get a server block; override servers (§2/§3) have
     // their own backend process.
-    let nginx_sites = sites
+    let mut nginx_sites: Vec<services::NginxSite> = sites
         .iter()
         .filter(|s| is_nginx_served(s))
         .map(nginx_site_for)
         .collect();
+    // Internal Adminer vhost (§5.2): served by the default php-fpm pool, rooted at
+    // its isolated docroot. Not a Site → never a tunnel origin (§9).
+    nginx_sites.push(services::NginxSite {
+        domain: adminer::ADMINER_HOST.to_string(),
+        docroot: adminer::docroot(platform)?,
+        php_fpm_port: services::PHP_FPM_PORT,
+        rewrite: services::RewriteMode::Single,
+    });
     let (nginx_conf, nginx_prefix) =
         services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
 
@@ -281,6 +289,15 @@ pub fn rebuild_configs_for(
             key_path: cert.key_path,
         });
     }
+    // Edge route for the internal Adminer vhost (TLS via local CA → shared nginx).
+    let adminer_cert =
+        ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, adminer::ADMINER_HOST)?;
+    routes.push(proxy::SiteRoute {
+        host: adminer::ADMINER_HOST.to_string(),
+        upstream: format!("127.0.0.1:{nginx_http_port}"),
+        cert_path: adminer_cert.cert_path,
+        key_path: adminer_cert.key_path,
+    });
     let caddyfile = proxy::write_caddyfile(
         platform,
         &proxy::CaddyConfig {

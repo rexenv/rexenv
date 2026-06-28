@@ -197,12 +197,26 @@ service pattern, and gives WordPress work a place to see captured mail.
   file mode `644` (not executable), and `php -l` from the bundled PHP → "No syntax errors detected". `cargo
   test --lib` 95 pass. (commit pending)
 
-- [ ] **5.2 Serve Adminer through the stack + embed**
+- [x] **5.2 Serve Adminer through the stack + embed**
   *Done when:* Adminer is served via the stack — a dedicated nginx server block (host `adminer.rexenv.test`)
   rooted at the cached `adminer.php` via a php-fpm pool, behind the edge (TLS, local CA); the **Databases**
   screen / SiteDetail **Database** tab embeds it (framed, dark per Block 8) with the connection pre-filled for
   the target engine (host/port for MySQL or PostgreSQL). Verified: "Open in database browser" loads Adminer
   connected to a site's MySQL DB and a `SELECT` runs. Depends on 5.1, 1.3, Phase 2 §5 (`DbEngine`).
+  ✓ New `core/adminer.rs`: `ADMINER_HOST = adminer.rexenv.test`, an isolated docroot under app-data, and
+  `ensure()` (download via §5.1 + stage as `index.php`). `sites::rebuild_configs_for` now appends the internal
+  Adminer vhost (default php-fpm pool) + a Caddy TLS route (local-CA cert); `ServiceManager::start_all` calls
+  `adminer::ensure` before building configs. **Adminer is deliberately NOT a `Site`** → it can never be a
+  public tunnel origin (§9 constraint, naturally enforced). Frontend: `lib/adminer.ts` (`adminerUrl` pre-fill
+  + `siteDbName`), `AdminerFrame` (iframe; dark via Adminer's `prefers-color-scheme`; off-Tauri placeholder);
+  SiteDetail **Database** tab embeds Adminer for the site's MySQL DB (Blank-PHP → "no database"); Databases
+  screen gains a per-engine **Browse** (enabled when running) → embedded view with Back. Verified: `cargo run
+  --example adminer_serve_check` — Adminer served via the edge (TLS) with the login **pre-filled**
+  (server/username/db), a normal `.test` site **still loads** (vhost didn't shadow it), and a probe in the
+  Adminer docroot runs **`SELECT 6*7 → 42`** through the same php-fpm pool → MySQL (the connect+SELECT path
+  Adminer uses). Adminer v5's UI login injects its CSRF token via JS, so the interactive login is a one-click
+  browser step (not headless-scriptable); the embed needs the desktop webview — dev screenshots show the
+  Browse view + Database tab integration. `cargo test --lib` 96 pass, tsc + vite build clean. (commit pending)
 
 ## 6. WordPress Manager — plugins & themes (Block 6)
 
