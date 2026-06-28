@@ -229,6 +229,15 @@ impl ShellRunner for MacosShell {
         let out = std::process::Command::new(command).args(args).output()?;
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
+
+    fn open(&self, target: &str) -> Result<()> {
+        let status = std::process::Command::new("open").arg(target).status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("`open {target}` failed: {status}")))
+        }
+    }
 }
 
 pub struct MacosBinaryProvider;

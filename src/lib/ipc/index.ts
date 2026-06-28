@@ -91,9 +91,22 @@ export async function setPhpVersionInstalled(minor: string, installed: boolean):
   await invoke("set_php_version_installed", { minor, installed });
 }
 
+/** Open a path or URL in the OS default handler (Finder / browser). Falls back
+ *  to `window.open` for URLs outside Tauri. */
+export async function openExternal(target: string): Promise<void> {
+  if (!isTauri()) {
+    if (/^https?:\/\//.test(target)) window.open(target, "_blank");
+    return;
+  }
+  await invoke("open_external", { target });
+}
+
 /** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */
 export async function wpInfo(id: string): Promise<WpInfo> {
-  if (!isTauri()) return { isWordpress: false, version: null, multisite: false };
+  if (!isTauri()) {
+    const isWp = mockSites.find((s) => s.id === id)?.type === "wordpress";
+    return { isWordpress: isWp, version: isWp ? "6.8" : null, multisite: false };
+  }
   return invoke<WpInfo>("wp_info", { id });
 }
 

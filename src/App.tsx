@@ -17,6 +17,7 @@ export function App() {
         <Route index element={<Navigate to="/sites" replace />} />
         <Route path="/sites" element={<Sites />} />
         <Route path="/sites/:id" element={<SiteDetail />} />
+        <Route path="/sites/:id/:tab" element={<SiteDetail />} />
         <Route path="/services" element={<Services />} />
         <Route path="/databases" element={<Databases />} />
         <Route path="/mail" element={<Mail />} />

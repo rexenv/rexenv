@@ -97,6 +97,9 @@ impl ShellRunner for LinuxShell {
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
         todo!("linux shell runner")
     }
+    fn open(&self, _target: &str) -> Result<()> {
+        todo!("linux shell open")
+    }
 }
 
 pub struct LinuxBinaryProvider;

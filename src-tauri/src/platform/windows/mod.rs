@@ -98,6 +98,9 @@ impl ShellRunner for WindowsShell {
     fn run(&self, _command: &str, _args: &[String]) -> Result<String> {
         todo!("windows PowerShell runner")
     }
+    fn open(&self, _target: &str) -> Result<()> {
+        todo!("windows shell open")
+    }
 }
 
 pub struct WindowsBinaryProvider;

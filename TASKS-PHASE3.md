@@ -61,12 +61,19 @@ Detail tab shell that the WordPress Manager, Logs tab, and Terminal all live in.
   form). **Multisite toggle deferred to §10** (needs §10.1 convert + migration v3); single-site WP create is
   complete. (commit pending)
 
-- [ ] **1.3 Site Detail tabs + Overview (Block 5)**
+- [x] **1.3 Site Detail tabs + Overview (Block 5)**
   *Done when:* SiteDetail renders the tab bar — **Overview · WordPress · Database · Logs · Settings** — with
   the **WordPress** tab shown only when `wp_info.isWordpress`. Overview shows environment (the existing
   PHP-version + web-server switches from Phase 2 §1.5/§4.2), project/config paths (mono + copy + open-folder),
   quick links (Browser, WP admin, Database, Terminal, Folder), and a recent-logs peek. Routes under
   `/sites/:id/<tab>`; mock fallback outside Tauri. Depends on 1.1.
+  ✓ SiteDetail rebuilt with a tab bar routed at `/sites/:id/:tab` (App.tsx); WordPress tab gated on a
+  `wpInfo` query. Overview = Quick links (Browser/WP-admin/Database/Terminal[disabled→§4]/Folder), Environment
+  (PHP + server switches, type, WP version), Paths (docroot + wp-config with copy + open-folder), recent-logs
+  peek. Open via new `ShellRunner::open` (macOS `open`; win/linux `todo!()`) → `open_external` command →
+  `ipc.openExternal` (window.open fallback off-Tauri); `ipc.wpInfo` mock derives from the mock site type.
+  Verified in dev (chrome-devtools): WP site (acme) shows the WordPress tab + WP-admin link; Laravel site
+  (portfolio) hides both. `cargo test` 83 pass, tsc + vite build clean. (commit pending)
 
 ## 2. Mailpit email catching (Block 9)
 

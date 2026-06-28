@@ -89,6 +89,13 @@ pub struct PortStatus {
     pub free: bool,
 }
 
+/// Open a path or URL in the OS default handler — Finder for a docroot, the
+/// default browser for an `http(s)` link (Phase 3 §1.3 Overview quick links).
+#[tauri::command]
+pub fn open_external(state: State<'_, AppState>, target: String) -> Result<()> {
+    state.platform.shell().open(&target)
+}
+
 /// Probe rexenv's required ports (task 10.1) so the UI can warn about conflicts
 /// (e.g. another stack already on :443) before starting services.
 #[tauri::command]

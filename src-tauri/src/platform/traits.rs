@@ -111,6 +111,10 @@ pub trait PermissionManager: Send + Sync {
 pub trait ShellRunner: Send + Sync {
     /// Run `command` and capture stdout as a string.
     fn run(&self, command: &str, args: &[String]) -> Result<String>;
+
+    /// Open a path or URL in the OS default handler (Finder for a folder, the
+    /// default browser for an `http(s)` URL). macOS: `open <target>`.
+    fn open(&self, target: &str) -> Result<()>;
 }
 
 /// Target architecture, used by `BinaryProvider` to pick the right artifact.
