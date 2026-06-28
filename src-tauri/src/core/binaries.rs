@@ -33,6 +33,9 @@ pub const FRANKENPHP_VERSION: &str = "1.12.4";
 pub const POSTGRES_VERSION: &str = "18.4.0";
 /// Pinned Mailpit version (one static Go binary: SMTP sink + web UI/API). Phase 3 §2.1.
 pub const MAILPIT_VERSION: &str = "1.30.3";
+/// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
+/// PHP — OS-agnostic, like WP-CLI). Phase 3 §5.1.
+pub const ADMINER_VERSION: &str = "5.4.2";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,6 +99,10 @@ const MYSQL_8_4_6_MAC_AMD64_SHA256: &str = "257d36d7ae26c4d1cc616dacf58cd1498c9b
 
 // WP-CLI phar SHA-256 (GitHub release; same artifact on every OS/arch).
 const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c";
+
+// Adminer single-file SHA-256 (GitHub release `adminer-5.4.2-en.php`; same on every
+// OS/arch — a PHP script). English UI, all DB drivers (MySQL + PostgreSQL).
+const ADMINER_5_4_2_SHA256: &str = "f8b1cdc676d72e88d2d470dd05f2dcb7212bf6cdcf78f1eadb7fc292f4cefd39";
 
 // FrankenPHP static binary SHA-256 (computed at pin time from the GitHub release).
 // A fully static Mach-O (embeds PHP + Caddy), so no Homebrew relink is needed.
@@ -291,6 +298,15 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             )),
             archive: Archive::TarGz,
             member: "mailpit",
+        }),
+        // Adminer is a single PHP file (run via the bundled PHP), identical on every OS.
+        ("adminer", _, "5.4.2") => Some(BinarySpec {
+            url: format!(
+                "https://github.com/vrana/adminer/releases/download/v{version}/adminer-{version}-en.php"
+            ),
+            checksum: Checksum::Sha256(ADMINER_5_4_2_SHA256.to_string()),
+            archive: Archive::Raw,
+            member: "adminer.php",
         }),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
         ("wp-cli", _, "2.12.0") => Some(BinarySpec {
@@ -660,6 +676,18 @@ mod tests {
         assert!(a.url.ends_with("wp-cli-2.12.0.phar"));
         assert_eq!(a.member, "wp-cli.phar");
         assert_eq!(a.archive, Archive::Raw);
+        assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_adminer_os_agnostic() {
+        let a = manifest("adminer", ADMINER_VERSION, "macos", Arch::Arm64).unwrap();
+        let b = manifest("adminer", ADMINER_VERSION, "linux", Arch::X86_64).unwrap();
+        assert!(a.url.ends_with("v5.4.2/adminer-5.4.2-en.php"));
+        assert_eq!(a.member, "adminer.php");
+        assert_eq!(a.archive, Archive::Raw);
+        assert!(matches!(a.checksum, Checksum::Sha256(_)));
+        // Same artifact on every OS/arch.
         assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
     }
 

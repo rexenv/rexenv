@@ -186,10 +186,16 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 5. Built-in database browser (Adminer, Block 8)
 
-- [ ] **5.1 Adminer binary provider**
+- [x] **5.1 Adminer binary provider**
   *Done when:* Adminer (single `adminer.php`) resolves via `BinaryProvider::resolve_file` (download +
   checksum-pin; **no chmod/codesign** — a PHP script, like WP-CLI Phase 1 §9.1), cached under app-data;
   `php -l` on it from the bundled PHP passes. Depends on Phase 1 §5.1.
+  ✓ Pinned Adminer `5.4.2` in `core/binaries.rs` — the single-file `adminer-5.4.2-en.php` (English UI, all DB
+  drivers incl. MySQL + PostgreSQL), SHA-256 computed at pin time, manifest as a `Raw`/OS-agnostic artifact
+  (member `adminer.php`, like WP-CLI). Resolved via `resolve_file` → cached under `bin/adminer-5.4.2/adminer.php`
+  with **no chmod/codesign** (it's a script). Verified: `cargo run --example adminer_check` — resolves,
+  file mode `644` (not executable), and `php -l` from the bundled PHP → "No syntax errors detected". `cargo
+  test --lib` 95 pass. (commit pending)
 
 - [ ] **5.2 Serve Adminer through the stack + embed**
   *Done when:* Adminer is served via the stack — a dedicated nginx server block (host `adminer.rexenv.test`)
