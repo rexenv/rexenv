@@ -141,7 +141,11 @@ service pattern, and gives WordPress work a place to see captured mail.
   *Done when:* the **Users** sub-tab lists `wp user list --format=json` (login, email, role); Add user
   (`wp user create`); and a per-row **Log in as** opens the browser already authenticated as that user, via a
   WP-CLI one-time login (a temporary mu-plugin that consumes a single-use token, or the `wp-cli-login`
-  package). Verified: "Log in as admin" opens `wp-admin` logged in, no password prompt. Depends on 1.3.
+  package). **Security:** the auto-login token MUST be single-use, short-TTL (expires in seconds–minutes),
+  AND accepted only for loopback/local requests (e.g. bound to `127.0.0.1`/`localhost` Host + a
+  `REMOTE_ADDR` loopback check) — so a captured token can NOT be replayed through a public Cloudflare
+  tunnel (§9) while the site is shared. Verified: "Log in as admin" opens `wp-admin` logged in, no password
+  prompt; the same token fails on a second use AND when presented with a non-loopback Host. Depends on 1.3.
 
 - [ ] **7.2 Tools (WP_DEBUG · search-replace · permalinks · core update)**
   *Done when:* the **Tools** sub-tab offers a **WP_DEBUG** toggle (`wp config set WP_DEBUG true --raw` / `wp
@@ -173,10 +177,14 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 - [ ] **9.1 cloudflared provider + per-site quick tunnel**
   *Done when:* `cloudflared` resolves via `BinaryProvider` (sign + de-quarantine); a per-site **quick tunnel**
-  starts (`cloudflared tunnel --url …` pointed at the site's local origin — the shared nginx HTTP port with
-  the site Host, or the edge with `--no-tls-verify` for the local-CA origin), with the generated
+  starts (`cloudflared tunnel --url http://127.0.0.1:<shared-nginx-http-port> --http-host-header=<site
+  domain>`) — origin is the **shared nginx HTTP port** with the site `Host` (plain-HTTP origin; cloudflared
+  provides the external TLS, so there's NO local-CA origin-trust issue and no `--no-tls-verify`), with the
+  generated
   `https://<random>.trycloudflare.com` URL parsed from cloudflared's output; the tunnel is owned by
-  `ServiceManager` / a registry (start/stop per site). Verified: enabling sharing yields a public
+  `ServiceManager` / a registry (start/stop per site). **A tunnel is scoped to ONE site's Host only** — never
+  the edge wildcard and never an internal vhost (`adminer.rexenv.test`, Mailpit, etc.), so sharing one site
+  cannot expose another site or a tooling vhost. Verified: enabling sharing yields a public
   `trycloudflare.com` URL that loads the local site from outside; stopping ends it. Depends on Phase 1 §10.5.
 
 - [ ] **9.2 Tunnels screen (Block 10)**
@@ -204,8 +212,11 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   (SAN `*.mysite.test`, **Phase 1 §3.2**) is used and the edge Caddy route matches the wildcard host
   (`mysite.test, *.mysite.test` → the same backend). Verified: `https://a.mysite.test` and
   `https://b.mysite.test` both load network sub-sites with a valid lock — `openssl s_client` shows SAN
-  `DNS:*.mysite.test`, issuer = our local CA (DNS resolves `*.test` free, **Phase 1 §2.1**). Depends on 10.1,
-  Phase 1 §3.2.
+  `DNS:*.mysite.test`, issuer = our local CA (DNS resolves `*.test` free, **Phase 1 §2.1**). **Negative
+  check (precedence footgun):** adding the `*.mysite.test` host route MUST NOT overshadow the default
+  `*.test` → shared-nginx route — verify a normal non-multisite site (e.g. `https://other.test`) STILL
+  loads after the wildcard route is added (the specific `mysite.test`/`*.mysite.test` matcher must win only
+  for that domain; everything else falls through to the shared-nginx route). Depends on 10.1, Phase 1 §3.2.
 
 - [ ] **10.3 Network UI (Network sub-tab, Block 6)**
   *Done when:* the **Network** sub-tab (multisite only) shows a **mode badge** (Subdomain/Subdirectory); a
@@ -258,8 +269,11 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   `AutostartManager` (already defined, stubbed) is only filled if §11.1 is taken.
 - **Schema:** migration v3 adds `sites.multisite` (`none|subdomain|subdirectory`). No other schema change
   expected (Mailpit/Adminer/tunnels are runtime services, not persisted per-site).
-- **Tunnels origin:** cloudflared targets the local site through nginx/the edge; the local-CA origin cert
-  means `--no-tls-verify` (or target the shared nginx HTTP port with the site `Host`).
+- **Tunnels origin:** cloudflared targets the **shared nginx HTTP port** with the site `Host`
+  (`--http-host-header`) — a plain-HTTP origin. cloudflared terminates the external TLS, so there is NO
+  local-CA origin-trust issue and `--no-tls-verify` is unnecessary. A tunnel is scoped to **one site's Host
+  only** — never the edge wildcard, never an internal/tooling vhost (`adminer.rexenv.test`, Mailpit) — so
+  sharing one site can't expose another site or a tool.
 - **Verification pattern carries over:** lib unit tests + standalone `src-tauri/examples/*.rs` for live
   checks — real `wp plugin list` output, an email actually landing in Mailpit (API count), a real
   `trycloudflare.com` URL loading, `openssl` wildcard SAN + issuer, `phpinfo()` showing Xdebug.
