@@ -17,8 +17,22 @@ pub const PHP_FPM_PORT: u16 = 9783;
 
 /// Render a php-fpm config: one foreground `[global]` master + one `[www]` pool
 /// on `127.0.0.1:<port>`. The pool generator is per-version so more versions can
-/// be added later, each on its own port.
-pub fn generate_fpm_config(port: u16, pid_file: &Path, log_file: &Path) -> String {
+/// be added later, each on its own port. When `sendmail_path` is `Some`, the pool
+/// pins `php_admin_value[sendmail_path]` so every site's PHP `mail()` is routed
+/// through that shim (Mailpit, §2.2) — sites can't override it (`_admin_`).
+pub fn generate_fpm_config(
+    port: u16,
+    pid_file: &Path,
+    log_file: &Path,
+    sendmail_path: Option<&str>,
+) -> String {
+    // Wrap the value in DOUBLE quotes: PHP's ini parser strips the outer quotes
+    // but preserves the inner single-quoted binary path verbatim, so the shim's
+    // space-containing path survives to `sh -c`. (Bare single quotes get eaten by
+    // the ini parser, leaving an unquoted path that `sh` splits on the space.)
+    let sendmail = sendmail_path
+        .map(|p| format!("php_admin_value[sendmail_path] = \"{p}\"\n"))
+        .unwrap_or_default();
     format!(
         "[global]\n\
          pid = {pid}\n\
@@ -32,15 +46,22 @@ pub fn generate_fpm_config(port: u16, pid_file: &Path, log_file: &Path) -> Strin
          pm.start_servers = 2\n\
          pm.min_spare_servers = 1\n\
          pm.max_spare_servers = 3\n\
-         catch_workers_output = yes\n",
+         catch_workers_output = yes\n\
+         {sendmail}",
         pid = pid_file.display(),
         log = log_file.display(),
     )
 }
 
 /// Write the php-fpm config for `version` (on `port`) under the config dir,
-/// creating the run/log dirs. Returns the config path.
-pub fn write_fpm_config(platform: &dyn Platform, version: &str, port: u16) -> Result<PathBuf> {
+/// creating the run/log dirs. `sendmail_path` (when set) routes the pool's PHP
+/// `mail()` to Mailpit (§2.2). Returns the config path.
+pub fn write_fpm_config(
+    platform: &dyn Platform,
+    version: &str,
+    port: u16,
+    sendmail_path: Option<&str>,
+) -> Result<PathBuf> {
     let config_dir = platform.paths().config_dir()?;
     let log_dir = platform.paths().log_dir()?;
     let run_dir = platform.paths().app_data_dir()?.join("run");
@@ -51,7 +72,7 @@ pub fn write_fpm_config(platform: &dyn Platform, version: &str, port: u16) -> Re
     let conf = config_dir.join(format!("php-fpm-{version}.conf"));
     let pid = run_dir.join(format!("php-fpm-{version}.pid"));
     let log = log_dir.join(format!("php-fpm-{version}.log"));
-    std::fs::write(&conf, generate_fpm_config(port, &pid, &log))?;
+    std::fs::write(&conf, generate_fpm_config(port, &pid, &log, sendmail_path))?;
     Ok(conf)
 }
 
@@ -375,6 +396,7 @@ mod tests {
             9783,
             Path::new("/run/php-fpm-8.3.pid"),
             Path::new("/logs/php-fpm-8.3.log"),
+            None,
         );
         assert!(cfg.contains("[global]"));
         assert!(cfg.contains("daemonize = no"));
@@ -386,6 +408,24 @@ mod tests {
         // No user/group: we run as the current user, not root.
         assert!(!cfg.contains("\nuser ="));
         assert!(!cfg.contains("\ngroup ="));
+        // No mail routing unless requested.
+        assert!(!cfg.contains("sendmail_path"));
+    }
+
+    #[test]
+    fn fpm_config_pins_sendmail_path_when_given() {
+        let shim = "'/opt/mailpit' sendmail -t -S 127.0.0.1:1025";
+        let cfg = generate_fpm_config(
+            9783,
+            Path::new("/run/php-fpm-8.3.pid"),
+            Path::new("/logs/php-fpm-8.3.log"),
+            Some(shim),
+        );
+        // Routed via php_admin_value (sites can't override it), double-quoted so
+        // the ini parser preserves the inner single-quoted binary path.
+        assert!(cfg.contains(&format!("php_admin_value[sendmail_path] = \"{shim}\"")));
+        // Sits inside the [www] pool, after the pm.* directives.
+        assert!(cfg.find("[www]").unwrap() < cfg.find("sendmail_path").unwrap());
     }
 
     #[test]

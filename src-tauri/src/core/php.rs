@@ -155,9 +155,19 @@ struct Pool {
 #[derive(Default)]
 pub struct PhpFpmPools {
     pools: Vec<Pool>,
+    /// `php_admin_value[sendmail_path]` baked into every pool's config so site PHP
+    /// `mail()` is routed to Mailpit (§2.2). Set by `ServiceManager` once Mailpit's
+    /// binary is resolved; `None` ⇒ pools use PHP's default sendmail.
+    sendmail_path: Option<String>,
 }
 
 impl PhpFpmPools {
+    /// Set the mail-routing shim used when (re)writing pool configs. Applies to
+    /// pools started afterward (a running pool keeps its config until restarted).
+    pub fn set_sendmail_path(&mut self, sendmail_path: Option<String>) {
+        self.sendmail_path = sendmail_path;
+    }
+
     /// Start a pool for `minor` if one isn't already running. Idempotent: resolves
     /// (downloads on first use) the version's `php-fpm`, gates on a free port, then
     /// writes the pool config and spawns the foreground master.
@@ -171,7 +181,7 @@ impl PhpFpmPools {
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
         ports::ensure_free(port, ports::Proto::Tcp, "PHP-FPM")?;
         let bin = binaries::resolve(platform, "php-fpm", patch).await?;
-        let conf = services::write_fpm_config(platform, minor, port)?;
+        let conf = services::write_fpm_config(platform, minor, port, self.sendmail_path.as_deref())?;
         let child = services::start_fpm(platform, &bin, &conf)?;
         self.pools.push(Pool {
             minor: minor.to_string(),

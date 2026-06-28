@@ -9,7 +9,7 @@
 use crate::core::ports;
 use crate::error::Result;
 use crate::platform::traits::Platform;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 
 /// SMTP bind port — where php-fpm's sendmail shim delivers (§2.2).
@@ -25,6 +25,18 @@ pub fn data_dir(platform: &dyn Platform) -> Result<PathBuf> {
 /// Base URL of the Mailpit HTTP API / web UI.
 pub fn api_base() -> String {
     format!("http://127.0.0.1:{MAILPIT_HTTP_PORT}")
+}
+
+/// The php-fpm `sendmail_path` shim that routes a site's PHP `mail()` into
+/// Mailpit's SMTP sink (§2.2): Mailpit's own `sendmail` subcommand aimed at the
+/// local SMTP port. The binary path is single-quoted (app-data paths contain
+/// spaces) since PHP runs this via `/bin/sh -c`. `-t` is accepted for sendmail
+/// compatibility; `-S` selects the SMTP server.
+pub fn sendmail_path(mailpit_bin: &Path) -> String {
+    format!(
+        "'{}' sendmail -t -S 127.0.0.1:{MAILPIT_SMTP_PORT}",
+        mailpit_bin.display()
+    )
 }
 
 /// Start the Mailpit server (loopback SMTP + HTTP, persistent DB) via
@@ -68,5 +80,14 @@ mod tests {
     #[test]
     fn ports_are_distinct() {
         assert_ne!(MAILPIT_SMTP_PORT, MAILPIT_HTTP_PORT);
+    }
+
+    #[test]
+    fn sendmail_path_quotes_binary_and_targets_smtp() {
+        let shim = sendmail_path(Path::new("/App Support/bin/mailpit"));
+        // Binary path single-quoted (it contains a space).
+        assert!(shim.starts_with("'/App Support/bin/mailpit' sendmail"));
+        assert!(shim.contains("-t"));
+        assert!(shim.contains("-S 127.0.0.1:1025"));
     }
 }

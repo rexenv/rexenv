@@ -65,7 +65,7 @@ async fn main() {
 
     // Shared web stack.
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
-    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT).unwrap();
+    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None).unwrap();
     let mut fpm = services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap();
     let mut ngx = services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     let mut cad = proxy::start(&*plat, &caddy, &cfg.caddyfile).unwrap();

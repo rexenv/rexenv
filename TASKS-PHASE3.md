@@ -95,12 +95,22 @@ service pattern, and gives WordPress work a place to see captured mail.
   "Open Mailpit". Verified: `cargo run --example mailpit_check` → version runs, `:1025` connects, `GET
   /api/v1/messages` → 200. `cargo test --lib` 86 pass, tsc + vite build clean. (commit pending)
 
-- [ ] **2.2 Route site outgoing mail → Mailpit**
+- [x] **2.2 Route site outgoing mail → Mailpit**
   *Done when:* PHP `mail()` from any site is captured — each php-fpm pool sets
   `php_admin_value[sendmail_path]` to Mailpit's sendmail shim aimed at the local SMTP
-  (`<mailpit> sendmail -t --smtp-addr 127.0.0.1:1025`); changing it is a **pool config rewrite + reload** (no
+  (`<mailpit> sendmail -t -S 127.0.0.1:1025`); changing it is a **pool config rewrite + reload** (no
   rebuild). Verified: `wp eval 'wp_mail("a@b.test","hi","body")'` (or a WP password-reset) on a real site
   increments Mailpit's API message count — a real email captured. Depends on 2.1, Phase 2 §1.2.
+  ✓ `core/mail.rs` `sendmail_path(bin)` builds the shim (`'<bin>' sendmail -t -S 127.0.0.1:1025`);
+  `services::generate_fpm_config` pins it as `php_admin_value[sendmail_path]` (sites can't override) in the
+  `[www]` pool. `PhpFpmPools` holds the shim (`set_sendmail_path`), baked into each pool's config at start;
+  `ServiceManager::start_all` resolves Mailpit FIRST, then sets the shim before starting pools. **Two
+  gotchas, both verified-then-fixed:** Mailpit's real flag is `-S` (not the drafted `--smtp-addr`, which it
+  rejects); and the ini value MUST be **double-quoted** — PHP's ini parser strips bare single quotes, leaving
+  the space-containing binary path unquoted so `sh -c` splits it (`sh: …/Application: not found` → `mail()`
+  returns false). Verified: `cargo run --example mail_route_check` provisions a PHP site, brings up the stack,
+  requests a `mail()` page through the edge (Caddy→Nginx→php-fpm), and Mailpit's `total` goes 0→1 with the
+  subject captured. `cargo test --lib` 88 pass. (commit pending)
 
 - [ ] **2.3 Mail screen (two-pane inbox)**
   *Done when:* the **Mail** screen (Block 9) lists captured messages from Mailpit's HTTP API

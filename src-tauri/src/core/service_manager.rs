@@ -167,6 +167,12 @@ impl ServiceManager {
         // MySQL — the site stack needs it (started via the DB engine manager).
         self.ensure_db(platform, DbEngine::Mysql).await?;
 
+        // Mailpit BEFORE the pools so each pool's config can route PHP `mail()` to
+        // it (§2.2): resolves the binary (sets `mailpit_bin`) and starts the sink.
+        self.ensure_mailpit(platform).await?;
+        let sendmail = self.mailpit_bin.as_ref().map(|b| mail::sendmail_path(b));
+        self.pools.set_sendmail_path(sendmail);
+
         // PHP-FPM: one pool per installed PHP version (always at least the default,
         // so the single-site path keeps working). Pools own their deterministic ports.
         let mut minors: Vec<String> = php_minors.to_vec();
@@ -211,9 +217,6 @@ impl ServiceManager {
                 self.caddy = CaddyHandle::Child(proxy::start(platform, &bins.caddy, &cfg.caddyfile)?);
             }
         }
-
-        // Mailpit mail-catcher — part of the supervised stack (§2.1).
-        self.ensure_mailpit(platform).await?;
         Ok(())
     }
 
