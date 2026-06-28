@@ -6,10 +6,12 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
+  mockMailDetail,
+  mockMailList,
   mockPhpVersions,
   mockServices,
   mockSites,
@@ -116,6 +118,43 @@ export async function mailpitStatus(): Promise<MailpitStatus> {
     return { running: true, smtpPort: 1025, httpPort: 8025, uiUrl: "http://127.0.0.1:8025" };
   }
   return invoke<MailpitStatus>("mailpit_status");
+}
+
+/** Inbox listing, optionally filtered by a Mailpit search query. Mock outside Tauri. */
+export async function mailpitMessages(query?: string): Promise<MailList> {
+  if (!isTauri()) {
+    const q = query?.trim().toLowerCase();
+    if (!q) return mockMailList;
+    const messages = mockMailList.messages.filter(
+      (m) =>
+        m.subject.toLowerCase().includes(q) ||
+        m.from.address.toLowerCase().includes(q) ||
+        m.snippet.toLowerCase().includes(q),
+    );
+    return { total: messages.length, unread: messages.filter((m) => !m.read).length, messages };
+  }
+  return invoke<MailList>("mailpit_messages", { query });
+}
+
+/** One message (body + headers) for the preview pane. Mock outside Tauri. */
+export async function mailpitMessage(id: string): Promise<MailDetail> {
+  if (!isTauri()) return mockMailDetail(id);
+  return invoke<MailDetail>("mailpit_message", { id });
+}
+
+/** Raw RFC-822 source of a message. Mock outside Tauri. */
+export async function mailpitMessageRaw(id: string): Promise<string> {
+  if (!isTauri()) {
+    const d = mockMailDetail(id);
+    return `From: ${d.from.address}\r\nTo: ${d.to.map((t) => t.address).join(", ")}\r\nSubject: ${d.subject}\r\n\r\n${d.text}`;
+  }
+  return invoke<string>("mailpit_message_raw", { id });
+}
+
+/** Delete all captured messages ("Clear all"). No-op outside Tauri. */
+export async function mailpitClear(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("mailpit_clear");
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

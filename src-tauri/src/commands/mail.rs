@@ -26,3 +26,30 @@ pub async fn mailpit_status(_state: State<'_, AppState>) -> Result<MailpitStatus
         ui_url: mail::api_base(),
     })
 }
+
+/// Inbox listing, optionally filtered by a Mailpit search query (§2.3).
+#[tauri::command]
+pub async fn mailpit_messages(
+    _state: State<'_, AppState>,
+    query: Option<String>,
+) -> Result<mail::MailList> {
+    mail::list(query.as_deref()).await
+}
+
+/// One message (body + headers) for the preview pane; marks it read.
+#[tauri::command]
+pub async fn mailpit_message(_state: State<'_, AppState>, id: String) -> Result<mail::MailDetail> {
+    mail::detail(&id).await
+}
+
+/// Raw RFC-822 source of a message.
+#[tauri::command]
+pub async fn mailpit_message_raw(_state: State<'_, AppState>, id: String) -> Result<String> {
+    mail::raw(&id).await
+}
+
+/// Delete all captured messages ("Clear all").
+#[tauri::command]
+pub async fn mailpit_clear(_state: State<'_, AppState>) -> Result<()> {
+    mail::delete_all().await
+}

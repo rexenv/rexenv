@@ -103,3 +103,46 @@ export interface MailpitStatus {
   httpPort: number;
   uiUrl: string;
 }
+
+/** An email address (display name may be empty). */
+export interface MailAddress {
+  name: string;
+  address: string;
+}
+
+/** One captured message in the inbox list (mirrors the Rust MailSummary DTO). */
+export interface MailSummary {
+  id: string;
+  from: MailAddress;
+  to: MailAddress[];
+  subject: string;
+  created: string; // ISO timestamp
+  read: boolean;
+  snippet: string;
+}
+
+/** The inbox listing (counts + a page of messages). */
+export interface MailList {
+  total: number;
+  unread: number;
+  messages: MailSummary[];
+}
+
+/** One header row (repeated values joined). */
+export interface MailHeader {
+  name: string;
+  value: string;
+}
+
+/** A full message for the preview pane (mirrors the Rust MailDetail DTO). */
+export interface MailDetail {
+  id: string;
+  from: MailAddress;
+  to: MailAddress[];
+  cc: MailAddress[];
+  subject: string;
+  date: string;
+  text: string;
+  html: string;
+  headers: MailHeader[];
+}

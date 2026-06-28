@@ -112,10 +112,20 @@ service pattern, and gives WordPress work a place to see captured mail.
   requests a `mail()` page through the edge (Caddy→Nginx→php-fpm), and Mailpit's `total` goes 0→1 with the
   subject captured. `cargo test --lib` 88 pass. (commit pending)
 
-- [ ] **2.3 Mail screen (two-pane inbox)**
+- [x] **2.3 Mail screen (two-pane inbox)**
   *Done when:* the **Mail** screen (Block 9) lists captured messages from Mailpit's HTTP API
   (from/to/subject/time/unread) via typed IPC; the preview pane shows **HTML / Text / Raw** + headers; a
   search field and **Clear all** (`DELETE /api/v1/messages`) work; empty-state copy per Block 9. Depends on 2.1.
+  ✓ `core/mail.rs` gained a typed HTTP-API client (`list`/`detail`/`raw`/`delete_all`, reshaping Mailpit's
+  PascalCase JSON into camelCase DTOs — `MailList`/`MailSummary`/`MailDetail`/`MailHeader`; headers merged from
+  the `/headers` endpoint; search via `/api/v1/search?query=` with a tiny built-in percent-encoder). Commands
+  `mailpit_messages`/`mailpit_message`/`mailpit_message_raw`/`mailpit_clear` + typed `ipc.*` wrappers (mock
+  inbox off-Tauri). Mail screen rebuilt as a two-pane inbox: searchable list (unread dot, from, time,
+  subject, snippet) + preview (From/To/Cc, **HTML**[sandboxed iframe]/**Text**/**Raw** tabs, Headers panel),
+  plus the running pill, Open Mailpit, and Clear all; empty-states for no-mail / no-selection / no-match. UI
+  never calls Mailpit directly (typed-IPC rule). Verified: `cargo run --example mail_api_check` (real Mailpit
+  — list=2, search 'shipped'=1 hit, detail+7 headers, raw 409 B, clear→0); dev screenshots show the list +
+  HTML preview + headers. `cargo test --lib` 89 pass, tsc + vite build clean. (commit pending)
 
 ## 3. Real-time log viewer (Block 5 Logs tab)
 
