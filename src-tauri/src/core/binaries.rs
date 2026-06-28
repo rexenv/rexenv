@@ -31,6 +31,8 @@ pub const FRANKENPHP_VERSION: &str = "1.12.4";
 /// Pinned PostgreSQL version (theseus-rs portable build — a full bin/lib/share
 /// tree, like MySQL). Phase 2 §5.3.
 pub const POSTGRES_VERSION: &str = "18.4.0";
+/// Pinned Mailpit version (one static Go binary: SMTP sink + web UI/API). Phase 3 §2.1.
+pub const MAILPIT_VERSION: &str = "1.30.3";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +108,12 @@ const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "a262f0003447363b91f03270674899
 const POSTGRES_18_4_0_MAC_ARM64_SHA256: &str = "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2";
 const POSTGRES_18_4_0_MAC_AMD64_SHA256: &str = "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d";
 
+// Mailpit static binary SHA-256 (computed at pin time — the project publishes no
+// checksums file; each darwin tarball downloaded and hashed). A static Go Mach-O
+// (no Homebrew deps to relink), de-quarantined + ad-hoc signed by prepare_binary.
+const MAILPIT_1_30_3_MAC_ARM64_SHA256: &str = "46b68e5701c32f2137e97d325605f7e8f0fbb6518e567b7589147c3534bd943e";
+const MAILPIT_1_30_3_MAC_AMD64_SHA256: &str = "ea8c2f5ac717ece100b453de282474b46e8f4c327d3e61bee6348f60989eade3";
+
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
     match arch {
@@ -141,6 +149,12 @@ fn postgres_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "aarch64",
         Arch::X86_64 => "x86_64",
+    }
+}
+fn mailpit_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "arm64",
+        Arch::X86_64 => "amd64",
     }
 }
 
@@ -263,6 +277,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             )),
             archive: Archive::Raw,
             member: "frankenphp",
+        }),
+        ("mailpit", "macos", "1.30.3") => Some(BinarySpec {
+            // One static Go binary per arch, inside a tar.gz (member `mailpit`).
+            url: format!(
+                "https://github.com/axllent/mailpit/releases/download/v{version}/mailpit-darwin-{}.tar.gz",
+                mailpit_arch(arch)
+            ),
+            checksum: Checksum::Sha256(pick(
+                arch,
+                MAILPIT_1_30_3_MAC_ARM64_SHA256,
+                MAILPIT_1_30_3_MAC_AMD64_SHA256,
+            )),
+            archive: Archive::TarGz,
+            member: "mailpit",
         }),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
         ("wp-cli", _, "2.12.0") => Some(BinarySpec {
@@ -608,6 +636,19 @@ mod tests {
 
         let amd = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("frankenphp-mac-x86_64"));
+        assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_mailpit_as_tar_member() {
+        let arm = manifest("mailpit", MAILPIT_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(arm.url.ends_with("v1.30.3/mailpit-darwin-arm64.tar.gz"));
+        assert_eq!(arm.archive, Archive::TarGz);
+        assert_eq!(arm.member, "mailpit");
+        assert!(matches!(arm.checksum, Checksum::Sha256(_)));
+
+        let amd = manifest("mailpit", MAILPIT_VERSION, "macos", Arch::X86_64).unwrap();
+        assert!(amd.url.ends_with("mailpit-darwin-amd64.tar.gz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 

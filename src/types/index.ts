@@ -95,3 +95,11 @@ export interface WpInfo {
   version: string | null; // wp core version, when WordPress
   multisite: boolean;
 }
+
+/** Mailpit mail-catcher health + endpoints (mirrors the Rust MailpitStatus DTO). */
+export interface MailpitStatus {
+  running: boolean;
+  smtpPort: number;
+  httpPort: number;
+  uiUrl: string;
+}

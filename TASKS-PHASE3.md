@@ -80,12 +80,20 @@ Detail tab shell that the WordPress Manager, Logs tab, and Terminal all live in.
 First of the lower-risk tooling — establishes the Phase-3 `BinaryProvider`-for-a-single-binary + managed
 service pattern, and gives WordPress work a place to see captured mail.
 
-- [ ] **2.1 Mailpit binary provider + lifecycle**
+- [x] **2.1 Mailpit binary provider + lifecycle**
   *Done when:* Mailpit (single binary) resolves via `BinaryProvider` (sign + de-quarantine), starts via
   `ProcessSupervisor::spawn_logged` on a fixed **SMTP port** (`1025`) + **HTTP/API port** (`8025`), port-gated
   (`core/ports`), owned by `ServiceManager` (start/stop/status); `services_status` + the Mail screen show it
   running. Verified: `mailpit version` runs; after start, `:1025` accepts a connection and `GET
   /api/v1/messages` (`:8025`) responds. Depends on Phase 1 §10.5.
+  ✓ Pinned Mailpit `1.30.3` (TarGz member `mailpit`, SHA-256 computed at pin time — project ships no checksums)
+  in `core/binaries.rs`, resolved via `resolve` (de-quarantine + ad-hoc sign; static Go binary, no relink). New
+  `core/mail.rs` service module: SMTP `1025` / HTTP `8025` consts, persistent DB under app-data, `spawn_logged`
+  start/stop/`running()` probe. `ServiceManager` owns it (`ensure_mailpit`/`stop_mailpit`, started in
+  `start_all`, stopped in `stop_all`, listed in `status()` → flows through `services_status`); ports registered
+  in `core/ports`. `mailpit_status` IPC + `ipc.mailpitStatus`; Mail screen shows a running pill + endpoints +
+  "Open Mailpit". Verified: `cargo run --example mailpit_check` → version runs, `:1025` connects, `GET
+  /api/v1/messages` → 200. `cargo test --lib` 86 pass, tsc + vite build clean. (commit pending)
 
 - [ ] **2.2 Route site outgoing mail → Mailpit**
   *Done when:* PHP `mail()` from any site is captured — each php-fpm pool sets

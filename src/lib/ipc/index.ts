@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -108,6 +108,14 @@ export async function wpInfo(id: string): Promise<WpInfo> {
     return { isWordpress: isWp, version: isWp ? "6.8" : null, multisite: false };
   }
   return invoke<WpInfo>("wp_info", { id });
+}
+
+/** Mailpit mail-catcher status + endpoints. Mock fallback outside Tauri. */
+export async function mailpitStatus(): Promise<MailpitStatus> {
+  if (!isTauri()) {
+    return { running: true, smtpPort: 1025, httpPort: 8025, uiUrl: "http://127.0.0.1:8025" };
+  }
+  return invoke<MailpitStatus>("mailpit_status");
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

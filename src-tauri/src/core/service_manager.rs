@@ -9,7 +9,7 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{binaries, frankenphp, php, ports, proxy, services, sites, ssl};
+use crate::core::{binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, WebServer};
@@ -84,6 +84,9 @@ pub struct ServiceManager {
     frankenphp_bin: Option<PathBuf>,
     nginx: Option<Child>,
     caddy: CaddyHandle,
+    /// Mailpit mail-catcher (§2.1), resolved + started lazily.
+    mailpit: Option<Child>,
+    mailpit_bin: Option<PathBuf>,
 }
 
 impl ServiceManager {
@@ -97,6 +100,8 @@ impl ServiceManager {
             frankenphp_bin: None,
             nginx: None,
             caddy: CaddyHandle::Stopped,
+            mailpit: None,
+            mailpit_bin: None,
         }
     }
 
@@ -206,6 +211,9 @@ impl ServiceManager {
                 self.caddy = CaddyHandle::Child(proxy::start(platform, &bins.caddy, &cfg.caddyfile)?);
             }
         }
+
+        // Mailpit mail-catcher — part of the supervised stack (§2.1).
+        self.ensure_mailpit(platform).await?;
         Ok(())
     }
 
@@ -219,6 +227,36 @@ impl ServiceManager {
     /// when a site switches to a PHP version whose pool isn't up yet (§1.4).
     pub async fn ensure_php_pool(&mut self, platform: &dyn Platform, minor: &str) -> Result<()> {
         self.pools.ensure(platform, minor).await
+    }
+
+    /// Ensure Mailpit is running (resolve its binary + spawn on first use),
+    /// port-gated on its SMTP + HTTP ports. Idempotent. Owns start lifecycle (§2.1).
+    pub async fn ensure_mailpit(&mut self, platform: &dyn Platform) -> Result<()> {
+        if self.mailpit.is_some() {
+            return Ok(());
+        }
+        ports::ensure_free(mail::MAILPIT_SMTP_PORT, ports::Proto::Tcp, "Mailpit (SMTP)")?;
+        ports::ensure_free(mail::MAILPIT_HTTP_PORT, ports::Proto::Tcp, "Mailpit (HTTP)")?;
+        let bin = match &self.mailpit_bin {
+            Some(p) => p.clone(),
+            None => {
+                let p = binaries::resolve(platform, "mailpit", binaries::MAILPIT_VERSION).await?;
+                self.mailpit_bin = Some(p.clone());
+                p
+            }
+        };
+        self.mailpit = Some(mail::start(platform, &bin)?);
+        wait_until(mail::running, 20);
+        Ok(())
+    }
+
+    /// Stop Mailpit if we manage it (no-op otherwise).
+    pub fn stop_mailpit(&mut self, platform: &dyn Platform) -> Result<()> {
+        if let Some(mut child) = self.mailpit.take() {
+            let _ = mail::stop(platform, child.id());
+            let _ = child.wait();
+        }
+        Ok(())
     }
 
     /// FrankenPHP binary, resolved + cached on first use.
@@ -320,6 +358,7 @@ impl ServiceManager {
             }
             CaddyHandle::Stopped => {}
         }
+        self.stop_mailpit(platform)?;
         self.pools.stop_all(platform);
         for (_domain, mut child) in std::mem::take(&mut self.overrides) {
             let _ = frankenphp::stop(platform, child.id());
@@ -392,6 +431,12 @@ impl ServiceManager {
             },
             port: self.ports.https,
         });
+        infos.push(ServiceInfo {
+            name: "Mailpit".to_string(),
+            running: mail::running(),
+            pid: self.mailpit.as_ref().map(Child::id),
+            port: mail::MAILPIT_HTTP_PORT,
+        });
         infos
     }
 }
@@ -406,6 +451,9 @@ impl Drop for ServiceManager {
         }
         for child in self.overrides.values_mut() {
             let _ = child.kill();
+        }
+        if let Some(c) = &mut self.mailpit {
+            let _ = c.kill();
         }
         if let Some(c) = &mut self.nginx {
             let _ = c.kill();
@@ -453,9 +501,9 @@ mod tests {
         let m = ServiceManager::default();
         let s = m.status();
         let names: Vec<_> = s.iter().map(|i| i.name.as_str()).collect();
-        // When stopped: the available DB engines (always listed) + Nginx + Caddy.
-        // No php-fpm pools or FrankenPHP overrides (those appear only when running).
-        assert_eq!(names, vec!["MySQL", "PostgreSQL", "Nginx", "Caddy"]);
+        // When stopped: the available DB engines (always listed) + Nginx + Caddy +
+        // Mailpit. No php-fpm pools or FrankenPHP overrides (those appear only when running).
+        assert_eq!(names, vec!["MySQL", "PostgreSQL", "Nginx", "Caddy", "Mailpit"]);
         assert!(s.iter().all(|i| i.pid.is_none()));
         assert!(m.pools.is_empty());
     }

@@ -8,7 +8,7 @@
 //!    for something already *listening* (a connect attempt);
 //!  - **high ports** are bind-tested directly (free iff the bind succeeds).
 
-use crate::core::{db, dns, php, proxy, services};
+use crate::core::{db, dns, mail, php, proxy, services};
 use crate::error::{Error, Result};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::time::Duration;
@@ -96,6 +96,8 @@ pub fn default_ports() -> Vec<PortReq> {
     for engine in db::DbEngine::ALL {
         reqs.push(PortReq { service: engine.label(), port: engine.port(), proto: Proto::Tcp });
     }
+    reqs.push(PortReq { service: "Mailpit (SMTP)", port: mail::MAILPIT_SMTP_PORT, proto: Proto::Tcp });
+    reqs.push(PortReq { service: "Mailpit (HTTP)", port: mail::MAILPIT_HTTP_PORT, proto: Proto::Tcp });
     reqs
 }
 
@@ -157,7 +159,12 @@ mod tests {
         let dbs = crate::core::db::DbEngine::ALL.len();
         assert!(reqs.iter().any(|r| r.port == 13306 && r.proto == Proto::Tcp));
         assert!(reqs.iter().any(|r| r.port == crate::core::db::REDIS_PORT));
-        // DNS + 2 Caddy + Nginx = 4 fixed, plus one php-fpm per version + one per DB engine.
-        assert_eq!(reqs.len(), 4 + fpm + dbs);
+        // Mailpit binds two ports (SMTP + HTTP).
+        assert!(names.contains(&"Mailpit (SMTP)"));
+        assert!(reqs.iter().any(|r| r.port == 1025 && r.proto == Proto::Tcp));
+        assert!(reqs.iter().any(|r| r.port == 8025 && r.proto == Proto::Tcp));
+        // DNS + 2 Caddy + Nginx = 4 fixed, plus one php-fpm per version + one per DB
+        // engine + Mailpit's 2 ports.
+        assert_eq!(reqs.len(), 4 + fpm + dbs + 2);
     }
 }
