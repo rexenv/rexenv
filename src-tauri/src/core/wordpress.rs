@@ -136,8 +136,24 @@ pub fn plugin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec
     wp_json(php_bin, wp_phar, docroot, &["plugin", "list"])
 }
 
-/// Run `wp plugin <verb> <names…>` (bulk-capable: one call for many plugins).
+/// Run `wp <noun> <verb> <names…>` (bulk-capable: one call for many items).
 /// A no-op (empty names) returns Ok without invoking WP-CLI.
+fn item_verb(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    noun: &str,
+    verb: &str,
+    names: &[String],
+) -> Result<String> {
+    if names.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec![noun, verb];
+    args.extend(names.iter().map(String::as_str));
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
 fn plugin_verb(
     php_bin: &Path,
     wp_phar: &Path,
@@ -145,12 +161,7 @@ fn plugin_verb(
     verb: &str,
     names: &[String],
 ) -> Result<String> {
-    if names.is_empty() {
-        return Ok(String::new());
-    }
-    let mut args: Vec<&str> = vec!["plugin", verb];
-    args.extend(names.iter().map(String::as_str));
-    wp_run(php_bin, wp_phar, docroot, &args)
+    item_verb(php_bin, wp_phar, docroot, "plugin", verb, names)
 }
 
 /// Activate one or more plugins (`wp plugin activate …`).
@@ -179,6 +190,51 @@ pub fn plugin_install(
     activate: bool,
 ) -> Result<String> {
     let mut args: Vec<&str> = vec!["plugin", "install", slug];
+    if activate {
+        args.push("--activate");
+    }
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
+/// One theme row from `wp theme list --format=json` (§6.2). `status == "active"`
+/// marks the live theme.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WpTheme {
+    pub name: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub update: String,
+}
+
+/// `wp theme list` (name, status, version, update).
+pub fn theme_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpTheme>> {
+    wp_json(php_bin, wp_phar, docroot, &["theme", "list"])
+}
+
+/// Activate a theme (`wp theme activate <name>`) — only one can be live.
+pub fn theme_activate(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["theme", "activate", name])
+}
+/// Update one or more themes (`wp theme update …`).
+pub fn theme_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    item_verb(php_bin, wp_phar, docroot, "theme", "update", names)
+}
+/// Delete one or more themes (`wp theme delete …`) — the active theme can't be deleted.
+pub fn theme_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    item_verb(php_bin, wp_phar, docroot, "theme", "delete", names)
+}
+/// Install a theme by slug (`wp theme install <slug> [--activate]`).
+pub fn theme_install(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    slug: &str,
+    activate: bool,
+) -> Result<String> {
+    let mut args: Vec<&str> = vec!["theme", "install", slug];
     if activate {
         args.push("--activate");
     }

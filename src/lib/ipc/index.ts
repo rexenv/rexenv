@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput, WpPlugin } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput, WpPlugin, WpTheme } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -258,6 +258,44 @@ export async function wpPluginUpdate(id: string, names: string[]): Promise<void>
 export async function wpPluginDelete(id: string, names: string[]): Promise<void> {
   if (!isTauri()) return;
   await invoke("wp_plugin_delete", { id, names });
+}
+
+// ── WordPress Manager — themes (§6.2) ───────────────────────────────────────
+
+const mockWpThemes: WpTheme[] = [
+  { name: "twentytwentyfive", status: "active", version: "1.2", update: "none" },
+  { name: "twentytwentyfour", status: "inactive", version: "1.3", update: "available" },
+  { name: "twentytwentythree", status: "inactive", version: "1.6", update: "none" },
+];
+
+/** List a site's themes (`wp theme list`). Mock fallback outside Tauri. */
+export async function wpThemes(id: string): Promise<WpTheme[]> {
+  if (!isTauri()) return mockWpThemes;
+  return invoke<WpTheme[]>("wp_themes", { id });
+}
+
+/** Install a theme by slug (optionally activate). No-op outside Tauri. */
+export async function wpThemeInstall(id: string, slug: string, activate: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_theme_install", { id, slug, activate });
+}
+
+/** Activate a theme (only one live). No-op outside Tauri. */
+export async function wpThemeActivate(id: string, name: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_theme_activate", { id, name });
+}
+
+/** Update themes (bulk-capable). No-op outside Tauri. */
+export async function wpThemeUpdate(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_theme_update", { id, names });
+}
+
+/** Delete themes (bulk-capable, not the active one). No-op outside Tauri. */
+export async function wpThemeDelete(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_theme_delete", { id, names });
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

@@ -104,6 +104,14 @@ export interface WpPlugin {
   update: string; // none | available | …
 }
 
+/** A WordPress theme row (mirrors the Rust WpTheme DTO / `wp theme list`). */
+export interface WpTheme {
+  name: string;
+  status: string; // active | inactive | parent
+  version: string;
+  update: string; // none | available | …
+}
+
 /** Mailpit mail-catcher health + endpoints (mirrors the Rust MailpitStatus DTO). */
 export interface MailpitStatus {
   running: boolean;

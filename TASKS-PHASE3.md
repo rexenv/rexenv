@@ -239,11 +239,21 @@ service pattern, and gives WordPress work a place to see captured mail.
   bulk-deactivate → **inactive**; delete → **gone**; dev screenshot shows the panel. `cargo test --lib` 96
   pass, tsc + vite build clean. (commit pending)
 
-- [ ] **6.2 Themes (grid · activate · update · install · delete)**
+- [x] **6.2 Themes (grid · activate · update · install · delete)**
   *Done when:* the **Themes** sub-tab (card grid, Block 6) is driven by `wp theme list --format=json`;
   Activate (`wp theme activate`), Update, Delete, Add (`wp theme install <slug>`); the live theme shows an
   **Active** badge. Verified: activating a second theme flips `status` in `wp theme list`; install + delete
   work. Depends on 1.3.
+  ✓ `core/wordpress.rs`: refactored the bulk verb runner to a generic `item_verb(noun,verb,names)` (plugins
+  reuse it); added `WpTheme` + `theme_list`, `theme_activate(name)` (single — one live theme), bulk
+  `theme_update`/`theme_delete(names)`, `theme_install(slug, activate)`. Commands `wp_themes` /
+  `wp_theme_install` / `wp_theme_{activate,update,delete}`; typed `ipc.wpTheme*` (mock off-Tauri). New
+  `ThemesPanel` (card grid) in WordPressManager: Add-by-slug (+Activate), per-card Activate (hidden when
+  active) / Update (when `update==available`) / Delete (**disabled for the active theme**), an **Active** badge
+  on the live theme. Verified: `cargo run --example wp_themes_check` on a real WP install — install
+  `twentytwenty` by slug → inactive; activate → **active** (old `twentytwentyfive` flipped off); delete a
+  non-active theme → gone; dev screenshot shows the grid. `cargo test --lib` 96 pass, tsc + vite build clean.
+  (commit pending)
 
 ## 7. WordPress Manager — users & tools (Block 6)
 

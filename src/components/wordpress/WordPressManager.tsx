@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Plus, Trash2 } from "lucide-react";
+import { ArrowUpCircle, Check, LayoutGrid, Palette, Plus, Trash2 } from "lucide-react";
 import { Placeholder } from "@/components/common/Placeholder";
-import { LayoutGrid } from "lucide-react";
 import {
   wpPluginActivate,
   wpPluginDeactivate,
@@ -10,8 +9,13 @@ import {
   wpPluginInstall,
   wpPluginUpdate,
   wpPlugins,
+  wpThemeActivate,
+  wpThemeDelete,
+  wpThemeInstall,
+  wpThemeUpdate,
+  wpThemes,
 } from "@/lib/ipc";
-import type { WpPlugin } from "@/types";
+import type { WpPlugin, WpTheme } from "@/types";
 
 type SubTab = "plugins" | "themes" | "users" | "tools";
 
@@ -44,14 +48,151 @@ export function WordPressManager({ siteId }: { siteId: string }) {
       </div>
 
       {sub === "plugins" && <PluginsPanel siteId={siteId} />}
-      {sub !== "plugins" && (
+      {sub === "themes" && <ThemesPanel siteId={siteId} />}
+      {(sub === "users" || sub === "tools") && (
         <Placeholder
           icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
           label={subs.find((s) => s.key === sub)!.label}
-          hint={sub === "themes" ? "Themes grid lands in §6.2." : "Users & Tools land in §7."}
+          hint="Users & Tools land in §7."
         />
       )}
     </>
+  );
+}
+
+function ThemesPanel({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [slug, setSlug] = useState("");
+  const [activateOnAdd, setActivateOnAdd] = useState(false);
+
+  const { data: themes = [], isLoading } = useQuery({
+    queryKey: ["wp-themes", siteId],
+    queryFn: () => wpThemes(siteId),
+  });
+
+  const run = useMutation({
+    mutationFn: (fn: () => Promise<void>) => fn(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
+    onError: (e) => window.alert(String(e)),
+  });
+  const busy = run.isPending;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <input
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+          placeholder="Theme slug (e.g. twentytwentyfour)"
+          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+        />
+        <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+          <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
+          Activate
+        </label>
+        <button
+          className={BTN + " flex items-center gap-1.5"}
+          disabled={busy || !slug.trim()}
+          onClick={() => {
+            const s = slug.trim();
+            run.mutate(() => wpThemeInstall(siteId, s, activateOnAdd).then(() => setSlug("")));
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[12.5px] text-rex-text-muted">
+          Loading themes…
+        </div>
+      ) : themes.length === 0 ? (
+        <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[12.5px] text-rex-text-muted">
+          No themes installed.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {themes.map((t) => (
+            <ThemeCard
+              key={t.name}
+              t={t}
+              busy={busy}
+              onActivate={() => run.mutate(() => wpThemeActivate(siteId, t.name))}
+              onUpdate={() => run.mutate(() => wpThemeUpdate(siteId, [t.name]))}
+              onDelete={() => {
+                if (window.confirm(`Delete theme "${t.name}"?`)) run.mutate(() => wpThemeDelete(siteId, [t.name]));
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThemeCard({
+  t,
+  busy,
+  onActivate,
+  onUpdate,
+  onDelete,
+}: {
+  t: WpTheme;
+  busy: boolean;
+  onActivate: () => void;
+  onUpdate: () => void;
+  onDelete: () => void;
+}) {
+  const active = t.status === "active";
+  const updatable = t.update === "available";
+  return (
+    <div
+      className={`flex flex-col rounded-xl border bg-rex-surface-1 ${
+        active ? "border-brand/60" : "border-rex-border"
+      }`}
+    >
+      <div className="flex aspect-[4/3] items-center justify-center rounded-t-xl bg-rex-surface-2 text-rex-text-dim">
+        <Palette className="h-7 w-7" strokeWidth={1.4} />
+      </div>
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-rex-text">{t.name}</span>
+          {active && (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+              <Check className="h-3 w-3" />
+              Active
+            </span>
+          )}
+          {updatable && !active && (
+            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+              update
+            </span>
+          )}
+        </div>
+        <div className="font-mono text-[11px] text-rex-text-dim">v{t.version}</div>
+        <div className="mt-auto flex items-center gap-1.5">
+          {!active && (
+            <button className={BTN + " flex-1"} disabled={busy} onClick={onActivate}>
+              Activate
+            </button>
+          )}
+          {updatable && (
+            <button className={BTN + " flex items-center gap-1"} disabled={busy} onClick={onUpdate} title="Update">
+              <ArrowUpCircle className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            className={BTN + " hover:border-red-500/60 hover:text-red-400 disabled:hover:border-rex-border disabled:hover:text-rex-text"}
+            disabled={busy || active}
+            onClick={onDelete}
+            title={active ? "Can't delete the active theme" : "Delete"}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

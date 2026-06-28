@@ -2,7 +2,7 @@
 //! (Phase 3 §1). Resolves the bundled PHP + wp-cli phar and delegates to
 //! `core::wordpress`. No business logic here.
 
-use crate::core::wordpress::{WpInfo, WpPlugin};
+use crate::core::wordpress::{WpInfo, WpPlugin, WpTheme};
 use crate::core::{self, binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
@@ -97,4 +97,44 @@ pub async fn wp_plugin_update(state: State<'_, AppState>, id: String, names: Vec
 pub async fn wp_plugin_delete(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     core::wordpress::plugin_delete(&php, &wp, &docroot, &names).map(|_| ())
+}
+
+/// List the site's themes (`wp theme list`).
+#[tauri::command]
+pub async fn wp_themes(state: State<'_, AppState>, id: String) -> Result<Vec<WpTheme>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_list(&php, &wp, &docroot)
+}
+
+/// Install a theme by slug (optionally activating it).
+#[tauri::command]
+pub async fn wp_theme_install(
+    state: State<'_, AppState>,
+    id: String,
+    slug: String,
+    activate: bool,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_install(&php, &wp, &docroot, &slug, activate).map(|_| ())
+}
+
+/// Activate a theme (only one can be live).
+#[tauri::command]
+pub async fn wp_theme_activate(state: State<'_, AppState>, id: String, name: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_activate(&php, &wp, &docroot, &name).map(|_| ())
+}
+
+/// Update one or more themes.
+#[tauri::command]
+pub async fn wp_theme_update(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_update(&php, &wp, &docroot, &names).map(|_| ())
+}
+
+/// Delete one or more themes (not the active one).
+#[tauri::command]
+pub async fn wp_theme_delete(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_delete(&php, &wp, &docroot, &names).map(|_| ())
 }
