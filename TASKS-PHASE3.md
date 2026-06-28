@@ -334,7 +334,7 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 9. Cloudflare Tunnel public sharing (Block 10)
 
-- [ ] **9.1 cloudflared provider + per-site quick tunnel**
+- [x] **9.1 cloudflared provider + per-site quick tunnel**
   *Done when:* `cloudflared` resolves via `BinaryProvider` (sign + de-quarantine); a per-site **quick tunnel**
   starts (`cloudflared tunnel --url http://127.0.0.1:<shared-nginx-http-port> --http-host-header=<site
   domain>`) — origin is the **shared nginx HTTP port** with the site `Host` (plain-HTTP origin; cloudflared
@@ -345,6 +345,18 @@ service pattern, and gives WordPress work a place to see captured mail.
   the edge wildcard and never an internal vhost (`adminer.rexenv.test`, Mailpit, etc.), so sharing one site
   cannot expose another site or a tooling vhost. Verified: enabling sharing yields a public
   `trycloudflare.com` URL that loads the local site from outside; stopping ends it. Depends on Phase 1 §10.5.
+  ✓ Pinned cloudflared `2026.6.1` (TarGz member `cloudflared`, per-arch SHA-256) → `BinaryProvider::resolve`
+  (de-quarantine + ad-hoc sign; static Go binary). New `core/tunnels.rs`: `start(domain, nginx_port)` spawns
+  `cloudflared tunnel --no-autoupdate --url http://127.0.0.1:<shared-nginx> --http-host-header=<domain>` via
+  `spawn_logged`; `read_url`/`extract_url` parse the `https://<id>.trycloudflare.com` URL from the log; `stop`.
+  Origin is the **shared nginx HTTP port + site Host** (plain-HTTP origin, no `--no-tls-verify`; cloudflared
+  does external TLS). A Tauri-managed `Tunnels` registry (keyed by domain) owns lifecycle; `start_tunnel` only
+  resolves a **real site by id** → internal vhosts (Adminer/Mailpit) can't be shared, and the tunnel targets
+  one Host only. Commands `start_tunnel`/`stop_tunnel`/`tunnels_status` + typed `ipc.*` + `TunnelInfo`.
+  Verified: `cargo run --example tunnel_check` (network) — cloudflared resolves, a quick tunnel yields
+  `https://…​.trycloudflare.com`, the origin nginx serves the site (200 phpinfo), and the **public URL loads
+  the local site from the internet** (reachable after ~30s warmup), then `stop` ends it cleanly. `cargo test
+  --lib` 102 pass, tsc + vite build clean. (commit pending)
 
 - [ ] **9.2 Tunnels screen (Block 10)**
   *Done when:* the **Tunnels** screen lists shareable sites; a per-site **Share publicly** toggle starts/stops

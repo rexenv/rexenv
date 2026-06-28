@@ -96,6 +96,13 @@ export interface WpInfo {
   multisite: boolean;
 }
 
+/** A per-site public tunnel (mirrors the Rust TunnelInfo DTO). */
+export interface TunnelInfo {
+  domain: string;
+  url: string; // public https://<id>.trycloudflare.com
+  running: boolean;
+}
+
 /** A WordPress plugin row (mirrors the Rust WpPlugin DTO / `wp plugin list`). */
 export interface WpPlugin {
   name: string;

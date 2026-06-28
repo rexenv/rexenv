@@ -36,6 +36,8 @@ pub const MAILPIT_VERSION: &str = "1.30.3";
 /// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
 /// PHP — OS-agnostic, like WP-CLI). Phase 3 §5.1.
 pub const ADMINER_VERSION: &str = "5.4.2";
+/// Pinned cloudflared version (one static Go binary; quick-tunnel public sharing). Phase 3 §9.1.
+pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +106,11 @@ const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a461
 // OS/arch — a PHP script). English UI, all DB drivers (MySQL + PostgreSQL).
 const ADMINER_5_4_2_SHA256: &str = "f8b1cdc676d72e88d2d470dd05f2dcb7212bf6cdcf78f1eadb7fc292f4cefd39";
 
+// cloudflared static Go binary SHA-256 (computed at pin time from the GitHub
+// release `.tgz`). De-quarantined + ad-hoc signed by prepare_binary (no relink).
+const CLOUDFLARED_2026_6_1_MAC_ARM64_SHA256: &str = "f6d4c439c6c782b83264951d327989ce5e23373acc5942b872411601fedb020d";
+const CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256: &str = "d7a66b525fe76820da6e5406611b61e48b40de682368ac00454d9158f085be4b";
+
 // FrankenPHP static binary SHA-256 (computed at pin time from the GitHub release).
 // A fully static Mach-O (embeds PHP + Caddy), so no Homebrew relink is needed.
 const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "dd08f3a5ff45780fd0498afae8530bcd548a7e5d4dab7402934aeb622f6faeb8";
@@ -159,6 +166,12 @@ fn postgres_arch(arch: Arch) -> &'static str {
     }
 }
 fn mailpit_arch(arch: Arch) -> &'static str {
+    match arch {
+        Arch::Arm64 => "arm64",
+        Arch::X86_64 => "amd64",
+    }
+}
+fn cloudflared_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "arm64",
         Arch::X86_64 => "amd64",
@@ -298,6 +311,20 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             )),
             archive: Archive::TarGz,
             member: "mailpit",
+        }),
+        ("cloudflared", "macos", "2026.6.1") => Some(BinarySpec {
+            // One static Go binary per arch, inside a .tgz (member `cloudflared`).
+            url: format!(
+                "https://github.com/cloudflare/cloudflared/releases/download/{version}/cloudflared-darwin-{}.tgz",
+                cloudflared_arch(arch)
+            ),
+            checksum: Checksum::Sha256(pick(
+                arch,
+                CLOUDFLARED_2026_6_1_MAC_ARM64_SHA256,
+                CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256,
+            )),
+            archive: Archive::TarGz,
+            member: "cloudflared",
         }),
         // Adminer is a single PHP file (run via the bundled PHP), identical on every OS.
         ("adminer", _, "5.4.2") => Some(BinarySpec {
@@ -665,6 +692,18 @@ mod tests {
 
         let amd = manifest("mailpit", MAILPIT_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("mailpit-darwin-amd64.tar.gz"));
+        assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_cloudflared_as_tar_member() {
+        let arm = manifest("cloudflared", CLOUDFLARED_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(arm.url.ends_with("2026.6.1/cloudflared-darwin-arm64.tgz"));
+        assert_eq!(arm.archive, Archive::TarGz);
+        assert_eq!(arm.member, "cloudflared");
+        assert!(matches!(arm.checksum, Checksum::Sha256(_)));
+        let amd = manifest("cloudflared", CLOUDFLARED_VERSION, "macos", Arch::X86_64).unwrap();
+        assert!(amd.url.ends_with("cloudflared-darwin-amd64.tgz"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
     }
 

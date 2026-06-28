@@ -39,6 +39,8 @@ pub fn run() {
 
             // Registry of live PTY terminal sessions (§4.1).
             app.manage(commands::terminal::Terminals::default());
+            // Registry of live per-site public tunnels (§9.1).
+            app.manage(commands::tunnels::Tunnels::default());
 
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.
@@ -115,6 +117,9 @@ pub fn run() {
             commands::settings::get_setting,
             commands::settings::set_setting,
             commands::settings::sites_folder,
+            commands::tunnels::start_tunnel,
+            commands::tunnels::stop_tunnel,
+            commands::tunnels::tunnels_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

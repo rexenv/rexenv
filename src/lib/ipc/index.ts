@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -396,6 +396,26 @@ export async function startServices(): Promise<void> {
 export async function stopServices(): Promise<void> {
   if (!isTauri()) return;
   await invoke("stop_services");
+}
+
+// ── Public tunnels (§9) ─────────────────────────────────────────────────────
+
+/** Start (or return the existing) public quick tunnel for a site. Desktop-app only. */
+export async function startTunnel(id: string): Promise<TunnelInfo> {
+  if (!isTauri()) throw new Error("Public sharing requires the rexenv desktop app.");
+  return invoke<TunnelInfo>("start_tunnel", { id });
+}
+
+/** Stop a site's public tunnel. No-op outside Tauri. */
+export async function stopTunnel(id: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("stop_tunnel", { id });
+}
+
+/** All active public tunnels (domain → URL). Mock fallback outside Tauri. */
+export async function tunnelsStatus(): Promise<TunnelInfo[]> {
+  if (!isTauri()) return [];
+  return invoke<TunnelInfo[]>("tunnels_status");
 }
 
 /** Read a setting (or null). */
