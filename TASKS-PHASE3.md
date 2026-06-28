@@ -45,7 +45,7 @@ Detail tab shell that the WordPress Manager, Logs tab, and Terminal all live in.
   true, version:"7.0", multisite:false}`, `siteurl=https://wpinfo.test`, JSON runner parsed 2 plugins,
   Blank-PHP → `isWordpress:false`. (commit pending)
 
-- [ ] **1.2 Create a WordPress site (one-click install, wired into the create flow)**
+- [x] **1.2 Create a WordPress site (one-click install, wired into the create flow)**
   *Done when:* choosing **WordPress** in the New Site dialog (Block 4: site title, admin user/email/password,
   language) runs the Phase-1 one-click installer (`wordpress::install_wordpress` — core download → `config
   create` → `db create` on the site's DbEngine (MySQL default) → `core install`) inside `create_site` (ensures
@@ -53,6 +53,13 @@ Detail tab shell that the WordPress Manager, Logs tab, and Terminal all live in.
   dialog's **Multisite** toggle (subdomain/subdirectory) is recorded and, when set, runs §10.1 after install.
   Verified: creating a WordPress site from the UI yields a browsable WP site + admin. Depends on 1.1, Phase 2
   §1.6, Phase 1 §9.2.
+  ✓ `create_site` takes an optional `wp: InstallOptions`; for `SiteType::Wordpress` it `ensure_db(Mysql)`,
+  resolves the site's PHP + wp-cli.phar, and runs `core::wordpress::install_for_site` (new — fills defaults
+  from domain/name; `install_wordpress`/`WpInstall` gained a `locale` for `core download --locale`). Dialog
+  gains a **Type** selector + WordPress fields (admin user/email/password, language) → `ipc.createSite(input,
+  wp)`. `cargo run --example wp_create_serve` → `GET / 200` (title present) + `GET /wp-login.php 200` (login
+  form). **Multisite toggle deferred to §10** (needs §10.1 convert + migration v3); single-site WP create is
+  complete. (commit pending)
 
 - [ ] **1.3 Site Detail tabs + Overview (Block 5)**
   *Done when:* SiteDetail renders the tab bar — **Overview · WordPress · Database · Logs · Settings** — with

@@ -80,6 +80,7 @@ async fn main() {
             admin_user: "admin",
             admin_password: "rexenv-admin-pw",
             admin_email: "admin@wpinfo.test",
+            locale: "",
         },
     )
     .expect("install wordpress");

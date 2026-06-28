@@ -6,7 +6,7 @@
 //! captures output (unlike `ProcessSupervisor`, which is for long-lived services).
 
 use crate::error::{Error, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -139,6 +139,20 @@ pub struct WpInstall<'a> {
     pub admin_user: &'a str,
     pub admin_password: &'a str,
     pub admin_email: &'a str,
+    /// WordPress locale for `core download` (e.g. `fr_FR`); empty = default en_US.
+    pub locale: &'a str,
+}
+
+/// Per-site WordPress install options from the New Site dialog. Empty fields fall
+/// back to sensible defaults derived from the site (mirrors the frontend DTO).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InstallOptions {
+    pub title: String,
+    pub admin_user: String,
+    pub admin_email: String,
+    pub admin_password: String,
+    pub language: String,
 }
 
 /// One-click WordPress install via WP-CLI: download core → write wp-config →
@@ -147,9 +161,14 @@ pub struct WpInstall<'a> {
 pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Result<()> {
     let path = format!("--path={}", opts.docroot.display());
 
-    // 1) WordPress core.
+    // 1) WordPress core (optionally a localized build).
     if !opts.docroot.join("wp-load.php").exists() {
-        wp_cli_checked(php_bin, wp_phar, &["core", "download", &path], None)?;
+        let locale = format!("--locale={}", opts.locale);
+        let mut args = vec!["core", "download", &path];
+        if !opts.locale.trim().is_empty() {
+            args.push(&locale);
+        }
+        wp_cli_checked(php_bin, wp_phar, &args, None)?;
     }
 
     // 2) wp-config.php (skip the live DB check — the DB is created next).
@@ -196,6 +215,50 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
         )?;
     }
     Ok(())
+}
+
+/// One-click install for a provisioned site (Phase 3 §1.2): fill the install
+/// fields from `opts`, defaulting from `domain`/`name` where empty, and delegate
+/// to [`install_wordpress`]. The canonical URL is `https://<domain>`; the DB name
+/// is derived from the domain. `db_host` is `host:port` (e.g. `127.0.0.1:13306`).
+pub fn install_for_site(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    domain: &str,
+    name: &str,
+    db_host: &str,
+    opts: &InstallOptions,
+) -> Result<()> {
+    let nonempty = |s: &str| !s.trim().is_empty();
+    let title = if nonempty(&opts.title) { opts.title.trim().to_string() } else { name.to_string() };
+    let admin_user =
+        if nonempty(&opts.admin_user) { opts.admin_user.trim().to_string() } else { "admin".into() };
+    let admin_email = if nonempty(&opts.admin_email) {
+        opts.admin_email.trim().to_string()
+    } else {
+        format!("admin@{domain}")
+    };
+    let admin_password =
+        if nonempty(&opts.admin_password) { opts.admin_password.clone() } else { "password".into() };
+    let url = format!("https://{domain}");
+    let db_name = db_name_for(domain);
+
+    install_wordpress(
+        php_bin,
+        wp_phar,
+        &WpInstall {
+            docroot,
+            db_name: &db_name,
+            db_host,
+            url: &url,
+            title: &title,
+            admin_user: &admin_user,
+            admin_password: &admin_password,
+            admin_email: &admin_email,
+            locale: opts.language.trim(),
+        },
+    )
 }
 
 /// The wp-config.php path for a docroot (used by callers/tests).

@@ -1,9 +1,12 @@
 //! commands::sites — thin Tauri IPC handlers for sites. Call `core/` only.
 
 use crate::core;
+use crate::core::db::DbEngine;
+use crate::core::{binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::{NewSite, ServiceStatus, Site, WebServer};
+use crate::state::models::{NewSite, ServiceStatus, Site, SiteType, WebServer};
+use std::path::Path;
 use tauri::State;
 
 fn lock<'a>(
@@ -36,18 +39,47 @@ pub fn stop_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>>
     core::sites::set_status(&conn, &id, ServiceStatus::Stopped)
 }
 
-/// Create a site (§1.6): provision it (docroot + cert + DB row), then — if the
-/// stack is running — ensure its PHP version's pool is up and reload the edge so
-/// it serves immediately. Returns the new site.
+/// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
+/// row); for a **WordPress** site bring MySQL up and run the one-click installer
+/// (`wp`) so the site is browsable; then — if the stack is running — ensure its
+/// PHP version's pool is up and reload the edge so it serves immediately. `wp`
+/// carries the dialog's WordPress fields (admin account, title, language) and is
+/// ignored for non-WordPress sites. Returns the new site.
 #[tauri::command]
-pub async fn create_site(state: State<'_, AppState>, site: NewSite) -> Result<Site> {
+pub async fn create_site(
+    state: State<'_, AppState>,
+    site: NewSite,
+    wp: Option<core::wordpress::InstallOptions>,
+) -> Result<Site> {
     let (created, sites) = {
         let conn = lock(&state)?;
         let created = core::sites::provision(&conn, state.platform.as_ref(), &state.ca, site)?;
         (created, core::sites::list(&conn)?)
     };
-    let minor = core::php::minor_of(&created.php_version);
+    let minor = php::minor_of(&created.php_version);
     let mut mgr = state.services.lock().await;
+
+    // WordPress needs a database + a one-click install before it's browsable.
+    if matches!(created.site_type, SiteType::Wordpress) {
+        mgr.ensure_db(state.platform.as_ref(), DbEngine::Mysql).await?;
+        let patch = php::patch_for_minor(&minor)
+            .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
+        let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+        let wp_phar =
+            binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
+                .await?;
+        let db_host = format!("127.0.0.1:{}", DbEngine::Mysql.port());
+        core::wordpress::install_for_site(
+            &php_bin,
+            &wp_phar,
+            Path::new(&created.path),
+            &created.domain,
+            &created.name,
+            &db_host,
+            &wp.unwrap_or_default(),
+        )?;
+    }
+
     if mgr.is_running() {
         if !matches!(created.web_server, WebServer::Frankenphp) {
             mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;

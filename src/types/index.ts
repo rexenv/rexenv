@@ -32,6 +32,16 @@ export interface NewSiteInput {
   path: string; // empty → core computes the docroot under the sites dir
 }
 
+/** WordPress one-click install fields (type=wordpress). Empty fields default
+ *  server-side (title→name, admin→admin, email→admin@domain, language→en_US). */
+export interface WpInstallInput {
+  title?: string;
+  adminUser?: string;
+  adminEmail?: string;
+  adminPassword?: string;
+  language?: string; // WP locale, e.g. "fr_FR"; "" → en_US
+}
+
 export interface GlobalStatus {
   /** "All running" | "Partial" | "Stopped" derived from service states */
   summary: "all" | "partial" | "stopped";
