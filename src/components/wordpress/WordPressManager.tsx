@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Check, LayoutGrid, LogIn, Palette, Plus, Trash2, UserPlus } from "lucide-react";
-import { Placeholder } from "@/components/common/Placeholder";
+import { ArrowUpCircle, Check, LogIn, Palette, Plus, RefreshCw, Replace, Trash2, UserPlus } from "lucide-react";
 import {
   openExternal,
+  wpCoreReinstall,
+  wpCoreUpdate,
+  wpDebugGet,
+  wpDebugSet,
+  wpRewriteFlush,
+  wpSearchReplace,
   wpPluginActivate,
   wpPluginDeactivate,
   wpPluginDelete,
@@ -56,14 +61,161 @@ export function WordPressManager({ siteId }: { siteId: string }) {
       {sub === "plugins" && <PluginsPanel siteId={siteId} />}
       {sub === "themes" && <ThemesPanel siteId={siteId} />}
       {sub === "users" && <UsersPanel siteId={siteId} />}
-      {sub === "tools" && (
-        <Placeholder
-          icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-          label="Tools"
-          hint="WP_DEBUG, search-replace, permalinks & core update land in §7.2."
-        />
-      )}
+      {sub === "tools" && <ToolsPanel siteId={siteId} />}
     </>
+  );
+}
+
+function ToolsPanel({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [dryRun, setDryRun] = useState(true);
+  const [srResult, setSrResult] = useState<string | null>(null);
+  const [coreOut, setCoreOut] = useState<string | null>(null);
+
+  const { data: wpDebug } = useQuery({
+    queryKey: ["wp-debug", siteId],
+    queryFn: () => wpDebugGet(siteId),
+  });
+
+  const toggleDebug = useMutation({
+    mutationFn: (on: boolean) => wpDebugSet(siteId, on),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-debug", siteId] }),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const searchReplace = useMutation({
+    mutationFn: () => wpSearchReplace(siteId, from.trim(), to.trim(), dryRun),
+    onSuccess: (n) =>
+      setSrResult(dryRun ? `${n} row(s) would change (dry run — nothing modified)` : `${n} row(s) changed`),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const flush = useMutation({
+    mutationFn: () => wpRewriteFlush(siteId),
+    onSuccess: () => window.alert("Permalinks regenerated."),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const coreUpdate = useMutation({
+    mutationFn: () => wpCoreUpdate(siteId),
+    onSuccess: (out) => setCoreOut(out),
+    onError: (e) => window.alert(String(e)),
+  });
+  const coreReinstall = useMutation({
+    mutationFn: () => wpCoreReinstall(siteId),
+    onSuccess: (out) => setCoreOut(out),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Card title="WP_DEBUG">
+        <div className="flex items-center justify-between">
+          <span className="text-[12.5px] text-rex-text-muted">
+            Log PHP notices/errors to <span className="font-mono">wp-content/debug.log</span>.
+          </span>
+          <button
+            role="switch"
+            aria-checked={!!wpDebug}
+            disabled={toggleDebug.isPending}
+            onClick={() => toggleDebug.mutate(!wpDebug)}
+            className={`relative h-[22px] w-[40px] rounded-full transition-colors ${
+              wpDebug ? "bg-brand" : "bg-rex-surface-3"
+            }`}
+          >
+            <span
+              className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all ${
+                wpDebug ? "left-[20px]" : "left-[2px]"
+              }`}
+            />
+          </button>
+        </div>
+      </Card>
+
+      <Card title="Search-replace">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              placeholder="old (e.g. old.test)"
+              className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+            />
+            <span className="text-rex-text-muted">→</span>
+            <input
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="new (e.g. new.test)"
+              className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+              <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+              Dry run (report only, don't change data)
+            </label>
+            <button
+              className={BTN + " flex items-center gap-1.5"}
+              disabled={searchReplace.isPending || !from.trim() || !to.trim()}
+              onClick={() => {
+                setSrResult(null);
+                searchReplace.mutate();
+              }}
+            >
+              <Replace className="h-3.5 w-3.5" />
+              {dryRun ? "Preview" : "Run"}
+            </button>
+          </div>
+          {srResult && <div className="font-mono text-[12px] text-rex-text">{srResult}</div>}
+        </div>
+      </Card>
+
+      <Card title="Maintenance">
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={BTN} disabled={flush.isPending} onClick={() => flush.mutate()}>
+            Regenerate permalinks
+          </button>
+          <button
+            className={BTN + " flex items-center gap-1.5"}
+            disabled={coreUpdate.isPending}
+            onClick={() => {
+              setCoreOut(null);
+              coreUpdate.mutate();
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Update core
+          </button>
+          <button
+            className={BTN}
+            disabled={coreReinstall.isPending}
+            onClick={() => {
+              if (window.confirm("Re-download WordPress core files (current version)?")) {
+                setCoreOut(null);
+                coreReinstall.mutate();
+              }
+            }}
+          >
+            Re-install core
+          </button>
+          {(coreUpdate.isPending || coreReinstall.isPending) && (
+            <span className="text-[12px] text-rex-text-muted">Working…</span>
+          )}
+        </div>
+        {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
+      </Card>
+    </div>
+  );
+}
+
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
+      <div className="mb-3 text-[13px] font-semibold text-rex-text">{title}</div>
+      {children}
+    </div>
   );
 }
 

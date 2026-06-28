@@ -323,6 +323,45 @@ export async function wpUserLoginUrl(id: string, userId: number): Promise<string
   return invoke<string>("wp_user_login_url", { id, userId });
 }
 
+// ── WordPress Manager — tools (§7.2) ────────────────────────────────────────
+
+/** Whether WP_DEBUG is on. Mock fallback outside Tauri. */
+export async function wpDebugGet(id: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("wp_debug_get", { id });
+}
+
+/** Toggle WP_DEBUG. No-op outside Tauri. */
+export async function wpDebugSet(id: string, on: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_debug_set", { id, on });
+}
+
+/** Search-replace across the DB; `dryRun` reports the count without changing data.
+ *  Returns the number of replacements. Mock returns a sample count outside Tauri. */
+export async function wpSearchReplace(id: string, from: string, to: string, dryRun: boolean): Promise<number> {
+  if (!isTauri()) return 7;
+  return invoke<number>("wp_search_replace", { id, from, to, dryRun });
+}
+
+/** Regenerate permalinks (`wp rewrite flush`). No-op outside Tauri. */
+export async function wpRewriteFlush(id: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_rewrite_flush", { id });
+}
+
+/** Update WordPress core. Returns WP-CLI output. */
+export async function wpCoreUpdate(id: string): Promise<string> {
+  if (!isTauri()) return "WordPress is up to date. (mock)";
+  return invoke<string>("wp_core_update", { id });
+}
+
+/** Re-download core files of the current version. Returns WP-CLI output. */
+export async function wpCoreReinstall(id: string): Promise<string> {
+  if (!isTauri()) return "Success: WordPress downloaded. (mock)";
+  return invoke<string>("wp_core_reinstall", { id });
+}
+
 /** Per-service status + live metrics. Mock fallback outside Tauri. */
 export async function servicesStatus(): Promise<ServiceInfo[]> {
   if (!isTauri()) return mockServices;

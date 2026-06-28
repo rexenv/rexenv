@@ -296,6 +296,62 @@ pub fn user_create(
     wp_run(php_bin, wp_phar, docroot, &["user", "create", login, email, &role_arg, "--porcelain"])
 }
 
+// ── Tools (§7.2) ─────────────────────────────────────────────────────────────
+
+/// Whether `WP_DEBUG` is enabled (`wp config get WP_DEBUG`). A missing constant
+/// reads as off.
+pub fn wp_debug_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<bool> {
+    let v = wp_run(php_bin, wp_phar, docroot, &["config", "get", "WP_DEBUG"]).unwrap_or_default();
+    Ok(matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true"))
+}
+
+/// Toggle `WP_DEBUG` (`wp config set WP_DEBUG true|false --raw` — `--raw` so it's
+/// a boolean constant, not the string `"true"`).
+pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) -> Result<String> {
+    let val = if on { "true" } else { "false" };
+    wp_run(php_bin, wp_phar, docroot, &["config", "set", "WP_DEBUG", val, "--raw"])
+}
+
+/// Run `wp search-replace <from> <to> [--dry-run] --format=count` and return the
+/// number of replacements (a dry-run reports the count WITHOUT changing data).
+pub fn search_replace(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    from: &str,
+    to: &str,
+    dry_run: bool,
+) -> Result<u64> {
+    let mut args: Vec<&str> = vec!["search-replace", from, to, "--format=count"];
+    if dry_run {
+        args.push("--dry-run");
+    }
+    let out = wp_run(php_bin, wp_phar, docroot, &args)?;
+    out.trim()
+        .lines()
+        .last()
+        .unwrap_or("0")
+        .trim()
+        .parse::<u64>()
+        .map_err(|e| Error::Other(format!("search-replace count: {e} (output: {out:?})")))
+}
+
+/// Regenerate permalinks (`wp rewrite flush`).
+pub fn rewrite_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["rewrite", "flush"])
+}
+
+/// Update WordPress core to the latest release (`wp core update`).
+pub fn core_update(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["core", "update"])
+}
+
+/// Re-download core files of the current version (`wp core download --force`) —
+/// repairs a corrupt/modified core without touching the DB or wp-content.
+pub fn core_reinstall(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["core", "download", "--force", "--skip-content"])
+}
+
 /// A valid MySQL database name derived from a site domain
 /// (`blog.test` → `wp_blog_test`).
 pub fn db_name_for(domain: &str) -> String {

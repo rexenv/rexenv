@@ -183,3 +183,52 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
         site.domain, token, user_id
     ))
 }
+
+/// Whether WP_DEBUG is on for the site.
+#[tauri::command]
+pub async fn wp_debug_get(state: State<'_, AppState>, id: String) -> Result<bool> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::wp_debug_get(&php, &wp, &docroot)
+}
+
+/// Toggle WP_DEBUG for the site.
+#[tauri::command]
+pub async fn wp_debug_set(state: State<'_, AppState>, id: String, on: bool) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::wp_debug_set(&php, &wp, &docroot, on).map(|_| ())
+}
+
+/// Search-replace across the DB; `dryRun` reports the count without changing data.
+/// Returns the number of replacements.
+#[tauri::command]
+pub async fn wp_search_replace(
+    state: State<'_, AppState>,
+    id: String,
+    from: String,
+    to: String,
+    dry_run: bool,
+) -> Result<u64> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::search_replace(&php, &wp, &docroot, &from, &to, dry_run)
+}
+
+/// Regenerate permalinks (`wp rewrite flush`).
+#[tauri::command]
+pub async fn wp_rewrite_flush(state: State<'_, AppState>, id: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::rewrite_flush(&php, &wp, &docroot).map(|_| ())
+}
+
+/// Update WordPress core to the latest release. Returns WP-CLI's output.
+#[tauri::command]
+pub async fn wp_core_update(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::core_update(&php, &wp, &docroot)
+}
+
+/// Re-download core files of the current version. Returns WP-CLI's output.
+#[tauri::command]
+pub async fn wp_core_reinstall(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::core_reinstall(&php, &wp, &docroot)
+}

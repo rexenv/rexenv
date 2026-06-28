@@ -283,13 +283,23 @@ service pattern, and gives WordPress work a place to see captured mail.
   a tunnel replay can't log in). New `WordPressManager` Users panel (list login/email/role, Add user, Log in
   as); dev screenshot shows it. `cargo test --lib` 99 pass, tsc + vite build clean. (commit pending)
 
-- [ ] **7.2 Tools (WP_DEBUG · search-replace · permalinks · core update)**
+- [x] **7.2 Tools (WP_DEBUG · search-replace · permalinks · core update)**
   *Done when:* the **Tools** sub-tab offers a **WP_DEBUG** toggle (`wp config set WP_DEBUG true --raw` / `wp
   config get` to reflect), a **Search-replace** tool (old→new URL, a **dry-run** checkbox → `wp search-replace
   --dry-run` reports a row count without changing data; apply mutates the DB), regenerate permalinks (`wp
   rewrite flush`), and core update / re-install (`wp core update` / `wp core download --force`). Verified:
   toggling WP_DEBUG flips `wp config get WP_DEBUG`; a dry-run reports N rows, the real run changes them.
   Depends on 1.3.
+  ✓ `core/wordpress.rs`: `wp_debug_get`/`wp_debug_set` (`config get/set WP_DEBUG --raw`), `search_replace(from,
+  to, dry_run)` → replacement count via `--format=count` (+`--dry-run`), `rewrite_flush`, `core_update`,
+  `core_reinstall` (`core download --force --skip-content`). Commands `wp_debug_{get,set}` /
+  `wp_search_replace` / `wp_rewrite_flush` / `wp_core_{update,reinstall}`; typed `ipc.*` (mock off-Tauri). New
+  `ToolsPanel` in WordPressManager: WP_DEBUG switch, Search-replace (old→new, **Dry run** default-on →
+  Preview/Run with an N-row result line), Maintenance (Regenerate permalinks, Update core, Re-install core with
+  confirm + output). Verified: `cargo run --example wp_tools_check` on a real WP install — WP_DEBUG on→off
+  reflected via `wp config get`; **dry-run reported 10 rows with the DB UNCHANGED** (siteurl intact), the real
+  run changed 10 (siteurl → changed.test); `rewrite flush` ran. `cargo test --lib` 99 pass, tsc + vite build
+  clean; dev screenshot shows the panel. (commit pending)
 
 ## 8. Per-site Xdebug toggle
 
