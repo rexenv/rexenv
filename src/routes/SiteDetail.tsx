@@ -17,6 +17,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
+import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { adminerUrl, siteDbName } from "@/lib/adminer";
 import {
   listPhpVersions,
@@ -145,13 +146,7 @@ export function SiteDetail() {
             />
           )}
 
-          {active === "wordpress" && (
-            <Placeholder
-              icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-              label="WordPress Manager"
-              hint="Plugins, themes, users & tools land in §6/§7."
-            />
-          )}
+          {active === "wordpress" && <WordPressManager siteId={site.id} />}
           {active === "database" &&
             (site.type === "php" ? (
               <Placeholder

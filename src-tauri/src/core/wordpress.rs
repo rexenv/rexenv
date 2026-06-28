@@ -117,6 +117,74 @@ pub fn wp_info(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpInfo>
     Ok(WpInfo { is_wordpress, version, multisite })
 }
 
+/// One plugin row from `wp plugin list --format=json` (§6.1). Field names match
+/// WP-CLI's JSON (all lowercase) and the frontend DTO. `update == "available"`
+/// drives the update-available badge.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WpPlugin {
+    pub name: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub update: String,
+}
+
+/// `wp plugin list` (name, status, version, update).
+pub fn plugin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpPlugin>> {
+    wp_json(php_bin, wp_phar, docroot, &["plugin", "list"])
+}
+
+/// Run `wp plugin <verb> <names…>` (bulk-capable: one call for many plugins).
+/// A no-op (empty names) returns Ok without invoking WP-CLI.
+fn plugin_verb(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    verb: &str,
+    names: &[String],
+) -> Result<String> {
+    if names.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["plugin", verb];
+    args.extend(names.iter().map(String::as_str));
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
+/// Activate one or more plugins (`wp plugin activate …`).
+pub fn plugin_activate(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    plugin_verb(php_bin, wp_phar, docroot, "activate", names)
+}
+/// Deactivate one or more plugins (`wp plugin deactivate …`).
+pub fn plugin_deactivate(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    plugin_verb(php_bin, wp_phar, docroot, "deactivate", names)
+}
+/// Update one or more plugins (`wp plugin update …`).
+pub fn plugin_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    plugin_verb(php_bin, wp_phar, docroot, "update", names)
+}
+/// Delete one or more plugins (`wp plugin delete …`).
+pub fn plugin_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    plugin_verb(php_bin, wp_phar, docroot, "delete", names)
+}
+
+/// Install a plugin by slug (`wp plugin install <slug> [--activate]`).
+pub fn plugin_install(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    slug: &str,
+    activate: bool,
+) -> Result<String> {
+    let mut args: Vec<&str> = vec!["plugin", "install", slug];
+    if activate {
+        args.push("--activate");
+    }
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
 /// A valid MySQL database name derived from a site domain
 /// (`blog.test` → `wp_blog_test`).
 pub fn db_name_for(domain: &str) -> String {

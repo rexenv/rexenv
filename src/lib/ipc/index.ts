@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput, WpPlugin } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -214,6 +214,50 @@ export async function mailpitMessageRaw(id: string): Promise<string> {
 export async function mailpitClear(): Promise<void> {
   if (!isTauri()) return;
   await invoke("mailpit_clear");
+}
+
+// ── WordPress Manager — plugins (§6.1) ──────────────────────────────────────
+
+const mockWpPlugins: WpPlugin[] = [
+  { name: "akismet", status: "inactive", version: "5.3", update: "available" },
+  { name: "hello-dolly", status: "active", version: "1.7.3", update: "none" },
+  { name: "woocommerce", status: "active", version: "9.1.2", update: "none" },
+];
+
+/** List a site's plugins (`wp plugin list`). Mock fallback outside Tauri. */
+export async function wpPlugins(id: string): Promise<WpPlugin[]> {
+  if (!isTauri()) return mockWpPlugins;
+  return invoke<WpPlugin[]>("wp_plugins", { id });
+}
+
+/** Install a plugin by slug (optionally activate). No-op outside Tauri. */
+export async function wpPluginInstall(id: string, slug: string, activate: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_install", { id, slug, activate });
+}
+
+/** Activate plugins (bulk-capable). No-op outside Tauri. */
+export async function wpPluginActivate(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_activate", { id, names });
+}
+
+/** Deactivate plugins (bulk-capable). No-op outside Tauri. */
+export async function wpPluginDeactivate(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_deactivate", { id, names });
+}
+
+/** Update plugins (bulk-capable). No-op outside Tauri. */
+export async function wpPluginUpdate(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_update", { id, names });
+}
+
+/** Delete plugins (bulk-capable). No-op outside Tauri. */
+export async function wpPluginDelete(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_delete", { id, names });
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

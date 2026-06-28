@@ -220,13 +220,24 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 6. WordPress Manager — plugins & themes (Block 6)
 
-- [ ] **6.1 Plugins (list · activate/deactivate · update · install · delete · bulk)**
+- [x] **6.1 Plugins (list · activate/deactivate · update · install · delete · bulk)**
   *Done when:* the **Plugins** sub-tab is driven by `wp plugin list --format=json` (name, status, version,
   update) via typed IPC; per-row Activate/Deactivate (`wp plugin activate|deactivate`), Update (`wp plugin
   update`), Delete (`wp plugin delete`), Add-by-slug (`wp plugin install <slug> [--activate]`); a bulk-select
   bar does bulk activate/deactivate/update; an **update-available** badge shows when `update == available`.
   Verified on a real WP site: installing `hello-dolly` by slug + activating shows Active in `wp plugin list`;
   bulk-deactivate + delete reflect. Depends on 1.3.
+  ✓ `core/wordpress.rs`: `WpPlugin {name,status,version,update}` + `plugin_list` (via the §1.1 `wp_json`
+  bridge) and bulk-capable `plugin_activate/deactivate/update/delete(names: &[String])` (one WP-CLI call for
+  many; empty = no-op) + `plugin_install(slug, activate)`. Commands `wp_plugins` / `wp_plugin_install` /
+  `wp_plugin_{activate,deactivate,update,delete}` (a `site_tools` helper resolves docroot + bundled PHP/WP-CLI);
+  typed `ipc.wp*` wrappers (mock list off-Tauri). New `components/wordpress/WordPressManager.tsx`: sub-tabs
+  (Plugins now; Themes→§6.2, Users/Tools→§7) + a Plugins panel — Add-by-slug (+Activate), per-row
+  Activate/Deactivate/Update/Delete, bulk-select bar (activate/deactivate/update/delete), **update** badge when
+  `update==available`, Active/Inactive pill; wired into the SiteDetail WordPress tab. Verified: `cargo run
+  --example wp_plugins_check` on a real WP install — install `hello-dolly` by slug + activate → **active**;
+  bulk-deactivate → **inactive**; delete → **gone**; dev screenshot shows the panel. `cargo test --lib` 96
+  pass, tsc + vite build clean. (commit pending)
 
 - [ ] **6.2 Themes (grid · activate · update · install · delete)**
   *Done when:* the **Themes** sub-tab (card grid, Block 6) is driven by `wp theme list --format=json`;

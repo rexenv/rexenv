@@ -96,6 +96,14 @@ export interface WpInfo {
   multisite: boolean;
 }
 
+/** A WordPress plugin row (mirrors the Rust WpPlugin DTO / `wp plugin list`). */
+export interface WpPlugin {
+  name: string;
+  status: string; // active | inactive | active-network | must-use | dropin
+  version: string;
+  update: string; // none | available | …
+}
+
 /** Mailpit mail-catcher health + endpoints (mirrors the Rust MailpitStatus DTO). */
 export interface MailpitStatus {
   running: boolean;
