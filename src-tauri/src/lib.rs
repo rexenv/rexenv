@@ -37,6 +37,9 @@ pub fn run() {
                 }
             }
 
+            // Registry of live PTY terminal sessions (§4.1).
+            app.manage(commands::terminal::Terminals::default());
+
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.
             let platform = platform::current();
@@ -77,6 +80,10 @@ pub fn run() {
             commands::services::services_status,
             commands::logs::log_targets,
             commands::logs::tail_log,
+            commands::terminal::terminal_open,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_close,
             commands::mail::mailpit_status,
             commands::mail::mailpit_messages,
             commands::mail::mailpit_message,

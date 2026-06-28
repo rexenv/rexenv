@@ -9,5 +9,6 @@ pub mod services;
 pub mod settings;
 pub mod sites;
 pub mod system;
+pub mod terminal;
 pub mod tunnels;
 pub mod wordpress;

@@ -149,12 +149,24 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 4. Built-in terminal (xterm.js)
 
-- [ ] **4.1 PTY backend (event stream)**
+- [x] **4.1 PTY backend (event stream)**
   *Done when:* a PTY backend (the cross-platform `portable-pty` crate — **no new platform trait**) spawns the
   user's shell **in a site's docroot** with the bundled PHP + `wp-cli.phar` (+ Composer/Node if present) on
   `PATH`; stdin/output/resize stream over Tauri events behind a typed `src/lib/ipc/` helper. Verified
   (example/headless): writing `php -v\n` to the PTY returns the bundled PHP version; the cwd is the docroot.
   Depends on Phase 1 §9.1.
+  ✓ New `core/terminal.rs` (`portable-pty 0.9`, Tauri-free): `TerminalSession::open(cfg, on_output)` opens a
+  PTY, spawns `$SHELL` in the docroot with a full inherited env, starts a reader thread feeding a callback,
+  and exposes `write`/`resize`/`kill` (all `Mutex`-wrapped so the session is `Send+Sync` for shared state).
+  PATH gets the bundled-PHP dir + a generated `wp` wrapper (`ensure_wp_wrapper` → `php -d memory_limit=512M
+  wp-cli.phar "$@"`); the terminal's PHP **matches the site's version**. **Gotcha handled:** macOS path_helper
+  + the user's rc reorder PATH and would shadow the bundled php, so `open` also injects `export PATH="…:$PATH"`
+  AFTER rc runs — verified the bundled php wins even with a full powerline zsh rc + Herd/Homebrew php on the
+  box. Command layer: a Tauri-managed `Terminals` registry + `terminal_open`/`terminal_write`/`terminal_resize`/
+  `terminal_close`, output bridged to per-session events `terminal://output/<id>`; typed `ipc.openTerminal`/
+  `writeTerminal`/`resizeTerminal`/`closeTerminal`/`onTerminalOutput` helpers. Verified: `cargo run --example
+  terminal_check` → `php -v` reports **PHP 8.3.31** (bundled, not system), `pwd` is the docroot, `wp --version`
+  → **WP-CLI 2.12.0**. `cargo test --lib` 94 pass, tsc + vite build clean. (commit pending)
 
 - [ ] **4.2 Terminal UI (xterm.js)**
   *Done when:* SiteDetail exposes a **Terminal** (Overview quick link / tab) rendering an xterm.js terminal

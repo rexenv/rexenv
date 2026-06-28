@@ -103,6 +103,42 @@ export async function openExternal(target: string): Promise<void> {
   await invoke("open_external", { target });
 }
 
+/** Open a PTY shell in a site's docroot (bundled PHP + `wp` on PATH). Returns the
+ *  session id; output streams via {@link onTerminalOutput}. Desktop-app only. */
+export async function openTerminal(siteId: string, rows: number, cols: number): Promise<string> {
+  if (!isTauri()) throw new Error("The terminal requires the rexenv desktop app.");
+  return invoke<string>("terminal_open", { siteId, rows, cols });
+}
+
+/** Write input (keystrokes / paste) to a terminal session. */
+export async function writeTerminal(id: string, data: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("terminal_write", { id, data });
+}
+
+/** Resize a terminal session's PTY. */
+export async function resizeTerminal(id: string, rows: number, cols: number): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("terminal_resize", { id, rows, cols });
+}
+
+/** Close a terminal session (kills its shell). */
+export async function closeTerminal(id: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("terminal_close", { id });
+}
+
+/** Subscribe to a terminal session's output. Returns an unlisten function.
+ *  No-op outside Tauri. */
+export async function onTerminalOutput(
+  id: string,
+  cb: (bytes: Uint8Array) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<number[]>(`terminal://output/${id}`, (e) => cb(new Uint8Array(e.payload)));
+}
+
 /** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */
 export async function wpInfo(id: string): Promise<WpInfo> {
   if (!isTauri()) {
