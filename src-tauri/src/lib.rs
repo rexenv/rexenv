@@ -75,6 +75,8 @@ pub fn run() {
             commands::services::start_services,
             commands::services::stop_services,
             commands::services::services_status,
+            commands::logs::log_targets,
+            commands::logs::tail_log,
             commands::mail::mailpit_status,
             commands::mail::mailpit_messages,
             commands::mail::mailpit_message,

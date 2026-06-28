@@ -104,6 +104,12 @@ export interface MailpitStatus {
   uiUrl: string;
 }
 
+/** A selectable log source for the Logs viewer (mirrors the Rust LogTarget DTO). */
+export interface LogTarget {
+  key: string; // file name within the log dir
+  label: string;
+}
+
 /** An email address (display name may be empty). */
 export interface MailAddress {
   name: string;

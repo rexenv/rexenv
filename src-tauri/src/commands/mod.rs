@@ -2,6 +2,7 @@
 //! `core/` call and returns serializable data. No business logic here.
 
 pub mod database;
+pub mod logs;
 pub mod mail;
 pub mod php;
 pub mod services;

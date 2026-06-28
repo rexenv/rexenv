@@ -9,6 +9,7 @@ pub mod database;
 pub mod db;
 pub mod dns;
 pub mod frankenphp;
+pub mod logs;
 pub mod mail;
 pub mod monitor;
 pub mod php;

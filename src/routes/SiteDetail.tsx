@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,7 +9,8 @@ import {
   FolderOpen,
   Globe,
   LayoutGrid,
-  ScrollText,
+  Pause,
+  Play,
   TerminalSquare,
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -17,9 +18,11 @@ import { Placeholder } from "@/components/common/Placeholder";
 import {
   listPhpVersions,
   listSites,
+  logTargets,
   openExternal,
   setSitePhpVersion,
   setSiteWebServer,
+  tailLog,
   wpInfo,
 } from "@/lib/ipc";
 import type { Site, WebServer, WpInfo } from "@/types";
@@ -143,13 +146,7 @@ export function SiteDetail() {
               hint="Adminer embeds here in §5."
             />
           )}
-          {active === "logs" && (
-            <Placeholder
-              icon={<ScrollText className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-              label="Logs"
-              hint="Live log tailing lands in §3."
-            />
-          )}
+          {active === "logs" && <LogsTab siteId={site.id} />}
           {active === "settings" && (
             <Placeholder
               icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
@@ -264,6 +261,84 @@ function Overview({
         </div>
       </Card>
     </>
+  );
+}
+
+const LOG_LINES = 500;
+
+function LogsTab({ siteId }: { siteId: string }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+
+  const { data: targets = [] } = useQuery({
+    queryKey: ["log-targets", siteId],
+    queryFn: () => logTargets(siteId),
+  });
+
+  // Default to the first source once targets load.
+  const active = selected ?? targets[0]?.key ?? null;
+
+  const { data: lines = [] } = useQuery({
+    queryKey: ["tail-log", active],
+    queryFn: () => tailLog(active!, LOG_LINES),
+    enabled: !!active,
+    refetchInterval: paused ? false : 1000,
+  });
+
+  // Auto-scroll to the newest line unless the user scrolled up (or paused).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current && !paused) el.scrollTop = el.scrollHeight;
+  }, [lines, paused]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  }
+
+  return (
+    <div className="rounded-xl border border-rex-border bg-rex-surface-1">
+      <div className="flex items-center justify-between gap-2 border-b border-rex-border p-2.5">
+        <select
+          value={active ?? ""}
+          onChange={(e) => setSelected(e.target.value)}
+          className={SELECT_CLS}
+        >
+          {targets.map((t) => (
+            <option key={t.key} value={t.key}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => setPaused((p) => !p)}
+          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+        >
+          {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+          {paused ? "Resume" : "Pause"}
+        </button>
+      </div>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="h-[60vh] overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[11.5px] leading-relaxed text-rex-text"
+      >
+        {lines.length === 0 ? (
+          <div className="text-rex-text-muted">
+            No log output yet — start the site's services and traffic will appear here.
+          </div>
+        ) : (
+          lines.map((l, i) => (
+            <div key={i} className="whitespace-pre-wrap break-all">
+              {l}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -129,13 +129,23 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 3. Real-time log viewer (Block 5 Logs tab)
 
-- [ ] **3.1 Live log tailing**
+- [x] **3.1 Live log tailing**
   *Done when:* the SiteDetail **Logs** tab (with a source picker) live-tails the relevant logs — the
   `spawn_logged` per-service stdout logs (**Phase 1 §10.3**) plus nginx access/error, php-fpm, and
   MySQL/PostgreSQL error logs — via a `tail_log(target, lines)` IPC that returns the last N lines and follows
   (Tauri event stream or ~1s poll); lines render in mono with auto-scroll + pause. Verified: hitting a site
   appends new nginx access lines to the Logs tab in near-real-time; switching the picker changes the source.
   Depends on 1.3, Phase 1 §10.3.
+  ✓ New `core/logs.rs`: `targets_for_site(site)` (nginx access/error, the site's `php-fpm-<minor>.log` +
+  php-fpm output, Caddy, MySQL, PostgreSQL, and the FrankenPHP backend for override sites) and `tail(key,
+  lines)` reading only the trailing 256 KB (bounds memory on big access logs). A log **key is a plain file
+  name within `log_dir`** — validated (no `/`, `\`, `..`, must end `.log`) so the UI can never read outside
+  it. Commands `log_targets(site_id)` + `tail_log(key, lines)`; typed `ipc.logTargets`/`ipc.tailLog` (mock
+  off-Tauri). Logs tab rebuilt: source `<select>`, **Pause/Resume**, ~1s `refetchInterval` poll, mono lines
+  with auto-scroll that yields when the user scrolls up. Verified: `cargo run --example log_tail_check` — 3
+  GETs through the edge added 3 `nginx-access.log` lines (65→68, last line is the real `GET /index.php 200`),
+  php-fpm pool tail readable, traversal key rejected; dev screenshot shows the picker + mono stream. `cargo
+  test --lib` 93 pass, tsc + vite build clean. (commit pending)
 
 ## 4. Built-in terminal (xterm.js)
 

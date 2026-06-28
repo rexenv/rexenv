@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -118,6 +118,29 @@ export async function mailpitStatus(): Promise<MailpitStatus> {
     return { running: true, smtpPort: 1025, httpPort: 8025, uiUrl: "http://127.0.0.1:8025" };
   }
   return invoke<MailpitStatus>("mailpit_status");
+}
+
+/** The log sources selectable for a site. Mock fallback outside Tauri. */
+export async function logTargets(siteId: string): Promise<LogTarget[]> {
+  if (!isTauri()) {
+    return [
+      { key: "nginx-access.log", label: "Nginx access" },
+      { key: "nginx-error.log", label: "Nginx error" },
+      { key: "php-fpm-8.3.log", label: "PHP-FPM 8.3" },
+      { key: "caddy-stdout.log", label: "Caddy (edge)" },
+      { key: "mysql-error.log", label: "MySQL" },
+    ];
+  }
+  return invoke<LogTarget[]>("log_targets", { siteId });
+}
+
+/** Last `lines` lines of a log source (polled to follow). Mock outside Tauri. */
+export async function tailLog(key: string, lines: number): Promise<string[]> {
+  if (!isTauri()) {
+    const now = new Date().toLocaleTimeString();
+    return Array.from({ length: 12 }, (_, i) => `${now} [${key}] mock log line ${i + 1}`).slice(-lines);
+  }
+  return invoke<string[]>("tail_log", { key, lines });
 }
 
 /** Inbox listing, optionally filtered by a Mailpit search query. Mock outside Tauri. */
