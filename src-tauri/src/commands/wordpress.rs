@@ -6,6 +6,7 @@ use crate::core::wordpress::{WpInfo, WpPlugin, WpTheme, WpUser};
 use crate::core::{self, binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
+use crate::state::models::{MultisiteMode, Site};
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -231,4 +232,32 @@ pub async fn wp_core_update(state: State<'_, AppState>, id: String) -> Result<St
 pub async fn wp_core_reinstall(state: State<'_, AppState>, id: String) -> Result<String> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     core::wordpress::core_reinstall(&php, &wp, &docroot)
+}
+
+/// Convert a WordPress site to multisite (`subdomain` | `subdirectory`): writes
+/// the network constants, persists the mode, and — if the stack is running —
+/// reloads the edge so nginx serves with the matching rewrite template (§10.1).
+#[tauri::command]
+pub async fn wp_multisite_convert(
+    state: State<'_, AppState>,
+    id: String,
+    mode: String,
+) -> Result<Option<Site>> {
+    let mode = MultisiteMode::parse_db(&mode)?;
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    let (site, sites) = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let updated = core::sites::convert_multisite(&conn, &php, &wp, &docroot, &id, mode)?;
+        (updated, core::sites::list(&conn)?)
+    };
+    if site.is_some() {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
+        }
+    }
+    Ok(site)
 }

@@ -20,7 +20,11 @@ export interface Site {
   ssl: boolean;
   path: string;
   createdAt: string; // SQLite datetime, mirrors the Rust Site struct
+  multisite: MultisiteMode; // WordPress multisite mode (§10.1)
 }
+
+/** WordPress multisite mode (mirrors the Rust MultisiteMode). */
+export type MultisiteMode = "none" | "subdomain" | "subdirectory";
 
 /** Input for creating a site (mirrors the Rust NewSite). */
 export interface NewSiteInput {

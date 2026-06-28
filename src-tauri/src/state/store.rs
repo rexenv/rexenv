@@ -2,19 +2,20 @@
 //! shape. `core/` calls these functions; it never writes SQL itself.
 
 use crate::error::Result;
-use crate::state::models::{PhpVersion, ServiceStatus, Site, SiteType, WebServer};
+use crate::state::models::{MultisiteMode, PhpVersion, ServiceStatus, Site, SiteType, WebServer};
 use rusqlite::{params, Connection, Row};
 
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
 const SITE_COLUMNS: &str =
-    "id, name, domain, type, status, php_version, web_server, ssl, path, created_at";
+    "id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
     let site_type: String = row.get(3)?;
     let status: String = row.get(4)?;
     let web_server: String = row.get(6)?;
+    let multisite: String = row.get(10)?;
     Ok(Site {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -26,6 +27,7 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         ssl: row.get::<_, i64>(7)? != 0,
         path: row.get(8)?,
         created_at: row.get(9)?,
+        multisite: MultisiteMode::parse_db(&multisite).map_err(to_sqlite_err)?,
     })
 }
 
@@ -39,8 +41,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             site.id,
             site.name,
@@ -52,6 +54,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.ssl as i64,
             site.path,
             site.created_at,
+            site.multisite.as_db(),
         ],
     )?;
     Ok(())
@@ -96,6 +99,15 @@ pub fn set_site_php_version(conn: &Connection, id: &str, version: &str) -> Resul
     let affected = conn.execute(
         "UPDATE sites SET php_version = ?1 WHERE id = ?2",
         params![version, id],
+    )?;
+    Ok(affected > 0)
+}
+
+/// Update only a site's `multisite` column; returns whether a row was updated.
+pub fn set_site_multisite(conn: &Connection, id: &str, mode: &str) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET multisite = ?1 WHERE id = ?2",
+        params![mode, id],
     )?;
     Ok(affected > 0)
 }

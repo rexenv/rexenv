@@ -55,6 +55,12 @@ str_enum!(SiteType {
     Php => "php",
 });
 
+str_enum!(MultisiteMode {
+    None => "none",
+    Subdomain => "subdomain",
+    Subdirectory => "subdirectory",
+});
+
 /// A local site as persisted in SQLite and sent to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,6 +76,8 @@ pub struct Site {
     pub ssl: bool,
     pub path: String,
     pub created_at: String,
+    /// WordPress multisite mode (`none` for a single site). Phase 3 §10.1.
+    pub multisite: MultisiteMode,
 }
 
 /// A PHP version in the installed-versions registry (Phase 2 §1.2). Keyed by the

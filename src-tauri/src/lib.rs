@@ -97,6 +97,7 @@ pub fn run() {
             commands::wordpress::wp_rewrite_flush,
             commands::wordpress::wp_core_update,
             commands::wordpress::wp_core_reinstall,
+            commands::wordpress::wp_multisite_convert,
             commands::services::start_services,
             commands::services::stop_services,
             commands::services::services_status,

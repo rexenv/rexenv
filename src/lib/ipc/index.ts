@@ -362,6 +362,13 @@ export async function wpCoreReinstall(id: string): Promise<string> {
   return invoke<string>("wp_core_reinstall", { id });
 }
 
+/** Convert a WP site to multisite ("subdomain" | "subdirectory"). Returns the
+ *  updated site. No-op (null) outside Tauri. */
+export async function wpMultisiteConvert(id: string, mode: "subdomain" | "subdirectory"): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site | null>("wp_multisite_convert", { id, mode });
+}
+
 /** Per-service status + live metrics. Mock fallback outside Tauri. */
 export async function servicesStatus(): Promise<ServiceInfo[]> {
   if (!isTauri()) return mockServices;

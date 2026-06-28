@@ -88,7 +88,7 @@ pub fn tail(platform: &dyn Platform, key: &str, lines: usize) -> Result<Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::models::{ServiceStatus, Site, SiteType, WebServer};
+    use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteType, WebServer};
 
     fn site(server: WebServer) -> Site {
         Site {
@@ -102,6 +102,7 @@ mod tests {
             ssl: true,
             path: "/tmp/acme".into(),
             created_at: String::new(),
+            multisite: MultisiteMode::None,
         }
     }
 

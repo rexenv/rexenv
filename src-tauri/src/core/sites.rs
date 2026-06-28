@@ -8,7 +8,7 @@
 use crate::core::{adminer, frankenphp, php, proxy, services, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use crate::state::models::{NewSite, ServiceStatus, Site, SiteType, WebServer};
+use crate::state::models::{MultisiteMode, NewSite, ServiceStatus, Site, SiteType, WebServer};
 use crate::state::store;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
@@ -34,6 +34,7 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         ssl: true,
         path: new.path,
         created_at: store::db_now(conn)?,
+        multisite: MultisiteMode::None,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -72,6 +73,36 @@ pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<
         )));
     }
     if !store::set_site_web_server(conn, id, server.as_db())? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
+/// Convert a WordPress site to a multisite network (§10.1): run `wp core
+/// multisite-convert` (subdomain or subdirectory) to write the network constants,
+/// then persist the mode so `rebuild_configs` regenerates nginx with the matching
+/// rewrite template. The caller reloads the edge afterward (no docroot/cert/DB
+/// rebuild). Returns the updated site, or `None` if the id doesn't exist.
+pub fn convert_multisite(
+    conn: &Connection,
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    id: &str,
+    mode: MultisiteMode,
+) -> Result<Option<Site>> {
+    if matches!(mode, MultisiteMode::None) {
+        return Err(Error::Other(
+            "multisite mode must be 'subdomain' or 'subdirectory'".into(),
+        ));
+    }
+    crate::core::wordpress::multisite_convert(
+        php_bin,
+        wp_phar,
+        docroot,
+        matches!(mode, MultisiteMode::Subdomain),
+    )?;
+    if !store::set_site_multisite(conn, id, mode.as_db())? {
         return Ok(None);
     }
     get(conn, id)
@@ -213,7 +244,16 @@ fn nginx_site_for(s: &Site) -> services::NginxSite {
         domain: s.domain.clone(),
         docroot: PathBuf::from(&s.path),
         php_fpm_port: port,
-        rewrite: services::RewriteMode::Single,
+        rewrite: rewrite_mode_for(s.multisite),
+    }
+}
+
+/// Map a site's multisite mode to its nginx rewrite template (Phase 1 §6.2).
+fn rewrite_mode_for(mode: MultisiteMode) -> services::RewriteMode {
+    match mode {
+        MultisiteMode::None => services::RewriteMode::Single,
+        MultisiteMode::Subdomain => services::RewriteMode::SubdomainMultisite,
+        MultisiteMode::Subdirectory => services::RewriteMode::SubdirectoryMultisite,
     }
 }
 

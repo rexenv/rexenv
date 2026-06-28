@@ -375,7 +375,7 @@ service pattern, and gives WordPress work a place to see captured mail.
 Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** rewrite-template slots and the
 **Phase 1 §3.2** wildcard cert that were built but unused.
 
-- [ ] **10.1 Enable/convert multisite (subdomain | subdirectory) + rewrite template**
+- [x] **10.1 Enable/convert multisite (subdomain | subdirectory) + rewrite template**
   *Done when:* a WP site can be converted to multisite either mode via WP-CLI (`wp core multisite-convert
   [--subdomains]`), writing the network wp-config constants (`MULTISITE`, `SUBDOMAIN_INSTALL`,
   `DOMAIN_CURRENT_SITE`, `PATH_CURRENT_SITE`, `SITE_ID_CURRENT_SITE`, `BLOG_ID_CURRENT_SITE`); the mode is
@@ -384,6 +384,18 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   subdomain/subdirectory rewrite template + reloads (no docroot/cert/DB rebuild). Verified: converting
   `mysite.test` to **subdirectory** multisite writes the constants, sets `RewriteMode::SubdirectoryMultisite`,
   and `/wp-admin/network/` loads. Depends on 1.1, Phase 1 §6.2.
+  ✓ **Migration v3** (`ALTER TABLE sites ADD COLUMN multisite TEXT NOT NULL DEFAULT 'none'`); `MultisiteMode`
+  enum (`none|subdomain|subdirectory`) on `Site`; store reads/writes the column + `set_site_multisite`.
+  `core/wordpress::multisite_convert(subdomains)` runs `wp core multisite-convert [--subdomains]`;
+  `core/sites::convert_multisite` runs it + persists the mode; `nginx_site_for` now maps `site.multisite` →
+  `RewriteMode` (None→Single, Subdomain→SubdomainMultisite, Subdirectory→SubdirectoryMultisite), so
+  `rebuild_configs` regenerates the right rewrite template. Command `wp_multisite_convert(id, mode)` converts +
+  reloads the edge (if running); typed `ipc.wpMultisiteConvert` + `Site.multisite`. Verified: `cargo run
+  --example multisite_check` (full stack, real WP, re-runnable) — convert `mysite.test`→subdirectory →
+  `MULTISITE=1`, `SUBDOMAIN_INSTALL=` (empty), `wp_info.multisite=true`, `wp site list`=1; reload regenerates
+  `nginx.conf` **with the subdirectory-multisite rewrite** (`rewrite /wp-admin$`); `GET /wp-admin/network/` →
+  302 (routed through the rewrite, recognized — WP's unauthenticated network-admin redirect, not a 404).
+  `cargo test --lib` 102 pass, tsc + vite build clean. (commit pending)
 
 - [ ] **10.2 Wildcard cert + edge route for subdomain multisite**
   *Done when:* a subdomain-multisite site is served across `*.mysite.test`: the per-site **wildcard cert**

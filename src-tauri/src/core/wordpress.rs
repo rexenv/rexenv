@@ -296,6 +296,22 @@ pub fn user_create(
     wp_run(php_bin, wp_phar, docroot, &["user", "create", login, email, &role_arg, "--porcelain"])
 }
 
+/// Convert a single-site WordPress install to a network (`wp core
+/// multisite-convert [--subdomains]`), writing the network constants into
+/// wp-config. `subdomains` chooses subdomain vs subdirectory install (§10.1).
+pub fn multisite_convert(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    subdomains: bool,
+) -> Result<String> {
+    let mut args: Vec<&str> = vec!["core", "multisite-convert"];
+    if subdomains {
+        args.push("--subdomains");
+    }
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
 // ── Tools (§7.2) ─────────────────────────────────────────────────────────────
 
 /// Whether `WP_DEBUG` is enabled (`wp config get WP_DEBUG`). A missing constant

@@ -42,6 +42,9 @@ const MIGRATIONS: &[&str] = &[
         installed  INTEGER NOT NULL DEFAULT 0,
         is_default INTEGER NOT NULL DEFAULT 0
     );",
+    // v3 — WordPress multisite mode (Phase 3 §10.1): `none` (single site),
+    // `subdomain`, or `subdirectory`. Maps to the nginx RewriteMode (Phase 1 §6.2).
+    "ALTER TABLE sites ADD COLUMN multisite TEXT NOT NULL DEFAULT 'none';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
