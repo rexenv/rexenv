@@ -6,6 +6,7 @@
 //! captures output (unlike `ProcessSupervisor`, which is for long-lived services).
 
 use crate::error::{Error, Result};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -46,6 +47,74 @@ pub fn wp_cli_checked(
             String::from_utf8_lossy(&out.stderr).trim()
         )))
     }
+}
+
+/// Run a WP-CLI command scoped to a docroot (`--path=<docroot>` is appended for
+/// the caller) and return trimmed stdout, erroring (with stderr) on non-zero exit.
+pub fn wp_run(php_bin: &Path, wp_phar: &Path, docroot: &Path, args: &[&str]) -> Result<String> {
+    let path = format!("--path={}", docroot.display());
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 1);
+    full.extend_from_slice(args);
+    full.push(&path);
+    Ok(wp_cli_checked(php_bin, wp_phar, &full, None)?.trim().to_string())
+}
+
+/// Typed JSON bridge: run a WP-CLI command scoped to a docroot with
+/// `--format=json` and deserialize stdout into `T` (e.g. `Vec<PluginRow>`).
+/// Non-zero exit / stderr surfaces as a clean `Error`, as does a parse failure.
+pub fn wp_json<T: serde::de::DeserializeOwned>(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    args: &[&str],
+) -> Result<T> {
+    let path = format!("--path={}", docroot.display());
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 2);
+    full.extend_from_slice(args);
+    full.push(&path);
+    full.push("--format=json");
+    let out = wp_cli_checked(php_bin, wp_phar, &full, None)?;
+    serde_json::from_str(out.trim())
+        .map_err(|e| Error::Other(format!("wp {}: bad JSON: {e}", args.first().copied().unwrap_or(""))))
+}
+
+/// What `wp_info` reports about a docroot (mirrors the frontend `WpInfo`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpInfo {
+    /// A present, installed WordPress lives at the docroot.
+    pub is_wordpress: bool,
+    /// Core version (`wp core version`) when WordPress; else `None`.
+    pub version: Option<String>,
+    /// Whether the install is a multisite network.
+    pub multisite: bool,
+}
+
+/// Detect WordPress at a docroot via `core is-installed` (presence), `core version`,
+/// and the `MULTISITE` constant. A non-WordPress docroot (e.g. a Blank-PHP site)
+/// reports `is_wordpress: false` rather than erroring.
+pub fn wp_info(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpInfo> {
+    let path = format!("--path={}", docroot.display());
+
+    // `core is-installed` exits 0 only for a present, installed WordPress.
+    let is_wordpress = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !is_wordpress {
+        return Ok(WpInfo { is_wordpress: false, version: None, multisite: false });
+    }
+
+    let version = wp_run(php_bin, wp_phar, docroot, &["core", "version"]).ok();
+
+    // `config get MULTISITE` prints the constant ("1") for a network; it errors
+    // when the constant is unset — treat that as not-multisite.
+    let multisite = wp_cli(php_bin, wp_phar, &["config", "get", "MULTISITE", &path], None)
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().eq_ignore_ascii_case("1"))
+        .unwrap_or(false);
+
+    Ok(WpInfo { is_wordpress, version, multisite })
 }
 
 /// A valid MySQL database name derived from a site domain

@@ -78,3 +78,10 @@ export interface DbStatus {
   cpuPercent: number;
   ramMb: number;
 }
+
+/** WordPress detection for a site's docroot (mirrors the Rust WpInfo DTO). */
+export interface WpInfo {
+  isWordpress: boolean;
+  version: string | null; // wp core version, when WordPress
+  multisite: boolean;
+}

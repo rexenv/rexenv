@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -88,6 +88,12 @@ export async function listPhpVersions(): Promise<PhpVersion[]> {
 export async function setPhpVersionInstalled(minor: string, installed: boolean): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_php_version_installed", { minor, installed });
+}
+
+/** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */
+export async function wpInfo(id: string): Promise<WpInfo> {
+  if (!isTauri()) return { isWordpress: false, version: null, multisite: false };
+  return invoke<WpInfo>("wp_info", { id });
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

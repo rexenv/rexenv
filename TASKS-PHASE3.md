@@ -33,13 +33,17 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done
 Lays the WP-CLI JSON bridge, the ability to create WordPress sites to test everything against, and the Site
 Detail tab shell that the WordPress Manager, Logs tab, and Terminal all live in.
 
-- [ ] **1.1 WP-CLI JSON bridge + WP detection**
+- [x] **1.1 WP-CLI JSON bridge + WP detection**
   *Done when:* `core/wordpress` gains a typed JSON runner — `wp <args> --path=<docroot> --format=json` via the
   bundled PHP + `wp-cli.phar` (reusing Phase 1 §9.1's `wp_cli`, `-d memory_limit=512M`), with non-zero exit /
   stderr surfaced as a clean `Error`. A `wp_info(site_id)` IPC returns `{ isWordpress, version, multisite }`
   (via `wp core is-installed`, `wp core version`, `wp config get MULTISITE`). Verified: against a real WP site
   the bridge returns the core version + an `wp option get` value; a Blank-PHP site reports `isWordpress:false`.
   Depends on Phase 1 §9.1/§9.2.
+  ✓ `core::wordpress::{wp_run, wp_json::<T>, WpInfo, wp_info}` + `commands::wordpress::wp_info` (resolves the
+  site's PHP + wp-cli.phar) + typed `ipc.wpInfo`; `cargo run --example wp_info_check` → `WpInfo{isWordpress:
+  true, version:"7.0", multisite:false}`, `siteurl=https://wpinfo.test`, JSON runner parsed 2 plugins,
+  Blank-PHP → `isWordpress:false`. (commit pending)
 
 - [ ] **1.2 Create a WordPress site (one-click install, wired into the create flow)**
   *Done when:* choosing **WordPress** in the New Site dialog (Block 4: site title, admin user/email/password,

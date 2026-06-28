@@ -70,6 +70,7 @@ pub fn run() {
             commands::sites::delete_site,
             commands::php::list_php_versions,
             commands::php::set_php_version_installed,
+            commands::wordpress::wp_info,
             commands::services::start_services,
             commands::services::stop_services,
             commands::services::services_status,
