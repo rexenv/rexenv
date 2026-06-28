@@ -112,6 +112,15 @@ export interface WpTheme {
   update: string; // none | available | …
 }
 
+/** A WordPress user row (mirrors the Rust WpUser DTO / `wp user list`). */
+export interface WpUser {
+  id: number;
+  login: string;
+  email: string;
+  roles: string; // comma-separated
+  name: string;
+}
+
 /** Mailpit mail-catcher health + endpoints (mirrors the Rust MailpitStatus DTO). */
 export interface MailpitStatus {
   running: boolean;

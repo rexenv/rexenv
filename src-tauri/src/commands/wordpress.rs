@@ -2,7 +2,7 @@
 //! (Phase 3 §1). Resolves the bundled PHP + wp-cli phar and delegates to
 //! `core::wordpress`. No business logic here.
 
-use crate::core::wordpress::{WpInfo, WpPlugin, WpTheme};
+use crate::core::wordpress::{WpInfo, WpPlugin, WpTheme, WpUser};
 use crate::core::{self, binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
@@ -137,4 +137,49 @@ pub async fn wp_theme_update(state: State<'_, AppState>, id: String, names: Vec<
 pub async fn wp_theme_delete(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     core::wordpress::theme_delete(&php, &wp, &docroot, &names).map(|_| ())
+}
+
+/// List the site's WordPress users (`wp user list`).
+#[tauri::command]
+pub async fn wp_users(state: State<'_, AppState>, id: String) -> Result<Vec<WpUser>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::user_list(&php, &wp, &docroot)
+}
+
+/// Create a WordPress user (`wp user create`); WP-CLI generates the password.
+#[tauri::command]
+pub async fn wp_user_create(
+    state: State<'_, AppState>,
+    id: String,
+    login: String,
+    email: String,
+    role: String,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::user_create(&php, &wp, &docroot, &login, &email, &role).map(|_| ())
+}
+
+/// Issue a one-time "Log in as" URL for `userId`: a single-use, short-TTL,
+/// loopback-only magic link the UI opens in the browser (§7.1).
+#[tauri::command]
+pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: u64) -> Result<String> {
+    let site = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
+    };
+    let (php_bin, wp_phar) = wp_tools(&state, &site.php_version).await?;
+    let token = core::wp_login::issue(
+        &php_bin,
+        &wp_phar,
+        Path::new(&site.path),
+        user_id,
+        core::wp_login::LOGIN_TTL_SECS,
+    )?;
+    Ok(format!(
+        "https://{}/?rexenv_login={}&rexenv_user={}",
+        site.domain, token, user_id
+    ))
 }

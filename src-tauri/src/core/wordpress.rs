@@ -241,6 +241,61 @@ pub fn theme_install(
     wp_run(php_bin, wp_phar, docroot, &args)
 }
 
+/// A WordPress user for the Users sub-tab (§7.1).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpUser {
+    pub id: u64,
+    pub login: String,
+    pub email: String,
+    /// Comma-separated role list (WP-CLI's `roles` field).
+    pub roles: String,
+    pub name: String,
+}
+
+// `wp user list --format=json` wire shape (WP-CLI's snake_case keys).
+#[derive(Deserialize)]
+struct WireUser {
+    #[serde(rename = "ID", default)]
+    id: u64,
+    #[serde(rename = "user_login", default)]
+    login: String,
+    #[serde(rename = "user_email", default)]
+    email: String,
+    #[serde(rename = "roles", default)]
+    roles: String,
+    #[serde(rename = "display_name", default)]
+    name: String,
+}
+
+/// `wp user list` (id, login, email, roles, display name).
+pub fn user_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpUser>> {
+    let wire: Vec<WireUser> = wp_json(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["user", "list", "--fields=ID,user_login,user_email,roles,display_name"],
+    )?;
+    Ok(wire
+        .into_iter()
+        .map(|u| WpUser { id: u.id, login: u.login, email: u.email, roles: u.roles, name: u.name })
+        .collect())
+}
+
+/// Create a user (`wp user create <login> <email> --role=<role>`). WP-CLI
+/// generates a random password; returns the new user's id (via `--porcelain`).
+pub fn user_create(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    login: &str,
+    email: &str,
+    role: &str,
+) -> Result<String> {
+    let role_arg = format!("--role={role}");
+    wp_run(php_bin, wp_phar, docroot, &["user", "create", login, email, &role_arg, "--porcelain"])
+}
+
 /// A valid MySQL database name derived from a site domain
 /// (`blog.test` → `wp_blog_test`).
 pub fn db_name_for(domain: &str) -> String {

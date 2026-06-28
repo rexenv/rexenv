@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput, WpPlugin, WpTheme } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, WebServer, WpInfo, WpInstallInput, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -296,6 +296,31 @@ export async function wpThemeUpdate(id: string, names: string[]): Promise<void> 
 export async function wpThemeDelete(id: string, names: string[]): Promise<void> {
   if (!isTauri()) return;
   await invoke("wp_theme_delete", { id, names });
+}
+
+// ── WordPress Manager — users (§7.1) ────────────────────────────────────────
+
+const mockWpUsers: WpUser[] = [
+  { id: 1, login: "admin", email: "admin@acme.test", roles: "administrator", name: "Admin" },
+  { id: 2, login: "editor", email: "editor@acme.test", roles: "editor", name: "Ed Itor" },
+];
+
+/** List a site's WordPress users (`wp user list`). Mock fallback outside Tauri. */
+export async function wpUsers(id: string): Promise<WpUser[]> {
+  if (!isTauri()) return mockWpUsers;
+  return invoke<WpUser[]>("wp_users", { id });
+}
+
+/** Create a WordPress user (`wp user create`). No-op outside Tauri. */
+export async function wpUserCreate(id: string, login: string, email: string, role: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_user_create", { id, login, email, role });
+}
+
+/** Issue a one-time "Log in as" magic URL for a user. Desktop-app only. */
+export async function wpUserLoginUrl(id: string, userId: number): Promise<string> {
+  if (!isTauri()) throw new Error('"Log in as" requires the rexenv desktop app.');
+  return invoke<string>("wp_user_login_url", { id, userId });
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

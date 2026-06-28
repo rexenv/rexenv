@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Check, LayoutGrid, Palette, Plus, Trash2 } from "lucide-react";
+import { ArrowUpCircle, Check, LayoutGrid, LogIn, Palette, Plus, Trash2, UserPlus } from "lucide-react";
 import { Placeholder } from "@/components/common/Placeholder";
 import {
+  openExternal,
   wpPluginActivate,
   wpPluginDeactivate,
   wpPluginDelete,
@@ -14,8 +15,13 @@ import {
   wpThemeInstall,
   wpThemeUpdate,
   wpThemes,
+  wpUserCreate,
+  wpUserLoginUrl,
+  wpUsers,
 } from "@/lib/ipc";
-import type { WpPlugin, WpTheme } from "@/types";
+import type { WpPlugin, WpTheme, WpUser } from "@/types";
+
+const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
 
 type SubTab = "plugins" | "themes" | "users" | "tools";
 
@@ -49,14 +55,119 @@ export function WordPressManager({ siteId }: { siteId: string }) {
 
       {sub === "plugins" && <PluginsPanel siteId={siteId} />}
       {sub === "themes" && <ThemesPanel siteId={siteId} />}
-      {(sub === "users" || sub === "tools") && (
+      {sub === "users" && <UsersPanel siteId={siteId} />}
+      {sub === "tools" && (
         <Placeholder
           icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-          label={subs.find((s) => s.key === sub)!.label}
-          hint="Users & Tools land in §7."
+          label="Tools"
+          hint="WP_DEBUG, search-replace, permalinks & core update land in §7.2."
         />
       )}
     </>
+  );
+}
+
+function UsersPanel({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [login, setLogin] = useState("");
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState("subscriber");
+
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ["wp-users", siteId],
+    queryFn: () => wpUsers(siteId),
+  });
+
+  const create = useMutation({
+    mutationFn: () => wpUserCreate(siteId, login.trim(), email.trim(), role),
+    onSuccess: () => {
+      setLogin("");
+      setEmail("");
+      qc.invalidateQueries({ queryKey: ["wp-users", siteId] });
+    },
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const loginAs = useMutation({
+    mutationFn: (userId: number) => wpUserLoginUrl(siteId, userId),
+    onSuccess: (url) => openExternal(url),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Add user */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <input
+          value={login}
+          onChange={(e) => setLogin(e.target.value)}
+          placeholder="username"
+          className="h-[30px] w-32 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+        />
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="email@site.test"
+          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+        />
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand"
+        >
+          {WP_ROLES.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <button
+          className={BTN + " flex items-center gap-1.5"}
+          disabled={create.isPending || !login.trim() || !email.trim()}
+          onClick={() => create.mutate()}
+        >
+          <UserPlus className="h-3.5 w-3.5" />
+          Add user
+        </button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
+        {isLoading ? (
+          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">Loading users…</div>
+        ) : users.length === 0 ? (
+          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">No users.</div>
+        ) : (
+          users.map((u) => (
+            <UserRow
+              key={u.id}
+              u={u}
+              busy={loginAs.isPending}
+              onLoginAs={() => loginAs.mutate(u.id)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserRow({ u, busy, onLoginAs }: { u: WpUser; busy: boolean; onLoginAs: () => void }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2.5 last:border-b-0">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[13px] font-medium text-rex-text">{u.login}</span>
+          <span className="rounded-full bg-rex-surface-3 px-1.5 py-0.5 text-[10.5px] text-rex-text-muted">
+            {u.roles || "—"}
+          </span>
+        </div>
+        <div className="truncate font-mono text-[11px] text-rex-text-dim">{u.email}</div>
+      </div>
+      <button className={BTN + " flex items-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
+        <LogIn className="h-3.5 w-3.5" />
+        Log in as
+      </button>
+    </div>
   );
 }
 

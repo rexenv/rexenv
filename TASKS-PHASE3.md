@@ -257,7 +257,7 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 7. WordPress Manager — users & tools (Block 6)
 
-- [ ] **7.1 Users (list · add · one-click "Log in as")**
+- [x] **7.1 Users (list · add · one-click "Log in as")**
   *Done when:* the **Users** sub-tab lists `wp user list --format=json` (login, email, role); Add user
   (`wp user create`); and a per-row **Log in as** opens the browser already authenticated as that user, via a
   WP-CLI one-time login (a temporary mu-plugin that consumes a single-use token, or the `wp-cli-login`
@@ -266,6 +266,22 @@ service pattern, and gives WordPress work a place to see captured mail.
   `REMOTE_ADDR` loopback check) — so a captured token can NOT be replayed through a public Cloudflare
   tunnel (§9) while the site is shared. Verified: "Log in as admin" opens `wp-admin` logged in, no password
   prompt; the same token fails on a second use AND when presented with a non-loopback Host. Depends on 1.3.
+  ✓ Users: `core/wordpress.rs` `WpUser` + `user_list` (`wp user list --fields=…`, wire→camelCase) + `user_create`
+  (`wp user create … --role= --porcelain`); commands `wp_users` / `wp_user_create` + `ipc.wpUsers`/`wpUserCreate`.
+  **Log in as** — new `core/wp_login.rs`: `issue()` writes an auto-managed **mu-plugin** (`rexenv-login.php`),
+  generates a 256-bit token, and stores ONLY its SHA-256 hash + target user + `exp` in a non-autoloaded
+  `rexenv_login` option (via WP-CLI). The mu-plugin (on `init`) enforces, in order: reject if Cloudflare tunnel
+  headers present (`CF-Connecting-IP`/`CF-Ray`/…), require the originating client (leftmost `X-Forwarded-For`,
+  else `REMOTE_ADDR`) be loopback, require a local `.test`/`localhost` Host, then **delete the option
+  (single-use)**, check `exp` (TTL 120s), match user, `hash_equals` the token hash — only then
+  `wp_set_auth_cookie` + redirect to `wp-admin`. Command `wp_user_login_url` returns the magic URL; the Users
+  panel's per-row **Log in as** opens it via `openExternal`. **Why REMOTE_ADDR alone is insufficient:** behind
+  the edge, php-fpm always sees `127.0.0.1`, so the real tunnel discriminator is the CF headers + the
+  forwarded client IP. Verified: `cargo run --example wp_login_check` (full stack, real WP) — **(A)** loopback
+  magic link → `302`→wp-admin **with** a `wordpress_logged_in` cookie; **(B)** reusing the token → `403`, no
+  cookie (single-use); **(C)** a fresh token + `CF-Connecting-IP` header → `403`, no cookie (loopback-only, so
+  a tunnel replay can't log in). New `WordPressManager` Users panel (list login/email/role, Add user, Log in
+  as); dev screenshot shows it. `cargo test --lib` 99 pass, tsc + vite build clean. (commit pending)
 
 - [ ] **7.2 Tools (WP_DEBUG · search-replace · permalinks · core update)**
   *Done when:* the **Tools** sub-tab offers a **WP_DEBUG** toggle (`wp config set WP_DEBUG true --raw` / `wp
