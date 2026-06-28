@@ -303,13 +303,26 @@ service pattern, and gives WordPress work a place to see captured mail.
 
 ## 8. Per-site Xdebug toggle
 
-- [ ] **8.1 Verify Xdebug availability in the bundled PHP** *(gating check — do this first)*
+- [x] **8.1 Verify Xdebug availability in the bundled PHP** *(gating check — do this first)*
   *Done when:* it's determined + recorded whether the static-php "bulk" build can load Xdebug — check
   `php -m` / `php -i` for `xdebug` (and whether the build allows loading a `zend_extension` at all). **The
   result decides 8.2's approach:** if Xdebug is present → 8.2 proceeds with the per-version debug pool; if
   absent → an external `xdebug.so` generally can't load into a static PHP, so 8.2 is blocked on sourcing a
   PHP build variant with Xdebug compiled in (tracked in §11.2) — note the blocker and stop. Depends on Phase 1
   §5.1.
+  ✓ **Determination (PHP 8.3.31 static-php "bulk"):** Xdebug is **NOT** compiled in — `php -m` lists no
+  `xdebug` and the `Configure Command` has no xdebug flag (build is `--enable-static=yes --enable-shared=no
+  --enable-micro`, NTS, Zend Extension API `420230831`). Nuance: the binary **does** attempt `dlopen` for
+  `zend_extension=…`/`extension=…` (the test load failed only on "no such file", not on "dynamic loading
+  unsupported"), so loading an external `xdebug.so` is *theoretically* possible — BUT only with a `.so` built
+  to match this exact build's ABI (8.3, NTS, arm64, clang, API20230831), and no such artifact is published
+  (static-php-cli compiles Xdebug **into** the binary rather than shipping a loadable `.so`). **Conclusion:
+  8.2 is BLOCKED** — it needs a pinned PHP build variant with Xdebug compiled in (a "debug" static-php build);
+  tracked in §11.2. Verified via `php -v`/`php -m`/`php -i` + a `-d zend_extension=` load probe on the bundled
+  binary. No code shipped (gating check). (commit pending)
+
+> **8.2 is BLOCKED by 8.1** — deferred until a PHP build variant with Xdebug compiled in is sourced (§11.2).
+> Not started; left unchecked below.
 
 - [ ] **8.2 Per-site Xdebug toggle (config change + reload, not rebuild)**
   *Done when:* a per-site Xdebug toggle works via a per-version **"debug" php-fpm pool** (Xdebug
