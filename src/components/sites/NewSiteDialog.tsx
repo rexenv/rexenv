@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createSite, listPhpVersions } from "@/lib/ipc";
+import { createSite, listBlueprints, listPhpVersions } from "@/lib/ipc";
 import type { SiteType, WebServer } from "@/types";
 
 /** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
@@ -40,6 +40,7 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   });
   const installed = useMemo(() => versions.filter((v) => v.installed), [versions]);
   const defaultVersion = installed.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "8.3";
+  const { data: blueprints = [] } = useQuery({ queryKey: ["blueprints"], queryFn: listBlueprints });
 
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
@@ -47,6 +48,19 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const [phpVersion, setPhpVersion] = useState(defaultVersion);
   const [webServer, setWebServer] = useState<WebServer>("nginx");
   const [domainEdited, setDomainEdited] = useState(false);
+  const [blueprintId, setBlueprintId] = useState("");
+
+  // Selecting a blueprint pre-fills the site config (the post-install plugins/
+  // themes/multisite automation is applied server-side from the blueprintId).
+  const onPickBlueprint = (id: string) => {
+    setBlueprintId(id);
+    const bp = blueprints.find((b) => b.id === id);
+    if (bp) {
+      setSiteType(bp.spec.siteType);
+      setWebServer(bp.spec.webServer);
+      if (installed.some((v) => v.minor === bp.spec.phpVersion)) setPhpVersion(bp.spec.phpVersion);
+    }
+  };
 
   // WordPress one-click fields (used only when siteType === "wordpress").
   const [adminUser, setAdminUser] = useState("admin");
@@ -81,6 +95,7 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
               language,
             }
           : undefined,
+        blueprintId || undefined,
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sites"] });
@@ -112,6 +127,23 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="flex flex-col gap-3">
+          {blueprints.length > 0 && (
+            <Field label="Start from blueprint">
+              <select
+                value={blueprintId}
+                onChange={(e) => onPickBlueprint(e.target.value)}
+                className="h-[34px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none focus:border-brand"
+              >
+                <option value="">None (custom)</option>
+                {blueprints.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
           <Field label="Name">
             <input
               autoFocus

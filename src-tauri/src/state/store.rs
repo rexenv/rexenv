@@ -1,8 +1,10 @@
 //! Repository layer over SQLite — the only place that knows the `sites` table
 //! shape. `core/` calls these functions; it never writes SQL itself.
 
-use crate::error::Result;
-use crate::state::models::{MultisiteMode, PhpVersion, ServiceStatus, Site, SiteType, WebServer};
+use crate::error::{Error, Result};
+use crate::state::models::{
+    Blueprint, BlueprintSpec, MultisiteMode, PhpVersion, ServiceStatus, Site, SiteType, WebServer,
+};
 use rusqlite::{params, Connection, Row};
 
 /// Columns selected for a full `Site`, in struct order. Shared so every query
@@ -209,5 +211,62 @@ pub fn set_php_installed(conn: &Connection, minor: &str, installed: bool) -> Res
         "UPDATE php_versions SET installed = ?1 WHERE minor = ?2",
         params![installed as i64, minor],
     )?;
+    Ok(affected > 0)
+}
+
+// ── Site blueprints (Phase 3 §11.3) ────────────────────────────────────────────
+
+fn row_to_blueprint(row: &Row) -> Result<Blueprint> {
+    let id: String = row.get(0)?;
+    let name: String = row.get(1)?;
+    let spec_json: String = row.get(2)?;
+    let spec: BlueprintSpec = serde_json::from_str(&spec_json)
+        .map_err(|e| Error::Other(format!("blueprint {id}: bad spec JSON: {e}")))?;
+    Ok(Blueprint { id, name, spec })
+}
+
+/// All blueprints, newest first.
+pub fn list_blueprints(conn: &Connection) -> Result<Vec<Blueprint>> {
+    let mut stmt =
+        conn.prepare("SELECT id, name, spec FROM blueprints ORDER BY created_at DESC, name")?;
+    // query_map's closure must return rusqlite::Result, so it defers JSON parsing
+    // (row_to_blueprint_sql wraps our Result); flatten both layers here.
+    let mut out = Vec::new();
+    for r in stmt.query_map([], row_to_blueprint_sql)? {
+        out.push(r??);
+    }
+    Ok(out)
+}
+
+// Adapter so `query_map` (which must return rusqlite::Result) can defer JSON parsing.
+fn row_to_blueprint_sql(row: &Row) -> rusqlite::Result<Result<Blueprint>> {
+    Ok(row_to_blueprint(row))
+}
+
+/// One blueprint by id, or `None`.
+pub fn get_blueprint(conn: &Connection, id: &str) -> Result<Option<Blueprint>> {
+    let mut stmt = conn.prepare("SELECT id, name, spec FROM blueprints WHERE id = ?1")?;
+    let mut rows = stmt.query_map([id], row_to_blueprint_sql)?;
+    match rows.next() {
+        Some(r) => Ok(Some(r??)),
+        None => Ok(None),
+    }
+}
+
+/// Insert or update a blueprint (upsert by id).
+pub fn upsert_blueprint(conn: &Connection, bp: &Blueprint) -> Result<()> {
+    let spec_json = serde_json::to_string(&bp.spec)
+        .map_err(|e| Error::Other(format!("serialize blueprint spec: {e}")))?;
+    conn.execute(
+        "INSERT INTO blueprints (id, name, spec) VALUES (?1, ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, spec = excluded.spec",
+        params![bp.id, bp.name, spec_json],
+    )?;
+    Ok(())
+}
+
+/// Delete a blueprint by id; returns whether it existed.
+pub fn delete_blueprint(conn: &Connection, id: &str) -> Result<bool> {
+    let affected = conn.execute("DELETE FROM blueprints WHERE id = ?1", [id])?;
     Ok(affected > 0)
 }

@@ -99,6 +99,51 @@ pub struct PhpVersion {
     pub is_default: bool,
 }
 
+/// One plugin/theme entry in a blueprint: a wp.org slug + whether to activate it
+/// after install (Phase 3 §11.3).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlueprintItem {
+    pub slug: String,
+    #[serde(default)]
+    pub activate: bool,
+}
+
+/// The reusable recipe a blueprint applies to a new site (§11.3). Stored as a JSON
+/// blob in `blueprints.spec`. The site config fields pre-fill the New Site dialog;
+/// the WordPress fields drive post-install automation (plugins/themes/multisite).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlueprintSpec {
+    #[serde(rename = "siteType")]
+    pub site_type: SiteType,
+    pub php_version: String,
+    pub web_server: WebServer,
+    #[serde(default = "multisite_none")]
+    pub multisite: MultisiteMode,
+    #[serde(default)]
+    pub plugins: Vec<BlueprintItem>,
+    #[serde(default)]
+    pub themes: Vec<BlueprintItem>,
+    #[serde(default)]
+    pub wp_debug: bool,
+    #[serde(default)]
+    pub language: String,
+}
+
+fn multisite_none() -> MultisiteMode {
+    MultisiteMode::None
+}
+
+/// A named, reusable site preset (§11.3): id + display name + its [`BlueprintSpec`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Blueprint {
+    pub id: String,
+    pub name: String,
+    pub spec: BlueprintSpec,
+}
+
 /// Input for creating a site. `id`, `status`, `ssl`, and `created_at` are
 /// assigned by `core::sites::create`, not supplied by the caller.
 #[derive(Debug, Clone, Deserialize)]

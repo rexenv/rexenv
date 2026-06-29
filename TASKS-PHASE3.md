@@ -459,7 +459,17 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   (manifest returns None now) and `php_debug_spec_has_the_expected_url_and_member_shape` (`-xdebug` URL + member
   contract). **Remaining (maintainer/CI):** run the recipe, upload the four artifacts, fill the four
   `PHP_DEBUG_*_SHA256` consts → then §8.2 proceeds.
-- [ ] **11.3 Site templates / blueprints** (PROJECT_SPEC Tier 3) — reusable site setups incl. multisite.
+- [x] **11.3 Site templates / blueprints** (PROJECT_SPEC Tier 3) — ✓ reusable WordPress setups incl. multisite.
+  Migration v4 adds a `blueprints` table (id, name, JSON `spec`) seeded with two examples; `Blueprint`/
+  `BlueprintSpec`/`BlueprintItem` models + store CRUD (`list/get/upsert/delete_blueprint`). `core::blueprints::
+  apply_wordpress` installs+activates a spec's plugins/themes and sets WP_DEBUG; `create_site` gains a
+  `blueprint_id` arg → after the one-click install it applies the blueprint's plugins/themes/WP_DEBUG, then
+  converts to multisite (subdomain/subdirectory) + reloads. Commands `list/save/delete_blueprint`. Frontend:
+  Blueprint types + ipc; a **Blueprints** card in Settings (list + compact create with plugin/theme CSV,
+  multisite, WP_DEBUG) and a **"Start from blueprint"** picker in New Site that pre-fills config + passes the id.
+  Verified by `blueprint_check`: seeds present + CRUD round-trips; applying a blueprint to a real WP site →
+  hello-dolly active + WP_DEBUG on + subdirectory multisite. UI via chrome-devtools. `cargo test --lib` 109 pass
+  (+1), tsc + vite build clean.
 - [x] **11.4 Adminer per-site deep-link** — ✓ "Open database" jumps straight into the site's DB. Adminer is
   now served via a generated `index.php` **wrapper** (`adminer_object()` hook, global namespace) that
   `require`s the bundled `adminer.php` and overrides `login()` to accept a **passwordless login for loopback

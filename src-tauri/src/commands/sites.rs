@@ -50,11 +50,17 @@ pub async fn create_site(
     state: State<'_, AppState>,
     site: NewSite,
     wp: Option<core::wordpress::InstallOptions>,
+    blueprint_id: Option<String>,
 ) -> Result<Site> {
-    let (created, sites) = {
+    let (created, mut sites, blueprint) = {
         let conn = lock(&state)?;
         let created = core::sites::provision(&conn, state.platform.as_ref(), &state.ca, site)?;
-        (created, core::sites::list(&conn)?)
+        // Resolve the blueprint up front (so we don't hold the lock across awaits).
+        let blueprint = match &blueprint_id {
+            Some(id) if !id.is_empty() => crate::state::store::get_blueprint(&conn, id)?,
+            _ => None,
+        };
+        (created, core::sites::list(&conn)?, blueprint)
     };
     let minor = php::minor_of(&created.php_version);
     let mut mgr = state.services.lock().await;
@@ -69,15 +75,30 @@ pub async fn create_site(
             binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
                 .await?;
         let db_host = format!("127.0.0.1:{}", DbEngine::Mysql.port());
+        let docroot = Path::new(&created.path);
         core::wordpress::install_for_site(
             &php_bin,
             &wp_phar,
-            Path::new(&created.path),
+            docroot,
             &created.domain,
             &created.name,
             &db_host,
             &wp.unwrap_or_default(),
         )?;
+
+        // Apply a blueprint (§11.3): install/activate its plugins + themes, set
+        // WP_DEBUG, and convert to multisite — the reusable "site setup" automation.
+        if let Some(bp) = &blueprint {
+            core::blueprints::apply_wordpress(&php_bin, &wp_phar, docroot, &bp.spec)?;
+            if !matches!(bp.spec.multisite, crate::state::models::MultisiteMode::None) {
+                let conn = lock(&state)?;
+                core::sites::convert_multisite(
+                    &conn, &php_bin, &wp_phar, docroot, &created.id, bp.spec.multisite,
+                )?;
+                // Refresh so the reload below serves the new multisite rewrite.
+                sites = core::sites::list(&conn)?;
+            }
+        }
     }
 
     if mgr.is_running() {

@@ -132,6 +132,31 @@ export interface WpUser {
   name: string;
 }
 
+/** One plugin/theme in a blueprint (slug + activate-on-install). §11.3 */
+export interface BlueprintItem {
+  slug: string;
+  activate: boolean;
+}
+
+/** A blueprint's reusable recipe (mirrors the Rust BlueprintSpec). §11.3 */
+export interface BlueprintSpec {
+  siteType: SiteType;
+  phpVersion: string;
+  webServer: WebServer;
+  multisite: MultisiteMode;
+  plugins: BlueprintItem[];
+  themes: BlueprintItem[];
+  wpDebug: boolean;
+  language: string;
+}
+
+/** A named, reusable site preset (mirrors the Rust Blueprint). §11.3 */
+export interface Blueprint {
+  id: string;
+  name: string;
+  spec: BlueprintSpec;
+}
+
 /** Embedded-DNS + OS-resolver health for Settings (mirrors the Rust DnsStatus DTO). */
 export interface DnsStatus {
   running: boolean; // the embedded resolver is bound on its loopback port

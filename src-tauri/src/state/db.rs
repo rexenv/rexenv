@@ -45,6 +45,21 @@ const MIGRATIONS: &[&str] = &[
     // v3 — WordPress multisite mode (Phase 3 §10.1): `none` (single site),
     // `subdomain`, or `subdirectory`. Maps to the nginx RewriteMode (Phase 1 §6.2).
     "ALTER TABLE sites ADD COLUMN multisite TEXT NOT NULL DEFAULT 'none';",
+    // v4 — Site blueprints (Phase 3 §11.3): reusable site presets. `spec` is a JSON
+    // `BlueprintSpec` (site type, PHP/server, multisite mode, plugins/themes to
+    // install + activate, WP_DEBUG, locale) applied on one-click create. Seeded with
+    // two ready-made examples; users add their own.
+    "CREATE TABLE blueprints (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        spec       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO blueprints (id, name, spec) VALUES
+      ('seed-woocommerce', 'WordPress + WooCommerce',
+       '{\"siteType\":\"wordpress\",\"phpVersion\":\"8.3\",\"webServer\":\"nginx\",\"multisite\":\"none\",\"plugins\":[{\"slug\":\"woocommerce\",\"activate\":true}],\"themes\":[],\"wpDebug\":false,\"language\":\"\"}'),
+      ('seed-multisite', 'WordPress Multisite (subdirectory)',
+       '{\"siteType\":\"wordpress\",\"phpVersion\":\"8.3\",\"webServer\":\"nginx\",\"multisite\":\"subdirectory\",\"plugins\":[],\"themes\":[],\"wpDebug\":true,\"language\":\"\"}');",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

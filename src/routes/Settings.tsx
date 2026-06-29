@@ -4,17 +4,20 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import {
   autostartStatus,
+  deleteBlueprint,
   dnsStatus,
   getSetting,
+  listBlueprints,
   listPhpVersions,
   regenerateCerts,
+  saveBlueprint,
   setAutostart,
   setPhpVersionInstalled,
   setSetting,
   sitesFolder,
   trustLocalCa,
 } from "@/lib/ipc";
-import type { PhpVersion } from "@/types";
+import type { Blueprint, MultisiteMode, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
 
@@ -246,6 +249,118 @@ function AutostartSetting() {
   );
 }
 
+const CSV = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+
+function BlueprintsSetting() {
+  const qc = useQueryClient();
+  const { data: blueprints = [] } = useQuery({ queryKey: ["blueprints"], queryFn: listBlueprints });
+
+  const [name, setName] = useState("");
+  const [multisite, setMultisite] = useState<MultisiteMode>("none");
+  const [plugins, setPlugins] = useState("");
+  const [themes, setThemes] = useState("");
+  const [wpDebug, setWpDebug] = useState(false);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["blueprints"] });
+  const save = useMutation({
+    mutationFn: (bp: Blueprint) => saveBlueprint(bp),
+    onSuccess: () => {
+      setName(""); setPlugins(""); setThemes(""); setWpDebug(false); setMultisite("none");
+      invalidate();
+    },
+    onError: (e) => window.alert(String(e)),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteBlueprint(id),
+    onSuccess: invalidate,
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const add = () => {
+    const n = name.trim();
+    if (!n) return;
+    save.mutate({
+      id: crypto.randomUUID(),
+      name: n,
+      spec: {
+        siteType: "wordpress", phpVersion: "8.3", webServer: "nginx", multisite,
+        plugins: CSV(plugins).map((slug) => ({ slug, activate: true })),
+        themes: CSV(themes).map((slug) => ({ slug, activate: false })),
+        wpDebug, language: "",
+      },
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-rex-text-muted">
+        Reusable WordPress setups — pick one in <span className="font-mono">New site</span> to auto-install its
+        plugins/themes and apply multisite.
+      </p>
+
+      {blueprints.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-rex-border">
+          {blueprints.map((b) => (
+            <div key={b.id} className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12.5px] text-rex-text">{b.name}</div>
+                <div className="truncate font-mono text-[10.5px] text-rex-text-dim">
+                  {b.spec.multisite !== "none" ? `multisite:${b.spec.multisite} · ` : ""}
+                  {b.spec.plugins.length} plugin(s){b.spec.wpDebug ? " · WP_DEBUG" : ""}
+                </div>
+              </div>
+              <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate(b.id)} className="hover:text-status-error">
+                Delete
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add */}
+      <div className="flex flex-col gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <div className="flex items-center gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Blueprint name"
+            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand"
+          />
+          <select value={multisite} onChange={(e) => setMultisite(e.target.value as MultisiteMode)} className={SELECT}>
+            <option value="none">Single site</option>
+            <option value="subdomain">Subdomain MS</option>
+            <option value="subdirectory">Subdirectory MS</option>
+          </select>
+        </div>
+        <input
+          value={plugins}
+          onChange={(e) => setPlugins(e.target.value)}
+          placeholder="Plugin slugs (comma-separated, e.g. woocommerce, jetpack)"
+          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+        />
+        <input
+          value={themes}
+          onChange={(e) => setThemes(e.target.value)}
+          placeholder="Theme slugs (comma-separated)"
+          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+        />
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+            <input type="checkbox" checked={wpDebug} onChange={(e) => setWpDebug(e.target.checked)} />
+            Enable WP_DEBUG
+          </label>
+          <Button variant="primary" disabled={save.isPending || !name.trim()} onClick={add}>
+            {save.isPending ? "Saving…" : "Add blueprint"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SELECT =
+  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand";
+
 export function Settings() {
   return (
     <>
@@ -260,6 +375,9 @@ export function Settings() {
           </Card>
           <Card title="Startup">
             <AutostartSetting />
+          </Card>
+          <Card title="Blueprints">
+            <BlueprintsSetting />
           </Card>
           <Card title="PHP versions">
             <PhpVersionsSetting />

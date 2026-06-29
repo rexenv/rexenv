@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -57,10 +57,15 @@ export async function stopSite(id: string): Promise<Site | null> {
 }
 
 /** Create a site (provision + WordPress one-click install when type=wordpress +
- *  bring up if the stack is running). No-op outside Tauri. */
-export async function createSite(input: NewSiteInput, wp?: WpInstallInput): Promise<Site | null> {
+ *  bring up if the stack is running). A `blueprintId` applies that preset's
+ *  plugins/themes/multisite after install (§11.3). No-op outside Tauri. */
+export async function createSite(
+  input: NewSiteInput,
+  wp?: WpInstallInput,
+  blueprintId?: string,
+): Promise<Site | null> {
   if (!isTauri()) return null;
-  return invoke<Site | null>("create_site", { site: input, wp });
+  return invoke<Site | null>("create_site", { site: input, wp, blueprintId });
 }
 
 /** Switch a site's PHP version (DB + reload, no rebuild). Returns the updated site. */
@@ -537,4 +542,43 @@ export async function autostartStatus(): Promise<boolean> {
 export async function setAutostart(enabled: boolean): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_autostart", { enabled });
+}
+
+// ── Site blueprints (§11.3) ─────────────────────────────────────────────────
+
+const mockBlueprints: Blueprint[] = [
+  {
+    id: "seed-woocommerce",
+    name: "WordPress + WooCommerce",
+    spec: {
+      siteType: "wordpress", phpVersion: "8.3", webServer: "nginx", multisite: "none",
+      plugins: [{ slug: "woocommerce", activate: true }], themes: [], wpDebug: false, language: "",
+    },
+  },
+  {
+    id: "seed-multisite",
+    name: "WordPress Multisite (subdirectory)",
+    spec: {
+      siteType: "wordpress", phpVersion: "8.3", webServer: "nginx", multisite: "subdirectory",
+      plugins: [], themes: [], wpDebug: true, language: "",
+    },
+  },
+];
+
+/** All site blueprints (newest first). Mock fallback outside Tauri. */
+export async function listBlueprints(): Promise<Blueprint[]> {
+  if (!isTauri()) return mockBlueprints;
+  return invoke<Blueprint[]>("list_blueprints");
+}
+
+/** Insert/update a blueprint (upsert by id). No-op outside Tauri. */
+export async function saveBlueprint(blueprint: Blueprint): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("save_blueprint", { blueprint });
+}
+
+/** Delete a blueprint by id. No-op outside Tauri. */
+export async function deleteBlueprint(id: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("delete_blueprint", { id });
 }

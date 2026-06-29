@@ -6,6 +6,7 @@
 
 pub mod adminer;
 pub mod binaries;
+pub mod blueprints;
 pub mod database;
 pub mod db;
 pub mod dns;
