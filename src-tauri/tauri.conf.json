@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "rexenv",
   "version": "0.1.0",
-  "identifier": "dev.rexenv.app",
+  "identifier": "dev.rexenv.rexenv",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",

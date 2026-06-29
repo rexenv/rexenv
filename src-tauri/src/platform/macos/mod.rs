@@ -10,6 +10,14 @@ use crate::platform::traits::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 
+// The ONE canonical reverse-DNS identity (release task 1.1). It must match the
+// `identifier` in tauri.conf.json (the bundle id / signing id), the app-data
+// namespace below, and the launchd autostart label. The drift-guard tests at the
+// bottom of this file fail the build if any of these diverge.
+pub const APP_IDENTIFIER: &str = "dev.rexenv.rexenv";
+
+// app-data namespace parts: `directories::ProjectDirs::from(qualifier, org, name)`
+// composes these to `<qualifier>.<org>.<name>` = APP_IDENTIFIER on macOS.
 const APP_QUALIFIER: &str = "dev";
 const APP_ORG: &str = "rexenv";
 const APP_NAME: &str = "rexenv";
@@ -194,8 +202,8 @@ impl ProcessSupervisor for MacosSupervisor {
     }
 }
 
-/// launchd label / reverse-DNS id for the per-user LaunchAgent.
-const AUTOSTART_LABEL: &str = "dev.rexenv.rexenv";
+/// launchd label for the per-user LaunchAgent — the one canonical app identity.
+const AUTOSTART_LABEL: &str = APP_IDENTIFIER;
 
 pub struct MacosAutostart;
 impl MacosAutostart {
@@ -529,6 +537,41 @@ mod tests {
         assert!(MacosAutostart::plist_path()
             .unwrap()
             .ends_with("Library/LaunchAgents/dev.rexenv.rexenv.plist"));
+    }
+
+    // ── Identity drift guards (release task 1.1) ──────────────────────────────
+    // One reverse-DNS id across tauri.conf.json, app-data path, and launchd label.
+
+    #[test]
+    fn app_data_namespace_matches_the_identifier() {
+        // ProjectDirs composes qualifier.org.name; it must equal APP_IDENTIFIER so
+        // the app-data dir lives under `~/Library/Application Support/<identifier>/`.
+        assert_eq!(
+            format!("{APP_QUALIFIER}.{APP_ORG}.{APP_NAME}"),
+            APP_IDENTIFIER
+        );
+        let dir = MacosPaths.app_data_dir().unwrap();
+        assert!(
+            dir.ends_with(APP_IDENTIFIER),
+            "app_data_dir {dir:?} must end with {APP_IDENTIFIER}"
+        );
+    }
+
+    #[test]
+    fn autostart_label_matches_the_identifier() {
+        assert_eq!(AUTOSTART_LABEL, APP_IDENTIFIER);
+    }
+
+    #[test]
+    fn tauri_conf_identifier_matches_the_identifier() {
+        // Read the bundle id straight from tauri.conf.json so a stray edit there
+        // (signing/bundle id) can't silently diverge from the runtime identity.
+        let conf = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"));
+        let needle = format!("\"identifier\": \"{APP_IDENTIFIER}\"");
+        assert!(
+            conf.contains(&needle),
+            "tauri.conf.json identifier must be {APP_IDENTIFIER} (found mismatch)"
+        );
     }
 
     #[test]

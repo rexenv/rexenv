@@ -26,7 +26,16 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
 > app identity FIRST — it flows into signing, the app-data path, the launchd label, and (later)
 > the updater.
 
-- [ ] **1.1 Reconcile the bundle identifier / runtime namespace (do FIRST)**
+- [x] **1.1 Reconcile the bundle identifier / runtime namespace (do FIRST)** — ✓ canonical id =
+  **`dev.rexenv.rexenv`** (the conventional `rexenv.dev` + app-leaf form, already used by the app-data dir +
+  launchd label — so no app-data path migration / no binary-cache invalidation). Changed only the outliers:
+  `tauri.conf.json` `identifier` `dev.rexenv.app` → `dev.rexenv.rexenv` (this is also the signing/bundle id
+  for 1.2) and a stray mock string in `src/lib/ipc`. Introduced `platform::macos::APP_IDENTIFIER` as the
+  single source of truth; `AUTOSTART_LABEL` now derives from it; `Paths` already composes to it via
+  `ProjectDirs("dev","rexenv","rexenv")`. Drift-guard tests fail the build if any of the four diverge:
+  `app_data_namespace_matches_the_identifier`, `autostart_label_matches_the_identifier`, and
+  `tauri_conf_identifier_matches_the_identifier` (reads tauri.conf.json at compile time). `cargo test --lib`
+  112 pass (+3), tsc + vite build clean. (Signing itself = 1.2.)
   *Done when:* a single reverse-DNS identity is used **consistently** across (a) `tauri.conf.json`
   `identifier`, (b) the ad-hoc signing of the bundle, (c) the runtime app-data dir
   (`~/Library/Application Support/<id>/`), and (d) the launchd autostart label. Today these disagree —
