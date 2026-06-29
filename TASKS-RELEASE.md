@@ -1,0 +1,204 @@
+# TASKS — Release (macOS, limited closed-source distribution)
+
+> **Goal:** package the finished macOS app (Phase 1–3 feature work COMPLETE) into a
+> **.dmg** I can hand to **myself + a few known people**. This is NOT new features and
+> NOT a public release. **Ad-hoc signing only** (no Apple Developer account): users do a
+> one-time right-click → Open. Full **Developer ID signing + notarization + stapling**,
+> **Homebrew**, and wide distribution are **DEFERRED** until the project is open-sourced.
+>
+> Reuse the existing architecture (CLAUDE.md): `BinaryProvider` + macOS `prepare_binary`
+> (the ad-hoc-sign pattern extends to the app bundle), `ProcessSupervisor`, `ServiceManager`,
+> the platform traits, `core::setup` (system setup/teardown already exists). Build-pipeline
+> context: PROJECT_SPEC.md §4.9.
+>
+> Scope: **macOS only**. Work top-to-bottom, one task at a time. Check the box only when
+> "Done when" passes. **EXCLUDED (post-1.0 / Tier 3):** backup/restore, production-site import,
+> blueprint marketplace, installers for other apps, Windows/Linux ports.
+
+Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally deferred to a later phase (recorded, not todo)
+
+---
+
+## 1. Packaged build (.dmg) for limited distribution
+
+> Produce an installable, launchable .dmg. Ad-hoc signing is enough for a few trusted Macs
+> (one-time right-click → Open); Gatekeeper-clean wide distribution is deferred. Settle the
+> app identity FIRST — it flows into signing, the app-data path, the launchd label, and (later)
+> the updater.
+
+- [ ] **1.1 Reconcile the bundle identifier / runtime namespace (do FIRST)**
+  *Done when:* a single reverse-DNS identity is used **consistently** across (a) `tauri.conf.json`
+  `identifier`, (b) the ad-hoc signing of the bundle, (c) the runtime app-data dir
+  (`~/Library/Application Support/<id>/`), and (d) the launchd autostart label. Today these disagree —
+  `identifier` is `dev.rexenv.app` while the app-data dir + `MacosAutostart` label are
+  `dev.rexenv.rexenv`. Pick the canonical id, update `tauri.conf.json` + `platform::macos` `Paths`
+  and `MacosAutostart`, and confirm a fresh run reads/writes the expected tree. **Do this NOW** while
+  there's no real user data — otherwise changing the app-data path later needs a migration.
+
+- [ ] **1.2 Ad-hoc sign the app bundle**
+  *Done when:* `tauri.conf.json` `bundle.macOS.signingIdentity` is `"-"` (ad-hoc), so `pnpm tauri build`
+  signs `rexenv.app` with it; `codesign -dv --verbose=4 rexenv.app` reports `Signature=adhoc` and
+  `codesign --verify --deep --strict rexenv.app` passes. (Same ad-hoc approach already used for
+  downloaded binaries in Phase 1 `prepare_binary`, now extended to the bundle so Apple Silicon doesn't
+  reject it as "damaged".) Depends on 1.1.
+
+- [ ] **1.3 Produce the .dmg (choose + record architecture + min macOS)**
+  *Done when:* the build target is explicitly chosen and recorded — **Apple-Silicon-only** (`aarch64`,
+  the default) OR a **universal** binary (`pnpm tauri build --target universal-apple-darwin`, if anyone I
+  share with may be on an Intel Mac) — and a **minimum macOS version** is set via
+  `bundle.macOS.minimumSystemVersion`. `pnpm tauri build` then produces
+  `src-tauri/target/release/bundle/dmg/rexenv_<ver>_<arch>.dmg` with no build errors; it mounts and the
+  drag-to-Applications install works. Depends on 1.2.
+
+- [ ] **1.4 INSTALL.md / release note**
+  *Done when:* `INSTALL.md` documents first launch (right-click the app → **Open**, or System Settings →
+  Privacy & Security → **Open Anyway**), notes it opens normally thereafter, lists the one-time admin
+  prompts (resolver file + CA trust) the app shows on first run, AND states the **architecture**
+  (Apple-Silicon-only vs universal) and **minimum macOS version** — so "won't open on my Mac" confusion
+  (wrong arch / too-old OS) is avoided up front. Depends on 1.3.
+
+- [ ] **1.5 Verify a COLD first run on a SECOND Mac / clean account**
+  *Done when:* on a machine with **NO cached binaries** (a different Mac, or a clean macOS user, whose arch
+  matches the .dmg from 1.3), the .dmg installs and launches after the one-time right-click → Open, and the
+  **full cold first run completes cleanly**: onboarding downloads every component (PHP, Nginx, MySQL, Caddy,
+  WP-CLI, …) and the one-time admin prompts (resolver file + CA trust) succeed — THEN the end-to-end check
+  passes: create a WordPress site and load it over HTTPS at `https://<name>.test` with a valid local-CA lock.
+  (Also the real-world test bed for 2.2 download-failure + 2.4 no-internet.) Depends on 1.3, 1.4.
+
+- [D] **1.6 Developer ID signing + notarization + stapling**
+  *(Out of scope this phase.)* Needed for warning-free WIDE distribution: a paid Apple Developer account
+  ($99/yr), `signingIdentity: "Developer ID Application: …"`, notarization via `notarytool`, and
+  `xcrun stapler staple`. **Homebrew Cask** becomes an option only after open-sourcing + notarizing.
+
+---
+
+## 2. First-run / runtime robustness
+
+> A few users' real machines will hit messy states. Every failure must produce a clear,
+> understandable error in the UI — never a crash, hang, or silent no-op.
+
+- [ ] **2.1 Busy :80 / :443 / service port**
+  *Done when:* if the edge port (or any fixed service port) is already taken (e.g. another stack on :443),
+  startup surfaces a specific "port X in use by …, free it and retry" message in the UI and leaves the app
+  usable — no crash. (Builds on `core::ports::ensure_free` + the §7.3 stale-edge recovery.)
+
+- [ ] **2.2 Failed / aborted binary download**
+  *Done when:* a binary fetch that fails (network drop mid-download) or mismatches its checksum retries a
+  bounded number of times, then shows a clear error naming the binary + cause; a partial file is discarded
+  (not cached as valid). Re-running succeeds once connectivity returns.
+
+- [ ] **2.3 Cancelled privilege prompt**
+  *Done when:* if the user cancels the macOS admin prompt (resolver write / CA trust), the app shows a clear
+  "setup incomplete — <feature> needs this; retry" state and stays usable; re-triggering the prompt works.
+
+- [ ] **2.4 No internet on first run**
+  *Done when:* with no connectivity and binaries not yet cached, the app explains that first-time setup needs
+  internet to download components, names what's missing, and recovers cleanly once online (no crash, no
+  infinite spinner).
+
+- [ ] **2.5 Failure-state pass**
+  *Done when:* 2.1–2.4 are each simulated on a clean machine and confirmed to produce a clean, understandable
+  error state (notes/screenshots captured). Depends on 2.1, 2.2, 2.3, 2.4.
+
+---
+
+## 3. Clean uninstall / teardown
+
+> Reverse every system-level change rexenv makes, so removing it leaves the machine clean.
+
+- [ ] **3.1 Expose system teardown (command + Settings UI)**
+  *Done when:* a "Remove rexenv system changes / Uninstall" action (Settings) invokes
+  `core::setup::run_system_teardown` — stop all services, remove `/etc/resolver/test` (admin prompt), and
+  untrust the local CA (reusing the Phase 1 §3.3 untrust path) — behind a confirm dialog, with a clear
+  success/failure result. (The core reverse already exists; this exposes it.)
+
+- [ ] **3.2 Verify the machine is clean after teardown**
+  *Done when:* after running teardown, `ping foo.test` no longer resolves (resolver file gone) and the local
+  CA is no longer trusted (`security verify-cert` / Keychain shows it untrusted), and no rexenv services
+  remain running. Depends on 3.1.
+
+---
+
+## 4. Finish deferred UI + autostart
+
+> Close out the Settings screen (DESIGN_BRIEF Block 11) and the last stubbed platform trait. Several
+> pieces landed already in Phase 3 §11.1 (verified against the code — marked `[x]`); the rest is real
+> release work.
+
+- [x] **4.1 DNS & SSL controls** — ✓ done in Phase 3 §11.1 (verified): Settings "DNS & SSL" card —
+  re-trust CA, regenerate certs, and a DNS status indicator (resolver running + `/etc/resolver/test`
+  installed).
+- [x] **4.2 AutostartManager (macOS launchd)** — ✓ done in Phase 3 §11.1 (verified): `MacosAutostart` is a
+  REAL impl (per-user LaunchAgent, `enable`/`disable`/`is_enabled`, `RunAtLoad`) — no longer `todo!()`;
+  Settings "Start rexenv on login" toggle drives it. (The last stubbed Phase-1 trait, now real.) Its label
+  is reconciled with the bundle id in **1.1**.
+- [x] **4.3 Sites-folder setting** — ✓ done (verified): Settings "General" → sites-folder override.
+- [ ] **4.4 Settings completeness — theme + default PHP**
+  *Done when:* Settings lets the user (a) pick the app **theme** (per DESIGN_BRIEF) and (b) set the
+  **default PHP version** for new sites (a control + command that writes the `is_default` flag the New Site
+  dialog already reads — today the PHP card only *displays* the Default badge, with no way to change it);
+  both persist and take effect.
+- [ ] **4.5 Record remaining §11 Phase-3 leftovers (no work, just state)**
+  *Done when:* it's documented that §11.3 (blueprints) and §11.4 (Adminer deep-link) are DONE, and that
+  §8.2 (per-site Xdebug) + §11.2-hosting stay BLOCKED on a hosted Xdebug static-PHP build (external —
+  `docs/xdebug-debug-build.md`) and are NOT part of this release.
+
+---
+
+## 5. Release QA / polish
+
+> A clean-Mac smoke test plus the rough edges that show up with real, varied usage.
+
+- [ ] **5.1 Empty states**
+  *Done when:* Sites, Mail, Tunnels, Databases, and Blueprints each render a clear empty state (no sites /
+  no caught mail / no tunnels / etc.) instead of a blank or broken panel.
+
+- [ ] **5.2 Many-sites behavior**
+  *Done when:* with ~15–20 sites the Sites list, status footer, and edge config stay responsive and correct
+  (scrolling, start/stop, reload), with no obvious slowdown or layout break.
+
+- [ ] **5.3 Consistent error messaging**
+  *Done when:* IPC/command errors surface through one consistent UI pattern (toast/inline) with
+  human-readable text — no raw `Err(Other(...))` strings or silent failures in the common flows.
+
+- [ ] **5.4 Clean-Mac smoke-test checklist**
+  *Done when:* a written checklist (create WP site → HTTPS load → wp-admin → Mailpit catches a mail →
+  Adminer deep-link → tunnel → multisite convert → teardown) is run on a clean Mac from the .dmg and all
+  items pass. Depends on 1.5.
+
+---
+
+## 6. Auto-update — OPTIONAL (skip for this limited phase)
+
+> For a handful of known users I can just hand over a new .dmg. Recorded so the wiring is understood
+> when it's actually wanted.
+
+- [D] **6.1 Tauri updater (deferred / optional)**
+  *Not now.* When wanted, wiring needs: `@tauri-apps/plugin-updater` + `tauri-plugin-updater`, an update
+  **signing keypair** (`tauri signer generate`; private key in CI secrets, public key in
+  `tauri.conf.json`), a release **endpoint** serving `latest.json` (e.g. GitHub Releases), and signing each
+  release artifact. Pairs naturally with 1.6 (notarization) once open-sourced.
+
+---
+
+## Notes / decisions
+
+- **Ad-hoc, not notarized (intentional for this phase).** With no Apple Developer account, the bundle is
+  ad-hoc signed (`codesign --sign -`) — enough to launch on Apple Silicon after a one-time right-click →
+  Open on each trusted Mac. Notarization (1.6) is the open-source-era upgrade.
+- **Settle the identity first (1.1).** The bundle id flows into signing, the app-data path, the launchd
+  label, and (later) the updater. Today the bundle id (`dev.rexenv.app`) and the runtime namespace
+  (`dev.rexenv.rexenv`) disagree; reconcile to one id NOW, before there's real user data, so no migration
+  is needed.
+- **Teardown reuses Phase 1.** `core::setup::run_system_teardown` already reverses the resolver + CA-trust
+  changes (§3.3); §3 just exposes + verifies it. The per-site `teardown` (cert + docroot + DB row) already
+  exists for individual sites.
+- **What's already done (verified in code, §4):** DNS & SSL controls, the real launchd `AutostartManager`,
+  and the sites-folder setting all shipped in Phase 3 §11.1 — `[x]`. Theme + default-PHP setter (4.4) are
+  genuinely outstanding.
+- **Distribution is limited + closed-source.** No public listing, no Homebrew, no auto-update required.
+  Those unlock after open-sourcing (→ 1.6, 6.1).
+- **Excluded (post-1.0 / Tier 3):** backup/restore, production-site import, blueprint marketplace, installers
+  for other apps. Phase-3 Xdebug (§8.2 / §11.2 hosting) remains external-blocked, not in scope.
+- **Verification carries over:** prefer a real check per task — a built/mounted .dmg, `codesign` / `security`
+  output, `ping`/`dig` for resolver state, a clean-Mac run — over "looks right".
