@@ -544,6 +544,13 @@ export async function setAutostart(enabled: boolean): Promise<void> {
   await invoke("set_autostart", { enabled });
 }
 
+/** Reverse rexenv's system changes: stop services, remove the .test resolver, and
+ *  untrust the local CA (§3.1). Desktop-app only. */
+export async function uninstallSystem(): Promise<void> {
+  if (!isTauri()) throw new Error("Removing system changes requires the rexenv desktop app.");
+  await invoke("uninstall_system");
+}
+
 // ── Site blueprints (§11.3) ─────────────────────────────────────────────────
 
 const mockBlueprints: Blueprint[] = [

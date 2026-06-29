@@ -201,3 +201,19 @@ pub fn set_autostart(state: State<'_, AppState>, enabled: bool) -> Result<()> {
         state.platform.autostart().disable()
     }
 }
+
+/// Reverse rexenv's system-level changes (Settings → "Remove system changes", §3.1):
+/// stop ALL services (so the edge releases :80/:443), then remove the `.test` DNS
+/// resolver (`/etc/resolver/test`, admin prompt) and untrust the local CA — leaving
+/// the machine as if rexenv's system setup never ran. Site files + databases under
+/// app-data are NOT touched (the user can still delete the app + its support dir).
+#[tauri::command]
+pub async fn uninstall_system(state: State<'_, AppState>) -> Result<()> {
+    {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            mgr.stop_all(state.platform.as_ref())?;
+        }
+    }
+    core::setup::run_system_teardown(state.platform.as_ref())
+}

@@ -131,11 +131,13 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
 
 > Reverse every system-level change rexenv makes, so removing it leaves the machine clean.
 
-- [ ] **3.1 Expose system teardown (command + Settings UI)**
-  *Done when:* a "Remove rexenv system changes / Uninstall" action (Settings) invokes
-  `core::setup::run_system_teardown` — stop all services, remove `/etc/resolver/test` (admin prompt), and
-  untrust the local CA (reusing the Phase 1 §3.3 untrust path) — behind a confirm dialog, with a clear
-  success/failure result. (The core reverse already exists; this exposes it.)
+- [x] **3.1 Expose system teardown (command + Settings UI)** — ✓ added `uninstall_system` command:
+  `stop_all` (so the edge releases :80/:443) then `core::setup::run_system_teardown` (remove
+  `/etc/resolver/test` via admin prompt + untrust the local CA, the Phase 1 §3.3 path); registered in
+  `lib.rs`, typed `ipc.uninstallSystem`. Settings has a new **Uninstall** card — explains the reversal
+  (site files/DBs kept), `window.confirm` guard, runs it, shows a clear success line / error. Verified:
+  `cargo build --lib` clean, tsc + vite build clean, UI rendered via chrome-devtools (red Remove button +
+  copy). Site files + databases under app-data are intentionally left for the user to delete with the app.
 
 - [ ] **3.2 Verify the machine is clean after teardown**
   *Done when:* after running teardown, `ping foo.test` no longer resolves (resolver file gone) and the local

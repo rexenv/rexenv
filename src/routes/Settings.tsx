@@ -16,6 +16,7 @@ import {
   setSetting,
   sitesFolder,
   trustLocalCa,
+  uninstallSystem,
 } from "@/lib/ipc";
 import type { Blueprint, MultisiteMode, PhpVersion } from "@/types";
 
@@ -361,6 +362,46 @@ function BlueprintsSetting() {
 const SELECT =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand";
 
+function UninstallSetting() {
+  const [msg, setMsg] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: uninstallSystem,
+    onSuccess: () =>
+      setMsg("System changes removed: services stopped, .test resolver deleted, local CA untrusted. You can now quit and delete rexenv."),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[12px] text-rex-text-muted">
+        Reverse the system-level changes rexenv made — stop all services, remove the{" "}
+        <span className="font-mono">.test</span> DNS resolver, and untrust the local HTTPS certificate
+        authority. Your site files and databases are <span className="font-medium">not</span> deleted.
+      </p>
+      <div className="flex items-center justify-between rounded-lg border border-status-error/40 bg-status-error/5 p-3">
+        <span className="text-[12.5px] text-rex-text">Remove rexenv's system changes</span>
+        <Button
+          variant="ghost"
+          disabled={run.isPending}
+          onClick={() => {
+            setMsg(null);
+            if (
+              window.confirm(
+                "Remove rexenv's system changes?\n\nThis stops all services, deletes /etc/resolver/test, and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
+              )
+            )
+              run.mutate();
+          }}
+          className="border border-status-error/50 text-status-error hover:bg-status-error/10"
+        >
+          {run.isPending ? "Removing…" : "Remove"}
+        </Button>
+      </div>
+      {msg && <div className="font-mono text-[11.5px] text-status-running">{msg}</div>}
+    </div>
+  );
+}
+
 export function Settings() {
   return (
     <>
@@ -381,6 +422,9 @@ export function Settings() {
           </Card>
           <Card title="PHP versions">
             <PhpVersionsSetting />
+          </Card>
+          <Card title="Uninstall">
+            <UninstallSetting />
           </Card>
         </div>
       </div>

@@ -72,6 +72,7 @@ pub fn run() {
             commands::system::regenerate_certs,
             commands::system::autostart_status,
             commands::system::set_autostart,
+            commands::system::uninstall_system,
             commands::blueprints::list_blueprints,
             commands::blueprints::save_blueprint,
             commands::blueprints::delete_blueprint,
