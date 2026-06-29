@@ -96,6 +96,8 @@ pub trait ProcessSupervisor: Send + Sync {
 pub trait AutostartManager: Send + Sync {
     fn enable(&self) -> Result<()>;
     fn disable(&self) -> Result<()>;
+    /// Whether rexenv is currently registered to start on login.
+    fn is_enabled(&self) -> Result<bool>;
 }
 
 /// File permissions. POSIX chmod/chown on Unix; ACLs on Windows.

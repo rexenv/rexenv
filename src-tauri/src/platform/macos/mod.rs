@@ -194,14 +194,75 @@ impl ProcessSupervisor for MacosSupervisor {
     }
 }
 
+/// launchd label / reverse-DNS id for the per-user LaunchAgent.
+const AUTOSTART_LABEL: &str = "dev.rexenv.rexenv";
+
 pub struct MacosAutostart;
+impl MacosAutostart {
+    /// `~/Library/LaunchAgents/dev.rexenv.rexenv.plist` — the per-user LaunchAgent
+    /// whose presence is the source of truth for "start on login".
+    fn plist_path() -> Result<PathBuf> {
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| Error::Other("HOME is not set".into()))?;
+        Ok(PathBuf::from(home)
+            .join("Library/LaunchAgents")
+            .join(format!("{AUTOSTART_LABEL}.plist")))
+    }
+
+    /// The on-login plist that launches the rexenv app at GUI login. Quotes the
+    /// program path (app paths contain spaces).
+    fn plist_contents(program: &Path) -> String {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+             \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+             <plist version=\"1.0\">\n\
+             <dict>\n\
+             \t<key>Label</key>\n\
+             \t<string>{AUTOSTART_LABEL}</string>\n\
+             \t<key>ProgramArguments</key>\n\
+             \t<array>\n\
+             \t\t<string>{program}</string>\n\
+             \t</array>\n\
+             \t<key>RunAtLoad</key>\n\
+             \t<true/>\n\
+             \t<key>ProcessType</key>\n\
+             \t<string>Interactive</string>\n\
+             </dict>\n\
+             </plist>\n",
+            program = program.display()
+        )
+    }
+}
 impl AutostartManager for MacosAutostart {
     fn enable(&self) -> Result<()> {
-        // launchd .plist (LaunchAgents).
-        todo!("macOS launchd autostart")
+        let plist = Self::plist_path()?;
+        if let Some(parent) = plist.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let program = std::env::current_exe()?;
+        std::fs::write(&plist, Self::plist_contents(&program))?;
+        // Register with launchd so it takes effect this session too (best-effort:
+        // the plist on disk is the authoritative state, surviving a failed load).
+        let _ = std::process::Command::new("launchctl")
+            .args(["load", "-w"])
+            .arg(&plist)
+            .status();
+        Ok(())
     }
     fn disable(&self) -> Result<()> {
-        todo!("macOS launchd autostart disable")
+        let plist = Self::plist_path()?;
+        if plist.exists() {
+            let _ = std::process::Command::new("launchctl")
+                .args(["unload", "-w"])
+                .arg(&plist)
+                .status();
+            std::fs::remove_file(&plist)?;
+        }
+        Ok(())
+    }
+    fn is_enabled(&self) -> Result<bool> {
+        Ok(Self::plist_path()?.exists())
     }
 }
 
@@ -454,6 +515,20 @@ mod tests {
     #[test]
     fn dns_uninstall_command_removes_file() {
         assert_eq!(MacosDns.uninstall_command(), "rm -f /etc/resolver/test");
+    }
+
+    #[test]
+    fn autostart_plist_is_a_login_launchagent_for_the_program() {
+        let plist = MacosAutostart::plist_contents(Path::new("/Applications/rexenv.app"));
+        assert!(plist.contains("<string>dev.rexenv.rexenv</string>"));
+        assert!(plist.contains("<string>/Applications/rexenv.app</string>"));
+        // Runs at GUI login.
+        assert!(plist.contains("<key>RunAtLoad</key>"));
+        assert!(plist.contains("<true/>"));
+        // Lives in the per-user LaunchAgents dir (no root).
+        assert!(MacosAutostart::plist_path()
+            .unwrap()
+            .ends_with("Library/LaunchAgents/dev.rexenv.rexenv.plist"));
     }
 
     #[test]

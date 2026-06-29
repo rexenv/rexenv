@@ -3,11 +3,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import {
+  autostartStatus,
+  dnsStatus,
   getSetting,
   listPhpVersions,
+  regenerateCerts,
+  setAutostart,
   setPhpVersionInstalled,
   setSetting,
   sitesFolder,
+  trustLocalCa,
 } from "@/lib/ipc";
 import type { PhpVersion } from "@/types";
 
@@ -148,6 +153,99 @@ function PhpVersionsSetting() {
   );
 }
 
+function DnsSslSetting() {
+  const { data: dns } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const trust = useMutation({
+    mutationFn: trustLocalCa,
+    onSuccess: () => setMsg("Local CA re-trusted in your login keychain."),
+    onError: (e) => window.alert(String(e)),
+  });
+  const regen = useMutation({
+    mutationFn: regenerateCerts,
+    onSuccess: (n) => setMsg(`Regenerated ${n} site certificate${n === 1 ? "" : "s"}.`),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between border-b border-rex-border-subtle pb-3">
+        <div>
+          <div className="text-[12.5px] text-rex-text">Embedded DNS resolver</div>
+          <div className="font-mono text-[11px] text-rex-text-dim">
+            {dns ? `${dns.resolverPath} · :${dns.port}` : "…"}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <StatusDot ok={!!dns?.running} label={dns?.running ? "Running" : "Stopped"} />
+          <StatusDot ok={!!dns?.resolverInstalled} label={dns?.resolverInstalled ? "Resolver" : "No resolver"} />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-[12.5px] text-rex-text-muted">
+          Local CA trust + per-site HTTPS certificates.
+        </span>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" disabled={trust.isPending} onClick={() => { setMsg(null); trust.mutate(); }}>
+            {trust.isPending ? "…" : "Re-trust CA"}
+          </Button>
+          <Button variant="primary" disabled={regen.isPending} onClick={() => { setMsg(null); regen.mutate(); }}>
+            {regen.isPending ? "Regenerating…" : "Regenerate certs"}
+          </Button>
+        </div>
+      </div>
+      {msg && <div className="font-mono text-[11.5px] text-status-running">{msg}</div>}
+    </div>
+  );
+}
+
+function StatusDot({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-[11.5px] text-rex-text-muted">
+      <span className={`h-2 w-2 rounded-full ${ok ? "bg-status-running" : "bg-status-error"}`} />
+      {label}
+    </span>
+  );
+}
+
+function AutostartSetting() {
+  const qc = useQueryClient();
+  const { data: enabled } = useQuery({ queryKey: ["autostart"], queryFn: autostartStatus });
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => setAutostart(on),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["autostart"] }),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <div className="text-[12.5px] text-rex-text">Start rexenv on login</div>
+        <div className="text-[11px] text-rex-text-dim">
+          Launches rexenv automatically when you log in (macOS launchd agent).
+        </div>
+      </div>
+      <button
+        role="switch"
+        aria-checked={!!enabled}
+        disabled={toggle.isPending}
+        onClick={() => toggle.mutate(!enabled)}
+        className={`relative h-[22px] w-[40px] rounded-full transition-colors ${
+          enabled ? "bg-brand" : "bg-rex-surface-3"
+        }`}
+      >
+        <span
+          className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all ${
+            enabled ? "left-[20px]" : "left-[2px]"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 export function Settings() {
   return (
     <>
@@ -156,6 +254,12 @@ export function Settings() {
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           <Card title="General">
             <SitesFolderSetting />
+          </Card>
+          <Card title="DNS & SSL">
+            <DnsSslSetting />
+          </Card>
+          <Card title="Startup">
+            <AutostartSetting />
           </Card>
           <Card title="PHP versions">
             <PhpVersionsSetting />

@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -504,4 +504,37 @@ export async function setSetting(key: string, value: string): Promise<void> {
 export async function sitesFolder(): Promise<string> {
   if (!isTauri()) return "~/Library/Application Support/dev.rexenv.app/sites";
   return invoke<string>("sites_folder");
+}
+
+// ── DNS & SSL + autostart (Settings, §11.1) ─────────────────────────────────
+
+/** Embedded-DNS + OS-resolver health. Mock fallback outside Tauri. */
+export async function dnsStatus(): Promise<DnsStatus> {
+  if (!isTauri())
+    return { running: true, port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/test" };
+  return invoke<DnsStatus>("dns_status");
+}
+
+/** Re-trust the local CA in the user keychain (shows the native auth dialog). */
+export async function trustLocalCa(): Promise<void> {
+  if (!isTauri()) throw new Error("Trusting the local CA requires the rexenv desktop app.");
+  await invoke("trust_local_ca");
+}
+
+/** Regenerate every site's TLS cert (+ Adminer) and reload the edge. Returns the count. */
+export async function regenerateCerts(): Promise<number> {
+  if (!isTauri()) throw new Error("Regenerating certs requires the rexenv desktop app.");
+  return invoke<number>("regenerate_certs");
+}
+
+/** Whether rexenv starts on login. Mock returns false outside Tauri. */
+export async function autostartStatus(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("autostart_status");
+}
+
+/** Enable/disable "Start rexenv on login". No-op outside Tauri. */
+export async function setAutostart(enabled: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_autostart", { enabled });
 }

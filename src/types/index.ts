@@ -132,6 +132,14 @@ export interface WpUser {
   name: string;
 }
 
+/** Embedded-DNS + OS-resolver health for Settings (mirrors the Rust DnsStatus DTO). */
+export interface DnsStatus {
+  running: boolean; // the embedded resolver is bound on its loopback port
+  port: number;
+  resolverInstalled: boolean; // /etc/resolver/test present
+  resolverPath: string;
+}
+
 /** A network sub-site row (mirrors the Rust WpNetworkSite DTO / `wp site list`). */
 export interface WpNetworkSite {
   id: string; // blog_id (1 = main site)

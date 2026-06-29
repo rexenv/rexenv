@@ -80,6 +80,9 @@ impl AutostartManager for LinuxAutostart {
     fn disable(&self) -> Result<()> {
         todo!("linux systemd user unit")
     }
+    fn is_enabled(&self) -> Result<bool> {
+        todo!("linux systemd user unit")
+    }
 }
 
 pub struct LinuxPermissions;

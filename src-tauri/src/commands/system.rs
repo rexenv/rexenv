@@ -110,3 +110,94 @@ pub fn port_status() -> Vec<PortStatus> {
         })
         .collect()
 }
+
+// ── DNS & SSL + autostart (Settings, §11.1) ──────────────────────────────────
+
+/// DNS resolver health for the Settings indicator (mirrors the frontend `DnsStatus`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DnsStatus {
+    /// The embedded resolver is bound on its loopback UDP port.
+    pub running: bool,
+    pub port: u16,
+    /// The OS resolver file (`/etc/resolver/test`) is installed.
+    pub resolver_installed: bool,
+    pub resolver_path: String,
+}
+
+/// Embedded-DNS + OS-resolver status. `running` probes the loopback UDP port (the
+/// resolver binds UDP, so the TCP `is_listening` check doesn't apply); a failed
+/// bind means something — our in-process resolver — already holds it.
+#[tauri::command]
+pub fn dns_status(state: State<'_, AppState>) -> DnsStatus {
+    use std::net::{Ipv4Addr, UdpSocket};
+    let port = core::dns::DEFAULT_DNS_PORT;
+    let running = UdpSocket::bind((Ipv4Addr::LOCALHOST, port)).is_err();
+    let path = state.platform.dns().resolver_path();
+    DnsStatus {
+        running,
+        port,
+        resolver_installed: path.exists(),
+        resolver_path: path.display().to_string(),
+    }
+}
+
+/// Re-trust the local CA in the user trust store (macOS login keychain — shows the
+/// native auth dialog, no root). Idempotent: re-adding an already-trusted cert is fine.
+#[tauri::command]
+pub fn trust_local_ca(state: State<'_, AppState>) -> Result<()> {
+    core::ssl::trust_ca(state.platform.as_ref(), &state.ca)
+}
+
+/// Regenerate every site's TLS cert (delete + re-issue from the local CA), plus the
+/// internal Adminer vhost cert, then reload the edge if the stack is running. Returns
+/// how many certs were re-issued. Use after re-trusting the CA or if a cert is stale.
+#[tauri::command]
+pub async fn regenerate_certs(state: State<'_, AppState>) -> Result<u32> {
+    let sites = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::list(&conn)?
+    };
+    let paths = state.platform.paths();
+    let perms = state.platform.permissions();
+    let mut count = 0u32;
+    let reissue = |domain: &str| -> Result<()> {
+        // Delete first so the idempotent issuer actually regenerates the material.
+        let dir = core::ssl::site_cert_dir(paths, domain)?;
+        let _ = std::fs::remove_dir_all(&dir);
+        core::ssl::ensure_site_cert(paths, perms, &state.ca, domain)?;
+        Ok(())
+    };
+    for s in &sites {
+        reissue(&s.domain)?;
+        count += 1;
+    }
+    reissue(core::adminer::ADMINER_HOST)?;
+
+    // Reload the edge so Caddy serves the fresh certs (only if it's up).
+    let mut mgr = state.services.lock().await;
+    if mgr.is_running() {
+        mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
+    }
+    Ok(count)
+}
+
+/// Whether rexenv is set to start on login.
+#[tauri::command]
+pub fn autostart_status(state: State<'_, AppState>) -> Result<bool> {
+    state.platform.autostart().is_enabled()
+}
+
+/// Enable/disable "Start rexenv on login" via the platform `AutostartManager`
+/// (macOS: a per-user launchd LaunchAgent).
+#[tauri::command]
+pub fn set_autostart(state: State<'_, AppState>, enabled: bool) -> Result<()> {
+    if enabled {
+        state.platform.autostart().enable()
+    } else {
+        state.platform.autostart().disable()
+    }
+}

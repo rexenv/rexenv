@@ -437,9 +437,16 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
 
 > Not required for the Phase 3 goal; pick up when the prerequisite lands.
 
-- [ ] **11.1 Settings — DNS & SSL + autostart (Block 11)** — re-trust local CA, regenerate certs, DNS status
-  indicator; "Start services on login" via the `AutostartManager` trait (macOS launchd). *(AutostartManager is
-  the one Phase-1 trait still stubbed.)*
+- [x] **11.1 Settings — DNS & SSL + autostart (Block 11)** — ✓ filled the last stubbed Phase-1 trait:
+  `MacosAutostart` now writes a per-user launchd LaunchAgent (`~/Library/LaunchAgents/dev.rexenv.rexenv.plist`,
+  `RunAtLoad`) + `launchctl load/unload`; added `AutostartManager::is_enabled`. New `commands::system`:
+  `dns_status` (UDP in-use probe — the resolver is UDP, so the TCP `is_listening` check doesn't apply — plus
+  `/etc/resolver/test` presence), `trust_local_ca`, `regenerate_certs` (delete + re-issue every site cert +
+  Adminer, reload edge), `autostart_status`/`set_autostart`. Settings UI gains **DNS & SSL** (Running/Resolver
+  dots, Re-trust CA, Regenerate certs) + **Startup** (start-on-login toggle). Verified by
+  `dns_ssl_autostart_check`: autostart enable→is_enabled=true→disable→false (no leftover plist), UDP probe
+  reads in-use/free correctly, regenerate yields fresh key material with SAN `*.regen.test` + CA issuer; UI via
+  chrome-devtools. `cargo test --lib` 105 pass (+1), tsc + vite build clean.
 - [ ] **11.2 Xdebug-enabled PHP build** — if Xdebug isn't in the static-php "bulk" build (§8.1), source a
   static-php build variant with Xdebug compiled in (an external `xdebug.so` generally can't load into a static
   PHP); re-pin it for the debug pool so §8.2 can proceed.

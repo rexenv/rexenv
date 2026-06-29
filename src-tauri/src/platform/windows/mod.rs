@@ -80,6 +80,9 @@ impl AutostartManager for WindowsAutostart {
     fn disable(&self) -> Result<()> {
         todo!("windows service / task scheduler")
     }
+    fn is_enabled(&self) -> Result<bool> {
+        todo!("windows service / task scheduler")
+    }
 }
 
 pub struct WindowsPermissions;
