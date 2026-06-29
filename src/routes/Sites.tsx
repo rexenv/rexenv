@@ -96,11 +96,13 @@ export function Sites() {
     mutationFn: (site: Site) =>
       site.status === "running" ? stopSite(site.id) : startSite(site.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+    onError: (e) => window.alert(String(e)),
   });
 
   const remove = useMutation({
     mutationFn: (site: Site) => deleteSite(site.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+    onError: (e) => window.alert(String(e)),
   });
 
   const confirmDelete = (site: Site) => {

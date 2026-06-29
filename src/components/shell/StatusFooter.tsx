@@ -40,6 +40,9 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
       qc.invalidateQueries({ queryKey: ["services"] });
       qc.invalidateQueries({ queryKey: ["global-status"] });
     },
+    // Surface a busy-port / cancelled-prompt / download failure instead of
+    // silently doing nothing (§2 robustness).
+    onError: (e) => window.alert(String(e)),
   });
 
   return (

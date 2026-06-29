@@ -513,28 +513,96 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     Ok(dir)
 }
 
-async fn http_get(url: &str) -> Result<Vec<u8>> {
+/// How many times a transient download failure (network drop, timeout, 5xx) is
+/// retried before giving up. A 4xx (not-found / forbidden) is NOT retried.
+const DOWNLOAD_ATTEMPTS: usize = 3;
+
+/// Append a plain-language hint when a download failure looks like a connectivity
+/// problem, so the UI message is understandable on a machine with no internet.
+fn download_error_message(url: &str, e: &reqwest::Error) -> String {
+    if e.is_connect() || e.is_timeout() {
+        format!("can't reach {url} — check your internet connection ({e})")
+    } else {
+        format!("download {url} failed: {e}")
+    }
+}
+
+/// Whether an HTTP error status is worth retrying: 5xx is a server-side blip;
+/// 4xx (not found / forbidden) won't change, so it's permanent.
+fn status_is_transient(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+}
+
+/// Download `url` into memory with bounded retries + a connect timeout. Public so
+/// the §2 robustness checks can exercise the retry / connectivity-error behavior
+/// directly; normal callers use `resolve`/`resolve_file`/`resolve_dir`.
+pub async fn http_get(url: &str) -> Result<Vec<u8>> {
     // Some CDNs (e.g. dev.mysql.com) reject the default reqwest User-Agent with
-    // 403; present a browser-like UA so downloads are accepted everywhere.
+    // 403; present a browser-like UA so downloads are accepted everywhere. Bound
+    // each attempt with a connect timeout so "no internet" fails fast (not a hang).
     let client = reqwest::Client::builder()
         .user_agent(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
              AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         )
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|e| Error::Other(format!("http client: {e}")))?;
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("download {url}: {e}")))?
-        .error_for_status()
-        .map_err(|e| Error::Other(format!("download {url}: {e}")))?;
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| Error::Other(format!("read {url}: {e}")))?;
-    Ok(bytes.to_vec())
+
+    let mut last_err = String::new();
+    for attempt in 1..=DOWNLOAD_ATTEMPTS {
+        match fetch_once(&client, url).await {
+            Ok(bytes) => return Ok(bytes),
+            // A permanent failure (4xx / non-Mach-O response) won't get better on
+            // retry — surface it immediately.
+            Err(FetchError::Permanent(msg)) => return Err(Error::Other(msg)),
+            Err(FetchError::Transient(msg)) => {
+                last_err = msg;
+                log::warn!("rexenv: download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed: {last_err}");
+                if attempt < DOWNLOAD_ATTEMPTS {
+                    // Linear backoff (0.4s, 0.8s) between attempts.
+                    tokio::time::sleep(std::time::Duration::from_millis(400 * attempt as u64)).await;
+                }
+            }
+        }
+    }
+    Err(Error::Other(format!(
+        "{last_err} (gave up after {DOWNLOAD_ATTEMPTS} attempts)"
+    )))
+}
+
+/// Outcome of a single download attempt: a permanent error short-circuits the
+/// retry loop; a transient one is retried.
+enum FetchError {
+    Permanent(String),
+    Transient(String),
+}
+
+async fn fetch_once(client: &reqwest::Client, url: &str) -> std::result::Result<Vec<u8>, FetchError> {
+    let resp = match client.get(url).send().await {
+        Ok(r) => r,
+        // Connect/timeout/transport problems are transient (retry); they're also
+        // what "no internet" looks like, so use the connectivity-aware message.
+        Err(e) => return Err(FetchError::Transient(download_error_message(url, &e))),
+    };
+    let resp = match resp.error_for_status() {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("download {url} failed: {e}");
+            // 5xx is a server-side blip → retry; 4xx (not found / forbidden) won't
+            // change → permanent.
+            return Err(match e.status() {
+                Some(s) if status_is_transient(s) => FetchError::Transient(msg),
+                _ => FetchError::Permanent(msg),
+            });
+        }
+    };
+    match resp.bytes().await {
+        // A body read cut off mid-stream (aborted download) is transient.
+        Ok(b) => Ok(b.to_vec()),
+        Err(e) => Err(FetchError::Transient(download_error_message(url, &e))),
+    }
 }
 
 fn verify_checksum(bytes: &[u8], checksum: &Checksum) -> Result<()> {
@@ -847,5 +915,15 @@ mod tests {
     #[test]
     fn hex_lower_encodes() {
         assert_eq!(hex_lower(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+    }
+
+    #[test]
+    fn download_retries_only_transient_statuses() {
+        use reqwest::StatusCode;
+        // 5xx → retry; 4xx → give up immediately (§2.2 retry policy).
+        assert!(status_is_transient(StatusCode::INTERNAL_SERVER_ERROR));
+        assert!(status_is_transient(StatusCode::BAD_GATEWAY));
+        assert!(!status_is_transient(StatusCode::NOT_FOUND));
+        assert!(!status_is_transient(StatusCode::FORBIDDEN));
     }
 }

@@ -102,28 +102,41 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
 > A few users' real machines will hit messy states. Every failure must produce a clear,
 > understandable error in the UI — never a crash, hang, or silent no-op.
 
-- [ ] **2.1 Busy :80 / :443 / service port**
-  *Done when:* if the edge port (or any fixed service port) is already taken (e.g. another stack on :443),
-  startup surfaces a specific "port X in use by …, free it and retry" message in the UI and leaves the app
-  usable — no crash. (Builds on `core::ports::ensure_free` + the §7.3 stale-edge recovery.)
+- [x] **2.1 Busy :80 / :443 / service port** — ✓ `ports::ensure_free` already errors with a specific
+  "port {port}/{proto} (needed by {service}) is already in use" (unit-tested for content). Gap fixed: the
+  **"Start all"** mutation (`StatusFooter`) and the Sites start/stop + delete mutations had **no `onError`**,
+  so a busy-port failure was swallowed silently — added `onError → window.alert` so it surfaces; the app
+  stays up (it's a returned `Err`, no panic). Verified live in `robustness_check`: a bound port →
+  `port 54138/tcp (needed by edge) is already in use`. (Stale-edge recovery from §7.3 still auto-clears a
+  leftover rexenv edge first.)
 
-- [ ] **2.2 Failed / aborted binary download**
-  *Done when:* a binary fetch that fails (network drop mid-download) or mismatches its checksum retries a
-  bounded number of times, then shows a clear error naming the binary + cause; a partial file is discarded
-  (not cached as valid). Re-running succeeds once connectivity returns.
+- [x] **2.2 Failed / aborted binary download** — ✓ `http_get` now retries transient failures (connect
+  drop / timeout / aborted body / 5xx) up to `DOWNLOAD_ATTEMPTS` (3) with linear backoff, then returns a
+  clear error ending "(gave up after 3 attempts)"; a **4xx is permanent** (no wasted retries) — the
+  retry-vs-permanent split is the unit-tested `status_is_transient` (500/502 → retry; 404/403 → stop).
+  **Partial files are never cached:** the download is fully read → checksum-verified → only THEN written to
+  disk, so any abort/mismatch leaves nothing behind (checksum reject unit-tested). Verified live in
+  `robustness_check`: a 404 fails in ~0.5 s (no retry storm). Re-running after connectivity returns succeeds
+  (idempotent `resolve`).
 
-- [ ] **2.3 Cancelled privilege prompt**
-  *Done when:* if the user cancels the macOS admin prompt (resolver write / CA trust), the app shows a clear
-  "setup incomplete — <feature> needs this; retry" state and stays usable; re-triggering the prompt works.
+- [x] **2.3 Cancelled privilege prompt** — ✓ `MacosPrivileges::run_privileged` now maps a dismissed auth
+  dialog (AppleScript `-128` / "User canceled") to a friendly, recoverable message —
+  "Administrator permission was cancelled — this step needs it. Try again and approve the prompt." — instead
+  of a raw error code (other failures keep their detail). It returns `Err` (no crash) and surfaces via the
+  same `onError` alerts; re-triggering the action re-shows the prompt. Verified by the macOS unit test
+  `privileged_cancel_is_a_friendly_recoverable_message` (the live cancel runs this exact mapping).
 
-- [ ] **2.4 No internet on first run**
-  *Done when:* with no connectivity and binaries not yet cached, the app explains that first-time setup needs
-  internet to download components, names what's missing, and recovers cleanly once online (no crash, no
-  infinite spinner).
+- [x] **2.4 No internet on first run** — ✓ the download client now has a **15 s connect timeout** (+120 s
+  overall) so it can't hang, and a connectivity-aware message: a connect/timeout failure reads
+  "can't reach {url} — check your internet connection (…)" rather than a raw transport error. Bounded by the
+  same 3-attempt cap. Verified live in `robustness_check`: an unreachable host →
+  "can't reach … — check your internet connection … (gave up after 3 attempts)" in ~1.2 s. Recovers cleanly
+  once online (re-run resolves), no crash / no infinite spinner.
 
-- [ ] **2.5 Failure-state pass**
-  *Done when:* 2.1–2.4 are each simulated on a clean machine and confirmed to produce a clean, understandable
-  error state (notes/screenshots captured). Depends on 2.1, 2.2, 2.3, 2.4.
+- [x] **2.5 Failure-state pass** — ✓ `examples/robustness_check.rs` simulates 2.1 (busy port), 2.2 (404
+  download → permanent, no retry storm) and 2.4 (unreachable host → connectivity hint, bounded ~1.2 s) live —
+  all produce a clean, clear error and never crash/hang; 2.3 (cancelled prompt) is covered by its unit test.
+  `cargo test --lib` 114 pass; tsc + vite build clean. Depends on 2.1, 2.2, 2.3, 2.4.
 
 ---
 

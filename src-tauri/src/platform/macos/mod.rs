@@ -152,6 +152,19 @@ impl MacosPrivileges {
         let escaped = script.replace('\\', "\\\\").replace('"', "\\\"");
         format!("do shell script \"{escaped}\" with administrator privileges")
     }
+
+    /// Turn osascript's stderr into a clear message. A user who dismisses the auth
+    /// dialog gets AppleScript error `-128` ("User canceled.") — surface that as a
+    /// friendly, actionable line instead of a raw error code, so a cancelled prompt
+    /// reads as recoverable rather than a failure.
+    fn privileged_error_message(stderr: &str) -> String {
+        if stderr.contains("-128") || stderr.to_lowercase().contains("user canceled") {
+            "Administrator permission was cancelled — this step needs it. Try again and approve the prompt."
+                .to_string()
+        } else {
+            format!("privileged operation failed: {stderr}")
+        }
+    }
 }
 
 impl PrivilegeManager for MacosPrivileges {
@@ -166,9 +179,8 @@ impl PrivilegeManager for MacosPrivileges {
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
         } else {
-            Err(Error::Other(format!(
-                "privileged operation failed: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
+            Err(Error::Other(Self::privileged_error_message(
+                String::from_utf8_lossy(&out.stderr).trim(),
             )))
         }
     }
@@ -491,6 +503,18 @@ mod tests {
         assert!(program.ends_with("\" with administrator privileges"));
         // Quotes and backslashes are escaped for the AppleScript string literal.
         assert!(program.contains(r#"echo \"hi\" \\ there"#));
+    }
+
+    #[test]
+    fn privileged_cancel_is_a_friendly_recoverable_message() {
+        // A dismissed auth dialog (AppleScript -128) reads as recoverable, not raw.
+        let cancel = MacosPrivileges::privileged_error_message("User canceled. (-128)");
+        assert!(cancel.to_lowercase().contains("cancelled"));
+        assert!(cancel.to_lowercase().contains("try again"));
+        assert!(!cancel.contains("-128"));
+        // Other failures keep their detail.
+        let other = MacosPrivileges::privileged_error_message("rm: permission denied");
+        assert!(other.contains("permission denied"));
     }
 
     #[test]

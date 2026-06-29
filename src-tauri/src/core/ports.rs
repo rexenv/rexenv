@@ -128,7 +128,10 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         assert!(!is_free(port, Proto::Tcp));
-        assert!(ensure_free(port, Proto::Tcp, "test").is_err());
+        // The error must name the port + the service that needs it (§2.1).
+        let err = ensure_free(port, Proto::Tcp, "edge").unwrap_err().to_string();
+        assert!(err.contains(&port.to_string()), "msg: {err}");
+        assert!(err.contains("edge") && err.contains("in use"), "msg: {err}");
         drop(listener);
         assert!(is_free(port, Proto::Tcp));
     }
