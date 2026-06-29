@@ -44,12 +44,16 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   and `MacosAutostart`, and confirm a fresh run reads/writes the expected tree. **Do this NOW** while
   there's no real user data — otherwise changing the app-data path later needs a migration.
 
-- [ ] **1.2 Ad-hoc sign the app bundle**
+- [x] **1.2 Ad-hoc sign the app bundle** — ✓ added `bundle.macOS.signingIdentity: "-"` to
+  `tauri.conf.json`. `pnpm tauri build` logs `Signing with identity "-"` and signs `rexenv.app`;
+  `codesign -dv --verbose=4 rexenv.app` → `Signature=adhoc` (flags `0x10002(adhoc,runtime)`,
+  `Identifier=dev.rexenv.rexenv` — the 1.1 id flows into the signature), and
+  `codesign --verify --deep --strict rexenv.app` → "valid on disk / satisfies its Designated Requirement"
+  (exit 0). Same ad-hoc approach as Phase 1 `prepare_binary` for downloaded binaries, now on the bundle so
+  Apple Silicon doesn't reject it as "damaged". Depends on 1.1.
   *Done when:* `tauri.conf.json` `bundle.macOS.signingIdentity` is `"-"` (ad-hoc), so `pnpm tauri build`
   signs `rexenv.app` with it; `codesign -dv --verbose=4 rexenv.app` reports `Signature=adhoc` and
-  `codesign --verify --deep --strict rexenv.app` passes. (Same ad-hoc approach already used for
-  downloaded binaries in Phase 1 `prepare_binary`, now extended to the bundle so Apple Silicon doesn't
-  reject it as "damaged".) Depends on 1.1.
+  `codesign --verify --deep --strict rexenv.app` passes.
 
 - [ ] **1.3 Produce the .dmg (choose + record architecture + min macOS)**
   *Done when:* the build target is explicitly chosen and recorded — **Apple-Silicon-only** (`aarch64`,
