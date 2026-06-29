@@ -23,6 +23,10 @@ pub const CADDY_ADMIN_PORT: u16 = 2019;
 pub struct SiteRoute {
     /// Host served, e.g. `mysite.test`.
     pub host: String,
+    /// Also match `*.host` (subdomain multisite, §10.2). The wildcard sub-site
+    /// hosts share this site's backend + wildcard cert; a more-specific exact
+    /// host (any other site) still wins, so it can't overshadow `other.test`.
+    pub wildcard: bool,
     /// Upstream `host:port` Caddy proxies to (the shared Nginx).
     pub upstream: String,
     pub cert_path: PathBuf,
@@ -59,7 +63,15 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
     s.push_str("}\n");
     for r in &cfg.routes {
         s.push('\n');
-        s.push_str(&format!("https://{} {{\n", r.host));
+        // Subdomain multisite serves the apex plus every sub-site host; Caddy
+        // matches the most-specific site address first, so the exact hosts of
+        // other sites are never shadowed by this `*.host` matcher.
+        let site_addr = if r.wildcard {
+            format!("https://{host}, https://*.{host}", host = r.host)
+        } else {
+            format!("https://{}", r.host)
+        };
+        s.push_str(&format!("{site_addr} {{\n"));
         // Quote paths: app-data paths contain spaces ("Application Support").
         s.push_str(&format!(
             "\ttls \"{}\" \"{}\"\n",
@@ -203,6 +215,7 @@ mod tests {
             https_port: 8443,
             routes: vec![SiteRoute {
                 host: "proxytest.test".into(),
+                wildcard: false,
                 upstream: "127.0.0.1:9999".into(),
                 cert_path: "/c/cert.pem".into(),
                 key_path: "/c/key.pem".into(),
@@ -234,6 +247,7 @@ mod tests {
         let mut cfg = sample();
         cfg.routes.push(SiteRoute {
             host: "two.test".into(),
+            wildcard: false,
             upstream: "127.0.0.1:9001".into(),
             cert_path: "/c/2.pem".into(),
             key_path: "/c/2.key".into(),
@@ -242,5 +256,25 @@ mod tests {
         assert!(f.contains("https://proxytest.test {"));
         assert!(f.contains("https://two.test {"));
         assert_eq!(f.matches("reverse_proxy").count(), 2);
+    }
+
+    #[test]
+    fn subdomain_multisite_route_matches_wildcard_without_shadowing_others() {
+        let mut cfg = sample();
+        // A subdomain-multisite site: apex + wildcard sub-site hosts.
+        cfg.routes.push(SiteRoute {
+            host: "mysite.test".into(),
+            wildcard: true,
+            upstream: "127.0.0.1:8088".into(),
+            cert_path: "/c/m.pem".into(),
+            key_path: "/c/m.key".into(),
+        });
+        let f = generate_caddyfile(&cfg);
+        // The site address carries both the apex and the wildcard sub-site host.
+        assert!(f.contains("https://mysite.test, https://*.mysite.test {"));
+        // The wildcard is scoped to mysite.test — a plain site keeps its own exact
+        // (non-wildcard) address, so it is never shadowed by `*.mysite.test`.
+        assert!(f.contains("https://proxytest.test {"));
+        assert!(!f.contains("*.proxytest.test"));
     }
 }

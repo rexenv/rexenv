@@ -324,6 +324,9 @@ pub fn rebuild_configs_for(
         let cert = ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &s.domain)?;
         routes.push(proxy::SiteRoute {
             host: s.domain.clone(),
+            // Subdomain multisite serves every `*.mysite.test` sub-site from the
+            // one wildcard cert + backend (§10.2); other modes are single-host.
+            wildcard: matches!(s.multisite, MultisiteMode::Subdomain),
             upstream: site_upstream(s, nginx_http_port),
             cert_path: cert.cert_path,
             key_path: cert.key_path,
@@ -334,6 +337,7 @@ pub fn rebuild_configs_for(
         ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, adminer::ADMINER_HOST)?;
     routes.push(proxy::SiteRoute {
         host: adminer::ADMINER_HOST.to_string(),
+        wildcard: false,
         upstream: format!("127.0.0.1:{nginx_http_port}"),
         cert_path: adminer_cert.cert_path,
         key_path: adminer_cert.key_path,

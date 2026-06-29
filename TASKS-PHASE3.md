@@ -397,7 +397,14 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   302 (routed through the rewrite, recognized — WP's unauthenticated network-admin redirect, not a 404).
   `cargo test --lib` 102 pass, tsc + vite build clean. (commit pending)
 
-- [ ] **10.2 Wildcard cert + edge route for subdomain multisite**
+- [x] **10.2 Wildcard cert + edge route for subdomain multisite** — ✓ subdomain mode now emits a wildcard
+  nginx `server_name mysite.test *.mysite.test;` + Caddy site address `https://mysite.test, https://*.mysite.test`
+  (new `SiteRoute.wildcard`, set only for `MultisiteMode::Subdomain`); the per-site wildcard-SAN cert (Phase 1
+  §3.2) was already issued, now exercised. `multisite_wildcard_check`: created real sub-sites `a`/`b`, both served
+  over a CA-only-trusting client (valid lock, 302→wp-signup = host recognized); `openssl s_client` →
+  `SAN DNS:*.mysite.test`, issuer `rexenv Local CA`. **Negative check passed:** `other.test` (plain site) still
+  loads 200/phpinfo after the wildcard route is added — exact hosts win, `*.mysite.test` never shadows them.
+  `cargo test --lib` 104 pass (+2), tsc + vite build clean.
   *Done when:* a subdomain-multisite site is served across `*.mysite.test`: the per-site **wildcard cert**
   (SAN `*.mysite.test`, **Phase 1 §3.2**) is used and the edge Caddy route matches the wildcard host
   (`mysite.test, *.mysite.test` → the same backend). Verified: `https://a.mysite.test` and

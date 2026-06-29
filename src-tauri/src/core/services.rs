@@ -214,10 +214,16 @@ fn fcgi_params() -> &'static str {
 }
 
 fn server_block(http_port: u16, site: &NginxSite) -> String {
+    // Subdomain multisite serves every sub-site (`a.mysite.test`) from the same
+    // block, so the wildcard joins the exact host in `server_name` (§10.2).
+    let server_name = match site.rewrite {
+        RewriteMode::SubdomainMultisite => format!("{d} *.{d}", d = site.domain),
+        _ => site.domain.clone(),
+    };
     format!(
         "\n\tserver {{\n\
          \t\tlisten 127.0.0.1:{port};\n\
-         \t\tserver_name {domain};\n\
+         \t\tserver_name {server_name};\n\
          \t\troot \"{root}\";\n\
          \t\tindex index.php index.html;\n\
          {rewrite}\
@@ -228,7 +234,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t\t}}\n\
          \t}}\n",
         port = http_port,
-        domain = site.domain,
+        server_name = server_name,
         root = site.docroot.display(),
         fpm = site.php_fpm_port,
         rewrite = rewrite_block(site.rewrite),
@@ -474,6 +480,17 @@ mod tests {
         let sub = generate_nginx_config(&nginx_cfg(RewriteMode::SubdomainMultisite));
         assert!(sub.contains("try_files $uri $uri/ /index.php?$args;"));
         assert!(!sub.contains("rewrite /wp-admin$"));
+    }
+
+    #[test]
+    fn subdomain_multisite_server_name_includes_wildcard() {
+        // Subdomain multisite must serve every `*.acme.test` sub-site from the one
+        // block (§10.2); single/subdirectory stay exact-host only.
+        let sub = generate_nginx_config(&nginx_cfg(RewriteMode::SubdomainMultisite));
+        assert!(sub.contains("server_name acme.test *.acme.test;"), "got: {sub}");
+        let single = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
+        assert!(single.contains("server_name acme.test;"));
+        assert!(!single.contains("*.acme.test"));
     }
 
     #[test]

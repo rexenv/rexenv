@@ -21,6 +21,7 @@ async fn main() {
         https_port: proxy::DEFAULT_HTTPS_PORT, // 443
         routes: vec![proxy::SiteRoute {
             host: host.into(),
+            wildcard: false,
             upstream: "127.0.0.1:9999".into(),
             cert_path: cert.cert_path.clone(),
             key_path: cert.key_path.clone(),
