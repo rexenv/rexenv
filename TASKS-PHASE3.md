@@ -460,8 +460,18 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   contract). **Remaining (maintainer/CI):** run the recipe, upload the four artifacts, fill the four
   `PHP_DEBUG_*_SHA256` consts → then §8.2 proceeds.
 - [ ] **11.3 Site templates / blueprints** (PROJECT_SPEC Tier 3) — reusable site setups incl. multisite.
-- [ ] **11.4 Adminer per-site deep-link** — "Open database" jumps straight into the site's DB with a scoped
-  session.
+- [x] **11.4 Adminer per-site deep-link** — ✓ "Open database" jumps straight into the site's DB. Adminer is
+  now served via a generated `index.php` **wrapper** (`adminer_object()` hook, global namespace) that
+  `require`s the bundled `adminer.php` and overrides `login()` to accept a **passwordless login for loopback
+  servers only** (rexenv's MySQL root / Postgres have no local password; the host check blocks remote) and
+  `loginForm()` to **auto-submit Adminer's own CSRF-tokened + CSP-nonced form** when `?rexenv_auto` is set
+  (sessionStorage-guarded against loops). `adminerUrl` sets `rexenv_auto` by default; the Sites-row "Open
+  database" button now navigates to the site's embedded Database tab (disabled for Blank-PHP). SECURITY: Adminer
+  stays an internal `adminer.rexenv.test`→127.0.0.1 vhost behind the edge, never a tunnel origin (§9), so the
+  passwordless path is loopback-confined. Verified by `adminer_deeplink_check`: deep-link returns the login form
+  WITH the auto-submit script; replaying it (empty-password POST) → 302 + session cookies → DB view lists the
+  site's `wp_*` tables (no manual login, no "needs a password" wall). `cargo test --lib` 108 pass (+1), tsc +
+  vite build clean.
 
 ---
 

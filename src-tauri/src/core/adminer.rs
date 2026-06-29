@@ -15,23 +15,78 @@ use std::path::PathBuf;
 /// NEVER a public tunnel origin (§9) — it isn't a site.
 pub const ADMINER_HOST: &str = "adminer.rexenv.test";
 
+/// Query flag a rexenv deep-link sets to request a one-click scoped session (§11.4).
+pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
+
+/// The deep-link wrapper served as `index.php`. It customizes Adminer via the
+/// `adminer_object()` hook (defined in the GLOBAL namespace — Adminer checks the
+/// global function name) so a rexenv "Open database" link lands the user straight
+/// in the site's DB instead of on a manual login screen:
+///   - `login()` accepts a passwordless login, but ONLY for the loopback engines
+///     rexenv manages (MySQL root / Postgres have no local password) — never a
+///     remote host;
+///   - `loginForm()` auto-submits Adminer's OWN rendered form (which already
+///     carries the CSRF token + CSP nonce) when `?rexenv_auto` is set, guarded by
+///     sessionStorage so a failed login can't loop.
+///
+/// SECURITY: Adminer here is an INTERNAL vhost (`adminer.rexenv.test` → 127.0.0.1)
+/// behind the local edge and is NEVER a public tunnel origin (§9), so passwordless
+/// loopback access stays confined to the local machine.
+const WRAPPER_INDEX_PHP: &str = r#"<?php
+// rexenv Adminer deep-link wrapper (§11.4) — generated; do not edit by hand.
+function adminer_object() {
+    if (!class_exists('RexenvAdminer')) {
+        class RexenvAdminer extends \Adminer\Adminer {
+            function login($login, $password) {
+                // Passwordless login for rexenv's loopback engines only.
+                return strpos(\Adminer\SERVER, '127.0.0.1') === 0
+                    || strpos(\Adminer\SERVER, 'localhost') === 0;
+            }
+            function loginForm() {
+                parent::loginForm();
+                if (isset($_GET['rexenv_auto'])) {
+                    echo "<script" . \Adminer\nonce() . ">"
+                       . "if(!sessionStorage.getItem('rexenv_autologin')){"
+                       . "sessionStorage.setItem('rexenv_autologin','1');"
+                       . "var f=document.querySelector('input[name=\"auth[driver]\"]');"
+                       . "if(f&&f.form){f.form.submit();}}"
+                       . "</script>";
+                }
+            }
+        }
+    }
+    return new \RexenvAdminer();
+}
+require __DIR__ . '/adminer.php';
+"#;
+
 /// Web docroot for Adminer, isolated from the binary cache.
 pub fn docroot(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().app_data_dir()?.join("adminer"))
 }
 
-/// Ensure the Adminer docroot exists with the bundled file as `index.php`.
-/// Downloads + caches `adminer.php` (§5.1) on first use, then copies it in.
-/// Idempotent: re-copies only if the docroot copy is missing or a different size.
+/// Ensure the Adminer docroot exists: the bundled Adminer as `adminer.php` plus the
+/// rexenv deep-link wrapper as `index.php` (the served entrypoint). Downloads +
+/// caches `adminer.php` (§5.1) on first use. Idempotent: the Adminer copy is
+/// refreshed only when missing / a different size, and the wrapper only when its
+/// content differs (so a wrapper update redeploys on next start).
 pub async fn ensure(platform: &dyn Platform) -> Result<PathBuf> {
     let dir = docroot(platform)?;
     std::fs::create_dir_all(&dir)?;
-    let index = dir.join("index.php");
+
+    // The real Adminer, copied beside the wrapper (the wrapper `require`s it).
+    let adminer_php = dir.join("adminer.php");
     let src = binaries::resolve_file(platform, "adminer", binaries::ADMINER_VERSION).await?;
-    let stale = std::fs::metadata(&index).ok().map(|m| m.len())
+    let stale = std::fs::metadata(&adminer_php).ok().map(|m| m.len())
         != std::fs::metadata(&src).ok().map(|m| m.len());
     if stale {
-        std::fs::copy(&src, &index)?;
+        std::fs::copy(&src, &adminer_php)?;
+    }
+
+    // The served entrypoint: our deep-link wrapper (rewrite only if changed).
+    let index = dir.join("index.php");
+    if std::fs::read_to_string(&index).ok().as_deref() != Some(WRAPPER_INDEX_PHP) {
+        std::fs::write(&index, WRAPPER_INDEX_PHP)?;
     }
     Ok(dir)
 }
@@ -45,5 +100,20 @@ mod tests {
         assert!(ADMINER_HOST.ends_with(".rexenv.test"));
         // Not a wildcard / not a user site domain.
         assert_eq!(ADMINER_HOST, "adminer.rexenv.test");
+    }
+
+    #[test]
+    fn wrapper_defines_the_deeplink_hook_and_loopback_gate() {
+        // Global-namespace hook (Adminer checks the global function name).
+        assert!(WRAPPER_INDEX_PHP.contains("function adminer_object()"));
+        assert!(WRAPPER_INDEX_PHP.contains("extends \\Adminer\\Adminer"));
+        // Passwordless login is gated to loopback only (never a remote host).
+        assert!(WRAPPER_INDEX_PHP.contains("function login("));
+        assert!(WRAPPER_INDEX_PHP.contains("127.0.0.1"));
+        // Auto-submit is keyed on the deep-link flag + carries the CSP nonce.
+        assert!(WRAPPER_INDEX_PHP.contains(AUTOLOGIN_FLAG));
+        assert!(WRAPPER_INDEX_PHP.contains("\\Adminer\\nonce()"));
+        // It serves the real Adminer beside it.
+        assert!(WRAPPER_INDEX_PHP.contains("require __DIR__ . '/adminer.php'"));
     }
 }

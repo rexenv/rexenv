@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Globe, FolderOpen, Database, Lock, Trash2, MoreHorizontal } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -23,11 +24,13 @@ function SiteRow({
   busy,
   onToggle,
   onDelete,
+  onOpenDatabase,
 }: {
   site: Site;
   busy: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onOpenDatabase: () => void;
 }) {
   const running = site.status === "running";
   return (
@@ -53,7 +56,14 @@ function SiteRow({
         <Button variant="ghost" size="icon" aria-label="Open folder">
           <FolderOpen className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Open database">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Open database"
+          title={site.type === "php" ? "Blank PHP sites have no database" : "Open database"}
+          disabled={site.type === "php"}
+          onClick={onOpenDatabase}
+        >
           <Database className="h-4 w-4" />
         </Button>
         <Button
@@ -75,6 +85,7 @@ function SiteRow({
 
 export function Sites() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
   const { data: sites = [], isLoading } = useQuery({
     queryKey: ["sites"],
@@ -144,6 +155,7 @@ export function Sites() {
                 busy={toggle.isPending && toggle.variables?.id === site.id}
                 onToggle={() => toggle.mutate(site)}
                 onDelete={() => confirmDelete(site)}
+                onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
               />
             ))}
           </div>

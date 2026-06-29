@@ -10,8 +10,15 @@ export const ADMINER_HOST = "adminer.rexenv.test";
 const MYSQL_PORT = 13306;
 const POSTGRES_PORT = 15432;
 
-/** Build a pre-filled Adminer URL for an engine (+ optional database). */
-export function adminerUrl(opts: { engine: "mysql" | "postgres"; db?: string }): string {
+/** Build a per-site Adminer deep-link for an engine (+ optional database). By
+ *  default it requests a one-click scoped session (`rexenv_auto`) so the backend
+ *  wrapper auto-logs-in and lands straight in the DB (§11.4); pass
+ *  `autoLogin: false` for a plain pre-filled login form. */
+export function adminerUrl(opts: {
+  engine: "mysql" | "postgres";
+  db?: string;
+  autoLogin?: boolean;
+}): string {
   const params = new URLSearchParams();
   if (opts.engine === "postgres") {
     params.set("pgsql", `127.0.0.1:${POSTGRES_PORT}`);
@@ -21,6 +28,9 @@ export function adminerUrl(opts: { engine: "mysql" | "postgres"; db?: string }):
     params.set("username", "root");
   }
   if (opts.db) params.set("db", opts.db);
+  // Scoped one-click session by default (the wrapper auto-submits Adminer's own
+  // CSRF-tokened form); opt out with autoLogin:false.
+  if (opts.autoLogin !== false) params.set("rexenv_auto", "1");
   return `https://${ADMINER_HOST}/?${params.toString()}`;
 }
 
