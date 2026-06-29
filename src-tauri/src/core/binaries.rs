@@ -19,6 +19,18 @@ pub const PHP_VERSION: &str = "8.3.31";
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
 pub const PHP_VERSIONS: &[&str] = &["8.1.34", "8.2.31", "8.3.31"];
+/// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
+/// per-site Xdebug debug pool. The stock static-php "bulk" builds ship NO Xdebug
+/// and a static PHP can't `dlopen` an external `xdebug.so` (§8.1), so this is a
+/// SEPARATE custom static-php compile — see `docs/xdebug-debug-build.md` for the
+/// reproducible `spc` recipe. The artifact is self-hosted; until it's uploaded and
+/// its SHA-256 pinned below, `php-debug`/`php-fpm-debug` stay UNRESOLVABLE (§11.2).
+pub const PHP_DEBUG_VERSION: &str = "8.3.31";
+/// Xdebug version compiled into the debug build (recorded for the recipe + UI).
+pub const PHP_DEBUG_XDEBUG_VERSION: &str = "3.4.5";
+/// Where the self-built debug artifacts will be hosted (filled at hosting time).
+/// A maintainer builds with the recipe, uploads here, then pins the checksums.
+const PHP_DEBUG_BASE_URL: &str = "https://dl.rexenv.dev/php-debug";
 /// Pinned nginx version (jirutka/nginx-binaries static build).
 pub const NGINX_VERSION: &str = "1.30.3";
 /// Pinned MySQL version (official macOS tarball — a full bin/lib/share tree).
@@ -205,6 +217,49 @@ fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
     })
 }
 
+// Debug build (Xdebug compiled in) SHA-256 — EMPTY until the artifact is built
+// (docs/xdebug-debug-build.md) and self-hosted; an empty const keeps the variant
+// unresolvable so we never try to fetch a non-existent file (§11.2).
+const PHP_DEBUG_CLI_MAC_ARM64_SHA256: &str = "";
+const PHP_DEBUG_CLI_MAC_AMD64_SHA256: &str = "";
+const PHP_DEBUG_FPM_MAC_ARM64_SHA256: &str = "";
+const PHP_DEBUG_FPM_MAC_AMD64_SHA256: &str = "";
+
+/// Pinned SHA-256 for a debug (Xdebug) artifact, or `None` while unpinned (empty
+/// const = not yet built+hosted). `kind` is `"cli"` or `"fpm"`.
+fn php_debug_sha256(kind: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match kind {
+        "cli" => (PHP_DEBUG_CLI_MAC_ARM64_SHA256, PHP_DEBUG_CLI_MAC_AMD64_SHA256),
+        "fpm" => (PHP_DEBUG_FPM_MAC_ARM64_SHA256, PHP_DEBUG_FPM_MAC_AMD64_SHA256),
+        _ => return None,
+    };
+    let v = match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    };
+    if v.is_empty() {
+        None
+    } else {
+        Some(v)
+    }
+}
+
+/// The download spec for a debug (Xdebug) build artifact. Pure — same URL/archive
+/// shape as a bulk build, but from the self-hosted debug bucket and tagged
+/// `-xdebug`. The checksum is filled once hosted; `manifest` only surfaces this
+/// when [`php_debug_sha256`] is `Some` (so it's a no-op until then).
+fn php_debug_spec(kind: &str, arch: Arch) -> BinarySpec {
+    BinarySpec {
+        url: format!(
+            "{PHP_DEBUG_BASE_URL}/php-{PHP_DEBUG_VERSION}-{kind}-xdebug-macos-{}.tar.gz",
+            php_arch(arch)
+        ),
+        checksum: Checksum::Sha256(php_debug_sha256(kind, arch).unwrap_or_default().to_string()),
+        archive: Archive::TarGz,
+        member: if kind == "fpm" { "php-fpm" } else { "php" },
+    }
+}
+
 /// Look up the download spec for `name`@`version` on `os`+`arch`, or `None` if
 /// unknown. `php` resolves the CLI build; `php-fpm` the FPM build.
 pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<BinarySpec> {
@@ -242,6 +297,19 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGz,
             member: "php-fpm",
         }),
+        // Debug builds (Xdebug compiled in) for the §8.2 debug pool. Only resolve
+        // once the self-built artifact is hosted + its checksum pinned (§11.2);
+        // until then `php_debug_sha256` is None and these stay unresolvable.
+        ("php-debug", "macos", v)
+            if v == PHP_DEBUG_VERSION && php_debug_sha256("cli", arch).is_some() =>
+        {
+            Some(php_debug_spec("cli", arch))
+        }
+        ("php-fpm-debug", "macos", v)
+            if v == PHP_DEBUG_VERSION && php_debug_sha256("fpm", arch).is_some() =>
+        {
+            Some(php_debug_spec("fpm", arch))
+        }
         ("nginx", "macos", "1.30.3") => Some(BinarySpec {
             // jirutka/nginx-binaries ships a single static binary (not an archive).
             url: format!(
@@ -589,6 +657,34 @@ mod tests {
         assert!(fpm.url.ends_with("php-8.3.31-fpm-macos-x86_64.tar.gz"));
         assert_eq!(fpm.member, "php-fpm");
         assert_ne!(checksum_hex(&cli.checksum), checksum_hex(&fpm.checksum));
+    }
+
+    #[test]
+    fn php_debug_variant_is_wired_but_unresolvable_until_hosted() {
+        // §11.2: the debug variant exists in the manifest but is gated on a pinned
+        // checksum. The artifact isn't built/hosted yet, so it MUST NOT resolve —
+        // we never want to fetch a non-existent file.
+        for arch in [Arch::Arm64, Arch::X86_64] {
+            assert!(php_debug_sha256("cli", arch).is_none(), "debug cli unexpectedly pinned");
+            assert!(php_debug_sha256("fpm", arch).is_none(), "debug fpm unexpectedly pinned");
+            assert!(manifest("php-debug", PHP_DEBUG_VERSION, "macos", arch).is_none());
+            assert!(manifest("php-fpm-debug", PHP_DEBUG_VERSION, "macos", arch).is_none());
+        }
+    }
+
+    #[test]
+    fn php_debug_spec_has_the_expected_url_and_member_shape() {
+        // The pure spec builder defines the contract the hosted artifact must meet:
+        // `-xdebug` tagged, from the debug bucket, with the right member binary.
+        let cli = php_debug_spec("cli", Arch::Arm64);
+        assert!(cli.url.ends_with("php-8.3.31-cli-xdebug-macos-aarch64.tar.gz"), "{}", cli.url);
+        assert!(cli.url.starts_with(PHP_DEBUG_BASE_URL));
+        assert_eq!(cli.member, "php");
+        assert!(matches!(cli.archive, Archive::TarGz));
+
+        let fpm = php_debug_spec("fpm", Arch::X86_64);
+        assert!(fpm.url.ends_with("php-8.3.31-fpm-xdebug-macos-x86_64.tar.gz"), "{}", fpm.url);
+        assert_eq!(fpm.member, "php-fpm");
     }
 
     #[test]

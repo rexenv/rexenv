@@ -447,9 +447,18 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   `dns_ssl_autostart_check`: autostart enable→is_enabled=true→disable→false (no leftover plist), UDP probe
   reads in-use/free correctly, regenerate yields fresh key material with SAN `*.regen.test` + CA issuer; UI via
   chrome-devtools. `cargo test --lib` 105 pass (+1), tsc + vite build clean.
-- [ ] **11.2 Xdebug-enabled PHP build** — if Xdebug isn't in the static-php "bulk" build (§8.1), source a
-  static-php build variant with Xdebug compiled in (an external `xdebug.so` generally can't load into a static
-  PHP); re-pin it for the debug pool so §8.2 can proceed.
+- [~] **11.2 Xdebug-enabled PHP build** — **wiring + recipe done; artifact hosting + §8.2 unblock pending.**
+  Investigation (verified): **no** hosted static-php build OR loadable `xdebug.so` with Xdebug exists anywhere on
+  static-php.dev (checked `bulk`/`common`/`minimal`/`gnu-bulk`/`pre-built`) — the only path is a from-source
+  `spc` compile (heavy, self-hosted), which doesn't fit pure download-on-demand. Per the chosen approach: added
+  the `BinaryProvider` `php-debug`/`php-fpm-debug` variants (`PHP_DEBUG_VERSION` 8.3.31, `PHP_DEBUG_XDEBUG_VERSION`
+  3.4.5, `PHP_DEBUG_BASE_URL`, `php_debug_sha256`/`php_debug_spec`) — **gated on a pinned checksum so they stay
+  UNRESOLVABLE until built+hosted** (never fetch a non-existent file) — plus a reproducible `spc` recipe with the
+  bulk extension-parity set + xdebug, packaging, hosting, and pin steps in **docs/xdebug-debug-build.md**.
+  Verified: `cargo test --lib` 107 pass (+2) incl. `php_debug_variant_is_wired_but_unresolvable_until_hosted`
+  (manifest returns None now) and `php_debug_spec_has_the_expected_url_and_member_shape` (`-xdebug` URL + member
+  contract). **Remaining (maintainer/CI):** run the recipe, upload the four artifacts, fill the four
+  `PHP_DEBUG_*_SHA256` consts → then §8.2 proceeds.
 - [ ] **11.3 Site templates / blueprints** (PROJECT_SPEC Tier 3) — reusable site setups incl. multisite.
 - [ ] **11.4 Adminer per-site deep-link** — "Open database" jumps straight into the site's DB with a scoped
   session.
