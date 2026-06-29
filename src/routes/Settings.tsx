@@ -85,6 +85,7 @@ function SitesFolderSetting() {
       qc.invalidateQueries({ queryKey: ["sites-folder"] });
       qc.invalidateQueries({ queryKey: ["setting", SITES_DIR_KEY] });
     },
+    onError: (e) => window.alert(String(e)),
   });
 
   return (

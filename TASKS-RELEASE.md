@@ -190,10 +190,13 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   versions card now shows a **Make default** action on each installed non-default version (the New Site
   dialog already reads the default). Verified: unit test `set_default_switches_exclusively_and_requires_installed`,
   and the button live in the UI. `cargo test --lib` 115 pass (+1); tsc + vite build clean.
-- [ ] **4.5 Record remaining §11 Phase-3 leftovers (no work, just state)**
-  *Done when:* it's documented that §11.3 (blueprints) and §11.4 (Adminer deep-link) are DONE, and that
-  §8.2 (per-site Xdebug) + §11.2-hosting stay BLOCKED on a hosted Xdebug static-PHP build (external —
-  `docs/xdebug-debug-build.md`) and are NOT part of this release.
+- [x] **4.5 Record remaining §11 Phase-3 leftovers (no work, just state)** — ✓ recorded: Phase-3 **§11.1**
+  (Settings DNS/SSL + launchd autostart), **§11.3** (site blueprints) and **§11.4** (Adminer per-site
+  deep-link) are all DONE and shipped. The only outstanding Phase-3 items, **§8.2** (per-site Xdebug toggle)
+  and **§11.2-hosting**, remain BLOCKED on an externally-hosted Xdebug-enabled static-PHP build — the
+  `php-debug` BinaryProvider variant + reproducible `spc` recipe are wired (`docs/xdebug-debug-build.md`),
+  awaiting a maintainer build/host + checksum pin. **Neither is part of this release** (Xdebug is a
+  dev-convenience toggle, not a packaging blocker).
 
 ---
 
@@ -201,22 +204,31 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
 
 > A clean-Mac smoke test plus the rough edges that show up with real, varied usage.
 
-- [ ] **5.1 Empty states**
-  *Done when:* Sites, Mail, Tunnels, Databases, and Blueprints each render a clear empty state (no sites /
-  no caught mail / no tunnels / etc.) instead of a blank or broken panel.
+- [x] **5.1 Empty states** — ✓ audited: **Sites** ("No sites yet" + CTA), **Mail** ("No mail captured yet"
+  / "Inbox empty" + search-aware "No messages match"), **Tunnels** ("No sites to share"), and the Blueprints
+  Network sub-site list ("No sub-sites yet") all render clear empty states. **Databases** is never empty by
+  design (MySQL + PostgreSQL engines always listed) and the **Blueprints** card always shows its add-form
+  (no blank/broken panel). No blank panels in the common flows.
 
-- [ ] **5.2 Many-sites behavior**
-  *Done when:* with ~15–20 sites the Sites list, status footer, and edge config stay responsive and correct
-  (scrolling, start/stop, reload), with no obvious slowdown or layout break.
+- [x] **5.2 Many-sites behavior** — ✓ verified with 19 sites (temporary mock seed, then reverted): the
+  Sites list renders + scrolls cleanly, the header count ("19 sites · 10 running") and status footer update,
+  rows stay consistent — no slowdown or layout break (chrome-devtools). The edge/nginx config generation is
+  **O(n)** (one server block + Caddy route per site, already exercised with multiple sites in the Phase-1/3
+  examples), so it scales linearly; the list is a plain map (no virtualization needed at this scale).
 
-- [ ] **5.3 Consistent error messaging**
-  *Done when:* IPC/command errors surface through one consistent UI pattern (toast/inline) with
-  human-readable text — no raw `Err(Other(...))` strings or silent failures in the common flows.
+- [x] **5.3 Consistent error messaging** — ✓ audited every `useMutation` across the app: all now surface
+  failures through **one consistent pattern** (`onError → window.alert(String(e))`) — fixed the one silent
+  gap (the sites-folder `save`). The Rust `Error` serializes via its `Display` (e.g. `Error::Other(s)` → just
+  `s`), so the UI shows **human-readable text, never a raw `Err(Other(...))`/debug wrapper**. No silent
+  failures remain in the common flows. (A non-blocking toast is a possible future nicety; `alert` is the
+  uniform, functional pattern for this limited release.)
 
-- [ ] **5.4 Clean-Mac smoke-test checklist**
-  *Done when:* a written checklist (create WP site → HTTPS load → wp-admin → Mailpit catches a mail →
-  Adminer deep-link → tunnel → multisite convert → teardown) is run on a clean Mac from the .dmg and all
-  items pass. Depends on 1.5.
+- [~] **5.4 Clean-Mac smoke-test checklist** — ✓ **checklist written** (`SMOKE-TEST.md`, repo root): install
+  + first launch, cold first run (downloads + the 3 setup prompts), WP-over-HTTPS, WP Manager, Mailpit,
+  Adminer deep-link, multisite, tunnels, Settings (theme / default-PHP / autostart), robustness spot-checks,
+  scale, and clean uninstall — each a checkbox with the expected result. **The actual clean-Mac run is the
+  hands-on step (paired with 1.5)** — it needs a second Mac / fresh account + the .dmg, so it's left for you
+  to execute. Depends on 1.5.
 
 ---
 
