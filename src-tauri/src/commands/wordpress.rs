@@ -2,7 +2,7 @@
 //! (Phase 3 §1). Resolves the bundled PHP + wp-cli phar and delegates to
 //! `core::wordpress`. No business logic here.
 
-use crate::core::wordpress::{WpInfo, WpPlugin, WpTheme, WpUser};
+use crate::core::wordpress::{WpInfo, WpNetworkSite, WpPlugin, WpTheme, WpUser};
 use crate::core::{self, binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
@@ -232,6 +232,71 @@ pub async fn wp_core_update(state: State<'_, AppState>, id: String) -> Result<St
 pub async fn wp_core_reinstall(state: State<'_, AppState>, id: String) -> Result<String> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     core::wordpress::core_reinstall(&php, &wp, &docroot)
+}
+
+// ── Network / multisite management (§10.3) ───────────────────────────────────
+
+/// List the network's sub-sites (`wp site list`). Multisite-only.
+#[tauri::command]
+pub async fn wp_network_sites(state: State<'_, AppState>, id: String) -> Result<Vec<WpNetworkSite>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::network_site_list(&php, &wp, &docroot)
+}
+
+/// Create a sub-site by slug (`wp site create --slug=`).
+#[tauri::command]
+pub async fn wp_network_site_create(state: State<'_, AppState>, id: String, slug: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::network_site_create(&php, &wp, &docroot, &slug).map(|_| ())
+}
+
+/// Delete a sub-site by `blogId` (`wp site delete`). The main site can't be deleted.
+#[tauri::command]
+pub async fn wp_network_site_delete(state: State<'_, AppState>, id: String, blog_id: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::network_site_delete(&php, &wp, &docroot, &blog_id).map(|_| ())
+}
+
+/// Network-activate one or more plugins (`wp plugin activate … --network`).
+#[tauri::command]
+pub async fn wp_plugin_activate_network(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::plugin_activate_network(&php, &wp, &docroot, &names).map(|_| ())
+}
+
+/// Network-deactivate one or more plugins (`wp plugin deactivate … --network`).
+#[tauri::command]
+pub async fn wp_plugin_deactivate_network(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::plugin_deactivate_network(&php, &wp, &docroot, &names).map(|_| ())
+}
+
+/// Network-enable a theme (`wp theme enable <name> --network`).
+#[tauri::command]
+pub async fn wp_theme_enable_network(state: State<'_, AppState>, id: String, name: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_enable_network(&php, &wp, &docroot, &name).map(|_| ())
+}
+
+/// Network-disable a theme (`wp theme disable <name> --network`).
+#[tauri::command]
+pub async fn wp_theme_disable_network(state: State<'_, AppState>, id: String, name: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::theme_disable_network(&php, &wp, &docroot, &name).map(|_| ())
+}
+
+/// List the network's super-admins (`wp super-admin list`).
+#[tauri::command]
+pub async fn wp_super_admins(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::super_admin_list(&php, &wp, &docroot)
+}
+
+/// Grant super-admin to a user (`wp super-admin add <user>`).
+#[tauri::command]
+pub async fn wp_super_admin_add(state: State<'_, AppState>, id: String, user: String) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    core::wordpress::super_admin_add(&php, &wp, &docroot, &user).map(|_| ())
 }
 
 /// Convert a WordPress site to multisite (`subdomain` | `subdirectory`): writes

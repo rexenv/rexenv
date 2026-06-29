@@ -312,6 +312,113 @@ pub fn multisite_convert(
     wp_run(php_bin, wp_phar, docroot, &args)
 }
 
+// ── Network / multisite management (§10.3) ───────────────────────────────────
+
+/// One sub-site in a network for the Network sub-tab (`wp site list`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpNetworkSite {
+    /// `blog_id` (1 = the main site).
+    pub id: String,
+    /// Full sub-site URL (e.g. `http://a.mysite.test/`).
+    pub url: String,
+    pub registered: String,
+    /// Soft-deleted (archived) — kept in the list but flagged.
+    pub deleted: bool,
+}
+
+// `wp site list --format=json` wire shape (all values arrive as strings).
+#[derive(Deserialize)]
+struct WireSite {
+    #[serde(rename = "blog_id", default)]
+    blog_id: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    registered: String,
+    #[serde(default)]
+    deleted: String,
+}
+
+/// List the network's sub-sites (`wp site list`). Multisite-only — errors on a
+/// single-site install (WP-CLI: "This is not a multisite installation").
+pub fn network_site_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpNetworkSite>> {
+    let wire: Vec<WireSite> = wp_json(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["site", "list", "--fields=blog_id,url,registered,deleted"],
+    )?;
+    Ok(wire
+        .into_iter()
+        .map(|s| WpNetworkSite {
+            id: s.blog_id,
+            url: s.url,
+            registered: s.registered,
+            deleted: s.deleted == "1",
+        })
+        .collect())
+}
+
+/// Create a sub-site by slug (`wp site create --slug=<slug>`). The slug becomes a
+/// subdomain (`<slug>.mysite.test`) or a path (`mysite.test/<slug>`) per the
+/// network's install type. Returns the new `blog_id` (via `--porcelain`).
+pub fn network_site_create(php_bin: &Path, wp_phar: &Path, docroot: &Path, slug: &str) -> Result<String> {
+    let slug_arg = format!("--slug={slug}");
+    wp_run(php_bin, wp_phar, docroot, &["site", "create", &slug_arg, "--porcelain"])
+}
+
+/// Delete a sub-site by `blog_id` (`wp site delete <id> --yes`). The main site
+/// (id 1) can't be deleted — WP-CLI rejects it.
+pub fn network_site_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, blog_id: &str) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["site", "delete", blog_id, "--yes"])
+}
+
+/// Network-activate one or more plugins (`wp plugin activate … --network`) — they
+/// become `active-network` (the "Network active" badge) for every sub-site.
+pub fn plugin_activate_network(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    if names.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["plugin", "activate"];
+    args.extend(names.iter().map(String::as_str));
+    args.push("--network");
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
+/// Network-deactivate one or more plugins (`wp plugin deactivate … --network`).
+pub fn plugin_deactivate_network(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
+    if names.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["plugin", "deactivate"];
+    args.extend(names.iter().map(String::as_str));
+    args.push("--network");
+    wp_run(php_bin, wp_phar, docroot, &args)
+}
+
+/// Network-enable a theme (`wp theme enable <name> --network`) — make it available
+/// to every sub-site.
+pub fn theme_enable_network(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["theme", "enable", name, "--network"])
+}
+
+/// Network-disable a theme (`wp theme disable <name> --network`).
+pub fn theme_disable_network(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["theme", "disable", name, "--network"])
+}
+
+/// List the network's super-admins (`wp super-admin list` — one login per line).
+pub fn super_admin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<String>> {
+    let out = wp_run(php_bin, wp_phar, docroot, &["super-admin", "list"])?;
+    Ok(out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
+}
+
+/// Grant super-admin to a user (`wp super-admin add <user>`).
+pub fn super_admin_add(php_bin: &Path, wp_phar: &Path, docroot: &Path, user: &str) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["super-admin", "add", user])
+}
+
 // ── Tools (§7.2) ─────────────────────────────────────────────────────────────
 
 /// Whether `WP_DEBUG` is enabled (`wp config get WP_DEBUG`). A missing constant

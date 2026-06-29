@@ -415,7 +415,15 @@ Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** r
   loads after the wildcard route is added (the specific `mysite.test`/`*.mysite.test` matcher must win only
   for that domain; everything else falls through to the shared-nginx route). Depends on 10.1, Phase 1 §3.2.
 
-- [ ] **10.3 Network UI (Network sub-tab, Block 6)**
+- [x] **10.3 Network UI (Network sub-tab, Block 6)** — ✓ `core::wordpress` network helpers
+  (`network_site_list`/`create`/`delete`, `plugin_activate_network`/`deactivate_network`,
+  `theme_enable_network`/`disable_network`, `super_admin_list`/`add`) + 9 thin commands; Network sub-tab
+  (multisite-only) shows a **mode badge** (Subdomain/Subdirectory), a sub-site list with Create
+  (slug)/Delete/Visit/Admin (main site #1 delete disabled), network-activate plugins with a **Network active**
+  badge (`status==="active-network"`), and super-admin add/list. `network_check`: created `team` sub-site
+  (blog_id 2, appears in `wp site list`, `/team/` served 302), `akismet` network-activated → `active-network`,
+  super-admin `boss` granted + listed, sub-site deleted (list shrank). UI verified via chrome-devtools on the
+  browser dev build (mock "Blog Network" set subdirectory). `cargo test --lib` 104 pass, tsc + vite build clean.
   *Done when:* the **Network** sub-tab (multisite only) shows a **mode badge** (Subdomain/Subdirectory); a
   sub-site list from `wp site list --format=json` with **Create** (`wp site create --slug=`), **Delete**
   (`wp site delete`), **Visit**, **Admin**; **network-activate** plugins/themes (`wp plugin activate

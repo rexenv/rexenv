@@ -1,12 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Check, LogIn, Palette, Plus, RefreshCw, Replace, Trash2, UserPlus } from "lucide-react";
+import { ArrowUpCircle, Check, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, Shield, Trash2, UserPlus } from "lucide-react";
 import {
   openExternal,
   wpCoreReinstall,
   wpCoreUpdate,
   wpDebugGet,
   wpDebugSet,
+  wpNetworkSiteCreate,
+  wpNetworkSiteDelete,
+  wpNetworkSites,
+  wpPluginActivateNetwork,
+  wpPluginDeactivateNetwork,
   wpRewriteFlush,
   wpSearchReplace,
   wpPluginActivate,
@@ -15,6 +20,8 @@ import {
   wpPluginInstall,
   wpPluginUpdate,
   wpPlugins,
+  wpSuperAdminAdd,
+  wpSuperAdmins,
   wpThemeActivate,
   wpThemeDelete,
   wpThemeInstall,
@@ -24,21 +31,31 @@ import {
   wpUserLoginUrl,
   wpUsers,
 } from "@/lib/ipc";
-import type { WpPlugin, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpPlugin, WpTheme, WpUser } from "@/types";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
 
-type SubTab = "plugins" | "themes" | "users" | "tools";
+type SubTab = "plugins" | "themes" | "users" | "network" | "tools";
 
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[12px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
-export function WordPressManager({ siteId }: { siteId: string }) {
+export function WordPressManager({
+  siteId,
+  multisite = "none",
+  domain,
+}: {
+  siteId: string;
+  multisite?: MultisiteMode;
+  domain: string;
+}) {
+  const isNetwork = multisite !== "none";
   const [sub, setSub] = useState<SubTab>("plugins");
   const subs: { key: SubTab; label: string }[] = [
     { key: "plugins", label: "Plugins" },
     { key: "themes", label: "Themes" },
     { key: "users", label: "Users" },
+    ...(isNetwork ? [{ key: "network" as const, label: "Network" }] : []),
     { key: "tools", label: "Tools" },
   ];
 
@@ -61,8 +78,208 @@ export function WordPressManager({ siteId }: { siteId: string }) {
       {sub === "plugins" && <PluginsPanel siteId={siteId} />}
       {sub === "themes" && <ThemesPanel siteId={siteId} />}
       {sub === "users" && <UsersPanel siteId={siteId} />}
+      {sub === "network" && isNetwork && (
+        <NetworkPanel siteId={siteId} mode={multisite} domain={domain} />
+      )}
       {sub === "tools" && <ToolsPanel siteId={siteId} />}
     </>
+  );
+}
+
+function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: MultisiteMode; domain: string }) {
+  const qc = useQueryClient();
+  const [slug, setSlug] = useState("");
+  const [admin, setAdmin] = useState("");
+
+  const { data: sites = [], isLoading } = useQuery({
+    queryKey: ["wp-network-sites", siteId],
+    queryFn: () => wpNetworkSites(siteId),
+  });
+  const { data: plugins = [] } = useQuery({
+    queryKey: ["wp-plugins", siteId],
+    queryFn: () => wpPlugins(siteId),
+  });
+  const { data: supers = [] } = useQuery({
+    queryKey: ["wp-super-admins", siteId],
+    queryFn: () => wpSuperAdmins(siteId),
+  });
+
+  const sitesRun = useMutation({
+    mutationFn: (fn: () => Promise<void>) => fn(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-network-sites", siteId] }),
+    onError: (e) => window.alert(String(e)),
+  });
+  const pluginRun = useMutation({
+    mutationFn: (fn: () => Promise<void>) => fn(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] }),
+    onError: (e) => window.alert(String(e)),
+  });
+  const superRun = useMutation({
+    mutationFn: (fn: () => Promise<void>) => fn(),
+    onSuccess: () => {
+      setAdmin("");
+      qc.invalidateQueries({ queryKey: ["wp-super-admins", siteId] });
+    },
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const modeLabel = mode === "subdomain" ? "Subdomain" : "Subdirectory";
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Mode badge */}
+      <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-3">
+        <Network className="h-4 w-4 text-brand" />
+        <span className="text-[13px] font-medium text-rex-text">Multisite network</span>
+        <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-medium text-brand">
+          {modeLabel}
+        </span>
+      </div>
+
+      {/* Sub-sites */}
+      <Card title="Sub-sites">
+        <div className="mb-3 flex items-center gap-2">
+          <input
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder={mode === "subdomain" ? `slug (→ slug.${domain})` : `slug (→ ${domain}/slug)`}
+            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          />
+          <button
+            className={BTN + " flex items-center gap-1.5"}
+            disabled={sitesRun.isPending || !slug.trim()}
+            onClick={() => {
+              const s = slug.trim();
+              sitesRun.mutate(() => wpNetworkSiteCreate(siteId, s).then(() => setSlug("")));
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Create
+          </button>
+        </div>
+        {isLoading ? (
+          <div className="py-4 text-center text-[12.5px] text-rex-text-muted">Loading sub-sites…</div>
+        ) : sites.length === 0 ? (
+          <div className="py-4 text-center text-[12.5px] text-rex-text-muted">No sub-sites yet.</div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-rex-border">
+            {sites.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
+              >
+                <span className="rounded bg-rex-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-rex-text-muted">
+                  #{s.id}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-text" title={s.url}>
+                  {s.url}
+                </span>
+                {s.deleted && (
+                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
+                    archived
+                  </span>
+                )}
+                <IconBtn title="Visit" onClick={() => openExternal(s.url)}>
+                  <Globe className="h-3.5 w-3.5" />
+                </IconBtn>
+                <IconBtn title="Admin" onClick={() => openExternal(`${s.url.replace(/\/$/, "")}/wp-admin`)}>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </IconBtn>
+                <button
+                  className={BTN + " hover:border-red-500/60 hover:text-red-400 disabled:hover:border-rex-border disabled:hover:text-rex-text"}
+                  disabled={sitesRun.isPending || s.id === "1"}
+                  title={s.id === "1" ? "Can't delete the main site" : "Delete sub-site"}
+                  onClick={() => {
+                    if (window.confirm(`Delete sub-site ${s.url}?`))
+                      sitesRun.mutate(() => wpNetworkSiteDelete(siteId, s.id));
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Network-active plugins */}
+      <Card title="Plugins (network)">
+        <div className="overflow-hidden rounded-lg border border-rex-border">
+          {plugins.length === 0 ? (
+            <div className="py-4 text-center text-[12.5px] text-rex-text-muted">No plugins installed.</div>
+          ) : (
+            plugins.map((p) => {
+              const net = p.status === "active-network";
+              return (
+                <div
+                  key={p.name}
+                  className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-rex-text">{p.name}</span>
+                  {net && (
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-medium text-emerald-400">
+                      Network active
+                    </span>
+                  )}
+                  <button
+                    className={BTN}
+                    disabled={pluginRun.isPending}
+                    onClick={() =>
+                      pluginRun.mutate(() =>
+                        net
+                          ? wpPluginDeactivateNetwork(siteId, [p.name])
+                          : wpPluginActivateNetwork(siteId, [p.name]),
+                      )
+                    }
+                  >
+                    {net ? "Network deactivate" : "Network activate"}
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Card>
+
+      {/* Super admins */}
+      <Card title="Super admins">
+        <div className="mb-3 flex items-center gap-2">
+          <Shield className="h-4 w-4 text-rex-text-muted" />
+          <input
+            value={admin}
+            onChange={(e) => setAdmin(e.target.value)}
+            placeholder="username or email"
+            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          />
+          <button
+            className={BTN + " flex items-center gap-1.5"}
+            disabled={superRun.isPending || !admin.trim()}
+            onClick={() => {
+              const u = admin.trim();
+              superRun.mutate(() => wpSuperAdminAdd(siteId, u));
+            }}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Add
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {supers.length === 0 ? (
+            <span className="text-[12.5px] text-rex-text-muted">No super admins.</span>
+          ) : (
+            supers.map((u) => (
+              <span
+                key={u}
+                className="flex items-center gap-1 rounded-full bg-rex-surface-3 px-2 py-0.5 font-mono text-[11.5px] text-rex-text"
+              >
+                <Shield className="h-3 w-3 text-brand" />
+                {u}
+              </span>
+            ))
+          )}
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -216,6 +433,18 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <div className="mb-3 text-[13px] font-semibold text-rex-text">{title}</div>
       {children}
     </div>
+  );
+}
+
+function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
+    >
+      {children}
+    </button>
   );
 }
 

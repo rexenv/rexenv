@@ -146,7 +146,9 @@ export function SiteDetail() {
             />
           )}
 
-          {active === "wordpress" && <WordPressManager siteId={site.id} />}
+          {active === "wordpress" && (
+            <WordPressManager siteId={site.id} multisite={site.multisite} domain={site.domain} />
+          )}
           {active === "database" &&
             (site.type === "php" ? (
               <Placeholder

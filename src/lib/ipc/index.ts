@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -367,6 +367,67 @@ export async function wpCoreReinstall(id: string): Promise<string> {
 export async function wpMultisiteConvert(id: string, mode: "subdomain" | "subdirectory"): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("wp_multisite_convert", { id, mode });
+}
+
+// ── WordPress Manager — network / multisite (§10.3) ─────────────────────────
+
+const mockNetworkSites: WpNetworkSite[] = [
+  { id: "1", url: "https://network.test/", registered: "2026-06-01 10:00:00", deleted: false },
+  { id: "2", url: "https://team.network.test/", registered: "2026-06-10 09:30:00", deleted: false },
+];
+
+/** List the network's sub-sites (`wp site list`). Mock fallback outside Tauri. */
+export async function wpNetworkSites(id: string): Promise<WpNetworkSite[]> {
+  if (!isTauri()) return mockNetworkSites;
+  return invoke<WpNetworkSite[]>("wp_network_sites", { id });
+}
+
+/** Create a sub-site by slug (`wp site create --slug=`). No-op outside Tauri. */
+export async function wpNetworkSiteCreate(id: string, slug: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_network_site_create", { id, slug });
+}
+
+/** Delete a sub-site by blog id (`wp site delete`). No-op outside Tauri. */
+export async function wpNetworkSiteDelete(id: string, blogId: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_network_site_delete", { id, blogId });
+}
+
+/** Network-activate plugins (`wp plugin activate … --network`). No-op outside Tauri. */
+export async function wpPluginActivateNetwork(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_activate_network", { id, names });
+}
+
+/** Network-deactivate plugins (`wp plugin deactivate … --network`). No-op outside Tauri. */
+export async function wpPluginDeactivateNetwork(id: string, names: string[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_plugin_deactivate_network", { id, names });
+}
+
+/** Network-enable a theme (`wp theme enable <name> --network`). No-op outside Tauri. */
+export async function wpThemeEnableNetwork(id: string, name: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_theme_enable_network", { id, name });
+}
+
+/** Network-disable a theme (`wp theme disable <name> --network`). No-op outside Tauri. */
+export async function wpThemeDisableNetwork(id: string, name: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_theme_disable_network", { id, name });
+}
+
+/** List the network's super-admins (`wp super-admin list`). Mock fallback outside Tauri. */
+export async function wpSuperAdmins(id: string): Promise<string[]> {
+  if (!isTauri()) return ["admin"];
+  return invoke<string[]>("wp_super_admins", { id });
+}
+
+/** Grant super-admin to a user (`wp super-admin add`). No-op outside Tauri. */
+export async function wpSuperAdminAdd(id: string, user: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_super_admin_add", { id, user });
 }
 
 /** Per-service status + live metrics. Mock fallback outside Tauri. */

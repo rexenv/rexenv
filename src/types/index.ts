@@ -132,6 +132,14 @@ export interface WpUser {
   name: string;
 }
 
+/** A network sub-site row (mirrors the Rust WpNetworkSite DTO / `wp site list`). */
+export interface WpNetworkSite {
+  id: string; // blog_id (1 = main site)
+  url: string; // full sub-site URL
+  registered: string;
+  deleted: boolean; // soft-deleted / archived
+}
+
 /** Mailpit mail-catcher health + endpoints (mirrors the Rust MailpitStatus DTO). */
 export interface MailpitStatus {
   running: boolean;

@@ -42,7 +42,7 @@ export const mockSites: Site[] = [
     ssl: true,
     path: "~/Sites/network",
     createdAt: "2026-06-03 12:00:00",
-    multisite: "none",
+    multisite: "subdirectory",
   },
 ];
 
