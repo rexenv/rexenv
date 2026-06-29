@@ -55,15 +55,17 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   signs `rexenv.app` with it; `codesign -dv --verbose=4 rexenv.app` reports `Signature=adhoc` and
   `codesign --verify --deep --strict rexenv.app` passes.
 
-- [x] **1.3 Produce the .dmg (choose + record architecture + min macOS)** — ✓ **decision: Apple-Silicon-only
-  (`aarch64`)** for now (dev host is arm64; lowest-risk, already verified). Universal stays a documented
-  one-liner opt-in if a recipient has an Intel Mac: `rustup target add x86_64-apple-darwin` +
-  `pnpm tauri build --target universal-apple-darwin` (amd64 runtime-binary checksums are already pinned in
-  `core/binaries`). Set `bundle.macOS.minimumSystemVersion: "11.0"` (Big Sur — the inclusive floor for all
-  Apple Silicon Macs). `pnpm tauri build` produces `…/bundle/dmg/rexenv_0.1.0_aarch64.dmg` (7.6 MB, no
-  errors); verified: app binary `lipo -archs` = `arm64`, `Info.plist LSMinimumSystemVersion = 11.0`, the dmg
-  mounts (contains `rexenv.app` + an `Applications` symlink → drag-to-install), the inner app is ad-hoc
-  signed (`Identifier=dev.rexenv.rexenv`), unmounts clean. Depends on 1.2.
+- [x] **1.3 Produce the .dmg (choose + record architecture + min macOS)** — ✓ **decision: UNIVERSAL
+  (`x86_64 + arm64`)** — recipients include Intel Macs, so the release is a universal binary. Canonical
+  build = **`pnpm release:mac`** (`tauri build --target universal-apple-darwin`; added as a package.json
+  script so it's one repeatable command); `rustup target add x86_64-apple-darwin` is the one-time prereq.
+  amd64 + arm64 runtime-binary checksums are already pinned in `core/binaries`, so `BinaryProvider`
+  downloads the right-arch PHP/Nginx/MySQL/etc. per host at first run. Set
+  `bundle.macOS.minimumSystemVersion: "11.0"` (Big Sur — runs on Intel + Apple Silicon). Produces
+  `…/universal-apple-darwin/release/bundle/dmg/rexenv_0.1.0_universal.dmg` (15 MB, no errors); verified:
+  app binary `lipo -archs` = `x86_64 arm64`, `Info.plist LSMinimumSystemVersion = 11.0`,
+  `codesign --verify --deep --strict` passes (ad-hoc, `Identifier=dev.rexenv.rexenv`), the dmg mounts
+  (`rexenv.app` + an `Applications` symlink → drag-to-install) and unmounts clean. Depends on 1.2.
   *Done when:* the build target is explicitly chosen and recorded — **Apple-Silicon-only** (`aarch64`,
   the default) OR a **universal** binary (`pnpm tauri build --target universal-apple-darwin`, if anyone I
   share with may be on an Intel Mac) — and a **minimum macOS version** is set via
