@@ -55,13 +55,21 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   signs `rexenv.app` with it; `codesign -dv --verbose=4 rexenv.app` reports `Signature=adhoc` and
   `codesign --verify --deep --strict rexenv.app` passes.
 
-- [ ] **1.3 Produce the .dmg (choose + record architecture + min macOS)**
+- [x] **1.3 Produce the .dmg (choose + record architecture + min macOS)** — ✓ **decision: Apple-Silicon-only
+  (`aarch64`)** for now (dev host is arm64; lowest-risk, already verified). Universal stays a documented
+  one-liner opt-in if a recipient has an Intel Mac: `rustup target add x86_64-apple-darwin` +
+  `pnpm tauri build --target universal-apple-darwin` (amd64 runtime-binary checksums are already pinned in
+  `core/binaries`). Set `bundle.macOS.minimumSystemVersion: "11.0"` (Big Sur — the inclusive floor for all
+  Apple Silicon Macs). `pnpm tauri build` produces `…/bundle/dmg/rexenv_0.1.0_aarch64.dmg` (7.6 MB, no
+  errors); verified: app binary `lipo -archs` = `arm64`, `Info.plist LSMinimumSystemVersion = 11.0`, the dmg
+  mounts (contains `rexenv.app` + an `Applications` symlink → drag-to-install), the inner app is ad-hoc
+  signed (`Identifier=dev.rexenv.rexenv`), unmounts clean. Depends on 1.2.
   *Done when:* the build target is explicitly chosen and recorded — **Apple-Silicon-only** (`aarch64`,
   the default) OR a **universal** binary (`pnpm tauri build --target universal-apple-darwin`, if anyone I
   share with may be on an Intel Mac) — and a **minimum macOS version** is set via
   `bundle.macOS.minimumSystemVersion`. `pnpm tauri build` then produces
   `src-tauri/target/release/bundle/dmg/rexenv_<ver>_<arch>.dmg` with no build errors; it mounts and the
-  drag-to-Applications install works. Depends on 1.2.
+  drag-to-Applications install works.
 
 - [ ] **1.4 INSTALL.md / release note**
   *Done when:* `INSTALL.md` documents first launch (right-click the app → **Open**, or System Settings →
