@@ -35,3 +35,11 @@ pub fn set_php_version_installed(
     let conn = lock(&state)?;
     core::php::set_installed(&conn, &minor, installed)
 }
+
+/// Make a PHP version the default for new sites (§4.4). Guarded in `core::php`
+/// (must be installed). The New Site dialog reads this default.
+#[tauri::command]
+pub fn set_default_php_version(state: State<'_, AppState>, minor: String) -> Result<()> {
+    let conn = lock(&state)?;
+    core::php::set_default(&conn, &minor)
+}

@@ -121,6 +121,24 @@ pub fn set_installed(conn: &Connection, minor: &str, installed: bool) -> Result<
     Ok(())
 }
 
+/// Make `minor` the default PHP version for new sites. Guards: the version must be
+/// in the registry AND installed (defaulting to an uninstalled version would point
+/// new sites at a pool that never starts). Exactly one default always remains.
+pub fn set_default(conn: &Connection, minor: &str) -> Result<()> {
+    let versions = store::list_php_versions(conn)?;
+    let v = versions
+        .iter()
+        .find(|v| v.minor == minor)
+        .ok_or_else(|| Error::Other(format!("unknown PHP version: {minor}")))?;
+    if !v.installed {
+        return Err(Error::Other(format!(
+            "install PHP {minor} before making it the default"
+        )));
+    }
+    store::set_default_php_version(conn, minor)?;
+    Ok(())
+}
+
 /// The minor series the app should start pools for: every registry row marked
 /// `installed`. Falls back to the default minor if none are (so there is always a
 /// working pool).
@@ -302,6 +320,26 @@ mod tests {
         got.sort();
         assert!(got.contains(&"8.1".to_string()));
         assert!(got.contains(&default_minor));
+    }
+
+    #[test]
+    fn set_default_switches_exclusively_and_requires_installed() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let default_minor = minor_of(binaries::PHP_VERSION); // 8.3, installed by seed
+
+        // Can't default to an uninstalled version.
+        assert!(set_default(&conn, "8.1").is_err());
+        // Unknown version errors.
+        assert!(set_default(&conn, "7.4").is_err());
+
+        // Install 8.1, then make it the default → exactly one default, and it moved.
+        set_installed(&conn, "8.1", true).unwrap();
+        set_default(&conn, "8.1").unwrap();
+        let rows = store::list_php_versions(&conn).unwrap();
+        assert_eq!(rows.iter().filter(|v| v.is_default).count(), 1);
+        assert!(rows.iter().find(|v| v.minor == "8.1").unwrap().is_default);
+        assert!(!rows.iter().find(|v| v.minor == default_minor).unwrap().is_default);
     }
 
     #[test]

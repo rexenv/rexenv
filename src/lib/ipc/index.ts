@@ -98,6 +98,12 @@ export async function setPhpVersionInstalled(minor: string, installed: boolean):
   await invoke("set_php_version_installed", { minor, installed });
 }
 
+/** Make a PHP version the default for new sites (must be installed). No-op outside Tauri. */
+export async function setDefaultPhpVersion(minor: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_default_php_version", { minor });
+}
+
 /** Open a path or URL in the OS default handler (Finder / browser). Falls back
  *  to `window.open` for URLs outside Tauri. */
 export async function openExternal(target: string): Promise<void> {

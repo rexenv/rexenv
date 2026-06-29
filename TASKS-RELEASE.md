@@ -177,11 +177,19 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   Settings "Start rexenv on login" toggle drives it. (The last stubbed Phase-1 trait, now real.) Its label
   is reconciled with the bundle id in **1.1**.
 - [x] **4.3 Sites-folder setting** — ✓ done (verified): Settings "General" → sites-folder override.
-- [ ] **4.4 Settings completeness — theme + default PHP**
-  *Done when:* Settings lets the user (a) pick the app **theme** (per DESIGN_BRIEF) and (b) set the
-  **default PHP version** for new sites (a control + command that writes the `is_default` flag the New Site
-  dialog already reads — today the PHP card only *displays* the Default badge, with no way to change it);
-  both persist and take effect.
+- [x] **4.4 Settings completeness — theme + default PHP** — ✓ both done.
+  **(a) Theme (Dark / Light / System, DESIGN_BRIEF §172):** authored a full light palette in `tokens.css`
+  (`[data-theme="light"]` overriding the surface/border/text scale + elevation + `color-scheme`; brand/status/
+  type inherit — works because components use semantic `--rex-*` tokens, not hex). `src/lib/theme.ts`
+  persists the choice in localStorage, applies `data-theme` on `<html>`, and tracks the OS for "System";
+  `initTheme()` runs in `main.tsx` before render (no flash). Settings "General" gains a Dark/Light/System
+  segmented control. Verified live via chrome-devtools: switching to Light re-skins the whole app
+  coherently (sidebar, footer, all cards).
+  **(b) Default PHP:** `store::set_default_php_version` (atomic exclusive flip) + `core::php::set_default`
+  (guards: must be installed) + `set_default_php_version` command + `ipc.setDefaultPhpVersion`; the PHP
+  versions card now shows a **Make default** action on each installed non-default version (the New Site
+  dialog already reads the default). Verified: unit test `set_default_switches_exclusively_and_requires_installed`,
+  and the button live in the UI. `cargo test --lib` 115 pass (+1); tsc + vite build clean.
 - [ ] **4.5 Record remaining §11 Phase-3 leftovers (no work, just state)**
   *Done when:* it's documented that §11.3 (blueprints) and §11.4 (Adminer deep-link) are DONE, and that
   §8.2 (per-site Xdebug) + §11.2-hosting stay BLOCKED on a hosted Xdebug static-PHP build (external —

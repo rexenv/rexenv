@@ -6,6 +6,7 @@
  */
 
 :root {
+  color-scheme: dark;
   /* ── Surfaces (dark-first) ── */
   --rex-bg: #0d0e12;
   --rex-surface-1: #15171d;
@@ -84,4 +85,39 @@
   --border: var(--rex-border);
   --input: var(--rex-border);
   --ring: var(--rex-brand);
+}
+
+/**
+ * Light theme (§4.4 / DESIGN_BRIEF §172). Overrides only the surface/border/text
+ * scale + elevation; brand, status, traffic-light, type, and radius tokens are
+ * theme-agnostic and inherit from :root. Applied via `data-theme="light"` on
+ * <html> (see src/lib/theme.ts). Because components reference semantic --rex-*
+ * tokens (never hardcoded hex), this re-skins the whole app.
+ */
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* ── Surfaces ── */
+  --rex-bg: #f5f6f8;
+  --rex-surface-1: #ffffff;
+  --rex-surface-2: #f0f1f4;
+  --rex-surface-3: #e6e8ed; /* raised rows / inputs-on-surface */
+  --rex-well: #e8eaee; /* recessed track (meter background) */
+
+  /* ── Borders ── */
+  --rex-border: #d7dae1;
+  --rex-border-subtle: #e3e5ea;
+  --rex-border-strong: #c4c9d2;
+
+  /* ── Text (descending emphasis, mirrors the dark scale) ── */
+  --rex-text: #1b1e26;
+  --rex-text-bright: #0c0e13;
+  --rex-text-muted: #5a6170;
+  --rex-text-dim: #767d8a;
+  --rex-text-faint: #8b919d;
+  --rex-text-label: #9aa0ab; /* mono section labels */
+
+  /* ── Elevation (softer, light-appropriate) ── */
+  --rex-shadow-card: 0 18px 48px rgba(20, 22, 30, 0.12),
+    0 6px 16px rgba(20, 22, 30, 0.08);
 }

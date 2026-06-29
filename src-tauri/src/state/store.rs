@@ -214,6 +214,23 @@ pub fn set_php_installed(conn: &Connection, minor: &str, installed: bool) -> Res
     Ok(affected > 0)
 }
 
+/// Make `minor` the default for new sites: in ONE atomic statement set
+/// `is_default` to 1 for `minor` and 0 for every other row (so exactly one default
+/// always remains). Returns whether `minor` exists.
+pub fn set_default_php_version(conn: &Connection, minor: &str) -> Result<bool> {
+    let exists: i64 = conn.query_row(
+        "SELECT count(*) FROM php_versions WHERE minor = ?1",
+        [minor],
+        |r| r.get(0),
+    )?;
+    if exists == 0 {
+        return Ok(false);
+    }
+    // `(minor = ?1)` is 1 for the match, 0 otherwise — flips the default atomically.
+    conn.execute("UPDATE php_versions SET is_default = (minor = ?1)", [minor])?;
+    Ok(true)
+}
+
 // ── Site blueprints (Phase 3 §11.3) ────────────────────────────────────────────
 
 fn row_to_blueprint(row: &Row) -> Result<Blueprint> {

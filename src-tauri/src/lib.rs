@@ -85,6 +85,7 @@ pub fn run() {
             commands::sites::delete_site,
             commands::php::list_php_versions,
             commands::php::set_php_version_installed,
+            commands::php::set_default_php_version,
             commands::wordpress::wp_info,
             commands::wordpress::wp_plugins,
             commands::wordpress::wp_plugin_install,

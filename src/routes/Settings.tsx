@@ -12,12 +12,14 @@ import {
   regenerateCerts,
   saveBlueprint,
   setAutostart,
+  setDefaultPhpVersion,
   setPhpVersionInstalled,
   setSetting,
   sitesFolder,
   trustLocalCa,
   uninstallSystem,
 } from "@/lib/ipc";
+import { getStoredTheme, setTheme, type Theme } from "@/lib/theme";
 import type { Blueprint, MultisiteMode, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
@@ -27,6 +29,39 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
     <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
       <div className="mb-3 text-[13px] font-semibold text-rex-text">{title}</div>
       {children}
+    </div>
+  );
+}
+
+function ThemeSetting() {
+  const [theme, setThemeState] = useState<Theme>(getStoredTheme());
+  const OPTIONS: { value: Theme; label: string }[] = [
+    { value: "dark", label: "Dark" },
+    { value: "light", label: "Light" },
+    { value: "system", label: "System" },
+  ];
+  const choose = (t: Theme) => {
+    setThemeState(t);
+    setTheme(t); // persists + applies immediately
+  };
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[12.5px] text-rex-text-muted">Theme</span>
+      <div className="flex gap-1 rounded-lg border border-rex-border bg-rex-surface-2 p-0.5">
+        {OPTIONS.map((o) => (
+          <button
+            key={o.value}
+            onClick={() => choose(o.value)}
+            className={`rounded-md px-2.5 py-1 text-[12px] transition-colors ${
+              theme === o.value
+                ? "bg-brand text-white"
+                : "text-rex-text-muted hover:text-rex-text"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -85,10 +120,12 @@ function PhpVersionRow({
   v,
   busy,
   onToggle,
+  onMakeDefault,
 }: {
   v: PhpVersion;
   busy: boolean;
   onToggle: (installed: boolean) => void;
+  onMakeDefault: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 border-b border-rex-border-subtle py-2.5 last:border-b-0">
@@ -103,6 +140,12 @@ function PhpVersionRow({
       </div>
       {v.installed ? (
         <>
+          {/* New sites use the default version; let the user move it (§4.4). */}
+          {!v.isDefault && (
+            <Button variant="ghost" disabled={busy} onClick={onMakeDefault}>
+              {busy ? "…" : "Make default"}
+            </Button>
+          )}
           <span className="text-[11.5px] text-status-running">Installed</span>
           {!v.isDefault && (
             <Button
@@ -136,6 +179,14 @@ function PhpVersionsSetting() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
     onError: (e) => window.alert(String(e)),
   });
+  const makeDefault = useMutation({
+    mutationFn: (minor: string) => setDefaultPhpVersion(minor),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
+    onError: (e) => window.alert(String(e)),
+  });
+  const busyFor = (minor: string) =>
+    (toggle.isPending && toggle.variables?.minor === minor) ||
+    (makeDefault.isPending && makeDefault.variables === minor);
 
   if (isLoading) {
     return <div className="text-[12.5px] text-rex-text-muted">Loading…</div>;
@@ -146,12 +197,14 @@ function PhpVersionsSetting() {
         <PhpVersionRow
           key={v.minor}
           v={v}
-          busy={toggle.isPending && toggle.variables?.minor === v.minor}
+          busy={busyFor(v.minor)}
           onToggle={(installed) => toggle.mutate({ minor: v.minor, installed })}
+          onMakeDefault={() => makeDefault.mutate(v.minor)}
         />
       ))}
       <div className="mt-2.5 text-[11px] text-rex-text-dim">
-        Installed versions each run a php-fpm pool; a site picks its version in its detail view.
+        Installed versions each run a php-fpm pool; new sites use the default. A site can pick its own
+        version in its detail view.
       </div>
     </div>
   );
@@ -409,7 +462,11 @@ export function Settings() {
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           <Card title="General">
-            <SitesFolderSetting />
+            <div className="flex flex-col gap-3">
+              <ThemeSetting />
+              <div className="h-px bg-rex-border-subtle" />
+              <SitesFolderSetting />
+            </div>
           </Card>
           <Card title="DNS & SSL">
             <DnsSslSetting />

@@ -55,7 +55,7 @@ export const mockServices: ServiceInfo[] = [
 
 export const mockPhpVersions: PhpVersion[] = [
   { minor: "8.1", patch: "8.1.34", fpmPort: 9781, installed: false, isDefault: false },
-  { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: false, isDefault: false },
+  { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: true, isDefault: false },
   { minor: "8.3", patch: "8.3.31", fpmPort: 9783, installed: true, isDefault: true },
 ];
 
