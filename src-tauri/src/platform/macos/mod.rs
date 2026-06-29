@@ -73,7 +73,12 @@ impl DnsManager for MacosDns {
     }
 
     fn uninstall_command(&self) -> String {
-        format!("rm -f {}", self.resolver_path().display())
+        // Remove the resolver file AND flush the DNS cache, so `.test` stops
+        // resolving immediately (mirror of install_command's flush — §3.2).
+        format!(
+            "rm -f {} && dscacheutil -flushcache && killall -HUP mDNSResponder",
+            self.resolver_path().display()
+        )
     }
 }
 
@@ -521,8 +526,12 @@ mod tests {
     }
 
     #[test]
-    fn dns_uninstall_command_removes_file() {
-        assert_eq!(MacosDns.uninstall_command(), "rm -f /etc/resolver/test");
+    fn dns_uninstall_command_removes_file_and_flushes_cache() {
+        let cmd = MacosDns.uninstall_command();
+        assert!(cmd.contains("rm -f /etc/resolver/test"));
+        // Flush so `.test` stops resolving immediately after teardown (§3.2).
+        assert!(cmd.contains("dscacheutil -flushcache"));
+        assert!(cmd.contains("killall -HUP mDNSResponder"));
     }
 
     #[test]

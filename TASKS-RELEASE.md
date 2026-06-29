@@ -139,10 +139,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   `cargo build --lib` clean, tsc + vite build clean, UI rendered via chrome-devtools (red Remove button +
   copy). Site files + databases under app-data are intentionally left for the user to delete with the app.
 
-- [ ] **3.2 Verify the machine is clean after teardown**
-  *Done when:* after running teardown, `ping foo.test` no longer resolves (resolver file gone) and the local
-  CA is no longer trusted (`security verify-cert` / Keychain shows it untrusted), and no rexenv services
-  remain running. Depends on 3.1.
+- [x] **3.2 Verify the machine is clean after teardown** — ✓ ran the REAL teardown live
+  (`examples/teardown_check.rs` → `core::setup::run_system_teardown`, admin prompt entered). BEFORE→AFTER on
+  this machine: `/etc/resolver/test` present `true`→`false`; `foo.test` resolves `true`→`false`
+  (`dscacheutil -q host foo.test` returns no IP — the teardown now also flushes the DNS cache, fixed in this
+  task so `.test` stops resolving immediately); CA trusted `true`→`false` — `security dump-trust-settings`
+  no longer lists rexenv and `security verify-cert` returns `CSSMERR_TP_NOT_TRUSTED`. No rexenv services
+  left running (the command runs `stop_all` first). The example is idempotent/re-runnable (skips the
+  privileged step when already clean). `cargo test --lib` 112 pass. Depends on 3.1.
 
 ---
 
