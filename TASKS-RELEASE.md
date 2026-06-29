@@ -73,12 +73,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   `src-tauri/target/release/bundle/dmg/rexenv_<ver>_<arch>.dmg` with no build errors; it mounts and the
   drag-to-Applications install works.
 
-- [ ] **1.4 INSTALL.md / release note**
-  *Done when:* `INSTALL.md` documents first launch (right-click the app → **Open**, or System Settings →
-  Privacy & Security → **Open Anyway**), notes it opens normally thereafter, lists the one-time admin
-  prompts (resolver file + CA trust) the app shows on first run, AND states the **architecture**
-  (Apple-Silicon-only vs universal) and **minimum macOS version** — so "won't open on my Mac" confusion
-  (wrong arch / too-old OS) is avoided up front. Depends on 1.3.
+- [x] **1.4 INSTALL.md / release note** — ✓ `INSTALL.md` (repo root) covers: requirements (**universal —
+  Intel + Apple Silicon — macOS 11+**, internet on first run); install (drag to Applications); **first launch
+  = right-click → Open**, or System Settings → Privacy & Security → **Open Anyway**, and that it opens
+  normally thereafter; the expected one-time setup prompts (**1** admin → `.test` resolver, **2** Keychain →
+  trust local CA, **3** admin → edge ports 80/443) — verified against `core::setup::run_system_setup` +
+  `proxy::start_privileged`; a verify-it-works flow; a "won't open" troubleshooting section (Gatekeeper /
+  "damaged" / too-old macOS); and an Updating note (data lives under
+  `~/Library/Application Support/dev.rexenv.rexenv/`). Depends on 1.3.
 
 - [ ] **1.5 Verify a COLD first run on a SECOND Mac / clean account**
   *Done when:* on a machine with **NO cached binaries** (a different Mac, or a clean macOS user, whose arch
