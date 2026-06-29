@@ -6,7 +6,7 @@ a developer's whole local stack — web servers, multiple PHP versions, database
 one-click WordPress, local `.test` domains with auto-HTTPS, mail catching, public
 sharing — from one UI. **macOS first**, then Windows, then Linux.
 
-## Status — Phase 1 COMPLETE · Phase 2 core COMPLETE (macOS)
+## Status — Phase 1 COMPLETE · Phase 2 core COMPLETE · Phase 3 COMPLETE (macOS)
 - **Phase 1 (MVP) — done, verified on real :443:** one-click WordPress at `https://wpdemo.test`
   over browser → Caddy (local-CA TLS) → shared Nginx (by `server_name`) → php-fpm → WordPress →
   MySQL. Per-task evidence in **TASKS.md**.
@@ -21,12 +21,27 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
     DB engines).
   - **Edge recovery** — a stale Caddy on `:2019` is auto-stopped via its admin API on startup
     (no more `sudo pkill`).
+- **Phase 3 — done** (per-task evidence in **TASKS-PHASE3.md**):
+  - **WordPress Manager** — plugins/themes/users (incl. one-time, single-use, loopback-only
+    "Log in as" magic link), Tools (WP_DEBUG, search-replace, permalinks, core update/reinstall).
+  - **Mailpit** — sendmail-shim → SMTP `:1025` sink; inbox UI reads its HTTP API `:8025`.
+  - **Adminer** — internal `adminer.rexenv.test` vhost (never a tunnel origin) + **per-site
+    deep-link** wrapper (passwordless loopback auto-login straight into the site's DB).
+  - **Logs viewer** (per-service tail) · **Terminal** (xterm + PTY, bundled `php`/`wp` on PATH).
+  - **Cloudflare Tunnel** — per-site quick tunnel (`cloudflared`), scoped to ONE site Host.
+  - **Multisite** — convert subdomain/subdirectory; wildcard cert + edge route for subdomain
+    (doesn't shadow other sites); Network UI (sub-sites CRUD, network-activate, super-admins).
+  - **Settings** — DNS & SSL (status, re-trust CA, regenerate certs) + **autostart** (launchd
+    LaunchAgent; the last stubbed Phase-1 trait, now real) + **site blueprints** (reusable presets
+    incl. multisite, applied on one-click create).
 - **Deferred to §7 (need a macOS dylib-tree-bundling step):** Apache, MariaDB, Redis, OpenLiteSpeed;
   plus DB multi-version switch. None has a clean portable macOS binary (MariaDB ships none; Apache/
   Redis link non-system dylibs like openssl@3/apr). FrankenPHP + PostgreSQL prove the patterns.
-- **Also pending:** 10.4 SMAppService single-prompt helper (packaging-era).
-- **Next:** Phase 3 — WordPress Manager, Mailpit, Adminer, log viewer, Cloudflare Tunnel, terminal
-  (PROJECT_SPEC.md §5).
+- **Also pending (external/packaging-era):** 10.4 SMAppService single-prompt helper; Phase-3 §8.2
+  per-site **Xdebug** toggle — BLOCKED on §11.2 (no hosted static-php build with Xdebug exists; the
+  `php-debug` variant + `spc` build recipe are wired in `docs/xdebug-debug-build.md`, awaiting a
+  maintainer build/host + checksum pin).
+- **Next:** Phase 4 / polish (PROJECT_SPEC.md §5) — Windows + Linux platform impls, packaging/signing.
 
 ## Architecture rule (non-negotiable)
 - `commands/` are **thin** Tauri IPC handlers — they only translate calls and invoke `core/`.
@@ -119,23 +134,44 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 - **Edge recovery (§7.3):** before binding the edge, `proxy::recover_stale_edge` stops a leftover Caddy on
   `:2019` via the admin API (`caddy stop`) — works on a **root** edge with no privilege (admin API has no
   owner check), then errors clearly if the port still can't be freed.
+- **Phase 3 fixed ports:** Mailpit SMTP `1025` / HTTP-API `8025` (`core/mail`). Adminer + the tunnel origin
+  reuse the shared nginx + php-fpm stack (no new inbound port); `cloudflared` is outbound-only.
+- **Mail routing:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips bare quotes
+  and app-data paths contain spaces) → Mailpit's `sendmail -t -S 127.0.0.1:1025` shim → SMTP sink.
+- **Tunnel discrimination:** behind the edge `REMOTE_ADDR` is always `127.0.0.1`, so loopback-only enforcement
+  (e.g. the "Log in as" mu-plugin) keys off `CF-*` headers + leftmost `X-Forwarded-For` + `Host`, never the IP.
+- **Multisite (§10):** mode in `sites.multisite` (migration v3) → `RewriteMode` (Phase 1 §6.2 templates);
+  subdomain adds a wildcard `server_name`/Caddy host (`mysite.test, *.mysite.test`) over the per-site wildcard
+  SAN cert — exact hosts still win, so it never shadows other `.test` sites.
+- **Adminer deep-link (§11.4):** served via a generated `index.php` wrapper (`adminer_object()` hook) that
+  `require`s `adminer.php`, accepts a **passwordless login for loopback servers only**, and auto-submits
+  Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`. Internal vhost, never a tunnel origin.
+- **Autostart (§11.1):** `MacosAutostart` writes a per-user launchd LaunchAgent (`~/Library/LaunchAgents/
+  dev.rexenv.rexenv.plist`, `RunAtLoad`) — launches the app at login (not headless services: the edge still
+  needs the `:443` root prompt; true headless = SMAppService, deferred).
+- **Blueprints (§11.3):** `blueprints` table (migration v4, JSON `spec`); `create_site(blueprint_id)` applies
+  plugins/themes/WP_DEBUG + multisite convert AFTER the one-click install.
 
 ## Module map (as built)
 - `core/`: `binaries` · `dns` · `ssl` · `proxy` (Caddy edge + stale-edge recovery) ·
   `services` (nginx + php-fpm) · `php` (multi-version pools + registry) · `frankenphp` (per-site
   override backend) · `database` (MySQL) · `postgres` · `db` (`DbEngine` abstraction) · `wordpress` ·
-  `sites` (provision / rebuild_configs / set_php_version / set_web_server / teardown) · `setup` ·
-  `ports` · `monitor` (sysinfo) · `service_manager` (owns the whole stack: dbs, pools, overrides, edge).
-- `state/`: `db` (migrations) · `models` · `store` (repo) · `app` (`AppState` = db + platform +
-  monitor + CA + `ServiceManager`, behind an async Mutex).
-- `commands/` (thin): `system` · `sites` · `services` · `database` · `php` · `settings`.
-- `platform/macos/mod.rs`: all 9 trait impls real; `windows`/`linux` = `todo!()`.
+  `wp_login` (single-use loopback magic link) · `mail` (Mailpit + HTTP API) · `adminer` (internal vhost
+  + deep-link wrapper) · `logs` (per-service tail) · `terminal` (PTY) · `tunnels` (cloudflared) ·
+  `blueprints` (apply preset) · `sites` (provision / rebuild_configs / set_php_version / set_web_server /
+  convert_multisite / teardown) · `setup` · `ports` · `monitor` (sysinfo) · `service_manager` (owns the
+  whole stack: dbs, pools, overrides, mail, adminer, edge).
+- `state/`: `db` (migrations v1–v4) · `models` (incl. `Blueprint*`) · `store` (repo) · `app` (`AppState` =
+  db + platform + monitor + CA + `ServiceManager` + Terminals/Tunnels registries, behind an async Mutex).
+- `commands/` (thin): `system` (incl. DNS/SSL/autostart) · `sites` · `services` · `database` · `php` ·
+  `settings` · `wordpress` · `mail` · `logs` · `terminal` · `tunnels` · `blueprints`.
+- `platform/macos/mod.rs`: all 9 trait impls real (incl. `AutostartManager`); `windows`/`linux` = `todo!()`.
 
 ## Pointers
 - Full detail in **PROJECT_SPEC.md**. Screen designs in **DESIGN_BRIEF.md** and **design/** (.dc.html).
-- Phase plan: PROJECT_SPEC.md §5. **Phase 1 COMPLETE · Phase 2 core COMPLETE** (see Status above);
-  next is Phase 3. Task logs + "Done when" evidence: **TASKS.md** (Phase 1), **TASKS-PHASE2.md** (Phase 2),
-  **TASKS-PHASE3.md** (Phase 3 — planned: WordPress Manager, Mailpit, Adminer, Xdebug, logs, tunnels, terminal).
+- Phase plan: PROJECT_SPEC.md §5. **Phase 1 · Phase 2 core · Phase 3 all COMPLETE** (see Status above).
+  Task logs + "Done when" evidence: **TASKS.md** (Phase 1), **TASKS-PHASE2.md** (Phase 2),
+  **TASKS-PHASE3.md** (Phase 3). Xdebug build recipe: **docs/xdebug-debug-build.md** (§11.2, awaiting host).
 
 ## Working rule
 - Work in **small, verifiable steps. One task at a time. Verify before moving on.**

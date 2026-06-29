@@ -1,5 +1,11 @@
-# TASKS — Phase 3 (macOS)
+# TASKS — Phase 3 (macOS) — COMPLETE
 
+> **Status: Phase 3 COMPLETE** (macOS). All sections done + verified (lib unit tests + live
+> `src-tauri/examples/*.rs` per task; UI via chrome-devtools on the browser dev build). Two items remain
+> blocked on a single EXTERNAL dependency — a hosted Xdebug-enabled static PHP build: **§8.2** (per-site
+> Xdebug toggle) and **§11.2-hosting** (build/host the artifact + pin checksums; variant + `spc` recipe are
+> wired — see `docs/xdebug-debug-build.md`). Nothing else outstanding.
+>
 > **Phase goal:** the differentiator features on top of the Phase 1+2 stack — the **WordPress Manager**
 > (plugins · themes · users · tools · **Multisite/Network**, the signature feature), a built-in **Adminer**
 > database browser, **Mailpit** email catching, a per-site **Xdebug** toggle, a real-time **log viewer**,
