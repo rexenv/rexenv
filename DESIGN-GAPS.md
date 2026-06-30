@@ -692,12 +692,19 @@ Source: `design/rexenv New Site Flow.dc.html`. File: `src/components/sites/NewSi
   is chosen (§10.1). Removed the stale "Multisite lands in §10" comment (the rewrite drops it). `pnpm tsc
   --noEmit` clean; chrome-devtools verified the toggle reveals the Subdomain/Subdirectory cards.
 
-- [ ] **12.4 (M) WordPress fields: Site title + password show/Generate + `.test` suffix/validation.**
+- [x] **12.4 (M) WordPress fields: Site title + password show/Generate + `.test` suffix/validation.**
   *Done when:* a dedicated Site title input (separate from name); the password row gets a show/hide eye + a
   Generate button; the domain input shows a fixed `.test` suffix chip + live valid/taken indicator. (lines
   89-100, 132-163 · `NewSiteDialog.tsx:91, 158-243`.)
   *Note:* the **Database selector** the comp shows (MySQL/MariaDB/PostgreSQL/None, lines 118-124) — decide
   with §6: build it (MySQL/PostgreSQL only, per the intentional-divergence list) or `[D]`.
+  ✓ Domain field is now a base input + fixed `.test` chip + live indicator (green `Check` when valid, red `X`
+  + "{base}.test is already in use" when it matches an existing site → `Create` disabled). Added a **Site
+  title** input (separate from name; falls back to name on create), and the Admin password row gets an eye
+  show/hide + a `Generate` button (crypto-random). Built the **Database** selector MySQL/PostgreSQL/None (per
+  the §6 engine-focused decision — MariaDB dropped; UI-only, `NewSiteInput` has no engine field yet → TODO).
+  `pnpm tsc --noEmit` clean; chrome-devtools verified the .test chip, the taken-domain red state + message, the
+  DB selector, Site title, and the password eye + Generate.
 
 - [ ] **12.5 (L) Create button label + success toast + modal width.**
   *Done when:* the create button reads "Install WordPress" for WP (else "Create site"); a "Site created"

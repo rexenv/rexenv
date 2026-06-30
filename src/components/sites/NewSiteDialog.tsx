@@ -1,11 +1,24 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, X as XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { createSite, listBlueprints, listPhpVersions, wpMultisiteConvert } from "@/lib/ipc";
+import { createSite, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
 import type { MultisiteMode, SiteType, WebServer } from "@/types";
+
+const DB_ENGINES = [
+  { value: "mysql", label: "MySQL" },
+  { value: "postgres", label: "PostgreSQL" },
+  { value: "none", label: "None" },
+];
+
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+  const buf = new Uint32Array(16);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (n) => chars[n % chars.length]).join("");
+}
 
 /** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
 const SERVERS: { value: WebServer; label: string }[] = [
@@ -66,15 +79,19 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const installed = useMemo(() => versions.filter((v) => v.installed), [versions]);
   const defaultVersion = installed.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "8.3";
   const { data: blueprints = [] } = useQuery({ queryKey: ["blueprints"], queryFn: listBlueprints });
+  const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites });
 
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
-  const [domain, setDomain] = useState("");
+  const [domain, setDomain] = useState(""); // the base, without ".test"
   const [siteType, setSiteType] = useState<SiteType>("php");
   const [phpVersion, setPhpVersion] = useState(defaultVersion);
   const [webServer, setWebServer] = useState<WebServer>("nginx");
+  const [dbEngine, setDbEngine] = useState("mysql");
   const [domainEdited, setDomainEdited] = useState(false);
   const [blueprintId, setBlueprintId] = useState("");
+  const [wpTitle, setWpTitle] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const onPickBlueprint = (id: string) => {
     setBlueprintId(id);
@@ -95,16 +112,20 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => setPhpVersion(defaultVersion), [defaultVersion]);
 
-  const suggestedDomain = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  const effectiveDomain = domainEdited ? domain : suggestedDomain ? `${suggestedDomain}.test` : "";
+  const slug = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const domainBase = domainEdited ? slug(domain) : slug(name);
+  const effectiveDomain = domainBase ? `${domainBase}.test` : "";
   const isWordpress = siteType === "wordpress";
+  const domainTaken =
+    effectiveDomain !== "" && sites.some((s) => s.domain.toLowerCase() === effectiveDomain.toLowerCase());
+  const domainOk = effectiveDomain !== "" && !domainTaken;
 
   const create = useMutation({
     mutationFn: async () => {
       const site = await createSite(
         { name: name.trim(), domain: effectiveDomain.trim(), type: siteType, phpVersion, webServer, path: "" },
         isWordpress
-          ? { title: name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
+          ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
           : undefined,
         blueprintId || undefined,
       );
@@ -121,7 +142,7 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
 
   const canSubmit =
     name.trim() !== "" &&
-    effectiveDomain.trim() !== "" &&
+    domainOk &&
     (!isWordpress || (adminUser.trim() !== "" && adminPassword !== "")) &&
     !create.isPending;
 
@@ -161,18 +182,30 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
               onPickBlueprint={onPickBlueprint}
               name={name}
               setName={setName}
-              effectiveDomain={effectiveDomain}
-              onDomain={(v) => {
+              domainBase={domainBase}
+              onDomainBase={(v) => {
                 setDomainEdited(true);
                 setDomain(v);
               }}
+              domainOk={domainOk}
+              domainTaken={domainTaken}
               installed={installed}
               defaultVersion={defaultVersion}
               phpVersion={phpVersion}
               setPhpVersion={setPhpVersion}
               webServer={webServer}
               setWebServer={setWebServer}
+              dbEngine={dbEngine}
+              setDbEngine={setDbEngine}
               isWordpress={isWordpress}
+              wpTitle={wpTitle}
+              setWpTitle={setWpTitle}
+              showPassword={showPassword}
+              setShowPassword={setShowPassword}
+              onGeneratePassword={() => {
+                setAdminPassword(generatePassword());
+                setShowPassword(true);
+              }}
               adminUser={adminUser}
               setAdminUser={setAdminUser}
               adminEmail={adminEmail}
@@ -281,27 +314,36 @@ function Step2(p: {
   onPickBlueprint: (id: string) => void;
   name: string;
   setName: (v: string) => void;
-  effectiveDomain: string;
-  onDomain: (v: string) => void;
+  domainBase: string;
+  onDomainBase: (v: string) => void;
+  domainOk: boolean;
+  domainTaken: boolean;
   installed: import("@/types").PhpVersion[];
   defaultVersion: string;
   phpVersion: string;
   setPhpVersion: (v: string) => void;
   webServer: WebServer;
   setWebServer: (v: WebServer) => void;
+  dbEngine: string;
+  setDbEngine: (v: string) => void;
   isWordpress: boolean;
+  wpTitle: string;
+  setWpTitle: (v: string) => void;
   adminUser: string;
   setAdminUser: (v: string) => void;
   adminEmail: string;
   setAdminEmail: (v: string) => void;
   adminPassword: string;
   setAdminPassword: (v: string) => void;
+  showPassword: boolean;
+  setShowPassword: (v: boolean) => void;
+  onGeneratePassword: () => void;
   language: string;
   setLanguage: (v: string) => void;
   multisite: MultisiteMode;
   setMultisite: (v: MultisiteMode) => void;
 }) {
-  const domainBase = p.effectiveDomain.replace(/\.test$/, "") || "my-site";
+  const domainBase = p.domainBase || "my-site";
   return (
     <div className="flex flex-col gap-3">
       {p.blueprints.length > 0 && (
@@ -322,16 +364,33 @@ function Step2(p: {
           <input autoFocus value={p.name} placeholder="my-site" onChange={(e) => p.setName(e.target.value)} className={FIELD_INPUT} />
         </Field>
         <Field label="Domain">
-          <input
-            value={p.effectiveDomain}
-            placeholder="my-site.test"
-            onChange={(e) => p.onDomain(e.target.value)}
-            className={cn(FIELD_INPUT, "font-mono text-[12.5px]")}
-          />
+          <div
+            className={cn(
+              "flex h-9 items-center rounded-[9px] border bg-rex-well px-[11px]",
+              p.domainTaken ? "border-status-error" : "border-rex-border-strong focus-within:border-brand",
+            )}
+          >
+            <input
+              value={p.domainBase}
+              onChange={(e) => p.onDomainBase(e.target.value.replace(/\.test$/, ""))}
+              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none"
+            />
+            <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.test</span>
+            {p.domainOk && <Check className="ml-2 h-[15px] w-[15px] flex-none text-status-running" strokeWidth={2} />}
+            {p.domainTaken && <XIcon className="ml-2 h-[15px] w-[15px] flex-none text-status-error" strokeWidth={2} />}
+          </div>
         </Field>
       </div>
+      {p.domainTaken && (
+        <div className="-mt-1.5 flex items-center gap-[7px] text-[11.5px] text-status-error-bright">
+          <AlertCircle className="h-[13px] w-[13px] flex-none" strokeWidth={2} />
+          <span>
+            <span className="font-mono">{domainBase}.test</span> is already in use. Try another name.
+          </span>
+        </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-[13px]">
+      <div className="grid grid-cols-3 gap-[13px]">
         <Field label="PHP version">
           <select value={p.phpVersion} onChange={(e) => p.setPhpVersion(e.target.value)} className={cn(FIELD_SELECT, "font-mono")}>
             {p.installed.length === 0 && <option value={p.defaultVersion}>{p.defaultVersion}</option>}
@@ -351,6 +410,16 @@ function Step2(p: {
             ))}
           </select>
         </Field>
+        {/* DB selector is UI-only — NewSiteInput has no engine field yet (TODO). */}
+        <Field label="Database">
+          <select value={p.dbEngine} onChange={(e) => p.setDbEngine(e.target.value)} className={FIELD_SELECT}>
+            {DB_ENGINES.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
 
       {p.isWordpress && (
@@ -359,16 +428,8 @@ function Step2(p: {
             WordPress install
           </div>
           <div className="grid grid-cols-2 gap-[13px]">
-            <Field label="Admin username">
-              <input value={p.adminUser} placeholder="admin" onChange={(e) => p.setAdminUser(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
-            </Field>
-            <Field label="Admin email">
-              <input value={p.adminEmail} placeholder="you@example.com" onChange={(e) => p.setAdminEmail(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-[13px]">
-            <Field label="Admin password">
-              <input type="password" value={p.adminPassword} placeholder="••••••••" onChange={(e) => p.setAdminPassword(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+            <Field label="Site title">
+              <input value={p.wpTitle} placeholder="My WordPress Site" onChange={(e) => p.setWpTitle(e.target.value)} className={FIELD_INPUT} />
             </Field>
             <Field label="Language">
               <select value={p.language} onChange={(e) => p.setLanguage(e.target.value)} className={FIELD_SELECT}>
@@ -380,6 +441,39 @@ function Step2(p: {
               </select>
             </Field>
           </div>
+          <div className="grid grid-cols-2 gap-[13px]">
+            <Field label="Admin username">
+              <input value={p.adminUser} placeholder="admin" onChange={(e) => p.setAdminUser(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+            </Field>
+            <Field label="Admin email">
+              <input value={p.adminEmail} placeholder="you@example.com" onChange={(e) => p.setAdminEmail(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+            </Field>
+          </div>
+          <Field label="Admin password">
+            <div className="flex h-9 items-center rounded-[9px] border border-rex-border-strong bg-rex-well pl-[11px] pr-1.5 focus-within:border-brand">
+              <input
+                type={p.showPassword ? "text" : "password"}
+                value={p.adminPassword}
+                placeholder="••••••••"
+                onChange={(e) => p.setAdminPassword(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none"
+              />
+              <button
+                onClick={() => p.setShowPassword(!p.showPassword)}
+                aria-label="Toggle password visibility"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-white/[0.06] hover:text-rex-text"
+              >
+                {p.showPassword ? <EyeOff className="h-[15px] w-[15px]" /> : <Eye className="h-[15px] w-[15px]" />}
+              </button>
+              <button
+                onClick={p.onGeneratePassword}
+                className="flex h-7 flex-none items-center gap-1.5 rounded-[7px] px-[9px] text-[11.5px] text-brand-tint transition-colors hover:bg-brand-tint-bg"
+              >
+                <RefreshCw className="h-[13px] w-[13px]" strokeWidth={1.9} />
+                Generate
+              </button>
+            </div>
+          </Field>
 
           {/* Multisite */}
           <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well p-[13px]">
