@@ -544,11 +544,17 @@ Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (c
   (filled in §10.2/§10.3/§10.4); the Welcome step is complete (folds in §10.5 typography + §10.6 crown/bg).
   `pnpm tsc --noEmit` clean; chrome-devtools verified the dots + labels advance Welcome→Install.
 
-- [ ] **10.2 (H) Step 2 — "Installing core components".**
+- [x] **10.2 (H) Step 2 — "Installing core components".**
   *Done when:* heading (Space Grotesk 27px) + subcopy, three install rows (PHP 8.3 / Nginx / Edge router)
   each with an abbreviation chip, a violet-gradient progress bar + glow, spinner/check state, per-row meta
   (size → % → "Installed"), and the toggling footnote. Wire to the real first-run download progress. (lines
   66-88, 296.)
+  ✓ `Install` step renders three `INSTALL_ROWS` (PHP purple / Nx teal / Cf blue chips), each with a
+  violet-gradient `shadow-glow-primary` progress bar, a `rex-spin` violet ring while active → green `Check` +
+  "Installed" when done, and per-row meta (size → % → "Installed"). The footnote toggles "Downloading bundled
+  runtimes…" → "All components installed · bundled, no system changes". Progress is simulated (staggered) for
+  the shell — **TODO:** wire to the real first-run download progress. `pnpm tsc --noEmit` clean; chrome-devtools
+  shows the three rows completing with checks + the done footnote.
 
 - [ ] **10.3 (H) Step 3 — "Set up local domains & SSL" (the permission moment).**
   *Done when:* three status pills (Local CA / Local DNS / HTTPS), heading + body (mono `https://anything.test`),

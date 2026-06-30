@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Check, ChevronRight } from "lucide-react";
 
 /**
  * First-run onboarding — a 4-step wizard (Welcome → Install → Domains & SSL →
@@ -139,13 +138,79 @@ function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
+const INSTALL_ROWS = [
+  { abbr: "PHP", name: "PHP 8.3 runtime", size: "62 MB", bg: "rgba(125,128,185,0.17)", border: "rgba(125,128,185,0.32)", color: "#A7AADD" },
+  { abbr: "Nx", name: "Nginx web server", size: "8 MB", bg: "rgba(45,156,143,0.13)", border: "rgba(45,156,143,0.28)", color: "#5FBFA8" },
+  { abbr: "Cf", name: "Edge router", size: "41 MB", bg: "rgba(74,134,170,0.15)", border: "rgba(74,134,170,0.30)", color: "#7DB8D8" },
+];
+
 function Install() {
+  // Shell: simulate staggered downloads so the bars + states are demonstrable.
+  const [pct, setPct] = useState([0, 0, 0]);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPct((prev) => {
+        const i = prev.findIndex((p) => p < 100);
+        if (i === -1) return prev;
+        const next = [...prev];
+        next[i] = Math.min(100, next[i] + 12);
+        return next;
+      });
+    }, 130);
+    return () => clearInterval(id);
+  }, []);
+  const allDone = pct.every((p) => p >= 100);
+
   return (
-    <div className={cn("w-full max-w-[440px]")}>
+    <div className="w-full max-w-[440px]">
       <StepHeading
         title="Installing core components"
         subtitle="rexenv bundles its own runtimes, so nothing touches your system setup. This downloads once."
       />
+      <div className="mt-[26px] flex flex-col gap-[14px] text-left">
+        {INSTALL_ROWS.map((r, i) => {
+          const p = pct[i];
+          const done = p >= 100;
+          const active = !done && (i === 0 || pct[i - 1] >= 100);
+          return (
+            <div key={r.abbr}>
+              <div className="mb-[7px] flex items-center gap-2.5">
+                <span
+                  className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border font-mono text-[10px] font-bold"
+                  style={{ background: r.bg, borderColor: r.border, color: r.color }}
+                >
+                  {r.abbr}
+                </span>
+                <span className="flex-1 text-[13.5px] font-medium text-rex-text">{r.name}</span>
+                <span className="flex items-center gap-[7px]">
+                  {done ? (
+                    <Check className="h-4 w-4 text-status-running" strokeWidth={2.2} />
+                  ) : active ? (
+                    <span className="h-[13px] w-[13px] rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
+                  ) : null}
+                  <span
+                    className="min-w-[74px] text-right font-mono text-[11px]"
+                    style={{ color: done ? "#3FB950" : "#6E7681" }}
+                  >
+                    {done ? "Installed" : active ? `${p}%` : r.size}
+                  </span>
+                </span>
+              </div>
+              <div className="h-[6px] overflow-hidden rounded-full border border-rex-border-subtle bg-rex-surface-1">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-strong to-brand-light shadow-glow-primary transition-[width] duration-300"
+                  style={{ width: `${p}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-6 text-center font-mono text-[11px] text-rex-text-dim">
+        {allDone
+          ? "All components installed · bundled, no system changes"
+          : "Downloading bundled runtimes…"}
+      </div>
     </div>
   );
 }
