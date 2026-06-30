@@ -584,9 +584,12 @@ Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (c
   (`#C7CBD4`) + the third description line. Added the crown **float** (`rex-float` 4s, `motion-reduce`-aware).
   `pnpm tsc --noEmit` clean; typography verified in the §10.1 Welcome screenshot.
 
-- [ ] **10.6 (L) Crown gems + background treatment.**
+- [x] **10.6 (L) Crown gems + background treatment.**
   *Done when:* three gem circles on the crown; radial violet backdrop + dotted texture + animated top aura.
   (lines 34-36, 57 · `Onboarding.tsx:10, 20`.)
+  ✓ Crown has three gem circles (`#B9A6FF`/`#D7CCFF`); the shell has the radial violet backdrop + dotted
+  texture (both from §10.1). Animated the top aura with `rex-aura` (6s breathe, `motion-reduce`-aware; keyframe
+  added with §10.5). `pnpm tsc --noEmit` clean; chrome-devtools confirms the gems + centered animated aura.
 
 ---
 

@@ -34,7 +34,7 @@ export function Onboarding() {
         }}
       />
       <div
-        className="pointer-events-none absolute -top-[120px] left-1/2 h-[280px] w-[420px] -translate-x-1/2 rounded-full blur-[20px]"
+        className="pointer-events-none absolute -top-[120px] left-1/2 h-[280px] w-[420px] animate-rex-aura rounded-full blur-[20px] motion-reduce:animate-none"
         style={{ background: "radial-gradient(circle,rgba(124,92,255,.22),transparent 70%)" }}
       />
 
