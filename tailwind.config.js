@@ -111,6 +111,7 @@ export default {
       },
       boxShadow: {
         card: "var(--rex-shadow-card)",
+        menu: "var(--rex-shadow-menu)",
         "glow-primary": "var(--rex-glow-primary)",
         "glow-run": "var(--rex-glow-run)",
         "glow-err": "var(--rex-glow-err)",

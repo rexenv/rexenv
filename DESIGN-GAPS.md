@@ -162,10 +162,17 @@ Source: `design/rexenv Sites Screen.dc.html`. File: `src/routes/Sites.tsx` (+ `T
   chrome-devtools verified: name-sort reorders the list, Stopped filter shows only Blog Network (counts
   All 3/Running 2/Stopped 1), and typing "zzz" shows the no-results state.
 
-- [ ] **3.2 (H) Per-row kebab menu.**
+- [x] **3.2 (H) Per-row kebab menu.**
   *Done when:* the inert `MoreHorizontal` button opens a menu: Rename · Duplicate · Open in editor ·
   Copy domain · ─ · **Delete** (red). Move Delete OUT of the row as a standalone icon into this menu.
   (lines 147-159, 205-211 · `Sites.tsx:69-80`.)
+  ✓ Built a reusable portal dropdown primitive `src/components/ui/menu.tsx` (`Menu`/`MenuItem`/`MenuSeparator`)
+  — fixed-positioned from the trigger rect via `createPortal` to `<body>` so it's never clipped by the list's
+  `overflow-hidden`; closes on outside-click / Escape / scroll / resize. Added `--rex-shadow-menu` token +
+  `shadow-menu`. Sites row kebab (`MoreVertical`, always visible) → Rename · Duplicate · Open in editor ·
+  Copy domain (writes `navigator.clipboard`) · ─ · Delete (danger, wired to `confirmDelete`). Removed the
+  standalone Trash2 row button. Rename/Duplicate/Open-in-editor have no backend yet (shell). `pnpm tsc
+  --noEmit` clean; chrome-devtools shows the menu open un-clipped with all items + red Delete.
 
 - [ ] **3.3 (H) Type avatar (W/L/P) + column-header strip.**
   *Done when:* each row leads with a 26×26 rounded badge showing the type letter on a per-type color

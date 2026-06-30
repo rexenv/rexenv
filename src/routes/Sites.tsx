@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, Lock, Trash2, MoreHorizontal, ArrowDownUp } from "lucide-react";
+import { Plus, Globe, FolderOpen, Database, Lock, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Placeholder } from "@/components/common/Placeholder";
@@ -135,19 +136,43 @@ function SiteRow({
         >
           <Database className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Delete site"
-          onClick={onDelete}
-          className="hover:text-status-error"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" aria-label="More actions">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
       </div>
+      <Menu
+        trigger={
+          <button
+            type="button"
+            aria-label="More actions"
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-white/[0.07] hover:text-rex-text"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        }
+      >
+        {/* Rename / Duplicate / Open in editor have no backend yet (shell). */}
+        <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />}>
+          Rename
+        </MenuItem>
+        <MenuItem icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />}>
+          Duplicate
+        </MenuItem>
+        <MenuItem icon={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}>
+          Open in editor
+        </MenuItem>
+        <MenuItem
+          icon={<Link className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+          onSelect={() => navigator.clipboard?.writeText(site.domain)}
+        >
+          Copy domain
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem
+          icon={<Trash2 className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+          danger
+          onSelect={onDelete}
+        >
+          Delete
+        </MenuItem>
+      </Menu>
     </div>
   );
 }
