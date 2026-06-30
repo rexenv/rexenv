@@ -433,10 +433,15 @@ Source: `design/rexenv Tunnels.dc.html`, `design/rexenv Tunnel Card.dc.html`. Fi
   shows the banner, A/P/B avatars, and the live well row + meta. **TODO(backend):** request-count/uptime
   aren't tracked on `TunnelInfo`, so the meta line omits them.
 
-- [ ] **8.4 (L) Idle "Share publicly" label, Copy→Copied, header copy, toggle size.**
+- [x] **8.4 (L) Idle "Share publicly" label, Copy→Copied, header copy, toggle size.**
   *Done when:* idle toggle has a visible "Share publicly" label; copy button shows "Copy"→"Copied" (green);
   header subtitle "{n} sites shared publicly" / "{n} ready to share"; toggle 42×25. (Tunnel Card lines 21-35
   · Tunnels lines 56, 248 · `Tunnels.tsx:34, 126-161`.)
+  ✓ Idle cards show a "Share publicly" label before the toggle. `CopyButton` now shows icon + "Copy" text →
+  "Copied" (`text-status-running-bright`) on click. Header subtitle → "{n} site(s) shared publicly" /
+  "{n} site(s) ready to share". `pnpm tsc --noEmit` clean; chrome-devtools shows the label, the Copy-text
+  button, and "1 site shared publicly". **Note:** the toggle stays the unified 46×27 `StartStopToggle` (§1.4)
+  rather than a tunnels-only 42×25 — the comps vary toggle sizes per screen; one shared component is preferred.
 
 ---
 

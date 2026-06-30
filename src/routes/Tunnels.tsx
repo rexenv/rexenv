@@ -64,7 +64,11 @@ export function Tunnels() {
     <>
       <TopBar
         title="Tunnels"
-        subtitle={`${active} active`}
+        subtitle={
+          active > 0
+            ? `${active} ${active === 1 ? "site" : "sites"} shared publicly`
+            : `${sites.length} ${sites.length === 1 ? "site" : "sites"} ready to share`
+        }
         showSearch={false}
         action={stopAllBtn}
       />
@@ -169,6 +173,7 @@ function TunnelCard({
           </span>
         )}
         {state === "stopping" && <span className="text-[12px] text-rex-text-muted">Stopping…</span>}
+        {state === "idle" && <span className="text-[12px] text-rex-text-muted">Share publicly</span>}
 
         <StartStopToggle
           running={on || busy}
@@ -227,7 +232,6 @@ function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      title={copied ? "Copied" : "Copy URL"}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
@@ -237,9 +241,13 @@ function CopyButton({ value }: { value: string }) {
           /* clipboard unavailable */
         }
       }}
-      className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
+      className={cn(
+        "flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[11.5px] transition-colors hover:bg-white/[0.06]",
+        copied ? "text-status-running-bright" : "text-rex-text-muted",
+      )}
     >
-      {copied ? <Check className="h-3.5 w-3.5 text-brand" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      {copied ? "Copied" : "Copy"}
     </button>
   );
 }
