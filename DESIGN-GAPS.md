@@ -532,11 +532,17 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
 
 Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (currently a single welcome hero).
 
-- [ ] **10.1 (H) Wizard shell: 4 steps + progress dots + footer.**
+- [x] **10.1 (H) Wizard shell: 4 steps + progress dots + footer.**
   *Done when:* a `step` state machine (Welcome → Install → Domains & SSL → Done) with growing/recoloring
   progress dots, a footer with "Skip setup" (step 0), a mono step label ("Welcome" / "Step 2 of 4 · Install"
   / "Step 3 of 4 · Domains & SSL" / "All set"), and a per-step primary button (label/enabled/arrow change).
   (lines 129-137, 175-320.)
+  ✓ Rebuilt `Onboarding` as a `step` (0–3) wizard: radial-gradient bg + dotted texture + violet top aura;
+  growing/recoloring progress dots (active = 26px violet, past = violet, future = gray); a footer with "Skip
+  setup" (step 0 → `/sites`), the mono `STEP_META` label, and a per-step primary button (Get started → Continue
+  → Continue → Create your first site, with a chevron until the last). Steps 2–4 are `StepHeading` placeholders
+  (filled in §10.2/§10.3/§10.4); the Welcome step is complete (folds in §10.5 typography + §10.6 crown/bg).
+  `pnpm tsc --noEmit` clean; chrome-devtools verified the dots + labels advance Welcome→Install.
 
 - [ ] **10.2 (H) Step 2 — "Installing core components".**
   *Done when:* heading (Space Grotesk 27px) + subcopy, three install rows (PHP 8.3 / Nginx / Edge router)
