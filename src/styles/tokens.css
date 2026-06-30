@@ -33,6 +33,7 @@
   --rex-brand-strong: #6b4ae8;
   --rex-brand-light: #9277ff;
   --rex-brand-tint: #c9bcff; /* crown highlight / on-violet text accents */
+  --rex-brand-active: rgba(124, 92, 255, 0.1); /* active nav / selected-row fill */
   --rex-focus-ring: rgba(124, 92, 255, 0.45);
 
   /* ── Status ── */

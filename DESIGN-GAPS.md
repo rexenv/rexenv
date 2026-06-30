@@ -64,10 +64,14 @@ Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/compo
   reduced-motion aware). `pnpm tsc --noEmit` clean; chrome-devtools `/services` (temp-mapped 4 states, reverted)
   showed the spinner ring + error pill distinct from running/stopped.
 
-- [ ] **1.3 (M) Sidebar — active nav item in violet.**
+- [x] **1.3 (M) Sidebar — active nav item in violet.**
   *Done when:* active item = `bg rgba(124,92,255,.10)` + text `#C9BCFF` (the existing unused `brand-tint`
   token), keeping the `#7C5CFF` left bar. Hover text → `#C7CBD4`. (App Shell line 132, Component Sheet
   §06 lines 127-133 · `Sidebar.tsx:33-37`.)
+  ✓ Added `--rex-brand-active: rgba(124,92,255,.1)` token + `brand.active` color. `NavButton` active state →
+  `bg-brand-active text-brand-tint` (was `bg-white/[0.055] text-rex-text`); inactive gains
+  `hover:text-rex-text-bright` (`#C7CBD4`). Left bar `bg-brand` unchanged. `pnpm tsc --noEmit` clean;
+  chrome-devtools shows the active Services item violet-tinted (bg + text + icon), inactive items muted.
 
 - [ ] **1.4 (M) StartStopToggle — correct size, colors, + violet "setting" variant.**
   *Done when:* track `46×27px`, knob `21px`; ON (status) `bg #238636 / border #2EA043 + glowRun`; OFF

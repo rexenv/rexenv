@@ -28,6 +28,7 @@ export default {
           strong: "var(--rex-brand-strong)",
           light: "var(--rex-brand-light)",
           tint: "var(--rex-brand-tint)",
+          active: "var(--rex-brand-active)",
         },
         status: {
           running: "var(--rex-running)",

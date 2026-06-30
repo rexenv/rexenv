@@ -32,8 +32,8 @@ function NavButton({ item }: { item: NavItem }) {
         cn(
           "relative flex w-full items-center gap-2.5 rounded-[9px] py-2 pl-3 pr-2.5 text-left text-[13.5px] transition-colors",
           isActive
-            ? "bg-white/[0.055] text-rex-text"
-            : "text-rex-text-muted hover:bg-white/[0.045]",
+            ? "bg-brand-active text-brand-tint"
+            : "text-rex-text-muted hover:bg-white/[0.045] hover:text-rex-text-bright",
         )
       }
     >
