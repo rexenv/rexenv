@@ -8,7 +8,7 @@ import { mockGlobalStatus } from "@/lib/mock";
 
 function CrownMark() {
   return (
-    <div className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-lg border border-rex-border-strong bg-gradient-to-br from-[#20232C] to-[#13151B]">
+    <div className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[8px] border border-[var(--rex-crown-border)] bg-gradient-to-br from-[#20232C] to-[#13151B] shadow-glow-crown">
       <svg width="15" height="15" viewBox="0 0 24 24" className="block">
         <path
           d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"

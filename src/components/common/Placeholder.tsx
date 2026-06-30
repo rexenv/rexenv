@@ -19,13 +19,13 @@ export function Placeholder({
             "repeating-linear-gradient(45deg,rgba(255,255,255,.014) 0 1px,transparent 1px 12px)",
         }}
       >
-        <div className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-[#232831] bg-rex-surface-1 text-rex-text-faint">
+        <div className="flex h-[46px] w-[46px] items-center justify-center rounded-[12px] border border-[#232831] bg-rex-surface-1 text-[var(--rex-placeholder)]">
           {icon}
         </div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-rex-text-faint">
+        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--rex-placeholder)]">
           {label}
         </div>
-        <div className="text-[13px] text-rex-text-dim">{hint}</div>
+        <div className="text-[13px] text-[var(--rex-placeholder-hint)]">{hint}</div>
       </div>
     </div>
   );

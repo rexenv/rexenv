@@ -113,6 +113,7 @@ export default {
         "glow-primary": "var(--rex-glow-primary)",
         "glow-run": "var(--rex-glow-run)",
         "glow-err": "var(--rex-glow-err)",
+        "glow-crown": "var(--rex-glow-crown)",
       },
       keyframes: {
         "rex-ping": {
@@ -129,7 +130,7 @@ export default {
         },
       },
       animation: {
-        "rex-ping": "rex-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite",
+        "rex-ping": "rex-ping 2.4s ease-out infinite",
         "rex-spin": "rex-spin 0.9s linear infinite",
         "rex-err": "rex-err 1.8s ease-in-out infinite",
       },

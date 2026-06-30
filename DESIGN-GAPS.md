@@ -102,11 +102,17 @@ Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/compo
   dialog shows the primary "Create site" with the corrected subtler glow (danger has no caller yet; pressed states
   aren't capturable in a static shot).
 
-- [ ] **1.6 (L) Crown mark, Placeholder greys, ping timing.**
+- [x] **1.6 (L) Crown mark, Placeholder greys, ping timing.**
   *Done when:* sidebar crown box gets `glowCrown` (`0 6px 22px rgba(124,92,255,.20)`), radius 8px, border
   `#2C303B` (`Sidebar.tsx:11`); Placeholder icon/label use `#4F5663`, hint `#5A6170`, icon box radius 12px
   (`Placeholder.tsx:16-28` — add tokens for these greys); `rex-ping` timing → `2.4s ease-out`
   (`tailwind.config.js:98`). (App Shell lines 42, 107-110.)
+  ✓ Added tokens `--rex-glow-crown` (+ `shadow-glow-crown`), `--rex-crown-border #2c303b`,
+  `--rex-placeholder #4f5663` / `--rex-placeholder-hint #5a6170`. CrownMark → `rounded-[8px]
+  border-[var(--rex-crown-border)] shadow-glow-crown`; Placeholder icon-box `rounded-[12px]`, icon/label
+  `text-[var(--rex-placeholder)]`, hint `text-[var(--rex-placeholder-hint)]`; `rex-ping` animation → `2.4s
+  ease-out`. `pnpm tsc --noEmit` clean; chrome-devtools shows the crown's subtle violet glow (placeholder
+  needs an empty/loading state to render — mock data is always populated; ping is non-static).
 
 ---
 
