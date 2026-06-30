@@ -1,10 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
-import { Layers } from "lucide-react";
+import { Code, Database, Layers, Mail, Server, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { servicesStatus } from "@/lib/ipc";
-import type { ServiceInfo } from "@/types";
+import type { ServiceInfo, ServiceKind } from "@/types";
+
+/** Group a service — prefer the backend hint, else derive from the name. */
+function serviceKind(svc: ServiceInfo): ServiceKind {
+  if (svc.kind) return svc.kind;
+  const n = svc.name.toLowerCase();
+  if (n.includes("php")) return "php";
+  if (n.includes("mysql") || n.includes("maria") || n.includes("postgres")) return "database";
+  if (n.includes("mail")) return "mail";
+  return "web";
+}
+
+const GROUPS: { kind: ServiceKind; title: string; icon: LucideIcon; color: string }[] = [
+  { kind: "php", title: "PHP", icon: Code, color: "#A7AADD" },
+  { kind: "database", title: "Databases", icon: Database, color: "#7DB8D8" },
+  { kind: "mail", title: "Mail", icon: Mail, color: "#D7A93A" },
+  { kind: "web", title: "Web servers & edge router", icon: Server, color: "#5FBFA8" },
+];
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
@@ -160,11 +177,30 @@ export function Services() {
         ) : (
           <>
             <TotalUsageCard services={services} />
-            <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
-              {services.map((svc) => (
-                <ServiceRow key={svc.name} svc={svc} />
-              ))}
-            </div>
+            {GROUPS.map((g) => {
+              const rows = services.filter((s) => serviceKind(s) === g.kind);
+              if (rows.length === 0) return null;
+              const run = rows.filter((r) => r.running).length;
+              const Icon = g.icon;
+              return (
+                <div key={g.kind} className="mb-[18px] last:mb-0">
+                  <div className="mb-[9px] flex items-center gap-2.5 px-0.5">
+                    <span className="flex" style={{ color: g.color }}>
+                      <Icon className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                    </span>
+                    <span className="text-[13.5px] font-semibold text-rex-text">{g.title}</span>
+                    <span className="font-mono text-[11px] text-rex-text-dim">
+                      {run}/{rows.length} running
+                    </span>
+                  </div>
+                  <div className="overflow-hidden rounded-[13px] border border-rex-border-subtle bg-rex-surface-1">
+                    {rows.map((svc) => (
+                      <ServiceRow key={svc.name} svc={svc} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </>
         )}
       </div>

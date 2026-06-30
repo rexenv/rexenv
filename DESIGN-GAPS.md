@@ -285,10 +285,16 @@ Source: `design/rexenv Services.dc.html`, `design/rexenv Service Row.dc.html`. F
   counts (border-left, running in `status-running-bright`). All aggregated from the live services list. `pnpm
   tsc --noEmit` clean; chrome-devtools shows the card (CPU 1% / 515 MB / 3 running · 1 idle).
 
-- [ ] **5.2 (H) Section grouping + per-section summaries.**
+- [x] **5.2 (H) Section grouping + per-section summaries.**
   *Done when:* services group into PHP · Databases · Mail · Web servers & edge router, each a bordered card
   with a colored icon + title + mono "{r}/{n} running" — replacing the single flat list. (Services lines
   89-107 · `Services.tsx:77-82`.)
+  ✓ Added `ServiceKind` + optional `kind`/`version`/`isDefault`/`isRouter` to `ServiceInfo` (Rust may not send
+  them; `serviceKind()` derives `kind` from the name as a fallback). `GROUPS` (PHP purple `Code` / Databases blue
+  `Database` / Mail amber `Mail` / Web teal `Server`) render each non-empty group as a bordered card with a colored
+  icon + title + mono "{run}/{n} running". Reshaped `mockServices` to 7 entries spanning all groups (PHP-FPM 8.3
+  default + 8.2, MySQL + PostgreSQL, Mailpit, Nginx + Caddy router). `pnpm tsc --noEmit` clean; chrome-devtools
+  shows the 4 grouped cards (header "4/7 running").
 
 - [ ] **5.3 (H) Per-row toggle + action button + badges.**
   *Done when:* each row gets a start/stop toggle and a contextual action (PHP non-default → "Set default";

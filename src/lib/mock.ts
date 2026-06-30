@@ -47,10 +47,13 @@ export const mockSites: Site[] = [
 ];
 
 export const mockServices: ServiceInfo[] = [
-  { name: "MySQL", running: true, pid: 1234, port: 13306, cpuPercent: 0.4, ramMb: 480 },
-  { name: "PHP-FPM", running: true, pid: 1235, port: 9783, cpuPercent: 0.1, ramMb: 28 },
-  { name: "Nginx", running: true, pid: 1236, port: 8088, cpuPercent: 0.0, ramMb: 7 },
-  { name: "Caddy", running: false, pid: null, port: 443, cpuPercent: 0.0, ramMb: 0 },
+  { name: "PHP-FPM 8.3", running: true, pid: 1235, port: 9783, cpuPercent: 0.1, ramMb: 28, kind: "php", version: "8.3.4", isDefault: true },
+  { name: "PHP-FPM 8.2", running: false, pid: null, port: 9782, cpuPercent: 0.0, ramMb: 0, kind: "php", version: "8.2.18" },
+  { name: "MySQL", running: true, pid: 1234, port: 13306, cpuPercent: 0.4, ramMb: 480, kind: "database", version: "8.4.6" },
+  { name: "PostgreSQL", running: false, pid: null, port: 15432, cpuPercent: 0.0, ramMb: 0, kind: "database", version: "18.4.0" },
+  { name: "Mailpit", running: true, pid: 1240, port: 1025, cpuPercent: 0.0, ramMb: 12, kind: "mail", version: "1.20.0" },
+  { name: "Nginx", running: true, pid: 1236, port: 8088, cpuPercent: 0.0, ramMb: 7, kind: "web", version: "1.30.3", isRouter: false },
+  { name: "Caddy", running: false, pid: null, port: 443, cpuPercent: 0.0, ramMb: 0, kind: "web", version: "2.11.4", isRouter: true },
 ];
 
 export const mockPhpVersions: PhpVersion[] = [

@@ -71,6 +71,9 @@ export interface AppInfo {
   tauriVersion: string;
 }
 
+/** Which group a service belongs to on the Services screen. */
+export type ServiceKind = "php" | "database" | "mail" | "web";
+
 /** One shared service's status + live metrics (mirrors the Rust ServiceStatus DTO). */
 export interface ServiceInfo {
   name: string;
@@ -79,6 +82,12 @@ export interface ServiceInfo {
   port: number;
   cpuPercent: number;
   ramMb: number;
+  // Optional UI hints — the Rust DTO may not send these yet; the frontend
+  // derives `kind` from the name as a fallback (see serviceKind).
+  kind?: ServiceKind;
+  version?: string;
+  isDefault?: boolean;
+  isRouter?: boolean;
 }
 
 /** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */
