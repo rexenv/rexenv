@@ -1,10 +1,66 @@
-import { useQuery } from "@tanstack/react-query";
-import { Code, Database, Layers, Mail, Server, type LucideIcon } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { Code, Database, ExternalLink, Inbox, Layers, Mail, Server, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
-import { servicesStatus } from "@/lib/ipc";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { cn } from "@/lib/utils";
+import { servicesStatus, setDefaultPhpVersion } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
+
+/** Tinted accent per kind (matches the group icon colors). */
+const KIND_ACCENT: Record<ServiceKind, { bg: string; border: string; color: string }> = {
+  php: { bg: "rgba(125,128,185,0.17)", border: "rgba(125,128,185,0.32)", color: "#A7AADD" },
+  database: { bg: "rgba(74,134,170,0.15)", border: "rgba(74,134,170,0.30)", color: "#7DB8D8" },
+  mail: { bg: "rgba(210,153,34,0.13)", border: "rgba(210,153,34,0.28)", color: "#D7A93A" },
+  web: { bg: "rgba(45,156,143,0.13)", border: "rgba(45,156,143,0.28)", color: "#5FBFA8" },
+};
+
+/** A short monogram for the row's accent badge. */
+function serviceBadge(svc: ServiceInfo, kind: ServiceKind): string {
+  if (kind === "php") return phpMinor(svc);
+  const n = svc.name;
+  if (/mysql/i.test(n)) return "My";
+  if (/postgres/i.test(n)) return "Pg";
+  if (/maria/i.test(n)) return "Ma";
+  if (/mail/i.test(n)) return "Mp";
+  if (/nginx/i.test(n)) return "Nx";
+  if (/caddy/i.test(n)) return "Cd";
+  if (/franken/i.test(n)) return "Fp";
+  return n.slice(0, 2);
+}
+
+/** Extract the PHP minor (e.g. "8.3") from version or name. */
+function phpMinor(svc: ServiceInfo): string {
+  const m = (svc.version ?? svc.name).match(/(\d+\.\d+)/);
+  return m ? m[1] : svc.name;
+}
+
+function ActionBtn({
+  children,
+  onClick,
+  icon,
+  accent,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  accent?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex h-[29px] items-center gap-1.5 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 text-[12px] font-medium transition-colors hover:bg-rex-surface-2-hover",
+        accent ? "text-brand-tint" : "text-rex-text-bright",
+      )}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
 
 /** Group a service — prefer the backend hint, else derive from the name. */
 function serviceKind(svc: ServiceInfo): ServiceKind {
@@ -124,37 +180,105 @@ function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
   );
 }
 
-function ServiceRow({ svc }: { svc: ServiceInfo }) {
+function ServiceRow({
+  svc,
+  onToggle,
+  onSetDefault,
+  onOpenDatabases,
+  onOpenMail,
+}: {
+  svc: ServiceInfo;
+  onToggle: () => void;
+  onSetDefault: (minor: string) => void;
+  onOpenDatabases: () => void;
+  onOpenMail: () => void;
+}) {
+  const kind = serviceKind(svc);
+  const accent = KIND_ACCENT[kind];
+  const running = svc.running;
   return (
     <div className="flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-semibold text-rex-text">{svc.name}</div>
-        <div className="font-mono text-[11px] text-rex-text-dim">
-          127.0.0.1:{svc.port}
-          {svc.pid != null && ` · pid ${svc.pid}`}
+      <div className="flex min-w-0 flex-1 items-center gap-[11px]">
+        <span
+          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border font-mono text-[10px] font-bold"
+          style={{ background: accent.bg, color: accent.color, borderColor: accent.border }}
+        >
+          {serviceBadge(svc, kind)}
+        </span>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[13.5px] font-semibold text-rex-text">{svc.name}</span>
+            {svc.isDefault && (
+              <span className="rounded-md border border-[rgba(124,92,255,0.28)] bg-brand-tint-bg px-[7px] py-0.5 font-mono text-[9.5px] text-brand-tint">
+                default
+              </span>
+            )}
+            {svc.isRouter && (
+              <span className="rounded-md border border-[rgba(45,156,143,0.28)] bg-[rgba(45,156,143,0.12)] px-[7px] py-0.5 font-mono text-[9.5px] text-[#5FBFA8]">
+                edge router
+              </span>
+            )}
+          </div>
+          <div className="font-mono text-[11px] text-rex-text-dim">
+            127.0.0.1:{svc.port}
+            {svc.pid != null && ` · pid ${svc.pid}`}
+          </div>
         </div>
       </div>
-      <StatusPill status={svc.running ? "running" : "stopped"} />
-      <Meter
-        label="CPU"
-        value={`${svc.cpuPercent.toFixed(1)}%`}
-        pct={svc.cpuPercent}
-      />
+      <StatusPill status={running ? "running" : "stopped"} />
+      <Meter label="CPU" value={`${svc.cpuPercent.toFixed(1)}%`} pct={svc.cpuPercent} />
       <Meter
         label="RAM"
         value={svc.ramMb >= 1024 ? `${(svc.ramMb / 1024).toFixed(1)} GB` : `${svc.ramMb} MB`}
         pct={(svc.ramMb / 1024) * 100}
       />
+      <StartStopToggle
+        running={running}
+        onToggle={onToggle}
+        label={`${running ? "Stop" : "Start"} ${svc.name}`}
+      />
+      <div className="flex w-[124px] flex-none justify-end">
+        {kind === "php" && !svc.isDefault && (
+          <ActionBtn accent onClick={() => onSetDefault(phpMinor(svc))}>
+            Set default
+          </ActionBtn>
+        )}
+        {kind === "database" && (
+          <ActionBtn icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={onOpenDatabases}>
+            Open
+          </ActionBtn>
+        )}
+        {kind === "mail" && (
+          <ActionBtn icon={<Inbox className="h-3.5 w-3.5" />} onClick={onOpenMail}>
+            Open inbox
+          </ActionBtn>
+        )}
+      </div>
     </div>
   );
 }
 
 export function Services() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const { data: services = [], isLoading } = useQuery({
     queryKey: ["services"],
     queryFn: servicesStatus,
     refetchInterval: 2000,
   });
+
+  const setDefault = useMutation({
+    mutationFn: (minor: string) => setDefaultPhpVersion(minor),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["services"] });
+      qc.invalidateQueries({ queryKey: ["php-versions"] });
+    },
+    onError: (e) => window.alert(String(e)),
+  });
+
+  // TODO: per-service start/stop needs a backend `start_service`/`stop_service`
+  // command — only whole-stack startServices/stopServices exist today (§5.4).
+  const onServiceToggle = () => {};
 
   const running = services.filter((s) => s.running).length;
 
@@ -195,7 +319,14 @@ export function Services() {
                   </div>
                   <div className="overflow-hidden rounded-[13px] border border-rex-border-subtle bg-rex-surface-1">
                     {rows.map((svc) => (
-                      <ServiceRow key={svc.name} svc={svc} />
+                      <ServiceRow
+                        key={svc.name}
+                        svc={svc}
+                        onToggle={onServiceToggle}
+                        onSetDefault={(minor) => setDefault.mutate(minor)}
+                        onOpenDatabases={() => navigate("/databases")}
+                        onOpenMail={() => navigate("/mail")}
+                      />
                     ))}
                   </div>
                 </div>

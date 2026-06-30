@@ -296,11 +296,17 @@ Source: `design/rexenv Services.dc.html`, `design/rexenv Service Row.dc.html`. F
   default + 8.2, MySQL + PostgreSQL, Mailpit, Nginx + Caddy router). `pnpm tsc --noEmit` clean; chrome-devtools
   shows the 4 grouped cards (header "4/7 running").
 
-- [ ] **5.3 (H) Per-row toggle + action button + badges.**
+- [x] **5.3 (H) Per-row toggle + action button + badges.**
   *Done when:* each row gets a start/stop toggle and a contextual action (PHP non-default → "Set default";
   DB → "Open in browser"; Mailpit → "Open inbox"; web → "Logs"), a 30×30 accent badge (My/8.3/Nx),
   and "default"/"edge router" pills where applicable (needs `ServiceInfo` to carry `kind`/`isDefault`/
   `isRouter`/`version`). (Service Row lines 15-40 · `Services.tsx:26-49`, `src/types/index.ts:75-82`.)
+  ✓ Each row now leads with a 30×30 `KIND_ACCENT`-tinted monogram badge (`serviceBadge`: 8.3/My/Pg/Mp/Nx/Cd),
+  shows `default` (violet) / `edge router` (teal) pills, a `StartStopToggle`, and a contextual `ActionBtn` —
+  PHP non-default → "Set default" (`setDefaultPhpVersion`), database → "Open" (→ /databases), Mailpit → "Open
+  inbox" (→ /mail). `pnpm tsc --noEmit` clean; chrome-devtools shows badges, both pills, toggles, and the three
+  action types. **Notes:** per-service toggle is a documented no-op — needs a backend `start_service`/`stop_service`
+  command (only whole-stack exists, §5.4); web "Logs" omitted (no global service-log route yet).
 
 - [ ] **5.4 (H) Global Start all / Stop all in header.**
   *Done when:* the header has the primary button toggling Start all (violet, play) / Stop all (surface,
