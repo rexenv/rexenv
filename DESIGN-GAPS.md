@@ -556,10 +556,16 @@ Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (c
   the shell — **TODO:** wire to the real first-run download progress. `pnpm tsc --noEmit` clean; chrome-devtools
   shows the three rows completing with checks + the done footnote.
 
-- [ ] **10.3 (H) Step 3 — "Set up local domains & SSL" (the permission moment).**
+- [x] **10.3 (H) Step 3 — "Set up local domains & SSL" (the permission moment).**
   *Done when:* three status pills (Local CA / Local DNS / HTTPS), heading + body (mono `https://anything.test`),
   a primary "Set up domains & SSL" button with the note "macOS will ask for your password once", and
   idle/busy/done states. This is the ~3-prompt system-setup moment from the brief. (lines 90-110, 156-168.)
+  ✓ `Domains` step: three `StatusPill`s (Local CA teal `Shield` / Local DNS blue `Globe` / HTTPS green `Lock`),
+  heading + body with mono `https://anything.test` (brand-tint) + `.test`, and a state machine — idle (primary
+  "Set up domains & SSL" + "macOS will ask for your password once"), busy (spinner + "Configuring certificate
+  authority & DNS…"), done (green "Domains & SSL are ready" pill). `StepHeading` now takes a `ReactNode`
+  subtitle. Simulated for the shell — **TODO:** wire to `run_system_setup`. `pnpm tsc --noEmit` clean;
+  chrome-devtools verified the pills, button + note, and the busy→done transition.
 
 - [ ] **10.4 (H) Step 4 — "Your kingdom is ready".**
   *Done when:* green check medallion (green glow), heading (Space Grotesk 34px), two confirmation chips

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, Globe, Lock, Shield } from "lucide-react";
 
 /**
  * First-run onboarding — a 4-step wizard (Welcome → Install → Domains & SSL →
@@ -125,15 +125,13 @@ function Welcome() {
   );
 }
 
-function StepHeading({ title, subtitle }: { title: string; subtitle: string }) {
+function StepHeading({ title, subtitle }: { title: string; subtitle: ReactNode }) {
   return (
     <>
       <div className="font-display text-[27px] font-semibold tracking-[-0.02em] text-[#F2F0FA]">
         {title}
       </div>
-      <div className="mt-[9px] max-w-[440px] text-[13.5px] leading-[1.55] text-rex-text-muted">
-        {subtitle}
-      </div>
+      <div className="mt-[9px] text-[13.5px] leading-[1.55] text-rex-text-muted">{subtitle}</div>
     </>
   );
 }
@@ -215,13 +213,77 @@ function Install() {
   );
 }
 
+function StatusPill({ icon, label }: { icon: ReactNode; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-[7px] rounded-full border border-rex-border bg-rex-surface-1 py-1.5 pl-[10px] pr-3">
+      <span className="flex">{icon}</span>
+      <span className="text-[12px] text-rex-text-bright">{label}</span>
+    </span>
+  );
+}
+
 function Domains() {
+  const [state, setState] = useState<"idle" | "busy" | "done">("idle");
+  // Shell: simulate the privileged setup. TODO: wire to run_system_setup.
+  const run = () => {
+    setState("busy");
+    setTimeout(() => setState("done"), 1800);
+  };
   return (
     <div className="w-full max-w-[460px]">
+      <div className="mb-[22px] flex justify-center gap-2.5">
+        <StatusPill
+          icon={<Shield className="h-[15px] w-[15px] text-[#5FBFA8]" strokeWidth={1.7} />}
+          label="Local CA"
+        />
+        <StatusPill
+          icon={<Globe className="h-[15px] w-[15px] text-[#7DB8D8]" strokeWidth={1.7} />}
+          label="Local DNS"
+        />
+        <StatusPill
+          icon={<Lock className="h-[15px] w-[15px] text-status-running" strokeWidth={1.7} />}
+          label="HTTPS"
+        />
+      </div>
       <StepHeading
         title="Set up local domains & SSL"
-        subtitle="rexenv adds a private certificate authority to your Mac and points .test domains to your machine. Nothing leaves your computer."
+        subtitle={
+          <>
+            So your sites work at{" "}
+            <span className="font-mono text-brand-tint">https://anything.test</span>, rexenv adds a
+            private certificate authority to your Mac and points{" "}
+            <span className="font-mono text-rex-text-bright">.test</span> domains to your machine.
+            Nothing leaves your computer.
+          </>
+        }
       />
+      {state === "idle" && (
+        <div className="mt-[22px]">
+          <button
+            onClick={run}
+            className="inline-flex h-[42px] items-center gap-2 rounded-[11px] bg-primary px-[22px] text-[14px] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110"
+          >
+            Set up domains & SSL
+          </button>
+          <div className="mt-3 font-mono text-[10.5px] text-rex-text-faint">
+            macOS will ask for your password once
+          </div>
+        </div>
+      )}
+      {state === "busy" && (
+        <div className="mt-[22px] inline-flex h-[42px] items-center gap-[9px] rounded-[11px] border border-rex-border bg-rex-surface-1 px-5">
+          <span className="h-[14px] w-[14px] rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
+          <span className="text-[13px] text-rex-text-bright">
+            Configuring certificate authority & DNS…
+          </span>
+        </div>
+      )}
+      {state === "done" && (
+        <div className="mt-[22px] inline-flex items-center gap-[9px] rounded-[11px] border border-status-running-border bg-status-running-bg px-[18px] py-[11px]">
+          <Check className="h-[17px] w-[17px] text-status-running" strokeWidth={2.2} />
+          <span className="text-[13px] font-medium text-rex-text">Domains & SSL are ready</span>
+        </div>
+      )}
     </div>
   );
 }
