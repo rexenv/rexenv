@@ -87,12 +87,20 @@ Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/compo
   `"{Start|Stop} {site.name}"`, Databases `"… {db.label}"`. `pnpm tsc --noEmit` clean; chrome-devtools
   `/databases` shows the larger green-ON / dark-OFF tracks at design proportions.
 
-- [ ] **1.5 (M) Button — danger red + secondary border/hover + glow-primary.**
+- [x] **1.5 (M) Button — danger red + secondary border/hover + glow-primary.**
   *Done when:* danger uses `#DA3633` (hover `#E5484D`, pressed `#B92D2B`) — a new token, distinct from
   error-status `#F85149`; secondary border → `border-strong #2E323C`, hover `bg #232734 / border #3B404C`;
   `--rex-glow-primary` corrected to `0 2px 14px rgba(124,92,255,.30)` (currently `0 4px 14px … .35`). Add
   `active:` pressed states (bg shift + `translateY(1px)`). (Component Sheet §02 lines 159-189 ·
   `button.tsx:13-21`, `tokens.css:66`.)
+  ✓ Added `--rex-danger{,-hover,-active}` tokens + `colors.danger` and repointed `--destructive → --rex-danger`;
+  added `--rex-surface-2-hover #232734` / `--rex-border-strong-hover #3b404c` (+ rex tailwind colors); corrected
+  `--rex-glow-primary` to `0 2px 14px rgba(124,92,255,.3)`. `button.tsx`: danger → `bg-danger hover:bg-danger-hover
+  active:bg-danger-active`; secondary → `border-rex-border-strong hover:bg-rex-surface-2-hover
+  hover:border-rex-border-strong-hover`; primary gains `active:bg-brand-strong`; all four variants get
+  `active:translate-y-px` (+ ghost `active:bg-white/[0.085]`). `pnpm tsc --noEmit` clean; chrome-devtools New Site
+  dialog shows the primary "Create site" with the corrected subtler glow (danger has no caller yet; pressed states
+  aren't capturable in a static shot).
 
 - [ ] **1.6 (L) Crown mark, Placeholder greys, ping timing.**
   *Done when:* sidebar crown box gets `glowCrown` (`0 6px 22px rgba(124,92,255,.20)`), radius 8px, border

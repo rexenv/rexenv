@@ -12,12 +12,14 @@
   --rex-surface-1: #15171d;
   --rex-surface-2: #1c1f27;
   --rex-surface-3: #21252e; /* raised rows / inputs-on-surface */
+  --rex-surface-2-hover: #232734; /* secondary-button hover fill */
   --rex-well: #0e1015; /* recessed track (meter background) */
 
   /* ── Borders ── */
   --rex-border: #262a33;
   --rex-border-subtle: #20242c; /* sidebar / header dividers */
   --rex-border-strong: #2e323c;
+  --rex-border-strong-hover: #3b404c; /* secondary-button hover border */
 
   /* ── Text ── */
   --rex-text: #e7e9ee;
@@ -34,6 +36,11 @@
   --rex-brand-light: #9277ff;
   --rex-brand-tint: #c9bcff; /* crown highlight / on-violet text accents */
   --rex-brand-active: rgba(124, 92, 255, 0.1); /* active nav / selected-row fill */
+
+  /* ── Danger (destructive buttons — distinct from the error status red) ── */
+  --rex-danger: #da3633;
+  --rex-danger-hover: #e5484d;
+  --rex-danger-active: #b92d2b;
   --rex-focus-ring: rgba(124, 92, 255, 0.45);
 
   /* ── Status ── */
@@ -82,7 +89,7 @@
   /* ── Elevation ── */
   --rex-shadow-card: 0 28px 80px rgba(0, 0, 0, 0.5),
     0 8px 24px rgba(0, 0, 0, 0.38);
-  --rex-glow-primary: 0 4px 14px rgba(124, 92, 255, 0.35);
+  --rex-glow-primary: 0 2px 14px rgba(124, 92, 255, 0.3);
   --rex-glow-run: 0 0 7px rgba(63, 185, 80, 0.75);
   --rex-glow-err: 0 0 7px rgba(248, 81, 73, 0.6);
 
@@ -101,7 +108,7 @@
   --muted-foreground: var(--rex-text-muted);
   --accent: var(--rex-surface-3);
   --accent-foreground: var(--rex-text);
-  --destructive: var(--rex-error);
+  --destructive: var(--rex-danger);
   --destructive-foreground: #ffffff;
   --border: var(--rex-border);
   --input: var(--rex-border);
