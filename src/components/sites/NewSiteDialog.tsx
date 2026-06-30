@@ -244,7 +244,13 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
               </Button>
             ) : (
               <Button variant="primary" disabled={!canSubmit} onClick={() => create.mutate()}>
-                {create.isPending ? "Creating…" : "Create site"}
+                {create.isPending
+                  ? isWordpress
+                    ? "Installing…"
+                    : "Creating…"
+                  : isWordpress
+                    ? "Install WordPress"
+                    : "Create site"}
               </Button>
             )}
           </div>

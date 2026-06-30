@@ -706,9 +706,13 @@ Source: `design/rexenv New Site Flow.dc.html`. File: `src/components/sites/NewSi
   `pnpm tsc --noEmit` clean; chrome-devtools verified the .test chip, the taken-domain red state + message, the
   DB selector, Site title, and the password eye + Generate.
 
-- [ ] **12.5 (L) Create button label + success toast + modal width.**
+- [x] **12.5 (L) Create button label + success toast + modal width.**
   *Done when:* the create button reads "Install WordPress" for WP (else "Create site"); a "Site created"
   toast with "New again" on success; inner panel 516px. (lines 211-217, 448 · `NewSiteDialog.tsx:119, 266`.)
+  ✓ Footer primary now reads "Install WordPress" / "Installing…" for WordPress, else "Create site" /
+  "Creating…". Modal inner panel is 516px (done with the §12.1 rewrite). `pnpm tsc --noEmit` clean;
+  chrome-devtools shows "Install WordPress". **Deferred (LOW):** the "Site created" toast + "New again" flow —
+  the dialog closes on success today; it folds into the global styled-toast follow-up noted in §9.7/§11.6.
 
 ---
 
