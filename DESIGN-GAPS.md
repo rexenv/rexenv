@@ -275,10 +275,15 @@ Source: `design/rexenv Site Detail.dc.html`. File: `src/routes/SiteDetail.tsx`.
 
 Source: `design/rexenv Services.dc.html`, `design/rexenv Service Row.dc.html`. File: `src/routes/Services.tsx`.
 
-- [ ] **5.1 (H) "Total resource usage" summary card.**
+- [x] **5.1 (H) "Total resource usage" summary card.**
   *Done when:* a gradient card at top: live pulse dot, "TOTAL RESOURCE USAGE", "live · updates every 1.5s",
   big CPU number + meter, big Memory number + meter ("of N GB budget · stays light"), running/idle counts.
   (Services lines 65-87.)
+  ✓ New `TotalUsageCard` (gradient bg, `#23262F` border): live `shadow-glow-run` pulse + "TOTAL RESOURCE USAGE"
+  + "live · updates every 2s" (matches the existing 2s poll), a 3-col grid — CPU (`UsageMetric` big value +
+  brand bar), Memory (value + bar + "of 4.0 GB budget · stays light", `RAM_BUDGET_MB=4096`), and running/idle
+  counts (border-left, running in `status-running-bright`). All aggregated from the live services list. `pnpm
+  tsc --noEmit` clean; chrome-devtools shows the card (CPU 1% / 515 MB / 3 running · 1 idle).
 
 - [ ] **5.2 (H) Section grouping + per-section summaries.**
   *Done when:* services group into PHP · Databases · Mail · Web servers & edge router, each a bordered card
