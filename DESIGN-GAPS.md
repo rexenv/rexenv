@@ -148,12 +148,19 @@ Source: `design/rexenv App Shell.dc.html`. Files: `src/components/shell/StatusFo
 
 Source: `design/rexenv Sites Screen.dc.html`. File: `src/routes/Sites.tsx` (+ `TopBar.tsx`).
 
-- [ ] **3.1 (H) Wire search + add All/Running/Stopped filter + sort.**
+- [x] **3.1 (H) Wire search + add All/Running/Stopped filter + sort.**
   *Done when:* the header search filters rows live by name/domain (today `TopBar` search has no
   `value`/`onChange` — it filters nothing); a segmented control `All · Running · Stopped` with live count
   badges (active pill violet `rgba(124,92,255,.14)/#C9BCFF`) filters by status; a "Change sort order" button
   cycles `Name → Status → Recent`. Drives a "No sites match …" empty state. (lines 99-118, 162-167, 345-348
   · `Sites.tsx:115-164`, `TopBar.tsx:30-43`.)
+  ✓ Made `TopBar` search controllable (`searchValue`/`onSearchChange`/`searchPlaceholder`, width 190px). Added
+  `--rex-brand-tint-bg` (.14) token + `brand.tint-bg`. `Sites` now holds `query`/`filter`/`sort` state: a
+  `FilterTabs` segmented control (`bg-rex-well`, active pill `bg-brand-tint-bg text-brand-tint`) with live
+  `{all,running,stopped}` counts; a `SortButton` (ArrowDownUp) cycling Name→Status→Recent; a memoized
+  filter→search→sort pipeline; and a filtered "No sites match “{q}”" state. `pnpm tsc --noEmit` clean;
+  chrome-devtools verified: name-sort reorders the list, Stopped filter shows only Blog Network (counts
+  All 3/Running 2/Stopped 1), and typing "zzz" shows the no-results state.
 
 - [ ] **3.2 (H) Per-row kebab menu.**
   *Done when:* the inert `MoreHorizontal` button opens a menu: Rename · Duplicate · Open in editor ·

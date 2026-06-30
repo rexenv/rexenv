@@ -30,6 +30,7 @@ export default {
           strong: "var(--rex-brand-strong)",
           light: "var(--rex-brand-light)",
           tint: "var(--rex-brand-tint)",
+          "tint-bg": "var(--rex-brand-tint-bg)",
           active: "var(--rex-brand-active)",
         },
         danger: {

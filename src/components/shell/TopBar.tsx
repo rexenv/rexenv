@@ -7,9 +7,21 @@ interface TopBarProps {
   /** contextual primary action on the right (e.g. "+ New site") */
   action?: ReactNode;
   showSearch?: boolean;
+  /** controlled search: when `onSearchChange` is set, the input filters live */
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
 }
 
-export function TopBar({ title, subtitle, action, showSearch = true }: TopBarProps) {
+export function TopBar({
+  title,
+  subtitle,
+  action,
+  showSearch = true,
+  searchValue,
+  onSearchChange,
+  searchPlaceholder,
+}: TopBarProps) {
   return (
     <header className="drag-region flex h-[84px] flex-none items-center justify-between gap-4 border-b border-rex-border-subtle px-[22px]">
       <div className="no-drag">
@@ -31,8 +43,12 @@ export function TopBar({ title, subtitle, action, showSearch = true }: TopBarPro
             />
             <input
               type="text"
-              placeholder="Search…"
-              className="h-[34px] w-[210px] rounded border border-rex-border bg-rex-surface-1 pl-[33px] pr-3 text-[13px] text-rex-text outline-none transition-colors focus:border-brand"
+              placeholder={searchPlaceholder ?? "Search…"}
+              value={onSearchChange ? searchValue ?? "" : undefined}
+              onChange={
+                onSearchChange ? (e) => onSearchChange(e.target.value) : undefined
+              }
+              className="h-[34px] w-[190px] rounded border border-rex-border bg-rex-surface-1 pl-[33px] pr-3 text-[13px] text-rex-text outline-none transition-colors focus:border-brand"
             />
           </div>
         )}
