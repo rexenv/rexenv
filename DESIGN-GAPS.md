@@ -358,9 +358,15 @@ Source: `design/rexenv Databases.dc.html`. Files: `src/routes/Databases.tsx`, `A
 Source: `design/rexenv Mail.dc.html`. File: `src/routes/Mail.tsx`.
 (Real email rendered via sandboxed iframe instead of the comp's mock body — intentional, not a gap.)
 
-- [ ] **7.1 (H) "Mark all read" + per-message Delete.**
+- [x] **7.1 (H) "Mark all read" + per-message Delete.**
   *Done when:* the header has a "Mark all read" button (alongside Clear all); the detail header has a
   per-message Delete (trash, red hover). (lines 58-59, 110-111 · `Mail.tsx:67-86, 179-197`.)
+  ✓ Added IPC `mailpitMarkAllRead()` + `mailpitDelete(id)` (+ a mutable mock inbox so dev-build mark-read /
+  delete / clear actually mutate state). Sub-bar gained a "✓ Mark all read" button (disabled when 0 unread);
+  the preview detail header gained a per-message Delete (trash, `hover:bg-status-error-bg`). `pnpm tsc --noEmit`
+  clean; chrome-devtools: clicking Mark-all-read took "2 unread → 0 unread" (dots cleared, button auto-disabled);
+  Delete button present in the detail header. **TODO(backend):** add the `mailpit_mark_all_read` / `mailpit_delete`
+  Rust commands (Mailpit's HTTP API supports both).
 
 - [ ] **7.2 (M) List row recipient + Headers tab + sender avatar + selected accent.**
   *Done when:* row line 3 shows `to <recipient>` (not the snippet); detail gains a 4th "Headers" tab (drop

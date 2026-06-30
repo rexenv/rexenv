@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { Check, ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import {
   mailpitClear,
+  mailpitDelete,
+  mailpitMarkAllRead,
   mailpitMessage,
   mailpitMessageRaw,
   mailpitMessages,
@@ -47,7 +49,23 @@ export function Mail() {
     onError: (e) => window.alert(String(e)),
   });
 
+  const markAllRead = useMutation({
+    mutationFn: mailpitMarkAllRead,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mailpit-messages"] }),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const removeMsg = useMutation({
+    mutationFn: (id: string) => mailpitDelete(id),
+    onSuccess: () => {
+      setSelectedId(null);
+      qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
+    },
+    onError: (e) => window.alert(String(e)),
+  });
+
   const running = !!mp?.running;
+  const unread = list?.unread ?? 0;
 
   return (
     <>
@@ -76,9 +94,17 @@ export function Mail() {
             </button>
           )}
           <button
+            onClick={() => markAllRead.mutate()}
+            disabled={markAllRead.isPending || unread === 0}
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border"
+          >
+            <Check className="h-3.5 w-3.5" />
+            Mark all read
+          </button>
+          <button
             onClick={() => clear.mutate()}
             disabled={clear.isPending || messages.length === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-red-500/60 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border disabled:hover:text-rex-text"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-status-error/60 hover:text-status-error-bright disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border disabled:hover:text-rex-text"
           >
             <Trash2 className="h-3.5 w-3.5" />
             Clear all
@@ -124,7 +150,12 @@ export function Mail() {
         {/* Preview pane */}
         <div className="min-h-0 flex-1 overflow-hidden">
           {selectedId ? (
-            <Preview id={selectedId} tab={tab} onTab={setTab} />
+            <Preview
+              id={selectedId}
+              tab={tab}
+              onTab={setTab}
+              onDelete={() => removeMsg.mutate(selectedId)}
+            />
           ) : (
             <Placeholder
               icon={<MailIcon className="h-[22px] w-[22px]" strokeWidth={1.6} />}
@@ -163,7 +194,17 @@ function MessageRow({ m, active, onClick }: { m: MailSummary; active: boolean; o
   );
 }
 
-function Preview({ id, tab, onTab }: { id: string; tab: PreviewTab; onTab: (t: PreviewTab) => void }) {
+function Preview({
+  id,
+  tab,
+  onTab,
+  onDelete,
+}: {
+  id: string;
+  tab: PreviewTab;
+  onTab: (t: PreviewTab) => void;
+  onDelete: () => void;
+}) {
   const { data: msg } = useQuery({ queryKey: ["mailpit-message", id], queryFn: () => mailpitMessage(id) });
   const { data: raw } = useQuery({
     queryKey: ["mailpit-raw", id],
@@ -176,8 +217,9 @@ function Preview({ id, tab, onTab }: { id: string; tab: PreviewTab; onTab: (t: P
   const tabs: PreviewTab[] = ["html", "text", "raw"];
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-rex-border p-4">
-        <div className="text-[14px] font-semibold text-rex-text">{msg.subject || "(no subject)"}</div>
+      <div className="flex items-start gap-3 border-b border-rex-border p-4">
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold text-rex-text">{msg.subject || "(no subject)"}</div>
         <div className="mt-1.5 flex flex-col gap-0.5 text-[12px] text-rex-text-muted">
           <span>
             <span className="text-rex-text-muted">From </span>
@@ -193,7 +235,16 @@ function Preview({ id, tab, onTab }: { id: string; tab: PreviewTab; onTab: (t: P
               <span className="font-mono text-rex-text">{msg.cc.map(addr).join(", ")}</span>
             </span>
           )}
+          </div>
         </div>
+        <button
+          onClick={onDelete}
+          aria-label="Delete message"
+          title="Delete message"
+          className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-rex-text-muted transition-colors hover:bg-status-error-bg hover:text-status-error-bright"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="flex gap-1 border-b border-rex-border px-4">

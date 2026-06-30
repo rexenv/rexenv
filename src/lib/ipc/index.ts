@@ -190,20 +190,43 @@ export async function tailLog(key: string, lines: number): Promise<string[]> {
   return invoke<string[]>("tail_log", { key, lines });
 }
 
+// Mutable copy of the mock inbox so the dev build's delete / mark-read / clear
+// actually change state (the real backend talks to Mailpit's HTTP API).
+let mockInbox = mockMailList.messages.map((m) => ({ ...m }));
+
 /** Inbox listing, optionally filtered by a Mailpit search query. Mock outside Tauri. */
 export async function mailpitMessages(query?: string): Promise<MailList> {
   if (!isTauri()) {
     const q = query?.trim().toLowerCase();
-    if (!q) return mockMailList;
-    const messages = mockMailList.messages.filter(
-      (m) =>
-        m.subject.toLowerCase().includes(q) ||
-        m.from.address.toLowerCase().includes(q) ||
-        m.snippet.toLowerCase().includes(q),
-    );
+    const messages = q
+      ? mockInbox.filter(
+          (m) =>
+            m.subject.toLowerCase().includes(q) ||
+            m.from.address.toLowerCase().includes(q) ||
+            m.snippet.toLowerCase().includes(q),
+        )
+      : mockInbox;
     return { total: messages.length, unread: messages.filter((m) => !m.read).length, messages };
   }
   return invoke<MailList>("mailpit_messages", { query });
+}
+
+/** Delete one captured message. TODO(backend): add the `mailpit_delete` command. */
+export async function mailpitDelete(id: string): Promise<void> {
+  if (!isTauri()) {
+    mockInbox = mockInbox.filter((m) => m.id !== id);
+    return;
+  }
+  await invoke("mailpit_delete", { id });
+}
+
+/** Mark every captured message read. TODO(backend): add `mailpit_mark_all_read`. */
+export async function mailpitMarkAllRead(): Promise<void> {
+  if (!isTauri()) {
+    mockInbox = mockInbox.map((m) => ({ ...m, read: true }));
+    return;
+  }
+  await invoke("mailpit_mark_all_read");
 }
 
 /** One message (body + headers) for the preview pane. Mock outside Tauri. */
@@ -221,9 +244,12 @@ export async function mailpitMessageRaw(id: string): Promise<string> {
   return invoke<string>("mailpit_message_raw", { id });
 }
 
-/** Delete all captured messages ("Clear all"). No-op outside Tauri. */
+/** Delete all captured messages ("Clear all"). Empties the mock inbox off Tauri. */
 export async function mailpitClear(): Promise<void> {
-  if (!isTauri()) return;
+  if (!isTauri()) {
+    mockInbox = [];
+    return;
+  }
   await invoke("mailpit_clear");
 }
 
