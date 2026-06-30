@@ -488,10 +488,15 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
   Replaced the old single-toggle Startup card (removed `AutostartSetting`). `pnpm tsc --noEmit` clean;
   chrome-devtools shows both toggles + the ports grid under Services.
 
-- [ ] **9.5 (H) Theme picker — visual preview tiles.**
+- [x] **9.5 (H) Theme picker — visual preview tiles.**
   *Done when:* Theme becomes a card with description + three 62px preview tiles (Dark/Light/System) each with
   a check-circle. **Decision:** the comp gates Light as "soon", but §4.4 shipped Light for real — keep Light
   selectable (don't re-gate); just adopt the tile UI. (lines 73-81 · `Settings.tsx:36-66`.)
+  ✓ Rebuilt `ThemeSetting` from the segmented control into a description + 3-tile grid: each tile has a 62px
+  gradient mock-window preview (dark / light / split-system, with mock bars + a violet accent square), a label,
+  and a `CheckCircle2` that fills `brand` when selected (selected tile gets a `border-brand`). Light stays fully
+  selectable (no "soon" badge — the comp's gating is stale post-§4.4). `pnpm tsc --noEmit` clean; chrome-devtools
+  shows the three tiles with System selected (filled check + brand border).
 
 - [ ] **9.6 (M) DNS & SSL status tiles + per-action rows; General default-PHP select + sites-folder picker.**
   *Done when:* DNS & SSL shows a "STATUS" two-tile grid (resolver active w/ pulse · "Local CA — trusted ·

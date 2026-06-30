@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ArrowUpRight, ChevronRight, FileText, Github, Info, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUp, ArrowUpRight, CheckCircle2, ChevronRight, FileText, Github, Info, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
@@ -39,34 +39,64 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 function ThemeSetting() {
   const [theme, setThemeState] = useState<Theme>(getStoredTheme());
-  const OPTIONS: { value: Theme; label: string }[] = [
-    { value: "dark", label: "Dark" },
-    { value: "light", label: "Light" },
-    { value: "system", label: "System" },
-  ];
   const choose = (t: Theme) => {
     setThemeState(t);
     setTheme(t); // persists + applies immediately
   };
+  // Light stays selectable — it shipped in §4.4 (the comp's "soon" badge is stale).
+  const TILES: { value: Theme; label: string; preview: string; bars?: "dark" | "light" }[] = [
+    { value: "dark", label: "Dark", preview: "linear-gradient(135deg,#15171D,#0D0E12)", bars: "dark" },
+    { value: "light", label: "Light", preview: "linear-gradient(135deg,#F4F5F8,#E2E5EC)", bars: "light" },
+    { value: "system", label: "System", preview: "linear-gradient(115deg,#15171D 0 50%,#E2E5EC 50% 100%)" },
+  ];
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-[12.5px] text-rex-text-muted">Theme</span>
-      <div className="flex gap-1 rounded-lg border border-rex-border bg-rex-surface-2 p-0.5">
-        {OPTIONS.map((o) => (
-          <button
-            key={o.value}
-            onClick={() => choose(o.value)}
-            className={`rounded-md px-2.5 py-1 text-[12px] transition-colors ${
-              theme === o.value
-                ? "bg-brand text-white"
-                : "text-rex-text-muted hover:text-rex-text"
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
+    <>
+      <div className="mb-[14px] text-[12.5px] text-rex-text-muted">
+        Choose how rexenv looks. System follows your macOS appearance.
       </div>
-    </div>
+      <div className="grid grid-cols-3 gap-[10px]">
+        {TILES.map((t) => {
+          const selected = theme === t.value;
+          return (
+            <button
+              key={t.value}
+              onClick={() => choose(t.value)}
+              className={cn(
+                "overflow-hidden rounded-[11px] border text-left transition-colors",
+                selected ? "border-brand" : "border-rex-border-subtle hover:border-rex-border-strong",
+              )}
+            >
+              <div
+                className="relative h-[62px] border-b border-rex-border-subtle"
+                style={{ background: t.preview }}
+              >
+                {t.bars && (
+                  <>
+                    <span
+                      className="absolute left-[9px] top-[9px] h-[6px] w-[30px] rounded-[3px]"
+                      style={{ background: t.bars === "light" ? "#C2C6D0" : "#2A2E38" }}
+                    />
+                    <span
+                      className="absolute left-[9px] top-[20px] h-[6px] w-[46px] rounded-[3px]"
+                      style={{ background: t.bars === "light" ? "#D6D9E0" : "#1E222A" }}
+                    />
+                  </>
+                )}
+                <span className="absolute bottom-[9px] right-[9px] h-[18px] w-[18px] rounded-[5px] bg-brand" />
+              </div>
+              <div className="flex items-center justify-between px-[11px] py-[9px]">
+                <span className="text-[12.5px] font-medium text-rex-text">{t.label}</span>
+                <CheckCircle2
+                  className="h-[15px] w-[15px]"
+                  style={{ color: selected ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
+                  strokeWidth={2}
+                />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
