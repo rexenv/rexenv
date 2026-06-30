@@ -406,11 +406,18 @@ Source: `design/rexenv Tunnels.dc.html`, `design/rexenv Tunnel Card.dc.html`. Fi
   site id, then invalidates). `active` now counts sites whose domain has a running tunnel. `pnpm tsc --noEmit`
   clean; chrome-devtools shows the red button (1 active tunnel).
 
-- [ ] **8.2 (M) Cards (not rows) + Shared/Not-shared sections + state-driven styling.**
+- [x] **8.2 (M) Cards (not rows) + Shared/Not-shared sections + state-driven styling.**
   *Done when:* each site is a standalone card (`bg #15171D`, radius 13, gap 12) grouped under "Shared now" /
   "Not shared"; a live card gets a green border + glow + green toggle, a starting card amber border + violet
   toggle + spinner; live pill reads "Live" with the ping animation (not static "Public"). (Tunnel Card lines
   13-25 · Tunnels lines 70-80 · `Tunnels.tsx:51-131`.)
+  ✓ Rows → standalone `TunnelCard`s (`rounded-[13px]`, `gap-3`) grouped under "Shared now" / "Shareable sites"
+  (`SectionLabel`). A `CardState` (idle/starting/live/stopping) drives the border: live = `status-running-border`
+  + green `shadow-[…0.12]`, starting = `status-warning-border`. `StartStopToggle` variant switches green (live)
+  ↔ violet (starting, via `setting`) ↔ gray (idle). Live shows a "Live" `StatusPill` (ping) instead of "Public";
+  starting shows an amber `rex-spin` ring + "Starting…". `pnpm tsc --noEmit` clean; chrome-devtools shows the
+  green-bordered live Acme card with "Live" pill + green toggle under SHARED NOW, and idle cards under SHAREABLE
+  SITES. (Avatar swap + live URL well land in §8.3.)
 
 - [ ] **8.3 (M) Live URL "well" row + meta line + per-site avatar + intro banner.**
   *Done when:* a live card has a boxed URL row (`bg #0B0C10`, cloud icon amber `#C9A24B`, mono URL `#9CC4E8`,
