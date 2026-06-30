@@ -329,36 +329,27 @@ Source: `design/rexenv Services.dc.html`, `design/rexenv Service Row.dc.html`. F
 
 ---
 
-## 6. Databases screen — product decision needed
+## 6. Databases screen — DECISION: keep engine-focused `[D]`
 
-> **Conceptual mismatch:** the comp lists individual **databases/schemas** (name · engine · owning site ·
-> size, with Filter/Import/Create + per-row Export/Import/Drop and a themed schema browser). The impl lists
-> **engine processes** (MySQL/PostgreSQL) with status + CPU/RAM + start/stop. The engine start/stop +
-> meters belong on the **Services** screen in the comps, not here. **Decide before building:** (a) re-model
-> this screen around databases (matches comp, large), or (b) keep it engine-focused and accept the
-> divergence. The tasks below assume (a).
+> **DECISION (user, this burndown): keep the Databases screen engine-focused** — one row per engine
+> (MySQL/PostgreSQL) with status + CPU/RAM + start/stop + Browse. The comp's database/schema re-model
+> (individual schemas with Site/Size, Filter/Import/Create, per-row Export/Import/Drop) is **intentionally
+> not adopted** — it's an accepted divergence (would need a schema-enumeration backend + a larger UI). The
+> engine view already aligns with the Services-screen grouping. All §6 tasks are therefore deferred.
 
 Source: `design/rexenv Databases.dc.html`. Files: `src/routes/Databases.tsx`, `AdminerFrame.tsx`.
 
-- [ ] **6.1 (H) Re-model rows as databases (name · engine · site · size).**
-  *Done when:* one row per database with an engine-colored avatar + engine pill, owning-site chip, and a
-  right-aligned size; header subtitle "{count} databases · {total} total"; a column-header row. (Needs an IPC
-  to enumerate schemas per engine; size where the engine exposes it, else "—".) (lines 70-81, 203-212 ·
-  `Databases.tsx:133-148`.)
+- [D] **6.1 (H) Re-model rows as databases (name · engine · site · size).** Deferred — screen stays
+  engine-focused per the decision above.
 
-- [ ] **6.2 (H) Header actions: Filter · Import · Create database.**
-  *Done when:* the header has a "Filter…" search, an Import button, and a primary "Create database" button;
-  filter drives a "No databases match …" empty state. (lines 61-64, 92-94 · `Databases.tsx:120-124`.)
+- [D] **6.2 (H) Header actions: Filter · Import · Create database.** Deferred — database-centric controls; not
+  applicable to the engine-focused view.
 
-- [ ] **6.3 (M) Per-row hover actions Export / Import / Drop + violet "Open".**
-  *Done when:* rows reveal Export, Import, Drop (red) on hover; the open-Adminer button is the violet "Open"
-  (monitor icon), not the neutral "Browse". Remove the per-row status pill / meters / toggle (those move to
-  Services). (lines 84-88 · `Databases.tsx:58-74`.)
+- [D] **6.3 (M) Per-row hover actions Export / Import / Drop + violet "Open".** Deferred — database-centric;
+  the engine view keeps Browse + start/stop.
 
-- [ ] **6.4 (L) Adminer detail chrome.**
-  *Done when:* the detail bar shows engine badge + host + "Adminer x.y · themed" pill + open-external + close
-  (X) around the iframe (the schema sidebar / SQL tabs stay delegated to embedded Adminer). (lines 101-163 ·
-  `Databases.tsx:96-116`.)
+- [D] **6.4 (L) Adminer detail chrome.** Deferred with §6 (minor; the embedded Adminer already provides the
+  schema/SQL chrome).
 
 ---
 
