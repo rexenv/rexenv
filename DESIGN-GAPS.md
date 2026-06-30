@@ -674,9 +674,14 @@ Source: `design/rexenv New Site Flow.dc.html`. File: `src/components/sites/NewSi
   Type→Configure flow with the indicator + Back/Continue/Create nav. (Database/multisite/site-title/password +
   Laravel land in §12.2–§12.5.)
 
-- [ ] **12.2 (H) Step 1 — type cards (Blank PHP / WordPress / Laravel).**
+- [x] **12.2 (H) Step 1 — type cards (Blank PHP / WordPress / Laravel).**
   *Done when:* three clickable type cards (icon + title + description + radio-check, glow on select) replace
   the `<select>`; add the missing **Laravel** type. (lines 54-70 · `NewSiteDialog.tsx:15-18, 171-183`.)
+  ✓ `TYPE_CARDS` now has three `TypeCardButton`s — Blank PHP (`<?` purple), WordPress (blue glyph), and the new
+  **Laravel** (red cube glyph + "A fresh Laravel app…") — each with a tinted icon, title/desc, and a
+  `CheckCircle2` that fills brand + a `shadow-glow-primary` border on select. (Laravel one-click install is a
+  later backend phase; the card is selectable now.) `pnpm tsc --noEmit` clean; chrome-devtools shows all three
+  cards.
 
 - [ ] **12.3 (H) Step 2 — multisite toggle (remove stale "lands in §10" comment).**
   *Done when:* WordPress install section has a Multisite toggle revealing Subdomain/Subdirectory cards, wired

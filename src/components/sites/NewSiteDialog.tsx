@@ -30,6 +30,13 @@ const WP_GLYPH = (
     <path d="M3.2 9.5l4.4 11.3M12 3.2 8.3 14.6 5.7 6.4M20.4 8.4c.4 1 .4 2.4-.2 4l-2.9 8M14.6 5.1l3.4 9.9" />
   </svg>
 );
+const LARAVEL_GLYPH = (
+  <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="block">
+    <path d="M3 6.5 7.5 4l4.5 2.5v5L7.5 14 3 11.5z" />
+    <path d="M12 11.5 16.5 9 21 11.5v5L16.5 19 12 16.5z" />
+    <path d="M7.5 14v5" />
+  </svg>
+);
 
 /** Step-1 type cards (Laravel added in §12.2). */
 type TypeCard = {
@@ -44,6 +51,7 @@ type TypeCard = {
 const TYPE_CARDS: TypeCard[] = [
   { value: "php", label: "Blank PHP", desc: "A clean document root. Bring your own framework or write plain PHP.", icon: PHP_GLYPH, bg: "rgba(125,128,185,0.16)", border: "rgba(125,128,185,0.30)", color: "#A7AADD" },
   { value: "wordpress", label: "WordPress", desc: "Latest WordPress, installed and ready — admin account and database set up for you.", icon: WP_GLYPH, bg: "rgba(74,134,170,0.16)", border: "rgba(74,134,170,0.30)", color: "#7DB8D8" },
+  { value: "laravel", label: "Laravel", desc: "A fresh Laravel app via the installer, wired to a database with your .env ready.", icon: LARAVEL_GLYPH, bg: "rgba(224,82,77,0.14)", border: "rgba(224,82,77,0.28)", color: "#EE837C" },
 ];
 
 /**
