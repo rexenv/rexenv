@@ -238,10 +238,15 @@ Source: `design/rexenv Site Detail.dc.html`. File: `src/routes/SiteDetail.tsx`.
   (amber `LockOpen` + "Not secured" when `!ssl`). Dropped the comp-absent Type/WordPress rows (removed the now-unused
   `Field` + `wp`/`WpInfo`). `pnpm tsc --noEmit` clean; chrome-devtools shows the 3 mini-cards incl. the SSL sub-card.
 
-- [ ] **4.3 (M) Recent-logs preview (remove stale placeholder).**
+- [x] **4.3 (M) Recent-logs preview (remove stale placeholder).**
   *Done when:* the Recent-logs card shows a real log-preview box (last lines, color-coded by level) + a
   "View all logs ›" link, replacing the "Live log tailing arrives in §3 — this peek will show…" placeholder
   (LogsTab is already fully implemented in this file). (lines 186-198 · `SiteDetail.tsx:273-277`.)
+  ✓ New `RecentLogs` component: tails the first log target's last 6 lines (`tailLog`, polled 5s) into the
+  design's preview box (`bg-[#0B0C10]` border, mono 11.5px) with a brand-tint "View all logs ›" link (→ Logs
+  tab via new `onViewLogs`). `logLineColor` heuristically tints ERROR (red) / WARN (amber) lines, others
+  `#A9AEBA`; empty → "No recent activity" hint. Replaced the stale "§3" placeholder. `pnpm tsc --noEmit` clean;
+  chrome-devtools shows the live-tailed lines + the View-all-logs link.
 
 - [ ] **4.4 (M) Overview layout: card order + Quick links grid + Paths config row.**
   *Done when:* order is Environment → (Paths | Quick links two-column 1.25fr/1fr) → Recent logs; Quick links

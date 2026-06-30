@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronLeft,
+  ChevronRight,
   Copy,
   Database,
   ExternalLink,
@@ -27,6 +28,7 @@ import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { adminerUrl, siteDbName } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
+import { cn } from "@/lib/utils";
 import {
   listPhpVersions,
   listSites,
@@ -163,6 +165,7 @@ export function SiteDetail() {
               onServer={(s) => switchServer.mutate(s)}
               onDatabase={() => navigate("/databases")}
               onTerminal={() => navigate(`/sites/${site.id}/terminal`)}
+              onViewLogs={() => navigate(`/sites/${site.id}/logs`)}
             />
           )}
 
@@ -273,6 +276,7 @@ function Overview({
   onServer,
   onDatabase,
   onTerminal,
+  onViewLogs,
 }: {
   site: Site;
   isWordpress: boolean;
@@ -283,6 +287,7 @@ function Overview({
   onServer: (s: WebServer) => void;
   onDatabase: () => void;
   onTerminal: () => void;
+  onViewLogs: () => void;
 }) {
   const url = `https://${site.domain}`;
   const wpConfig = `${site.path}/wp-config.php`;
@@ -387,12 +392,60 @@ function Overview({
         </Row>
       </Card>
 
-      <Card title="Recent logs">
-        <div className="text-[12.5px] text-rex-text-muted">
-          Live log tailing arrives in §3 — this peek will show the latest lines.
-        </div>
-      </Card>
+      <RecentLogs siteId={site.id} onViewAll={onViewLogs} />
     </>
+  );
+}
+
+/** Heuristic per-line tint for unstructured log text. */
+function logLineColor(line: string): string {
+  if (/\berror\b/i.test(line)) return "text-status-error-bright";
+  if (/\bwarn(ing)?\b/i.test(line)) return "text-status-warning-bright";
+  return "text-[#A9AEBA]";
+}
+
+function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => void }) {
+  const { data: targets = [] } = useQuery({
+    queryKey: ["log-targets", siteId],
+    queryFn: () => logTargets(siteId),
+  });
+  const key = targets[0]?.key ?? null;
+  const { data: lines = [] } = useQuery({
+    queryKey: ["tail-log-peek", key],
+    queryFn: () => tailLog(key!, 6),
+    enabled: !!key,
+    refetchInterval: 5000,
+  });
+  const recent = lines.slice(-6);
+
+  return (
+    <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+      <div className="mb-[13px] flex items-center justify-between">
+        <div className="font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+          Recent logs
+        </div>
+        <button
+          onClick={onViewAll}
+          className="flex items-center gap-1 text-[12px] text-brand-tint transition-colors hover:underline"
+        >
+          View all logs
+          <ChevronRight className="h-[13px] w-[13px]" strokeWidth={2} />
+        </button>
+      </div>
+      <div className="rounded-[11px] border border-[#1A1D24] bg-[#0B0C10] px-[14px] py-3 font-mono text-[11.5px] leading-[1.95]">
+        {recent.length === 0 ? (
+          <div className="text-rex-text-dim">
+            No recent activity — start the site to see logs here.
+          </div>
+        ) : (
+          recent.map((l, i) => (
+            <div key={i} className={cn("truncate", logLineColor(l))} title={l}>
+              {l}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
