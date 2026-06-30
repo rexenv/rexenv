@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, ExternalLink, Globe, Share2, Square } from "lucide-react";
+import { Check, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { siteTypeMeta } from "@/lib/siteType";
 import { listSites, openExternal, startTunnel, stopTunnel, tunnelsStatus } from "@/lib/ipc";
 import type { Site, TunnelInfo } from "@/types";
 
@@ -76,11 +77,21 @@ export function Tunnels() {
           />
         ) : (
           <div className="mx-auto flex max-w-3xl flex-col">
-            <p className="mb-[18px] text-[12.5px] text-rex-text-muted">
-              Share a site publicly over a temporary Cloudflare tunnel. Each tunnel is scoped to that one
-              site — your other sites and internal tools stay private. Start the services first so the tunnel
-              has something to serve.
-            </p>
+            <div className="mb-[18px] flex items-start gap-[11px] rounded-xl border border-rex-border-subtle bg-rex-surface-1 px-[15px] py-[13px]">
+              <Lightbulb
+                className="mt-px h-[17px] w-[17px] flex-none"
+                style={{ color: "var(--rex-lock-insecure)" }}
+                strokeWidth={1.7}
+              />
+              <div className="flex-1 text-[13px] leading-[1.55] text-rex-text-bright">
+                Sharing creates a <span className="font-medium text-rex-text">free, temporary public link</span>{" "}
+                through Cloudflare — anyone with the URL reaches your local site, no deploy required. Links
+                last while sharing is on and disappear when you stop.
+              </div>
+              <span className="flex-none whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-[9px] py-1 font-mono text-[10px] text-rex-text-dim">
+                via cloudflared
+              </span>
+            </div>
             {(() => {
               const shared = sites.filter((s) => byDomain.get(s.domain)?.running);
               const shareable = sites.filter((s) => !byDomain.get(s.domain)?.running);
@@ -135,39 +146,19 @@ function TunnelCard({
     idle: "border-rex-border-subtle",
   }[state];
 
+  const t = siteTypeMeta(site.type);
   return (
     <div className={cn("rounded-[13px] border bg-rex-surface-1 px-4 py-[14px] transition-colors", border)}>
       <div className="flex items-center gap-[13px]">
-        <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border border-rex-border bg-rex-surface-2 text-rex-text-muted">
-          <Globe className="h-4 w-4" strokeWidth={1.7} />
+        <div
+          className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border text-[12px] font-bold"
+          style={{ background: t.bg, color: t.color, borderColor: t.border }}
+        >
+          {site.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-semibold text-rex-text">{site.name}</div>
-          {on && tunnel ? (
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <a
-                className="truncate font-mono text-[11.5px] text-brand hover:underline"
-                onClick={(e) => {
-                  e.preventDefault();
-                  openExternal(tunnel.url);
-                }}
-                href={tunnel.url}
-                title={tunnel.url}
-              >
-                {tunnel.url.replace(/^https:\/\//, "")}
-              </a>
-              <CopyButton value={tunnel.url} />
-              <button
-                title="Open public URL"
-                onClick={() => openExternal(tunnel.url)}
-                className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            <div className="mt-0.5 font-mono text-[11px] text-rex-text-muted">{site.domain}</div>
-          )}
+          <div className="mt-0.5 font-mono text-[11px] text-rex-text-muted">{site.domain}</div>
         </div>
 
         {state === "live" && <StatusPill status="running" label="Live" />}
@@ -186,6 +177,48 @@ function TunnelCard({
           label={`${on ? "Stop" : "Start"} sharing ${site.name}`}
         />
       </div>
+
+      {on && tunnel && (
+        <>
+          <div className="mt-[13px] flex items-center gap-[9px] rounded-[10px] border border-[#1E222A] bg-[#0B0C10] py-[9px] pl-3 pr-[9px]">
+            <Cloud
+              className="h-[15px] w-[15px] flex-none"
+              style={{ color: "var(--rex-lock-insecure)" }}
+              strokeWidth={1.7}
+            />
+            <a
+              className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#9CC4E8] hover:underline"
+              onClick={(e) => {
+                e.preventDefault();
+                openExternal(tunnel.url);
+              }}
+              href={tunnel.url}
+              title={tunnel.url}
+            >
+              {tunnel.url}
+            </a>
+            <CopyButton value={tunnel.url} />
+            <button
+              title="Open public URL"
+              onClick={() => openExternal(tunnel.url)}
+              className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onToggle(false)}
+              className="flex h-7 items-center rounded-md border border-status-error-border bg-status-error-bg px-[11px] text-[11.5px] font-medium text-status-error-bright transition-[filter] hover:brightness-110"
+            >
+              Stop sharing
+            </button>
+          </div>
+          {/* TODO(backend): request count + uptime aren't tracked on TunnelInfo yet. */}
+          <div className="mt-2 flex items-center justify-between px-0.5 text-[11px] text-rex-text-dim">
+            <span>Public link active</span>
+            <span>Anyone with this link can reach your local site.</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

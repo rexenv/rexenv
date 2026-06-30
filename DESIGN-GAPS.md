@@ -419,12 +419,19 @@ Source: `design/rexenv Tunnels.dc.html`, `design/rexenv Tunnel Card.dc.html`. Fi
   green-bordered live Acme card with "Live" pill + green toggle under SHARED NOW, and idle cards under SHAREABLE
   SITES. (Avatar swap + live URL well land in §8.3.)
 
-- [ ] **8.3 (M) Live URL "well" row + meta line + per-site avatar + intro banner.**
+- [x] **8.3 (M) Live URL "well" row + meta line + per-site avatar + intro banner.**
   *Done when:* a live card has a boxed URL row (`bg #0B0C10`, cloud icon amber `#C9A24B`, mono URL `#9CC4E8`,
   Copy w/ text, open-external, explicit "Stop sharing"); a meta line "{reqs} requests · up {since}" + the
   "anyone with this link…" caption; a 34×34 per-site initial avatar (not the generic globe); the intro is a
   styled info card (lightbulb + "via cloudflared" chip). (Tunnel Card lines 15-40 · Tunnels lines 64-68 ·
   `Tunnels.tsx:46-109`.)
+  ✓ Swapped the globe for a 34×34 per-site initial avatar (`siteTypeMeta` bg/border/color + name initial). Live
+  card now renders a boxed URL "well" (`bg-[#0B0C10]` border, amber `Cloud` icon, mono `text-[#9CC4E8]` URL,
+  copy, open-external, red "Stop sharing" → `onToggle(false)`) plus a meta line ("Public link active" + the
+  "Anyone with this link can reach your local site." caption). Replaced the bare intro `<p>` with a styled
+  info card (amber `Lightbulb` + copy + "via cloudflared" chip). `pnpm tsc --noEmit` clean; chrome-devtools
+  shows the banner, A/P/B avatars, and the live well row + meta. **TODO(backend):** request-count/uptime
+  aren't tracked on `TunnelInfo`, so the meta line omits them.
 
 - [ ] **8.4 (L) Idle "Share publicly" label, Copy→Copied, header copy, toggle size.**
   *Done when:* idle toggle has a visible "Share publicly" label; copy button shows "Copy"→"Copied" (green);
