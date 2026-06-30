@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Check, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { ArrowUpCircle, Check, Download, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -327,77 +327,92 @@ function ToolsPanel({ siteId }: { siteId: string }) {
     onSuccess: (out) => setCoreOut(out),
     onError: (e) => window.alert(String(e)),
   });
+  const adminLogin = useMutation({
+    mutationFn: () => wpUserLoginUrl(siteId, 1),
+    onSuccess: (url) => openExternal(url),
+    onError: (e) => window.alert(String(e)),
+  });
+  const working = coreUpdate.isPending || coreReinstall.isPending;
+  // No backend yet for DB export / full reset — UI shells.
+  const todo = (what: string) => window.alert(`${what} isn't wired yet (UI only).`);
+  const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
 
   return (
-    <div className="flex flex-col gap-3">
-      <Card title="WP_DEBUG">
-        <div className="flex items-center justify-between">
-          <span className="text-[12.5px] text-rex-text-muted">
-            Log PHP notices/errors to <span className="font-mono">wp-content/debug.log</span>.
-          </span>
-          <button
-            role="switch"
-            aria-checked={!!wpDebug}
-            disabled={toggleDebug.isPending}
-            onClick={() => toggleDebug.mutate(!wpDebug)}
-            className={`relative h-[22px] w-[40px] rounded-full transition-colors ${
-              wpDebug ? "bg-brand" : "bg-rex-surface-3"
-            }`}
-          >
-            <span
-              className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all ${
-                wpDebug ? "left-[20px]" : "left-[2px]"
-              }`}
+    <div className="grid grid-cols-2 gap-3">
+      {/* Search & replace — spans the row */}
+      <div className="col-span-2">
+        <Card title="Search & replace">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <input
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                placeholder="old (e.g. old.test)"
+                className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+              />
+              <span className="text-rex-text-muted">→</span>
+              <input
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder="new (e.g. new.test)"
+                className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+                <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+                Dry run (report only, don't change data)
+              </label>
+              <button
+                className={BTN + " flex items-center gap-1.5"}
+                disabled={searchReplace.isPending || !from.trim() || !to.trim()}
+                onClick={() => {
+                  setSrResult(null);
+                  searchReplace.mutate();
+                }}
+              >
+                <Replace className="h-3.5 w-3.5" />
+                {dryRun ? "Preview" : "Run"}
+              </button>
+            </div>
+            {srResult && <div className="font-mono text-[12px] text-rex-text">{srResult}</div>}
+          </div>
+        </Card>
+      </div>
+
+      {/* Debugging */}
+      <Card title="Debugging">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12.5px] text-rex-text-muted">
+              Log PHP notices/errors to <span className="font-mono">wp-content/debug.log</span>.
+            </span>
+            <StartStopToggle
+              running={!!wpDebug}
+              variant="setting"
+              onToggle={() => toggleDebug.mutate(!wpDebug)}
+              label="Toggle WP_DEBUG"
             />
+          </div>
+          <button className={maintBtn} disabled={adminLogin.isPending} onClick={() => adminLogin.mutate()}>
+            <LogIn className="h-3.5 w-3.5" />
+            One-click admin login
           </button>
         </div>
       </Card>
 
-      <Card title="Search-replace">
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <input
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              placeholder="old (e.g. old.test)"
-              className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
-            />
-            <span className="text-rex-text-muted">→</span>
-            <input
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="new (e.g. new.test)"
-              className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
-              <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
-              Dry run (report only, don't change data)
-            </label>
-            <button
-              className={BTN + " flex items-center gap-1.5"}
-              disabled={searchReplace.isPending || !from.trim() || !to.trim()}
-              onClick={() => {
-                setSrResult(null);
-                searchReplace.mutate();
-              }}
-            >
-              <Replace className="h-3.5 w-3.5" />
-              {dryRun ? "Preview" : "Run"}
-            </button>
-          </div>
-          {srResult && <div className="font-mono text-[12px] text-rex-text">{srResult}</div>}
-        </div>
-      </Card>
-
+      {/* Maintenance */}
       <Card title="Maintenance">
-        <div className="flex flex-wrap items-center gap-2">
-          <button className={BTN} disabled={flush.isPending} onClick={() => flush.mutate()}>
+        <div className="flex flex-col gap-2">
+          <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
             Regenerate permalinks
           </button>
+          <button className={maintBtn} onClick={() => todo("Database export")}>
+            <Download className="h-3.5 w-3.5" />
+            Export database
+          </button>
           <button
-            className={BTN + " flex items-center gap-1.5"}
+            className={maintBtn}
             disabled={coreUpdate.isPending}
             onClick={() => {
               setCoreOut(null);
@@ -408,7 +423,7 @@ function ToolsPanel({ siteId }: { siteId: string }) {
             Update core
           </button>
           <button
-            className={BTN}
+            className={maintBtn}
             disabled={coreReinstall.isPending}
             onClick={() => {
               if (window.confirm("Re-download WordPress core files (current version)?")) {
@@ -419,9 +434,17 @@ function ToolsPanel({ siteId }: { siteId: string }) {
           >
             Re-install core
           </button>
-          {(coreUpdate.isPending || coreReinstall.isPending) && (
-            <span className="text-[12px] text-rex-text-muted">Working…</span>
-          )}
+          <button
+            className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
+            onClick={() => {
+              if (window.confirm("Reset this site to a clean WordPress install? This erases its content."))
+                todo("Reset site");
+            }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset site to a clean install
+          </button>
+          {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
         </div>
         {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
       </Card>

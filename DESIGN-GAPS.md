@@ -614,11 +614,16 @@ Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpre
   one shared component.) `pnpm tsc --noEmit` clean; chrome-devtools shows the green-ON Active rows + gray-OFF
   Inactive row.
 
-- [ ] **11.3 (H) Tools — Maintenance actions + one-click admin login + 2-col grid.**
+- [x] **11.3 (H) Tools — Maintenance actions + one-click admin login + 2-col grid.**
   *Done when:* Maintenance lists Regenerate permalinks · **Export database** · danger **Reset site to a clean
   install**; the Debugging card gains a "One-click admin login" button; Tools laid out as a 2-col grid
   (Search & replace spans top, Debugging | Maintenance below). Keep Update/Re-install core (real features) —
   fold them in rather than dropping. (lines 218-258 · `WordPressManager.tsx:329-426`.)
+  ✓ Rebuilt `ToolsPanel` as `grid-cols-2`: Search & replace spans both columns; Debugging (left) = WP_DEBUG
+  `StartStopToggle` + "One-click admin login" (real, `wpUserLoginUrl(1)`); Maintenance (right) = Regenerate
+  permalinks · Export database · Update core · Re-install core · red "Reset site to a clean install". Export-DB
+  + Reset are UI shells (TODO — no backend); permalinks/core update/reinstall + admin login are wired. `pnpm
+  tsc --noEmit` clean; chrome-devtools shows the 2-col grid with all actions + the danger Reset button.
 
 - [ ] **11.4 (M) Sub-tab bar: counts + order + content-width pills.**
   *Done when:* tabs read `Plugins {n} · Themes {n} · Users {n} · Tools · Network {n}` (Network LAST, mono
