@@ -308,9 +308,13 @@ Source: `design/rexenv Services.dc.html`, `design/rexenv Service Row.dc.html`. F
   action types. **Notes:** per-service toggle is a documented no-op — needs a backend `start_service`/`stop_service`
   command (only whole-stack exists, §5.4); web "Logs" omitted (no global service-log route yet).
 
-- [ ] **5.4 (H) Global Start all / Stop all in header.**
+- [x] **5.4 (H) Global Start all / Stop all in header.**
   *Done when:* the header has the primary button toggling Start all (violet, play) / Stop all (surface,
   stop). (Services lines 56-60 · `Services.tsx:62-68`.)
+  ✓ Added a header `action` button (same `isStart = running === 0` rule as the StatusFooter §2.1): primary
+  "▶ Start all" only when nothing runs, else secondary "■ Stop all", wired to `startServices`/`stopServices`
+  (invalidates `["services"]`). Subtitle now "{n} of {m} running". `pnpm tsc --noEmit` clean; chrome-devtools
+  shows "■ Stop all" secondary (4/7 running).
 
 - [ ] **5.5 (M) Row sub-line = version; meters stacked; "Idle" label.**
   *Done when:* sub-line shows the version (own port column), not `host:port · pid`; the two mini-meters stack
