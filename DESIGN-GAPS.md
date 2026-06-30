@@ -460,10 +460,15 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
   placeholders (filled in §9.2/§9.3). `pnpm tsc --noEmit` clean; chrome-devtools confirms the active-state +
   crumb + content swap (General↔Services).
 
-- [ ] **9.2 (H) Updates section.**
+- [x] **9.2 (H) Updates section.** (static shell — the updater backend is `[D]` per TASKS-RELEASE §6.1)
   *Done when:* app medallion + "rexenv x.y.z" + status line, Check-for-updates button, "version N available"
   amber banner + Install & restart, and an "Install updates automatically" toggle. (Mark `[D]` if the updater
   itself stays deferred per §6.1 of TASKS-RELEASE — but build the static UI shell.) (lines 129-145.)
+  ✓ New `UpdatesSetting`: a `CrownBadge` medallion + "rexenv 0.1.0" + status line + "Check again" button (local
+  spinner state); an amber "Version 0.2.0 is available" banner (`status-warning` tint) with "Install & restart";
+  and an "Install updates automatically" `StartStopToggle` (violet `setting`). All actions are UI-only — the
+  real Tauri updater is deferred; the Install/auto buttons surface a clear "deferred" note. `pnpm tsc --noEmit`
+  clean; chrome-devtools shows the medallion, banner, and toggle.
 
 - [ ] **9.3 (H) About section.**
   *Done when:* centered crown medallion + "rexenv" (Space Grotesk 22px) + mono build line (version · macOS ·

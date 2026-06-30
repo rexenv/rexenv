@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, RefreshCw, Server, Settings as SettingsIcon, Shield, type LucideIcon } from "lucide-react";
+import { ArrowUp, Info, RefreshCw, Server, Settings as SettingsIcon, Shield, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   autostartStatus,
   deleteBlueprint,
@@ -458,6 +459,119 @@ function UninstallSetting() {
   );
 }
 
+const APP_VERSION = "0.1.0";
+const NEXT_VERSION = "0.2.0";
+
+/** The violet crown medallion (reused by Updates + About). */
+function CrownBadge({ size }: { size: number }) {
+  return (
+    <div
+      className="flex flex-none items-center justify-center rounded-xl border border-[var(--rex-crown-border)] bg-gradient-to-br from-[#20232C] to-[#13151B] shadow-glow-crown"
+      style={{ width: size, height: size }}
+    >
+      <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" className="block">
+        <path
+          d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
+          fill="#7C5CFF"
+          stroke="#7C5CFF"
+          strokeWidth="1.1"
+          strokeLinejoin="round"
+        />
+        <circle cx="3" cy="8.4" r="1.4" fill="#B9A6FF" />
+        <circle cx="12" cy="5" r="1.6" fill="#C9BCFF" />
+        <circle cx="21" cy="8.4" r="1.4" fill="#B9A6FF" />
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * The Updates section — static shell. The real updater (Tauri updater) is
+ * deferred (TASKS-RELEASE §6.1); the actions here are UI-only for now.
+ */
+function UpdatesSetting() {
+  const [checking, setChecking] = useState(false);
+  const [autoUpdate, setAutoUpdate] = useState(false);
+  const deferred = () =>
+    window.alert("Auto-update isn't wired yet — the Tauri updater is deferred (TASKS-RELEASE §6.1).");
+
+  return (
+    <>
+      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
+        <div className="flex items-center gap-[14px]">
+          <CrownBadge size={44} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-semibold text-rex-text">
+              rexenv <span className="font-mono font-medium">{APP_VERSION}</span>
+            </div>
+            <div className="mt-0.5 text-[12.5px] text-rex-text-muted">
+              {checking
+                ? "Checking for updates…"
+                : UPDATE_READY
+                  ? "An update is ready to install."
+                  : "You're on the latest version."}
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setChecking(true);
+              setTimeout(() => setChecking(false), 1200);
+            }}
+            disabled={checking}
+            className="flex h-9 items-center gap-2 rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[15px] text-[13px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
+          >
+            {checking && (
+              <span className="h-3 w-3 rounded-full border-2 border-rex-text-muted/40 border-t-rex-text-bright animate-rex-spin motion-reduce:animate-none" />
+            )}
+            {checking ? "Checking…" : "Check again"}
+          </button>
+        </div>
+        {UPDATE_READY && (
+          <div className="mt-4 flex items-center gap-[11px] rounded-[11px] border border-status-warning-border bg-status-warning-bg px-[14px] py-[13px]">
+            <ArrowUp className="h-[17px] w-[17px] flex-none text-status-warning-bright" strokeWidth={2} />
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium text-rex-text">
+                Version {NEXT_VERSION} is available
+              </div>
+              <div className="mt-px text-[11.5px] text-rex-text-muted">
+                Faster service start, PostgreSQL 16, and bug fixes.
+              </div>
+            </div>
+            <button
+              onClick={deferred}
+              className="h-8 flex-none rounded-lg bg-primary px-[14px] text-[12.5px] font-medium text-white shadow-glow-primary transition-[filter] hover:brightness-110"
+            >
+              Install &amp; restart
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+        <div className="flex items-center gap-[14px] py-[15px]">
+          <div className="flex-1">
+            <div className="text-[13.5px] font-medium text-rex-text">
+              Install updates automatically
+            </div>
+            <div className="mt-0.5 text-[12px] text-rex-text-muted">
+              Download and apply new versions in the background.
+            </div>
+          </div>
+          <StartStopToggle
+            running={autoUpdate}
+            variant="setting"
+            onToggle={() => {
+              setAutoUpdate((v) => !v);
+              deferred();
+            }}
+            label="Install updates automatically"
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 type Section = "general" | "dns" | "services" | "updates" | "about";
 
 const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
@@ -537,9 +651,7 @@ export function Settings() {
                 </Card>
               </>
             )}
-            {section === "updates" && (
-              <div className="text-[12.5px] text-rex-text-muted">Updates — §9.2.</div>
-            )}
+            {section === "updates" && <UpdatesSetting />}
             {section === "about" && (
               <div className="text-[12.5px] text-rex-text-muted">About — §9.3.</div>
             )}
