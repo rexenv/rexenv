@@ -664,9 +664,15 @@ Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpre
 
 Source: `design/rexenv New Site Flow.dc.html`. File: `src/components/sites/NewSiteDialog.tsx`.
 
-- [ ] **12.1 (H) Two-step wizard: Type → Configure.**
+- [x] **12.1 (H) Two-step wizard: Type → Configure.**
   *Done when:* a 2-step modal with a `1 Type → 2 Configure` indicator and Back / Continue / Create-site
   footer nav, replacing the single flat form. (lines 44-48, 192-205 · `NewSiteDialog.tsx:113-272`.)
+  ✓ Rebuilt `NewSiteDialog` as a `step` (1|2) wizard (516px modal): header with subtitle ("Choose what to build"
+  / "Configure your site") + a `StepDot` indicator (1 Type — 2 Configure); step 1 = `TypeCardButton`s, step 2 =
+  the config `Step2` (blueprint + name/domain + php/server grids + WP-install section). Footer = Back (step 2) ·
+  Cancel · Continue (step 1) / Create site (step 2). `pnpm tsc --noEmit` clean; chrome-devtools verified the
+  Type→Configure flow with the indicator + Back/Continue/Create nav. (Database/multisite/site-title/password +
+  Laravel land in §12.2–§12.5.)
 
 - [ ] **12.2 (H) Step 1 — type cards (Blank PHP / WordPress / Laravel).**
   *Done when:* three clickable type cards (icon + title + description + radio-check, glow on select) replace
