@@ -21,6 +21,13 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Per-type avatar: letter + accent (WordPress blue / Laravel red / Blank-PHP purple).
+const TYPE_META: Record<string, { letter: string; bg: string; color: string; border: string }> = {
+  wordpress: { letter: "W", bg: "rgba(74,134,170,0.15)", color: "#7DB8D8", border: "rgba(74,134,170,0.30)" },
+  laravel: { letter: "L", bg: "rgba(224,82,77,0.13)", color: "#EE837C", border: "rgba(224,82,77,0.27)" },
+  php: { letter: "P", bg: "rgba(125,128,185,0.17)", color: "#A7AADD", border: "rgba(125,128,185,0.32)" },
+};
+
 type Filter = "all" | "running" | "stopped";
 type Sort = "name" | "status" | "recent";
 
@@ -98,10 +105,14 @@ function SiteRow({
   onOpenDatabase: () => void;
 }) {
   const running = site.status === "running";
+  const t = TYPE_META[site.type] ?? TYPE_META.php;
   return (
     <div className="group flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5 transition-colors hover:bg-white/[0.02]">
-      <div className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-rex-border bg-rex-surface-2 text-rex-text-muted">
-        <Globe className="h-4 w-4" strokeWidth={1.7} />
+      <div
+        className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border text-[11px] font-bold"
+        style={{ background: t.bg, color: t.color, borderColor: t.border }}
+      >
+        {t.letter}
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13.5px] font-semibold text-rex-text">
@@ -266,6 +277,11 @@ export function Sites() {
       {!isLoading && sites.length > 0 && (
         <div className="flex flex-none items-center justify-between px-[22px] pb-[9px] pt-[14px]">
           <FilterTabs value={filter} onChange={setFilter} counts={counts} />
+          <div className="flex items-center gap-[18px] pr-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
+            <span className="w-[118px]">Stack</span>
+            <span className="w-[88px]">Status</span>
+            <span>Power</span>
+          </div>
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]">

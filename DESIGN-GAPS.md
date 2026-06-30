@@ -174,11 +174,16 @@ Source: `design/rexenv Sites Screen.dc.html`. File: `src/routes/Sites.tsx` (+ `T
   standalone Trash2 row button. Rename/Duplicate/Open-in-editor have no backend yet (shell). `pnpm tsc
   --noEmit` clean; chrome-devtools shows the menu open un-clipped with all items + red Delete.
 
-- [ ] **3.3 (H) Type avatar (W/L/P) + column-header strip.**
+- [x] **3.3 (H) Type avatar (W/L/P) + column-header strip.**
   *Done when:* each row leads with a 26×26 rounded badge showing the type letter on a per-type color
   (W blue `#7DB8D8`, L red `#EE837C`, P purple `#A7AADD`) instead of the generic globe; add the mono
   uppercase column-header strip (Stack 118px / Status 88px / Power). (lines 116-118, 125, 384-388 ·
   `Sites.tsx:38-40`.)
+  ✓ Added `TYPE_META` (wordpress→W blue, laravel→L red, php→P purple — letter/bg/color/border per the comp's
+  typeMap) and replaced the globe with a 26×26 `rounded-[7px]` letter avatar (`text-[11px] font-bold`). Added
+  the `Stack 118 / Status 88 / Power` mono-uppercase header strip (`text-[var(--rex-placeholder)]`) to the
+  right of the filter sub-row. `pnpm tsc --noEmit` clean; chrome-devtools shows W/W/L avatars + the header
+  strip (column pixel-alignment refines in §3.5 with fixed widths).
 
 - [ ] **3.4 (M) Row action placement + SSL indicator + empty state.**
   *Done when:* Open-in-browser / Open-folder / Open-database reveal on hover on the LEFT (right of the name),
