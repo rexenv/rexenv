@@ -133,10 +133,14 @@ Source: `design/rexenv App Shell.dc.html`. Files: `src/components/shell/StatusFo
   (`motion-reduce:animate-none`). `pnpm tsc --noEmit` clean; chrome-devtools (mock = partial 3/12) now shows
   "■ Stop all" secondary (was violet "▶ Start all").
 
-- [ ] **2.2 (L) Sidebar — Tunnels live-pulse dot + Services/Settings icons.**
+- [x] **2.2 (L) Sidebar — Tunnels live-pulse dot + Services/Settings icons.**
   *Done when:* the Tunnels nav count is preceded by a green pulsing dot when a tunnel is active; Services
   icon → server-rack rects, Settings icon → sliders (comp uses these, impl uses `Layers`/`Settings` gear).
   (App Shell lines 50, 55, 58 · `nav.ts:24,27,28`, `Sidebar.tsx:50-54`.)
+  ✓ `nav.ts`: Services `Layers → Server`, Settings `Settings → SlidersHorizontal`; added `activeDot?: boolean`
+  to `NavItem`, set on Tunnels (mock — real wiring lands in §8). `Sidebar` badge now renders a 6px
+  `bg-status-running` ping dot (`motion-reduce:animate-none`) before the count when `activeDot`. `pnpm tsc
+  --noEmit` clean; chrome-devtools shows the server-rack + sliders icons and the green pulse before Tunnels "1".
 
 ---
 

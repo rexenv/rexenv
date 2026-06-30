@@ -48,8 +48,16 @@ function NavButton({ item }: { item: NavItem }) {
           <Icon className="h-[17px] w-[17px] flex-none" strokeWidth={1.7} />
           <span className="flex-1">{item.label}</span>
           {item.badge && (
-            <span className="font-mono text-[10.5px] text-rex-text-faint">
-              {item.badge}
+            <span className="inline-flex items-center gap-[5px]">
+              {item.activeDot && (
+                <span className="relative inline-flex h-1.5 w-1.5">
+                  <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />
+                  <span className="relative h-1.5 w-1.5 rounded-full bg-status-running" />
+                </span>
+              )}
+              <span className="font-mono text-[10.5px] text-rex-text-faint">
+                {item.badge}
+              </span>
             </span>
           )}
         </>
