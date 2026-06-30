@@ -4,10 +4,30 @@ import { cn } from "@/lib/utils";
 import { startServices, stopServices } from "@/lib/ipc";
 import type { GlobalStatus } from "@/types";
 
+// Per-summary visuals. `accent` is the translucent top strip; `glow` is the
+// dot's box-shadow; `labelClass` dims the label when everything is stopped.
 const SUMMARY_META = {
-  all: { label: "All running", dot: "#3FB950", accent: "#3FB950" },
-  partial: { label: "Partial", dot: "#D29922", accent: "#D29922" },
-  stopped: { label: "Stopped", dot: "#6E7681", accent: "#6E7681" },
+  all: {
+    label: "All running",
+    dot: "#3FB950",
+    accent: "rgba(63,185,80,.5)",
+    glow: "var(--rex-glow-run)",
+    labelClass: "text-rex-text",
+  },
+  partial: {
+    label: "Partial",
+    dot: "#D29922",
+    accent: "rgba(210,153,34,.55)",
+    glow: "0 0 6px rgba(210,153,34,.55)",
+    labelClass: "text-rex-text",
+  },
+  stopped: {
+    label: "Stopped",
+    dot: "#6E7681",
+    accent: "rgba(110,118,129,.4)",
+    glow: "none",
+    labelClass: "text-rex-text-muted",
+  },
 } as const;
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
@@ -31,11 +51,14 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
 
 export function StatusFooter({ status }: { status: GlobalStatus }) {
   const meta = SUMMARY_META[status.summary];
-  const allRunning = status.summary === "all";
+  // Design rule: only "Start all" (primary) when nothing runs; any running
+  // service ⇒ "Stop all" (secondary). The dot pulses only when something runs.
+  const isStart = status.running === 0;
+  const pulsing = status.running > 0;
 
   const qc = useQueryClient();
   const toggleAll = useMutation({
-    mutationFn: () => (allRunning ? stopServices() : startServices()),
+    mutationFn: () => (isStart ? startServices() : stopServices()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["services"] });
       qc.invalidateQueries({ queryKey: ["global-status"] });
@@ -53,16 +76,18 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="relative inline-flex h-[9px] w-[9px]">
-                <span
-                  className="absolute inset-0 rounded-full opacity-50 animate-rex-ping"
-                  style={{ background: meta.dot }}
-                />
+                {pulsing && (
+                  <span
+                    className="absolute inset-0 rounded-full opacity-50 animate-rex-ping motion-reduce:animate-none"
+                    style={{ background: meta.dot }}
+                  />
+                )}
                 <span
                   className="relative h-[9px] w-[9px] rounded-full"
-                  style={{ background: meta.dot }}
+                  style={{ background: meta.dot, boxShadow: meta.glow }}
                 />
               </span>
-              <span className="text-[12.5px] font-semibold text-rex-text">
+              <span className={cn("text-[12.5px] font-semibold", meta.labelClass)}>
                 {meta.label}
               </span>
             </div>
@@ -84,19 +109,19 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
             onClick={() => toggleAll.mutate()}
             disabled={toggleAll.isPending}
             className={cn(
-              "flex h-[34px] w-full items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
-              allRunning
-                ? "border border-rex-border bg-rex-surface-3 text-rex-text"
-                : "bg-primary text-white shadow-glow-primary",
+              "flex h-[34px] w-full items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
+              isStart
+                ? "bg-primary text-white shadow-glow-primary"
+                : "border border-rex-border-strong bg-rex-surface-2 text-rex-text-bright",
             )}
           >
-            {allRunning ? (
+            {isStart ? (
               <>
-                <Square className="h-3 w-3 fill-current" /> Stop all
+                <Play className="h-3 w-3 fill-current" /> Start all
               </>
             ) : (
               <>
-                <Play className="h-3 w-3 fill-current" /> Start all
+                <Square className="h-3 w-3 fill-current" /> Stop all
               </>
             )}
           </button>

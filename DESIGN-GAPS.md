@@ -121,11 +121,17 @@ Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/compo
 Source: `design/rexenv App Shell.dc.html`. Files: `src/components/shell/StatusFooter.tsx`,
 `Sidebar.tsx`, `nav.ts`.
 
-- [ ] **2.1 (M) StatusFooter — global toggle logic + Stop-all styling.**
+- [x] **2.1 (M) StatusFooter — global toggle logic + Stop-all styling.**
   *Done when:* the toggle keys off `running === 0` (not `summary === "all"`): in **partial** state it shows
   **"Stop all"** with the *secondary* style (`bg #1C1F27 / border #2E323C / text #C7CBD4`), not "Start all"
   primary. Accent strip uses the translucent variants; stopped label `#8A90A0`; dot pulse only when
   `running > 0`. (App Shell lines 154, 261, 293-299 · `StatusFooter.tsx:34,51,88-91`.)
+  ✓ Replaced `allRunning` with `isStart = status.running === 0`: button is primary "Start all" only when
+  nothing runs, else secondary "Stop all" (`bg-rex-surface-2 border-rex-border-strong text-rex-text-bright` +
+  Square icon). `SUMMARY_META` gained translucent `accent` (strip), `glow` (dot box-shadow: run-glow / amber /
+  none), and `labelClass` (stopped → `text-rex-text-muted`). Dot pulse now gated on `running > 0`
+  (`motion-reduce:animate-none`). `pnpm tsc --noEmit` clean; chrome-devtools (mock = partial 3/12) now shows
+  "■ Stop all" secondary (was violet "▶ Start all").
 
 - [ ] **2.2 (L) Sidebar — Tunnels live-pulse dot + Services/Settings icons.**
   *Done when:* the Tunnels nav count is preceded by a green pulsing dot when a tunnel is active; Services
