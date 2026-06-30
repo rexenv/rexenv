@@ -86,7 +86,7 @@ export function Onboarding() {
 
 function CrownHero() {
   return (
-    <div className="relative mb-[26px] flex h-[88px] w-[88px] items-center justify-center rounded-[24px] border border-[#34304E] bg-gradient-to-br from-[#23263180] to-[#13151Bc0] shadow-[0_16px_44px_rgba(124,92,255,.34)]">
+    <div className="relative mb-[26px] flex h-[88px] w-[88px] animate-rex-float items-center justify-center rounded-[24px] border border-[#34304E] bg-gradient-to-br from-[#23263180] to-[#13151Bc0] shadow-[0_16px_44px_rgba(124,92,255,.34)] motion-reduce:animate-none">
       <div
         className="pointer-events-none absolute -inset-[14px] rounded-full blur-[8px]"
         style={{ background: "radial-gradient(circle,rgba(124,92,255,.4),transparent 68%)" }}

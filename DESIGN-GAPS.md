@@ -575,10 +575,14 @@ Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (c
   The footer's last-step primary "Create your first site" (no chevron) navigates to `/sites`. `pnpm tsc --noEmit`
   clean; chrome-devtools verified the medallion, 34px heading, chips, and all-4 progress dots.
 
-- [ ] **10.5 (M) Welcome hero typography.**
+- [x] **10.5 (M) Welcome hero typography.**
   *Done when:* crown medallion 88px (radius 24) w/ float + aura; wordmark "rexenv" Space Grotesk **54px**
   (currently 32px `font-display`); tagline Space Grotesk 19px `#C7CBD4` (currently UI font) + the third
   description line. (lines 52-63 · `Onboarding.tsx:11-30`.)
+  ✓ Built with the wizard (§10.1): `CrownHero` is 88px `rounded-[24px]` with the radial aura; wordmark is
+  `font-display` 54px with the violet text-shadow; tagline is `font-display` 19px `text-rex-text-bright`
+  (`#C7CBD4`) + the third description line. Added the crown **float** (`rex-float` 4s, `motion-reduce`-aware).
+  `pnpm tsc --noEmit` clean; typography verified in the §10.1 Welcome screenshot.
 
 - [ ] **10.6 (L) Crown gems + background treatment.**
   *Done when:* three gem circles on the crown; radial violet backdrop + dotted texture + animated top aura.

@@ -130,11 +130,21 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.4" },
         },
+        "rex-float": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-8px)" },
+        },
+        "rex-aura": {
+          "0%, 100%": { opacity: "0.7", transform: "translateX(-50%) scale(1)" },
+          "50%": { opacity: "1", transform: "translateX(-50%) scale(1.08)" },
+        },
       },
       animation: {
         "rex-ping": "rex-ping 2.4s ease-out infinite",
         "rex-spin": "rex-spin 0.9s linear infinite",
         "rex-err": "rex-err 1.8s ease-in-out infinite",
+        "rex-float": "rex-float 4s ease-in-out infinite",
+        "rex-aura": "rex-aura 6s ease-in-out infinite",
       },
     },
   },
