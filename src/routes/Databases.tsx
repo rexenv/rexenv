@@ -71,7 +71,12 @@ function DbRow({
         value={db.ramMb >= 1024 ? `${(db.ramMb / 1024).toFixed(1)} GB` : `${db.ramMb} MB`}
         pct={(db.ramMb / 1024) * 100}
       />
-      <StartStopToggle running={db.running} busy={busy} onToggle={onToggle} />
+      <StartStopToggle
+        running={db.running}
+        busy={busy}
+        onToggle={onToggle}
+        label={`${db.running ? "Stop" : "Start"} ${db.label}`}
+      />
     </div>
   );
 }

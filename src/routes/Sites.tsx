@@ -48,7 +48,12 @@ function SiteRow({
       <Badge>PHP {site.phpVersion}</Badge>
       <Badge>{site.webServer}</Badge>
       <StatusPill status={site.status} />
-      <StartStopToggle running={running} busy={busy} onToggle={onToggle} />
+      <StartStopToggle
+        running={running}
+        busy={busy}
+        onToggle={onToggle}
+        label={`${running ? "Stop" : "Start"} ${site.name}`}
+      />
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <Button variant="ghost" size="icon" aria-label="Open in browser">
           <Globe className="h-4 w-4" />

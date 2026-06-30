@@ -73,12 +73,19 @@ Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/compo
   `hover:text-rex-text-bright` (`#C7CBD4`). Left bar `bg-brand` unchanged. `pnpm tsc --noEmit` clean;
   chrome-devtools shows the active Services item violet-tinted (bg + text + icon), inactive items muted.
 
-- [ ] **1.4 (M) StartStopToggle — correct size, colors, + violet "setting" variant.**
+- [x] **1.4 (M) StartStopToggle — correct size, colors, + violet "setting" variant.**
   *Done when:* track `46×27px`, knob `21px`; ON (status) `bg #238636 / border #2EA043 + glowRun`; OFF
   `bg #262A33 / border #30343E`, knob `#C7CBD4`. Add a `variant="setting"` (ON `bg #7C5CFF`) for non-status
   toggles (autostart, multisite, etc.) — "running uses green; settings use violet". Fix the hardcoded
   `aria-label` "Start/Stop site" so service/DB/tunnel callers pass their own. (Component Sheet lines 241-261
   · `StartStopToggle.tsx:18-31`.)
+  ✓ Added `--rex-toggle-{on,on-border,off,off-border}` tokens + `colors.toggle` in tailwind. Rewrote the
+  toggle: `h-[27px] w-[46px]`, 21px knob (`translate-x-[19px]` on), ON status = `bg-toggle-on
+  border-toggle-on-border shadow-glow-run`, OFF = `bg-toggle-off border-toggle-off-border` + `bg-rex-text-bright`
+  knob (`#C7CBD4`), focus-ring via `--rex-focus-ring`, knob/track transitions per spec. New `variant="setting"`
+  (ON `bg-brand border-brand-light shadow-glow-primary`) and a `label` prop drives the aria-label; Sites passes
+  `"{Start|Stop} {site.name}"`, Databases `"… {db.label}"`. `pnpm tsc --noEmit` clean; chrome-devtools
+  `/databases` shows the larger green-ON / dark-OFF tracks at design proportions.
 
 - [ ] **1.5 (M) Button — danger red + secondary border/hover + glow-primary.**
   *Done when:* danger uses `#DA3633` (hover `#E5484D`, pressed `#B92D2B`) — a new token, distinct from

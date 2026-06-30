@@ -1,33 +1,45 @@
 import { cn } from "@/lib/utils";
 
-/** A start/stop switch — green when running. Drives the backend on toggle. */
+/**
+ * A pill switch. `status` (default) uses green for the ON state (running);
+ * `setting` uses violet for non-status settings (autostart, multisite, …).
+ * Pass `label` so the aria-label names what's being toggled.
+ */
 export function StartStopToggle({
   running,
   busy,
   onToggle,
+  variant = "status",
+  label,
 }: {
   running: boolean;
   busy?: boolean;
   onToggle: () => void;
+  variant?: "status" | "setting";
+  label?: string;
 }) {
+  const onTrack =
+    variant === "setting"
+      ? "bg-brand border-brand-light shadow-glow-primary"
+      : "bg-toggle-on border-toggle-on-border shadow-glow-run";
   return (
     <button
       type="button"
       role="switch"
       aria-checked={running}
-      aria-label={running ? "Stop site" : "Start site"}
+      aria-label={label ?? (running ? "Turn off" : "Turn on")}
       disabled={busy}
       onClick={onToggle}
       className={cn(
-        "relative h-5 w-9 flex-none rounded-full transition-colors focus-visible:outline-none",
-        running ? "bg-status-running" : "bg-rex-surface-3 border border-rex-border",
-        busy && "opacity-50",
+        "relative h-[27px] w-[46px] flex-none rounded-full border transition-[background-color,border-color] duration-200 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--rex-focus-ring)]",
+        running ? onTrack : "bg-toggle-off border-toggle-off-border",
+        busy && "opacity-40",
       )}
     >
       <span
         className={cn(
-          "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white shadow transition-all",
-          running ? "left-[18px]" : "left-[3px]",
+          "absolute left-[2px] top-[2px] h-[21px] w-[21px] rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.5)] transition-transform duration-200 ease-[cubic-bezier(.4,0,.2,1)]",
+          running ? "translate-x-[19px] bg-white" : "bg-rex-text-bright",
         )}
       />
     </button>

@@ -55,6 +55,12 @@
   --rex-error-bg: rgba(248, 81, 73, 0.12);
   --rex-error-border: rgba(248, 81, 73, 0.24);
 
+  /* toggle / switch tracks (ON green is the GitHub-style track, darker than running) */
+  --rex-toggle-on: #238636;
+  --rex-toggle-on-border: #2ea043;
+  --rex-toggle-off: #262a33;
+  --rex-toggle-off-border: #30343e;
+
   /* ── macOS traffic lights ── */
   --rex-mac-close: #ff5f57;
   --rex-mac-min: #febc2e;

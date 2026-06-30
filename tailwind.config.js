@@ -48,6 +48,12 @@ export default {
           "error-bg": "var(--rex-error-bg)",
           "error-border": "var(--rex-error-border)",
         },
+        toggle: {
+          on: "var(--rex-toggle-on)",
+          "on-border": "var(--rex-toggle-on-border)",
+          off: "var(--rex-toggle-off)",
+          "off-border": "var(--rex-toggle-off-border)",
+        },
         // shadcn/ui semantic tokens
         background: "var(--background)",
         foreground: "var(--foreground)",
