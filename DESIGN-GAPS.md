@@ -185,12 +185,19 @@ Source: `design/rexenv Sites Screen.dc.html`. File: `src/routes/Sites.tsx` (+ `T
   right of the filter sub-row. `pnpm tsc --noEmit` clean; chrome-devtools shows W/W/L avatars + the header
   strip (column pixel-alignment refines in §3.5 with fixed widths).
 
-- [ ] **3.4 (M) Row action placement + SSL indicator + empty state.**
+- [x] **3.4 (M) Row action placement + SSL indicator + empty state.**
   *Done when:* Open-in-browser / Open-folder / Open-database reveal on hover on the LEFT (right of the name),
   status/php/server/toggle/kebab stay right; SSL shows closed-lock gray `#7E8492` when secure, **open-lock
   amber `#C99A3A` when not** (today: lock only when ssl, colored green); empty state = violet-gradient crown,
   copy "Point rexenv at a folder…", button "Create your first site". (lines 130-139, 171-180 ·
   `Sites.tsx:37-81, 138-150`.)
+  ✓ Moved the three hover quick-actions to right of the name (name block now `w-[188px] flex-none`, actions,
+  then a `flex-1` spacer) so status/php/server/toggle/kebab stay right. SSL indicator: `Lock` gray
+  (`--rex-lock-secure #7e8492`) when ssl, `LockOpen` amber (`--rex-lock-insecure #c99a3a`) when not, with
+  `SSL · trusted` / `No SSL` title. Rebuilt the zero-sites empty state: 60×60 violet-gradient crown medallion
+  (`shadow-glow-crown`, 3 gems), "No sites yet" (19px), the "Point rexenv at a folder…" copy, and a `size="lg"`
+  "Create your first site" button. `pnpm tsc --noEmit` clean; chrome-devtools verified hover-left actions, the
+  amber open-lock (temp ssl:false), and the crown empty state (temp empty query) — both temps reverted.
 
 - [ ] **3.5 (L) Row container + badge sizing + PHP label.**
   *Done when:* rows are standalone 44px rounded elements (radius 9px, hover fill `#15171D`, no dividers),

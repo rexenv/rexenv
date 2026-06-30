@@ -31,6 +31,8 @@
   --rex-text-label: #525a68; /* mono section labels */
   --rex-placeholder: #4f5663; /* unbuilt-screen placeholder icon/label */
   --rex-placeholder-hint: #5a6170; /* unbuilt-screen placeholder hint */
+  --rex-lock-secure: #7e8492; /* SSL: trusted (closed lock, neutral) */
+  --rex-lock-insecure: #c99a3a; /* SSL: none (open lock, amber) */
 
   /* ── Brand (royal violet — used sparingly) ── */
   --rex-brand: #7c5cff;

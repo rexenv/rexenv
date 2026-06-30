@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, Lock, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
+import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
@@ -114,23 +114,15 @@ function SiteRow({
       >
         {t.letter}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="flex w-[188px] flex-none flex-col gap-px">
         <div className="truncate text-[13.5px] font-semibold text-rex-text">
           {site.name}
         </div>
-        <div className="font-mono text-[11px] text-rex-text-dim">{site.domain}</div>
+        <div className="truncate font-mono text-[11px] text-rex-text-muted">
+          {site.domain}
+        </div>
       </div>
-      {site.ssl && <Lock className="h-3.5 w-3.5 text-status-running" strokeWidth={2} />}
-      <Badge>PHP {site.phpVersion}</Badge>
-      <Badge>{site.webServer}</Badge>
-      <StatusPill status={site.status} />
-      <StartStopToggle
-        running={running}
-        busy={busy}
-        onToggle={onToggle}
-        label={`${running ? "Stop" : "Start"} ${site.name}`}
-      />
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="ml-1 flex items-center gap-px opacity-0 transition-opacity group-hover:opacity-100">
         <Button variant="ghost" size="icon" aria-label="Open in browser">
           <Globe className="h-4 w-4" />
         </Button>
@@ -148,6 +140,27 @@ function SiteRow({
           <Database className="h-4 w-4" />
         </Button>
       </div>
+      <div className="flex-1" />
+      <span
+        title={site.ssl ? "SSL · trusted" : "No SSL"}
+        className="flex flex-none items-center"
+        style={{ color: site.ssl ? "var(--rex-lock-secure)" : "var(--rex-lock-insecure)" }}
+      >
+        {site.ssl ? (
+          <Lock className="h-3.5 w-3.5" strokeWidth={1.8} />
+        ) : (
+          <LockOpen className="h-3.5 w-3.5" strokeWidth={1.8} />
+        )}
+      </span>
+      <Badge>PHP {site.phpVersion}</Badge>
+      <Badge>{site.webServer}</Badge>
+      <StatusPill status={site.status} />
+      <StartStopToggle
+        running={running}
+        busy={busy}
+        onToggle={onToggle}
+        label={`${running ? "Stop" : "Start"} ${site.name}`}
+      />
       <Menu
         trigger={
           <button
@@ -292,17 +305,32 @@ export function Sites() {
             hint="Reading your local sites"
           />
         ) : sites.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 rounded-xl border border-rex-border bg-rex-surface-1 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-rex-border bg-rex-surface-2 text-rex-text-muted">
-              <Globe className="h-6 w-6" strokeWidth={1.6} />
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
+            <div className="flex h-[60px] w-[60px] items-center justify-center rounded-2xl border border-[#2A2E39] bg-gradient-to-br from-[#1C2029] to-[#14161C] shadow-glow-crown">
+              <svg width="28" height="28" viewBox="0 0 24 24" className="block">
+                <path
+                  d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
+                  fill="#7C5CFF"
+                  stroke="#7C5CFF"
+                  strokeWidth="1.1"
+                  strokeLinejoin="round"
+                />
+                <circle cx="3" cy="8.4" r="1.4" fill="#B9A6FF" />
+                <circle cx="12" cy="5" r="1.6" fill="#C9BCFF" />
+                <circle cx="21" cy="8.4" r="1.4" fill="#B9A6FF" />
+              </svg>
             </div>
             <div>
-              <div className="text-[15px] font-semibold text-rex-text">No sites yet</div>
-              <div className="mt-1 text-[13px] text-rex-text-muted">
-                Create your first local site to get started.
+              <div className="text-[19px] font-semibold text-rex-text">No sites yet</div>
+              <div className="mt-2 max-w-[400px] text-[13.5px] leading-[1.55] text-rex-text-muted">
+                Point rexenv at a folder and it serves your site instantly — with its
+                own .test domain, PHP, and database.
               </div>
             </div>
-            {newSiteButton}
+            <Button variant="primary" size="lg" onClick={() => setShowNew(true)}>
+              <Plus className="h-4 w-4" strokeWidth={2.3} />
+              Create your first site
+            </Button>
           </div>
         ) : noResults ? (
           <div className="flex flex-col items-center justify-center gap-1.5 px-5 py-[54px] text-center">
