@@ -29,9 +29,19 @@ const SITES_DIR_KEY = "sites_dir";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
-      <div className="mb-3 text-[13px] font-semibold text-rex-text">{title}</div>
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
+      <div className="mb-3.5 text-[14px] font-semibold text-rex-text">{title}</div>
       {children}
+    </div>
+  );
+}
+
+/** A styled success notice (the design's toast look, inline). */
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2.5 rounded-[11px] border border-rex-border-strong border-l-[3px] border-l-status-running bg-rex-surface-2 px-3 py-2.5">
+      <CheckCircle2 className="h-4 w-4 flex-none text-status-running-bright" strokeWidth={2} />
+      <span className="font-mono text-[11.5px] text-rex-text-bright">{children}</span>
     </div>
   );
 }
@@ -373,7 +383,7 @@ function DnsSslSetting() {
           }}
         />
       </div>
-      {msg && <div className="font-mono text-[11.5px] text-status-running-bright">{msg}</div>}
+      {msg && <Notice>{msg}</Notice>}
     </>
   );
 }
@@ -612,7 +622,7 @@ function UninstallSetting() {
           {run.isPending ? "Removing…" : "Remove"}
         </Button>
       </div>
-      {msg && <div className="font-mono text-[11.5px] text-status-running">{msg}</div>}
+      {msg && <Notice>{msg}</Notice>}
     </div>
   );
 }

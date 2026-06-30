@@ -514,11 +514,17 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
   stays under Services. `pnpm tsc --noEmit` clean; chrome-devtools shows the DNS tiles + action rows and the
   General default-PHP select + Choose… picker.
 
-- [ ] **9.7 (L) Header crumb + toast feedback + card sizing.**
+- [x] **9.7 (L) Header crumb + toast feedback + card sizing.**
   *Done when:* header shows the section name + mono crumb (a "Save changes"/dirty model is optional since
   settings persist per-control — note the deviation); replace `window.alert`/inline messages with the styled
   toast; cards `radius 13 / padding 18×20`, content `max-width 640`. (lines 53-58, 169-174 ·
   `Settings.tsx:29, 88, 462-464`.)
+  ✓ Header crumb = the section name (mono TopBar subtitle, from §9.1). `Card` resized to the comp
+  (`rounded-[13px]`, `p-5`, 14px title, `border-subtle`); content already `max-w-[640px]`. Added a styled
+  `Notice` (left-accent green + `CheckCircle2`) for the DNS/SSL + Uninstall success messages (was plain mono
+  text). `pnpm tsc --noEmit` clean; chrome-devtools shows consistent card sizing + the crumb. **Deviations
+  (noted):** the "Save changes"/dirty model is intentionally skipped (settings persist per-control); error
+  feedback still uses `window.alert` — a global toast system is a cross-cutting follow-up beyond §9.
 
 ---
 
