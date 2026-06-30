@@ -51,13 +51,20 @@ function StatusMarker({ status }: { status: ServiceStatus }) {
   return <span className="h-[9px] w-[9px] rounded-full bg-status-stopped" />;
 }
 
-export function StatusPill({ status }: { status: ServiceStatus }) {
+export function StatusPill({
+  status,
+  className,
+}: {
+  status: ServiceStatus;
+  className?: string;
+}) {
   const meta = STATUS_META[status];
   return (
     <span
       className={cn(
         "inline-flex items-center gap-2 rounded-full border py-[5px] pl-2.5 pr-3",
         meta.fill,
+        className,
       )}
     >
       <StatusMarker status={status} />

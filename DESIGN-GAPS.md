@@ -199,10 +199,16 @@ Source: `design/rexenv Sites Screen.dc.html`. File: `src/routes/Sites.tsx` (+ `T
   "Create your first site" button. `pnpm tsc --noEmit` clean; chrome-devtools verified hover-left actions, the
   amber open-lock (temp ssl:false), and the crown empty state (temp empty query) — both temps reverted.
 
-- [ ] **3.5 (L) Row container + badge sizing + PHP label.**
+- [x] **3.5 (L) Row container + badge sizing + PHP label.**
   *Done when:* rows are standalone 44px rounded elements (radius 9px, hover fill `#15171D`, no dividers),
   name column fixed 188px, server badge fixed 84px centered, status pill 92px; PHP badge shows `8.3` not
   `PHP 8.3`. (lines 124-142, 397 · `Sites.tsx:37-49, 152`.)
+  ✓ List container is now a plain `flex flex-col` (dropped the bordered box); each row is `h-11 rounded-[9px]
+  pl-3 pr-2 gap-[11px] hover:bg-rex-surface-1` (no `border-b`). Sites `Badge` restyled to the comp (surface-1
+  bg, border-strong, `rounded-[6px]`, `px-[7px] py-[3px]`) + accepts `className`; PHP badge → `{phpVersion}`
+  (no "PHP " prefix), server badge `w-[84px] text-center`. `StatusPill` gained a `className` prop; Sites passes
+  `w-[92px]`. (Name 188px done in §3.4.) `pnpm tsc --noEmit` clean; chrome-devtools shows divider-less 44px
+  rows, `8.3`/`8.1`/`8.2` badges, uniform server/status widths aligned under STACK/STATUS/POWER.
 
 ---
 

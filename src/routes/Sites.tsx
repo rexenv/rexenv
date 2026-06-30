@@ -13,9 +13,20 @@ import { Button } from "@/components/ui/button";
 import { listSites, startSite, stopSite, deleteSite } from "@/lib/ipc";
 import type { Site } from "@/types";
 
-function Badge({ children }: { children: React.ReactNode }) {
+function Badge({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <span className="rounded border border-rex-border bg-rex-surface-2 px-1.5 py-0.5 font-mono text-[10.5px] text-rex-text-bright">
+    <span
+      className={cn(
+        "flex-none rounded-[6px] border border-rex-border-strong bg-rex-surface-1 px-[7px] py-[3px] font-mono text-[10.5px] text-rex-text-bright",
+        className,
+      )}
+    >
       {children}
     </span>
   );
@@ -107,7 +118,7 @@ function SiteRow({
   const running = site.status === "running";
   const t = TYPE_META[site.type] ?? TYPE_META.php;
   return (
-    <div className="group flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5 transition-colors hover:bg-white/[0.02]">
+    <div className="group flex h-11 items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1">
       <div
         className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border text-[11px] font-bold"
         style={{ background: t.bg, color: t.color, borderColor: t.border }}
@@ -152,9 +163,9 @@ function SiteRow({
           <LockOpen className="h-3.5 w-3.5" strokeWidth={1.8} />
         )}
       </span>
-      <Badge>PHP {site.phpVersion}</Badge>
-      <Badge>{site.webServer}</Badge>
-      <StatusPill status={site.status} />
+      <Badge>{site.phpVersion}</Badge>
+      <Badge className="w-[84px] text-center">{site.webServer}</Badge>
+      <StatusPill status={site.status} className="w-[92px]" />
       <StartStopToggle
         running={running}
         busy={busy}
@@ -342,7 +353,7 @@ export function Sites() {
             </div>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
+          <div className="flex flex-col">
             {visible.map((site) => (
               <SiteRow
                 key={site.id}
