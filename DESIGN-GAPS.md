@@ -683,9 +683,14 @@ Source: `design/rexenv New Site Flow.dc.html`. File: `src/components/sites/NewSi
   later backend phase; the card is selectable now.) `pnpm tsc --noEmit` clean; chrome-devtools shows all three
   cards.
 
-- [ ] **12.3 (H) Step 2 — multisite toggle (remove stale "lands in §10" comment).**
+- [x] **12.3 (H) Step 2 — multisite toggle (remove stale "lands in §10" comment).**
   *Done when:* WordPress install section has a Multisite toggle revealing Subdomain/Subdirectory cards, wired
   to the already-shipped §10 convert. (lines 165-185 · `NewSiteDialog.tsx:33`.)
+  ✓ Added a "Multisite network" card to the WP-install section: a `StartStopToggle` that, when on, reveals two
+  `MultiCard`s (Subdomain → `site1.{base}.test`, Subdirectory → `{base}.test/site1`) with example URLs + select
+  checks. The `create` mutation now `await`s `wpMultisiteConvert(site.id, mode)` after the install when a mode
+  is chosen (§10.1). Removed the stale "Multisite lands in §10" comment (the rewrite drops it). `pnpm tsc
+  --noEmit` clean; chrome-devtools verified the toggle reveals the Subdomain/Subdirectory cards.
 
 - [ ] **12.4 (M) WordPress fields: Site title + password show/Generate + `.test` suffix/validation.**
   *Done when:* a dedicated Site title input (separate from name); the password row gets a show/hide eye + a

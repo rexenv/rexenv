@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { createSite, listBlueprints, listPhpVersions } from "@/lib/ipc";
-import type { SiteType, WebServer } from "@/types";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { createSite, listBlueprints, listPhpVersions, wpMultisiteConvert } from "@/lib/ipc";
+import type { MultisiteMode, SiteType, WebServer } from "@/types";
 
 /** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
 const SERVERS: { value: WebServer; label: string }[] = [
@@ -90,6 +91,7 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [language, setLanguage] = useState("");
+  const [multisite, setMultisite] = useState<MultisiteMode>("none");
 
   useEffect(() => setPhpVersion(defaultVersion), [defaultVersion]);
 
@@ -98,14 +100,18 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const isWordpress = siteType === "wordpress";
 
   const create = useMutation({
-    mutationFn: () =>
-      createSite(
+    mutationFn: async () => {
+      const site = await createSite(
         { name: name.trim(), domain: effectiveDomain.trim(), type: siteType, phpVersion, webServer, path: "" },
         isWordpress
           ? { title: name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
           : undefined,
         blueprintId || undefined,
-      ),
+      );
+      // Convert to multisite after the one-click install (§10.1).
+      if (site && isWordpress && multisite !== "none") await wpMultisiteConvert(site.id, multisite);
+      return site;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sites"] });
       onClose();
@@ -175,6 +181,8 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
               setAdminPassword={setAdminPassword}
               language={language}
               setLanguage={setLanguage}
+              multisite={multisite}
+              setMultisite={setMultisite}
             />
           )}
         </div>
@@ -290,7 +298,10 @@ function Step2(p: {
   setAdminPassword: (v: string) => void;
   language: string;
   setLanguage: (v: string) => void;
+  multisite: MultisiteMode;
+  setMultisite: (v: MultisiteMode) => void;
 }) {
+  const domainBase = p.effectiveDomain.replace(/\.test$/, "") || "my-site";
   return (
     <div className="flex flex-col gap-3">
       {p.blueprints.length > 0 && (
@@ -369,9 +380,65 @@ function Step2(p: {
               </select>
             </Field>
           </div>
+
+          {/* Multisite */}
+          <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well p-[13px]">
+            <div className="flex items-center gap-[11px]">
+              <div className="flex-1">
+                <div className="text-[13px] font-medium text-rex-text">Multisite network</div>
+                <div className="mt-0.5 text-[11.5px] text-rex-text-muted">
+                  Run many sites from one WordPress install.
+                </div>
+              </div>
+              <StartStopToggle
+                running={p.multisite !== "none"}
+                variant="setting"
+                onToggle={() => p.setMultisite(p.multisite === "none" ? "subdomain" : "none")}
+                label="Enable multisite"
+              />
+            </div>
+            {p.multisite !== "none" && (
+              <div className="mt-[13px] grid grid-cols-2 gap-[10px]">
+                <MultiCard
+                  label="Subdomain"
+                  example={`site1.${domainBase}.test`}
+                  selected={p.multisite === "subdomain"}
+                  onClick={() => p.setMultisite("subdomain")}
+                />
+                <MultiCard
+                  label="Subdirectory"
+                  example={`${domainBase}.test/site1`}
+                  selected={p.multisite === "subdirectory"}
+                  onClick={() => p.setMultisite("subdirectory")}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function MultiCard({ label, example, selected, onClick }: { label: string; example: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "rounded-[10px] border px-3 py-[11px] text-left transition-colors",
+        selected ? "border-brand" : "border-rex-border-subtle hover:border-rex-border-strong",
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12.5px] font-semibold text-rex-text">{label}</span>
+        <CheckCircle2
+          className="h-4 w-4 flex-none"
+          style={{ color: selected ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
+          strokeWidth={2}
+        />
+      </div>
+      <div className="mt-[5px] font-mono text-[11px] text-rex-text-muted">{example}</div>
+    </button>
   );
 }
 
