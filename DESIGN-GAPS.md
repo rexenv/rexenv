@@ -216,11 +216,17 @@ Source: `design/rexenv Sites Screen.dc.html`. File: `src/routes/Sites.tsx` (+ `T
 
 Source: `design/rexenv Site Detail.dc.html`. File: `src/routes/SiteDetail.tsx`.
 
-- [ ] **4.1 (H) Header action cluster + identity + back link.**
+- [x] **4.1 (H) Header action cluster + identity + back link.**
   *Done when:* the header (replacing the plain `TopBar`) shows: a `‹ All sites` back link; a 38×38 type
   avatar; the site name (19px) with an inline status pill; `domain · :<port>` beneath; and a right cluster of
   start/stop toggle + "Open in browser" (secondary) + "Open admin" (primary, gear). (lines 76-95 ·
   `SiteDetail.tsx:102`.)
+  ✓ Extracted the type-avatar map to `src/lib/siteType.ts` (`siteTypeMeta`, reused by Sites). New `SiteHeader`
+  replaces the plain `TopBar`: `‹ All sites` back link (→ `/sites`), 38×38 letter avatar, name (19px) + inline
+  `StatusPill`, `domain · :443` (the edge HTTPS port), and a right cluster — `StartStopToggle` (wired to a new
+  start/stop mutation), "Open in browser" (secondary, → `openExternal(url)`), and "Open admin" (primary, gear,
+  → `/wp-admin`) gated to WordPress sites. `pnpm tsc --noEmit` clean; chrome-devtools: Acme (WP) shows the full
+  cluster incl. Open admin; Portfolio (Laravel) correctly omits Open admin + the WordPress tab.
 
 - [ ] **4.2 (H) Environment card — 3-column mini-card grid + SSL certificate.**
   *Done when:* Environment renders as three mini-cards — PHP version (big 18px mono value + dropdown), Web

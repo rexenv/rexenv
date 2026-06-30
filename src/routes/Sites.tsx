@@ -5,6 +5,7 @@ import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
+import { siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Placeholder } from "@/components/common/Placeholder";
@@ -31,13 +32,6 @@ function Badge({
     </span>
   );
 }
-
-// Per-type avatar: letter + accent (WordPress blue / Laravel red / Blank-PHP purple).
-const TYPE_META: Record<string, { letter: string; bg: string; color: string; border: string }> = {
-  wordpress: { letter: "W", bg: "rgba(74,134,170,0.15)", color: "#7DB8D8", border: "rgba(74,134,170,0.30)" },
-  laravel: { letter: "L", bg: "rgba(224,82,77,0.13)", color: "#EE837C", border: "rgba(224,82,77,0.27)" },
-  php: { letter: "P", bg: "rgba(125,128,185,0.17)", color: "#A7AADD", border: "rgba(125,128,185,0.32)" },
-};
 
 type Filter = "all" | "running" | "stopped";
 type Sort = "name" | "status" | "recent";
@@ -116,7 +110,7 @@ function SiteRow({
   onOpenDatabase: () => void;
 }) {
   const running = site.status === "running";
-  const t = TYPE_META[site.type] ?? TYPE_META.php;
+  const t = siteTypeMeta(site.type);
   return (
     <div className="group flex h-11 items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1">
       <div

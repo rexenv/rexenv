@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronLeft,
   Copy,
   Database,
   ExternalLink,
@@ -11,14 +12,19 @@ import {
   LayoutGrid,
   Pause,
   Play,
+  Settings,
   TerminalSquare,
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
+import { StatusPill } from "@/components/common/StatusPill";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { Button } from "@/components/ui/button";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { adminerUrl, siteDbName } from "@/lib/adminer";
+import { siteTypeMeta } from "@/lib/siteType";
 import {
   listPhpVersions,
   listSites,
@@ -26,6 +32,8 @@ import {
   openExternal,
   setSitePhpVersion,
   setSiteWebServer,
+  startSite,
+  stopSite,
   tailLog,
   wpInfo,
 } from "@/lib/ipc";
@@ -68,6 +76,11 @@ export function SiteDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
     onError: (e) => window.alert(String(e)),
   });
+  const toggle = useMutation({
+    mutationFn: () => (site?.status === "running" ? stopSite(id!) : startSite(id!)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+    onError: (e) => window.alert(String(e)),
+  });
 
   if (!site) {
     return (
@@ -99,7 +112,13 @@ export function SiteDetail() {
 
   return (
     <>
-      <TopBar title={site.name} subtitle={site.domain} showSearch={false} />
+      <SiteHeader
+        site={site}
+        isWordpress={isWordpress}
+        busy={toggle.isPending}
+        onToggle={() => toggle.mutate()}
+        onBack={() => navigate("/sites")}
+      />
 
       <div className="border-b border-rex-border px-[18px]">
         <div className="mx-auto flex max-w-2xl gap-1">
@@ -171,6 +190,75 @@ export function SiteDetail() {
         </div>
       </div>
     </>
+  );
+}
+
+function SiteHeader({
+  site,
+  isWordpress,
+  busy,
+  onToggle,
+  onBack,
+}: {
+  site: Site;
+  isWordpress: boolean;
+  busy: boolean;
+  onToggle: () => void;
+  onBack: () => void;
+}) {
+  const t = siteTypeMeta(site.type);
+  const url = `https://${site.domain}`;
+  const running = site.status === "running";
+  return (
+    <div className="flex-none border-b border-rex-border-subtle px-[22px] pt-[18px]">
+      <button
+        onClick={onBack}
+        className="mb-[13px] inline-flex items-center gap-1.5 text-[12px] text-rex-text-dim transition-colors hover:text-rex-text-bright"
+      >
+        <ChevronLeft className="h-[13px] w-[13px]" strokeWidth={2} />
+        All sites
+      </button>
+      <div className="flex items-start justify-between gap-[18px] pb-[18px]">
+        <div className="flex min-w-0 items-center gap-[13px]">
+          <div
+            className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[10px] border text-[15px] font-bold"
+            style={{ background: t.bg, color: t.color, borderColor: t.border }}
+          >
+            {t.letter}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-[11px]">
+              <span className="text-[19px] font-semibold tracking-[-.01em] text-rex-text">
+                {site.name}
+              </span>
+              <StatusPill status={site.status} />
+            </div>
+            <div className="mt-1 flex items-center gap-2 font-mono text-[12.5px] text-rex-text-muted">
+              <span className="truncate">{site.domain}</span>
+              <span className="flex-none text-[11px] text-rex-text-dim">· :443</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-none items-center gap-[9px]">
+          <StartStopToggle
+            running={running}
+            busy={busy}
+            onToggle={onToggle}
+            label={`${running ? "Stop" : "Start"} ${site.name}`}
+          />
+          <Button variant="secondary" onClick={() => openExternal(url)}>
+            <ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />
+            Open in browser
+          </Button>
+          {isWordpress && (
+            <Button variant="primary" onClick={() => openExternal(`${url}/wp-admin`)}>
+              <Settings className="h-[15px] w-[15px]" strokeWidth={1.7} />
+              Open admin
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
