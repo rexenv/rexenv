@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
-import { Placeholder } from "@/components/common/Placeholder";
+import { StatusPill } from "@/components/common/StatusPill";
 import {
   mailpitClear,
   mailpitDelete,
@@ -17,6 +17,13 @@ import {
 import type { MailSummary } from "@/types";
 
 type PreviewTab = "html" | "text" | "raw" | "headers";
+
+const TAB_LABEL: Record<PreviewTab, string> = {
+  html: "HTML",
+  text: "Text",
+  raw: "Raw source",
+  headers: "Headers",
+};
 
 const AVATAR_COLORS = ["#7DB8D8", "#EE837C", "#A7AADD", "#5FBFA8", "#D7A93A"];
 
@@ -80,6 +87,13 @@ export function Mail() {
 
   const running = !!mp?.running;
   const unread = list?.unread ?? 0;
+  const apiPort = (() => {
+    try {
+      return new URL(mp?.uiUrl ?? "").port || "8025";
+    } catch {
+      return "8025";
+    }
+  })();
 
   return (
     <>
@@ -90,12 +104,10 @@ export function Mail() {
       />
 
       <div className="flex items-center justify-between gap-3 border-b border-rex-border px-[18px] py-2.5">
-        <div className="flex items-center gap-2.5">
-          <span className={`h-2 w-2 rounded-full ${running ? "bg-emerald-500" : "bg-rex-text-muted"}`} />
-          <span className="text-[12.5px] text-rex-text-muted">
-            Mailpit {running ? "running" : "stopped"}
-          </span>
-        </div>
+        <StatusPill
+          status={running ? "running" : "stopped"}
+          label={running ? `Mailpit · :${apiPort}` : "Mailpit stopped"}
+        />
         <div className="flex items-center gap-2">
           {mp && (
             <button
@@ -128,7 +140,7 @@ export function Mail() {
 
       <div className="flex min-h-0 flex-1">
         {/* List pane */}
-        <div className="flex w-[320px] shrink-0 flex-col border-r border-rex-border">
+        <div className="flex w-[344px] shrink-0 flex-col border-r border-rex-border">
           <div className="border-b border-rex-border p-2.5">
             <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5">
               <Search className="h-3.5 w-3.5 text-rex-text-muted" />
@@ -136,7 +148,7 @@ export function Mail() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search mail…"
-                className="h-[30px] flex-1 bg-transparent text-[12.5px] text-rex-text outline-none placeholder:text-rex-text-muted"
+                className="h-[34px] flex-1 bg-transparent text-[12.5px] text-rex-text outline-none placeholder:text-rex-text-muted"
               />
             </div>
           </div>
@@ -159,6 +171,11 @@ export function Mail() {
               ))
             )}
           </div>
+          {list && (
+            <div className="flex-none border-t border-rex-border px-3 py-2 font-mono text-[10.5px] text-rex-text-dim">
+              {list.total} messages · {list.unread} unread
+            </div>
+          )}
         </div>
 
         {/* Preview pane */}
@@ -171,15 +188,24 @@ export function Mail() {
               onDelete={() => removeMsg.mutate(selectedId)}
             />
           ) : (
-            <Placeholder
-              icon={<MailIcon className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-              label={messages.length ? "Select a message" : "Inbox empty"}
-              hint={
-                messages.length
-                  ? "Pick a message on the left to preview it."
-                  : "Outgoing email from your sites is captured here."
-              }
-            />
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+              <div className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-rex-border-strong bg-rex-surface-1 text-rex-text-faint">
+                <MailIcon className="h-[22px] w-[22px]" strokeWidth={1.6} />
+              </div>
+              <div>
+                <div className="text-[14px] font-semibold text-rex-text">
+                  {messages.length ? "Nothing selected" : "No emails yet"}
+                </div>
+                <div className="mt-1 text-[12.5px] text-rex-text-muted">
+                  {messages.length
+                    ? "Pick a message on the left to preview it."
+                    : "Outgoing email from your sites is captured here."}
+                </div>
+              </div>
+              <span className="rounded-md border border-rex-border-strong bg-rex-surface-1 px-2.5 py-1 font-mono text-[10.5px] text-rex-text-dim">
+                SMTP · 127.0.0.1:1025 · auto-configured
+              </span>
+            </div>
           )}
         </div>
       </div>
@@ -281,13 +307,13 @@ function Preview({
           <button
             key={t}
             onClick={() => onTab(t)}
-            className={`-mb-px border-b-2 px-3 py-2 text-[12.5px] uppercase tracking-wide transition-colors ${
+            className={`-mb-px border-b-2 px-3 py-2 text-[12.5px] transition-colors ${
               tab === t
-                ? "border-brand font-medium text-rex-text"
+                ? "border-brand font-medium text-brand-tint"
                 : "border-transparent text-rex-text-muted hover:text-rex-text"
             }`}
           >
-            {t}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </div>

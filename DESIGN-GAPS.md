@@ -380,11 +380,17 @@ Source: `design/rexenv Mail.dc.html`. File: `src/routes/Mail.tsx`.
   clean; chrome-devtools shows recipient lines, the violet selected/unread accents, the "A" avatar, and the
   HEADERS tab content.
 
-- [ ] **7.3 (L) Status pill `Mailpit · :8025`, footer count, SMTP chip, empty copy, widths.**
+- [x] **7.3 (L) Status pill `Mailpit · :8025`, footer count, SMTP chip, empty copy, widths.**
   *Done when:* status is a header pill with the port; list footer shows "{total} messages · {n} unread";
   empty state title "No emails yet"/"Nothing selected" + mono "SMTP · 127.0.0.1:1025 · auto-configured";
   list pane 344px, search 34px; tab labels cased ("Raw source"), active tab text `#C9BCFF`. (lines 55, 89,
   92, 116-119, 170-175 · `Mail.tsx:56-211`.)
+  ✓ Sub-bar status is now a tinted `StatusPill` (`label` override) → "Mailpit · :{apiPort}" (from `mp.uiUrl`,
+  fallback 8025) / "Mailpit stopped". Added a list footer "{total} messages · {n} unread". Replaced the preview
+  Placeholder with a custom empty: "Nothing selected" / "No emails yet" + mono "SMTP · 127.0.0.1:1025 ·
+  auto-configured" chip. List pane → `w-[344px]`, search → `h-[34px]`. `TAB_LABEL` map gives cased tabs
+  (HTML / Text / Raw source / Headers) and the active tab is `text-brand-tint`. `pnpm tsc --noEmit` clean;
+  chrome-devtools confirms all of the above.
 
 ---
 
