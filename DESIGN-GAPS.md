@@ -625,10 +625,15 @@ Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpre
   + Reset are UI shells (TODO — no backend); permalinks/core update/reinstall + admin login are wired. `pnpm
   tsc --noEmit` clean; chrome-devtools shows the 2-col grid with all actions + the danger Reset button.
 
-- [ ] **11.4 (M) Sub-tab bar: counts + order + content-width pills.**
+- [x] **11.4 (M) Sub-tab bar: counts + order + content-width pills.**
   *Done when:* tabs read `Plugins {n} · Themes {n} · Users {n} · Tools · Network {n}` (Network LAST, mono
   count badges), content-width left-aligned pills, active pill brand-tint `#C9BCFF`. (lines 71-79 ·
   `WordPressManager.tsx:54-76`.)
+  ✓ Added top-level `wpPlugins`/`wpThemes`/`wpUsers`/`wpNetworkSites` count queries (reuse the panels' cached
+  results) and reordered the tabs to Plugins · Themes · Users · Tools · Network (Network LAST, multisite-only).
+  The bar is now `self-start` content-width pills (`bg-rex-well`, `rounded-[7px]`) with mono count badges and a
+  brand-tint active pill (`bg-brand-tint-bg text-brand-tint`). `pnpm tsc --noEmit` clean; chrome-devtools shows
+  "Plugins 3 / Themes 3 / Users 2 / Tools" left-aligned with the violet active pill.
 
 - [ ] **11.5 (M) Plugins/Themes/Users content: descriptions, headers, avatars, roles, empty states.**
   *Done when:* Plugins rows show a description + column header + update-version badge, bulk bar "{n}

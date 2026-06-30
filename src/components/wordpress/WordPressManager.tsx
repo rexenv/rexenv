@@ -53,26 +53,43 @@ export function WordPressManager({
 }) {
   const isNetwork = multisite !== "none";
   const [sub, setSub] = useState<SubTab>("plugins");
-  const subs: { key: SubTab; label: string }[] = [
-    { key: "plugins", label: "Plugins" },
-    { key: "themes", label: "Themes" },
-    { key: "users", label: "Users" },
-    ...(isNetwork ? [{ key: "network" as const, label: "Network" }] : []),
+
+  // Counts for the tab badges (react-query reuses the panels' cached results).
+  const { data: plugins = [] } = useQuery({ queryKey: ["wp-plugins", siteId], queryFn: () => wpPlugins(siteId) });
+  const { data: themes = [] } = useQuery({ queryKey: ["wp-themes", siteId], queryFn: () => wpThemes(siteId) });
+  const { data: users = [] } = useQuery({ queryKey: ["wp-users", siteId], queryFn: () => wpUsers(siteId) });
+  const { data: netSites = [] } = useQuery({
+    queryKey: ["wp-network-sites", siteId],
+    queryFn: () => wpNetworkSites(siteId),
+    enabled: isNetwork,
+  });
+
+  const subs: { key: SubTab; label: string; count?: number }[] = [
+    { key: "plugins", label: "Plugins", count: plugins.length },
+    { key: "themes", label: "Themes", count: themes.length },
+    { key: "users", label: "Users", count: users.length },
     { key: "tools", label: "Tools" },
+    ...(isNetwork ? [{ key: "network" as const, label: "Network", count: netSites.length }] : []),
   ];
 
   return (
     <>
-      <div className="flex gap-1 rounded-lg border border-rex-border bg-rex-surface-1 p-1">
+      <div className="flex self-start gap-0.5 rounded-[10px] border border-rex-border-subtle bg-rex-well p-[3px]">
         {subs.map((s) => (
           <button
             key={s.key}
             onClick={() => setSub(s.key)}
-            className={`flex-1 rounded-md px-3 py-1.5 text-[12.5px] transition-colors ${
-              sub === s.key ? "bg-rex-surface-2 font-medium text-rex-text" : "text-rex-text-muted hover:text-rex-text"
-            }`}
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-[7px] px-3 text-[12.5px] font-medium transition-colors",
+              sub === s.key
+                ? "bg-brand-tint-bg text-brand-tint"
+                : "text-rex-text-muted hover:text-rex-text-bright",
+            )}
           >
             {s.label}
+            {s.count !== undefined && (
+              <span className="font-mono text-[10.5px] opacity-70">{s.count}</span>
+            )}
           </button>
         ))}
       </div>
