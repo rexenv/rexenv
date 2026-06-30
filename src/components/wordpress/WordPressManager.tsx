@@ -37,6 +37,15 @@ import type { MultisiteMode, WpPlugin, WpTheme, WpUser } from "@/types";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
 
+// Per-role accent (Administrator violet, Editor blue, others teal/neutral).
+const ROLE_META: Record<string, { color: string; bg: string; border: string }> = {
+  administrator: { color: "#C9BCFF", bg: "rgba(124,92,255,0.14)", border: "rgba(124,92,255,0.28)" },
+  editor: { color: "#7DB8D8", bg: "rgba(74,134,170,0.15)", border: "rgba(74,134,170,0.30)" },
+  author: { color: "#5FBFA8", bg: "rgba(45,156,143,0.13)", border: "rgba(45,156,143,0.28)" },
+};
+const DEFAULT_ROLE = { color: "#8A90A0", bg: "rgba(110,118,129,0.13)", border: "rgba(110,118,129,0.22)" };
+const roleMeta = (role: string) => ROLE_META[role] ?? DEFAULT_ROLE;
+
 type SubTab = "plugins" | "themes" | "users" | "network" | "tools";
 
 const BTN =
@@ -560,14 +569,22 @@ function UsersPanel({ siteId }: { siteId: string }) {
         ) : users.length === 0 ? (
           <div className="p-6 text-center text-[12.5px] text-rex-text-muted">No users.</div>
         ) : (
-          users.map((u) => (
-            <UserRow
-              key={u.id}
-              u={u}
-              busy={loginAs.isPending}
-              onLoginAs={() => loginAs.mutate(u.id)}
-            />
-          ))
+          <>
+            <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
+              <span className="flex-1">User</span>
+              <span className="w-[120px]">Role</span>
+              <span className="w-[100px]">Last login</span>
+              <span className="w-[84px]" />
+            </div>
+            {users.map((u) => (
+              <UserRow
+                key={u.id}
+                u={u}
+                busy={loginAs.isPending}
+                onLoginAs={() => loginAs.mutate(u.id)}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>
@@ -575,20 +592,36 @@ function UsersPanel({ siteId }: { siteId: string }) {
 }
 
 function UserRow({ u, busy, onLoginAs }: { u: WpUser; busy: boolean; onLoginAs: () => void }) {
+  const role = u.roles.split(",")[0]?.trim() || "";
+  const rm = roleMeta(role);
+  const initial = (u.name || u.login).trim().charAt(0).toUpperCase() || "?";
   return (
     <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2.5 last:border-b-0">
+      <span
+        className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border text-[12px] font-semibold"
+        style={{ background: rm.bg, color: rm.color, borderColor: rm.border }}
+      >
+        {initial}
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-rex-text">{u.login}</span>
-          <span className="rounded-full bg-rex-surface-3 px-1.5 py-0.5 text-[10.5px] text-rex-text-muted">
-            {u.roles || "—"}
-          </span>
-        </div>
+        <div className="truncate text-[13px] font-medium text-rex-text">{u.login}</div>
         <div className="truncate font-mono text-[11px] text-rex-text-dim">{u.email}</div>
       </div>
-      <button className={BTN + " flex items-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
+      <span className="w-[120px]">
+        {role && (
+          <span
+            className="rounded-full border px-2 py-0.5 text-[10.5px] font-medium capitalize"
+            style={{ background: rm.bg, color: rm.color, borderColor: rm.border }}
+          >
+            {role}
+          </span>
+        )}
+      </span>
+      {/* Last-login isn't in the WpUser DTO yet (TODO). */}
+      <span className="w-[100px] font-mono text-[11px] text-rex-text-dim">—</span>
+      <button className={BTN + " flex w-[84px] items-center justify-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
         <LogIn className="h-3.5 w-3.5" />
-        Log in as
+        Log in
       </button>
     </div>
   );
@@ -637,6 +670,12 @@ function ThemesPanel({ siteId }: { siteId: string }) {
         </button>
       </div>
 
+      {!isLoading && themes.length > 0 && (
+        <div className="px-0.5 font-mono text-[11px] text-rex-text-dim">
+          {themes.length} {themes.length === 1 ? "theme" : "themes"} ·{" "}
+          {themes.filter((t) => t.status === "active").length} active
+        </div>
+      )}
       {isLoading ? (
         <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[12.5px] text-rex-text-muted">
           Loading themes…
@@ -686,8 +725,14 @@ function ThemeCard({
         active ? "border-brand/60" : "border-rex-border"
       }`}
     >
-      <div className="flex aspect-[4/3] items-center justify-center rounded-t-xl bg-rex-surface-2 text-rex-text-dim">
+      <div className="relative flex aspect-[4/3] items-center justify-center rounded-t-xl bg-gradient-to-br from-rex-surface-3 to-rex-surface-1 text-rex-text-dim">
         <Palette className="h-7 w-7" strokeWidth={1.4} />
+        {active && (
+          <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-status-running-bg px-2 py-0.5 text-[10px] font-medium text-status-running-bright">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-running" />
+            Live
+          </span>
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3">
         <div className="flex items-center gap-2">
@@ -898,7 +943,13 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             {plugins.length === 0 ? "No plugins installed." : "No plugins match."}
           </div>
         ) : (
-          visible.map((p) => (
+          <>
+          <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
+            <span className="w-[14px]" />
+            <span className="flex-1">Plugin</span>
+            <span className="w-[150px]">Status</span>
+          </div>
+          {visible.map((p) => (
             <PluginRow
               key={p.name}
               p={p}
@@ -912,7 +963,8 @@ function PluginsPanel({ siteId }: { siteId: string }) {
                 if (window.confirm(`Delete plugin "${p.name}"?`)) run.mutate(() => wpPluginDelete(siteId, [p.name]));
               }}
             />
-          ))
+          ))}
+          </>
         )}
       </div>
     </div>

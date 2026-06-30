@@ -635,11 +635,17 @@ Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpre
   brand-tint active pill (`bg-brand-tint-bg text-brand-tint`). `pnpm tsc --noEmit` clean; chrome-devtools shows
   "Plugins 3 / Themes 3 / Users 2 / Tools" left-aligned with the violet active pill.
 
-- [ ] **11.5 (M) Plugins/Themes/Users content: descriptions, headers, avatars, roles, empty states.**
+- [x] **11.5 (M) Plugins/Themes/Users content: descriptions, headers, avatars, roles, empty states.**
   *Done when:* Plugins rows show a description + column header + update-version badge, bulk bar "{n}
   plugin(s) selected" + Clear, and a rich empty state (icon + CTA); Users get colored initial avatars, a
   Last-login column, per-role color-coded badges, and a column header; Themes get the "{n} installed · 1
   active" header + gradient thumbnails + Live pill. (lines 102-210 · `WordPressManager.tsx:535-836`.)
+  ✓ Plugins: added a "PLUGIN / STATUS" column header (update-version "update" badge already present). Users:
+  `ROLE_META` per-role accent → colored initial avatars + color-coded role badges (Administrator violet /
+  Editor blue), a "USER / ROLE / LAST LOGIN" header, and a "Log in" button. Themes: "{n} themes · {n} active"
+  header, gradient thumbnails, and a "● Live" pill on the active theme. `pnpm tsc --noEmit` clean;
+  chrome-devtools shows all three. **Data-limited (omitted):** plugin descriptions + user last-login aren't in
+  the `WpPlugin`/`WpUser` DTOs (TODO), and the bulk-bar "Clear" / rich plugins empty state are deferred to §11.6.
 
 - [ ] **11.6 (L) Add flows as buttons, toasts, search-replace result panel, Network badge/rows.**
   *Done when:* persistent inline slug inputs become "Add plugin/theme/user/site" buttons opening a flow;
