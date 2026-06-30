@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import {
@@ -15,7 +16,20 @@ import {
 } from "@/lib/ipc";
 import type { MailSummary } from "@/types";
 
-type PreviewTab = "html" | "text" | "raw";
+type PreviewTab = "html" | "text" | "raw" | "headers";
+
+const AVATAR_COLORS = ["#7DB8D8", "#EE837C", "#A7AADD", "#5FBFA8", "#D7A93A"];
+
+/** A stable per-sender accent so each correspondent reads as a distinct avatar. */
+function avatarColor(seed: string): string {
+  let h = 0;
+  for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function initial(a: { name: string; address: string }): string {
+  return (a.name || a.address).trim().charAt(0).toUpperCase() || "?";
+}
 
 export function Mail() {
   const qc = useQueryClient();
@@ -174,13 +188,18 @@ export function Mail() {
 }
 
 function MessageRow({ m, active, onClick }: { m: MailSummary; active: boolean; onClick: () => void }) {
+  const recipient = m.to[0]?.address ?? "—";
   return (
     <button
       onClick={onClick}
-      className={`flex w-full flex-col gap-0.5 border-b border-rex-border-subtle px-3 py-2.5 text-left transition-colors ${
-        active ? "bg-rex-surface-2" : "hover:bg-rex-surface-2/50"
-      }`}
+      className={cn(
+        "relative flex w-full flex-col gap-0.5 border-b border-rex-border-subtle py-2.5 pl-4 pr-3 text-left transition-colors",
+        active ? "bg-brand-active" : "hover:bg-rex-surface-2/50",
+      )}
     >
+      {(active || !m.read) && (
+        <span className="absolute left-0 top-0 h-full w-[2.5px] bg-brand" />
+      )}
       <div className="flex items-center gap-2">
         {!m.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
         <span className={`flex-1 truncate text-[12.5px] ${m.read ? "text-rex-text-muted" : "font-semibold text-rex-text"}`}>
@@ -189,7 +208,10 @@ function MessageRow({ m, active, onClick }: { m: MailSummary; active: boolean; o
         <span className="shrink-0 font-mono text-[10.5px] text-rex-text-muted">{shortTime(m.created)}</span>
       </div>
       <div className="truncate text-[12px] text-rex-text">{m.subject || "(no subject)"}</div>
-      <div className="truncate text-[11.5px] text-rex-text-muted">{m.snippet}</div>
+      <div className="truncate font-mono text-[11px] text-rex-text-muted">
+        <span className="text-rex-text-dim">to </span>
+        {recipient}
+      </div>
     </button>
   );
 }
@@ -214,10 +236,17 @@ function Preview({
 
   if (!msg) return <div className="p-6 text-[12.5px] text-rex-text-muted">Loading…</div>;
 
-  const tabs: PreviewTab[] = ["html", "text", "raw"];
+  const tabs: PreviewTab[] = ["html", "text", "raw", "headers"];
+  const avatar = avatarColor(msg.from.address);
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-start gap-3 border-b border-rex-border p-4">
+        <span
+          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg text-[12px] font-semibold"
+          style={{ background: `${avatar}26`, color: avatar }}
+        >
+          {initial(msg.from)}
+        </span>
         <div className="min-w-0 flex-1">
           <div className="text-[14px] font-semibold text-rex-text">{msg.subject || "(no subject)"}</div>
         <div className="mt-1.5 flex flex-col gap-0.5 text-[12px] text-rex-text-muted">
@@ -282,18 +311,16 @@ function Preview({
             {raw ?? "Loading…"}
           </pre>
         )}
-      </div>
-
-      <div className="max-h-[160px] overflow-auto border-t border-rex-border p-4">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-rex-text-muted">Headers</div>
-        <div className="flex flex-col gap-1">
-          {msg.headers.map((h, i) => (
-            <div key={`${h.name}-${i}`} className="flex gap-2 font-mono text-[11px]">
-              <span className="shrink-0 text-rex-text-muted">{h.name}:</span>
-              <span className="break-all text-rex-text">{h.value}</span>
-            </div>
-          ))}
-        </div>
+        {tab === "headers" && (
+          <div className="flex flex-col gap-1 p-4">
+            {msg.headers.map((h, i) => (
+              <div key={`${h.name}-${i}`} className="flex gap-2 font-mono text-[11.5px]">
+                <span className="w-[120px] shrink-0 text-rex-text-muted">{h.name}</span>
+                <span className="break-all text-rex-text">{h.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

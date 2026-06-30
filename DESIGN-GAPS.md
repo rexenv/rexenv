@@ -368,11 +368,17 @@ Source: `design/rexenv Mail.dc.html`. File: `src/routes/Mail.tsx`.
   Delete button present in the detail header. **TODO(backend):** add the `mailpit_mark_all_read` / `mailpit_delete`
   Rust commands (Mailpit's HTTP API supports both).
 
-- [ ] **7.2 (M) List row recipient + Headers tab + sender avatar + selected accent.**
+- [x] **7.2 (M) List row recipient + Headers tab + sender avatar + selected accent.**
   *Done when:* row line 3 shows `to <recipient>` (not the snippet); detail gains a 4th "Headers" tab (drop
   the always-on bottom headers panel); detail header shows a 30×30 sender-initial avatar; selected/unread
   rows get the 2.5px violet left bar + `rgba(124,92,255,.08)` tint. (lines 74-85, 102, 116-166 ·
   `Mail.tsx:149-246`.)
+  ✓ Row line 3 now renders mono `to {m.to[0].address}`. Rows are `relative` with a 2.5px `bg-brand` left bar when
+  selected OR unread, and `bg-brand-active` tint when selected. Added `"headers"` as a 4th `PreviewTab` (renders
+  the headers as tab content, 120px key column) and removed the always-on bottom panel. Detail header gained a
+  30×30 sender-initial avatar with a stable per-sender accent (`avatarColor` hash + `initial`). `pnpm tsc --noEmit`
+  clean; chrome-devtools shows recipient lines, the violet selected/unread accents, the "A" avatar, and the
+  HEADERS tab content.
 
 - [ ] **7.3 (L) Status pill `Mailpit · :8025`, footer count, SMTP chip, empty copy, widths.**
   *Done when:* status is a header pill with the port; list footer shows "{total} messages · {n} unread";
