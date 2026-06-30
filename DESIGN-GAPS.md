@@ -260,9 +260,14 @@ Source: `design/rexenv Site Detail.dc.html`. File: `src/routes/SiteDetail.tsx`.
   `Card`/`Row`/`QuickLink`/`PathRow` helpers. `pnpm tsc --noEmit` clean; chrome-devtools shows the new order +
   two-column Paths/Quick-links grid + colored tiles.
 
-- [ ] **4.5 (L) Tab bar alignment + content width.**
+- [x] **4.5 (L) Tab bar alignment + content width.**
   *Done when:* tabs are left-aligned full-width (not `mx-auto max-w-2xl`), WordPress tab tinted blue when
   inactive; Overview content fills the panel (drop `max-w-2xl`). (lines 97-105 · `SiteDetail.tsx:104-131`.)
+  ✓ Tab strip is now left-aligned (`flex gap-0.5`, dropped `mx-auto max-w-2xl`), `px-3.5 py-2.5 text-[13.5px]`,
+  with the WordPress tab `text-[#7DB8D8]` (blue) when inactive / brand-underlined when active. Content area
+  dropped `mx-auto max-w-2xl` (now `px-[22px] pt-[18px] pb-[22px]`, inner `gap-[14px]`) so Overview fills the
+  panel; terminal/database keep `h-full` + `overflow-hidden`. `pnpm tsc --noEmit` clean; chrome-devtools shows
+  left-aligned tabs (WordPress blue) + full-width Overview.
 
 ---
 

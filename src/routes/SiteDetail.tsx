@@ -124,34 +124,41 @@ export function SiteDetail() {
         onBack={() => navigate("/sites")}
       />
 
-      <div className="border-b border-rex-border px-[18px]">
-        <div className="mx-auto flex max-w-2xl gap-1">
+      <div className="flex-none border-b border-rex-border-subtle px-[22px]">
+        <div className="flex gap-0.5">
           {tabs
             .filter((t) => t.show)
-            .map((t) => (
-              <button
-                key={t.key}
-                onClick={() => navigate(`/sites/${site.id}/${t.key}`)}
-                className={`-mb-px border-b-2 px-3 py-2.5 text-[13px] transition-colors ${
-                  active === t.key
-                    ? "border-brand font-medium text-rex-text"
-                    : "border-transparent text-rex-text-muted hover:text-rex-text"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+            .map((t) => {
+              const isActive = active === t.key;
+              const wpInactive = t.key === "wordpress" && !isActive;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => navigate(`/sites/${site.id}/${t.key}`)}
+                  className={cn(
+                    "-mb-px border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
+                    isActive
+                      ? "border-brand text-rex-text"
+                      : wpInactive
+                        ? "border-transparent text-[#7DB8D8] hover:text-rex-text"
+                        : "border-transparent text-rex-text-muted hover:text-rex-text",
+                  )}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
         </div>
       </div>
 
       <div
-        className={`min-h-0 flex-1 p-[18px] ${
+        className={`min-h-0 flex-1 px-[22px] pb-[22px] pt-[18px] ${
           active === "terminal" || active === "database" ? "overflow-hidden" : "overflow-auto"
         }`}
       >
         <div
-          className={`mx-auto flex flex-col gap-4 ${
-            active === "terminal" || active === "database" ? "h-full max-w-none" : "max-w-2xl"
+          className={`flex flex-col gap-[14px] ${
+            active === "terminal" || active === "database" ? "h-full" : ""
           }`}
         >
           {active === "overview" && (
