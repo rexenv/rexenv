@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Check, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, Shield, Trash2, UserPlus } from "lucide-react";
+import { ArrowUpCircle, Check, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   openExternal,
   wpCoreReinstall,
@@ -688,15 +689,77 @@ function ThemeCard({
   );
 }
 
+type PluginFilter = "all" | "active" | "updates";
+
+function PluginFilterTabs({
+  value,
+  onChange,
+  counts,
+}: {
+  value: PluginFilter;
+  onChange: (f: PluginFilter) => void;
+  counts: Record<PluginFilter, number>;
+}) {
+  const tabs: { key: PluginFilter; label: string; amber?: boolean }[] = [
+    { key: "all", label: "All" },
+    { key: "active", label: "Active" },
+    { key: "updates", label: "Updates", amber: true },
+  ];
+  return (
+    <div className="inline-flex items-center gap-1 rounded-[10px] border border-rex-border-subtle bg-rex-well p-[3px]">
+      {tabs.map((t) => (
+        <button
+          key={t.key}
+          onClick={() => onChange(t.key)}
+          className={cn(
+            "flex h-7 items-center gap-1.5 rounded-[7px] px-[11px] text-[12.5px] font-medium transition-colors",
+            value === t.key
+              ? "bg-brand-tint-bg text-brand-tint"
+              : "text-rex-text-muted hover:text-rex-text-bright",
+          )}
+        >
+          {t.label}
+          {counts[t.key] > 0 && (
+            <span
+              className={cn(
+                "rounded-[5px] px-1 font-mono text-[10px]",
+                t.amber ? "bg-status-warning-bg text-status-warning-bright" : "opacity-70",
+              )}
+            >
+              {counts[t.key]}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function PluginsPanel({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [slug, setSlug] = useState("");
   const [activateOnAdd, setActivateOnAdd] = useState(true);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<PluginFilter>("all");
 
   const { data: plugins = [], isLoading } = useQuery({
     queryKey: ["wp-plugins", siteId],
     queryFn: () => wpPlugins(siteId),
+  });
+
+  const isActive = (p: WpPlugin) => p.status === "active" || p.status === "active-network";
+  const counts: Record<PluginFilter, number> = {
+    all: plugins.length,
+    active: plugins.filter(isActive).length,
+    updates: plugins.filter((p) => p.update === "available").length,
+  };
+  const q = query.trim().toLowerCase();
+  const visible = plugins.filter((p) => {
+    if (filter === "active" && !isActive(p)) return false;
+    if (filter === "updates" && p.update !== "available") return false;
+    if (q && !p.name.toLowerCase().includes(q)) return false;
+    return true;
   });
 
   const run = useMutation({
@@ -744,6 +807,20 @@ function PluginsPanel({ siteId }: { siteId: string }) {
         </button>
       </div>
 
+      {/* Search + filter toolbar */}
+      <div className="flex items-center gap-2">
+        <div className="relative w-[230px]">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-rex-text-muted" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search plugins…"
+            className="h-[30px] w-full rounded-lg border border-rex-border bg-rex-surface-2 pl-8 pr-2.5 text-[12px] text-rex-text outline-none transition-colors focus:border-brand"
+          />
+        </div>
+        <PluginFilterTabs value={filter} onChange={setFilter} counts={counts} />
+      </div>
+
       {/* Bulk bar */}
       {selNames.length > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[12px]">
@@ -775,10 +852,12 @@ function PluginsPanel({ siteId }: { siteId: string }) {
       <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
         {isLoading ? (
           <div className="p-6 text-center text-[12.5px] text-rex-text-muted">Loading plugins…</div>
-        ) : plugins.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">No plugins installed.</div>
+        ) : visible.length === 0 ? (
+          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">
+            {plugins.length === 0 ? "No plugins installed." : "No plugins match."}
+          </div>
         ) : (
-          plugins.map((p) => (
+          visible.map((p) => (
             <PluginRow
               key={p.name}
               p={p}

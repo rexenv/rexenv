@@ -597,9 +597,13 @@ Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (c
 
 Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpress/WordPressManager.tsx`.
 
-- [ ] **11.1 (H) Plugins — search + All/Active/Updates filter.**
+- [x] **11.1 (H) Plugins — search + All/Active/Updates filter.**
   *Done when:* a 230px "Search plugins…" input + a segmented All/Active/Updates control (Updates carries an
   amber count badge); filters the list. (lines 88-96 · `WordPressManager.tsx:720-745`.)
+  ✓ Added a `query`/`filter` toolbar to `PluginsPanel`: a 230px "Search plugins…" input + `PluginFilterTabs`
+  (All / Active / Updates, active pill `bg-brand-tint-bg text-brand-tint`, live counts; Updates count in amber
+  `status-warning`). The list renders the filtered `visible` set with a "No plugins match." empty state.
+  `pnpm tsc --noEmit` clean; chrome-devtools shows the search + All 3 / Active 2 / Updates 1 filter.
 
 - [ ] **11.2 (H) Plugins — per-row active toggle.**
   *Done when:* each row's Activate/Deactivate text button becomes the designed `role="switch"` toggle
