@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, Info, RefreshCw, Server, Settings as SettingsIcon, Shield, type LucideIcon } from "lucide-react";
+import { ArrowUp, ArrowUpRight, ChevronRight, FileText, Github, Info, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   getSetting,
   listBlueprints,
   listPhpVersions,
+  openExternal,
   regenerateCerts,
   saveBlueprint,
   setAutostart,
@@ -572,6 +573,82 @@ function UpdatesSetting() {
   );
 }
 
+/** The About section — identity, version, links, credits. */
+function AboutSetting() {
+  const linkRow = (
+    icon: React.ReactNode,
+    color: string,
+    label: string,
+    url: string | null,
+  ) => (
+    <button
+      onClick={() => url && openExternal(url)}
+      className="flex w-full items-center gap-3 border-b border-rex-border-subtle py-[14px] text-left transition-opacity last:border-b-0 hover:opacity-80"
+    >
+      <span className="flex flex-none" style={{ color }}>
+        {icon}
+      </span>
+      <span className="flex-1 text-[13.5px] text-rex-text">{label}</span>
+      {url && (
+        <span className="font-mono text-[11px] text-rex-text-dim">
+          {url.replace(/^https?:\/\//, "")}
+        </span>
+      )}
+      {url ? (
+        <ArrowUpRight className="h-[15px] w-[15px] flex-none text-rex-text-dim" strokeWidth={1.7} />
+      ) : (
+        <ChevronRight className="h-[15px] w-[15px] flex-none text-rex-text-dim" strokeWidth={1.7} />
+      )}
+    </button>
+  );
+
+  return (
+    <>
+      <div className="flex flex-col items-center gap-3 rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5 py-6 text-center">
+        <CrownBadge size={56} />
+        <div>
+          <div className="font-display text-[22px] font-semibold tracking-[-0.02em] text-rex-text">
+            rexenv
+          </div>
+          <div className="mt-1 font-mono text-[11.5px] text-rex-text-muted">
+            {APP_VERSION} (build 104) · macOS · Apple silicon
+          </div>
+        </div>
+        <div className="max-w-[380px] text-[12.5px] leading-[1.55] text-rex-text-muted">
+          A calm, fast command room for your local kingdom — every server, site, and database in one place.
+        </div>
+      </div>
+
+      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+        {linkRow(
+          <FileText className="h-[17px] w-[17px]" strokeWidth={1.7} />,
+          "#7DB8D8",
+          "Documentation",
+          "https://docs.rexenv.app",
+        )}
+        {linkRow(
+          <Github className="h-[17px] w-[17px]" strokeWidth={1.7} />,
+          "#C7CBD4",
+          "GitHub",
+          "https://github.com/rexenv",
+        )}
+        {linkRow(
+          <ShieldCheck className="h-[17px] w-[17px]" strokeWidth={1.7} />,
+          "#5FBFA8",
+          "Licenses & credits",
+          null,
+        )}
+      </div>
+
+      <div className="text-center text-[11.5px] leading-[1.6] text-rex-text-faint">
+        Built on open source — nginx, PHP, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared.
+        <br />
+        Made for developers who run their kingdom locally.
+      </div>
+    </>
+  );
+}
+
 type Section = "general" | "dns" | "services" | "updates" | "about";
 
 const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
@@ -652,9 +729,7 @@ export function Settings() {
               </>
             )}
             {section === "updates" && <UpdatesSetting />}
-            {section === "about" && (
-              <div className="text-[12.5px] text-rex-text-muted">About — §9.3.</div>
-            )}
+            {section === "about" && <AboutSetting />}
           </div>
         </div>
       </div>

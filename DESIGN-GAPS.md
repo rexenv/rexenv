@@ -470,9 +470,14 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
   real Tauri updater is deferred; the Install/auto buttons surface a clear "deferred" note. `pnpm tsc --noEmit`
   clean; chrome-devtools shows the medallion, banner, and toggle.
 
-- [ ] **9.3 (H) About section.**
+- [x] **9.3 (H) About section.**
   *Done when:* centered crown medallion + "rexenv" (Space Grotesk 22px) + mono build line (version · macOS ·
   arch) + tagline + link rows (Documentation / GitHub / Licenses & credits) + credits footer. (lines 147-161.)
+  ✓ New `AboutSetting`: centered `CrownBadge(56)` + "rexenv" (`font-display` 22px) + mono "0.1.0 (build 104) ·
+  macOS · Apple silicon" + tagline; a link card (Documentation → docs.rexenv.app blue `FileText`, GitHub →
+  github.com/rexenv `Github`, Licenses & credits teal `ShieldCheck` — external rows show the host + `ArrowUpRight`,
+  the licenses row a `ChevronRight`, all via `openExternal`); and the open-source credits footer. `pnpm tsc
+  --noEmit` clean; chrome-devtools shows the medallion, build line, link rows, and footer.
 
 - [ ] **9.4 (H) Services section: Default ports card + "Stop idle services" toggle.**
   *Done when:* a Default ports card with mono HTTP/HTTPS/MySQL inputs; a second toggle "Stop idle services
