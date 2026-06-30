@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, ExternalLink, Globe, Share2 } from "lucide-react";
+import { Check, Copy, ExternalLink, Globe, Share2, Square } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { listSites, openExternal, startTunnel, stopTunnel, tunnelsStatus } from "@/lib/ipc";
@@ -25,7 +25,28 @@ export function Tunnels() {
     onError: (e) => window.alert(String(e)),
   });
 
-  const active = tunnels.length;
+  const active = sites.filter((s) => byDomain.get(s.domain)?.running).length;
+
+  const stopAll = useMutation({
+    mutationFn: async () => {
+      const ids = sites.filter((s) => byDomain.get(s.domain)?.running).map((s) => s.id);
+      await Promise.all(ids.map((id) => stopTunnel(id)));
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tunnels"] }),
+    onError: (e) => window.alert(String(e)),
+  });
+
+  const stopAllBtn =
+    active > 0 ? (
+      <button
+        onClick={() => stopAll.mutate()}
+        disabled={stopAll.isPending}
+        className="flex h-[34px] items-center gap-1.5 rounded-[9px] border border-status-error-border bg-status-error-bg px-3 text-[13px] font-medium text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
+      >
+        <Square className="h-3 w-3 fill-current" />
+        Stop all sharing
+      </button>
+    ) : undefined;
 
   return (
     <>
@@ -33,6 +54,7 @@ export function Tunnels() {
         title="Tunnels"
         subtitle={`${active} active`}
         showSearch={false}
+        action={stopAllBtn}
       />
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
         {sites.length === 0 ? (

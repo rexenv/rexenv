@@ -398,9 +398,13 @@ Source: `design/rexenv Mail.dc.html`. File: `src/routes/Mail.tsx`.
 
 Source: `design/rexenv Tunnels.dc.html`, `design/rexenv Tunnel Card.dc.html`. File: `src/routes/Tunnels.tsx`.
 
-- [ ] **8.1 (H) "Stop all sharing" header button.**
+- [x] **8.1 (H) "Stop all sharing" header button.**
   *Done when:* when any tunnel is active the header shows a red "Stop all sharing" button. (lines 57-59 ·
   `Tunnels.tsx:30-36`.)
+  ✓ Header `action` shows a red "■ Stop all sharing" button (`bg-status-error-bg border-status-error-border
+  text-status-error-bright`) only when `active > 0`; it stops every running tunnel (`stopTunnel` per active
+  site id, then invalidates). `active` now counts sites whose domain has a running tunnel. `pnpm tsc --noEmit`
+  clean; chrome-devtools shows the red button (1 active tunnel).
 
 - [ ] **8.2 (M) Cards (not rows) + Shared/Not-shared sections + state-driven styling.**
   *Done when:* each site is a standalone card (`bg #15171D`, radius 13, gap 12) grouped under "Shared now" /
