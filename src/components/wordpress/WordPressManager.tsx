@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Check, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   openExternal,
   wpCoreReinstall,
@@ -913,21 +914,24 @@ function PluginRow({
         </div>
         <div className="font-mono text-[11px] text-rex-text-dim">v{p.version}</div>
       </div>
-      <span
-        className={`rounded-full px-2 py-0.5 text-[11px] ${
-          active ? "bg-emerald-500/15 text-emerald-400" : "bg-rex-surface-3 text-rex-text-muted"
-        }`}
-      >
-        {active ? "Active" : "Inactive"}
-      </span>
       {updatable && (
         <button className={BTN + " flex items-center gap-1"} disabled={busy} onClick={onUpdate} title="Update">
           <ArrowUpCircle className="h-3.5 w-3.5" />
         </button>
       )}
-      <button className={BTN} disabled={busy} onClick={active ? onDeactivate : onActivate}>
-        {active ? "Deactivate" : "Activate"}
-      </button>
+      <span
+        className={cn(
+          "w-[58px] text-right text-[11.5px] font-medium",
+          active ? "text-status-running-bright" : "text-rex-text-muted",
+        )}
+      >
+        {active ? "Active" : "Inactive"}
+      </span>
+      <StartStopToggle
+        running={active}
+        onToggle={active ? onDeactivate : onActivate}
+        label={`${active ? "Deactivate" : "Activate"} ${p.name}`}
+      />
       <button
         className={BTN + " hover:border-red-500/60 hover:text-red-400"}
         disabled={busy}

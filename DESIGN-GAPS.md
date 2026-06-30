@@ -605,9 +605,14 @@ Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpre
   `status-warning`). The list renders the filtered `visible` set with a "No plugins match." empty state.
   `pnpm tsc --noEmit` clean; chrome-devtools shows the search + All 3 / Active 2 / Updates 1 filter.
 
-- [ ] **11.2 (H) Plugins — per-row active toggle.**
+- [x] **11.2 (H) Plugins — per-row active toggle.**
   *Done when:* each row's Activate/Deactivate text button becomes the designed `role="switch"` toggle
   (34×20) + colored Active/Inactive label. (line 138 · `WordPressManager.tsx:849-851`.)
+  ✓ Replaced the Activate/Deactivate text button in `PluginRow` with a colored status label (Active →
+  `status-running-bright`, Inactive → muted) + a `StartStopToggle` (running = active, toggles
+  activate/deactivate). Kept the update + delete buttons. (Toggle is the unified 46×27, not the comp's 34×20 —
+  one shared component.) `pnpm tsc --noEmit` clean; chrome-devtools shows the green-ON Active rows + gray-OFF
+  Inactive row.
 
 - [ ] **11.3 (H) Tools — Maintenance actions + one-click admin login + 2-col grid.**
   *Done when:* Maintenance lists Regenerate permalinks · **Export database** · danger **Reset site to a clean
