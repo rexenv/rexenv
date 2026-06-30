@@ -449,10 +449,16 @@ Source: `design/rexenv Tunnels.dc.html`, `design/rexenv Tunnel Card.dc.html`. Fi
 
 Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
 
-- [ ] **9.1 (H) Section sub-navigation.**
+- [x] **9.1 (H) Section sub-navigation.**
   *Done when:* a 188px left column (General · DNS & SSL · Services · Updates · About) swaps the right pane,
   active-state violet tint, "Updates available" amber dot — replacing the single long card scroll. Keep the
   extra Blueprints + Uninstall content under the appropriate section. (lines 53-67 · `Settings.tsx:459-491`.)
+  ✓ Rebuilt `Settings()` with a `section` state + 188px `nav` (General/DNS & SSL/Services/Updates/About, icons,
+  active = `bg-brand-active text-brand-tint`, amber dot on Updates via `UPDATE_READY`) swapping a `max-w-[640px]`
+  content pane; TopBar `subtitle` is the section crumb. Distributed existing components — General: Theme +
+  Sites-folder + Blueprints; DNS & SSL: DnsSsl; Services: Startup + PHP-versions + Uninstall; Updates/About are
+  placeholders (filled in §9.2/§9.3). `pnpm tsc --noEmit` clean; chrome-devtools confirms the active-state +
+  crumb + content swap (General↔Services).
 
 - [ ] **9.2 (H) Updates section.**
   *Done when:* app medallion + "rexenv x.y.z" + status line, Check-for-updates button, "version N available"

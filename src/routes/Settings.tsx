@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Info, RefreshCw, Server, Settings as SettingsIcon, Shield, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import {
@@ -456,34 +458,92 @@ function UninstallSetting() {
   );
 }
 
+type Section = "general" | "dns" | "services" | "updates" | "about";
+
+const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
+  { key: "general", label: "General", icon: SettingsIcon },
+  { key: "dns", label: "DNS & SSL", icon: Shield },
+  { key: "services", label: "Services", icon: Server },
+  { key: "updates", label: "Updates", icon: RefreshCw },
+  { key: "about", label: "About", icon: Info },
+];
+
+// Mock: a newer version is available (drives the sidebar dot + Updates section).
+const UPDATE_READY = true;
+
 export function Settings() {
+  const [section, setSection] = useState<Section>("general");
+  const current = SECTIONS.find((s) => s.key === section)!;
+
   return (
     <>
-      <TopBar title="Settings" showSearch={false} />
-      <div className="min-h-0 flex-1 overflow-auto p-[18px]">
-        <div className="mx-auto flex max-w-2xl flex-col gap-4">
-          <Card title="General">
-            <div className="flex flex-col gap-3">
-              <ThemeSetting />
-              <div className="h-px bg-rex-border-subtle" />
-              <SitesFolderSetting />
-            </div>
-          </Card>
-          <Card title="DNS & SSL">
-            <DnsSslSetting />
-          </Card>
-          <Card title="Startup">
-            <AutostartSetting />
-          </Card>
-          <Card title="Blueprints">
-            <BlueprintsSetting />
-          </Card>
-          <Card title="PHP versions">
-            <PhpVersionsSetting />
-          </Card>
-          <Card title="Uninstall">
-            <UninstallSetting />
-          </Card>
+      <TopBar title="Settings" subtitle={current.label} showSearch={false} />
+      <div className="flex min-h-0 flex-1">
+        <nav className="flex w-[188px] flex-none flex-col gap-0.5 border-r border-rex-border-subtle p-2.5">
+          {SECTIONS.map((s) => {
+            const Icon = s.icon;
+            const active = s.key === section;
+            return (
+              <button
+                key={s.key}
+                onClick={() => setSection(s.key)}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-[9px] px-[11px] py-[9px] text-left text-[13px] transition-colors",
+                  active
+                    ? "bg-brand-active text-brand-tint"
+                    : "text-rex-text-muted hover:bg-white/[0.04] hover:text-rex-text",
+                )}
+              >
+                <Icon className="h-4 w-4 flex-none" strokeWidth={1.7} />
+                <span className="flex-1">{s.label}</span>
+                {s.key === "updates" && UPDATE_READY && (
+                  <span className="h-[7px] w-[7px] rounded-full bg-status-warning" />
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="min-h-0 flex-1 overflow-auto px-[26px] py-[22px]">
+          <div className="flex max-w-[640px] flex-col gap-4">
+            {section === "general" && (
+              <>
+                <Card title="Theme">
+                  <ThemeSetting />
+                </Card>
+                <Card title="Sites folder">
+                  <SitesFolderSetting />
+                </Card>
+                <Card title="Blueprints">
+                  <BlueprintsSetting />
+                </Card>
+              </>
+            )}
+            {section === "dns" && (
+              <Card title="DNS & SSL">
+                <DnsSslSetting />
+              </Card>
+            )}
+            {section === "services" && (
+              <>
+                <Card title="Startup">
+                  <AutostartSetting />
+                </Card>
+                <Card title="PHP versions">
+                  <PhpVersionsSetting />
+                </Card>
+                <Card title="Uninstall">
+                  <UninstallSetting />
+                </Card>
+              </>
+            )}
+            {section === "updates" && (
+              <div className="text-[12.5px] text-rex-text-muted">Updates — §9.2.</div>
+            )}
+            {section === "about" && (
+              <div className="text-[12.5px] text-rex-text-muted">About — §9.3.</div>
+            )}
+          </div>
         </div>
       </div>
     </>
