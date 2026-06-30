@@ -34,7 +34,18 @@ export default {
           "running-bright": "var(--rex-running-bright)",
           stopped: "var(--rex-stopped)",
           error: "var(--rex-error)",
+          "error-bright": "var(--rex-error-bright)",
           warning: "var(--rex-warning)",
+          "warning-bright": "var(--rex-warning-bright)",
+          // pill tints (translucent fill + border per status)
+          "running-bg": "var(--rex-running-bg)",
+          "running-border": "var(--rex-running-border)",
+          "warning-bg": "var(--rex-warning-bg)",
+          "warning-border": "var(--rex-warning-border)",
+          "stopped-bg": "var(--rex-stopped-bg)",
+          "stopped-border": "var(--rex-stopped-border)",
+          "error-bg": "var(--rex-error-bg)",
+          "error-border": "var(--rex-error-border)",
         },
         // shadcn/ui semantic tokens
         background: "var(--background)",

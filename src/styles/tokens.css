@@ -40,7 +40,19 @@
   --rex-running-bright: #4fc065;
   --rex-stopped: #6e7681;
   --rex-error: #f85149;
+  --rex-error-bright: #f8716b;
   --rex-warning: #d29922;
+  --rex-warning-bright: #d7a93a;
+
+  /* status pill tints (translucent fill + border over the surface) */
+  --rex-running-bg: rgba(63, 185, 80, 0.12);
+  --rex-running-border: rgba(63, 185, 80, 0.22);
+  --rex-warning-bg: rgba(210, 153, 34, 0.12);
+  --rex-warning-border: rgba(210, 153, 34, 0.24);
+  --rex-stopped-bg: rgba(110, 118, 129, 0.13);
+  --rex-stopped-border: rgba(110, 118, 129, 0.2);
+  --rex-error-bg: rgba(248, 81, 73, 0.12);
+  --rex-error-border: rgba(248, 81, 73, 0.24);
 
   /* ── macOS traffic lights ── */
   --rex-mac-close: #ff5f57;

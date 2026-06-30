@@ -40,12 +40,17 @@ Source: `design/rexenv Component Sheet.dc.html`, `design/rexenv App Shell.dc.htm
 Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/components/ui/button.tsx`,
 `src/components/common/Placeholder.tsx`, `src/styles/tokens.css`, `tailwind.config.js`.
 
-- [ ] **1.1 (H) StatusPill — restore per-status tinted bg + border.**
+- [x] **1.1 (H) StatusPill — restore per-status tinted bg + border.**
   *Done when:* each pill carries a status-colored translucent background + border instead of the flat
   neutral chip. Running `bg rgba(63,185,80,.12) / border rgba(63,185,80,.22)`; Starting `.12/.24` amber;
   Stopped `rgba(110,118,129,.13)/.2`; Error `rgba(248,81,73,.12)/.24`. Dot size 9px in pills (7px stays for
   bare/table use). Text colors: Running `#4FC065`, Stopped `#8A90A0`, Error `#F8716B`, Starting `#D7A93A`.
   (Component Sheet §03, lines 209-224 · `StatusPill.tsx:8-27`.)
+  ✓ Added status-tint + `*-bright` text tokens to `tokens.css` (`--rex-{running,warning,stopped,error}-{bg,border}`
+  + `error-bright`/`warning-bright`) and registered them under `colors.status` in `tailwind.config.js`.
+  `StatusPill.tsx` now maps each status to `fill` (tinted bg+border), `text` (bright shade; Stopped → text-muted
+  `#8A90A0`), 9px dots, design padding `py-[5px] pl-2.5 pr-3`. `pnpm tsc --noEmit` clean; chrome-devtools
+  `/services` shows green-tinted Running pills + neutral-gray Stopped pill (was flat gray).
 
 - [ ] **1.2 (M) StatusPill — "Starting" spinner + error pulse.**
   *Done when:* Starting renders a rotating ring (`rexSpin`), not a static dot; Error dot gets `glowErr` +
