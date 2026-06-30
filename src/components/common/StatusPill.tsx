@@ -54,9 +54,12 @@ function StatusMarker({ status }: { status: ServiceStatus }) {
 export function StatusPill({
   status,
   className,
+  label,
 }: {
   status: ServiceStatus;
   className?: string;
+  /** override the default label (e.g. "Idle" instead of "Stopped"). */
+  label?: string;
 }) {
   const meta = STATUS_META[status];
   return (
@@ -68,7 +71,7 @@ export function StatusPill({
       )}
     >
       <StatusMarker status={status} />
-      <span className={cn("text-xs font-medium", meta.text)}>{meta.label}</span>
+      <span className={cn("text-xs font-medium", meta.text)}>{label ?? meta.label}</span>
     </span>
   );
 }

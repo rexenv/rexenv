@@ -316,11 +316,16 @@ Source: `design/rexenv Services.dc.html`, `design/rexenv Service Row.dc.html`. F
   (invalidates `["services"]`). Subtitle now "{n} of {m} running". `pnpm tsc --noEmit` clean; chrome-devtools
   shows "■ Stop all" secondary (4/7 running).
 
-- [ ] **5.5 (M) Row sub-line = version; meters stacked; "Idle" label.**
+- [x] **5.5 (M) Row sub-line = version; meters stacked; "Idle" label.**
   *Done when:* sub-line shows the version (own port column), not `host:port · pid`; the two mini-meters stack
   (CPU over RAM) in one column with design scaling (cpu/12, ram/500); stopped reads "Idle"; status pill
   status-tinted (folds into 1.1); idle rows dim to 0.74. (Service Row lines 13-33 · `Services.tsx:9-46`,
   `StatusPill.tsx:9`.)
+  ✓ Sub-line now renders `svc.version` (—  when absent); added a 62px `:port` column. Replaced the two side-by-side
+  `Meter`s with a `StackedMeters` component (CPU over RAM, 4px bars, scaling cpu/12 · ram/500, 132px column).
+  Added a `label` override to `StatusPill` so stopped services read **"Idle"** (status-tint from §1.1); non-running
+  rows get `opacity-[0.74]`. `pnpm tsc --noEmit` clean; chrome-devtools shows version sub-lines, the port column,
+  stacked meters, "Idle" pills, and dimmed idle rows.
 
 ---
 

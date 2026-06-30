@@ -79,19 +79,26 @@ const GROUPS: { kind: ServiceKind; title: string; icon: LucideIcon; color: strin
   { kind: "web", title: "Web servers & edge router", icon: Server, color: "#5FBFA8" },
 ];
 
-function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
-  return (
-    <div className="w-24">
-      <div className="mb-1 flex justify-between font-mono text-[10px] text-rex-text-dim">
-        <span>{label}</span>
-        <span className="text-rex-text-bright">{value}</span>
-      </div>
-      <div className="h-[5px] overflow-hidden rounded-full bg-rex-well">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-brand-strong to-brand-light"
+/** Stacked CPU-over-RAM mini-meters (design scaling: cpu/12, ram/500). */
+function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
+  const bar = (label: string, pct: number, value: string) => (
+    <div className="flex items-center gap-[7px]">
+      <span className="w-[22px] font-mono text-[8.5px] tracking-[0.06em] text-rex-text-dim">
+        {label}
+      </span>
+      <span className="h-1 flex-1 overflow-hidden rounded-full bg-[#0B0C10]">
+        <span
+          className="block h-full rounded-full bg-gradient-to-r from-brand-strong to-brand-light transition-[width] duration-700"
           style={{ width: `${Math.min(100, pct)}%` }}
         />
-      </div>
+      </span>
+      <span className="w-8 text-right font-mono text-[9.5px] text-rex-text-bright">{value}</span>
+    </div>
+  );
+  return (
+    <div className="flex w-[132px] flex-none flex-col gap-1">
+      {bar("CPU", (cpu / 12) * 100, `${cpu.toFixed(1)}%`)}
+      {bar("RAM", (ram / 500) * 100, ram >= 1024 ? `${(ram / 1024).toFixed(1)}G` : `${ram}M`)}
     </div>
   );
 }
@@ -197,7 +204,12 @@ function ServiceRow({
   const accent = KIND_ACCENT[kind];
   const running = svc.running;
   return (
-    <div className="flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0">
+    <div
+      className={cn(
+        "flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 transition-opacity last:border-b-0",
+        !running && "opacity-[0.74]",
+      )}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-[11px]">
         <span
           className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border font-mono text-[10px] font-bold"
@@ -219,18 +231,17 @@ function ServiceRow({
               </span>
             )}
           </div>
-          <div className="font-mono text-[11px] text-rex-text-dim">
-            127.0.0.1:{svc.port}
-            {svc.pid != null && ` · pid ${svc.pid}`}
-          </div>
+          <div className="font-mono text-[10.5px] text-rex-text-dim">{svc.version ?? "—"}</div>
         </div>
       </div>
-      <StatusPill status={running ? "running" : "stopped"} />
-      <Meter label="CPU" value={`${svc.cpuPercent.toFixed(1)}%`} pct={svc.cpuPercent} />
-      <Meter
-        label="RAM"
-        value={svc.ramMb >= 1024 ? `${(svc.ramMb / 1024).toFixed(1)} GB` : `${svc.ramMb} MB`}
-        pct={(svc.ramMb / 1024) * 100}
+      <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
+        :{svc.port}
+      </div>
+      <StackedMeters cpu={svc.cpuPercent} ram={svc.ramMb} />
+      <StatusPill
+        status={running ? "running" : "stopped"}
+        label={running ? undefined : "Idle"}
+        className="w-[86px]"
       />
       <StartStopToggle
         running={running}
