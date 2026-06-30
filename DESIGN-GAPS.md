@@ -228,10 +228,15 @@ Source: `design/rexenv Site Detail.dc.html`. File: `src/routes/SiteDetail.tsx`.
   → `/wp-admin`) gated to WordPress sites. `pnpm tsc --noEmit` clean; chrome-devtools: Acme (WP) shows the full
   cluster incl. Open admin; Portfolio (Laravel) correctly omits Open admin + the WordPress tab.
 
-- [ ] **4.2 (H) Environment card — 3-column mini-card grid + SSL certificate.**
+- [x] **4.2 (H) Environment card — 3-column mini-card grid + SSL certificate.**
   *Done when:* Environment renders as three mini-cards — PHP version (big 18px mono value + dropdown), Web
   server (value + dropdown), **SSL certificate** (green lock + "Trusted" + mono "rexenv CA") — instead of
   plain label/value rows; the SSL sub-card is currently absent. (lines 112-142 · `SiteDetail.tsx:229-263`.)
+  ✓ Rebuilt Environment as a bespoke card (mono uppercase "Environment" label + `grid-cols-3`) with an `EnvMini`
+  helper (`bg-rex-well`, subtle border, `rounded-[11px]`): PHP version = 18px mono value + select (`{m}` options,
+  no "PHP " prefix), Web server = 15px value + select, SSL certificate = green `Lock` + "Trusted" + mono "rexenv CA"
+  (amber `LockOpen` + "Not secured" when `!ssl`). Dropped the comp-absent Type/WordPress rows (removed the now-unused
+  `Field` + `wp`/`WpInfo`). `pnpm tsc --noEmit` clean; chrome-devtools shows the 3 mini-cards incl. the SSL sub-card.
 
 - [ ] **4.3 (M) Recent-logs preview (remove stale placeholder).**
   *Done when:* the Recent-logs card shows a real log-preview box (last lines, color-coded by level) + a

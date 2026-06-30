@@ -10,6 +10,8 @@ import {
   FolderOpen,
   Globe,
   LayoutGrid,
+  Lock,
+  LockOpen,
   Pause,
   Play,
   Settings,
@@ -37,7 +39,7 @@ import {
   tailLog,
   wpInfo,
 } from "@/lib/ipc";
-import type { Site, WebServer, WpInfo } from "@/types";
+import type { Site, WebServer } from "@/types";
 
 /** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
 const SERVERS: { value: WebServer; label: string }[] = [
@@ -153,7 +155,6 @@ export function SiteDetail() {
           {active === "overview" && (
             <Overview
               site={site}
-              wp={wp}
               isWordpress={isWordpress}
               options={options}
               switchPhpPending={switchPhp.isPending}
@@ -264,7 +265,6 @@ function SiteHeader({
 
 function Overview({
   site,
-  wp,
   isWordpress,
   options,
   switchPhpPending,
@@ -275,7 +275,6 @@ function Overview({
   onTerminal,
 }: {
   site: Site;
-  wp?: WpInfo;
   isWordpress: boolean;
   options: string[];
   switchPhpPending: boolean;
@@ -287,6 +286,7 @@ function Overview({
 }) {
   const url = `https://${site.domain}`;
   const wpConfig = `${site.path}/wp-config.php`;
+  const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.label ?? site.webServer;
 
   return (
     <>
@@ -314,41 +314,70 @@ function Overview({
         </div>
       </Card>
 
-      <Card title="Environment">
-        <Row label="PHP version">
-          <select
-            value={site.phpVersion}
-            disabled={switchPhpPending}
-            onChange={(e) => onPhp(e.target.value)}
-            className={SELECT_CLS}
-          >
-            {options.map((m) => (
-              <option key={m} value={m}>
-                PHP {m}
-              </option>
-            ))}
-          </select>
-        </Row>
-        <Row label="Web server">
-          <select
-            value={site.webServer}
-            disabled={switchServerPending}
-            onChange={(e) => onServer(e.target.value as WebServer)}
-            className={SELECT_CLS}
-          >
-            {!SERVERS.some((s) => s.value === site.webServer) && (
-              <option value={site.webServer}>{site.webServer}</option>
+      <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+        <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+          Environment
+        </div>
+        <div className="grid grid-cols-3 gap-[14px]">
+          <EnvMini label="PHP version">
+            <span className="font-mono text-[18px] font-semibold text-rex-text">
+              {site.phpVersion}
+            </span>
+            <select
+              value={site.phpVersion}
+              disabled={switchPhpPending}
+              onChange={(e) => onPhp(e.target.value)}
+              className={SELECT_CLS}
+            >
+              {options.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </EnvMini>
+          <EnvMini label="Web server">
+            <span className="text-[15px] font-semibold capitalize text-rex-text">
+              {serverLabel}
+            </span>
+            <select
+              value={site.webServer}
+              disabled={switchServerPending}
+              onChange={(e) => onServer(e.target.value as WebServer)}
+              className={SELECT_CLS}
+            >
+              {!SERVERS.some((s) => s.value === site.webServer) && (
+                <option value={site.webServer}>{site.webServer}</option>
+              )}
+              {SERVERS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </EnvMini>
+          <EnvMini label="SSL certificate">
+            {site.ssl ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Lock className="h-[17px] w-[17px] text-status-running" strokeWidth={1.8} />
+                  <span className="text-[13.5px] font-semibold text-rex-text">Trusted</span>
+                </div>
+                <span className="font-mono text-[10.5px] text-rex-text-dim">rexenv&nbsp;CA</span>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <LockOpen
+                  className="h-[17px] w-[17px]"
+                  style={{ color: "var(--rex-lock-insecure)" }}
+                  strokeWidth={1.8}
+                />
+                <span className="text-[13.5px] font-semibold text-rex-text">Not secured</span>
+              </div>
             )}
-            {SERVERS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </Row>
-        <Field label="Type" value={site.type} />
-        {isWordpress && <Field label="WordPress" value={wp?.version ? `v${wp.version}` : "yes"} />}
-      </Card>
+          </EnvMini>
+        </div>
+      </div>
 
       <Card title="Paths">
         <PathRow label="Document root" value={site.path} openable />
@@ -463,11 +492,13 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+/** A mini-card inside the Environment grid: label + a value/control row. */
+function EnvMini({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <Row label={label}>
-      <span className="font-mono text-[12px] text-rex-text">{value}</span>
-    </Row>
+    <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
+      <div className="mb-[9px] text-[12px] text-rex-text-muted">{label}</div>
+      <div className="flex items-center justify-between gap-2">{children}</div>
+    </div>
   );
 }
 
