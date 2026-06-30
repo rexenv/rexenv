@@ -248,11 +248,17 @@ Source: `design/rexenv Site Detail.dc.html`. File: `src/routes/SiteDetail.tsx`.
   `#A9AEBA`; empty → "No recent activity" hint. Replaced the stale "§3" placeholder. `pnpm tsc --noEmit` clean;
   chrome-devtools shows the live-tailed lines + the View-all-logs link.
 
-- [ ] **4.4 (M) Overview layout: card order + Quick links grid + Paths config row.**
+- [x] **4.4 (M) Overview layout: card order + Quick links grid + Paths config row.**
   *Done when:* order is Environment → (Paths | Quick links two-column 1.25fr/1fr) → Recent logs; Quick links
   is a 2-col tile grid with colored icons (Browser/WP admin/Database/Terminal) + a full-width "Open project
   folder"; Paths shows `Project path` + `Config path` (recessed boxes w/ copy + open-folder). (lines 110-199
   · `SiteDetail.tsx:204-277`.)
+  ✓ Reordered Overview to Environment → `grid-cols-[1.25fr_1fr]` [Paths | Quick links] → Recent logs. New
+  `PathField` (recessed `bg-rex-well` box + mono value + CopyButton + open-folder) renders Project path +
+  (WP→`Config path` = wp-config.php / else `URL`). New `QuickTile` 2-col grid (Browser muted, WP admin
+  `#7DB8D8`, Database muted, Terminal `brand-tint`, "Open project folder" `col-span-2`). Removed the unused
+  `Card`/`Row`/`QuickLink`/`PathRow` helpers. `pnpm tsc --noEmit` clean; chrome-devtools shows the new order +
+  two-column Paths/Quick-links grid + colored tiles.
 
 - [ ] **4.5 (L) Tab bar alignment + content width.**
   *Done when:* tabs are left-aligned full-width (not `mx-auto max-w-2xl`), WordPress tab tinted blue when

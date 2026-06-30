@@ -295,30 +295,6 @@ function Overview({
 
   return (
     <>
-      <Card title="Quick links">
-        <div className="flex flex-wrap gap-2">
-          <QuickLink icon={<Globe className="h-4 w-4" />} label="Browser" onClick={() => openExternal(url)} />
-          {isWordpress && (
-            <QuickLink
-              icon={<ExternalLink className="h-4 w-4" />}
-              label="WP admin"
-              onClick={() => openExternal(`${url}/wp-admin`)}
-            />
-          )}
-          <QuickLink icon={<Database className="h-4 w-4" />} label="Database" onClick={onDatabase} />
-          <QuickLink
-            icon={<TerminalSquare className="h-4 w-4" />}
-            label="Terminal"
-            onClick={onTerminal}
-          />
-          <QuickLink
-            icon={<FolderOpen className="h-4 w-4" />}
-            label="Folder"
-            onClick={() => openExternal(site.path)}
-          />
-        </div>
-      </Card>
-
       <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
         <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
           Environment
@@ -384,13 +360,62 @@ function Overview({
         </div>
       </div>
 
-      <Card title="Paths">
-        <PathRow label="Document root" value={site.path} openable />
-        {isWordpress && <PathRow label="wp-config.php" value={wpConfig} />}
-        <Row label="URL">
-          <span className="font-mono text-[12px] text-rex-text">{url}</span>
-        </Row>
-      </Card>
+      <div className="grid grid-cols-[1.25fr_1fr] gap-[14px]">
+        <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+          <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+            Paths
+          </div>
+          <div className="flex flex-col gap-3">
+            <PathField label="Project path" value={site.path} openable />
+            {isWordpress ? (
+              <PathField label="Config path" value={wpConfig} />
+            ) : (
+              <PathField label="URL" value={url} />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+          <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+            Quick links
+          </div>
+          <div className="grid grid-cols-2 gap-[9px]">
+            <QuickTile
+              icon={<Globe className="h-4 w-4" />}
+              iconColor="text-rex-text-muted"
+              label="Browser"
+              onClick={() => openExternal(url)}
+            />
+            {isWordpress && (
+              <QuickTile
+                icon={<ExternalLink className="h-4 w-4" />}
+                iconColor="text-[#7DB8D8]"
+                label="WP admin"
+                onClick={() => openExternal(`${url}/wp-admin`)}
+              />
+            )}
+            <QuickTile
+              icon={<Database className="h-4 w-4" />}
+              iconColor="text-rex-text-muted"
+              label="Database"
+              onClick={onDatabase}
+            />
+            <QuickTile
+              icon={<TerminalSquare className="h-4 w-4" />}
+              iconColor="text-brand-tint"
+              label="Terminal"
+              onClick={onTerminal}
+            />
+            <QuickTile
+              icon={<FolderOpen className="h-4 w-4" />}
+              iconColor="text-rex-text-muted"
+              label="Open project folder"
+              onClick={() => openExternal(site.path)}
+              span2
+            />
+          </div>
+        </div>
+      </div>
 
       <RecentLogs siteId={site.id} onViewAll={onViewLogs} />
     </>
@@ -527,24 +552,6 @@ function LogsTab({ siteId }: { siteId: string }) {
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
-      <div className="mb-3 text-[13px] font-semibold text-rex-text">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between border-b border-rex-border-subtle py-2 last:border-b-0">
-      <span className="text-[12.5px] text-rex-text-muted">{label}</span>
-      {children}
-    </div>
-  );
-}
-
 /** A mini-card inside the Environment grid: label + a value/control row. */
 function EnvMini({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -555,11 +562,16 @@ function EnvMini({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function PathRow({ label, value, openable }: { label: string; value: string; openable?: boolean }) {
+/** A labelled path inside a recessed box: mono value + copy + open-folder. */
+function PathField({ label, value, openable }: { label: string; value: string; openable?: boolean }) {
   return (
-    <Row label={label}>
-      <span className="flex items-center gap-1.5">
-        <span className="max-w-[280px] truncate font-mono text-[12px] text-rex-text" title={value}>
+    <div>
+      <div className="mb-1.5 text-[12px] text-rex-text-muted">{label}</div>
+      <div className="flex items-center gap-2 rounded-[10px] border border-rex-border-subtle bg-rex-well py-2 pl-[11px] pr-2">
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-text-bright"
+          title={value}
+        >
           {value}
         </span>
         <CopyButton value={value} />
@@ -568,8 +580,8 @@ function PathRow({ label, value, openable }: { label: string; value: string; ope
             <FolderOpen className="h-3.5 w-3.5" />
           </IconBtn>
         )}
-      </span>
-    </Row>
+      </div>
+    </div>
   );
 }
 
@@ -593,27 +605,29 @@ function CopyButton({ value }: { value: string }) {
   );
 }
 
-function QuickLink({
+/** A tile in the Quick-links grid: colored icon + label. */
+function QuickTile({
   icon,
+  iconColor,
   label,
   onClick,
-  disabled,
-  title,
+  span2,
 }: {
   icon: React.ReactNode;
+  iconColor: string;
   label: string;
   onClick?: () => void;
-  disabled?: boolean;
-  title?: string;
+  span2?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-3 py-1.5 text-[12.5px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border"
+      className={cn(
+        "flex items-center gap-[9px] rounded-[10px] border border-rex-border-subtle bg-rex-well px-[11px] py-[10px] text-[12.5px] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
+        span2 && "col-span-2",
+      )}
     >
-      {icon}
+      <span className={cn("flex", iconColor)}>{icon}</span>
       {label}
     </button>
   );
