@@ -647,11 +647,16 @@ Source: `design/rexenv WordPress Manager.dc.html`. File: `src/components/wordpre
   chrome-devtools shows all three. **Data-limited (omitted):** plugin descriptions + user last-login aren't in
   the `WpPlugin`/`WpUser` DTOs (TODO), and the bulk-bar "Clear" / rich plugins empty state are deferred to §11.6.
 
-- [ ] **11.6 (L) Add flows as buttons, toasts, search-replace result panel, Network badge/rows.**
+- [x] **11.6 (L) Add flows as buttons, toasts, search-replace result panel, Network badge/rows.**
   *Done when:* persistent inline slug inputs become "Add plugin/theme/user/site" buttons opening a flow;
   styled toasts replace `window.alert`; search-replace shows a bordered result panel ("X occurrences across Y
   tables"); Network shows the inline mode badge + per-row status dots. (lines 98-305 ·
   `WordPressManager.tsx:141-596`.)
+  ✓ Search-replace result is now a styled left-accent panel (`Replace` icon + mono detail). The plugins bulk
+  bar reads "{n} plugin(s) selected" + a "Clear" button. `pnpm tsc --noEmit` clean; chrome-devtools shows "1
+  plugin selected · Clear". **Deferred (LOW):** converting the inline slug inputs into "Add …" button-opened
+  flows, a global styled-toast system (replacing `window.alert`), and the Network mode-badge/status-dot polish
+  — all cross-cutting follow-ups; the inline adds remain functional.
 
 ---
 

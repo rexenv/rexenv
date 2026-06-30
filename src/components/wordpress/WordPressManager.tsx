@@ -401,7 +401,12 @@ function ToolsPanel({ siteId }: { siteId: string }) {
                 {dryRun ? "Preview" : "Run"}
               </button>
             </div>
-            {srResult && <div className="font-mono text-[12px] text-rex-text">{srResult}</div>}
+            {srResult && (
+              <div className="flex items-center gap-2.5 rounded-lg border border-rex-border-strong border-l-[3px] border-l-brand bg-rex-surface-2 px-3 py-2.5">
+                <Replace className="h-4 w-4 flex-none text-brand-tint" />
+                <span className="font-mono text-[11.5px] text-rex-text-bright">{srResult}</span>
+              </div>
+            )}
           </div>
         </Card>
       </div>
@@ -910,7 +915,12 @@ function PluginsPanel({ siteId }: { siteId: string }) {
       {/* Bulk bar */}
       {selNames.length > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[12px]">
-          <span className="text-rex-text-muted">{selNames.length} selected</span>
+          <span className="text-rex-text-muted">
+            {selNames.length} plugin{selNames.length === 1 ? "" : "s"} selected
+          </span>
+          <button className={BTN} onClick={() => setSelected(new Set())}>
+            Clear
+          </button>
           <div className="flex-1" />
           <button className={BTN} disabled={busy} onClick={() => run.mutate(() => wpPluginActivate(siteId, selNames))}>
             Activate
