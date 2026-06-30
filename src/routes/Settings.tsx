@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ArrowUpRight, CheckCircle2, ChevronRight, FileText, Github, Info, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUp, ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import {
   autostartStatus,
   deleteBlueprint,
   dnsStatus,
-  getSetting,
   listBlueprints,
   listPhpVersions,
   openExternal,
@@ -100,20 +99,20 @@ function ThemeSetting() {
   );
 }
 
-function SitesFolderSetting() {
+/** General prefs card: compact Default-PHP select + Sites-folder picker. */
+function GeneralPrefsCard() {
   const qc = useQueryClient();
-  // Resolved folder (for the placeholder) + the raw override setting.
-  const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
-  const { data: override } = useQuery({
-    queryKey: ["setting", SITES_DIR_KEY],
-    queryFn: () => getSetting(SITES_DIR_KEY),
+  const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
+  const installed = versions.filter((v) => v.installed);
+  const currentPhp = versions.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "";
+  const setDefault = useMutation({
+    mutationFn: (minor: string) => setDefaultPhpVersion(minor),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
+    onError: (e) => window.alert(String(e)),
   });
-  const [value, setValue] = useState("");
-  useEffect(() => {
-    if (override != null) setValue(override);
-  }, [override]);
 
-  const save = useMutation({
+  const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
+  const saveFolder = useMutation({
     mutationFn: (v: string) => setSetting(SITES_DIR_KEY, v),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sites-folder"] });
@@ -123,29 +122,44 @@ function SitesFolderSetting() {
   });
 
   return (
-    <div>
-      <label className="mb-1.5 block text-[12.5px] text-rex-text-muted">
-        Sites folder
-      </label>
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={value}
-          placeholder={resolved ?? "default"}
-          onChange={(e) => setValue(e.target.value)}
-          className="h-[34px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-3 font-mono text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
-        />
-        <Button
-          variant="primary"
-          disabled={save.isPending}
-          onClick={() => save.mutate(value.trim())}
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+      <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">
+        <div className="flex-1">
+          <div className="text-[13.5px] font-medium text-rex-text">Default PHP version</div>
+          <div className="mt-0.5 text-[12px] text-rex-text-muted">
+            New sites use this version unless you pick another.
+          </div>
+        </div>
+        <select
+          value={currentPhp}
+          onChange={(e) => setDefault.mutate(e.target.value)}
+          className="h-[34px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 font-mono text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
         >
-          {save.isPending ? "Saving…" : "Save"}
-        </Button>
+          {installed.map((v) => (
+            <option key={v.minor} value={v.minor}>
+              {v.minor}
+            </option>
+          ))}
+        </select>
       </div>
-      <div className="mt-2 font-mono text-[11px] text-rex-text-dim">
-        New sites are created under: {resolved ?? "…"}
-        {!override && " (default)"}
+      <div className="flex items-center gap-[14px] py-[15px]">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13.5px] font-medium text-rex-text">Sites folder</div>
+          <div className="mt-0.5 truncate font-mono text-[11.5px] text-rex-text-muted">
+            {resolved ?? "…"}
+          </div>
+        </div>
+        {/* TODO(backend): a native folder picker; prompt() is the dev stand-in. */}
+        <button
+          onClick={() => {
+            const v = window.prompt("Sites folder path", resolved ?? "");
+            if (v && v.trim()) saveFolder.mutate(v.trim());
+          }}
+          className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          Choose…
+        </button>
       </div>
     </div>
   );
@@ -245,6 +259,41 @@ function PhpVersionsSetting() {
   );
 }
 
+function ActionRow({
+  title,
+  desc,
+  busy,
+  label,
+  busyLabel,
+  onClick,
+}: {
+  title: string;
+  desc: string;
+  busy: boolean;
+  label: string;
+  busyLabel?: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
+      <div className="flex-1">
+        <div className="text-[13.5px] font-medium text-rex-text">{title}</div>
+        <div className="mt-0.5 text-[12px] text-rex-text-muted">{desc}</div>
+      </div>
+      <button
+        onClick={onClick}
+        disabled={busy}
+        className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
+      >
+        {busy && (
+          <span className="h-3 w-3 rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
+        )}
+        {busy ? (busyLabel ?? label) : label}
+      </button>
+    </div>
+  );
+}
+
 function DnsSslSetting() {
   const { data: dns } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
   const [msg, setMsg] = useState<string | null>(null);
@@ -260,45 +309,72 @@ function DnsSslSetting() {
     onError: (e) => window.alert(String(e)),
   });
 
+  const dnsActive = !!dns?.running && !!dns?.resolverInstalled;
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between border-b border-rex-border-subtle pb-3">
-        <div>
-          <div className="text-[12.5px] text-rex-text">Embedded DNS resolver</div>
-          <div className="font-mono text-[11px] text-rex-text-dim">
-            {dns ? `${dns.resolverPath} · :${dns.port}` : "…"}
+    <>
+      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
+        <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+          Status
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center gap-[11px] rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
+            <span className="relative inline-flex h-[9px] w-[9px] flex-none">
+              {dnsActive && (
+                <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />
+              )}
+              <span
+                className="relative h-[9px] w-[9px] rounded-full"
+                style={{
+                  background: dnsActive ? "var(--rex-running)" : "var(--rex-stopped)",
+                  boxShadow: dnsActive ? "var(--rex-glow-run)" : "none",
+                }}
+              />
+            </span>
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-rex-text">DNS resolver</div>
+              <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
+                *.test → 127.0.0.1 · {dnsActive ? "active" : "inactive"}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-[11px] rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
+            <Lock className="h-[18px] w-[18px] flex-none text-status-running" strokeWidth={1.8} />
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-rex-text">Local CA</div>
+              <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
+                trusted · login keychain
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <StatusDot ok={!!dns?.running} label={dns?.running ? "Running" : "Stopped"} />
-          <StatusDot ok={!!dns?.resolverInstalled} label={dns?.resolverInstalled ? "Resolver" : "No resolver"} />
-        </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="text-[12.5px] text-rex-text-muted">
-          Local CA trust + per-site HTTPS certificates.
-        </span>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" disabled={trust.isPending} onClick={() => { setMsg(null); trust.mutate(); }}>
-            {trust.isPending ? "…" : "Re-trust CA"}
-          </Button>
-          <Button variant="primary" disabled={regen.isPending} onClick={() => { setMsg(null); regen.mutate(); }}>
-            {regen.isPending ? "Regenerating…" : "Regenerate certs"}
-          </Button>
-        </div>
+      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+        <ActionRow
+          title="Re-trust local CA"
+          desc="Reinstall rexenv's certificate authority in your system keychain."
+          busy={trust.isPending}
+          label="Re-trust"
+          onClick={() => {
+            setMsg(null);
+            trust.mutate();
+          }}
+        />
+        <ActionRow
+          title="Regenerate certificates"
+          desc="Issue fresh SSL certs for every local site."
+          busy={regen.isPending}
+          label="Regenerate"
+          busyLabel="Working…"
+          onClick={() => {
+            setMsg(null);
+            regen.mutate();
+          }}
+        />
       </div>
-      {msg && <div className="font-mono text-[11.5px] text-status-running">{msg}</div>}
-    </div>
-  );
-}
-
-function StatusDot({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5 text-[11.5px] text-rex-text-muted">
-      <span className={`h-2 w-2 rounded-full ${ok ? "bg-status-running" : "bg-status-error"}`} />
-      {label}
-    </span>
+      {msg && <div className="font-mono text-[11.5px] text-status-running-bright">{msg}</div>}
+    </>
   );
 }
 
@@ -783,19 +859,13 @@ export function Settings() {
                 <Card title="Theme">
                   <ThemeSetting />
                 </Card>
-                <Card title="Sites folder">
-                  <SitesFolderSetting />
-                </Card>
+                <GeneralPrefsCard />
                 <Card title="Blueprints">
                   <BlueprintsSetting />
                 </Card>
               </>
             )}
-            {section === "dns" && (
-              <Card title="DNS & SSL">
-                <DnsSslSetting />
-              </Card>
-            )}
+            {section === "dns" && <DnsSslSetting />}
             {section === "services" && (
               <>
                 <ServicePrefsCard />

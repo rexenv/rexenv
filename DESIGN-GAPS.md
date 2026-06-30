@@ -498,13 +498,21 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
   selectable (no "soon" badge — the comp's gating is stale post-§4.4). `pnpm tsc --noEmit` clean; chrome-devtools
   shows the three tiles with System selected (filled check + brand border).
 
-- [ ] **9.6 (M) DNS & SSL status tiles + per-action rows; General default-PHP select + sites-folder picker.**
+- [x] **9.6 (M) DNS & SSL status tiles + per-action rows; General default-PHP select + sites-folder picker.**
   *Done when:* DNS & SSL shows a "STATUS" two-tile grid (resolver active w/ pulse · "Local CA — trusted ·
   expires <year>") and two separate action rows (Re-trust local CA / Regenerate certificates, each with its
   own description + busy state); General gains a compact "Default PHP version" select + subcopy, and the
   sites-folder row becomes read-only mono + a native "Choose…" picker (not an editable input + Save). Keep
   the richer PHP-versions install/remove card under Services or a sub-section. (lines 84-108 ·
   `Settings.tsx:91-256`.)
+  ✓ Rebuilt `DnsSslSetting`: a "STATUS" card with a 2-tile grid (DNS resolver — pulsing green dot + "*.test →
+  127.0.0.1 · active"; Local CA — green `Lock` + "trusted · login keychain") and a second card with two
+  `ActionRow`s (Re-trust local CA / Regenerate certificates, each title+desc, `rex-spin` busy + "Working…").
+  Replaced `SitesFolderSetting` with `GeneralPrefsCard`: a "Default PHP version" select (installed versions →
+  `setDefaultPhpVersion`) + subcopy, and a read-only Sites-folder path + "Choose…" picker (prompt-based dev
+  stand-in; native picker TODO). Removed `StatusDot`/`useEffect`/`getSetting`. The full PHP install/remove card
+  stays under Services. `pnpm tsc --noEmit` clean; chrome-devtools shows the DNS tiles + action rows and the
+  General default-PHP select + Choose… picker.
 
 - [ ] **9.7 (L) Header crumb + toast feedback + card sizing.**
   *Done when:* header shows the section name + mono crumb (a "Save changes"/dirty model is optional since
