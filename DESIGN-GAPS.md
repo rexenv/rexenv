@@ -479,9 +479,14 @@ Source: `design/rexenv Settings.dc.html`. File: `src/routes/Settings.tsx`.
   the licenses row a `ChevronRight`, all via `openExternal`); and the open-source credits footer. `pnpm tsc
   --noEmit` clean; chrome-devtools shows the medallion, build line, link rows, and footer.
 
-- [ ] **9.4 (H) Services section: Default ports card + "Stop idle services" toggle.**
+- [x] **9.4 (H) Services section: Default ports card + "Stop idle services" toggle.**
   *Done when:* a Default ports card with mono HTTP/HTTPS/MySQL inputs; a second toggle "Stop idle services
   automatically" beside the existing autostart toggle. (lines 115-125.)
+  ✓ New `ServicePrefsCard` with two `PrefRow`s (violet `setting` toggles): "Start services on login" (real
+  autostart) + "Stop idle services automatically" (UI-only, deferred note). New `DefaultPortsCard` ("DEFAULT
+  PORTS" mono label + HTTP/HTTPS/MySQL mono inputs, defaults 80/443/13306 — UI-only; ports are fixed today).
+  Replaced the old single-toggle Startup card (removed `AutostartSetting`). `pnpm tsc --noEmit` clean;
+  chrome-devtools shows both toggles + the ports grid under Services.
 
 - [ ] **9.5 (H) Theme picker — visual preview tiles.**
   *Done when:* Theme becomes a card with description + three 62px preview tiles (Dark/Light/System) each with

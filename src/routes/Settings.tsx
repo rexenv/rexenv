@@ -272,7 +272,32 @@ function StatusDot({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function AutostartSetting() {
+function PrefRow({
+  title,
+  desc,
+  on,
+  onToggle,
+  label,
+}: {
+  title: string;
+  desc: string;
+  on: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
+      <div className="flex-1">
+        <div className="text-[13.5px] font-medium text-rex-text">{title}</div>
+        <div className="mt-0.5 text-[12px] text-rex-text-muted">{desc}</div>
+      </div>
+      <StartStopToggle running={on} variant="setting" onToggle={onToggle} label={label} />
+    </div>
+  );
+}
+
+/** Services prefs: real autostart toggle + a (UI-only) idle-stop toggle. */
+function ServicePrefsCard() {
   const qc = useQueryClient();
   const { data: enabled } = useQuery({ queryKey: ["autostart"], queryFn: autostartStatus });
   const toggle = useMutation({
@@ -280,30 +305,56 @@ function AutostartSetting() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["autostart"] }),
     onError: (e) => window.alert(String(e)),
   });
+  const [stopIdle, setStopIdle] = useState(false);
 
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <div className="text-[12.5px] text-rex-text">Start rexenv on login</div>
-        <div className="text-[11px] text-rex-text-dim">
-          Launches rexenv automatically when you log in (macOS launchd agent).
-        </div>
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+      <PrefRow
+        title="Start services on login"
+        desc="Bring your environment up automatically when you sign in to your Mac."
+        on={!!enabled}
+        onToggle={() => toggle.mutate(!enabled)}
+        label="Start services on login"
+      />
+      <PrefRow
+        title="Stop idle services automatically"
+        desc="Free up memory by pausing services no running site is using."
+        on={stopIdle}
+        onToggle={() => {
+          setStopIdle((v) => !v);
+          window.alert("Idle-service auto-stop isn't wired yet (UI only).");
+        }}
+        label="Stop idle services automatically"
+      />
+    </div>
+  );
+}
+
+/** Default ports card (UI-only — rexenv's ports are fixed today; see CLAUDE.md). */
+function DefaultPortsCard() {
+  const [http, setHttp] = useState("80");
+  const [https, setHttps] = useState("443");
+  const [mysql, setMysql] = useState("13306");
+  const input = (label: string, value: string, onChange: (v: string) => void) => (
+    <div>
+      <label className="mb-1.5 block text-[12px] text-rex-text-muted">{label}</label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[34px] w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] font-mono text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
+      />
+    </div>
+  );
+  return (
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
+      <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+        Default ports
       </div>
-      <button
-        role="switch"
-        aria-checked={!!enabled}
-        disabled={toggle.isPending}
-        onClick={() => toggle.mutate(!enabled)}
-        className={`relative h-[22px] w-[40px] rounded-full transition-colors ${
-          enabled ? "bg-brand" : "bg-rex-surface-3"
-        }`}
-      >
-        <span
-          className={`absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all ${
-            enabled ? "left-[20px]" : "left-[2px]"
-          }`}
-        />
-      </button>
+      <div className="grid grid-cols-3 gap-3">
+        {input("HTTP", http, setHttp)}
+        {input("HTTPS", https, setHttps)}
+        {input("MySQL", mysql, setMysql)}
+      </div>
     </div>
   );
 }
@@ -717,9 +768,8 @@ export function Settings() {
             )}
             {section === "services" && (
               <>
-                <Card title="Startup">
-                  <AutostartSetting />
-                </Card>
+                <ServicePrefsCard />
+                <DefaultPortsCard />
                 <Card title="PHP versions">
                   <PhpVersionsSetting />
                 </Card>
