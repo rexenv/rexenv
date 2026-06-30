@@ -288,13 +288,36 @@ function Domains() {
   );
 }
 
+function DoneChip({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-rex-text-muted">
+      <Check className="h-[13px] w-[13px] text-status-running" strokeWidth={2.4} />
+      {label}
+    </span>
+  );
+}
+
 function Done() {
   return (
     <div className="flex flex-col items-center">
-      <StepHeading
-        title="Your kingdom is ready"
-        subtitle="Everything's installed and your local domains work over HTTPS. Create your first site and rexenv will serve it instantly."
-      />
+      <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-status-running-border bg-gradient-to-br from-[#1A3322] to-[#13201A] shadow-[0_14px_38px_rgba(63,185,80,0.26)]">
+        <div
+          className="pointer-events-none absolute -inset-3 rounded-full blur-[7px]"
+          style={{ background: "radial-gradient(circle,rgba(63,185,80,.32),transparent 68%)" }}
+        />
+        <Check className="relative h-10 w-10 text-status-running" strokeWidth={2.4} />
+      </div>
+      <div className="font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-[#F2F0FA]">
+        Your kingdom is ready
+      </div>
+      <div className="mt-3 max-w-[400px] text-[14px] leading-[1.55] text-rex-text-muted">
+        Everything's installed and your local domains work over HTTPS. Create your first site and
+        rexenv will serve it instantly.
+      </div>
+      <div className="mt-[18px] flex items-center gap-[14px]">
+        <DoneChip label="Core components" />
+        <DoneChip label="Domains & SSL" />
+      </div>
     </div>
   );
 }

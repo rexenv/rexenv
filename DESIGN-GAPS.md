@@ -567,9 +567,13 @@ Source: `design/rexenv Onboarding.dc.html`. File: `src/routes/Onboarding.tsx` (c
   subtitle. Simulated for the shell — **TODO:** wire to `run_system_setup`. `pnpm tsc --noEmit` clean;
   chrome-devtools verified the pills, button + note, and the busy→done transition.
 
-- [ ] **10.4 (H) Step 4 — "Your kingdom is ready".**
+- [x] **10.4 (H) Step 4 — "Your kingdom is ready".**
   *Done when:* green check medallion (green glow), heading (Space Grotesk 34px), two confirmation chips
   (Core components ✓ / Domains & SSL ✓), and the "Create your first site" primary button. (lines 112-125.)
+  ✓ `Done` step: a 78px green check medallion (green-tinted gradient + radial green glow + `Check`), "Your
+  kingdom is ready" (`font-display` 34px), subtitle, and two `DoneChip`s (✓ Core components / ✓ Domains & SSL).
+  The footer's last-step primary "Create your first site" (no chevron) navigates to `/sites`. `pnpm tsc --noEmit`
+  clean; chrome-devtools verified the medallion, 34px heading, chips, and all-4 progress dots.
 
 - [ ] **10.5 (M) Welcome hero typography.**
   *Done when:* crown medallion 88px (radius 24) w/ float + aura; wordmark "rexenv" Space Grotesk **54px**
