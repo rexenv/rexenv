@@ -52,10 +52,17 @@ Files: `src/components/common/StatusPill.tsx`, `StartStopToggle.tsx`, `src/compo
   `#8A90A0`), 9px dots, design padding `py-[5px] pl-2.5 pr-3`. `pnpm tsc --noEmit` clean; chrome-devtools
   `/services` shows green-tinted Running pills + neutral-gray Stopped pill (was flat gray).
 
-- [ ] **1.2 (M) StatusPill — "Starting" spinner + error pulse.**
+- [x] **1.2 (M) StatusPill — "Starting" spinner + error pulse.**
   *Done when:* Starting renders a rotating ring (`rexSpin`), not a static dot; Error dot gets `glowErr` +
   `rexErr` opacity pulse; Running dot gets `glowRun`. Add the `rexSpin` / `rexErr` keyframes to
   `tailwind.config.js` (only `rex-ping` exists today). (Component Sheet lines 23-24, 210-222.)
+  ✓ Added `--rex-glow-run` (`0 0 7px rgba(63,185,80,.75)`) / `--rex-glow-err` (`0 0 7px rgba(248,81,73,.6)`)
+  tokens + `shadow-glow-run`/`shadow-glow-err`, and `rex-spin` (`0.9s linear`) / `rex-err` (`1.8s ease-in-out`)
+  keyframes+animations in `tailwind.config.js`. `StatusPill` now renders a `StatusMarker`: Starting = 11px amber
+  spinner ring (no dot), Running = 9px dot + `shadow-glow-run` + ping, Error = 9px dot + `shadow-glow-err` +
+  `animate-rex-err`, Stopped = plain dot. All animated markers carry `motion-reduce:animate-none` (design is
+  reduced-motion aware). `pnpm tsc --noEmit` clean; chrome-devtools `/services` (temp-mapped 4 states, reverted)
+  showed the spinner ring + error pill distinct from running/stopped.
 
 - [ ] **1.3 (M) Sidebar — active nav item in violet.**
   *Done when:* active item = `bg rgba(124,92,255,.10)` + text `#C9BCFF` (the existing unused `brand-tint`
