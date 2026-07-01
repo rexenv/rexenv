@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { toast } from "@/lib/toast";
+import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Check, Download, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -135,12 +137,12 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   const sitesRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-network-sites", siteId] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const pluginRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const superRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
@@ -148,7 +150,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
       setAdmin("");
       qc.invalidateQueries({ queryKey: ["wp-super-admins", siteId] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const modeLabel = mode === "subdomain" ? "Subdomain" : "Subdirectory";
@@ -217,8 +219,8 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                   className={BTN + " hover:border-red-500/60 hover:text-red-400 disabled:hover:border-rex-border disabled:hover:text-rex-text"}
                   disabled={sitesRun.isPending || s.id === "1"}
                   title={s.id === "1" ? "Can't delete the main site" : "Delete sub-site"}
-                  onClick={() => {
-                    if (window.confirm(`Delete sub-site ${s.url}?`))
+                  onClick={async () => {
+                    if (await confirm({ title: "Delete sub-site?", message: s.url, danger: true, confirmLabel: "Delete" }))
                       sitesRun.mutate(() => wpNetworkSiteDelete(siteId, s.id));
                   }}
                 >
@@ -327,40 +329,40 @@ function ToolsPanel({ siteId }: { siteId: string }) {
   const toggleDebug = useMutation({
     mutationFn: (on: boolean) => wpDebugSet(siteId, on),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-debug", siteId] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const searchReplace = useMutation({
     mutationFn: () => wpSearchReplace(siteId, from.trim(), to.trim(), dryRun),
     onSuccess: (n) =>
       setSrResult(dryRun ? `${n} row(s) would change (dry run — nothing modified)` : `${n} row(s) changed`),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const flush = useMutation({
     mutationFn: () => wpRewriteFlush(siteId),
-    onSuccess: () => window.alert("Permalinks regenerated."),
-    onError: (e) => window.alert(String(e)),
+    onSuccess: () => toast.success("Permalinks regenerated."),
+    onError: (e) => toast.error(String(e)),
   });
 
   const coreUpdate = useMutation({
     mutationFn: () => wpCoreUpdate(siteId),
     onSuccess: (out) => setCoreOut(out),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const coreReinstall = useMutation({
     mutationFn: () => wpCoreReinstall(siteId),
     onSuccess: (out) => setCoreOut(out),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const adminLogin = useMutation({
     mutationFn: () => wpUserLoginUrl(siteId, 1),
     onSuccess: (url) => openExternal(url),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const working = coreUpdate.isPending || coreReinstall.isPending;
   // No backend yet for DB export / full reset — UI shells.
-  const todo = (what: string) => window.alert(`${what} isn't wired yet (UI only).`);
+  const todo = (what: string) => toast.info(`${what} isn't wired yet (UI only).`);
   const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
 
   return (
@@ -456,8 +458,8 @@ function ToolsPanel({ siteId }: { siteId: string }) {
           <button
             className={maintBtn}
             disabled={coreReinstall.isPending}
-            onClick={() => {
-              if (window.confirm("Re-download WordPress core files (current version)?")) {
+            onClick={async () => {
+              if (await confirm({ title: "Re-install core?", message: "Re-download WordPress core files (current version)?", confirmLabel: "Re-install" })) {
                 setCoreOut(null);
                 coreReinstall.mutate();
               }
@@ -467,8 +469,8 @@ function ToolsPanel({ siteId }: { siteId: string }) {
           </button>
           <button
             className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
-            onClick={() => {
-              if (window.confirm("Reset this site to a clean WordPress install? This erases its content."))
+            onClick={async () => {
+              if (await confirm({ title: "Reset site?", message: "Reset this site to a clean WordPress install? This erases its content.", danger: true, confirmLabel: "Reset" }))
                 todo("Reset site");
             }}
           >
@@ -522,13 +524,13 @@ function UsersPanel({ siteId }: { siteId: string }) {
       setEmail("");
       qc.invalidateQueries({ queryKey: ["wp-users", siteId] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const loginAs = useMutation({
     mutationFn: (userId: number) => wpUserLoginUrl(siteId, userId),
     onSuccess: (url) => openExternal(url),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   return (
@@ -645,7 +647,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   const run = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const busy = run.isPending;
 
@@ -698,8 +700,9 @@ function ThemesPanel({ siteId }: { siteId: string }) {
               busy={busy}
               onActivate={() => run.mutate(() => wpThemeActivate(siteId, t.name))}
               onUpdate={() => run.mutate(() => wpThemeUpdate(siteId, [t.name]))}
-              onDelete={() => {
-                if (window.confirm(`Delete theme "${t.name}"?`)) run.mutate(() => wpThemeDelete(siteId, [t.name]));
+              onDelete={async () => {
+                if (await confirm({ title: `Delete theme "${t.name}"?`, danger: true, confirmLabel: "Delete" }))
+                  run.mutate(() => wpThemeDelete(siteId, [t.name]));
               }}
             />
           ))}
@@ -859,7 +862,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const busy = run.isPending;
 
@@ -934,8 +937,8 @@ function PluginsPanel({ siteId }: { siteId: string }) {
           <button
             className={BTN + " hover:border-red-500/60 hover:text-red-400"}
             disabled={busy}
-            onClick={() => {
-              if (window.confirm(`Delete ${selNames.length} plugin(s)?`))
+            onClick={async () => {
+              if (await confirm({ title: `Delete ${selNames.length} plugin(s)?`, danger: true, confirmLabel: "Delete" }))
                 run.mutate(() => wpPluginDelete(siteId, selNames));
             }}
           >
@@ -969,8 +972,9 @@ function PluginsPanel({ siteId }: { siteId: string }) {
               onActivate={() => run.mutate(() => wpPluginActivate(siteId, [p.name]))}
               onDeactivate={() => run.mutate(() => wpPluginDeactivate(siteId, [p.name]))}
               onUpdate={() => run.mutate(() => wpPluginUpdate(siteId, [p.name]))}
-              onDelete={() => {
-                if (window.confirm(`Delete plugin "${p.name}"?`)) run.mutate(() => wpPluginDelete(siteId, [p.name]));
+              onDelete={async () => {
+                if (await confirm({ title: `Delete plugin "${p.name}"?`, danger: true, confirmLabel: "Delete" }))
+                  run.mutate(() => wpPluginDelete(siteId, [p.name]));
               }}
             />
           ))}

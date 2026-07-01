@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
 import { Code, Database, ExternalLink, Inbox, Layers, Mail, Play, Server, Square, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -284,7 +285,7 @@ export function Services() {
       qc.invalidateQueries({ queryKey: ["services"] });
       qc.invalidateQueries({ queryKey: ["php-versions"] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   // TODO: per-service start/stop needs a backend `start_service`/`stop_service`
@@ -296,7 +297,7 @@ export function Services() {
   const toggleAll = useMutation({
     mutationFn: () => (isStart ? startServices() : stopServices()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["services"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const startStopAll = (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { toast } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, X as XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -150,7 +151,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
       qc.invalidateQueries({ queryKey: ["sites"] });
       onClose();
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const canSubmit =

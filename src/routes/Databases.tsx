@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Database, TableProperties } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -93,7 +94,7 @@ export function Databases() {
   const toggle = useMutation({
     mutationFn: (db: DbStatus) => (db.running ? stopDatabase(db.key) : startDatabase(db.key)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["databases"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const running = dbs.filter((d) => d.running).length;

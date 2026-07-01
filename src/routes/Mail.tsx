@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -67,13 +68,13 @@ export function Mail() {
       setSelectedId(null);
       qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const markAllRead = useMutation({
     mutationFn: mailpitMarkAllRead,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["mailpit-messages"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const removeMsg = useMutation({
@@ -82,7 +83,7 @@ export function Mail() {
       setSelectedId(null);
       qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const running = !!mp?.running;

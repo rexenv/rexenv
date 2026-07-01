@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { toast } from "@/lib/toast";
+import { confirm, promptText } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -118,7 +120,7 @@ function GeneralPrefsCard() {
   const setDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
@@ -128,7 +130,7 @@ function GeneralPrefsCard() {
       qc.invalidateQueries({ queryKey: ["sites-folder"] });
       qc.invalidateQueries({ queryKey: ["setting", SITES_DIR_KEY] });
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   return (
@@ -161,8 +163,14 @@ function GeneralPrefsCard() {
         </div>
         {/* TODO(backend): a native folder picker; prompt() is the dev stand-in. */}
         <button
-          onClick={() => {
-            const v = window.prompt("Sites folder path", resolved ?? "");
+          onClick={async () => {
+            const v = await promptText({
+              title: "Sites folder",
+              label: "Folder path",
+              initialValue: resolved ?? "",
+              mono: true,
+              submitLabel: "Save",
+            });
             if (v && v.trim()) saveFolder.mutate(v.trim());
           }}
           className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
@@ -236,12 +244,12 @@ function PhpVersionsSetting() {
     mutationFn: ({ minor, installed }: { minor: string; installed: boolean }) =>
       setPhpVersionInstalled(minor, installed),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const makeDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const busyFor = (minor: string) =>
     (toggle.isPending && toggle.variables?.minor === minor) ||
@@ -311,12 +319,12 @@ function DnsSslSetting() {
   const trust = useMutation({
     mutationFn: trustLocalCa,
     onSuccess: () => setMsg("Local CA re-trusted in your login keychain."),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const regen = useMutation({
     mutationFn: regenerateCerts,
     onSuccess: (n) => setMsg(`Regenerated ${n} site certificate${n === 1 ? "" : "s"}.`),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const dnsActive = !!dns?.running && !!dns?.resolverInstalled;
@@ -419,7 +427,7 @@ function ServicePrefsCard() {
   const toggle = useMutation({
     mutationFn: (on: boolean) => setAutostart(on),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["autostart"] }),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const [stopIdle, setStopIdle] = useState(false);
 
@@ -438,7 +446,7 @@ function ServicePrefsCard() {
         on={stopIdle}
         onToggle={() => {
           setStopIdle((v) => !v);
-          window.alert("Idle-service auto-stop isn't wired yet (UI only).");
+          toast.info("Idle-service auto-stop isn't wired yet (UI only).");
         }}
         label="Stop idle services automatically"
       />
@@ -494,12 +502,12 @@ function BlueprintsSetting() {
       setName(""); setPlugins(""); setThemes(""); setWpDebug(false); setMultisite("none");
       invalidate();
     },
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteBlueprint(id),
     onSuccess: invalidate,
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   const add = () => {
@@ -593,7 +601,7 @@ function UninstallSetting() {
     mutationFn: uninstallSystem,
     onSuccess: () =>
       setMsg("System changes removed: services stopped, .test resolver deleted, local CA untrusted. You can now quit and delete rexenv."),
-    onError: (e) => window.alert(String(e)),
+    onError: (e) => toast.error(String(e)),
   });
 
   return (
@@ -608,12 +616,16 @@ function UninstallSetting() {
         <Button
           variant="ghost"
           disabled={run.isPending}
-          onClick={() => {
+          onClick={async () => {
             setMsg(null);
             if (
-              window.confirm(
-                "Remove rexenv's system changes?\n\nThis stops all services, deletes /etc/resolver/test, and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
-              )
+              await confirm({
+                title: "Remove rexenv's system changes?",
+                message:
+                  "This stops all services, deletes /etc/resolver/test, and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
+                danger: true,
+                confirmLabel: "Remove",
+              })
             )
               run.mutate();
           }}
@@ -661,7 +673,7 @@ function UpdatesSetting() {
   const [checking, setChecking] = useState(false);
   const [autoUpdate, setAutoUpdate] = useState(false);
   const deferred = () =>
-    window.alert("Auto-update isn't wired yet — the Tauri updater is deferred (TASKS-RELEASE §6.1).");
+    toast.info("Auto-update isn't wired yet — the Tauri updater is deferred.");
 
   return (
     <>
