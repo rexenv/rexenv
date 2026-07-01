@@ -39,6 +39,14 @@ pub fn stop_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>>
     core::sites::set_status(&conn, &id, ServiceStatus::Stopped)
 }
 
+/// Rename a site's display name (domain/docroot/DB/certs unchanged); returns the
+/// updated site.
+#[tauri::command]
+pub fn rename_site(state: State<'_, AppState>, id: String, name: String) -> Result<Option<Site>> {
+    let conn = lock(&state)?;
+    core::sites::rename(&conn, &id, &name)
+}
+
 /// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
 /// row); for a **WordPress** site bring MySQL up and run the one-click installer
 /// (`wp`) so the site is browsable; then — if the stack is running — ensure its

@@ -61,6 +61,18 @@ pub fn set_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<
     get(conn, id)
 }
 
+/// Rename a site's DISPLAY name only (the domain, docroot, DB and certs are keyed
+/// off the domain, so they're untouched). Returns the updated site, or `None` if
+/// it doesn't exist. Errors on a blank name.
+pub fn rename(conn: &Connection, id: &str, name: &str) -> Result<Option<Site>> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(crate::error::Error::Other("site name cannot be empty".into()));
+    }
+    store::set_site_name(conn, id, name)?;
+    get(conn, id)
+}
+
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
 /// — no docroot/cert/DB rebuild — and return the updated site. Only Nginx and
 /// FrankenPHP have backends in Phase 2 (Apache/OLS are deferred). The caller

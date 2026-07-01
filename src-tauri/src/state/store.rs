@@ -96,6 +96,15 @@ pub fn set_site_status(conn: &Connection, id: &str, status: ServiceStatus) -> Re
     Ok(affected > 0)
 }
 
+/// Update only a site's display `name` column; returns whether a row was updated.
+pub fn set_site_name(conn: &Connection, id: &str, name: &str) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET name = ?1 WHERE id = ?2",
+        params![name, id],
+    )?;
+    Ok(affected > 0)
+}
+
 /// Update only a site's `php_version` column; returns whether a row was updated.
 pub fn set_site_php_version(conn: &Connection, id: &str, version: &str) -> Result<bool> {
     let affected = conn.execute(

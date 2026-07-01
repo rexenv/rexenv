@@ -73,7 +73,15 @@ const TYPE_CARDS: TypeCard[] = [
  * **WordPress** site with a chosen PHP version and web server; WordPress adds a
  * one-click install. (Phase 2 §1.6 + §4.2 · Phase 3 §1.2.)
  */
-export function NewSiteDialog({ onClose }: { onClose: () => void }) {
+/** Prefill for "Duplicate" — clones a source site's setup (not its content). */
+export type NewSiteInitial = {
+  name?: string;
+  siteType?: SiteType;
+  phpVersion?: string;
+  webServer?: WebServer;
+};
+
+export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initial?: NewSiteInitial }) {
   const qc = useQueryClient();
   const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
   const installed = useMemo(() => versions.filter((v) => v.installed), [versions]);
@@ -81,12 +89,13 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const { data: blueprints = [] } = useQuery({ queryKey: ["blueprints"], queryFn: listBlueprints });
   const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites });
 
-  const [step, setStep] = useState<1 | 2>(1);
-  const [name, setName] = useState("");
+  // When prefilled (Duplicate), the type is known → jump straight to Configure.
+  const [step, setStep] = useState<1 | 2>(initial ? 2 : 1);
+  const [name, setName] = useState(initial?.name ?? "");
   const [domain, setDomain] = useState(""); // the base, without ".test"
-  const [siteType, setSiteType] = useState<SiteType>("php");
-  const [phpVersion, setPhpVersion] = useState(defaultVersion);
-  const [webServer, setWebServer] = useState<WebServer>("nginx");
+  const [siteType, setSiteType] = useState<SiteType>(initial?.siteType ?? "php");
+  const [phpVersion, setPhpVersion] = useState(initial?.phpVersion ?? defaultVersion);
+  const [webServer, setWebServer] = useState<WebServer>(initial?.webServer ?? "nginx");
   const [dbEngine, setDbEngine] = useState("mysql");
   const [domainEdited, setDomainEdited] = useState(false);
   const [blueprintId, setBlueprintId] = useState("");
@@ -110,7 +119,11 @@ export function NewSiteDialog({ onClose }: { onClose: () => void }) {
   const [language, setLanguage] = useState("");
   const [multisite, setMultisite] = useState<MultisiteMode>("none");
 
-  useEffect(() => setPhpVersion(defaultVersion), [defaultVersion]);
+  // Track the default PHP version as it loads — but not when the dialog was
+  // prefilled (Duplicate), where we keep the source site's version.
+  useEffect(() => {
+    if (!initial) setPhpVersion(defaultVersion);
+  }, [defaultVersion, initial]);
 
   const slug = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const domainBase = domainEdited ? slug(domain) : slug(name);

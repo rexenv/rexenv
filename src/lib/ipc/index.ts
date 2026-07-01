@@ -56,6 +56,12 @@ export async function stopSite(id: string): Promise<Site | null> {
   return invoke<Site | null>("stop_site", { id });
 }
 
+/** Rename a site's display name (domain unchanged). No-op outside Tauri. */
+export async function renameSite(id: string, name: string): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site | null>("rename_site", { id, name });
+}
+
 /** Create a site (provision + WordPress one-click install when type=wordpress +
  *  bring up if the stack is running). A `blueprintId` applies that preset's
  *  plugins/themes/multisite after install (§11.3). No-op outside Tauri. */

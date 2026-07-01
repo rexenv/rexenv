@@ -11,7 +11,7 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { listSites, startSite, stopSite, deleteSite } from "@/lib/ipc";
+import { listSites, startSite, stopSite, deleteSite, renameSite, openExternal } from "@/lib/ipc";
 import type { Site } from "@/types";
 
 function Badge({
@@ -102,15 +102,20 @@ function SiteRow({
   onToggle,
   onDelete,
   onOpenDatabase,
+  onRename,
+  onDuplicate,
 }: {
   site: Site;
   busy: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
+  onRename: () => void;
+  onDuplicate: () => void;
 }) {
   const running = site.status === "running";
   const t = siteTypeMeta(site.type);
+  const [copied, setCopied] = useState(false);
   return (
     <div className="group flex h-11 items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1">
       <div
@@ -128,10 +133,22 @@ function SiteRow({
         </div>
       </div>
       <div className="ml-1 flex items-center gap-px opacity-0 transition-opacity group-hover:opacity-100">
-        <Button variant="ghost" size="icon" aria-label="Open in browser">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Open in browser"
+          title={`Open https://${site.domain}`}
+          onClick={() => openExternal(`https://${site.domain}`)}
+        >
           <Globe className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Open folder">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Open folder"
+          title="Reveal site folder"
+          onClick={() => openExternal(site.path)}
+        >
           <FolderOpen className="h-4 w-4" />
         </Button>
         <Button
@@ -177,21 +194,27 @@ function SiteRow({
           </button>
         }
       >
-        {/* Rename / Duplicate / Open in editor have no backend yet (shell). */}
-        <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />}>
+        <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onRename}>
           Rename
         </MenuItem>
-        <MenuItem icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />}>
+        <MenuItem icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onDuplicate}>
           Duplicate
         </MenuItem>
-        <MenuItem icon={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}>
+        <MenuItem
+          icon={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+          onSelect={() => openExternal(site.path)}
+        >
           Open in editor
         </MenuItem>
         <MenuItem
           icon={<Link className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-          onSelect={() => navigator.clipboard?.writeText(site.domain)}
+          onSelect={() => {
+            void navigator.clipboard?.writeText(site.domain);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          }}
         >
-          Copy domain
+          {copied ? "Copied!" : "Copy domain"}
         </MenuItem>
         <MenuSeparator />
         <MenuItem
@@ -231,11 +254,26 @@ export function Sites() {
     onError: (e) => window.alert(String(e)),
   });
 
+  const rename = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => renameSite(id, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
+    onError: (e) => window.alert(String(e)),
+  });
+
   const confirmDelete = (site: Site) => {
     if (window.confirm(`Delete "${site.name}" (${site.domain})? This removes its files and certificate.`)) {
       remove.mutate(site);
     }
   };
+
+  const promptRename = (site: Site) => {
+    const name = window.prompt("Rename site", site.name)?.trim();
+    if (name && name !== site.name) rename.mutate({ id: site.id, name });
+  };
+
+  // "Duplicate" opens New Site prefilled with this site's setup (type/PHP/server);
+  // the user picks a fresh domain. A byte-for-byte clone would need a backend copy.
+  const [dupSource, setDupSource] = useState<Site | null>(null);
 
   const running = sites.filter((s) => s.status === "running").length;
   const counts: Record<Filter, number> = {
@@ -356,12 +394,31 @@ export function Sites() {
                 onToggle={() => toggle.mutate(site)}
                 onDelete={() => confirmDelete(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
+                onRename={() => promptRename(site)}
+                onDuplicate={() => setDupSource(site)}
               />
             ))}
           </div>
         )}
       </div>
-      {showNew && <NewSiteDialog onClose={() => setShowNew(false)} />}
+      {(showNew || dupSource) && (
+        <NewSiteDialog
+          initial={
+            dupSource
+              ? {
+                  name: `${dupSource.name} copy`,
+                  siteType: dupSource.type,
+                  phpVersion: dupSource.phpVersion,
+                  webServer: dupSource.webServer,
+                }
+              : undefined
+          }
+          onClose={() => {
+            setShowNew(false);
+            setDupSource(null);
+          }}
+        />
+      )}
     </>
   );
 }
