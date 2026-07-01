@@ -55,6 +55,12 @@ pub fn run() {
                     if let Err(e) = core::php::seed_registry(&conn) {
                         log::error!("php: failed to seed version registry: {e}");
                     }
+                    // Self-heal: clear rexenv-owned service orphans left by a prior
+                    // session (crash, or quitting while services ran detached) so we
+                    // boot to a clean baseline. Runs on a throwaway empty manager, so
+                    // it only stops things this session didn't start. Best-effort.
+                    core::service_manager::ServiceManager::default()
+                        .reconcile_startup(platform.as_ref());
                     app.manage(state::app::AppState::new(conn, platform, ca));
                 }
                 (Err(e), _) => log::error!("db: failed to open app database: {e}"),

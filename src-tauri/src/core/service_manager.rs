@@ -482,6 +482,27 @@ impl ServiceManager {
         }
     }
 
+    /// On app launch, clear rexenv-owned service orphans left by a PRIOR session
+    /// (a crash, or quitting the app while services ran detached) so we start from
+    /// a known-clean baseline: status is accurate and a later Start all won't hit
+    /// `port in use`. Best-effort and guarded to our own processes; a clean launch
+    /// with no orphans is a cheap no-op. Runs on a fresh (empty) manager, so it only
+    /// ever stops things we didn't start this session.
+    pub fn reconcile_startup(&self, platform: &dyn Platform) {
+        self.stop_stale_owned(platform);
+        // Also clear a leftover Caddy edge if its binary is already cached (no
+        // download): admin-API stop + best-effort reap. Skipped on a fresh install
+        // (nothing to stop before the first Start all downloads Caddy).
+        if let Ok(bin_dir) = platform.paths().bin_dir() {
+            let caddy = bin_dir
+                .join(format!("caddy-{}", binaries::CADDY_VERSION))
+                .join("caddy");
+            if caddy.exists() {
+                let _ = proxy::stop_edge(platform, &caddy);
+            }
+        }
+    }
+
     /// Per-service status for the Services view + metrics (§6.1): every service the
     /// app supervises — the available DB engines (MySQL, PostgreSQL), one row per
     /// running php-fpm pool (`PHP-FPM <version>`), one per per-site FrankenPHP
