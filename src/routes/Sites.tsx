@@ -5,6 +5,7 @@ import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
+import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -260,16 +261,9 @@ export function Sites() {
     onError: (e) => window.alert(String(e)),
   });
 
-  const confirmDelete = (site: Site) => {
-    if (window.confirm(`Delete "${site.name}" (${site.domain})? This removes its files and certificate.`)) {
-      remove.mutate(site);
-    }
-  };
-
-  const promptRename = (site: Site) => {
-    const name = window.prompt("Rename site", site.name)?.trim();
-    if (name && name !== site.name) rename.mutate({ id: site.id, name });
-  };
+  // In-app modals (WKWebView doesn't support window.confirm/prompt reliably).
+  const [renameTarget, setRenameTarget] = useState<Site | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Site | null>(null);
 
   // "Duplicate" opens New Site prefilled with this site's setup (type/PHP/server);
   // the user picks a fresh domain. A byte-for-byte clone would need a backend copy.
@@ -392,9 +386,9 @@ export function Sites() {
                 site={site}
                 busy={toggle.isPending && toggle.variables?.id === site.id}
                 onToggle={() => toggle.mutate(site)}
-                onDelete={() => confirmDelete(site)}
+                onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
-                onRename={() => promptRename(site)}
+                onRename={() => setRenameTarget(site)}
                 onDuplicate={() => setDupSource(site)}
               />
             ))}
@@ -417,6 +411,37 @@ export function Sites() {
             setShowNew(false);
             setDupSource(null);
           }}
+        />
+      )}
+      {renameTarget && (
+        <PromptDialog
+          title="Rename site"
+          label="Display name"
+          initialValue={renameTarget.name}
+          submitLabel="Rename"
+          onSubmit={(name) => {
+            if (name !== renameTarget.name) rename.mutate({ id: renameTarget.id, name });
+            setRenameTarget(null);
+          }}
+          onCancel={() => setRenameTarget(null)}
+        />
+      )}
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Delete "${deleteTarget.name}"?`}
+          message={
+            <>
+              This permanently removes <span className="font-mono text-rex-text">{deleteTarget.domain}</span>,
+              its files, and its certificate. This can't be undone.
+            </>
+          }
+          confirmLabel="Delete site"
+          danger
+          onConfirm={() => {
+            remove.mutate(deleteTarget);
+            setDeleteTarget(null);
+          }}
+          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </>
