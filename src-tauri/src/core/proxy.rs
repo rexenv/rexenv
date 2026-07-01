@@ -52,12 +52,12 @@ impl Default for CaddyConfig {
 }
 
 /// Render the Caddyfile. Explicit per-site `tls` means Caddy never invokes its
-/// internal issuer/ACME; auto HTTP→HTTPS redirects are disabled so Caddy only
-/// does what we configure.
+/// internal issuer/ACME (it uses the loaded local-CA certs). Auto-HTTPS is left
+/// on so Caddy also binds `http_port` and 308-redirects HTTP→HTTPS for every
+/// site host — `http://site.test` lands on `https://site.test`.
 pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
     let mut s = String::new();
     s.push_str("{\n");
-    s.push_str("\tauto_https disable_redirects\n");
     s.push_str(&format!("\thttp_port {}\n", cfg.http_port));
     s.push_str(&format!("\thttps_port {}\n", cfg.https_port));
     s.push_str("}\n");
@@ -226,7 +226,9 @@ mod tests {
     #[test]
     fn caddyfile_uses_explicit_tls_not_internal_issuer() {
         let f = generate_caddyfile(&sample());
-        assert!(f.contains("auto_https disable_redirects"));
+        // Auto-HTTPS left on (no `disable_redirects`) so Caddy opens :80 and
+        // redirects HTTP→HTTPS; explicit per-site tls still bypasses the issuer.
+        assert!(!f.contains("disable_redirects"));
         assert!(f.contains("http_port 8080"));
         assert!(f.contains("https_port 8443"));
         assert!(f.contains("https://proxytest.test {"));
