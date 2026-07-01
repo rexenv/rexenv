@@ -69,22 +69,8 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
 /// Per-service status + live RAM/CPU for the Services view.
 #[tauri::command]
 pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceStatus>> {
-    // Non-blocking: if a long start/stop holds the services lock, serve the last
-    // snapshot so the status poll never freezes the UI.
-    let infos = match state.services.try_lock() {
-        Ok(mgr) => {
-            let infos = mgr.status();
-            if let Ok(mut cache) = state.service_status_cache.lock() {
-                *cache = infos.clone();
-            }
-            infos
-        }
-        Err(_) => state
-            .service_status_cache
-            .lock()
-            .map(|c| c.clone())
-            .unwrap_or_default(),
-    };
+    // Single source of truth (shared with `global_status`); non-blocking.
+    let infos = state.service_infos();
     let mut monitor = state
         .monitor
         .lock()

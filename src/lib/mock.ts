@@ -67,10 +67,16 @@ export const mockDatabases: DbStatus[] = [
   { key: "postgres", label: "PostgreSQL", port: 15432, version: "18.4.0", running: false, pid: null, cpuPercent: 0.0, ramMb: 0 },
 ];
 
+// Derived from mockServices so the browser mock mirrors the backend's single
+// source of truth: running/total/summary reflect live SERVICES, not site rows.
 export const mockGlobalStatus: GlobalStatus = {
-  summary: "partial",
-  running: 3,
-  total: 12,
+  summary: mockServices.every((s) => s.running)
+    ? "all"
+    : mockServices.some((s) => s.running)
+      ? "partial"
+      : "stopped",
+  running: mockServices.filter((s) => s.running).length,
+  total: mockServices.length,
   cpuPercent: 14,
   ramMb: 612,
   ramTotalMb: 16384,

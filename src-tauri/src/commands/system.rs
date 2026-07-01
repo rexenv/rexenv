@@ -26,7 +26,8 @@ pub fn app_info() -> AppInfo {
 }
 
 /// The sidebar status footer's global block. Mirrors the frontend `GlobalStatus`
-/// type. CPU/RAM are real system totals (`sysinfo`); running/total are sites.
+/// type. CPU/RAM are real system totals (`sysinfo`); running/total count LIVE
+/// services (the single source of truth shared with `services_status`).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalStatus {
@@ -40,7 +41,9 @@ pub struct GlobalStatus {
 }
 
 /// Live global status for the sidebar footer (task 7.4): real system CPU/RAM via
-/// `sysinfo` + a running/total derived from the sites in the DB.
+/// `sysinfo` + a running/total derived from LIVE service status (`ServiceManager`),
+/// the single source of truth shared with `services_status` so the footer and the
+/// Services tab can never disagree about whether the stack is up.
 #[tauri::command]
 pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
     let metrics = {
@@ -51,23 +54,9 @@ pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
         monitor.sample()
     };
 
-    let conn = state
-        .db
-        .lock()
-        .map_err(|_| Error::Other("database lock poisoned".into()))?;
-    let sites = core::sites::list(&conn)?;
-    let total = sites.len() as u32;
-    let running = sites
-        .iter()
-        .filter(|s| matches!(s.status, crate::state::models::ServiceStatus::Running))
-        .count() as u32;
-    let summary = if total == 0 || running == 0 {
-        "stopped"
-    } else if running == total {
-        "all"
-    } else {
-        "partial"
-    };
+    // Running/total/summary derive from live service status (NOT the sites table),
+    // via the same `AppState::service_infos` the Services tab reads.
+    let (running, total, summary) = summarize(&state.service_infos());
 
     Ok(GlobalStatus {
         summary,
@@ -77,6 +66,22 @@ pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
         ram_mb: metrics.ram_used_mb,
         ram_total_mb: metrics.ram_total_mb,
     })
+}
+
+/// Reduce a live per-service snapshot to the footer's running/total/summary.
+/// Pure (no locks/DB) so it is unit-testable and pins the invariant: "running"
+/// counts RUNNING SERVICES, never site DB rows.
+fn summarize(infos: &[crate::core::service_manager::ServiceInfo]) -> (u32, u32, &'static str) {
+    let total = infos.len() as u32;
+    let running = infos.iter().filter(|i| i.running).count() as u32;
+    let summary = if running == 0 {
+        "stopped"
+    } else if running == total {
+        "all"
+    } else {
+        "partial"
+    };
+    (running, total, summary)
 }
 
 /// One service's port availability (mirrors a frontend `PortStatus`).
@@ -216,4 +221,40 @@ pub async fn uninstall_system(state: State<'_, AppState>) -> Result<()> {
         }
     }
     core::setup::run_system_teardown(state.platform.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::summarize;
+    use crate::core::service_manager::ServiceInfo;
+
+    fn svc(name: &str, running: bool) -> ServiceInfo {
+        ServiceInfo { name: name.into(), running, pid: None, port: 0 }
+    }
+
+    /// Pins the fix: `global_status` running/total/summary come from RUNNING
+    /// SERVICES, never site DB rows — so the footer (global_status) and the
+    /// Services tab (services_status) can't drift apart.
+    #[test]
+    fn summarize_reflects_running_services_not_sites() {
+        // Nothing listed → stopped.
+        assert_eq!(summarize(&[]), (0, 0, "stopped"));
+        // Services present but none running → stopped. (Even if a site row were
+        // marked Running elsewhere, summarize never sees sites — that's the point.)
+        assert_eq!(
+            summarize(&[svc("Nginx", false), svc("MySQL", false)]),
+            (0, 2, "stopped"),
+        );
+        // Some running → partial — the exact case the footer used to get wrong
+        // (stack up, zero sites DB-marked Running ⇒ must still be "running").
+        assert_eq!(
+            summarize(&[svc("Nginx", true), svc("MySQL", false)]),
+            (1, 2, "partial"),
+        );
+        // All running → all.
+        assert_eq!(
+            summarize(&[svc("Nginx", true), svc("MySQL", true)]),
+            (2, 2, "all"),
+        );
+    }
 }

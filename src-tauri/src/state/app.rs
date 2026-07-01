@@ -25,6 +25,28 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Live per-service snapshot — the SINGLE source of truth for "what is running".
+    /// Both `services_status` (Services tab) and `global_status` (sidebar footer)
+    /// read through here, so the two views can never disagree about whether the
+    /// stack is up. Non-blocking: if a long start/stop holds `services`, return the
+    /// last cached snapshot so status polls never freeze the UI.
+    pub fn service_infos(&self) -> Vec<ServiceInfo> {
+        match self.services.try_lock() {
+            Ok(mgr) => {
+                let infos = mgr.status();
+                if let Ok(mut cache) = self.service_status_cache.lock() {
+                    *cache = infos.clone();
+                }
+                infos
+            }
+            Err(_) => self
+                .service_status_cache
+                .lock()
+                .map(|c| c.clone())
+                .unwrap_or_default(),
+        }
+    }
+
     pub fn new(conn: Connection, platform: Box<dyn Platform>, ca: LocalCa) -> Self {
         Self {
             db: Mutex::new(conn),
