@@ -406,17 +406,18 @@ impl ServiceManager {
 
     /// Stop the whole stack.
     pub fn stop_all(&mut self, platform: &dyn Platform) -> Result<()> {
-        match std::mem::take(&mut self.caddy) {
-            CaddyHandle::Privileged => {
-                if let Some(bins) = &self.bins {
-                    let _ = proxy::stop_admin(platform, &bins.caddy);
-                }
+        // A tracked unprivileged child is killed by pid. For a root/privileged edge
+        // — or a stray Caddy still on the admin port that we never tracked (common
+        // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
+        // the port frees. This makes "Stop all" reliably release :443/:80.
+        if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
+            let _ = proxy::stop(platform, c.id());
+            let _ = c.wait();
+        }
+        if let Some(bins) = &self.bins {
+            if let Err(e) = proxy::stop_edge(platform, &bins.caddy) {
+                log::warn!("rexenv: stop_all could not stop the Caddy edge: {e}");
             }
-            CaddyHandle::Child(mut c) => {
-                let _ = proxy::stop(platform, c.id());
-                let _ = c.wait();
-            }
-            CaddyHandle::Stopped => {}
         }
         self.stop_mailpit(platform)?;
         self.pools.stop_all(platform);

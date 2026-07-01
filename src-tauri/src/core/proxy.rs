@@ -193,6 +193,26 @@ pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<(
     )))
 }
 
+/// Stop the Caddy edge via its admin API and wait for `:2019` to actually free.
+/// Works on a **root** edge (the admin API needs no privilege) and on a stray edge
+/// we never tracked (a leftover from a prior run). No-op if nothing is on `:2019`.
+/// This is what `stop_all` uses so "Stop all" reliably frees `:443`/`:80`.
+pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
+    if !admin_in_use() {
+        return Ok(());
+    }
+    let _ = stop_admin(platform, caddy_bin);
+    for _ in 0..10 {
+        if !admin_in_use() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    Err(crate::error::Error::Other(format!(
+        "Caddy admin port :{CADDY_ADMIN_PORT} would not free after `caddy stop`."
+    )))
+}
+
 fn wait_ok(mut child: Child, what: &str) -> Result<()> {
     let status = child.wait()?;
     if status.success() {
