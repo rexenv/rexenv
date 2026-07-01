@@ -1,7 +1,7 @@
 //! App-wide state held by Tauri (`app.manage`) and accessed from commands.
 
 use crate::core::monitor::Monitor;
-use crate::core::service_manager::ServiceManager;
+use crate::core::service_manager::{DbInfo, ServiceInfo, ServiceManager};
 use crate::core::ssl::LocalCa;
 use crate::platform::traits::Platform;
 use rusqlite::Connection;
@@ -18,6 +18,10 @@ pub struct AppState {
     pub monitor: Mutex<Monitor>,
     pub ca: LocalCa,
     pub services: tauri::async_runtime::Mutex<ServiceManager>,
+    /// Last successful status snapshots. Served when `services` is locked by a
+    /// long start/stop so status polls never block the UI (try_lock fallback).
+    pub service_status_cache: Mutex<Vec<ServiceInfo>>,
+    pub db_status_cache: Mutex<Vec<DbInfo>>,
 }
 
 impl AppState {
@@ -28,6 +32,8 @@ impl AppState {
             monitor: Mutex::new(Monitor::new()),
             ca,
             services: tauri::async_runtime::Mutex::new(ServiceManager::default()),
+            service_status_cache: Mutex::new(Vec::new()),
+            db_status_cache: Mutex::new(Vec::new()),
         }
     }
 }

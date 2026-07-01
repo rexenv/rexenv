@@ -37,9 +37,26 @@ fn start_inputs(
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     let (sites, php_minors) = start_inputs(&state)?;
-    let mut mgr = state.services.lock().await;
-    mgr.start_all(state.platform.as_ref(), &state.ca, &sites, &php_minors)
-        .await
+    // Phase 1 (locked): start everything except the edge; get the Caddyfile + plan.
+    let plan = {
+        let mut mgr = state.services.lock().await;
+        let caddyfile = mgr
+            .start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors)
+            .await?;
+        mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
+    };
+    // Phase 2 (UNLOCKED): the privileged edge start blocks on the admin-password
+    // prompt — with the services lock free, status polls keep working meanwhile.
+    if let Some(plan) = plan {
+        if plan.privileged {
+            core::proxy::start_privileged(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            state.services.lock().await.set_edge_privileged();
+        } else {
+            let child = core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            state.services.lock().await.set_edge_child(child);
+        }
+    }
+    Ok(())
 }
 
 /// Stop the shared stack.
@@ -52,9 +69,21 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
 /// Per-service status + live RAM/CPU for the Services view.
 #[tauri::command]
 pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceStatus>> {
-    let infos = {
-        let mgr = state.services.lock().await;
-        mgr.status()
+    // Non-blocking: if a long start/stop holds the services lock, serve the last
+    // snapshot so the status poll never freezes the UI.
+    let infos = match state.services.try_lock() {
+        Ok(mgr) => {
+            let infos = mgr.status();
+            if let Ok(mut cache) = state.service_status_cache.lock() {
+                *cache = infos.clone();
+            }
+            infos
+        }
+        Err(_) => state
+            .service_status_cache
+            .lock()
+            .map(|c| c.clone())
+            .unwrap_or_default(),
     };
     let mut monitor = state
         .monitor

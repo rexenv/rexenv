@@ -63,6 +63,14 @@ pub struct ServiceInfo {
     pub port: u16,
 }
 
+/// A prepared Caddy-edge start the caller runs OUTSIDE the services lock (the
+/// privileged start blocks on an admin-password prompt).
+pub struct EdgePlan {
+    pub privileged: bool,
+    pub caddy_bin: PathBuf,
+    pub caddyfile: PathBuf,
+}
+
 /// One database engine's status (for the Databases view).
 #[derive(Debug, Clone)]
 pub struct DbInfo {
@@ -153,8 +161,9 @@ impl ServiceManager {
         Ok(())
     }
 
-    /// Start the whole stack (idempotent per service). Returns a clear error if a
-    /// required port is already taken by something else.
+    /// Start the whole stack (idempotent per service). Convenience wrapper used by
+    /// examples/tests. The `start_services` command instead calls `start_core` +
+    /// `prepare_edge` so the privileged edge prompt doesn't hold the services lock.
     pub async fn start_all(
         &mut self,
         platform: &dyn Platform,
@@ -162,6 +171,30 @@ impl ServiceManager {
         sites: &[Site],
         php_minors: &[String],
     ) -> Result<()> {
+        let caddyfile = self.start_core(platform, ca, sites, php_minors).await?;
+        if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
+            if plan.privileged {
+                proxy::start_privileged(platform, &plan.caddy_bin, &plan.caddyfile)?;
+                self.set_edge_privileged();
+            } else {
+                let child = proxy::start(platform, &plan.caddy_bin, &plan.caddyfile)?;
+                self.set_edge_child(child);
+            }
+        }
+        Ok(())
+    }
+
+    /// Start everything EXCEPT the Caddy edge (DBs, adminer, mailpit, php pools,
+    /// overrides, nginx) and return the generated Caddyfile path. Run under the
+    /// services lock; the caller then starts the (blocking, privileged) edge
+    /// WITHOUT the lock so status polls never block on it (see `prepare_edge`).
+    pub async fn start_core(
+        &mut self,
+        platform: &dyn Platform,
+        ca: &ssl::LocalCa,
+        sites: &[Site],
+        php_minors: &[String],
+    ) -> Result<PathBuf> {
         self.ensure_bins(platform).await?;
 
         // MySQL — the site stack needs it (started via the DB engine manager).
@@ -207,21 +240,41 @@ impl ServiceManager {
             self.nginx = Some(services::start_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?);
         }
 
-        // Caddy edge router.
-        if matches!(self.caddy, CaddyHandle::Stopped) {
-            // Clear a leftover edge holding the admin port (§7.3) so our start
-            // isn't blocked by `bind: address already in use` on :2019.
-            proxy::recover_stale_edge(platform, &bins.caddy)?;
-            ports::ensure_free(self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
-            if self.ports.https < 1024 {
-                // Privileged port → start as root (one auth prompt), drive via admin API.
-                proxy::start_privileged(platform, &bins.caddy, &cfg.caddyfile)?;
-                self.caddy = CaddyHandle::Privileged;
-            } else {
-                self.caddy = CaddyHandle::Child(proxy::start(platform, &bins.caddy, &cfg.caddyfile)?);
-            }
+        Ok(cfg.caddyfile)
+    }
+
+    /// Prepare the Caddy edge start. If the edge is stopped, clear any stale edge
+    /// and gate the port, then return a plan the caller runs WITHOUT the services
+    /// lock (the privileged start blocks on the admin-password prompt). `None` if
+    /// the edge is already running.
+    pub fn prepare_edge(
+        &mut self,
+        platform: &dyn Platform,
+        caddyfile: PathBuf,
+    ) -> Result<Option<EdgePlan>> {
+        if !matches!(self.caddy, CaddyHandle::Stopped) {
+            return Ok(None);
         }
-        Ok(())
+        let bins = self.bins.as_ref().expect("bins resolved");
+        // Clear a leftover edge holding the admin port (§7.3) so our start isn't
+        // blocked by `bind: address already in use` on :2019.
+        proxy::recover_stale_edge(platform, &bins.caddy)?;
+        ports::ensure_free(self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
+        Ok(Some(EdgePlan {
+            privileged: self.ports.https < 1024,
+            caddy_bin: bins.caddy.clone(),
+            caddyfile,
+        }))
+    }
+
+    /// Record the edge as a root-privileged Caddy (started via osascript).
+    pub fn set_edge_privileged(&mut self) {
+        self.caddy = CaddyHandle::Privileged;
+    }
+
+    /// Record the edge as a child Caddy we own (unprivileged high port).
+    pub fn set_edge_child(&mut self, child: std::process::Child) {
+        self.caddy = CaddyHandle::Child(child);
     }
 
     /// Whether the shared stack is currently started (so reloads / pool changes

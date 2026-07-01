@@ -24,9 +24,20 @@ pub struct DbStatus {
 /// Per-engine status + live RAM/CPU for the Databases view (available engines).
 #[tauri::command]
 pub async fn databases_status(state: State<'_, AppState>) -> Result<Vec<DbStatus>> {
-    let infos = {
-        let mgr = state.services.lock().await;
-        mgr.db_status()
+    // Non-blocking: serve the last snapshot if a long start/stop holds the lock.
+    let infos = match state.services.try_lock() {
+        Ok(mgr) => {
+            let infos = mgr.db_status();
+            if let Ok(mut cache) = state.db_status_cache.lock() {
+                *cache = infos.clone();
+            }
+            infos
+        }
+        Err(_) => state
+            .db_status_cache
+            .lock()
+            .map(|c| c.clone())
+            .unwrap_or_default(),
     };
     let mut monitor = state
         .monitor
