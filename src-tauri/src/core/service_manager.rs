@@ -433,7 +433,53 @@ impl ServiceManager {
             let _ = services::stop(platform, c.id());
             let _ = c.wait();
         }
+        // Orphan sweep: kill any rexenv-owned process STILL on one of our managed
+        // ports that the handle-based stops above missed — a survivor of an app
+        // restart/crash (its handle didn't survive, but the OS process did). This
+        // is what makes "Stop all" reliable regardless of who started the service.
+        self.stop_stale_owned(platform);
         Ok(())
+    }
+
+    /// Fixed TCP ports of the services we manage — used to stop orphans whose
+    /// handles didn't survive an app restart. Uses the standard per-version pool
+    /// ports (pools may be untracked after a restart) + all available DB engines +
+    /// Mailpit + any tracked per-site override backends. Caddy's :80/:443 are NOT
+    /// included: it's root-owned and stopped via its admin API in `stop_all`.
+    fn managed_ports(&self) -> Vec<u16> {
+        let mut ports = vec![self.ports.nginx];
+        for minor in ["8.1", "8.2", "8.3"] {
+            if let Some(p) = php::fpm_port(minor) {
+                ports.push(p);
+            }
+        }
+        for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
+            ports.push(engine.port());
+        }
+        ports.push(mail::MAILPIT_SMTP_PORT);
+        ports.push(mail::MAILPIT_HTTP_PORT);
+        for domain in self.overrides.keys() {
+            ports.push(frankenphp::site_port(domain));
+        }
+        ports
+    }
+
+    /// Stop any rexenv-owned process still holding one of our managed ports (an
+    /// orphan we no longer track). Guarded to our own processes by the app-data
+    /// marker, so an unrelated process on the same port is never touched.
+    fn stop_stale_owned(&self, platform: &dyn Platform) {
+        let marker = match platform.paths().app_data_dir() {
+            Ok(p) => p.display().to_string(),
+            Err(_) => return,
+        };
+        if marker.is_empty() {
+            return;
+        }
+        for port in self.managed_ports() {
+            for pid in platform.supervisor().owned_listeners(port, &marker) {
+                let _ = platform.supervisor().stop(pid);
+            }
+        }
     }
 
     /// Per-service status for the Services view + metrics (§6.1): every service the

@@ -89,6 +89,15 @@ pub trait ProcessSupervisor: Send + Sync {
     ) -> Result<Child>;
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
+
+    /// PIDs currently listening on TCP `port` whose process command line contains
+    /// `owner_marker` — so callers only ever touch their OWN services. Lets the
+    /// service manager stop orphaned processes still holding our known ports that
+    /// we no longer have a handle for (survivors of an app restart or crash).
+    /// Default: none — a platform without this capability relies on tracked handles.
+    fn owned_listeners(&self, _port: u16, _owner_marker: &str) -> Vec<u32> {
+        Vec::new()
+    }
 }
 
 /// Registers / unregisters rexenv (or its services) to start on login/boot.

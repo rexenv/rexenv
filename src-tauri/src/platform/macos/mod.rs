@@ -217,6 +217,31 @@ impl ProcessSupervisor for MacosSupervisor {
             Err(Error::Other(format!("failed to stop pid {pid}")))
         }
     }
+
+    fn owned_listeners(&self, port: u16, owner_marker: &str) -> Vec<u32> {
+        // `lsof -t` → pids with a LISTEN socket on this TCP port.
+        let out = match std::process::Command::new("lsof")
+            .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-t"])
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => return Vec::new(), // lsof missing → fall back to handles
+        };
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| l.trim().parse::<u32>().ok())
+            .filter(|&pid| {
+                // Only OUR services: the process command must reference our app-data
+                // dir (every rexenv service's binary/config/data path lives under it),
+                // so we never terminate an unrelated process squatting on the port.
+                std::process::Command::new("ps")
+                    .args(["-p", &pid.to_string(), "-o", "command="])
+                    .output()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).contains(owner_marker))
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
 }
 
 /// launchd label for the per-user LaunchAgent — the one canonical app identity.
