@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { create } from "zustand";
 import { Button } from "@/components/ui/button";
 
 /** Shared overlay + centered card for in-app modals. WKWebView (Tauri) doesn't
@@ -107,5 +108,89 @@ export function PromptDialog({
         </Button>
       </div>
     </Overlay>
+  );
+}
+
+// ── Imperative API ──────────────────────────────────────────────────────────
+// Promise-based confirm()/promptText() so call sites can replace window.confirm/
+// window.prompt with a minimal `await`. A single <DialogHost/> (mounted in App)
+// renders the active request.
+
+type ConfirmReq = {
+  kind: "confirm";
+  title: string;
+  message?: React.ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+  resolve: (v: boolean) => void;
+};
+type PromptReq = {
+  kind: "prompt";
+  title: string;
+  label?: string;
+  initialValue?: string;
+  placeholder?: string;
+  submitLabel?: string;
+  mono?: boolean;
+  resolve: (v: string | null) => void;
+};
+type Req = ConfirmReq | PromptReq;
+
+const useDialogStore = create<{ current: Req | null; open: (r: Req) => void; close: () => void }>((set) => ({
+  current: null,
+  open: (r) => set({ current: r }),
+  close: () => set({ current: null }),
+}));
+
+/** In-app `window.confirm` — resolves true (confirmed) / false (cancelled). */
+export function confirm(opts: Omit<ConfirmReq, "kind" | "resolve">): Promise<boolean> {
+  return new Promise((resolve) => useDialogStore.getState().open({ kind: "confirm", resolve, ...opts }));
+}
+
+/** In-app `window.prompt` — resolves the entered text, or null if cancelled. */
+export function promptText(opts: Omit<PromptReq, "kind" | "resolve">): Promise<string | null> {
+  return new Promise((resolve) => useDialogStore.getState().open({ kind: "prompt", resolve, ...opts }));
+}
+
+/** Renders the active imperative dialog — mount once (App). */
+export function DialogHost() {
+  const current = useDialogStore((s) => s.current);
+  const close = useDialogStore((s) => s.close);
+  if (!current) return null;
+  if (current.kind === "confirm") {
+    return (
+      <ConfirmDialog
+        title={current.title}
+        message={current.message}
+        confirmLabel={current.confirmLabel}
+        danger={current.danger}
+        onConfirm={() => {
+          current.resolve(true);
+          close();
+        }}
+        onCancel={() => {
+          current.resolve(false);
+          close();
+        }}
+      />
+    );
+  }
+  return (
+    <PromptDialog
+      title={current.title}
+      label={current.label}
+      initialValue={current.initialValue}
+      placeholder={current.placeholder}
+      submitLabel={current.submitLabel}
+      mono={current.mono}
+      onSubmit={(v) => {
+        current.resolve(v);
+        close();
+      }}
+      onCancel={() => {
+        current.resolve(null);
+        close();
+      }}
+    />
   );
 }
