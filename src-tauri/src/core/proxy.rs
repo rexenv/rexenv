@@ -198,19 +198,41 @@ pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<(
 /// we never tracked (a leftover from a prior run). No-op if nothing is on `:2019`.
 /// This is what `stop_all` uses so "Stop all" reliably frees `:443`/`:80`.
 pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
-    if !admin_in_use() {
-        return Ok(());
-    }
-    let _ = stop_admin(platform, caddy_bin);
-    for _ in 0..10 {
-        if !admin_in_use() {
-            return Ok(());
+    // 1) Graceful: if a Caddy admin endpoint is up, stop via the API + wait for it.
+    if admin_in_use() {
+        let _ = stop_admin(platform, caddy_bin);
+        for _ in 0..10 {
+            if !admin_in_use() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
-        std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    Err(crate::error::Error::Other(format!(
-        "Caddy admin port :{CADDY_ADMIN_PORT} would not free after `caddy stop`."
-    )))
+
+    // 2) Reap any Caddy still running OUR binary — including a wedged, listener-less
+    //    edge the admin API can't reach (e.g. a crashed start that lost its sockets).
+    //    Best-effort: killing a ROOT edge needs privilege, so a root remnant may
+    //    survive — it holds no ports, and we log it rather than fail.
+    let marker = caddy_bin.display().to_string();
+    for pid in platform.supervisor().owned_pids(&marker) {
+        let _ = platform.supervisor().stop(pid);
+    }
+    let survivors = platform.supervisor().owned_pids(&marker);
+    if !survivors.is_empty() {
+        log::warn!(
+            "rexenv: {} Caddy process(es) using our binary could not be reaped \
+             (likely a root edge — needs privilege): {survivors:?}",
+            survivors.len()
+        );
+    }
+
+    // 3) If the admin port is somehow STILL held, surface it.
+    if admin_in_use() {
+        return Err(crate::error::Error::Other(format!(
+            "Caddy admin port :{CADDY_ADMIN_PORT} would not free after `caddy stop`."
+        )));
+    }
+    Ok(())
 }
 
 fn wait_ok(mut child: Child, what: &str) -> Result<()> {

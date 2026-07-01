@@ -242,6 +242,28 @@ impl ProcessSupervisor for MacosSupervisor {
             })
             .collect()
     }
+
+    fn owned_pids(&self, marker: &str) -> Vec<u32> {
+        // Substring match against every process's full command (robust vs. a regex
+        // over paths with spaces/dots). `marker` is an owned app-data path, so only
+        // our processes match.
+        let out = match std::process::Command::new("ps")
+            .args(["-axo", "pid=,command="])
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => return Vec::new(),
+        };
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim_start();
+                let (pid_str, cmd) = line.split_once(char::is_whitespace)?;
+                let pid = pid_str.parse::<u32>().ok()?;
+                cmd.contains(marker).then_some(pid)
+            })
+            .collect()
+    }
 }
 
 /// launchd label for the per-user LaunchAgent — the one canonical app identity.

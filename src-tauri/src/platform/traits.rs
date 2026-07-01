@@ -98,6 +98,15 @@ pub trait ProcessSupervisor: Send + Sync {
     fn owned_listeners(&self, _port: u16, _owner_marker: &str) -> Vec<u32> {
         Vec::new()
     }
+
+    /// PIDs whose full command line contains `marker` (a substring, typically an
+    /// app-data path we own). Unlike `owned_listeners` this doesn't require the
+    /// process to hold a port — used to reap a wedged, listener-less service (e.g.
+    /// a Caddy edge that lost its sockets) the port/admin paths can't reach.
+    /// Default: none.
+    fn owned_pids(&self, _marker: &str) -> Vec<u32> {
+        Vec::new()
+    }
 }
 
 /// Registers / unregisters rexenv (or its services) to start on login/boot.
