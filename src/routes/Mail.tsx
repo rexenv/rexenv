@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
 import {
   mailpitClear,
-  mailpitDelete,
-  mailpitMarkAllRead,
   mailpitMessage,
   mailpitMessageRaw,
   mailpitMessages,
@@ -71,23 +69,7 @@ export function Mail() {
     onError: (e) => toast.error(String(e)),
   });
 
-  const markAllRead = useMutation({
-    mutationFn: mailpitMarkAllRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mailpit-messages"] }),
-    onError: (e) => toast.error(String(e)),
-  });
-
-  const removeMsg = useMutation({
-    mutationFn: (id: string) => mailpitDelete(id),
-    onSuccess: () => {
-      setSelectedId(null);
-      qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
-    },
-    onError: (e) => toast.error(String(e)),
-  });
-
   const running = !!mp?.running;
-  const unread = list?.unread ?? 0;
   const apiPort = (() => {
     try {
       return new URL(mp?.uiUrl ?? "").port || "8025";
@@ -120,14 +102,6 @@ export function Mail() {
               Open Mailpit
             </button>
           )}
-          <button
-            onClick={() => markAllRead.mutate()}
-            disabled={markAllRead.isPending || unread === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border"
-          >
-            <Check className="h-3.5 w-3.5" />
-            Mark all read
-          </button>
           <button
             onClick={() => clear.mutate()}
             disabled={clear.isPending || messages.length === 0}
@@ -182,12 +156,7 @@ export function Mail() {
         {/* Preview pane */}
         <div className="min-h-0 flex-1 overflow-hidden">
           {selectedId ? (
-            <Preview
-              id={selectedId}
-              tab={tab}
-              onTab={setTab}
-              onDelete={() => removeMsg.mutate(selectedId)}
-            />
+            <Preview id={selectedId} tab={tab} onTab={setTab} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <div className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-rex-border-strong bg-rex-surface-1 text-rex-text-faint">
@@ -247,12 +216,10 @@ function Preview({
   id,
   tab,
   onTab,
-  onDelete,
 }: {
   id: string;
   tab: PreviewTab;
   onTab: (t: PreviewTab) => void;
-  onDelete: () => void;
 }) {
   const { data: msg } = useQuery({ queryKey: ["mailpit-message", id], queryFn: () => mailpitMessage(id) });
   const { data: raw } = useQuery({
@@ -293,14 +260,6 @@ function Preview({
           )}
           </div>
         </div>
-        <button
-          onClick={onDelete}
-          aria-label="Delete message"
-          title="Delete message"
-          className="flex h-8 w-8 flex-none items-center justify-center rounded-lg text-rex-text-muted transition-colors hover:bg-status-error-bg hover:text-status-error-bright"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
       </div>
 
       <div className="flex gap-1 border-b border-rex-border px-4">

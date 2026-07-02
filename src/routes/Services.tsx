@@ -5,7 +5,6 @@ import { Code, Database, ExternalLink, Inbox, Layers, Mail, Play, Server, Square
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
-import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
 import { servicesStatus, setDefaultPhpVersion, startServices, stopServices } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
@@ -190,13 +189,11 @@ function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
 
 function ServiceRow({
   svc,
-  onToggle,
   onSetDefault,
   onOpenDatabases,
   onOpenMail,
 }: {
   svc: ServiceInfo;
-  onToggle: () => void;
   onSetDefault: (minor: string) => void;
   onOpenDatabases: () => void;
   onOpenMail: () => void;
@@ -221,18 +218,7 @@ function ServiceRow({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-[13.5px] font-semibold text-rex-text">{svc.name}</span>
-            {svc.isDefault && (
-              <span className="rounded-md border border-[rgba(124,92,255,0.28)] bg-brand-tint-bg px-[7px] py-0.5 font-mono text-[9.5px] text-brand-tint">
-                default
-              </span>
-            )}
-            {svc.isRouter && (
-              <span className="rounded-md border border-[rgba(45,156,143,0.28)] bg-[rgba(45,156,143,0.12)] px-[7px] py-0.5 font-mono text-[9.5px] text-[#5FBFA8]">
-                edge router
-              </span>
-            )}
           </div>
-          <div className="font-mono text-[10.5px] text-rex-text-dim">{svc.version ?? "—"}</div>
         </div>
       </div>
       <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
@@ -243,11 +229,6 @@ function ServiceRow({
         status={running ? "running" : "stopped"}
         label={running ? undefined : "Idle"}
         className="w-[86px]"
-      />
-      <StartStopToggle
-        running={running}
-        onToggle={onToggle}
-        label={`${running ? "Stop" : "Start"} ${svc.name}`}
       />
       <div className="flex w-[124px] flex-none justify-end">
         {kind === "php" && !svc.isDefault && (
@@ -287,10 +268,6 @@ export function Services() {
     },
     onError: (e) => toast.error(String(e)),
   });
-
-  // TODO: per-service start/stop needs a backend `start_service`/`stop_service`
-  // command — only whole-stack startServices/stopServices exist today (§5.4).
-  const onServiceToggle = () => {};
 
   const running = services.filter((s) => s.running).length;
   const isStart = running === 0;
@@ -361,7 +338,6 @@ export function Services() {
                       <ServiceRow
                         key={svc.name}
                         svc={svc}
-                        onToggle={onServiceToggle}
                         onSetDefault={(minor) => setDefault.mutate(minor)}
                         onOpenDatabases={() => navigate("/databases")}
                         onOpenMail={() => navigate("/mail")}

@@ -225,24 +225,6 @@ export async function mailpitMessages(query?: string): Promise<MailList> {
   return invoke<MailList>("mailpit_messages", { query });
 }
 
-/** Delete one captured message. TODO(backend): add the `mailpit_delete` command. */
-export async function mailpitDelete(id: string): Promise<void> {
-  if (!isTauri()) {
-    mockInbox = mockInbox.filter((m) => m.id !== id);
-    return;
-  }
-  await invoke("mailpit_delete", { id });
-}
-
-/** Mark every captured message read. TODO(backend): add `mailpit_mark_all_read`. */
-export async function mailpitMarkAllRead(): Promise<void> {
-  if (!isTauri()) {
-    mockInbox = mockInbox.map((m) => ({ ...m, read: true }));
-    return;
-  }
-  await invoke("mailpit_mark_all_read");
-}
-
 /** One message (body + headers) for the preview pane. Mock outside Tauri. */
 export async function mailpitMessage(id: string): Promise<MailDetail> {
   if (!isTauri()) return mockMailDetail(id);

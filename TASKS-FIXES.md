@@ -50,18 +50,17 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   unwritable path, or corrupt the CA key file) and confirming the app shows the error
   instead of cryptic per-action failures.
 
-- [ ] **1.3 (M2) No broken visible controls** — three UI affordances invoke a command
-  that isn't registered or is a no-op.
-  *Done when:* every control on Mail and Services does what it says, with no
-  "command not found" toast:
-  - **(a)** Mail per-message delete + "mark all read" either work (`mailpit_delete` /
-    `mailpit_mark_all_read` registered in `lib.rs` + backed by `core::mail`) **or** are
-    removed. (`mailpit_clear` already works.)
-  - **(b)** The Services per-row Start/Stop toggle (`Services.tsx:293` `() => {}`) either
-    performs a real per-service start/stop **or** is removed, leaving Start-all/Stop-all.
-  - **(c)** The `services_status` DTO includes `kind`/`version`/`isDefault`/`isRouter`
-    so the "default" + "edge router" badges and per-row version render **or** those UI
-    affordances are removed.
+- [x] **1.3 (M2) No broken visible controls** — ✓ done (chose: **remove** each broken
+  affordance; kept every working one). `tsc` + `vite build` clean.
+  - **(a)** ✓ Removed the Mail per-message trash button and the "Mark all read" button,
+    plus their orphaned mutations and the `mailpitDelete`/`mailpitMarkAllRead` IPC wrappers
+    (both targeted commands the backend never registered). "Clear all" (`mailpit_clear`),
+    Open Mailpit, search, and preview tabs still work.
+  - **(b)** ✓ Removed the Services per-row Start/Stop toggle (was a `() => {}` no-op) and
+    its plumbing; Start-all/Stop-all remain, and the working "Set default" PHP action stays.
+  - **(c)** ✓ Removed the dead "default"/"edge router" badges and the always-`"—"` version
+    line (the DTO never sends `isDefault`/`isRouter`/`version`). Type fields left in place
+    (read defensively) so the DTO can be populated later without a UI change.
 
 ---
 
