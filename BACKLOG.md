@@ -50,6 +50,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   SAN, and DB name; the UI slugs it but core doesn't validate. *Fix:* validate against a
   strict `*.test` pattern in `create`/`provision`.
 
+- [ ] **Per-site serving granularity** (follow-up to TASKS-FIXES §2.1 / H1). 2.1 makes
+  the site status honest by deriving it from *stack-level* state (`global_status` — up vs
+  stopped), so all sites read the same status. A "partial" stack (e.g. a FrankenPHP
+  backend down while nginx serves) is shown optimistically as running. *Fix (later):*
+  derive true per-site serving — the site's own upstream (its php-fpm pool or FrankenPHP
+  backend) is up AND the edge is up AND it's present in the generated config. This is also
+  the natural home if real per-site enable/disable (fork A) is ever wanted.
+
 ---
 
 ## Low

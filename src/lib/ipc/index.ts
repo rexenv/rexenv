@@ -52,18 +52,6 @@ export async function listSites(): Promise<Site[]> {
   return invoke<Site[]>("list_sites");
 }
 
-/** Mark a site running. No-op outside Tauri. */
-export async function startSite(id: string): Promise<Site | null> {
-  if (!isTauri()) return null;
-  return invoke<Site | null>("start_site", { id });
-}
-
-/** Mark a site stopped. No-op outside Tauri. */
-export async function stopSite(id: string): Promise<Site | null> {
-  if (!isTauri()) return null;
-  return invoke<Site | null>("stop_site", { id });
-}
-
 /** Rename a site's display name (domain unchanged). No-op outside Tauri. */
 export async function renameSite(id: string, name: string): Promise<Site | null> {
   if (!isTauri()) return null;

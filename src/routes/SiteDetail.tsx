@@ -22,7 +22,6 @@ import {
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
-import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
@@ -31,14 +30,13 @@ import { adminerUrl, siteDbName } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn } from "@/lib/utils";
 import {
+  getGlobalStatus,
   listPhpVersions,
   listSites,
   logTargets,
   openExternal,
   setSitePhpVersion,
   setSiteWebServer,
-  startSite,
-  stopSite,
   tailLog,
   wpInfo,
 } from "@/lib/ipc";
@@ -71,6 +69,14 @@ export function SiteDetail() {
     enabled: !!id,
   });
 
+  // Displayed status derives from live stack state, not sites.status — a site is
+  // reachable only when the shared stack is up (task 2.1 / H1).
+  const { data: globalStatus } = useQuery({
+    queryKey: ["global-status"],
+    queryFn: getGlobalStatus,
+    refetchInterval: 2000,
+  });
+
   const switchPhp = useMutation({
     mutationFn: (version: string) => setSitePhpVersion(id!, version),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
@@ -78,11 +84,6 @@ export function SiteDetail() {
   });
   const switchServer = useMutation({
     mutationFn: (server: WebServer) => setSiteWebServer(id!, server),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toast.error(String(e)),
-  });
-  const toggle = useMutation({
-    mutationFn: () => (site?.status === "running" ? stopSite(id!) : startSite(id!)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
     onError: (e) => toast.error(String(e)),
   });
@@ -101,6 +102,7 @@ export function SiteDetail() {
   }
 
   const isWordpress = !!wp?.isWordpress;
+  const stackRunning = !!globalStatus && globalStatus.summary !== "stopped";
   const active: TabKey = tab ?? "overview";
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
     { key: "overview", label: "Overview", show: true },
@@ -120,8 +122,7 @@ export function SiteDetail() {
       <SiteHeader
         site={site}
         isWordpress={isWordpress}
-        busy={toggle.isPending}
-        onToggle={() => toggle.mutate()}
+        status={stackRunning ? "running" : "stopped"}
         onBack={() => navigate("/sites")}
       />
 
@@ -208,19 +209,16 @@ export function SiteDetail() {
 function SiteHeader({
   site,
   isWordpress,
-  busy,
-  onToggle,
+  status,
   onBack,
 }: {
   site: Site;
   isWordpress: boolean;
-  busy: boolean;
-  onToggle: () => void;
+  status: Site["status"];
   onBack: () => void;
 }) {
   const t = siteTypeMeta(site.type);
   const url = `https://${site.domain}`;
-  const running = site.status === "running";
   return (
     <div className="flex-none border-b border-rex-border-subtle px-[22px] pt-[18px]">
       <button
@@ -243,7 +241,7 @@ function SiteHeader({
               <span className="text-[19px] font-semibold tracking-[-.01em] text-rex-text">
                 {site.name}
               </span>
-              <StatusPill status={site.status} />
+              <StatusPill status={status} />
             </div>
             <div className="mt-1 flex items-center gap-2 font-mono text-[12.5px] text-rex-text-muted">
               <span className="truncate">{site.domain}</span>
@@ -252,12 +250,6 @@ function SiteHeader({
           </div>
         </div>
         <div className="flex flex-none items-center gap-[9px]">
-          <StartStopToggle
-            running={running}
-            busy={busy}
-            onToggle={onToggle}
-            label={`${running ? "Stop" : "Start"} ${site.name}`}
-          />
           <Button variant="secondary" onClick={() => openExternal(url)}>
             <ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />
             Open in browser

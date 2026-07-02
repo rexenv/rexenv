@@ -69,10 +69,17 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
 > The app runs after §1, but these are honesty/trust and safety issues a tester would
 > hit or a reviewer would flag.
 
-- [ ] **2.1 (H1) Per-site status reflects actual serving** — `start_site`/`stop_site`
-  only flip `sites.status`; `rebuild_configs_for` serves every site regardless, so the
-  badge, the Sites header count, and the filter tabs describe a state disconnected from
-  reality.
+- [x] **2.1 (H1) Per-site status reflects actual serving** — ✓ done (fork **B**: removed
+  the per-site toggle, derive the badge from real stack state). Removed the
+  `start_site`/`stop_site` commands + IPC wrappers + the per-site Start/Stop toggle on
+  both Sites and SiteDetail (they only flipped the fictional `sites.status`). Displayed
+  status now derives from a live `global_status` query (`summary !== "stopped"` →
+  running), and the Sites badge, header count, filter tabs, and sort all read that same
+  truth — the same source the footer uses, so they can't disagree. `core::sites::set_status`
+  kept (tested domain primitive). Partial-stack per-site granularity deferred to BACKLOG.
+  **Verified**: Stop-all → every badge Stopped / "0 running" / site doesn't load; Start-all
+  → every badge Running / site loads; no per-site power control remains. `cargo check --lib`
+  + 13 sites tests pass; `tsc` + `vite build` clean.
   *Done when:* a site's running/stopped state reflects whether it is actually served
   (stack up + present in the generated config). **Either** per-site enable/disable is
   real — toggling filters `rebuild_configs_for` and reloads the edge, so a "stopped"

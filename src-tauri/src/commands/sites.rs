@@ -5,7 +5,7 @@ use crate::core::db::DbEngine;
 use crate::core::{binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::{NewSite, ServiceStatus, Site, SiteType, WebServer};
+use crate::state::models::{NewSite, Site, SiteType, WebServer};
 use std::path::Path;
 use tauri::State;
 
@@ -23,20 +23,6 @@ fn lock<'a>(
 pub fn list_sites(state: State<'_, AppState>) -> Result<Vec<Site>> {
     let conn = lock(&state)?;
     core::sites::list(&conn)
-}
-
-/// Mark a site running; returns the updated site.
-#[tauri::command]
-pub fn start_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>> {
-    let conn = lock(&state)?;
-    core::sites::set_status(&conn, &id, ServiceStatus::Running)
-}
-
-/// Mark a site stopped; returns the updated site.
-#[tauri::command]
-pub fn stop_site(state: State<'_, AppState>, id: String) -> Result<Option<Site>> {
-    let conn = lock(&state)?;
-    core::sites::set_status(&conn, &id, ServiceStatus::Stopped)
 }
 
 /// Rename a site's display name (domain/docroot/DB/certs unchanged); returns the

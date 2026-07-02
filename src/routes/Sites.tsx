@@ -9,11 +9,10 @@ import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
-import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { listSites, startSite, stopSite, deleteSite, renameSite, openExternal } from "@/lib/ipc";
+import { listSites, deleteSite, renameSite, openExternal, getGlobalStatus } from "@/lib/ipc";
 import type { Site } from "@/types";
 
 function Badge({
@@ -100,22 +99,19 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
 
 function SiteRow({
   site,
-  busy,
-  onToggle,
+  status,
   onDelete,
   onOpenDatabase,
   onRename,
   onDuplicate,
 }: {
   site: Site;
-  busy: boolean;
-  onToggle: () => void;
+  status: Site["status"];
   onDelete: () => void;
   onOpenDatabase: () => void;
   onRename: () => void;
   onDuplicate: () => void;
 }) {
-  const running = site.status === "running";
   const t = siteTypeMeta(site.type);
   const [copied, setCopied] = useState(false);
   return (
@@ -178,13 +174,7 @@ function SiteRow({
       </span>
       <Badge>{site.phpVersion}</Badge>
       <Badge className="w-[84px] text-center">{site.webServer}</Badge>
-      <StatusPill status={site.status} className="w-[92px]" />
-      <StartStopToggle
-        running={running}
-        busy={busy}
-        onToggle={onToggle}
-        label={`${running ? "Stop" : "Start"} ${site.name}`}
-      />
+      <StatusPill status={status} className="w-[92px]" />
       <Menu
         trigger={
           <button
@@ -242,13 +232,16 @@ export function Sites() {
     queryKey: ["sites"],
     queryFn: listSites,
   });
-
-  const toggle = useMutation({
-    mutationFn: (site: Site) =>
-      site.status === "running" ? stopSite(site.id) : startSite(site.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toast.error(String(e)),
+  // A site is reachable only when the shared stack is up (every site is served
+  // together — there is no per-site process), so its displayed status derives
+  // from live stack state, NOT the sites.status column (task 2.1 / H1).
+  const { data: globalStatus } = useQuery({
+    queryKey: ["global-status"],
+    queryFn: getGlobalStatus,
+    refetchInterval: 2000,
   });
+  const stackRunning = !!globalStatus && globalStatus.summary !== "stopped";
+  const effStatus: Site["status"] = stackRunning ? "running" : "stopped";
 
   const remove = useMutation({
     mutationFn: (site: Site) => deleteSite(site.id),
@@ -270,7 +263,7 @@ export function Sites() {
   // the user picks a fresh domain. A byte-for-byte clone would need a backend copy.
   const [dupSource, setDupSource] = useState<Site | null>(null);
 
-  const running = sites.filter((s) => s.status === "running").length;
+  const running = stackRunning ? sites.length : 0;
   const counts: Record<Filter, number> = {
     all: sites.length,
     running,
@@ -281,21 +274,19 @@ export function Sites() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = sites.filter((s) => {
-      if (filter === "running" && s.status !== "running") return false;
-      if (filter === "stopped" && s.status === "running") return false;
+      if (filter === "running" && effStatus !== "running") return false;
+      if (filter === "stopped" && effStatus === "running") return false;
       if (q && !s.name.toLowerCase().includes(q) && !s.domain.toLowerCase().includes(q))
         return false;
       return true;
     });
     return [...list].sort((a, b) => {
-      if (sort === "name") return a.name.localeCompare(b.name);
       if (sort === "recent") return b.createdAt.localeCompare(a.createdAt);
-      // status: running first, then by name
-      const ar = a.status === "running" ? 0 : 1;
-      const br = b.status === "running" ? 0 : 1;
-      return ar - br || a.name.localeCompare(b.name);
+      // "name" and "status" both order by name: per-site status is now derived
+      // from the stack (uniform across sites), so there's nothing to rank within.
+      return a.name.localeCompare(b.name);
     });
-  }, [sites, filter, query, sort]);
+  }, [sites, filter, query, sort, effStatus]);
 
   const noResults = sites.length > 0 && visible.length === 0;
 
@@ -331,7 +322,6 @@ export function Sites() {
           <div className="flex items-center gap-[18px] pr-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
             <span className="w-[118px]">Stack</span>
             <span className="w-[88px]">Status</span>
-            <span>Power</span>
           </div>
         </div>
       )}
@@ -385,8 +375,7 @@ export function Sites() {
               <SiteRow
                 key={site.id}
                 site={site}
-                busy={toggle.isPending && toggle.variables?.id === site.id}
-                onToggle={() => toggle.mutate(site)}
+                status={effStatus}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
                 onRename={() => setRenameTarget(site)}
