@@ -95,7 +95,18 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   through that channel. Verified: `curl 127.0.0.1:2019/...` no longer controls the edge
   (connection refused / not the admin), while start/reload/stop-all still function.
 
-- [ ] **2.4 (H4) Atomic binary prepare — no poisoned cache** — `resolve` extracts to the
+- [ ] **2.4 (M1) rexenv must not stop a user's own Caddy** — do **immediately after 2.3
+  (H5)**: same file (`core/proxy.rs`), same admin-API area. `recover_stale_edge`/`stop_edge`
+  run `caddy stop` against `:2019` without verifying the listener is rexenv's, and
+  `reconcile_startup` does this on **every launch** — killing a developer's own Caddy on
+  the default admin port.
+  *Done when:* with a user's own Caddy running on `:2019`, rexenv launch and Stop-all do
+  **not** stop it — the stop is ownership-gated (via `owned_listeners(2019, app_data_marker)`
+  and/or a rexenv config marker) — while rexenv's own edge is still managed (start / reload /
+  stop-all work). Verified live: start a foreign Caddy on `:2019`, launch rexenv + run
+  Stop-all, and confirm the foreign Caddy is still up while rexenv's edge behaves normally.
+
+- [ ] **2.5 (H4) Atomic binary prepare — no poisoned cache** — `resolve` extracts to the
   final path then runs `set_executable` + `prepare_binary`; if prepare fails, the
   unsigned/unrelinked binary is cached and every later `resolve` returns it via the
   `exists()` short-circuit (Apple Silicon SIGKILLs it; never self-heals).
@@ -106,16 +117,30 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   dylib dep) leaves no cached file, and a retry re-downloads and prepares cleanly rather
   than returning the poisoned binary.
 
+- [ ] **2.6 (M5-interim) Block the FrankenPHP switch for subdirectory-multisite sites** —
+  cheap UI-only guard for the limited release; the full fix (pass the real rewrite mode
+  into the FrankenPHP config) stays in BACKLOG.md. Today `reconcile_overrides` hardcodes
+  `RewriteMode::Single`, so a subdirectory-multisite network switched to FrankenPHP gets
+  broken sub-site routing.
+  *Done when:* a subdirectory-multisite site cannot be switched to FrankenPHP from the UI
+  (the FrankenPHP option is disabled with a tooltip explaining why); every other site can
+  still switch freely. No backend change required.
+
 ---
 
 ## Notes
 
 - **Ordering rationale:** §1 first (a fresh install is unusable/opaque without it), then
   §2 (trust + safety before handing the .dmg to anyone). Within §2, H1/H2 are the
-  source-of-truth fixes the audit was chartered to find; H5 is the one real security
-  hardening item; H4 prevents a class of unrecoverable first-run failures.
-- **Watch for a decision:** BACKLOG.md M1 (rexenv killing a user's own Caddy) and M5
-  (FrankenPHP ignoring subdirectory-multisite rewrites) are candidates to pull into §2
-  — decide before starting §2.
+  source-of-truth fixes the audit was chartered to find; H5 hardens the root Caddy admin
+  API; H4 prevents a class of unrecoverable first-run failures.
+- **§2 sub-ordering (fixed):** do **2.3 (H5) then 2.4 (M1) back-to-back** — both live in
+  `core/proxy.rs` and touch the same admin-API / edge-ownership code, so they share
+  context and one round of testing.
+- **Decisions made (were flagged):**
+  - **M1** — pulled into §2 as **2.4** (testers are developers likely to run their own
+    Caddy; same code area as H5). Marked `[→§2]` in BACKLOG.md.
+  - **M5** — full fix stays in BACKLOG.md; a cheap **UI interim** (2.6) ships this release
+    so no one hits broken sub-site routing.
 - **Verification carries over:** prefer a cold-run / live-click / `curl` / `security`
   check per task over "looks right" (mirrors TASKS-RELEASE).

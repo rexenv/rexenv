@@ -11,22 +11,22 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
 
 ---
 
-## Flagged for a pre-release decision
+## Pre-release decisions (resolved)
 
-- [ ] **M1 — rexenv can kill a user's *own* Caddy** (`core/proxy.rs:172-236`).
-  `recover_stale_edge`/`stop_edge` run `caddy stop` against `:2019` without verifying
-  the listener is rexenv's — and `reconcile_startup` does this on **every launch**. A
-  developer running their own Caddy on the default admin port loses it.
-  **Decision:** pull into pre-release (§2) if any tester is likely to run their own
-  Caddy; otherwise post-release. *Fix:* gate `stop_admin` on
-  `owned_listeners(2019, app_data_marker)` / a rexenv config marker.
+- [→§2] **M1 — rexenv can kill a user's *own* Caddy** (`core/proxy.rs:172-236`).
+  **Decision: pulled into pre-release** — now tracked as **TASKS-FIXES.md §2.4**, done
+  back-to-back with H5 (same `proxy.rs` admin-API area). Reason: testers are developers
+  likely to run their own Caddy on `:2019`. Full detail + "Done when" live in
+  TASKS-FIXES.md; root-cause detail in FINDINGS.md (M1).
 
 - [ ] **M5 — FrankenPHP override ignores subdirectory-multisite rewrites**
-  (`core/service_manager.rs:371`). Hardcodes `RewriteMode::Single`; the UI lets a
-  subdirectory-multisite network switch to FrankenPHP, breaking sub-site routing.
-  **Decision:** pull into pre-release (§2) if multisite + FrankenPHP is a demoed combo;
-  otherwise post-release (or block the switch in the UI as an interim). *Fix:* pass the
-  site's real `rewrite_mode_for(s.multisite)` into `write_config`.
+  (`core/service_manager.rs:371`). Hardcodes `RewriteMode::Single`; a subdirectory-multisite
+  network switched to FrankenPHP gets broken sub-site routing.
+  **Decision: full fix stays here (post-release)**; a cheap **UI interim** ships this
+  release as **TASKS-FIXES.md §2.6** (disable the FrankenPHP switch for
+  subdirectory-multisite sites), so no one hits the broken combo in the limited release.
+  *Full fix (this item):* pass the site's real `rewrite_mode_for(s.multisite)` into
+  `frankenphp::write_config` in `reconcile_overrides`, then remove the UI guard.
 
 ---
 
