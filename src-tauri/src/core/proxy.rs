@@ -216,7 +216,9 @@ pub fn stop_admin(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
 /// live leftover on our socket and stop it so a fresh start isn't blocked.
 ///
 /// No-op when our admin socket has no live listener. Returns an actionable error if
-/// the leftover edge can't be stopped.
+/// the leftover edge can't be stopped. Ownership-gated: because we probe/stop OUR
+/// private socket (never the default TCP `:2019`), a developer's own Caddy on `:2019`
+/// is never touched by launch (task 2.4 / M1).
 pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
     if !admin_alive(platform) {
         return Ok(());
@@ -246,6 +248,11 @@ pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<(
 /// needed) and on a stray edge we never tracked (a leftover from a prior run). No-op
 /// if our socket has no live listener. This is what `stop_all` uses so "Stop all"
 /// reliably frees `:443`/`:80`.
+///
+/// Ownership-gated (task 2.4 / M1): both steps act ONLY on rexenv's own edge — the
+/// admin stop targets our private unix socket (a foreign Caddy on the default TCP
+/// `:2019` is invisible to us), and the reap matches our own caddy binary path. A
+/// developer's own Caddy is never stopped by launch or Stop-all.
 pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
     // 1) Graceful: if our edge's admin socket is live, stop via the API + wait for it.
     if admin_alive(platform) {

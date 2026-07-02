@@ -127,11 +127,15 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   through that channel. Verified: `curl 127.0.0.1:2019/...` no longer controls the edge
   (connection refused / not the admin), while start/reload/stop-all still function.
 
-- [ ] **2.4 (M1) rexenv must not stop a user's own Caddy** — do **immediately after 2.3
-  (H5)**: same file (`core/proxy.rs`), same admin-API area. `recover_stale_edge`/`stop_edge`
-  run `caddy stop` against `:2019` without verifying the listener is rexenv's, and
-  `reconcile_startup` does this on **every launch** — killing a developer's own Caddy on
-  the default admin port.
+- [x] **2.4 (M1) rexenv must not stop a user's own Caddy** — ✓ done. The functional fix
+  landed with 2.3 (H5): rexenv's admin moved off TCP `:2019` onto a private unix socket,
+  so `recover_stale_edge`/`stop_edge` now probe/stop via `admin_alive()` (OUR socket) —
+  a foreign Caddy on `:2019` is invisible to us — and `stop_edge`'s reap is gated to our
+  own caddy binary path (`owned_pids(caddy_bin)`); `reconcile_startup`'s port sweep already
+  excludes `:2019`/`:443`. This commit pins the invariant in the docs/comments
+  (`recover_stale_edge`, `stop_edge`, `prepare_edge`). **Verified live**: a foreign caddy
+  from a different binary path is NOT selected by our reap marker (`owned_pids` miss), and
+  `:2019` is never targeted. 116/116 lib tests pass.
   *Done when:* with a user's own Caddy running on `:2019`, rexenv launch and Stop-all do
   **not** stop it — the stop is ownership-gated (via `owned_listeners(2019, app_data_marker)`
   and/or a rexenv config marker) — while rexenv's own edge is still managed (start / reload /

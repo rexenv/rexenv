@@ -13,11 +13,10 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
 
 ## Pre-release decisions (resolved)
 
-- [→§2] **M1 — rexenv can kill a user's *own* Caddy** (`core/proxy.rs:172-236`).
-  **Decision: pulled into pre-release** — now tracked as **TASKS-FIXES.md §2.4**, done
-  back-to-back with H5 (same `proxy.rs` admin-API area). Reason: testers are developers
-  likely to run their own Caddy on `:2019`. Full detail + "Done when" live in
-  TASKS-FIXES.md; root-cause detail in FINDINGS.md (M1).
+- [x] **M1 — rexenv can kill a user's *own* Caddy** (`core/proxy.rs`). **DONE** as
+  TASKS-FIXES.md §2.4 (committed), resolved by the H5 socket move: rexenv's admin left
+  TCP `:2019` for a private unix socket, so recover/stop only ever act on our own edge
+  (our socket + our-binary reap marker); a developer's Caddy on `:2019` is never touched.
 
 - [ ] **M5 — FrankenPHP override ignores subdirectory-multisite rewrites**
   (`core/service_manager.rs:371`). Hardcodes `RewriteMode::Single`; a subdirectory-multisite

@@ -259,8 +259,9 @@ impl ServiceManager {
             return Ok(None);
         }
         let bins = self.bins.as_ref().expect("bins resolved");
-        // Clear a leftover edge holding the admin port (§7.3) so our start isn't
-        // blocked by `bind: address already in use` on :2019.
+        // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
+        // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
+        // default :2019 admin is never touched (task 2.4 / M1).
         proxy::recover_stale_edge(platform, &bins.caddy)?;
         ports::ensure_free(self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
         Ok(Some(EdgePlan {
