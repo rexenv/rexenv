@@ -142,10 +142,16 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   stop-all work). Verified live: start a foreign Caddy on `:2019`, launch rexenv + run
   Stop-all, and confirm the foreign Caddy is still up while rexenv's edge behaves normally.
 
-- [ ] **2.5 (H4) Atomic binary prepare — no poisoned cache** — `resolve` extracts to the
-  final path then runs `set_executable` + `prepare_binary`; if prepare fails, the
-  unsigned/unrelinked binary is cached and every later `resolve` returns it via the
-  `exists()` short-circuit (Apple Silicon SIGKILLs it; never self-heals).
+- [x] **2.5 (H4) Atomic binary prepare — no poisoned cache** — ✓ done. `resolve`,
+  `resolve_file`, and `resolve_dir` now extract + prepare into a unique hidden staging
+  dir (`.staging-<name>-<version>-<pid>-<seq>`) on the same filesystem, then `publish()`
+  atomically renames it into the cache ONLY on full success; on any failure the staging
+  dir is removed, so the cached path is never created from an unprepared/partial binary.
+  `publish` also un-poisons a stale/partial leftover from a prior crash (replaces a dir
+  missing its final marker) and yields to a concurrent-resolve winner. **Verified**: 3 new
+  `publish` unit tests (target-absent / race-winner / stale-partial) + a codesign-shim live
+  recipe (forced prepare failure leaves no cached `caddy-2.11.4` and no `.staging-*`; a
+  retry resolves cleanly). 119/119 lib tests pass.
   *Done when:* a failure during `set_executable`/`prepare_binary` never leaves a
   usable-looking-but-unprepared binary in the cache — `resolve` (and `resolve_dir`)
   extract to a temp path, prepare, then atomically rename into place (or `remove_dir_all`

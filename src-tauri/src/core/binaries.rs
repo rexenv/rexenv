@@ -9,6 +9,7 @@
 use crate::error::{Error, Result};
 use crate::platform::traits::{Arch, Platform};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Pinned Caddy version (edge router).
 pub const CADDY_VERSION: &str = "2.11.4";
@@ -423,7 +424,8 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
 
-    let dir = platform.paths().bin_dir()?.join(format!("{name}-{version}"));
+    let bin_dir = platform.paths().bin_dir()?;
+    let dir = bin_dir.join(format!("{name}-{version}"));
     let bin_path = dir.join(name);
     if bin_path.exists() {
         return Ok(bin_path);
@@ -435,23 +437,38 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
             php_arch(arch)
         ))
     })?;
+    if spec.archive == Archive::TarGzTree {
+        return Err(Error::Other(format!(
+            "{name} is a directory distribution — use resolve_dir"
+        )));
+    }
 
     let bytes = http_get(&spec.url).await?;
     verify_checksum(&bytes, &spec.checksum)?;
 
-    std::fs::create_dir_all(&dir)?;
-    match spec.archive {
-        Archive::TarGz => extract_tar_gz_member(&bytes, spec.member, &bin_path)?,
-        Archive::Raw => std::fs::write(&bin_path, &bytes)?,
-        Archive::TarGzTree => {
-            return Err(Error::Other(format!(
-                "{name} is a directory distribution — use resolve_dir"
-            )))
+    // Stage in a temp dir on the same filesystem, prepare it there, then publish
+    // atomically — so a failed `set_executable`/`prepare_binary` (an unrelinkable
+    // dylib dep, a codesign error) NEVER leaves a poisoned (unsigned/unrelinked)
+    // binary at the cached path that every later `resolve` returns via `exists()`
+    // and Apple Silicon SIGKILLs. On any failure the staging dir is removed, so a
+    // retry re-downloads and prepares cleanly (task 2.5 / H4).
+    let staging = staging_path(&bin_dir, name, version);
+    let staged_bin = staging.join(name);
+    let staged = (|| -> Result<()> {
+        std::fs::create_dir_all(&staging)?;
+        match spec.archive {
+            Archive::TarGz => extract_tar_gz_member(&bytes, spec.member, &staged_bin)?,
+            Archive::Raw => std::fs::write(&staged_bin, &bytes)?,
+            Archive::TarGzTree => unreachable!("TarGzTree returned above"),
         }
+        platform.permissions().set_executable(&staged_bin)?;
+        platform.binaries().prepare_binary(&staged_bin)?;
+        publish(&staging, &dir, name)
+    })();
+    if staged.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
     }
-
-    platform.permissions().set_executable(&bin_path)?;
-    platform.binaries().prepare_binary(&bin_path)?;
+    staged?;
     Ok(bin_path)
 }
 
@@ -467,15 +484,26 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
     if spec.archive != Archive::Raw {
         return Err(Error::Other(format!("{name} is not a raw file artifact")));
     }
-    let dir = platform.paths().bin_dir()?.join(format!("{name}-{version}"));
+    let bin_dir = platform.paths().bin_dir()?;
+    let dir = bin_dir.join(format!("{name}-{version}"));
     let path = dir.join(spec.member);
     if path.exists() {
         return Ok(path);
     }
     let bytes = http_get(&spec.url).await?;
     verify_checksum(&bytes, &spec.checksum)?;
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(&path, &bytes)?;
+    // Stage + publish atomically so an interrupted write never caches a truncated
+    // script (task 2.5 / H4). No chmod/codesign — it's a script, not a Mach-O.
+    let staging = staging_path(&bin_dir, name, version);
+    let staged = (|| -> Result<()> {
+        std::fs::create_dir_all(&staging)?;
+        std::fs::write(staging.join(spec.member), &bytes)?;
+        publish(&staging, &dir, spec.member)
+    })();
+    if staged.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    staged?;
     Ok(path)
 }
 
@@ -487,7 +515,8 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
 
-    let dir = platform.paths().bin_dir()?.join(format!("{name}-{version}"));
+    let bin_dir = platform.paths().bin_dir()?;
+    let dir = bin_dir.join(format!("{name}-{version}"));
     if dir.join("bin").is_dir() {
         return Ok(dir);
     }
@@ -506,10 +535,21 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
 
     let bytes = http_get(&spec.url).await?;
     verify_checksum(&bytes, &spec.checksum)?;
-    std::fs::create_dir_all(&dir)?;
-    extract_tar_gz_tree(&bytes, &dir)?;
-    // MySQL's binaries are Oracle-signed + notarized, and a reqwest download adds
-    // no quarantine attribute, so no ad-hoc re-signing is needed.
+    // Extract into a staging dir, then publish atomically — a download/extract that
+    // fails partway never leaves a partial tree that later resolves accept via the
+    // `bin/` short-circuit (task 2.5 / H4). MySQL's binaries are Oracle-signed +
+    // notarized (Postgres is relocatable/unsigned-ok), and a reqwest download adds no
+    // quarantine attribute, so there's no ad-hoc re-signing step here.
+    let staging = staging_path(&bin_dir, name, version);
+    let staged = (|| -> Result<()> {
+        std::fs::create_dir_all(&staging)?;
+        extract_tar_gz_tree(&bytes, &staging)?;
+        publish(&staging, &dir, "bin")
+    })();
+    if staged.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    staged?;
     Ok(dir)
 }
 
@@ -687,6 +727,43 @@ fn extract_tar_gz_tree(bytes: &[u8], dest: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Monotonic counter so concurrent stagings in one process never collide.
+static STAGING_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A unique, hidden staging dir under `bin_dir` — on the SAME filesystem as the final
+/// cache dir, so the publish rename is atomic. The leading dot + `-<pid>-<seq>` suffix
+/// keep it from ever being mistaken for a resolved binary and let two resolves stage
+/// independently.
+fn staging_path(bin_dir: &Path, name: &str, version: &str) -> PathBuf {
+    let seq = STAGING_SEQ.fetch_add(1, Ordering::Relaxed);
+    bin_dir.join(format!(".staging-{name}-{version}-{}-{seq}", std::process::id()))
+}
+
+/// Atomically move a fully-prepared `staging` dir to its final `dir`. `marker` is the
+/// entry that proves a dir is fully published (the binary file for `resolve`, `bin`
+/// for a tree). Three cases:
+///  - target absent → rename in place (atomic swap into the cache).
+///  - target already has `marker` → a concurrent resolve won; keep theirs, drop ours.
+///  - target exists WITHOUT `marker` → a stale/partial leftover (a prior crash mid-
+///    prepare); remove it and publish ours. This is what un-poisons the cache (H4).
+fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
+    if std::fs::rename(staging, dir).is_ok() {
+        return Ok(());
+    }
+    if dir.join(marker).exists() {
+        let _ = std::fs::remove_dir_all(staging);
+        return Ok(());
+    }
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::rename(staging, dir).map_err(|e| {
+        Error::Other(format!(
+            "failed to publish {} → {}: {e}",
+            staging.display(),
+            dir.display()
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -915,6 +992,61 @@ mod tests {
     #[test]
     fn hex_lower_encodes() {
         assert_eq!(hex_lower(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+    }
+
+    /// A fresh, unique temp base dir for the publish tests (no network / platform).
+    fn tmp_base(tag: &str) -> PathBuf {
+        let seq = STAGING_SEQ.fetch_add(1, Ordering::Relaxed);
+        let p = std::env::temp_dir().join(format!("rexenv-h4-{tag}-{}-{seq}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn publish_moves_staging_into_place_when_target_absent() {
+        let base = tmp_base("absent");
+        let staging = base.join("staging");
+        let dir = base.join("final");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("caddy"), b"bin").unwrap();
+        publish(&staging, &dir, "caddy").unwrap();
+        assert!(dir.join("caddy").exists());
+        assert!(!staging.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn publish_keeps_race_winner_and_discards_staging() {
+        // A concurrent resolve already published the final binary → keep theirs.
+        let base = tmp_base("winner");
+        let staging = base.join("staging");
+        let dir = base.join("final");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("caddy"), b"ours").unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("caddy"), b"winner").unwrap();
+        publish(&staging, &dir, "caddy").unwrap();
+        assert_eq!(std::fs::read(dir.join("caddy")).unwrap(), b"winner");
+        assert!(!staging.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn publish_replaces_stale_partial_target() {
+        // The H4 case: a prior crash left `dir` WITHOUT the final marker. Publishing
+        // must replace the poisoned leftover wholesale, not keep it.
+        let base = tmp_base("stale");
+        let staging = base.join("staging");
+        let dir = base.join("final");
+        std::fs::create_dir_all(dir.join("junk")).unwrap(); // partial, no "caddy"
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("caddy"), b"good").unwrap();
+        publish(&staging, &dir, "caddy").unwrap();
+        assert_eq!(std::fs::read(dir.join("caddy")).unwrap(), b"good");
+        assert!(!dir.join("junk").exists()); // stale content removed
+        assert!(!staging.exists());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
