@@ -32,6 +32,14 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("app_info");
 }
 
+/** The fatal startup error, if backend init (DB/CA) failed. Read FIRST so the UI can
+ *  show an error screen instead of driving a half-initialized app (which would panic
+ *  on AppState commands). Null when init succeeded or outside Tauri. */
+export async function initError(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string | null>("init_error");
+}
+
 /** Live global status for the sidebar footer. Mock fallback outside Tauri. */
 export async function getGlobalStatus(): Promise<GlobalStatus> {
   if (!isTauri()) return mockGlobalStatus;

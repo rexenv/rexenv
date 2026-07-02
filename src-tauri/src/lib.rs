@@ -45,7 +45,13 @@ pub fn run() {
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.
             let platform = platform::current();
-            match (
+            // Fatal init: open the DB + load/create the CA. On failure `AppState` can't
+            // be built — so we do NOT leave it unmanaged (every AppState command would
+            // then panic with a cryptic "state not managed"). Instead we record a
+            // human-readable reason in the ALWAYS-managed `InitError`; the frontend
+            // reads it first and shows an error screen rather than driving the app
+            // (task 1.2 / H3).
+            let init_error: Option<String> = match (
                 state::db::open_for_platform(platform.paths()),
                 core::ssl::load_or_create(platform.paths(), platform.permissions()),
             ) {
@@ -62,14 +68,29 @@ pub fn run() {
                     core::service_manager::ServiceManager::default()
                         .reconcile_startup(platform.as_ref());
                     app.manage(state::app::AppState::new(conn, platform, ca));
+                    None
                 }
-                (Err(e), _) => log::error!("db: failed to open app database: {e}"),
-                (_, Err(e)) => log::error!("ssl: failed to load/create CA: {e}"),
-            }
+                (Err(e), _) => {
+                    log::error!("db: failed to open app database: {e}");
+                    Some(format!(
+                        "rexenv couldn't open its local database.\n\n{e}\n\nThis usually means \
+                         its data folder isn't writable or the disk is full. Fix that, then reopen rexenv."
+                    ))
+                }
+                (_, Err(e)) => {
+                    log::error!("ssl: failed to load/create CA: {e}");
+                    Some(format!(
+                        "rexenv couldn't set up its local certificate authority.\n\n{e}\n\nThis \
+                         usually means its data folder isn't writable. Fix that, then reopen rexenv."
+                    ))
+                }
+            };
+            app.manage(commands::system::InitError(init_error));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::system::app_info,
+            commands::system::init_error,
             commands::system::global_status,
             commands::system::port_status,
             commands::system::open_external,

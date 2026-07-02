@@ -25,6 +25,19 @@ pub fn app_info() -> AppInfo {
     }
 }
 
+/// Startup init outcome, ALWAYS managed — unlike `AppState`, which is absent when
+/// init fails. `Some(msg)` = a fatal DB/CA failure the frontend should surface instead
+/// of driving the app (task 1.2 / H3). Reading it can never panic.
+pub struct InitError(pub Option<String>);
+
+/// The fatal startup error, if any. The frontend calls this FIRST and, when it's
+/// `Some`, shows an error screen without touching AppState-backed commands (which
+/// would panic with "state not managed" while `AppState` is absent).
+#[tauri::command]
+pub fn init_error(state: State<'_, InitError>) -> Option<String> {
+    state.0.clone()
+}
+
 /// The sidebar status footer's global block. Mirrors the frontend `GlobalStatus`
 /// type. CPU/RAM are real system totals (`sysinfo`); running/total count LIVE
 /// services (the single source of truth shared with `services_status`).

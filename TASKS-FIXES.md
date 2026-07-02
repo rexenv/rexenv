@@ -36,9 +36,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   resolver, `security dump-trust-settings` lists the rexenv CA, and `https://<name>.test`
   loads with a valid local-CA lock. (Pairs with TASKS-RELEASE 1.5.)
 
-- [ ] **1.2 (H3) No silent startup panic on DB/CA failure** — if `open_for_platform` or
-  `ssl::load_or_create` fails, `AppState` is never managed (`lib.rs:47-68`) and every
-  command that takes `State<AppState>` panics with a cryptic error and no UI message.
+- [x] **1.2 (H3) No silent startup panic on DB/CA failure** — ✓ done. On a fatal
+  DB-open / CA-load failure `lib.rs` now records a human-readable reason in an
+  ALWAYS-managed `InitError` (new `init_error` command) instead of leaving `AppState`
+  unmanaged; `App.tsx` reads it FIRST and renders a terminal `FatalError` screen that
+  drives no AppState-backed commands, so the "state not managed" panic path is never
+  reached. No existing command changed. **Verified**: with the app-data folder chmod'd
+  `000`, the app shows "rexenv couldn't start" (DB message), stays responsive, no panic;
+  restoring perms returns to normal. `cargo check --lib` clean; `tsc` + `vite build` clean.
   *Done when:* a DB-open or CA-load failure produces a clear, human-readable error in the
   UI (blocking window / error screen) and the app stays responsive — no
   "state not managed" panics. Verified by forcing the failure (point app-data at an
