@@ -107,10 +107,20 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   the footer show Caddy/MySQL as **stopped**, and Start-all/Stop-all act only on rexenv's
   own processes.
 
-- [ ] **2.3 (H5) Lock down the root Caddy admin API** — the edge runs as root with
-  Caddy's admin endpoint on TCP `:2019`, unauthenticated; any local process can POST
-  config to a root Caddy (arbitrary file read/write as root). FrankenPHP backends already
-  set `admin off`; only the edge is exposed.
+- [x] **2.3 (H5) Lock down the root Caddy admin API** — ✓ done. rexenv drives Caddy's
+  admin over a **unix socket** (`<config_dir>/caddy-admin.sock`) instead of the default
+  unauthenticated TCP `:2019`: `generate_caddyfile` emits `admin "unix//<path>|0600"`;
+  `start_privileged` chowns the root-created socket to the invoking user (uid from the
+  app-data owner) so reload/stop stay promptless while no other process/user can reach it;
+  `reload`/`stop_admin` use `--address unix//<sock>`; `admin_in_use()` (probed :2019) →
+  `admin_alive(platform)` (connects to the socket, since the file persists after a crash);
+  `recover_stale_edge`/`stop_edge` use it; `CADDY_ADMIN_PORT` removed. Caddy `running` is now
+  the handle gate alone. **Verified** against the pinned caddy 2.11.4 (unix admin works with
+  `run`+`start`, socket `srw------- 0600`, reload/stop over the socket, `:2019` refused,
+  spaced paths validate, stale socket file auto-replaced) + live root-edge check (curl :2019
+  refused, socket user-owned 0600, reload/stop still work). 116/116 lib tests pass (added
+  `admin_binds_unix_socket_not_tcp`). Bonus: rexenv no longer touches :2019 at all, which
+  also delivers most of 2.4 (M1).
   *Done when:* the root edge no longer exposes an unauthenticated TCP admin endpoint —
   admin is bound to a unix socket with owner-only (0600) perms (or disabled, with
   reload/stop driven another way), and reload / stop / stale-edge recovery still work

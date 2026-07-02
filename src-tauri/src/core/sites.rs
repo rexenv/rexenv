@@ -360,6 +360,9 @@ pub fn rebuild_configs_for(
             http_port: caddy_http_port,
             https_port: caddy_https_port,
             routes,
+            // Bind Caddy's admin API to our unix socket (not TCP :2019) so the root
+            // edge exposes no unauthenticated local control surface (task 2.3 / H5).
+            admin_socket: Some(proxy::admin_socket_path(platform)?),
         },
     )?;
 

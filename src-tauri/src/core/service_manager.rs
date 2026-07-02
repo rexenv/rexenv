@@ -557,11 +557,13 @@ impl ServiceManager {
         });
         infos.push(ServiceInfo {
             name: "Caddy".to_string(),
-            // Ownership: only when WE started the edge (handle != Stopped). Liveness is
-            // probed via Caddy's ADMIN endpoint (:2019), never raw :443 — a foreign
-            // listener on :443 (e.g. another local server) must NOT read as rexenv's
-            // edge being up (task 2.2 / H2).
-            running: !matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_in_use(),
+            // Ownership + start: true only when WE started the edge (handle != Stopped,
+            // set only after a confirmed start, cleared on stop). A foreign listener on
+            // :443 (e.g. another local server) must NOT read as rexenv's edge being up
+            // (task 2.2 / H2). The admin channel is now a unix socket (task 2.3 / H5),
+            // so there is no port to probe here; a rare post-start crash self-heals on
+            // the next reconcile/stop.
+            running: !matches!(self.caddy, CaddyHandle::Stopped),
             pid: match &self.caddy {
                 CaddyHandle::Child(c) => Some(c.id()),
                 _ => None,

@@ -14,9 +14,33 @@ use std::process::Child;
 pub const CADDYFILE: &str = "Caddyfile";
 pub const DEFAULT_HTTP_PORT: u16 = 80;
 pub const DEFAULT_HTTPS_PORT: u16 = 443;
-/// Caddy's admin endpoint port (its default). A single fixed port so a leftover
-/// edge can be found + stopped deterministically — see [`recover_stale_edge`].
-pub const CADDY_ADMIN_PORT: u16 = 2019;
+/// rexenv drives Caddy's admin API over a **unix socket** (not the default
+/// unauthenticated TCP `:2019`) so the ROOT edge exposes no local-TCP control
+/// surface — any local process reaching `:2019` could otherwise POST config to a
+/// root Caddy = arbitrary file read/write as root (task 2.3 / H5). The socket lives
+/// in our config dir with owner-only (0600) perms; for the privileged edge it is
+/// chown'd to the invoking user so reload/stop stay promptless (see
+/// [`start_privileged`]). A fixed path so a leftover edge is found deterministically.
+pub const ADMIN_SOCKET_FILE: &str = "caddy-admin.sock";
+
+/// Path of Caddy's admin unix socket under the platform config dir.
+pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
+    Ok(platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE))
+}
+
+/// Caddy admin address for the CLI `--address` / Caddyfile `admin` directive.
+fn admin_address(sock: &Path) -> String {
+    format!("unix//{}", sock.display())
+}
+
+/// Whether OUR edge's admin socket is accepting connections (liveness). The socket
+/// FILE persists after a crash, so we actually connect rather than stat the path.
+pub fn admin_alive(platform: &dyn Platform) -> bool {
+    match admin_socket_path(platform) {
+        Ok(sock) => std::os::unix::net::UnixStream::connect(&sock).is_ok(),
+        Err(_) => false,
+    }
+}
 
 /// One site's TLS termination + upstream.
 #[derive(Debug, Clone)]
@@ -39,6 +63,9 @@ pub struct CaddyConfig {
     pub http_port: u16,
     pub https_port: u16,
     pub routes: Vec<SiteRoute>,
+    /// Admin API unix socket to bind (`Some` in production via [`admin_socket_path`]).
+    /// `None` omits the `admin` directive (Caddy's default TCP admin) — tests only.
+    pub admin_socket: Option<PathBuf>,
 }
 
 impl Default for CaddyConfig {
@@ -47,6 +74,7 @@ impl Default for CaddyConfig {
             http_port: DEFAULT_HTTP_PORT,
             https_port: DEFAULT_HTTPS_PORT,
             routes: Vec::new(),
+            admin_socket: None,
         }
     }
 }
@@ -60,6 +88,12 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
     s.push_str("{\n");
     s.push_str(&format!("\thttp_port {}\n", cfg.http_port));
     s.push_str(&format!("\thttps_port {}\n", cfg.https_port));
+    if let Some(sock) = &cfg.admin_socket {
+        // Bind the admin API to a unix socket instead of the default TCP :2019 (H5).
+        // Quote the whole token — app-data paths contain spaces; `|0600` sets
+        // owner-only perms (Caddy 2.7+; the privileged edge additionally chowns it).
+        s.push_str(&format!("\tadmin \"unix//{}|0600\"\n", sock.display()));
+    }
     s.push_str("}\n");
     for r in &cfg.routes {
         s.push('\n');
@@ -123,10 +157,23 @@ fn sh_quote(path: &Path) -> String {
 /// it's up, so the prompt doesn't block. Afterwards, [`reload`] and [`stop_admin`]
 /// drive it through Caddy's localhost admin API — no further prompts.
 pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Result<()> {
+    let sock = admin_socket_path(platform)?;
+    let appdata = platform.paths().app_data_dir()?;
+    // Start the edge as root (binds :80/:443), THEN hand its admin unix socket to the
+    // invoking user with 0600 perms so rexenv can drive reload/stop with NO further
+    // prompt while no other local process (or user) can reach it (task 2.3 / H5). The
+    // uid comes from our app-data dir's owner (the invoking user), so it works for any
+    // account. `&&` keeps a failed `caddy start` a failure (the chown group's exit
+    // code must not mask it); the chown/chmod are best-effort (`|| true`).
     let cmd = format!(
-        "{} start --config {} --adapter caddyfile",
-        sh_quote(caddy_bin),
-        sh_quote(caddyfile)
+        "{caddy} start --config {cfg} --adapter caddyfile && {{ \
+         for i in 1 2 3 4 5 6 7 8 9 10; do [ -S {sock} ] && break; sleep 0.2; done ; \
+         chown $(stat -f %u {appdata}) {sock} 2>/dev/null || true ; \
+         chmod 600 {sock} 2>/dev/null || true ; }}",
+        caddy = sh_quote(caddy_bin),
+        cfg = sh_quote(caddyfile),
+        sock = sh_quote(&sock),
+        appdata = sh_quote(&appdata),
     );
     platform.privileges().run_privileged(&cmd)?;
     Ok(())
@@ -135,74 +182,76 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
 /// Reload Caddy's config via its admin API (no privilege needed even though
 /// Caddy may run as root). Run after writing a new Caddyfile (e.g. site added).
 pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Result<()> {
+    let sock = admin_socket_path(platform)?;
     let args = vec![
         "reload".to_string(),
         "--config".to_string(),
         caddyfile.display().to_string(),
         "--adapter".to_string(),
         "caddyfile".to_string(),
+        // Reach the admin over our unix socket, not the (now absent) TCP :2019.
+        "--address".to_string(),
+        admin_address(&sock),
     ];
     wait_ok(platform.supervisor().spawn(caddy_bin, &args)?, "caddy reload")
 }
 
-/// Stop Caddy via its admin API (no privilege).
+/// Stop Caddy via its admin API (no privilege) over our unix socket.
 pub fn stop_admin(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
+    let sock = admin_socket_path(platform)?;
     wait_ok(
-        platform.supervisor().spawn(caddy_bin, &["stop".to_string()])?,
+        platform.supervisor().spawn(
+            caddy_bin,
+            &["stop".to_string(), "--address".to_string(), admin_address(&sock)],
+        )?,
         "caddy stop",
     )
-}
-
-/// True if Caddy's admin endpoint port is currently bound (i.e. some Caddy — or
-/// another process — is already there).
-pub fn admin_in_use() -> bool {
-    crate::core::ports::is_listening(CADDY_ADMIN_PORT)
 }
 
 /// Recover from a LEFTOVER edge before starting ours (Phase 2 §7.3).
 ///
 /// A Caddy orphaned by a prior run (commonly a **root** edge from a `:443` start)
-/// keeps its admin endpoint on `:2019`, which makes a fresh `caddy run` die with
-/// `bind: address already in use`. Caddy's admin API lets any local user stop it
-/// without privilege (even a root edge stops itself on request), so here we detect
-/// that case and stop the stale edge so startup isn't blocked.
+/// keeps holding `:443` and its admin socket. rexenv's admin socket is chown'd to
+/// the invoking user, so we can stop even a root edge without privilege: detect a
+/// live leftover on our socket and stop it so a fresh start isn't blocked.
 ///
-/// No-op when `:2019` is free. Returns an actionable error if the port is held and
-/// can't be freed (e.g. a non-Caddy process is squatting on it).
+/// No-op when our admin socket has no live listener. Returns an actionable error if
+/// the leftover edge can't be stopped.
 pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
-    if !admin_in_use() {
+    if !admin_alive(platform) {
         return Ok(());
     }
     log::warn!(
-        "rexenv: a leftover Caddy is holding admin port :{CADDY_ADMIN_PORT}; \
+        "rexenv: a leftover rexenv Caddy edge is live on its admin socket; \
          stopping it via the admin API so startup isn't blocked"
     );
-    // Best-effort: `caddy stop` POSTs to the admin endpoint; ignore its exit code
-    // (we judge success by the port actually freeing below).
+    // Best-effort: `caddy stop` POSTs to the admin socket; judge success by the
+    // socket actually going quiet below.
     let _ = stop_admin(platform, caddy_bin);
     for _ in 0..10 {
-        if !admin_in_use() {
+        if !admin_alive(platform) {
             return Ok(());
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    Err(crate::error::Error::Other(format!(
-        "Caddy admin port :{CADDY_ADMIN_PORT} is held and could not be freed — a non-Caddy \
-         process may be using it, or a stale edge won't stop. Free it and retry (e.g. \
-         `caddy stop`, or kill the process listening on :{CADDY_ADMIN_PORT})."
-    )))
+    Err(crate::error::Error::Other(
+        "the leftover Caddy edge would not stop via its admin socket. Stop it and retry \
+         (e.g. `caddy stop`, or kill the leftover caddy process)."
+            .to_string(),
+    ))
 }
 
-/// Stop the Caddy edge via its admin API and wait for `:2019` to actually free.
-/// Works on a **root** edge (the admin API needs no privilege) and on a stray edge
-/// we never tracked (a leftover from a prior run). No-op if nothing is on `:2019`.
-/// This is what `stop_all` uses so "Stop all" reliably frees `:443`/`:80`.
+/// Stop the Caddy edge via its admin API (our unix socket) and wait for it to go
+/// quiet. Works on a **root** edge (the socket is chown'd to us, so no privilege
+/// needed) and on a stray edge we never tracked (a leftover from a prior run). No-op
+/// if our socket has no live listener. This is what `stop_all` uses so "Stop all"
+/// reliably frees `:443`/`:80`.
 pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
-    // 1) Graceful: if a Caddy admin endpoint is up, stop via the API + wait for it.
-    if admin_in_use() {
+    // 1) Graceful: if our edge's admin socket is live, stop via the API + wait for it.
+    if admin_alive(platform) {
         let _ = stop_admin(platform, caddy_bin);
         for _ in 0..10 {
-            if !admin_in_use() {
+            if !admin_alive(platform) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(500));
@@ -226,11 +275,11 @@ pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
         );
     }
 
-    // 3) If the admin port is somehow STILL held, surface it.
-    if admin_in_use() {
-        return Err(crate::error::Error::Other(format!(
-            "Caddy admin port :{CADDY_ADMIN_PORT} would not free after `caddy stop`."
-        )));
+    // 3) If our admin socket is somehow STILL live, surface it.
+    if admin_alive(platform) {
+        return Err(crate::error::Error::Other(
+            "the Caddy edge would not stop via its admin socket after `caddy stop`.".to_string(),
+        ));
     }
     Ok(())
 }
@@ -262,6 +311,7 @@ mod tests {
                 cert_path: "/c/cert.pem".into(),
                 key_path: "/c/key.pem".into(),
             }],
+            admin_socket: None,
         }
     }
 
@@ -281,9 +331,20 @@ mod tests {
     }
 
     #[test]
-    fn admin_port_is_caddy_default() {
-        // Fixed so a leftover edge is found + stopped deterministically (§7.3).
-        assert_eq!(CADDY_ADMIN_PORT, 2019);
+    fn admin_binds_unix_socket_not_tcp() {
+        // No admin_socket → no admin directive emitted (tests only).
+        let mut cfg = sample();
+        assert!(!generate_caddyfile(&cfg).contains("admin "));
+        // With a socket → admin bound to a quoted unix socket with 0600 perms, and
+        // NOT the default unauthenticated TCP :2019 (task 2.3 / H5). The quoting also
+        // covers app-data paths that contain spaces ("Application Support").
+        cfg.admin_socket = Some("/x/app data/config/caddy-admin.sock".into());
+        let f = generate_caddyfile(&cfg);
+        assert!(
+            f.contains("admin \"unix///x/app data/config/caddy-admin.sock|0600\""),
+            "caddyfile:\n{f}"
+        );
+        assert!(!f.contains("2019"));
     }
 
     #[test]
