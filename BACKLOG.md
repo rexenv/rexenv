@@ -18,14 +18,23 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   TCP `:2019` for a private unix socket, so recover/stop only ever act on our own edge
   (our socket + our-binary reap marker); a developer's Caddy on `:2019` is never touched.
 
-- [ ] **M5 — FrankenPHP override ignores subdirectory-multisite rewrites**
-  (`core/service_manager.rs:371`). Hardcodes `RewriteMode::Single`; a subdirectory-multisite
-  network switched to FrankenPHP gets broken sub-site routing.
-  **Decision: full fix stays here (post-release)**; a cheap **UI interim** ships this
-  release as **TASKS-FIXES.md §2.6** (disable the FrankenPHP switch for
-  subdirectory-multisite sites), so no one hits the broken combo in the limited release.
-  *Full fix (this item):* pass the site's real `rewrite_mode_for(s.multisite)` into
-  `frankenphp::write_config` in `reconcile_overrides`, then remove the UI guard.
+- [~] **M5 — FrankenPHP override ignores subdirectory-multisite rewrites** — backend fix
+  LANDED. `reconcile_overrides` now threads `sites::rewrite_mode_for(s.multisite)` into
+  `frankenphp::write_config` (was hardcoded `RewriteMode::Single`). The FrankenPHP
+  `SubdirectoryMultisite` Caddy template — never exercised before, and buggy: a placeholder
+  typo (`{http.regexp.wpsubph.2}` for a regexp named `wpsubphp` → empty rewrite) plus a
+  missing `wp-admin` redirect — was rewritten to faithfully mirror the proven nginx rules
+  (redirect → strip `/wp-*` → strip `*.php`, each `not file`-guarded, ordered in a `route {}`
+  block). Validated with `frankenphp adapt`/`validate` (`Valid configuration`) + a unit test
+  + `examples/frankenphp_subdir_validate.rs`. **The §2.6 UI guard STAYS** (see M5-verify) —
+  the routing hasn't been exercised by a real request yet.
+
+- [ ] **M5-verify — live-test FrankenPHP subdirectory multisite, then remove the §2.6 guard.**
+  On a machine with a free `:443`: one-click a WP site, convert to subdirectory-multisite,
+  switch it to FrankenPHP, and confirm a sub-site page **and** its `/wp-admin` redirect route
+  correctly (couldn't be done in-repo — DBngin holds `:443`). Then remove the 2.6 UI guard:
+  the `FRANKENPHP_SUBDIR_BLOCK` guards in `SiteDetail.tsx` + `NewSiteDialog.tsx` and the
+  New-Site invariant `useEffect`.
 
 ---
 

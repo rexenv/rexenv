@@ -37,19 +37,39 @@ pub fn site_port(domain: &str) -> u16 {
 
 /// The site block body for a rewrite mode. Single/subdomain use the high-level
 /// `php_server` (its built-in `try_files … /index.php` is the single-site rule);
-/// subdirectory multisite prepends WordPress's network path rewrites. Only the
-/// Single path is exercised in Phase 2; the slots exist so Phase 3 needs no refactor.
+/// subdirectory multisite adds WordPress's network path rewrites.
 fn site_body(mode: RewriteMode) -> String {
     match mode {
         RewriteMode::Single | RewriteMode::SubdomainMultisite => "\tphp_server\n".to_string(),
         RewriteMode::SubdirectoryMultisite => {
-            // WordPress subdirectory-multisite: strip the leading /<site>/ segment
-            // from wp-admin/wp-includes/wp-content and *.php, then serve via PHP.
-            "\t@wpsubdir path_regexp wpsubdir ^(/[^/]+)?(/wp-(content|admin|includes)/.*)$\n\
-             \trewrite @wpsubdir {http.regexp.wpsubdir.2}\n\
-             \t@wpsubdirphp path_regexp wpsubphp ^(/[^/]+)?(/.*\\.php)$\n\
-             \trewrite @wpsubdirphp {http.regexp.wpsubph.2}\n\
-             \tphp_server\n"
+            // WordPress subdirectory-multisite: faithfully mirror the proven nginx
+            // rules (`services::rewrite_block`) as Caddy directives. A `route` block
+            // preserves this exact order (Caddy would otherwise auto-sort directives),
+            // and each rule is guarded by `not file` — Caddy's equivalent of nginx's
+            // `if (!-e $request_filename)`:
+            //   1. redirect `/<site>/wp-admin` → `…/wp-admin/`
+            //   2. strip the `/<site>` prefix before `/wp-*`  (capture group 2)
+            //   3. strip the `/<site>` prefix before `*.php`  (capture group 2)
+            // The two rewrites share Caddy's rewrite group, so only the first match
+            // fires (like nginx's `last`). Validated with `frankenphp adapt`/`validate`.
+            "\troute {\n\
+             \t\t@wpadmin {\n\
+             \t\t\tnot file\n\
+             \t\t\tpath_regexp ^(/[^/]+)?/wp-admin$\n\
+             \t\t}\n\
+             \t\tredir @wpadmin {path}/ permanent\n\
+             \t\t@wpstrip {\n\
+             \t\t\tnot file\n\
+             \t\t\tpath_regexp wpstrip ^(/[^/]+)?(/wp-.*)$\n\
+             \t\t}\n\
+             \t\trewrite @wpstrip {http.regexp.wpstrip.2}\n\
+             \t\t@phpstrip {\n\
+             \t\t\tnot file\n\
+             \t\t\tpath_regexp phpstrip ^(/[^/]+)?(/.*\\.php)$\n\
+             \t\t}\n\
+             \t\trewrite @phpstrip {http.regexp.phpstrip.2}\n\
+             \t\tphp_server\n\
+             \t}\n"
                 .to_string()
         }
     }
@@ -149,16 +169,35 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_slots_differ_by_mode() {
+    fn subdirectory_multisite_mirrors_the_nginx_network_rewrites() {
         let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single);
         let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite);
-        // Single has no WP network rewrites; subdirectory multisite does.
-        assert!(!single.contains("wpsubdir"));
-        assert!(subdir.contains("wpsubdir"));
-        // Subdomain routes like single (plain php_server).
         let sub = generate_config(Path::new("/d"), 8200, RewriteMode::SubdomainMultisite);
-        assert!(sub.contains("php_server"));
-        assert!(!sub.contains("wpsubdir"));
+
+        // Single + subdomain route like a single site: plain php_server, no rewrites.
+        for cfg in [&single, &sub] {
+            assert!(cfg.contains("php_server"));
+            assert!(!cfg.contains("route {"));
+            assert!(!cfg.contains("rewrite "));
+            assert!(!cfg.contains("redir "));
+        }
+
+        // Subdirectory multisite adds WordPress's three network rules, ordered inside
+        // a `route` block (so Caddy can't reorder them) and each guarded by `not file`.
+        assert!(subdir.contains("route {"));
+        assert!(subdir.contains("redir @wpadmin {path}/ permanent"));
+        assert!(subdir.contains("not file"));
+        assert!(subdir.contains("php_server"));
+        // Each placeholder name MUST match its `path_regexp` name and reference group 2.
+        // The old code shipped `{http.regexp.wpsubph.2}` for a regexp named `wpsubphp`
+        // (a typo) → the placeholder resolved empty → every sub-site `.php` broke.
+        assert!(subdir.contains("path_regexp wpstrip ^(/[^/]+)?(/wp-.*)$"));
+        assert!(subdir.contains("rewrite @wpstrip {http.regexp.wpstrip.2}"));
+        assert!(subdir.contains("path_regexp phpstrip ^(/[^/]+)?(/.*\\.php)$"));
+        assert!(subdir.contains("rewrite @phpstrip {http.regexp.phpstrip.2}"));
+        // The stale, buggy matcher names are gone.
+        assert!(!subdir.contains("wpsubph"));
+        assert!(!subdir.contains("wpsubdir"));
     }
 
     #[test]

@@ -338,14 +338,20 @@ impl ServiceManager {
     /// site was deleted or switched away. Each backend listens on the site's
     /// deterministic override port (`frankenphp::site_port`).
     async fn reconcile_overrides(&mut self, platform: &dyn Platform, sites: &[Site]) -> Result<()> {
-        // Desired FrankenPHP backends: domain → (docroot, port).
-        let desired: HashMap<String, (PathBuf, u16)> = sites
+        // Desired FrankenPHP backends: domain → (docroot, port, rewrite mode). The
+        // rewrite mode is the site's real one (M5): a subdirectory-multisite override
+        // needs WordPress's network rewrites, not the single-site default.
+        let desired: HashMap<String, (PathBuf, u16, services::RewriteMode)> = sites
             .iter()
             .filter(|s| matches!(s.web_server, WebServer::Frankenphp))
             .map(|s| {
                 (
                     s.domain.clone(),
-                    (PathBuf::from(&s.path), frankenphp::site_port(&s.domain)),
+                    (
+                        PathBuf::from(&s.path),
+                        frankenphp::site_port(&s.domain),
+                        sites::rewrite_mode_for(s.multisite),
+                    ),
                 )
             })
             .collect();
@@ -365,14 +371,13 @@ impl ServiceManager {
         }
 
         // Start backends that are wanted but not yet running.
-        for (domain, (docroot, port)) in &desired {
+        for (domain, (docroot, port, rewrite)) in &desired {
             if self.overrides.contains_key(domain) {
                 continue;
             }
             ports::ensure_free(*port, ports::Proto::Tcp, "FrankenPHP")?;
             let bin = self.ensure_frankenphp_bin(platform).await?;
-            let conf =
-                frankenphp::write_config(platform, domain, docroot, *port, services::RewriteMode::Single)?;
+            let conf = frankenphp::write_config(platform, domain, docroot, *port, *rewrite)?;
             let child = frankenphp::start(platform, &bin, domain, &conf)?;
             self.overrides.insert(domain.clone(), child);
             wait_until(|| frankenphp::running(*port), 20);

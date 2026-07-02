@@ -260,8 +260,9 @@ fn nginx_site_for(s: &Site) -> services::NginxSite {
     }
 }
 
-/// Map a site's multisite mode to its nginx rewrite template (Phase 1 §6.2).
-fn rewrite_mode_for(mode: MultisiteMode) -> services::RewriteMode {
+/// Map a site's multisite mode to its rewrite template (Phase 1 §6.2). Shared by
+/// the nginx config builder and the FrankenPHP override backend (`service_manager`).
+pub fn rewrite_mode_for(mode: MultisiteMode) -> services::RewriteMode {
     match mode {
         MultisiteMode::None => services::RewriteMode::Single,
         MultisiteMode::Subdomain => services::RewriteMode::SubdomainMultisite,
