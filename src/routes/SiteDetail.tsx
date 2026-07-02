@@ -48,6 +48,12 @@ const SERVERS: { value: WebServer; label: string }[] = [
   { value: "frankenphp", label: "FrankenPHP" },
 ];
 
+/** FrankenPHP can't serve subdirectory-multisite networks yet: the override backend
+ *  hardcodes single-site rewrites (BACKLOG M5), so switching such a site to FrankenPHP
+ *  would break sub-site routing. Blocked in the UI until the full fix lands. */
+const FRANKENPHP_SUBDIR_BLOCK =
+  "FrankenPHP can't serve subdirectory-multisite networks yet — keep this site on Nginx.";
+
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
@@ -330,11 +336,19 @@ function Overview({
               {!SERVERS.some((s) => s.value === site.webServer) && (
                 <option value={site.webServer}>{site.webServer}</option>
               )}
-              {SERVERS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
+              {SERVERS.map((s) => {
+                const blocked = site.multisite === "subdirectory" && s.value === "frankenphp";
+                return (
+                  <option
+                    key={s.value}
+                    value={s.value}
+                    disabled={blocked}
+                    title={blocked ? FRANKENPHP_SUBDIR_BLOCK : undefined}
+                  >
+                    {blocked ? `${s.label} — unsupported for subdirectory multisite` : s.label}
+                  </option>
+                );
+              })}
             </select>
           </EnvMini>
           <EnvMini label="SSL certificate">

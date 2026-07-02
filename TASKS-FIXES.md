@@ -159,11 +159,19 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   dylib dep) leaves no cached file, and a retry re-downloads and prepares cleanly rather
   than returning the poisoned binary.
 
-- [ ] **2.6 (M5-interim) Block the FrankenPHP switch for subdirectory-multisite sites** —
-  cheap UI-only guard for the limited release; the full fix (pass the real rewrite mode
-  into the FrankenPHP config) stays in BACKLOG.md. Today `reconcile_overrides` hardcodes
-  `RewriteMode::Single`, so a subdirectory-multisite network switched to FrankenPHP gets
-  broken sub-site routing.
+- [x] **2.6 (M5-interim) Block the FrankenPHP switch for subdirectory-multisite sites** —
+  ✓ done (UI-only; full fix stays in BACKLOG M5). Guarded **both** UI entry points that
+  can reach the broken combo: (1) **SiteDetail** server switcher — the FrankenPHP option
+  is `disabled` (relabelled + `title` tooltip) when `site.multisite === "subdirectory"`;
+  Nginx stays enabled so an already-broken site can escape. (2) **New Site dialog** —
+  bidirectional mutual lock: FrankenPHP disabled in the server select when Subdirectory is
+  chosen, and the Subdirectory card disabled (dimmed + note) when the server is FrankenPHP;
+  plus an invariant effect that reverts to Subdomain if a blueprint sets FrankenPHP
+  programmatically while Subdirectory is active. No backend change. **Verified:** `pnpm
+  build` passes (strict tsc) + manual click-through of both screens (incl. the blueprint
+  edge). `reconcile_overrides` still hardcodes `RewriteMode::Single`, so the full fix
+  (pass the real `rewrite_mode_for(s.multisite)` into `frankenphp::write_config`) remains
+  in BACKLOG.md.
   *Done when:* a subdirectory-multisite site cannot be switched to FrankenPHP from the UI
   (the FrankenPHP option is disabled with a tooltip explaining why); every other site can
   still switch freely. No backend change required.
