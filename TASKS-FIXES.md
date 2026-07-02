@@ -88,10 +88,18 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   All/Running/Stopped tabs read the same truth. Verified: toggling a site changes whether
   `https://<domain>` serves, and with the stack stopped no site shows "running".
 
-- [ ] **2.2 (H2) "Running" means an owned process is alive, not a bare port-listen** —
-  every service's `running` is currently a TCP-connect probe, so a foreign listener
-  (the dev's DBngin on :443/:3306, a system MySQL) reads as rexenv's service being up,
-  and Stop-all can't clear it.
+- [x] **2.2 (H2) "Running" means an owned process is alive, not a bare port-listen** —
+  ✓ done. `status()` + `db_status()` now gate each service's `running` on manager-handle
+  ownership AND liveness instead of a raw port probe: DB engines `self.dbs.contains_key &&
+  engine.running()`; Nginx `self.nginx.is_some() && nginx_running`; Mailpit
+  `self.mailpit.is_some() && mail::running()`; Caddy `self.caddy != Stopped &&
+  proxy::admin_in_use()` — probed via the admin endpoint (:2019), never raw :443. (PHP
+  pools / FrankenPHP were already list-only-when-tracked.) Handle presence is a stronger
+  ownership signal than an `owned_listeners` marker scan; a stopped manager now
+  short-circuits (zero probes). **Verified**: with DBngin holding :443, Services + footer
+  show Caddy **Stopped** (was falsely Running); after freeing :443 + Start-all it's Running;
+  Stop-all leaves DBngin untouched. 116/116 lib tests pass (two strengthened to pin
+  "stopped ⇒ nothing running, regardless of foreign listeners").
   *Done when:* each service's `running` is true only when a rexenv-owned process is up —
   tracked-child liveness (`try_wait`) and/or `owned_listeners(port, app_data_marker)`;
   the root Caddy edge is probed via its admin identity, not raw :443. Verified: with

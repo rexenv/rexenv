@@ -142,7 +142,10 @@ impl ServiceManager {
             .filter(|e| e.available())
             .map(|engine| DbInfo {
                 engine,
-                running: engine.running(),
+                // "running" means an engine WE started this session is alive — not a
+                // bare port-listen (a foreign/system DB on the port doesn't count),
+                // so status is honest and Stop acts only on ours (task 2.2 / H2).
+                running: self.dbs.contains_key(&engine) && engine.running(),
                 pid: self.dbs.get(&engine).map(Child::id),
             })
             .collect()
@@ -515,7 +518,8 @@ impl ServiceManager {
         for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
             infos.push(ServiceInfo {
                 name: engine.label().to_string(),
-                running: engine.running(),
+                // Owned + alive, not a bare port-listen (task 2.2 / H2).
+                running: self.dbs.contains_key(&engine) && engine.running(),
                 pid: self.dbs.get(&engine).map(Child::id),
                 port: engine.port(),
             });
@@ -546,13 +550,18 @@ impl ServiceManager {
 
         infos.push(ServiceInfo {
             name: "Nginx".to_string(),
-            running: services::nginx_running(self.ports.nginx),
+            // Owned (we hold the child) + alive, not a bare port-listen (task 2.2 / H2).
+            running: self.nginx.is_some() && services::nginx_running(self.ports.nginx),
             pid: self.nginx.as_ref().map(Child::id),
             port: self.ports.nginx,
         });
         infos.push(ServiceInfo {
             name: "Caddy".to_string(),
-            running: ports::is_listening(self.ports.https),
+            // Ownership: only when WE started the edge (handle != Stopped). Liveness is
+            // probed via Caddy's ADMIN endpoint (:2019), never raw :443 — a foreign
+            // listener on :443 (e.g. another local server) must NOT read as rexenv's
+            // edge being up (task 2.2 / H2).
+            running: !matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_in_use(),
             pid: match &self.caddy {
                 CaddyHandle::Child(c) => Some(c.id()),
                 _ => None,
@@ -561,7 +570,7 @@ impl ServiceManager {
         });
         infos.push(ServiceInfo {
             name: "Mailpit".to_string(),
-            running: mail::running(),
+            running: self.mailpit.is_some() && mail::running(),
             pid: self.mailpit.as_ref().map(Child::id),
             port: mail::MAILPIT_HTTP_PORT,
         });
@@ -622,6 +631,8 @@ mod tests {
         // Only the shipped engines are listed (MariaDB/Redis deferred on macOS).
         assert_eq!(dbs, vec![DbEngine::Mysql, DbEngine::Postgres]);
         assert!(m.db_status().iter().all(|d| d.pid.is_none()));
+        // H2: nothing we started ⇒ nothing running, regardless of a foreign DB.
+        assert!(m.db_status().iter().all(|d| !d.running));
     }
 
     #[test]
@@ -633,6 +644,10 @@ mod tests {
         // Mailpit. No php-fpm pools or FrankenPHP overrides (those appear only when running).
         assert_eq!(names, vec!["MySQL", "PostgreSQL", "Nginx", "Caddy", "Mailpit"]);
         assert!(s.iter().all(|i| i.pid.is_none()));
+        // H2: a stopped manager owns nothing, so NOTHING reads as running — even if
+        // some foreign process happens to hold one of these ports (e.g. another local
+        // server on :443). Ownership is gated on our handles, not a bare port-listen.
+        assert!(s.iter().all(|i| !i.running));
         assert!(m.pools.is_empty());
     }
 }
