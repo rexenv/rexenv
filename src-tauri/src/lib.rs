@@ -74,6 +74,7 @@ pub fn run() {
             commands::system::port_status,
             commands::system::open_external,
             commands::system::dns_status,
+            commands::system::system_setup,
             commands::system::trust_local_ca,
             commands::system::regenerate_certs,
             commands::system::autostart_status,

@@ -147,6 +147,16 @@ pub fn dns_status(state: State<'_, AppState>) -> DnsStatus {
     }
 }
 
+/// Run first-run system setup (§3.4): install the `.test` OS resolver (one admin
+/// prompt) + trust the local CA (native keychain dialog). Idempotent — safe to
+/// re-run. Backs the Onboarding "Set up domains & SSL" step. `async` so the blocking
+/// privileged prompts run off the UI thread (same handling as `start_services`).
+#[tauri::command]
+pub async fn system_setup(state: State<'_, AppState>) -> Result<()> {
+    core::setup::run_system_setup(state.platform.as_ref())?;
+    Ok(())
+}
+
 /// Re-trust the local CA in the user trust store (macOS login keychain — shows the
 /// native auth dialog, no root). Idempotent: re-adding an already-trusted cert is fine.
 #[tauri::command]

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, ChevronRight, Globe, Lock, Shield } from "lucide-react";
+import { systemSetup } from "@/lib/ipc";
 
 /**
  * First-run onboarding — a 4-step wizard (Welcome → Install → Domains & SSL →
@@ -223,11 +224,20 @@ function StatusPill({ icon, label }: { icon: ReactNode; label: string }) {
 }
 
 function Domains() {
-  const [state, setState] = useState<"idle" | "busy" | "done">("idle");
-  // Shell: simulate the privileged setup. TODO: wire to run_system_setup.
-  const run = () => {
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [error, setError] = useState("");
+  // Real privileged setup: install the .test resolver (admin prompt) + trust the
+  // local CA (keychain dialog), via core::setup::run_system_setup.
+  const run = async () => {
     setState("busy");
-    setTimeout(() => setState("done"), 1800);
+    setError("");
+    try {
+      await systemSetup();
+      setState("done");
+    } catch (e) {
+      setError(String(e));
+      setState("error");
+    }
   };
   return (
     <div className="w-full max-w-[460px]">
@@ -257,17 +267,22 @@ function Domains() {
           </>
         }
       />
-      {state === "idle" && (
+      {(state === "idle" || state === "error") && (
         <div className="mt-[22px]">
           <button
-            onClick={run}
+            onClick={() => void run()}
             className="inline-flex h-[42px] items-center gap-2 rounded-[11px] bg-primary px-[22px] text-[14px] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110"
           >
-            Set up domains & SSL
+            {state === "error" ? "Try again" : "Set up domains & SSL"}
           </button>
           <div className="mt-3 font-mono text-[10.5px] text-rex-text-faint">
-            macOS will ask for your password once
+            macOS will ask for permission (resolver + certificate)
           </div>
+          {state === "error" && (
+            <div className="mx-auto mt-3 max-w-[380px] text-[12px] leading-[1.5] text-status-error-bright">
+              {error}
+            </div>
+          )}
         </div>
       )}
       {state === "busy" && (

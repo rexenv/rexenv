@@ -558,6 +558,13 @@ export async function dnsStatus(): Promise<DnsStatus> {
   return invoke<DnsStatus>("dns_status");
 }
 
+/** Run first-run system setup: install the .test resolver (admin prompt) and trust
+ *  the local CA (keychain dialog). Idempotent. Desktop-app only. */
+export async function systemSetup(): Promise<void> {
+  if (!isTauri()) throw new Error("System setup requires the rexenv desktop app.");
+  await invoke("system_setup");
+}
+
 /** Re-trust the local CA in the user keychain (shows the native auth dialog). */
 export async function trustLocalCa(): Promise<void> {
   if (!isTauri()) throw new Error("Trusting the local CA requires the rexenv desktop app.");

@@ -19,11 +19,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
 > Without these, a fresh install either doesn't work at all (C1) or fails opaquely
 > (H3), or ships controls that visibly break (M2).
 
-- [ ] **1.1 (C1) Wire first-run system setup** — `run_system_setup` exists but nothing
-  calls it; the Onboarding "Domains & SSL" step is a `setTimeout` fake
-  (`Onboarding.tsx:226`, `// TODO: wire to run_system_setup`), no command is registered,
-  and `/onboarding` is never reached on first launch. Result: `/etc/resolver/test` is
-  never installed, so `.test` never resolves on a clean Mac.
+- [x] **1.1 (C1) Wire first-run system setup** — ✓ done (commit `96fc297`). Added an
+  async `system_setup` command → `core::setup::run_system_setup`, registered in `lib.rs`,
+  exposed as `ipc.systemSetup`; Onboarding's "Set up domains & SSL" now calls it with real
+  busy/done/error + Try-again (no `setTimeout`); `FirstRunGate` routes to `/onboarding`
+  when `dns_status().resolverInstalled` is false, else `/sites`. **Verified cold-start**
+  on a clean account with no `/etc/resolver/test`: onboarding wrote the resolver + trusted
+  the CA through the UI (no example binary), and `https://<name>.test` loaded with a valid
+  local-CA lock end-to-end. `cargo check --lib` clean; `tsc` + `vite build` clean.
   *Done when:* a `system_setup` Tauri command calls `core::setup::run_system_setup`; a
   typed IPC wrapper exists; the Onboarding button calls it with real busy/done/error
   states (no `setTimeout`); first launch routes to onboarding (or the setup step) when
