@@ -110,8 +110,12 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   SIGTERM stop, SIGKILL fallback for a TERM-trapping process) + 129/129 lib tests.
 - [ ] **L4 — `MacosShell::run` ignores exit status + stderr** (`platform/macos/mod.rs:361-364`).
   Latent (zero callers today). Fix the silent-failure behavior before anything wires it.
-- [ ] **L5 — `dns_status` opens a raw UDP socket in the command layer**
-  (`commands/system.rs:137-148`). Layering smell; move the probe behind a core/platform helper.
+- [x] **L5 — `dns_status` opens a raw UDP socket in the command layer**
+  (`commands/system.rs`). ✓ done. Moved the UDP bind-in-use probe into
+  `core::dns::port_bound(port)` (documented as a liveness proxy, distinct from the
+  handle-based `DnsService::is_running`); the command now delegates to it and no longer
+  opens a raw socket. Same behavior, thin command. Verified: new `port_bound` test
+  (held → bound, released → free) + 130/130 lib tests.
 - [x] **L6 — Auto-update Settings card is dead UI** (`Settings.tsx`). ✓ done. Removed the
   entire fake Updates section — the `UpdatesSetting` component (no-op check-for-updates
   spinner, mock update banner, non-functional auto-update toggle), its `"updates"` nav tab

@@ -193,6 +193,16 @@ pub fn remove_resolver(platform: &dyn Platform) -> Result<()> {
     Ok(())
 }
 
+/// Whether the resolver's loopback UDP `port` is already bound — a lightweight
+/// liveness proxy for the embedded DNS. The resolver binds UDP, so the TCP
+/// `ports::is_listening` check doesn't apply; instead we try to bind the port and
+/// treat a failure as "something (our resolver) already holds it". Used by the
+/// Settings status indicator so the command layer needn't open a raw socket; the
+/// authoritative check when a handle is held is [`DnsService::is_running`].
+pub fn port_bound(port: u16) -> bool {
+    std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_err()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +210,18 @@ mod tests {
     use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
     use std::time::Duration;
     use tokio::time::timeout;
+
+    #[test]
+    fn port_bound_true_when_held_false_when_free() {
+        use std::net::{Ipv4Addr, UdpSocket};
+        // While we hold an ephemeral UDP port, `port_bound` sees it as in use…
+        let held = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = held.local_addr().unwrap().port();
+        assert!(port_bound(port), "a held UDP port should read as bound");
+        // …and free again once released.
+        drop(held);
+        assert!(!port_bound(port), "a released UDP port should read as free");
+    }
 
     /// Start the resolver on an ephemeral loopback port; return its address and
     /// the spawned server task handle.

@@ -148,9 +148,8 @@ pub struct DnsStatus {
 /// bind means something — our in-process resolver — already holds it.
 #[tauri::command]
 pub fn dns_status(state: State<'_, AppState>) -> DnsStatus {
-    use std::net::{Ipv4Addr, UdpSocket};
     let port = core::dns::DEFAULT_DNS_PORT;
-    let running = UdpSocket::bind((Ipv4Addr::LOCALHOST, port)).is_err();
+    let running = core::dns::port_bound(port);
     let path = state.platform.dns().resolver_path();
     DnsStatus {
         running,
