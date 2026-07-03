@@ -12,7 +12,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { listSites, deleteSite, renameSite, openExternal, getGlobalStatus } from "@/lib/ipc";
+import { listSites, deleteSite, renameSite, openExternal, getSitesServing } from "@/lib/ipc";
 import type { Site } from "@/types";
 
 function Badge({
@@ -232,16 +232,21 @@ export function Sites() {
     queryKey: ["sites"],
     queryFn: listSites,
   });
-  // A site is reachable only when the shared stack is up (every site is served
-  // together — there is no per-site process), so its displayed status derives
-  // from live stack state, NOT the sites.status column (task 2.1 / H1).
-  const { data: globalStatus } = useQuery({
-    queryKey: ["global-status"],
-    queryFn: getGlobalStatus,
+  // A site's displayed status is its live *serving* state, NOT the sites.status
+  // column (task 2.1 / H1): serving only when the edge is up AND the site's own
+  // upstream (php-fpm pool or FrankenPHP backend) is up, so a partial stack no
+  // longer shows every site as running (H1 follow-up). Keyed by domain.
+  const { data: serving } = useQuery({
+    queryKey: ["sites-serving"],
+    queryFn: getSitesServing,
     refetchInterval: 2000,
   });
-  const stackRunning = !!globalStatus && globalStatus.summary !== "stopped";
-  const effStatus: Site["status"] = stackRunning ? "running" : "stopped";
+  const servingMap = useMemo(
+    () => new Map((serving ?? []).map((s) => [s.domain, s.serving])),
+    [serving],
+  );
+  const statusOf = (site: Site): Site["status"] =>
+    servingMap.get(site.domain) ? "running" : "stopped";
 
   const remove = useMutation({
     mutationFn: (site: Site) => deleteSite(site.id),
@@ -263,7 +268,7 @@ export function Sites() {
   // the user picks a fresh domain. A byte-for-byte clone would need a backend copy.
   const [dupSource, setDupSource] = useState<Site | null>(null);
 
-  const running = stackRunning ? sites.length : 0;
+  const running = sites.filter((s) => statusOf(s) === "running").length;
   const counts: Record<Filter, number> = {
     all: sites.length,
     running,
@@ -274,19 +279,23 @@ export function Sites() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = sites.filter((s) => {
-      if (filter === "running" && effStatus !== "running") return false;
-      if (filter === "stopped" && effStatus === "running") return false;
+      const st = statusOf(s);
+      if (filter === "running" && st !== "running") return false;
+      if (filter === "stopped" && st === "running") return false;
       if (q && !s.name.toLowerCase().includes(q) && !s.domain.toLowerCase().includes(q))
         return false;
       return true;
     });
     return [...list].sort((a, b) => {
       if (sort === "recent") return b.createdAt.localeCompare(a.createdAt);
-      // "name" and "status" both order by name: per-site status is now derived
-      // from the stack (uniform across sites), so there's nothing to rank within.
+      if (sort === "status") {
+        // Serving sites first, then by name (per-site status is meaningful again).
+        const rank = (s: Site) => (statusOf(s) === "running" ? 0 : 1);
+        if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      }
       return a.name.localeCompare(b.name);
     });
-  }, [sites, filter, query, sort, effStatus]);
+  }, [sites, filter, query, sort, servingMap]);
 
   const noResults = sites.length > 0 && visible.length === 0;
 
@@ -375,7 +384,7 @@ export function Sites() {
               <SiteRow
                 key={site.id}
                 site={site}
-                status={effStatus}
+                status={statusOf(site)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
                 onRename={() => setRenameTarget(site)}

@@ -288,18 +288,24 @@ fn site_upstream(s: &Site, nginx_http_port: u16) -> String {
 /// pool of the site's PHP version (Phase 2 §1.3). An unrecognized version falls
 /// back to the default pool so a site is never left pointing at a dead port.
 fn nginx_site_for(s: &Site) -> services::NginxSite {
-    let minor = php::minor_of(&s.php_version);
-    // Only versions with a pinned build run a pool; an unsupported version falls
-    // back to the default pool rather than pointing nginx at a dead port.
-    let port = match php::patch_for_minor(&minor) {
-        Some(_) => php::fpm_port(&minor).unwrap_or(services::PHP_FPM_PORT),
-        None => services::PHP_FPM_PORT,
-    };
     services::NginxSite {
         domain: s.domain.clone(),
         docroot: PathBuf::from(&s.path),
-        php_fpm_port: port,
+        php_fpm_port: pool_port_for(&s.php_version),
         rewrite: rewrite_mode_for(s.multisite),
+    }
+}
+
+/// The php-fpm pool port a site's PHP `version` routes to. Only versions with a
+/// pinned build run a pool; an unrecognized version falls back to the default pool
+/// rather than pointing at a dead port. Shared by the nginx config builder and the
+/// per-site serving check (`service_manager::site_serving`), so both agree on which
+/// upstream a site actually uses.
+pub(crate) fn pool_port_for(version: &str) -> u16 {
+    let minor = php::minor_of(version);
+    match php::patch_for_minor(&minor) {
+        Some(_) => php::fpm_port(&minor).unwrap_or(services::PHP_FPM_PORT),
+        None => services::PHP_FPM_PORT,
     }
 }
 

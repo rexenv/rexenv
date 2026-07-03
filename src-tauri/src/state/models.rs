@@ -80,6 +80,17 @@ pub struct Site {
     pub multisite: MultisiteMode,
 }
 
+/// Live per-site serving status (H1 follow-up). `serving` is true only when the edge
+/// is up AND the site's own upstream is up (its FrankenPHP backend, or nginx + the
+/// php-fpm pool its version routes to) — so a partial stack no longer shows every
+/// site as running. Keyed by `domain` (the frontend overlays it on the site rows).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteServing {
+    pub domain: String,
+    pub serving: bool,
+}
+
 /// A PHP version in the installed-versions registry (Phase 2 §1.2). Keyed by the
 /// minor series (`8.3`); `patch` is the pinned build (`8.3.31`); `fpm_port` is the
 /// deterministic loopback port of that version's php-fpm pool. `installed` is true

@@ -56,6 +56,13 @@ export interface GlobalStatus {
   ramTotalMb: number;
 }
 
+/** Live per-site serving status (mirrors the Rust SiteServing). `serving` is true
+ *  only when the edge is up AND the site's own upstream is up. Keyed by domain. */
+export interface SiteServing {
+  domain: string;
+  serving: boolean;
+}
+
 /** A PHP version in the registry (mirrors the Rust PhpVersion). */
 export interface PhpVersion {
   minor: string; // "8.3" — the key + what Site.phpVersion references

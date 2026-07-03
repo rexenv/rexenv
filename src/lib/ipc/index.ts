@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteServing, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockDatabases,
   mockGlobalStatus,
@@ -15,6 +15,7 @@ import {
   mockPhpVersions,
   mockServices,
   mockSites,
+  mockSitesServing,
 } from "@/lib/mock";
 
 export function isTauri(): boolean {
@@ -50,6 +51,13 @@ export async function getGlobalStatus(): Promise<GlobalStatus> {
 export async function listSites(): Promise<Site[]> {
   if (!isTauri()) return mockSites;
   return invoke<Site[]>("list_sites");
+}
+
+/** Live per-site serving status (edge up AND the site's own upstream up), keyed by
+ *  domain. Non-blocking on the backend; mock fallback outside Tauri. */
+export async function getSitesServing(): Promise<SiteServing[]> {
+  if (!isTauri()) return mockSitesServing;
+  return invoke<SiteServing[]>("sites_serving");
 }
 
 /** Rename a site's display name (domain unchanged). No-op outside Tauri. */

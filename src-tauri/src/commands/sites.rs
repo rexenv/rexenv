@@ -5,7 +5,7 @@ use crate::core::db::DbEngine;
 use crate::core::{binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::{NewSite, Site, SiteType, WebServer};
+use crate::state::models::{NewSite, Site, SiteServing, SiteType, WebServer};
 use std::path::Path;
 use tauri::State;
 
@@ -23,6 +23,19 @@ fn lock<'a>(
 pub fn list_sites(state: State<'_, AppState>) -> Result<Vec<Site>> {
     let conn = lock(&state)?;
     core::sites::list(&conn)
+}
+
+/// Live per-site serving status (H1 follow-up): whether each site is actually
+/// reachable (edge up AND its own upstream up), not just whether the stack is up.
+/// Derived from the non-blocking `service_infos()` snapshot, so it never blocks the
+/// UI on a long start/stop. The frontend overlays it on the site rows by domain.
+#[tauri::command]
+pub fn sites_serving(state: State<'_, AppState>) -> Result<Vec<SiteServing>> {
+    let sites = {
+        let conn = lock(&state)?;
+        core::sites::list(&conn)?
+    };
+    Ok(core::service_manager::site_serving(&sites, &state.service_infos()))
 }
 
 /// Rename a site's display name (domain/docroot/DB/certs unchanged); returns the

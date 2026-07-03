@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { DbStatus, GlobalStatus, MailDetail, MailList, PhpVersion, ServiceInfo, Site } from "@/types";
+import type { DbStatus, GlobalStatus, MailDetail, MailList, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
 
 export const mockSites: Site[] = [
   {
@@ -45,6 +45,13 @@ export const mockSites: Site[] = [
     multisite: "subdirectory",
   },
 ];
+
+// Mirrors each mock site's own status so the browser preview shows per-site
+// serving (backend derives this from live upstream + edge state).
+export const mockSitesServing: SiteServing[] = mockSites.map((s) => ({
+  domain: s.domain,
+  serving: s.status === "running",
+}));
 
 export const mockServices: ServiceInfo[] = [
   { name: "PHP-FPM 8.3", running: true, pid: 1235, port: 9783, cpuPercent: 0.1, ramMb: 28, kind: "php", version: "8.3.4", isDefault: true },

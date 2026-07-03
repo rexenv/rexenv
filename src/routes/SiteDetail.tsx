@@ -30,7 +30,7 @@ import { adminerUrl, siteDbName } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn } from "@/lib/utils";
 import {
-  getGlobalStatus,
+  getSitesServing,
   listPhpVersions,
   listSites,
   logTargets,
@@ -75,11 +75,12 @@ export function SiteDetail() {
     enabled: !!id,
   });
 
-  // Displayed status derives from live stack state, not sites.status — a site is
-  // reachable only when the shared stack is up (task 2.1 / H1).
-  const { data: globalStatus } = useQuery({
-    queryKey: ["global-status"],
-    queryFn: getGlobalStatus,
+  // Displayed status is this site's live *serving* state, not sites.status — serving
+  // only when the edge is up AND its own upstream (php-fpm pool or FrankenPHP backend)
+  // is up (task 2.1 / H1 + follow-up), so a partial stack shows honest per-site status.
+  const { data: serving } = useQuery({
+    queryKey: ["sites-serving"],
+    queryFn: getSitesServing,
     refetchInterval: 2000,
   });
 
@@ -108,7 +109,7 @@ export function SiteDetail() {
   }
 
   const isWordpress = !!wp?.isWordpress;
-  const stackRunning = !!globalStatus && globalStatus.summary !== "stopped";
+  const isServing = !!serving?.find((s) => s.domain === site.domain)?.serving;
   const active: TabKey = tab ?? "overview";
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
     { key: "overview", label: "Overview", show: true },
@@ -128,7 +129,7 @@ export function SiteDetail() {
       <SiteHeader
         site={site}
         isWordpress={isWordpress}
-        status={stackRunning ? "running" : "stopped"}
+        status={isServing ? "running" : "stopped"}
         onBack={() => navigate("/sites")}
       />
 

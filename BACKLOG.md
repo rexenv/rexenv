@@ -77,13 +77,19 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   slugging. Verified: 3 new tests (5 accepted shapes, 15 rejected inputs, create-persists-
   nothing on reject) + 123/123 lib tests.
 
-- [ ] **Per-site serving granularity** (follow-up to TASKS-FIXES §2.1 / H1). 2.1 makes
-  the site status honest by deriving it from *stack-level* state (`global_status` — up vs
-  stopped), so all sites read the same status. A "partial" stack (e.g. a FrankenPHP
-  backend down while nginx serves) is shown optimistically as running. *Fix (later):*
-  derive true per-site serving — the site's own upstream (its php-fpm pool or FrankenPHP
-  backend) is up AND the edge is up AND it's present in the generated config. This is also
-  the natural home if real per-site enable/disable (fork A) is ever wanted.
+- [x] **Per-site serving granularity** (follow-up to TASKS-FIXES §2.1 / H1). ✓ done.
+  Added `service_manager::site_serving(sites, &service_infos)` → `Vec<SiteServing{domain,
+  serving}>`: a site is *serving* only when the edge is up AND its own upstream is up — its
+  FrankenPHP backend port (override sites) or nginx + the php-fpm pool its version routes to
+  (nginx sites, via the extracted `sites::pool_port_for`). Matched off the existing
+  non-blocking `service_infos()` snapshot (edge/nginx by stable singleton name, per-site
+  upstreams by the same ports the config generator emits — no drift). New `sites_serving`
+  command; the frontend (`Sites.tsx` rows/count/filters/sort + `SiteDetail.tsx` header)
+  overlays it by domain instead of the blanket `stackRunning`, so a partial stack shows
+  honest per-site status. "Present in the generated config" is approximated as persisted ⇒
+  in config (configs are regenerated from the site list on every change). Verified: new
+  `site_serving_reflects_each_sites_own_upstream` test (full / edge-down / fp-backend-down /
+  pool-down / nginx-down) + 133/133 lib tests, 0 clippy errors, `pnpm build` (strict tsc).
 
 ---
 

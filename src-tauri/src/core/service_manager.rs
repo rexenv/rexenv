@@ -12,7 +12,7 @@ use crate::core::db::DbEngine;
 use crate::core::{binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use crate::state::models::{Site, WebServer};
+use crate::state::models::{Site, SiteServing, WebServer};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Child;
@@ -664,6 +664,42 @@ fn stdout_log(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
     Ok(platform.paths().log_dir()?.join(format!("{key}-stdout.log")))
 }
 
+/// Per-site serving status (H1 follow-up), derived from a live [`ServiceInfo`]
+/// snapshot (the single non-blocking source shared with `services_status`). A site
+/// is *serving* only when the edge is up AND its own upstream is up — so a partial
+/// stack (e.g. one FrankenPHP backend down while nginx serves) no longer reports
+/// every site as running.
+///
+/// Upstream, per server:
+/// - **FrankenPHP override** — its per-site backend port must be up (nginx is bypassed).
+/// - **nginx (default)** — the shared nginx AND the php-fpm pool the site's version
+///   routes to (via [`sites::pool_port_for`], mirroring `nginx_site_for`).
+///
+/// The edge and nginx are the fixed singletons, matched by their stable names; the
+/// per-site upstreams are matched by port (the same ports the config generator emits,
+/// so the check can't drift from what's actually wired). "Present in the generated
+/// config" is approximated by the site being persisted — configs are regenerated from
+/// the site list on every change.
+pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
+    let name_up = |name: &str| infos.iter().any(|i| i.name == name && i.running);
+    let port_up = |port: u16| infos.iter().any(|i| i.port == port && i.running);
+    let edge_up = name_up("Caddy");
+    let nginx_up = name_up("Nginx");
+    sites
+        .iter()
+        .map(|s| {
+            let upstream_up = match s.web_server {
+                WebServer::Frankenphp => port_up(frankenphp::site_port(&s.domain)),
+                _ => nginx_up && port_up(sites::pool_port_for(&s.php_version)),
+            };
+            SiteServing {
+                domain: s.domain.clone(),
+                serving: edge_up && upstream_up,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -686,6 +722,67 @@ mod tests {
                 assert!(ports.contains(&p), "managed_ports missing pool port for {minor}");
             }
         }
+    }
+
+    #[test]
+    fn site_serving_reflects_each_sites_own_upstream() {
+        use crate::state::models::{MultisiteMode, ServiceStatus, SiteType};
+        use std::collections::HashMap;
+
+        let si = |name: &str, port: u16, running: bool| ServiceInfo {
+            name: name.to_string(),
+            running,
+            pid: None,
+            port,
+        };
+        let site = |domain: &str, ver: &str, ws: WebServer| Site {
+            id: domain.into(),
+            name: domain.into(),
+            domain: domain.into(),
+            site_type: SiteType::Php,
+            status: ServiceStatus::Stopped,
+            php_version: ver.into(),
+            web_server: ws,
+            ssl: true,
+            path: format!("/tmp/{domain}"),
+            created_at: "now".into(),
+            multisite: MultisiteMode::None,
+        };
+
+        let sites = vec![
+            site("n.test", "8.3", WebServer::Nginx),
+            site("f.test", "8.3", WebServer::Frankenphp),
+        ];
+        let pool = php::fpm_port("8.3").unwrap();
+        let fpport = frankenphp::site_port("f.test");
+        let caddy = |up| si("Caddy", 443, up);
+        let nginx = |up| si("Nginx", services::NGINX_HTTP_PORT, up);
+        let map = |infos: &[ServiceInfo]| -> HashMap<String, bool> {
+            site_serving(&sites, infos)
+                .into_iter()
+                .map(|s| (s.domain, s.serving))
+                .collect()
+        };
+
+        // Full stack up → both sites serve.
+        let m = map(&[caddy(true), nginx(true), si("PHP-FPM 8.3", pool, true), si("FrankenPHP f.test", fpport, true)]);
+        assert!(m["n.test"] && m["f.test"], "all up → both serve");
+
+        // Edge down → nothing serves, even with every upstream up.
+        let m = map(&[caddy(false), nginx(true), si("PHP-FPM 8.3", pool, true), si("FrankenPHP f.test", fpport, true)]);
+        assert!(!m["n.test"] && !m["f.test"], "edge down → nothing serves");
+
+        // Partial: FrankenPHP backend down → only its site is down; the nginx site still serves.
+        let m = map(&[caddy(true), nginx(true), si("PHP-FPM 8.3", pool, true), si("FrankenPHP f.test", fpport, false)]);
+        assert!(m["n.test"] && !m["f.test"], "fp backend down → only fp site down");
+
+        // Partial: the nginx site's pool down → only it is down; the FrankenPHP site still serves.
+        let m = map(&[caddy(true), nginx(true), si("PHP-FPM 8.3", pool, false), si("FrankenPHP f.test", fpport, true)]);
+        assert!(!m["n.test"] && m["f.test"], "pool down → only nginx site down");
+
+        // Nginx down → the nginx site is down; FrankenPHP bypasses nginx, so it's unaffected.
+        let m = map(&[caddy(true), nginx(false), si("PHP-FPM 8.3", pool, true), si("FrankenPHP f.test", fpport, true)]);
+        assert!(!m["n.test"] && m["f.test"], "nginx down → nginx site down, fp unaffected");
     }
 
     #[tokio::test]
