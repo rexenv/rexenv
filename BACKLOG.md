@@ -68,10 +68,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   spans the full poll interval instead of the ~0 gap between the old back-to-back sweeps.
   Verified: 120/120 lib tests (incl. the updated `process_metrics_for_self`).
 
-- [ ] **M7 — No backend domain validation** (`core/sites.rs:19-41,197-227`).
-  Defense-in-depth: the domain flows into a filesystem path, nginx/Caddy config, cert
-  SAN, and DB name; the UI slugs it but core doesn't validate. *Fix:* validate against a
-  strict `*.test` pattern in `create`/`provision`.
+- [x] **M7 — No backend domain validation** (`core/sites.rs`). ✓ done. Added
+  `validate_domain(&str)` called at the top of both `create` (persistence gate) and
+  `provision` (before any docroot/cert/DB use). Enforces a strict `.test` hostname:
+  ≤253 chars, ends in `.test`, ≥1 label before it, each label 1–63 chars of `[a-z0-9-]`,
+  no leading/trailing hyphen. Blocks path traversal (`../`, `/`), config injection
+  (space, `;`, `{`, newline, quotes), wildcards, and uppercase — independent of the UI
+  slugging. Verified: 3 new tests (5 accepted shapes, 15 rejected inputs, create-persists-
+  nothing on reject) + 123/123 lib tests.
 
 - [ ] **Per-site serving granularity** (follow-up to TASKS-FIXES §2.1 / H1). 2.1 makes
   the site status honest by deriving it from *stack-level* state (`global_status` — up vs

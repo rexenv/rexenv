@@ -14,9 +14,51 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+/// Strict validation for a site domain (defense-in-depth — M7). The domain becomes a
+/// filesystem path (docroot), nginx/Caddy config tokens (`server_name`, host), a cert
+/// SAN, and a database name — so reject anything that could traverse a path, inject a
+/// config directive, or isn't a plain lowercase `.test` hostname. The UI already slugs
+/// input to this shape; this is the backstop for every other caller.
+fn validate_domain(domain: &str) -> Result<()> {
+    let reject = |why: &str| Error::Other(format!("invalid domain '{domain}': {why}"));
+    // DNS caps a name at 253 chars; stay well under any fs/DB-identifier limit too.
+    if domain.is_empty() || domain.len() > 253 {
+        return Err(reject("must be 1–253 characters"));
+    }
+    let labels: Vec<&str> = domain.split('.').collect();
+    // Development domains only, and at least one label before the TLD.
+    if labels.last() != Some(&"test") {
+        return Err(reject("must end in .test"));
+    }
+    if labels.len() < 2 {
+        return Err(reject("must have a label before .test"));
+    }
+    for label in &labels {
+        if label.is_empty() {
+            return Err(reject("has an empty label"));
+        }
+        if label.len() > 63 {
+            return Err(reject("has a label over 63 characters"));
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            return Err(reject("has a label starting or ending with '-'"));
+        }
+        // a–z, 0–9, hyphen only: blocks path separators, spaces, wildcards, quotes,
+        // ';'/'{'/newlines (config injection), and uppercase (case-dup + fs/DB drift).
+        if !label
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        {
+            return Err(reject("labels may contain only a–z, 0–9, and '-'"));
+        }
+    }
+    Ok(())
+}
+
 /// Create a site: assign an id, default to stopped + SSL on, persist, return it.
-/// Fails if the domain is already in use.
+/// Fails if the domain is invalid or already in use.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
+    validate_domain(&new.domain)?;
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "domain already in use: {}",
@@ -200,6 +242,7 @@ pub fn provision(
     ca: &ssl::LocalCa,
     mut new: NewSite,
 ) -> Result<Site> {
+    validate_domain(&new.domain)?; // before any docroot/cert/DB use of the domain
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "domain already in use: {}",
@@ -389,6 +432,44 @@ mod tests {
             web_server: WebServer::Nginx,
             path: format!("~/Sites/{name}"),
         }
+    }
+
+    #[test]
+    fn validate_domain_accepts_test_hostnames() {
+        for d in ["acme.test", "my-site.test", "a.test", "sub.mysite.test", "wp123.test"] {
+            assert!(validate_domain(d).is_ok(), "should accept {d}");
+        }
+    }
+
+    #[test]
+    fn validate_domain_rejects_unsafe_or_non_test() {
+        for d in [
+            "",              // empty
+            "acme.com",      // wrong TLD
+            "acme",          // no TLD
+            ".test",         // no label before .test
+            "../etc.test",   // path traversal
+            "a/b.test",      // path separator
+            "a b.test",      // space
+            "a;b.test",      // config-injection char
+            "a{b.test",      // config-injection char
+            "Acme.test",     // uppercase
+            "*.mysite.test", // wildcard
+            "-bad.test",     // leading hyphen
+            "bad-.test",     // trailing hyphen
+            "a..test",       // empty inner label
+            "foo.test.evil", // .test not last
+        ] {
+            assert!(validate_domain(d).is_err(), "should reject {d:?}");
+        }
+    }
+
+    #[test]
+    fn create_rejects_an_invalid_domain() {
+        let conn = db::open_in_memory().unwrap();
+        assert!(create(&conn, sample("Bad", "../evil.test")).is_err());
+        // A rejected domain persists nothing.
+        assert!(list(&conn).unwrap().is_empty());
     }
 
     #[test]
