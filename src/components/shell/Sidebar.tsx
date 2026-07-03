@@ -3,8 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
-import { getGlobalStatus } from "@/lib/ipc";
+import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
 import { mockGlobalStatus } from "@/lib/mock";
+
+/** A nav badge value: shown only when the count is > 0 (a nav full of "0"s is noise). */
+function badgeCount(n: number): string | undefined {
+  return n > 0 ? String(n) : undefined;
+}
 
 function CrownMark() {
   return (
@@ -79,6 +84,27 @@ export function Sidebar() {
     initialData: mockGlobalStatus,
   });
 
+  // Live nav-badge counts. Each query reuses its screen's queryKey, so the cache is
+  // shared (opening a screen doesn't double-poll). Every badge shows the section's
+  // active count — running services/dbs/tunnels, unread mail, total sites — replacing
+  // the old hardcoded mock numbers, and is hidden when zero.
+  const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites, refetchInterval: 2000 });
+  const { data: dbs = [] } = useQuery({ queryKey: ["databases"], queryFn: databasesStatus, refetchInterval: 2000 });
+  const { data: inbox } = useQuery({ queryKey: ["mailpit-messages", ""], queryFn: () => mailpitMessages(""), refetchInterval: 5000 });
+  const { data: tunnels = [] } = useQuery({ queryKey: ["tunnels"], queryFn: tunnelsStatus, refetchInterval: 2000 });
+
+  const liveBadges: Record<string, { badge?: string; activeDot?: boolean }> = {
+    "/sites": { badge: badgeCount(sites.length) },
+    "/services": { badge: badgeCount(status.running) },
+    "/databases": { badge: badgeCount(dbs.filter((d) => d.running).length) },
+    "/mail": { badge: badgeCount(inbox?.unread ?? 0) },
+    "/tunnels": {
+      badge: badgeCount(tunnels.filter((t) => t.running).length),
+      activeDot: tunnels.some((t) => t.running),
+    },
+  };
+  const withLiveBadge = (item: NavItem): NavItem => ({ ...item, ...liveBadges[item.to] });
+
   return (
     <aside className="flex w-[220px] flex-none flex-col border-r border-rex-border-subtle bg-rex-surface-1">
       {/* Header: wordmark (drag region). The macOS traffic lights are the real
@@ -104,13 +130,13 @@ export function Sidebar() {
             {main
               .filter((i) => i.group === group)
               .map((item) => (
-                <NavButton key={item.to} item={item} />
+                <NavButton key={item.to} item={withLiveBadge(item)} />
               ))}
           </div>
         ))}
         <div className="flex-1" />
         {footer.map((item) => (
-          <NavButton key={item.to} item={item} />
+          <NavButton key={item.to} item={withLiveBadge(item)} />
         ))}
       </nav>
 
