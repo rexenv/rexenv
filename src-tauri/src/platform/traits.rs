@@ -129,7 +129,8 @@ pub trait PermissionManager: Send + Sync {
 
 /// Runs shell commands and backs the built-in terminal. bash/zsh vs PowerShell.
 pub trait ShellRunner: Send + Sync {
-    /// Run `command` and capture stdout as a string.
+    /// Run `command` and capture stdout as a string. A non-zero exit is an error
+    /// carrying the exit status + stderr — never a silent success with empty output.
     fn run(&self, command: &str, args: &[String]) -> Result<String>;
 
     /// Open a path or URL in the OS default handler (Finder for a folder, the

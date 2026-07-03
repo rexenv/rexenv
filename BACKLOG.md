@@ -108,8 +108,12 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   `process_running` (`ps -o state=`; a clean exit zombies until the caller reaps, and `Z`
   counts as not-running so `stop` returns immediately). Verified: 3 tests (live/gone probe,
   SIGTERM stop, SIGKILL fallback for a TERM-trapping process) + 129/129 lib tests.
-- [ ] **L4 — `MacosShell::run` ignores exit status + stderr** (`platform/macos/mod.rs:361-364`).
-  Latent (zero callers today). Fix the silent-failure behavior before anything wires it.
+- [x] **L4 — `MacosShell::run` ignores exit status + stderr** (`platform/macos/mod.rs`). ✓ done.
+  `run` now errors on a non-zero exit, carrying the command + exit status + trimmed stderr
+  (was `Ok(stdout)` regardless, so a failure looked like an empty-output success). Made the
+  `ShellRunner::run` trait doc state the contract explicitly. Verified: 2 new tests (stdout on
+  success; error carries stderr + status on failure) + 132/132 lib tests. Was latent (zero
+  callers) — fixed before anything wires it.
 - [x] **L5 — `dns_status` opens a raw UDP socket in the command layer**
   (`commands/system.rs`). ✓ done. Moved the UDP bind-in-use probe into
   `core::dns::port_bound(port)` (documented as a liveness proxy, distinct from the

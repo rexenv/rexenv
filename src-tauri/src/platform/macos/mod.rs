@@ -410,7 +410,19 @@ pub struct MacosShell;
 impl ShellRunner for MacosShell {
     fn run(&self, command: &str, args: &[String]) -> Result<String> {
         let out = std::process::Command::new(command).args(args).output()?;
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            // Don't swallow a failure as an empty-stdout success: surface the exit
+            // status + stderr so a caller can see what went wrong (L4).
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let stderr = stderr.trim();
+            Err(Error::Other(format!(
+                "`{command}` failed ({}): {}",
+                out.status,
+                if stderr.is_empty() { "(no stderr)" } else { stderr }
+            )))
+        }
     }
 
     fn open(&self, target: &str) -> Result<()> {
@@ -757,6 +769,24 @@ mod tests {
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn shell_run_returns_stdout_on_success() {
+        let out = MacosShell.run("echo", &["hello".to_string()]).unwrap();
+        assert_eq!(out.trim(), "hello");
+    }
+
+    #[test]
+    fn shell_run_errors_with_status_and_stderr_on_failure() {
+        // A non-zero exit surfaces as an error carrying the exit status + stderr —
+        // not a silent Ok("") (L4).
+        let err = MacosShell
+            .run("sh", &["-c".to_string(), "echo boom >&2; exit 3".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("boom"), "error carries stderr: {err}");
+        assert!(err.contains('3'), "error carries the exit status: {err}");
     }
 
     #[test]
