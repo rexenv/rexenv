@@ -46,10 +46,19 @@ impl Monitor {
         }
     }
 
+    /// Refresh the process table once (a single system sweep). Call ONCE per poll,
+    /// before reading per-pid metrics with [`Monitor::process`]. Previously `process`
+    /// re-scanned every system process on each call, so an N-service poll did N full
+    /// sweeps (M6). CPU% is a delta between refreshes, so a single per-poll refresh
+    /// also makes it span the whole interval instead of the ~0 gap between the old
+    /// back-to-back sweeps.
+    pub fn refresh_processes(&mut self) {
+        self.sys.refresh_processes(ProcessesToUpdate::All, true);
+    }
+
     /// Metrics for a single supervised process by PID (`None` if it's not alive).
-    pub fn process(&mut self, pid: u32) -> Option<ProcessMetrics> {
-        self.sys
-            .refresh_processes(ProcessesToUpdate::All, true);
+    /// Read-only: call [`Monitor::refresh_processes`] once per poll first.
+    pub fn process(&self, pid: u32) -> Option<ProcessMetrics> {
         self.sys.process(Pid::from_u32(pid)).map(|p| ProcessMetrics {
             cpu_percent: p.cpu_usage(),
             ram_mb: p.memory() / MB,
@@ -82,6 +91,7 @@ mod tests {
     fn process_metrics_for_self() {
         let mut m = Monitor::new();
         let pid = std::process::id();
+        m.refresh_processes(); // populate the table once, then read
         let p = m.process(pid).expect("our own process is alive");
         assert!(p.ram_mb > 0);
     }

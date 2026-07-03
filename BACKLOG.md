@@ -59,10 +59,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   NB: only the worker-parking half is fixed — the AppState mutex is still *held* across
   the wait (inherent to the current lock granularity, a separate larger refactor).
 
-- [ ] **M6 — Monitor refreshes all processes per service per poll**
-  (`monitor.rs:50-57` + `commands/services.rs`, `commands/database.rs`).
-  `refresh_processes(All)` runs N times each 2s poll. *Fix:* refresh once per poll (or
-  `ProcessesToUpdate::Some`), then read each pid.
+- [x] **M6 — Monitor refreshes all processes per service per poll**
+  (`monitor.rs` + `commands/services.rs`, `commands/database.rs`). ✓ done. Split the
+  refresh from the read: new `Monitor::refresh_processes(&mut self)` does the single
+  `refresh_processes(All, true)` sweep; `process(pid)` is now read-only (`&self`). The
+  `services_status` / `databases_status` commands call `refresh_processes()` once after
+  locking, before the per-service map — so a poll does 1 sweep, not N. Bonus: CPU% now
+  spans the full poll interval instead of the ~0 gap between the old back-to-back sweeps.
+  Verified: 120/120 lib tests (incl. the updated `process_metrics_for_self`).
 
 - [ ] **M7 — No backend domain validation** (`core/sites.rs:19-41,197-227`).
   Defense-in-depth: the domain flows into a filesystem path, nginx/Caddy config, cert

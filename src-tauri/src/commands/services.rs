@@ -75,6 +75,7 @@ pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceSt
         .monitor
         .lock()
         .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
+    monitor.refresh_processes(); // one sweep per poll, then read each pid (M6)
     Ok(infos
         .into_iter()
         .map(|i| {
