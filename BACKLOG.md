@@ -40,9 +40,15 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
 
 ## Medium
 
-- [ ] **M3 — `wait_until` results discarded** (`service_manager.rs:126,309,374`). A
-  service that never starts still returns `Ok(())`, so failures surface later and
-  confusingly. *Fix:* error on a false return, naming the service + log path.
+- [x] **M3 — `wait_until` results discarded** (`service_manager.rs`). ✓ done. Added
+  `wait_until_ready(service, log, tries, cond) -> Result<()>` (timeout → hard error
+  naming the service + its `<key>-stdout.log`) + a `stdout_log` helper; the three
+  discarded call sites (`ensure_db`, `ensure_mailpit`, `reconcile_overrides`) now
+  `?`-propagate. A service that never starts fails there with an actionable message
+  instead of a silent `Ok`. Verified: new unit test (Ok + error-names-service+log
+  paths) + 120/120 lib tests. NB: a FrankenPHP override that won't come up now aborts
+  the reconcile (was silently skipped); its child is already tracked so `stop_all`
+  still reaps it. (Left M4's blocking `std::thread::sleep` untouched — separate item.)
 
 - [ ] **M4 — Blocking sleeps hold the services lock** (`service_manager.rs:596-604`).
   `std::thread::sleep` inside async `ensure_*` parks a tokio worker (up to 15s) while

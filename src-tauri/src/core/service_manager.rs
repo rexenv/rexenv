@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, WebServer};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::time::Duration;
 
@@ -122,7 +122,12 @@ impl ServiceManager {
         ports::ensure_free(engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform).await?;
         self.dbs.insert(engine, child);
-        wait_until(|| engine.running(), 30);
+        wait_until_ready(
+            engine.label(),
+            &stdout_log(platform, engine.key())?,
+            30,
+            || engine.running(),
+        )?;
         Ok(())
     }
 
@@ -310,7 +315,7 @@ impl ServiceManager {
             }
         };
         self.mailpit = Some(mail::start(platform, &bin)?);
-        wait_until(mail::running, 20);
+        wait_until_ready("Mailpit", &stdout_log(platform, "mailpit")?, 20, mail::running)?;
         Ok(())
     }
 
@@ -380,7 +385,12 @@ impl ServiceManager {
             let conf = frankenphp::write_config(platform, domain, docroot, *port, *rewrite)?;
             let child = frankenphp::start(platform, &bin, domain, &conf)?;
             self.overrides.insert(domain.clone(), child);
-            wait_until(|| frankenphp::running(*port), 20);
+            wait_until_ready(
+                &format!("FrankenPHP ({domain})"),
+                &stdout_log(platform, &format!("frankenphp-{domain}"))?,
+                20,
+                || frankenphp::running(*port),
+            )?;
         }
         Ok(())
     }
@@ -620,6 +630,32 @@ fn wait_until(mut cond: impl FnMut() -> bool, tries: u32) -> bool {
     cond()
 }
 
+/// Like [`wait_until`] but treats a timeout as a hard error naming the `service` and
+/// its `log` — so a service that never comes up fails HERE with a clear, actionable
+/// message instead of silently returning `Ok` and surfacing confusingly later (M3).
+fn wait_until_ready(
+    service: &str,
+    log: &Path,
+    tries: u32,
+    cond: impl FnMut() -> bool,
+) -> Result<()> {
+    if wait_until(cond, tries) {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "{service} did not start within {}s — see {}",
+            tries / 2, // 500ms per try
+            log.display()
+        )))
+    }
+}
+
+/// The `spawn_logged` stdout log path for a service `key` (`<key>-stdout.log` under
+/// `log_dir`, e.g. `mysql`, `mailpit`, `frankenphp-my.test`). Matches `core::logs`.
+fn stdout_log(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
+    Ok(platform.paths().log_dir()?.join(format!("{key}-stdout.log")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,6 +666,19 @@ mod tests {
         assert_eq!(p.https, 443);
         assert_eq!(p.http, 80);
         assert_eq!(p.nginx, services::NGINX_HTTP_PORT);
+    }
+
+    #[test]
+    fn wait_until_ready_errors_naming_service_and_log() {
+        // A cond that's already true returns Ok without waiting.
+        assert!(wait_until_ready("X", Path::new("/tmp/x-stdout.log"), 1, || true).is_ok());
+        // A cond that never becomes true errors, naming the service + its log path so
+        // the failure is actionable (M3) rather than a silent Ok.
+        let err = wait_until_ready("MySQL", Path::new("/var/log/mysql-stdout.log"), 1, || false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("MySQL"), "error names the service: {err}");
+        assert!(err.contains("mysql-stdout.log"), "error names the log: {err}");
     }
 
     #[test]
