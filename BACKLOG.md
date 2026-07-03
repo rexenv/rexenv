@@ -18,23 +18,25 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   TCP `:2019` for a private unix socket, so recover/stop only ever act on our own edge
   (our socket + our-binary reap marker); a developer's Caddy on `:2019` is never touched.
 
-- [~] **M5 — FrankenPHP override ignores subdirectory-multisite rewrites** — backend fix
-  LANDED. `reconcile_overrides` now threads `sites::rewrite_mode_for(s.multisite)` into
+- [x] **M5 — FrankenPHP override ignores subdirectory-multisite rewrites** — DONE (backend
+  fix + live-verified; guard removed). `reconcile_overrides` now threads `sites::rewrite_mode_for(s.multisite)` into
   `frankenphp::write_config` (was hardcoded `RewriteMode::Single`). The FrankenPHP
   `SubdirectoryMultisite` Caddy template — never exercised before, and buggy: a placeholder
   typo (`{http.regexp.wpsubph.2}` for a regexp named `wpsubphp` → empty rewrite) plus a
   missing `wp-admin` redirect — was rewritten to faithfully mirror the proven nginx rules
   (redirect → strip `/wp-*` → strip `*.php`, each `not file`-guarded, ordered in a `route {}`
   block). Validated with `frankenphp adapt`/`validate` (`Valid configuration`) + a unit test
-  + `examples/frankenphp_subdir_validate.rs`. **The §2.6 UI guard STAYS** (see M5-verify) —
-  the routing hasn't been exercised by a real request yet.
+  + `examples/frankenphp_subdir_validate.rs`. **Verified live** (M5-verify): a real
+  subdirectory-multisite site switched to FrankenPHP routed a sub-site page + its `/wp-admin`
+  redirect correctly, so the §2.6 UI guard has been removed.
 
-- [ ] **M5-verify — live-test FrankenPHP subdirectory multisite, then remove the §2.6 guard.**
-  On a machine with a free `:443`: one-click a WP site, convert to subdirectory-multisite,
-  switch it to FrankenPHP, and confirm a sub-site page **and** its `/wp-admin` redirect route
-  correctly (couldn't be done in-repo — DBngin holds `:443`). Then remove the 2.6 UI guard:
-  the `FRANKENPHP_SUBDIR_BLOCK` guards in `SiteDetail.tsx` + `NewSiteDialog.tsx` and the
-  New-Site invariant `useEffect`.
+- [x] **M5-verify — live-test FrankenPHP subdirectory multisite, then remove the §2.6 guard.**
+  ✓ done. Verified live on-device: a subdirectory-multisite WP site switched to FrankenPHP
+  served a sub-site page **and** its `/wp-admin` redirect correctly through the override
+  backend. Removed the 2.6 UI guard — the `FRANKENPHP_SUBDIR_BLOCK` consts + `blocked`
+  option logic in `SiteDetail.tsx` and `NewSiteDialog.tsx`, the Subdirectory card's
+  `disabled`/`disabledNote`, and the New-Site invariant `useEffect`. Verified: `pnpm build`
+  (strict tsc) clean, no residual guard refs.
 
 ---
 

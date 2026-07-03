@@ -27,12 +27,6 @@ const SERVERS: { value: WebServer; label: string }[] = [
   { value: "frankenphp", label: "FrankenPHP" },
 ];
 
-/** FrankenPHP + subdirectory-multisite is broken (BACKLOG M5): the override backend
- *  hardcodes single-site rewrites. Block the combo from BOTH controls (server picker
- *  and multisite mode) so it can't be created here until the full fix. */
-const FRANKENPHP_SUBDIR_BLOCK =
-  "FrankenPHP can't serve subdirectory-multisite networks yet — use Nginx.";
-
 /** WordPress locales offered in the dialog ("" → default en_US). */
 const LANGUAGES: { value: string; label: string }[] = [
   { value: "", label: "English (United States)" },
@@ -131,14 +125,6 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   useEffect(() => {
     if (!initial) setPhpVersion(defaultVersion);
   }, [defaultVersion, initial]);
-
-  // FrankenPHP can't serve subdirectory-multisite yet (BACKLOG M5). The two pickers
-  // block the combo interactively, but a blueprint sets the web server programmatically
-  // (onPickBlueprint) — so enforce the invariant here too: if FrankenPHP ends up paired
-  // with Subdirectory, fall back to Subdomain so the broken combo can never be created.
-  useEffect(() => {
-    if (webServer === "frankenphp" && multisite === "subdirectory") setMultisite("subdomain");
-  }, [webServer, multisite]);
 
   const slug = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const domainBase = domainEdited ? slug(domain) : slug(name);
@@ -437,19 +423,11 @@ function Step2(p: {
         </Field>
         <Field label="Web server">
           <select value={p.webServer} onChange={(e) => p.setWebServer(e.target.value as WebServer)} className={FIELD_SELECT}>
-            {SERVERS.map((s) => {
-              const blocked = p.multisite === "subdirectory" && s.value === "frankenphp";
-              return (
-                <option
-                  key={s.value}
-                  value={s.value}
-                  disabled={blocked}
-                  title={blocked ? FRANKENPHP_SUBDIR_BLOCK : undefined}
-                >
-                  {blocked ? `${s.label} — unsupported for subdirectory` : s.label}
-                </option>
-              );
-            })}
+            {SERVERS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
           </select>
         </Field>
         {/* DB selector is UI-only — NewSiteInput has no engine field yet (TODO). */}
@@ -546,8 +524,6 @@ function Step2(p: {
                   example={`${domainBase}.test/site1`}
                   selected={p.multisite === "subdirectory"}
                   onClick={() => p.setMultisite("subdirectory")}
-                  disabled={p.webServer === "frankenphp"}
-                  disabledNote="Not supported on FrankenPHP — use Nginx"
                 />
               </div>
             )}
