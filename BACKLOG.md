@@ -91,8 +91,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
 
 - [ ] **L1 — `managed_ports()` hardcodes PHP minors** (`service_manager.rs:451`). Use
   `php::all_minors()` so a future 8.4 pool isn't missed by the orphan sweep.
-- [ ] **L2 — `extract_tar_gz_tree` has no traversal/symlink guard** (`binaries.rs:666-690`).
-  Gated by pinned checksums (defense-in-depth). Reject entries escaping `dest`.
+- [x] **L2 — `extract_tar_gz_tree` has no traversal/symlink guard** (`binaries.rs`). ✓ done.
+  We compute the output path ourselves (to strip the top dir), bypassing the `tar` crate's
+  guards — re-added them: `safe_join` rejects entry paths with `..`/absolute/prefix
+  components, and `link_stays_within` lexically resolves symlink/hardlink targets and
+  rejects any that are absolute or climb above `dest`. Allows the 22 legit in-tree `../lib/…`
+  dylib symlinks in the real MySQL tree (verified: 0 absolute targets, all `..` stay in-tree).
+  Defense-in-depth (archives are checksum-pinned). Verified: 2 new unit tests (real MySQL
+  cases accepted, traversal/escape/absolute rejected) + 125/125 lib tests.
 - [ ] **L3 — `ProcessSupervisor::stop` is SIGTERM-only** (`platform/macos/mod.rs:209-219`).
   Add a timed SIGKILL fallback so a TERM-ignoring process can't block `wait()`.
 - [ ] **L4 — `MacosShell::run` ignores exit status + stderr** (`platform/macos/mod.rs:361-364`).

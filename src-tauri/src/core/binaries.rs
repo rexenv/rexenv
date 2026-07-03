@@ -703,6 +703,11 @@ fn extract_tar_gz_member(bytes: &[u8], member: &str, dest: &Path) -> Result<()> 
 /// Extract an entire tar.gz tree into `dest`, stripping the single top-level
 /// directory (e.g. `mysql-8.4.6-macos15-arm64/bin/mysqld` → `<dest>/bin/mysqld`).
 /// Preserves file modes (executables) and symlinks via tar's `unpack`.
+///
+/// We compute the output path ourselves (to strip the top dir), which bypasses the
+/// `tar` crate's own extraction guards — so we re-add them (L2, defense-in-depth;
+/// archives are already checksum-pinned): every entry must resolve inside `dest`,
+/// both by path (no `..`/absolute components) and, for links, by target.
 fn extract_tar_gz_tree(bytes: &[u8], dest: &Path) -> Result<()> {
     use flate2::read::GzDecoder;
     use std::path::PathBuf;
@@ -716,8 +721,31 @@ fn extract_tar_gz_tree(bytes: &[u8], dest: &Path) -> Result<()> {
         if rel.as_os_str().is_empty() {
             continue;
         }
-        let out = dest.join(&rel);
-        if entry.header().entry_type().is_dir() {
+        // Reject an entry path that would escape `dest` (`..`/absolute/prefix).
+        let out = safe_join(dest, &rel)?;
+        // A link must also not TARGET a path outside `dest` (else a later entry could
+        // be written through it). Symlink targets resolve relative to the link's dir;
+        // hardlink targets relative to the extraction root. Real dylib symlinks use
+        // in-tree `../lib/…`, which is allowed as long as it stays under `dest`.
+        let kind = entry.header().entry_type();
+        if kind.is_symlink() || kind.is_hard_link() {
+            let target = entry.link_name()?.ok_or_else(|| {
+                Error::Other(format!("archive link {} has no target", rel.display()))
+            })?;
+            let base = if kind.is_symlink() {
+                out.parent().unwrap_or(dest)
+            } else {
+                dest
+            };
+            if !link_stays_within(dest, base, &target) {
+                return Err(Error::Other(format!(
+                    "unsafe link target in archive: {} -> {}",
+                    rel.display(),
+                    target.display()
+                )));
+            }
+        }
+        if kind.is_dir() {
             std::fs::create_dir_all(&out)?;
         } else {
             if let Some(parent) = out.parent() {
@@ -727,6 +755,53 @@ fn extract_tar_gz_tree(bytes: &[u8], dest: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Join `rel` under `base`, rejecting any component that would escape it — `..`, an
+/// absolute root, or a Windows drive prefix. Tar entry paths (file locations) should
+/// only ever be plain (`Normal`) components; anything else is a traversal attempt.
+fn safe_join(base: &Path, rel: &Path) -> Result<PathBuf> {
+    use std::path::Component;
+    let mut out = base.to_path_buf();
+    for comp in rel.components() {
+        match comp {
+            Component::Normal(c) => out.push(c),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(Error::Other(format!(
+                    "unsafe path in archive: {}",
+                    rel.display()
+                )));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Whether a link whose directory is `base` (already inside `dest`) with `target`
+/// stays within `dest`. Absolute targets are rejected; relative ones are resolved
+/// lexically (no filesystem access, so on-disk symlinks can't be abused mid-resolve)
+/// and must not climb above `dest`. `..` is allowed as long as the result stays under
+/// `dest` — real dylib symlinks use `../lib/…` within the tree.
+fn link_stays_within(dest: &Path, base: &Path, target: &Path) -> bool {
+    use std::path::Component;
+    if target.is_absolute() {
+        return false;
+    }
+    let mut resolved = base.to_path_buf();
+    for comp in target.components() {
+        match comp {
+            Component::ParentDir => {
+                if !resolved.pop() {
+                    return false;
+                }
+            }
+            Component::CurDir => {}
+            Component::Normal(c) => resolved.push(c),
+            Component::RootDir | Component::Prefix(_) => return false,
+        }
+    }
+    resolved.starts_with(dest)
 }
 
 /// Monotonic counter so concurrent stagings in one process never collide.
@@ -992,6 +1067,49 @@ mod tests {
     #[test]
     fn hex_lower_encodes() {
         assert_eq!(hex_lower(&[0x00, 0x0f, 0xa0, 0xff]), "000fa0ff");
+    }
+
+    #[test]
+    fn safe_join_rejects_traversal_and_absolute() {
+        let base = Path::new("/cache/mysql");
+        assert_eq!(
+            safe_join(base, Path::new("bin/mysqld")).unwrap(),
+            Path::new("/cache/mysql/bin/mysqld")
+        );
+        // `.` is fine; `..`, absolute, and mid-path escapes are not.
+        assert_eq!(
+            safe_join(base, Path::new("./lib/x")).unwrap(),
+            Path::new("/cache/mysql/lib/x")
+        );
+        assert!(safe_join(base, Path::new("../evil")).is_err());
+        assert!(safe_join(base, Path::new("a/../../evil")).is_err());
+        assert!(safe_join(base, Path::new("/etc/passwd")).is_err());
+    }
+
+    #[test]
+    fn link_stays_within_allows_intree_but_rejects_escape() {
+        let dest = Path::new("/cache/mysql");
+        // Real MySQL dylib symlinks: relative `../lib/…` targets resolve back inside
+        // the tree (target is relative to the link's directory).
+        assert!(link_stays_within(
+            dest,
+            Path::new("/cache/mysql/bin"),
+            Path::new("../lib/libprotobuf.24.4.0.dylib")
+        ));
+        assert!(link_stays_within(
+            dest,
+            Path::new("/cache/mysql/lib/plugin"),
+            Path::new("../../lib/libcom_err.3.0.dylib")
+        ));
+        assert!(link_stays_within(dest, Path::new("/cache/mysql/lib"), Path::new("libssl.3.dylib")));
+        // Escapes: climbing above the tree, a sibling with a shared prefix, or absolute.
+        assert!(!link_stays_within(
+            dest,
+            Path::new("/cache/mysql/bin"),
+            Path::new("../../../../etc/passwd")
+        ));
+        assert!(!link_stays_within(dest, Path::new("/cache/mysql"), Path::new("../mysql-evil/x")));
+        assert!(!link_stays_within(dest, Path::new("/cache/mysql/lib"), Path::new("/etc/passwd")));
     }
 
     /// A fresh, unique temp base dir for the publish tests (no network / platform).
