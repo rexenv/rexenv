@@ -112,8 +112,13 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   Latent (zero callers today). Fix the silent-failure behavior before anything wires it.
 - [ ] **L5 — `dns_status` opens a raw UDP socket in the command layer**
   (`commands/system.rs:137-148`). Layering smell; move the probe behind a core/platform helper.
-- [ ] **L6 — Auto-update Settings card is dead UI** (`Settings.tsx:724-747`). Hide until
-  the updater (release §6.1) is actually wired.
+- [x] **L6 — Auto-update Settings card is dead UI** (`Settings.tsx`). ✓ done. Removed the
+  entire fake Updates section — the `UpdatesSetting` component (no-op check-for-updates
+  spinner, mock update banner, non-functional auto-update toggle), its `"updates"` nav tab
+  + sidebar update-dot, the render branch, and the now-unused mock constants
+  (`UPDATE_READY`/`NEXT_VERSION`) + imports (`ArrowUp`/`RefreshCw`). The app version still
+  shows in About, so nothing real is lost. Re-add when the Tauri updater lands (release §6.1).
+  Verified: no dangling refs + `pnpm build` passes (strict tsc).
 
 ---
 

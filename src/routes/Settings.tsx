@@ -2,7 +2,7 @@ import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { confirm, promptText } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, RefreshCw, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
@@ -640,9 +640,8 @@ function UninstallSetting() {
 }
 
 const APP_VERSION = "0.1.0";
-const NEXT_VERSION = "0.2.0";
 
-/** The violet crown medallion (reused by Updates + About). */
+/** The violet crown medallion (used by About). */
 function CrownBadge({ size }: { size: number }) {
   return (
     <div
@@ -662,93 +661,6 @@ function CrownBadge({ size }: { size: number }) {
         <circle cx="21" cy="8.4" r="1.4" fill="#B9A6FF" />
       </svg>
     </div>
-  );
-}
-
-/**
- * The Updates section — static shell. The real updater (Tauri updater) is
- * deferred (TASKS-RELEASE §6.1); the actions here are UI-only for now.
- */
-function UpdatesSetting() {
-  const [checking, setChecking] = useState(false);
-  const [autoUpdate, setAutoUpdate] = useState(false);
-  const deferred = () =>
-    toast.info("Auto-update isn't wired yet — the Tauri updater is deferred.");
-
-  return (
-    <>
-      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-        <div className="flex items-center gap-[14px]">
-          <CrownBadge size={44} />
-          <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold text-rex-text">
-              rexenv <span className="font-mono font-medium">{APP_VERSION}</span>
-            </div>
-            <div className="mt-0.5 text-[12.5px] text-rex-text-muted">
-              {checking
-                ? "Checking for updates…"
-                : UPDATE_READY
-                  ? "An update is ready to install."
-                  : "You're on the latest version."}
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              setChecking(true);
-              setTimeout(() => setChecking(false), 1200);
-            }}
-            disabled={checking}
-            className="flex h-9 items-center gap-2 rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[15px] text-[13px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
-          >
-            {checking && (
-              <span className="h-3 w-3 rounded-full border-2 border-rex-text-muted/40 border-t-rex-text-bright animate-rex-spin motion-reduce:animate-none" />
-            )}
-            {checking ? "Checking…" : "Check again"}
-          </button>
-        </div>
-        {UPDATE_READY && (
-          <div className="mt-4 flex items-center gap-[11px] rounded-[11px] border border-status-warning-border bg-status-warning-bg px-[14px] py-[13px]">
-            <ArrowUp className="h-[17px] w-[17px] flex-none text-status-warning-bright" strokeWidth={2} />
-            <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium text-rex-text">
-                Version {NEXT_VERSION} is available
-              </div>
-              <div className="mt-px text-[11.5px] text-rex-text-muted">
-                Faster service start, PostgreSQL 16, and bug fixes.
-              </div>
-            </div>
-            <button
-              onClick={deferred}
-              className="h-8 flex-none rounded-lg bg-primary px-[14px] text-[12.5px] font-medium text-white shadow-glow-primary transition-[filter] hover:brightness-110"
-            >
-              Install &amp; restart
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
-        <div className="flex items-center gap-[14px] py-[15px]">
-          <div className="flex-1">
-            <div className="text-[13.5px] font-medium text-rex-text">
-              Install updates automatically
-            </div>
-            <div className="mt-0.5 text-[12px] text-rex-text-muted">
-              Download and apply new versions in the background.
-            </div>
-          </div>
-          <StartStopToggle
-            running={autoUpdate}
-            variant="setting"
-            onToggle={() => {
-              setAutoUpdate((v) => !v);
-              deferred();
-            }}
-            label="Install updates automatically"
-          />
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -828,18 +740,14 @@ function AboutSetting() {
   );
 }
 
-type Section = "general" | "dns" | "services" | "updates" | "about";
+type Section = "general" | "dns" | "services" | "about";
 
 const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
   { key: "general", label: "General", icon: SettingsIcon },
   { key: "dns", label: "DNS & SSL", icon: Shield },
   { key: "services", label: "Services", icon: Server },
-  { key: "updates", label: "Updates", icon: RefreshCw },
   { key: "about", label: "About", icon: Info },
 ];
-
-// Mock: a newer version is available (drives the sidebar dot + Updates section).
-const UPDATE_READY = true;
 
 export function Settings() {
   const [section, setSection] = useState<Section>("general");
@@ -866,9 +774,6 @@ export function Settings() {
               >
                 <Icon className="h-4 w-4 flex-none" strokeWidth={1.7} />
                 <span className="flex-1">{s.label}</span>
-                {s.key === "updates" && UPDATE_READY && (
-                  <span className="h-[7px] w-[7px] rounded-full bg-status-warning" />
-                )}
               </button>
             );
           })}
@@ -900,7 +805,6 @@ export function Settings() {
                 </Card>
               </>
             )}
-            {section === "updates" && <UpdatesSetting />}
             {section === "about" && <AboutSetting />}
           </div>
         </div>
