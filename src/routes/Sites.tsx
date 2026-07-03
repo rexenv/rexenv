@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
+import { Plus, Globe, FolderOpen, Database, LayoutDashboard, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
@@ -100,22 +100,38 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
 function SiteRow({
   site,
   status,
+  onOpen,
   onDelete,
   onOpenDatabase,
+  onOpenWordpress,
   onRename,
   onDuplicate,
 }: {
   site: Site;
   status: Site["status"];
+  onOpen: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
+  onOpenWordpress: () => void;
   onRename: () => void;
   onDuplicate: () => void;
 }) {
   const t = siteTypeMeta(site.type);
   const [copied, setCopied] = useState(false);
   return (
-    <div className="group flex h-11 items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1">
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${site.name}`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="group flex h-11 cursor-pointer items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/15"
+    >
       <div
         className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border text-[11px] font-bold"
         style={{ background: t.bg, color: t.color, borderColor: t.border }}
@@ -130,7 +146,10 @@ function SiteRow({
           {site.domain}
         </div>
       </div>
-      <div className="ml-1 flex items-center gap-px opacity-0 transition-opacity group-hover:opacity-100">
+      <div
+        className="ml-1 flex items-center gap-px opacity-0 transition-opacity group-hover:opacity-100"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Button
           variant="ghost"
           size="icon"
@@ -159,6 +178,17 @@ function SiteRow({
         >
           <Database className="h-4 w-4" />
         </Button>
+        {site.type === "wordpress" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Manage WordPress"
+            title="Manage WordPress"
+            onClick={onOpenWordpress}
+          >
+            <LayoutDashboard className="h-4 w-4" />
+          </Button>
+        )}
       </div>
       <div className="flex-1" />
       <span
@@ -175,7 +205,8 @@ function SiteRow({
       <Badge>{site.phpVersion}</Badge>
       <Badge className="w-[84px] text-center">{site.webServer}</Badge>
       <StatusPill status={status} className="w-[92px]" />
-      <Menu
+      <div className="flex-none" onClick={(e) => e.stopPropagation()}>
+        <Menu
         trigger={
           <button
             type="button"
@@ -216,7 +247,8 @@ function SiteRow({
         >
           Delete
         </MenuItem>
-      </Menu>
+        </Menu>
+      </div>
     </div>
   );
 }
@@ -385,8 +417,10 @@ export function Sites() {
                 key={site.id}
                 site={site}
                 status={statusOf(site)}
+                onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
+                onOpenWordpress={() => navigate(`/sites/${site.id}/wordpress`)}
                 onRename={() => setRenameTarget(site)}
                 onDuplicate={() => setDupSource(site)}
               />
