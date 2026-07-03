@@ -469,8 +469,10 @@ impl ServiceManager {
     /// included: it's root-owned and stopped via its admin API in `stop_all`.
     fn managed_ports(&self) -> Vec<u16> {
         let mut ports = vec![self.ports.nginx];
-        for minor in ["8.1", "8.2", "8.3"] {
-            if let Some(p) = php::fpm_port(minor) {
+        // Every pinned PHP minor's pool port (derived from binaries::PHP_VERSIONS, so a
+        // future 8.4 pool is swept too — not a hardcoded list that would miss it).
+        for minor in php::all_minors() {
+            if let Some(p) = php::fpm_port(&minor) {
                 ports.push(p);
             }
         }
@@ -672,6 +674,18 @@ mod tests {
         assert_eq!(p.https, 443);
         assert_eq!(p.http, 80);
         assert_eq!(p.nginx, services::NGINX_HTTP_PORT);
+    }
+
+    #[test]
+    fn managed_ports_cover_every_pinned_php_minor() {
+        // The orphan sweep must include each pinned minor's pool port; deriving from
+        // php::all_minors() means a future 8.4 pool isn't silently missed (L1).
+        let ports = ServiceManager::default().managed_ports();
+        for minor in php::all_minors() {
+            if let Some(p) = php::fpm_port(&minor) {
+                assert!(ports.contains(&p), "managed_ports missing pool port for {minor}");
+            }
+        }
     }
 
     #[tokio::test]

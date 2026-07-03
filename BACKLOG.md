@@ -89,8 +89,10 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
 
 ## Low
 
-- [ ] **L1 — `managed_ports()` hardcodes PHP minors** (`service_manager.rs:451`). Use
-  `php::all_minors()` so a future 8.4 pool isn't missed by the orphan sweep.
+- [x] **L1 — `managed_ports()` hardcodes PHP minors** (`service_manager.rs`). ✓ done.
+  The orphan-reap sweep now loops `php::all_minors()` (derived from `binaries::PHP_VERSIONS`)
+  instead of a hardcoded `["8.1","8.2","8.3"]`, so a future 8.4 pool's port is swept too.
+  Verified: new `managed_ports_cover_every_pinned_php_minor` test + 126/126 lib tests.
 - [x] **L2 — `extract_tar_gz_tree` has no traversal/symlink guard** (`binaries.rs`). ✓ done.
   We compute the output path ourselves (to strip the top dir), bypassing the `tar` crate's
   guards — re-added them: `safe_join` rejects entry paths with `..`/absolute/prefix
