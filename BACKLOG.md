@@ -101,8 +101,13 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   dylib symlinks in the real MySQL tree (verified: 0 absolute targets, all `..` stay in-tree).
   Defense-in-depth (archives are checksum-pinned). Verified: 2 new unit tests (real MySQL
   cases accepted, traversal/escape/absolute rejected) + 125/125 lib tests.
-- [ ] **L3 — `ProcessSupervisor::stop` is SIGTERM-only** (`platform/macos/mod.rs:209-219`).
-  Add a timed SIGKILL fallback so a TERM-ignoring process can't block `wait()`.
+- [x] **L3 — `ProcessSupervisor::stop` is SIGTERM-only** (`platform/macos/mod.rs`). ✓ done.
+  `stop` now SIGTERMs, polls a ~3s grace (returning as soon as the process exits), then
+  SIGKILLs if it's still running — so a signal-ignoring process can't block a caller's
+  `wait()` forever. Extracted a testable `stop_pid(pid, grace, interval)` + a zombie-aware
+  `process_running` (`ps -o state=`; a clean exit zombies until the caller reaps, and `Z`
+  counts as not-running so `stop` returns immediately). Verified: 3 tests (live/gone probe,
+  SIGTERM stop, SIGKILL fallback for a TERM-trapping process) + 129/129 lib tests.
 - [ ] **L4 — `MacosShell::run` ignores exit status + stderr** (`platform/macos/mod.rs:361-364`).
   Latent (zero callers today). Fix the silent-failure behavior before anything wires it.
 - [ ] **L5 — `dns_status` opens a raw UDP socket in the command layer**

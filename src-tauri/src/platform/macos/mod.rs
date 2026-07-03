@@ -9,6 +9,7 @@ use crate::error::{Error, Result};
 use crate::platform::traits::*;
 use std::path::{Path, PathBuf};
 use std::process::Child;
+use std::time::Duration;
 
 // The ONE canonical reverse-DNS identity (release task 1.1). It must match the
 // `identifier` in tauri.conf.json (the bundle id / signing id), the app-data
@@ -186,6 +187,63 @@ impl PrivilegeManager for MacosPrivileges {
     }
 }
 
+/// Grace window for a SIGTERM'd process to exit before we escalate to SIGKILL (L3):
+/// `STOP_GRACE_TRIES` × `STOP_POLL_INTERVAL` ≈ 3s. Bounded so a signal-ignoring
+/// process can't block a caller's `wait()` forever; a healthy service exits well
+/// within it and `stop` returns as soon as it does (it doesn't wait out the window).
+const STOP_GRACE_TRIES: u32 = 30;
+const STOP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Whether `pid` is a live, *non-zombie* process. A zombie (`ps` state `Z`) has
+/// already exited and is only awaiting its parent's reap, so it counts as not
+/// running — otherwise a clean SIGTERM exit (our services are our own children, so
+/// they zombie until the caller's `wait()`) would look alive for the whole grace
+/// window. An empty/failed probe also counts as not running (never loop forever).
+fn process_running(pid: u32) -> bool {
+    match std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "state="])
+        .output()
+    {
+        Ok(o) => {
+            let state = String::from_utf8_lossy(&o.stdout);
+            let state = state.trim();
+            !state.is_empty() && !state.starts_with('Z')
+        }
+        Err(_) => false,
+    }
+}
+
+/// SIGTERM `pid`, wait up to `grace_tries` × `interval` for it to exit, then SIGKILL
+/// if it's still running (L3). Returns as soon as the process is gone. All our
+/// services are our own children, so `kill` never fails for lack of permission; the
+/// SIGTERM status is ignored (the process may already be gone) and liveness is
+/// confirmed via [`process_running`].
+fn stop_pid(pid: u32, grace_tries: u32, interval: Duration) -> Result<()> {
+    let _ = std::process::Command::new("kill").arg(pid.to_string()).status(); // SIGTERM
+    for _ in 0..grace_tries {
+        if !process_running(pid) {
+            return Ok(());
+        }
+        std::thread::sleep(interval);
+    }
+    // Ignored SIGTERM → force it. SIGKILL can't be caught, so `wait()` is guaranteed
+    // to return afterward.
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status();
+    for _ in 0..10 {
+        if !process_running(pid) {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if process_running(pid) {
+        Err(Error::Other(format!("pid {pid} survived SIGKILL")))
+    } else {
+        Ok(())
+    }
+}
+
 pub struct MacosSupervisor;
 impl ProcessSupervisor for MacosSupervisor {
     fn spawn(&self, program: &Path, args: &[String]) -> Result<Child> {
@@ -207,15 +265,7 @@ impl ProcessSupervisor for MacosSupervisor {
             .spawn()?)
     }
     fn stop(&self, pid: u32) -> Result<()> {
-        // SIGTERM via kill(2). Refined with a proper supervisor in §4–6.
-        let status = std::process::Command::new("kill")
-            .arg(pid.to_string())
-            .status()?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(Error::Other(format!("failed to stop pid {pid}")))
-        }
+        stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL)
     }
 
     fn owned_listeners(&self, port: u16, owner_marker: &str) -> Vec<u32> {
@@ -707,5 +757,41 @@ mod tests {
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn process_running_distinguishes_live_from_gone() {
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = child.id();
+        assert!(process_running(pid), "a live sleep should read as running");
+        let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
+        child.wait().unwrap(); // reap the zombie so the pid is fully gone
+        assert!(!process_running(pid), "a reaped process should read as not running");
+    }
+
+    #[test]
+    fn stop_pid_terminates_a_normal_process_via_sigterm() {
+        // `sleep` takes the default SIGTERM action, so stop returns quickly (well
+        // inside the grace window) without ever needing SIGKILL.
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = child.id();
+        stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL).unwrap();
+        child.wait().unwrap();
+        assert!(!process_running(pid));
+    }
+
+    #[test]
+    fn stop_pid_sigkills_a_sigterm_ignoring_process() {
+        // A process that traps (ignores) SIGTERM must still be stopped by the SIGKILL
+        // fallback, so a caller's wait() can't block forever (L3). Small grace params
+        // keep the test fast (~150ms).
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", r#"trap "" TERM; sleep 5"#])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        stop_pid(pid, 3, std::time::Duration::from_millis(50)).unwrap();
+        child.wait().unwrap();
+        assert!(!process_running(pid), "SIGKILL fallback should have stopped it");
     }
 }
