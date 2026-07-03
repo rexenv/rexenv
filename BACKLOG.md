@@ -50,9 +50,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   the reconcile (was silently skipped); its child is already tracked so `stop_all`
   still reaps it. (Left M4's blocking `std::thread::sleep` untouched — separate item.)
 
-- [ ] **M4 — Blocking sleeps hold the services lock** (`service_manager.rs:596-604`).
-  `std::thread::sleep` inside async `ensure_*` parks a tokio worker (up to 15s) while
-  the async mutex is held. *Fix:* `tokio::time::sleep`, or `spawn_blocking`.
+- [x] **M4 — Blocking sleeps hold the services lock** (`service_manager.rs`). ✓ done.
+  `wait_until`/`wait_until_ready` are now `async` and the 500ms poll uses
+  `tokio::time::sleep(...).await` instead of `std::thread::sleep`, so a slow/never-ready
+  service no longer parks a tokio worker (up to 15s) — the worker yields to other tasks
+  during the wait. The three call sites (`ensure_db`/`ensure_mailpit`/`reconcile_overrides`)
+  `.await` it; the readiness test moved to `#[tokio::test]`. Verified: 120/120 lib tests.
+  NB: only the worker-parking half is fixed — the AppState mutex is still *held* across
+  the wait (inherent to the current lock granularity, a separate larger refactor).
 
 - [ ] **M6 — Monitor refreshes all processes per service per poll**
   (`monitor.rs:50-57` + `commands/services.rs`, `commands/database.rs`).

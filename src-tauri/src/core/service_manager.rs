@@ -127,7 +127,8 @@ impl ServiceManager {
             &stdout_log(platform, engine.key())?,
             30,
             || engine.running(),
-        )?;
+        )
+        .await?;
         Ok(())
     }
 
@@ -315,7 +316,7 @@ impl ServiceManager {
             }
         };
         self.mailpit = Some(mail::start(platform, &bin)?);
-        wait_until_ready("Mailpit", &stdout_log(platform, "mailpit")?, 20, mail::running)?;
+        wait_until_ready("Mailpit", &stdout_log(platform, "mailpit")?, 20, mail::running).await?;
         Ok(())
     }
 
@@ -390,7 +391,8 @@ impl ServiceManager {
                 &stdout_log(platform, &format!("frankenphp-{domain}"))?,
                 20,
                 || frankenphp::running(*port),
-            )?;
+            )
+            .await?;
         }
         Ok(())
     }
@@ -620,12 +622,16 @@ impl Drop for ServiceManager {
 }
 
 /// Poll `cond` up to `tries` times (500ms apart). Returns whether it became true.
-fn wait_until(mut cond: impl FnMut() -> bool, tries: u32) -> bool {
+/// Async so the waits use `tokio::time::sleep` (which yields the worker) rather than
+/// `std::thread::sleep` — the latter parks a tokio worker for up to `tries`×500ms
+/// while the AppState lock is held, starving unrelated tasks (M4). The `cond` probes
+/// are quick TCP checks and stay synchronous.
+async fn wait_until(mut cond: impl FnMut() -> bool, tries: u32) -> bool {
     for _ in 0..tries {
         if cond() {
             return true;
         }
-        std::thread::sleep(Duration::from_millis(500));
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
     cond()
 }
@@ -633,13 +639,13 @@ fn wait_until(mut cond: impl FnMut() -> bool, tries: u32) -> bool {
 /// Like [`wait_until`] but treats a timeout as a hard error naming the `service` and
 /// its `log` — so a service that never comes up fails HERE with a clear, actionable
 /// message instead of silently returning `Ok` and surfacing confusingly later (M3).
-fn wait_until_ready(
+async fn wait_until_ready(
     service: &str,
     log: &Path,
     tries: u32,
     cond: impl FnMut() -> bool,
 ) -> Result<()> {
-    if wait_until(cond, tries) {
+    if wait_until(cond, tries).await {
         Ok(())
     } else {
         Err(Error::Other(format!(
@@ -668,13 +674,16 @@ mod tests {
         assert_eq!(p.nginx, services::NGINX_HTTP_PORT);
     }
 
-    #[test]
-    fn wait_until_ready_errors_naming_service_and_log() {
+    #[tokio::test]
+    async fn wait_until_ready_errors_naming_service_and_log() {
         // A cond that's already true returns Ok without waiting.
-        assert!(wait_until_ready("X", Path::new("/tmp/x-stdout.log"), 1, || true).is_ok());
+        assert!(wait_until_ready("X", Path::new("/tmp/x-stdout.log"), 1, || true)
+            .await
+            .is_ok());
         // A cond that never becomes true errors, naming the service + its log path so
         // the failure is actionable (M3) rather than a silent Ok.
         let err = wait_until_ready("MySQL", Path::new("/var/log/mysql-stdout.log"), 1, || false)
+            .await
             .unwrap_err()
             .to_string();
         assert!(err.contains("MySQL"), "error names the service: {err}");
