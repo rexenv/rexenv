@@ -2,18 +2,29 @@
 
 A native, lightweight, limitless local development environment for web & WordPress developers. **No Docker.** macOS first, then Windows and Linux.
 
-> **Status:** planning → building. This repo currently holds the spec and design brief; the app is scaffolded in phases (see `PROJECT_SPEC.md`, section 5).
+> **Status:** Phase 1 (MVP), Phase 2 core, and Phase 3 are **complete on macOS** — one-click
+> WordPress on real `https://*.test`, multi-PHP, Nginx + per-site FrankenPHP, MySQL +
+> PostgreSQL, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
+> Cloudflare tunnels, blueprints, autostart. Current work: pre-release hardening +
+> packaging (see `TASKS-RELEASE.md`); Windows/Linux ports are `todo!()` stubs by design.
 
 ---
 
 ## What it is
 
-One app to run your entire local stack — multiple web servers (Nginx / Apache / OpenLiteSpeed), multiple PHP versions, databases (MySQL / MariaDB / PostgreSQL / Redis), one-click WordPress with a full plugin/theme/**multisite** manager, local `.test` domains with auto-HTTPS, mail catching, and public sharing — all native and lightweight, from one UI.
+One app to run your entire local stack — web servers (**Nginx**, per-site **FrankenPHP**;
+Apache/OpenLiteSpeed deferred), multiple PHP versions (8.1/8.2/8.3), databases (**MySQL**,
+**PostgreSQL**; MariaDB/Redis deferred), one-click WordPress with a full plugin/theme/user/
+**multisite** manager, local `.test` domains with auto-HTTPS, mail catching (Mailpit), a DB
+browser (Adminer deep-link), log viewer, per-site terminal, and public sharing (Cloudflare
+quick tunnels) — all native and lightweight, from one UI.
 
 ## Docs
 
 - **`PROJECT_SPEC.md`** — architecture decisions, feature list, tech stack, the platform-abstraction plan, and the build phases. *Read this first.*
-- **`DESIGN_BRIEF.md`** — the Claude Design brief: design DNA + paste-ready prompts for every screen.
+- **`DESIGN_BRIEF.md`** — the Claude Design brief: design DNA + paste-ready prompts for every screen (comps in `design/*.dc.html`).
+- **`CLAUDE.md`** — as-built status, module map, and the implementation notes that matter day-to-day.
+- **`TASKS*.md`** — per-phase task logs with "Done when" evidence (Phase 1 / 2 / 3, release, audit fixes).
 
 ## Tech stack
 
@@ -27,123 +38,104 @@ Tauri 2 (Rust backend + web frontend) · React + TypeScript + Vite · Tailwind C
 
 ## Getting started
 
-> Filled in once the Phase 1 scaffold lands.
-
 ```bash
 # install frontend deps
-pnpm install        # or: npm install
+pnpm install
 
 # run the app in dev (Tauri + Vite)
 pnpm tauri dev
+
+# checks
+pnpm build                                 # strict tsc + vite build
+cargo test --lib   # in src-tauri/        # 133 unit tests
+cargo run --example <name>                 # live verification binaries (see src-tauri/examples/)
 ```
+
+First launch routes to Onboarding, which performs system setup (installs the
+`/etc/resolver/test` resolver — one admin prompt — and trusts the local CA in your
+login keychain). Service binaries (Caddy, Nginx, PHP, MySQL, …) are downloaded on
+demand, checksum-pinned, and prepared for macOS automatically.
 
 ---
 
-## Project structure (target)
+## Project structure (as built)
 
-The layout Claude Code should build toward. **Key principle:** `commands/` are thin and call `core/`; `core/` is platform-agnostic ("the what") and calls `platform/` traits ("the how"); OS-specific code lives **only** in `platform/`.
+**Key principle:** `commands/` are thin and call `core/`; `core/` is platform-agnostic ("the what") and calls `platform/` traits ("the how"); OS-specific code lives **only** in `platform/`.
 
 ```
 rexenv/
 ├── README.md                   # this file
 ├── PROJECT_SPEC.md             # architecture + features + roadmap
-├── DESIGN_BRIEF.md             # Claude Design brief
-├── package.json
-├── pnpm-lock.yaml              # (or package-lock.json)
-├── tsconfig.json
-├── vite.config.ts
-├── tailwind.config.js
-├── postcss.config.js
-├── components.json             # shadcn/ui config
-├── index.html                  # Vite entry
-├── .gitignore
+├── DESIGN_BRIEF.md             # design DNA (tokens, type roles, screens)
+├── CLAUDE.md                   # as-built status + module map + working rules
+├── TASKS*.md                   # per-phase task logs with verification evidence
+├── design/                     # reference comps (*.dc.html) — one per screen
+├── docs/                       # deep-dives (e.g. xdebug-debug-build.md)
+├── package.json · tsconfig.json · vite.config.ts
+├── tailwind.config.js · postcss.config.js · index.html
 │
 ├── src/                        # ── FRONTEND (React + TS) ──
 │   ├── main.tsx                # React entry
-│   ├── App.tsx                 # router + mounts the app shell
-│   ├── routes/                 # one file per screen (matches the design)
-│   │   ├── Sites.tsx
-│   │   ├── SiteDetail.tsx
-│   │   ├── Services.tsx
-│   │   ├── Databases.tsx
-│   │   ├── Mail.tsx
-│   │   ├── Tunnels.tsx
-│   │   ├── Settings.tsx
-│   │   └── Onboarding.tsx
+│   ├── App.tsx                 # router, first-run gate, fatal-error screen
+│   ├── routes/                 # one file per screen (1:1 with DESIGN_BRIEF)
+│   │   ├── Sites.tsx · SiteDetail.tsx · Services.tsx · Databases.tsx
+│   │   ├── Mail.tsx · Tunnels.tsx · Settings.tsx · Onboarding.tsx
 │   ├── components/
-│   │   ├── ui/                 # shadcn/ui primitives (button, dialog, ...)
-│   │   ├── shell/              # Sidebar, TopBar, StatusFooter (the app shell)
-│   │   └── common/             # StatusPill, SiteRow, ServiceRow, Badge, ...
-│   ├── features/               # feature-scoped UI + logic (co-located)
-│   │   ├── sites/
-│   │   ├── services/
-│   │   ├── wordpress/          # WordPress Manager (plugins/themes/users/network)
-│   │   ├── database/
-│   │   ├── mail/
-│   │   ├── tunnels/
-│   │   └── onboarding/
+│   │   ├── ui/                 # shadcn/ui primitives (button, dialog, menu, …)
+│   │   ├── shell/              # AppShell, Sidebar, TopBar, StatusFooter
+│   │   ├── common/             # StatusPill, StartStopToggle, Placeholder, …
+│   │   ├── sites/              # NewSiteDialog (+ blueprint picker)
+│   │   ├── wordpress/          # WordPressManager (plugins/themes/users/network/tools)
+│   │   ├── database/           # AdminerFrame
+│   │   └── terminal/           # SiteTerminal (xterm.js)
 │   ├── lib/
-│   │   ├── ipc/                # typed wrappers around Tauri commands (invoke)
-│   │   └── utils.ts
-│   ├── hooks/                  # React hooks (TanStack Query)
-│   ├── stores/                 # Zustand stores
-│   ├── types/                  # shared TS types (mirror the Rust types)
-│   ├── styles/                 # global.css + Tailwind layers + design tokens
-│   └── assets/                 # fonts (Space Grotesk, JetBrains Mono), icons
+│   │   ├── ipc/                # typed wrappers around Tauri invoke — the ONLY bridge
+│   │   ├── adminer.ts · siteType.ts · theme.ts · toast.ts · utils.ts
+│   │   └── mock.ts             # browser-only dev fallback data (not used in Tauri)
+│   ├── types/                  # shared TS types (mirror the Rust DTOs)
+│   └── styles/                 # tokens.css (design tokens) + Tailwind layers
 │
 └── src-tauri/                  # ── BACKEND (Rust) — Tauri convention ──
-    ├── Cargo.toml
-    ├── tauri.conf.json
-    ├── build.rs
-    ├── icons/                  # app icons (all sizes / platforms)
+    ├── Cargo.toml · tauri.conf.json · build.rs
     ├── capabilities/           # Tauri 2 permission definitions
+    ├── examples/               # live verification binaries (task evidence)
     └── src/
         ├── main.rs             # binary entry (calls lib::run)
         ├── lib.rs              # Tauri builder; registers all commands
-        ├── error.rs            # shared error types
+        ├── error.rs            # shared error type (serializes for the UI)
         │
         ├── commands/           # Tauri IPC handlers (THIN — just call core/)
-        │   ├── mod.rs
-        │   ├── sites.rs
-        │   ├── services.rs
-        │   ├── database.rs
-        │   ├── wordpress.rs
-        │   ├── tunnels.rs
-        │   ├── mail.rs
-        │   ├── settings.rs
-        │   └── system.rs
+        │   ├── system.rs       # status, setup, DNS/SSL, autostart, open-external
+        │   ├── sites.rs · services.rs · database.rs · php.rs · settings.rs
+        │   └── wordpress.rs · mail.rs · logs.rs · terminal.rs · tunnels.rs · blueprints.rs
         │
         ├── core/               # domain logic (PLATFORM-AGNOSTIC — "the what")
-        │   ├── mod.rs
-        │   ├── sites/          # site model, lifecycle, vhost/config generation
-        │   ├── services/       # supervisor, PHP-FPM pools, web servers
-        │   ├── database/       # db service management
-        │   ├── wordpress/      # WP-CLI wrapper, plugin/theme/multisite logic
-        │   ├── dns/            # embedded DNS resolver (hickory-dns)
-        │   ├── ssl/            # local CA + cert generation (rcgen)
-        │   ├── proxy/          # edge router (Caddy) config + control
-        │   ├── tunnels/        # cloudflared control
-        │   ├── mail/           # mailpit control
-        │   └── binaries/       # BinaryProvider: manifest, download, extract
+        │   ├── service_manager.rs  # owns the stack: dbs, pools, overrides, mail, edge
+        │   ├── sites.rs        # provision / rebuild configs / switches / teardown
+        │   ├── services.rs     # nginx + php-fpm config gen & control
+        │   ├── php.rs          # multi-version pool registry (8.1/8.2/8.3)
+        │   ├── frankenphp.rs   # per-site override backend (loopback, admin off)
+        │   ├── proxy.rs        # Caddy edge (unix-socket admin, stale-edge recovery)
+        │   ├── database.rs · postgres.rs · db.rs   # MySQL, PostgreSQL, DbEngine
+        │   ├── wordpress.rs · wp_login.rs          # WP-CLI ops, magic login link
+        │   ├── dns.rs · ssl.rs                     # hickory-dns resolver, rcgen CA
+        │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · tunnels.rs
+        │   ├── blueprints.rs · setup.rs · ports.rs · monitor.rs
+        │   └── binaries.rs     # BinaryProvider: pinned manifest, checksum, prepare
         │
         ├── platform/           # OS-SPECIFIC impls behind traits (CRITICAL)
-        │   ├── mod.rs          # selects impl via #[cfg(target_os = "...")]
         │   ├── traits.rs       # DnsManager, CertTrustManager, PrivilegeManager,
         │   │                   #   ProcessSupervisor, AutostartManager,
         │   │                   #   PermissionManager, ShellRunner, Paths, BinaryProvider
-        │   ├── macos/          # macOS implementations  (build these first)
-        │   ├── windows/        # Windows impls          (start as todo!() stubs)
-        │   └── linux/          # Linux impls            (start as todo!() stubs)
+        │   ├── macos/          # all 9 impls real
+        │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
         │
         ├── state/              # app state
-        │   ├── mod.rs
-        │   ├── db.rs           # SQLite (rusqlite / sqlx)
-        │   ├── models.rs
-        │   └── store.rs
+        │   ├── db.rs           # SQLite + migrations (v1–v4)
+        │   ├── models.rs · store.rs
+        │   └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
         │
-        ├── templates/          # config templates (nginx / apache / caddy / php-fpm / wp)
-        │
-        └── utils/              # helpers
+        └── templates/          # (config templates are generated in core/ today)
 ```
 
 ### Why this shape
@@ -156,10 +148,10 @@ rexenv/
 
 ## Build phases (summary)
 
-1. **Phase 1 (macOS MVP):** scaffold → embedded DNS + local CA → Caddy edge router → one Nginx + one PHP → site create/list → MySQL → one-click WordPress. *Goal: a WP site on HTTPS.*
-2. **Phase 2:** multi-PHP, Apache + OpenLiteSpeed, MariaDB + PostgreSQL + Redis, resource monitor.
-3. **Phase 3:** WordPress Manager (incl. Multisite), Adminer, Mailpit, Xdebug toggle, log viewer, Cloudflare Tunnel, terminal.
-4. **Phase 4:** Windows port (fill the `platform/windows/` stubs).
-5. **Phase 5:** Linux port (fill the `platform/linux/` stubs).
+1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test`.
+2. **Phase 2 core** — ✅ done. Multi-PHP (8.1/8.2/8.3), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *(Apache/OpenLiteSpeed/MariaDB/Redis deferred — no clean portable macOS binaries; see PROJECT_SPEC §7.)*
+3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
+4. **Release** — in progress: hardening + `.dmg` packaging (`TASKS-RELEASE.md`, audit fixes in `TASKS-FIXES.md`/`BACKLOG.md`).
+5. **Phase 4/5** — Windows, then Linux ports (fill the `platform/` stubs).
 
 See `PROJECT_SPEC.md` for the full detail.
