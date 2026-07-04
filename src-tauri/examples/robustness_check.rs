@@ -3,10 +3,11 @@
 //! Exercises the non-interactive failure modes live:
 //!   - 2.1 a busy port → `ensure_free` errors naming the port + service;
 //!   - 2.2 a 404 download → a clear PERMANENT error (no pointless retries), and the
-//!         write-after-verify flow means nothing is cached;
+//!     write-after-verify flow means nothing is cached;
 //!   - 2.4 no route to host → a connectivity-aware error ("check your internet
-//!         connection"), returned within a BOUNDED time (retries are capped, the
-//!         connect timeout prevents a hang).
+//!     connection"), returned within a BOUNDED time (retries are capped, the
+//!     connect timeout prevents a hang).
+//!
 //! (2.3 cancelled-privilege messaging is covered by the macOS unit test
 //! `privileged_cancel_is_a_friendly_recoverable_message`.)
 //!

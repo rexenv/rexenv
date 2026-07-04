@@ -9,6 +9,7 @@
 //!   - both 200 with the served cert issued by OUR local CA (--cacert validates);
 //!   - ng.test is served by the php-fpm POOL (PHP 8.3.x), fp.test by FrankenPHP's
 //!     EMBEDDED PHP (8.5.x) — i.e. routed to different backends.
+//!
 //! Cleans everything up at the end.
 
 use rexenv_lib::core::services::RewriteMode;

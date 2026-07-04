@@ -89,7 +89,7 @@ async fn main() {
 
     // Delete a non-active theme.
     if let Some(victim) = list.iter().find(|t| t.status != "active").map(|t| t.name.clone()) {
-        wordpress::theme_delete(&php, &wp, &docroot, &[victim.clone()]).expect("delete");
+        wordpress::theme_delete(&php, &wp, &docroot, std::slice::from_ref(&victim)).expect("delete");
         let list = wordpress::theme_list(&php, &wp, &docroot).unwrap();
         assert!(!list.iter().any(|t| t.name == victim), "{victim} still present");
         println!("✓ delete non-active theme '{victim}' → gone ({} themes remain)", list.len());

@@ -5,6 +5,7 @@
 //! HTTP port (embedded PHP, auto_https + admin OFF), curls it directly, and asserts:
 //!   - HTTP 200 with phpinfo served by FrankenPHP's EMBEDDED PHP (not a php-fpm pool);
 //!   - it did NOT bind the edge's admin port :2019 (proves `admin off`).
+//!
 //! No edge/TLS here — that's §2.3. Cleans up at the end.
 
 use rexenv_lib::core::services::RewriteMode;

@@ -5,7 +5,7 @@
 use rexenv_lib::core::ports;
 
 fn main() {
-    println!("{:<16} {:<8} {}", "service", "port", "status");
+    println!("{:<16} {:<8} status", "service", "port");
     for s in ports::check(&ports::default_ports()) {
         println!(
             "{:<16} {:<8} {}",

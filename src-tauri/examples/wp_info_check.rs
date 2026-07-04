@@ -3,6 +3,7 @@
 //!   - `wordpress::wp_info` returns isWordpress/version/multisite,
 //!   - `wordpress::wp_run` returns an `wp option get siteurl` value,
 //!   - `wordpress::wp_json` (typed JSON runner) parses `wp plugin list`.
+//!
 //! Finally a Blank-PHP docroot must report `isWordpress: false`.
 //!
 //! Run (MySQL port :13306 must be free): `cargo run --example wp_info_check`

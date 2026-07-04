@@ -7,6 +7,7 @@
 //! override backends + reloads the edge). Curls the SAME URL after each switch:
 //!   - Nginx step  → served by the shared php-fpm pool (PHP 8.3.x);
 //!   - FrankenPHP  → served by its embedded PHP (8.5.x);
+//!
 //! all HTTP 200, no docroot/cert/DB rebuild. Cleans up at the end.
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
