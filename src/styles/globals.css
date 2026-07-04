@@ -53,11 +53,14 @@
   .font-display {
     font-family: var(--rex-font-display);
   }
-  /* macOS title-bar drag region */
+  /* Title-bar drag region. Tauri has no `-webkit-app-region`; the actual
+     window move is started by onTitleBarMouseDown (src/lib/window-drag.ts) —
+     this class only gives the region its native feel (no text selection,
+     no I-beam cursor). `.no-drag` marks interactive children the handler
+     must leave alone. */
   .drag-region {
-    -webkit-app-region: drag;
-  }
-  .no-drag {
-    -webkit-app-region: no-drag;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
   }
 }

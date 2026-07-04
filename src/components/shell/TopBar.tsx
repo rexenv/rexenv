@@ -1,5 +1,6 @@
 import { Search } from "lucide-react";
 import type { ReactNode } from "react";
+import { onTitleBarMouseDown } from "@/lib/window-drag";
 
 interface TopBarProps {
   title: string;
@@ -23,8 +24,11 @@ export function TopBar({
   searchPlaceholder,
 }: TopBarProps) {
   return (
-    <header className="drag-region flex h-[84px] flex-none items-center justify-between gap-4 border-b border-rex-border-subtle px-[22px]">
-      <div className="no-drag">
+    <header
+      onMouseDown={onTitleBarMouseDown}
+      className="drag-region flex h-[84px] flex-none items-center justify-between gap-4 border-b border-rex-border-subtle px-[22px]"
+    >
+      <div>
         <div className="text-[18px] font-semibold tracking-[-0.01em] text-rex-text">
           {title}
         </div>

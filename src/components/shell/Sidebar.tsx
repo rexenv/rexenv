@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
 import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
@@ -120,7 +121,10 @@ export function Sidebar() {
       {/* Header: wordmark (drag region). The macOS traffic lights are the real
           OS controls — the window uses titleBarStyle Overlay, so we reserve the
           top row for them instead of drawing fake dots. */}
-      <div className="drag-region flex h-[84px] flex-none flex-col justify-center gap-3.5 border-b border-rex-border-subtle px-[18px]">
+      <div
+        onMouseDown={onTitleBarMouseDown}
+        className="drag-region flex h-[84px] flex-none flex-col justify-center gap-3.5 border-b border-rex-border-subtle px-[18px]"
+      >
         <div className="h-3" aria-hidden />
         <div className="flex items-center gap-2.5">
           <CrownMark />
