@@ -44,7 +44,7 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
         background: token("--rex-bg", "#0d0e12"),
         foreground: token("--rex-text", "#e7e9ee"),
         cursor: token("--rex-brand", "#7c5cff"),
-        selectionBackground: "rgba(124, 92, 255, 0.3)",
+        selectionBackground: token("--rex-selection", "rgba(124, 92, 255, 0.3)"),
       },
     });
     const fit = new FitAddon();

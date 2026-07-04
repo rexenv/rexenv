@@ -24,10 +24,16 @@ const TAB_LABEL: Record<PreviewTab, string> = {
   headers: "Headers",
 };
 
-const AVATAR_COLORS = ["#7DB8D8", "#EE837C", "#A7AADD", "#5FBFA8", "#D7A93A"];
+const AVATAR_COLORS = [
+  { color: "var(--rex-accent-blue)", bg: "var(--rex-accent-blue-bg)" },
+  { color: "var(--rex-accent-red)", bg: "var(--rex-accent-red-bg)" },
+  { color: "var(--rex-accent-periwinkle)", bg: "var(--rex-accent-periwinkle-bg)" },
+  { color: "var(--rex-accent-teal)", bg: "var(--rex-accent-teal-bg)" },
+  { color: "var(--rex-accent-amber)", bg: "var(--rex-accent-amber-bg)" },
+];
 
 /** A stable per-sender accent so each correspondent reads as a distinct avatar. */
-function avatarColor(seed: string): string {
+function avatarColor(seed: string) {
   let h = 0;
   for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
@@ -173,7 +179,7 @@ export function Mail() {
                 </div>
               </div>
               <span className="rounded-md border border-rex-border-strong bg-rex-surface-1 px-2.5 py-1 font-mono text-[10.5px] text-rex-text-dim">
-                SMTP · 127.0.0.1:1025 · auto-configured
+                SMTP · 127.0.0.1:{mp?.smtpPort ?? 1025} · auto-configured
               </span>
             </div>
           )}
@@ -237,7 +243,7 @@ function Preview({
       <div className="flex items-start gap-3 border-b border-rex-border p-4">
         <span
           className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg text-[12px] font-semibold"
-          style={{ background: `${avatar}26`, color: avatar }}
+          style={{ background: avatar.bg, color: avatar.color }}
         >
           {initial(msg.from)}
         </span>

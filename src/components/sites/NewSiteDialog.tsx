@@ -64,9 +64,9 @@ type TypeCard = {
   color: string;
 };
 const TYPE_CARDS: TypeCard[] = [
-  { value: "php", label: "Blank PHP", desc: "A clean document root. Bring your own framework or write plain PHP.", icon: PHP_GLYPH, bg: "rgba(125,128,185,0.16)", border: "rgba(125,128,185,0.30)", color: "#A7AADD" },
-  { value: "wordpress", label: "WordPress", desc: "Latest WordPress, installed and ready — admin account and database set up for you.", icon: WP_GLYPH, bg: "rgba(74,134,170,0.16)", border: "rgba(74,134,170,0.30)", color: "#7DB8D8" },
-  { value: "laravel", label: "Laravel", desc: "A fresh Laravel app via the installer, wired to a database with your .env ready.", icon: LARAVEL_GLYPH, bg: "rgba(224,82,77,0.14)", border: "rgba(224,82,77,0.28)", color: "#EE837C" },
+  { value: "php", label: "Blank PHP", desc: "A clean document root. Bring your own framework or write plain PHP.", icon: PHP_GLYPH, bg: "var(--rex-accent-periwinkle-bg)", border: "var(--rex-accent-periwinkle-border)", color: "var(--rex-accent-periwinkle)" },
+  { value: "wordpress", label: "WordPress", desc: "Latest WordPress, installed and ready — admin account and database set up for you.", icon: WP_GLYPH, bg: "var(--rex-accent-blue-bg)", border: "var(--rex-accent-blue-border)", color: "var(--rex-accent-blue)" },
+  { value: "laravel", label: "Laravel", desc: "A fresh Laravel app via the installer, wired to a database with your .env ready.", icon: LARAVEL_GLYPH, bg: "var(--rex-accent-red-bg)", border: "var(--rex-accent-red-border)", color: "var(--rex-accent-red)" },
 ];
 
 /**

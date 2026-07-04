@@ -56,6 +56,8 @@ function ThemeSetting() {
     setTheme(t); // persists + applies immediately
   };
   // Light stays selectable — it shipped in §4.4 (the comp's "soon" badge is stale).
+  // Preview swatches DEPICT each theme, so they are intentionally literal —
+  // routing them through theme vars would make the Light tile flip in dark mode.
   const TILES: { value: Theme; label: string; preview: string; bars?: "dark" | "light" }[] = [
     { value: "dark", label: "Dark", preview: "linear-gradient(135deg,#15171D,#0D0E12)", bars: "dark" },
     { value: "light", label: "Light", preview: "linear-gradient(135deg,#F4F5F8,#E2E5EC)", bars: "light" },
@@ -644,20 +646,19 @@ function UninstallSetting() {
 function CrownBadge({ size }: { size: number }) {
   return (
     <div
-      className="flex flex-none items-center justify-center rounded-xl border border-[var(--rex-crown-border)] bg-gradient-to-br from-[#20232C] to-[#13151B] shadow-glow-crown"
+      className="flex flex-none items-center justify-center rounded-xl border border-[var(--rex-crown-border)] bg-gradient-to-br from-[var(--rex-crown-chip-from)] to-[var(--rex-crown-chip-to)] shadow-glow-crown"
       style={{ width: size, height: size }}
     >
       <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" className="block">
         <path
           d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
-          fill="#7C5CFF"
-          stroke="#7C5CFF"
+          style={{ fill: "var(--rex-brand)", stroke: "var(--rex-brand)" }}
           strokeWidth="1.1"
           strokeLinejoin="round"
         />
-        <circle cx="3" cy="8.4" r="1.4" fill="#B9A6FF" />
-        <circle cx="12" cy="5" r="1.6" fill="#C9BCFF" />
-        <circle cx="21" cy="8.4" r="1.4" fill="#B9A6FF" />
+        <circle cx="3" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
+        <circle cx="12" cy="5" r="1.6" style={{ fill: "var(--rex-brand-tint)" }} />
+        <circle cx="21" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
       </svg>
     </div>
   );
@@ -713,19 +714,19 @@ function AboutSetting() {
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
         {linkRow(
           <FileText className="h-[17px] w-[17px]" strokeWidth={1.7} />,
-          "#7DB8D8",
+          "var(--rex-accent-blue)",
           "Documentation",
           "https://docs.rexenv.app",
         )}
         {linkRow(
           <Github className="h-[17px] w-[17px]" strokeWidth={1.7} />,
-          "#C7CBD4",
+          "var(--rex-text-bright)",
           "GitHub",
           "https://github.com/rexenv",
         )}
         {linkRow(
           <ShieldCheck className="h-[17px] w-[17px]" strokeWidth={1.7} />,
-          "#5FBFA8",
+          "var(--rex-accent-teal)",
           "Licenses & credits",
           null,
         )}

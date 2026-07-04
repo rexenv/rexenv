@@ -11,10 +11,10 @@ import type { ServiceInfo, ServiceKind } from "@/types";
 
 /** Tinted accent per kind (matches the group icon colors). */
 const KIND_ACCENT: Record<ServiceKind, { bg: string; border: string; color: string }> = {
-  php: { bg: "rgba(125,128,185,0.17)", border: "rgba(125,128,185,0.32)", color: "#A7AADD" },
-  database: { bg: "rgba(74,134,170,0.15)", border: "rgba(74,134,170,0.30)", color: "#7DB8D8" },
-  mail: { bg: "rgba(210,153,34,0.13)", border: "rgba(210,153,34,0.28)", color: "#D7A93A" },
-  web: { bg: "rgba(45,156,143,0.13)", border: "rgba(45,156,143,0.28)", color: "#5FBFA8" },
+  php: { bg: "var(--rex-accent-periwinkle-bg)", border: "var(--rex-accent-periwinkle-border)", color: "var(--rex-accent-periwinkle)" },
+  database: { bg: "var(--rex-accent-blue-bg)", border: "var(--rex-accent-blue-border)", color: "var(--rex-accent-blue)" },
+  mail: { bg: "var(--rex-accent-amber-bg)", border: "var(--rex-accent-amber-border)", color: "var(--rex-accent-amber)" },
+  web: { bg: "var(--rex-accent-teal-bg)", border: "var(--rex-accent-teal-border)", color: "var(--rex-accent-teal)" },
 };
 
 /** A short monogram for the row's accent badge. */
@@ -73,10 +73,10 @@ function serviceKind(svc: ServiceInfo): ServiceKind {
 }
 
 const GROUPS: { kind: ServiceKind; title: string; icon: LucideIcon; color: string }[] = [
-  { kind: "php", title: "PHP", icon: Code, color: "#A7AADD" },
-  { kind: "database", title: "Databases", icon: Database, color: "#7DB8D8" },
-  { kind: "mail", title: "Mail", icon: Mail, color: "#D7A93A" },
-  { kind: "web", title: "Web servers & edge router", icon: Server, color: "#5FBFA8" },
+  { kind: "php", title: "PHP", icon: Code, color: "var(--rex-accent-periwinkle)" },
+  { kind: "database", title: "Databases", icon: Database, color: "var(--rex-accent-blue)" },
+  { kind: "mail", title: "Mail", icon: Mail, color: "var(--rex-accent-amber)" },
+  { kind: "web", title: "Web servers & edge router", icon: Server, color: "var(--rex-accent-teal)" },
 ];
 
 /** Stacked CPU-over-RAM mini-meters (design scaling: cpu/12, ram/500). */
@@ -86,7 +86,7 @@ function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
       <span className="w-[22px] font-mono text-[8.5px] tracking-[0.06em] text-rex-text-dim">
         {label}
       </span>
-      <span className="h-1 flex-1 overflow-hidden rounded-full bg-[#0B0C10]">
+      <span className="h-1 flex-1 overflow-hidden rounded-full bg-rex-well-deep">
         <span
           className="block h-full rounded-full bg-gradient-to-r from-brand-strong to-brand-light transition-[width] duration-700"
           style={{ width: `${Math.min(100, pct)}%` }}
@@ -125,7 +125,7 @@ function UsageMetric({
           <span className="text-[13px] text-rex-text-dim">{unit}</span>
         </span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full border border-[#23262F] bg-[#0B0C10]">
+      <div className="h-2 overflow-hidden rounded-full border border-rex-panel-border bg-rex-well-deep">
         <div
           className="h-full rounded-full bg-gradient-to-r from-brand-strong to-brand-light shadow-glow-primary transition-[width] duration-700"
           style={{ width: `${Math.min(100, pct)}%` }}
@@ -143,7 +143,8 @@ function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
   const totalRam = services.reduce((a, s) => a + s.ramMb, 0);
 
   return (
-    <div className="mb-[18px] rounded-[15px] border border-[#23262F] bg-gradient-to-br from-[#171A21] to-[#121419] px-5 py-[18px]">
+    // Summary-card gradient endpoints are scene-fixed (Services.dc.html art), not palette tokens.
+    <div className="mb-[18px] rounded-[15px] border border-rex-panel-border bg-gradient-to-br from-[#171A21] to-[#121419] px-5 py-[18px]">
       <div className="mb-4 flex items-center gap-[9px]">
         <span className="relative inline-flex h-2 w-2">
           <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />
@@ -170,7 +171,7 @@ function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
             of {(RAM_BUDGET_MB / 1024).toFixed(1)} GB budget · stays light
           </div>
         </div>
-        <div className="flex items-center gap-[18px] border-l border-[#23262F] pl-4">
+        <div className="flex items-center gap-[18px] border-l border-rex-panel-border pl-4">
           <div>
             <div className="font-mono text-[22px] font-semibold text-status-running-bright">
               {running}

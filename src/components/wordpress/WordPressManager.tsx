@@ -41,11 +41,11 @@ const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrato
 
 // Per-role accent (Administrator violet, Editor blue, others teal/neutral).
 const ROLE_META: Record<string, { color: string; bg: string; border: string }> = {
-  administrator: { color: "#C9BCFF", bg: "rgba(124,92,255,0.14)", border: "rgba(124,92,255,0.28)" },
-  editor: { color: "#7DB8D8", bg: "rgba(74,134,170,0.15)", border: "rgba(74,134,170,0.30)" },
-  author: { color: "#5FBFA8", bg: "rgba(45,156,143,0.13)", border: "rgba(45,156,143,0.28)" },
+  administrator: { color: "var(--rex-brand-tint)", bg: "var(--rex-brand-tint-bg)", border: "var(--rex-brand-tint-border)" },
+  editor: { color: "var(--rex-accent-blue)", bg: "var(--rex-accent-blue-bg)", border: "var(--rex-accent-blue-border)" },
+  author: { color: "var(--rex-accent-teal)", bg: "var(--rex-accent-teal-bg)", border: "var(--rex-accent-teal-border)" },
 };
-const DEFAULT_ROLE = { color: "#8A90A0", bg: "rgba(110,118,129,0.13)", border: "rgba(110,118,129,0.22)" };
+const DEFAULT_ROLE = { color: "var(--rex-text-muted)", bg: "var(--rex-stopped-bg)", border: "var(--rex-stopped-border)" };
 const roleMeta = (role: string) => ROLE_META[role] ?? DEFAULT_ROLE;
 
 type SubTab = "plugins" | "themes" | "users" | "network" | "tools";

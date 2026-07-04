@@ -64,7 +64,7 @@ function FilterTabs({
     { key: "stopped", label: "Stopped" },
   ];
   return (
-    <div className="inline-flex items-center gap-1 rounded-[10px] border border-[#1E222A] bg-rex-well p-[3px]">
+    <div className="inline-flex items-center gap-1 rounded-[10px] border border-rex-well-border bg-rex-well p-[3px]">
       {tabs.map((t) => (
         <button
           key={t.key}
@@ -375,18 +375,18 @@ export function Sites() {
           />
         ) : sites.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
+            {/* Empty-state chip gradient is scene-fixed (Sites Screen.dc.html art). */}
             <div className="flex h-[60px] w-[60px] items-center justify-center rounded-2xl border border-[#2A2E39] bg-gradient-to-br from-[#1C2029] to-[#14161C] shadow-glow-crown">
               <svg width="28" height="28" viewBox="0 0 24 24" className="block">
                 <path
                   d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
-                  fill="#7C5CFF"
-                  stroke="#7C5CFF"
+                  style={{ fill: "var(--rex-brand)", stroke: "var(--rex-brand)" }}
                   strokeWidth="1.1"
                   strokeLinejoin="round"
                 />
-                <circle cx="3" cy="8.4" r="1.4" fill="#B9A6FF" />
-                <circle cx="12" cy="5" r="1.6" fill="#C9BCFF" />
-                <circle cx="21" cy="8.4" r="1.4" fill="#B9A6FF" />
+                <circle cx="3" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
+                <circle cx="12" cy="5" r="1.6" style={{ fill: "var(--rex-brand-tint)" }} />
+                <circle cx="21" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
               </svg>
             </div>
             <div>

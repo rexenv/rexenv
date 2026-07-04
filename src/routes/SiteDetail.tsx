@@ -143,7 +143,7 @@ export function SiteDetail() {
                     isActive
                       ? "border-brand text-rex-text"
                       : wpInactive
-                        ? "border-transparent text-[#7DB8D8] hover:text-rex-text"
+                        ? "border-transparent text-rex-accent-blue hover:text-rex-text"
                         : "border-transparent text-rex-text-muted hover:text-rex-text",
                   )}
                 >
@@ -390,7 +390,7 @@ function Overview({
             {isWordpress && (
               <QuickTile
                 icon={<ExternalLink className="h-4 w-4" />}
-                iconColor="text-[#7DB8D8]"
+                iconColor="text-rex-accent-blue"
                 label="WP admin"
                 onClick={() => openExternal(`${url}/wp-admin/`)}
               />
@@ -427,7 +427,7 @@ function Overview({
 function logLineColor(line: string): string {
   if (/\berror\b/i.test(line)) return "text-status-error-bright";
   if (/\bwarn(ing)?\b/i.test(line)) return "text-status-warning-bright";
-  return "text-[#A9AEBA]";
+  return "text-rex-text-value";
 }
 
 function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => void }) {
@@ -458,7 +458,7 @@ function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => vo
           <ChevronRight className="h-[13px] w-[13px]" strokeWidth={2} />
         </button>
       </div>
-      <div className="rounded-[11px] border border-[#1A1D24] bg-[#0B0C10] px-[14px] py-3 font-mono text-[11.5px] leading-[1.95]">
+      <div className="rounded-[11px] border border-rex-well-border bg-rex-well-deep px-[14px] py-3 font-mono text-[11.5px] leading-[1.95]">
         {recent.length === 0 ? (
           <div className="text-rex-text-dim">
             No recent activity — start the site to see logs here.

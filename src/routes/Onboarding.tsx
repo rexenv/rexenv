@@ -45,7 +45,7 @@ export function Onboarding() {
           <span
             key={i}
             className="h-[6px] rounded-full transition-all duration-300"
-            style={{ width: i === step ? "26px" : "6px", background: i <= step ? "#7C5CFF" : "#2A2E38" }}
+            style={{ width: i === step ? "26px" : "6px", background: i <= step ? "var(--rex-brand)" : "#2A2E38" }}
           />
         ))}
       </div>
@@ -85,6 +85,9 @@ export function Onboarding() {
   );
 }
 
+// The onboarding hero is a scene: its washes, gradients, and glass-chip alphas
+// are fixed dark-hero art from Onboarding.dc.html (they don't follow the theme),
+// so those stay literal; brand/crown/text identities below use tokens.
 function CrownHero() {
   return (
     <div className="relative mb-[26px] flex h-[88px] w-[88px] animate-rex-float items-center justify-center rounded-[24px] border border-[#34304E] bg-gradient-to-br from-[#23263180] to-[#13151Bc0] shadow-[0_16px_44px_rgba(124,92,255,.34)] motion-reduce:animate-none">
@@ -95,14 +98,13 @@ function CrownHero() {
       <svg width="48" height="48" viewBox="0 0 24 24" className="relative block">
         <path
           d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
-          fill="#7C5CFF"
-          stroke="#8E72FF"
+          style={{ fill: "var(--rex-brand)", stroke: "var(--rex-brand-hover)" }}
           strokeWidth="0.8"
           strokeLinejoin="round"
         />
-        <circle cx="3" cy="8.4" r="1.5" fill="#B9A6FF" />
-        <circle cx="12" cy="5" r="1.8" fill="#D7CCFF" />
-        <circle cx="21" cy="8.4" r="1.5" fill="#B9A6FF" />
+        <circle cx="3" cy="8.4" r="1.5" style={{ fill: "var(--rex-crown-gem)" }} />
+        <circle cx="12" cy="5" r="1.8" style={{ fill: "var(--rex-crown-gem-bright)" }} />
+        <circle cx="21" cy="8.4" r="1.5" style={{ fill: "var(--rex-crown-gem)" }} />
       </svg>
     </div>
   );
@@ -112,7 +114,7 @@ function Welcome() {
   return (
     <div className="flex flex-col items-center">
       <CrownHero />
-      <div className="font-display text-[54px] font-semibold leading-none tracking-[-0.03em] text-[#F2F0FA] [text-shadow:0_2px_30px_rgba(124,92,255,.25)]">
+      <div className="font-display text-[54px] font-semibold leading-none tracking-[-0.03em] text-rex-text-hero [text-shadow:0_2px_30px_rgba(124,92,255,.25)]">
         rexenv
       </div>
       <div className="mt-[18px] font-display text-[19px] font-medium tracking-[-0.01em] text-rex-text-bright">
@@ -129,7 +131,7 @@ function Welcome() {
 function StepHeading({ title, subtitle }: { title: string; subtitle: ReactNode }) {
   return (
     <>
-      <div className="font-display text-[27px] font-semibold tracking-[-0.02em] text-[#F2F0FA]">
+      <div className="font-display text-[27px] font-semibold tracking-[-0.02em] text-rex-text-hero">
         {title}
       </div>
       <div className="mt-[9px] text-[13.5px] leading-[1.55] text-rex-text-muted">{subtitle}</div>
@@ -138,9 +140,9 @@ function StepHeading({ title, subtitle }: { title: string; subtitle: ReactNode }
 }
 
 const INSTALL_ROWS = [
-  { abbr: "PHP", name: "PHP 8.3 runtime", bg: "rgba(125,128,185,0.17)", border: "rgba(125,128,185,0.32)", color: "#A7AADD" },
-  { abbr: "Nx", name: "Nginx web server", bg: "rgba(45,156,143,0.13)", border: "rgba(45,156,143,0.28)", color: "#5FBFA8" },
-  { abbr: "Cf", name: "Edge router", bg: "rgba(74,134,170,0.15)", border: "rgba(74,134,170,0.30)", color: "#7DB8D8" },
+  { abbr: "PHP", name: "PHP 8.3 runtime", bg: "var(--rex-accent-periwinkle-bg)", border: "var(--rex-accent-periwinkle-border)", color: "var(--rex-accent-periwinkle)" },
+  { abbr: "Nx", name: "Nginx web server", bg: "var(--rex-accent-teal-bg)", border: "var(--rex-accent-teal-border)", color: "var(--rex-accent-teal)" },
+  { abbr: "Cf", name: "Edge router", bg: "var(--rex-accent-blue-bg)", border: "var(--rex-accent-blue-border)", color: "var(--rex-accent-blue)" },
 ];
 
 function Install() {
@@ -205,11 +207,11 @@ function Domains() {
     <div className="w-full max-w-[460px]">
       <div className="mb-[22px] flex justify-center gap-2.5">
         <StatusPill
-          icon={<Shield className="h-[15px] w-[15px] text-[#5FBFA8]" strokeWidth={1.7} />}
+          icon={<Shield className="h-[15px] w-[15px] text-rex-accent-teal" strokeWidth={1.7} />}
           label="Local CA"
         />
         <StatusPill
-          icon={<Globe className="h-[15px] w-[15px] text-[#7DB8D8]" strokeWidth={1.7} />}
+          icon={<Globe className="h-[15px] w-[15px] text-rex-accent-blue" strokeWidth={1.7} />}
           label="Local DNS"
         />
         <StatusPill
@@ -284,7 +286,7 @@ function Done() {
         />
         <Check className="relative h-10 w-10 text-status-running" strokeWidth={2.4} />
       </div>
-      <div className="font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-[#F2F0FA]">
+      <div className="font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-rex-text-hero">
         Your kingdom is ready
       </div>
       <div className="mt-3 max-w-[400px] text-[14px] leading-[1.55] text-rex-text-muted">

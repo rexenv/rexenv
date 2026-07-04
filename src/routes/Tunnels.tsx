@@ -145,7 +145,7 @@ function TunnelCard({
   const on = !!tunnel?.running;
   const state: CardState = busy ? (on ? "stopping" : "starting") : on ? "live" : "idle";
   const border = {
-    live: "border-status-running-border shadow-[0_0_0_1px_rgba(63,185,80,0.12)]",
+    live: "border-status-running-border shadow-[0_0_0_1px_var(--rex-running-bg)]",
     stopping: "border-status-running-border",
     starting: "border-status-warning-border",
     idle: "border-rex-border-subtle",
@@ -186,14 +186,14 @@ function TunnelCard({
 
       {on && tunnel && (
         <>
-          <div className="mt-[13px] flex items-center gap-[9px] rounded-[10px] border border-[#1E222A] bg-[#0B0C10] py-[9px] pl-3 pr-[9px]">
+          <div className="mt-[13px] flex items-center gap-[9px] rounded-[10px] border border-rex-well-border bg-rex-well-deep py-[9px] pl-3 pr-[9px]">
             <Cloud
               className="h-[15px] w-[15px] flex-none"
               style={{ color: "var(--rex-lock-insecure)" }}
               strokeWidth={1.7}
             />
             <a
-              className="min-w-0 flex-1 truncate font-mono text-[12px] text-[#9CC4E8] hover:underline"
+              className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-link hover:underline"
               onClick={(e) => {
                 e.preventDefault();
                 openExternal(tunnel.url);
