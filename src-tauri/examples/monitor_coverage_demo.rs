@@ -46,14 +46,12 @@ async fn main() {
     }
     std::thread::sleep(Duration::from_millis(1200));
 
-    // Two monitor passes so CPU% is computed over an interval.
+    // Two refresh sweeps so CPU% is computed over an interval (`process()` is
+    // read-only since M6 — `refresh_processes()` does the sampling).
     let mut mon = Monitor::new();
-    for i in mgr.status() {
-        if let Some(p) = i.pid {
-            mon.process(p);
-        }
-    }
+    mon.refresh_processes();
     std::thread::sleep(Duration::from_millis(500));
+    mon.refresh_processes();
 
     println!("=== services_status coverage (name · running · pid · CPU · RAM) ===");
     let rows = mgr.status();

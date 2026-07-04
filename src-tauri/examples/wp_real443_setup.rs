@@ -56,6 +56,7 @@ async fn main() {
         admin_user: "admin",
         admin_password: "rexenv-admin-pw",
         admin_email: "admin@wpdemo.test",
+        locale: "",
     }).unwrap();
 
     // PHP-FPM (nginx proxies .php here).

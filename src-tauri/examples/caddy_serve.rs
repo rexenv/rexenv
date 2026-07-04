@@ -34,6 +34,7 @@ async fn main() {
             cert_path: cert.cert_path.clone(),
             key_path: cert.key_path.clone(),
         }],
+        admin_socket: Some(proxy::admin_socket_path(&*plat).expect("admin socket path")),
     };
     let caddyfile = proxy::write_caddyfile(&*plat, &cfg).expect("write caddyfile");
     println!("CADDYFILE={}", caddyfile.display());
