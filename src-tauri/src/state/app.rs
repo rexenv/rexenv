@@ -31,9 +31,18 @@ impl AppState {
     /// stack is up. Non-blocking: if a long start/stop holds `services`, return the
     /// last cached snapshot so status polls never freeze the UI.
     pub fn service_infos(&self) -> Vec<ServiceInfo> {
+        // Installed PHP minors from the registry, so every installed pool is listed
+        // (idle) even before Start all. Brief DB lock, released before the manager
+        // try_lock — never held across it.
+        let installed_php = self
+            .db
+            .lock()
+            .ok()
+            .and_then(|conn| crate::core::php::installed_minors(&conn).ok())
+            .unwrap_or_default();
         match self.services.try_lock() {
             Ok(mgr) => {
-                let infos = mgr.status();
+                let infos = mgr.status(&installed_php);
                 if let Ok(mut cache) = self.service_status_cache.lock() {
                     *cache = infos.clone();
                 }

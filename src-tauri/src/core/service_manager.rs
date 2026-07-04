@@ -575,10 +575,12 @@ impl ServiceManager {
 
     /// Per-service status for the Services view + metrics (§6.1): every service the
     /// app supervises — the available DB engines (MySQL, PostgreSQL), one row per
-    /// running php-fpm pool (`PHP-FPM <version>`), one per per-site FrankenPHP
-    /// backend (`FrankenPHP <domain>`), then Nginx and Caddy. The command layer
-    /// enriches each row with live RAM/CPU from the monitor (by pid).
-    pub fn status(&self) -> Vec<ServiceInfo> {
+    /// installed PHP minor (`PHP-FPM <version>`, listed even when its pool is
+    /// stopped, same as the DB engines), one per per-site FrankenPHP backend
+    /// (`FrankenPHP <domain>`), then Nginx and Caddy. `installed_php` comes from
+    /// the registry (the manager has no DB access); the command layer enriches
+    /// each row with live RAM/CPU from the monitor (by pid).
+    pub fn status(&self, installed_php: &[String]) -> Vec<ServiceInfo> {
         let mut infos = Vec::new();
 
         // Database engines (available ones) — always listed, running-state per port.
@@ -592,13 +594,20 @@ impl ServiceManager {
             });
         }
 
-        // One row per running php-fpm pool.
-        for p in self.pools.status() {
+        // One row per installed PHP minor, so the list doesn't grow/shrink with
+        // Start/Stop all. A running pool for an uninstalled minor is still shown.
+        let pools = self.pools.status();
+        let mut minors: Vec<&str> = installed_php.iter().map(String::as_str).collect();
+        minors.extend(pools.iter().map(|p| p.minor.as_str()));
+        minors.sort_unstable();
+        minors.dedup();
+        for minor in minors {
+            let pool = pools.iter().find(|p| p.minor == minor);
             infos.push(ServiceInfo {
-                name: format!("PHP-FPM {}", p.minor),
-                running: p.running,
-                pid: Some(p.pid),
-                port: p.port,
+                name: format!("PHP-FPM {minor}"),
+                running: pool.is_some_and(|p| p.running),
+                pid: pool.map(|p| p.pid),
+                port: pool.map(|p| p.port).or_else(|| php::fpm_port(minor)).unwrap_or(0),
             });
         }
 
@@ -940,12 +949,18 @@ mod tests {
     #[test]
     fn status_lists_core_services_when_stopped() {
         let m = ServiceManager::default();
-        let s = m.status();
+        let s = m.status(&["8.1".to_string(), "8.3".to_string()]);
         let names: Vec<_> = s.iter().map(|i| i.name.as_str()).collect();
-        // When stopped: the available DB engines (always listed) + Nginx + Caddy +
-        // Mailpit. No php-fpm pools or FrankenPHP overrides (those appear only when running).
-        assert_eq!(names, vec!["MySQL", "PostgreSQL", "Nginx", "Caddy", "Mailpit"]);
+        // When stopped: the available DB engines + every INSTALLED php minor (idle
+        // rows — the list must not grow/shrink with Start/Stop all) + Nginx + Caddy +
+        // Mailpit. FrankenPHP overrides appear only when running.
+        assert_eq!(
+            names,
+            vec!["MySQL", "PostgreSQL", "PHP-FPM 8.1", "PHP-FPM 8.3", "Nginx", "Caddy", "Mailpit"]
+        );
         assert!(s.iter().all(|i| i.pid.is_none()));
+        // An idle pool row still shows its (deterministic) pool port.
+        assert_eq!(s.iter().find(|i| i.name == "PHP-FPM 8.3").unwrap().port, 9783);
         // H2: a stopped manager owns nothing, so NOTHING reads as running — even if
         // some foreign process happens to hold one of these ports (e.g. another local
         // server on :443). Ownership is gated on our handles, not a bare port-listen.
