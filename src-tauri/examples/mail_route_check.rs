@@ -74,7 +74,7 @@ async fn main() {
         std::thread::sleep(Duration::from_millis(250));
     }
     println!("edge listening on :{HTTPS} = {edge_up}");
-    for s in mgr.status() {
+    for s in mgr.status(&[]) {
         println!("  {:<10} running={} port={}", s.name, s.running, s.port);
     }
 

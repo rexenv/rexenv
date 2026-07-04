@@ -54,7 +54,7 @@ async fn main() {
     mon.refresh_processes();
 
     println!("=== services_status coverage (name · running · pid · CPU · RAM) ===");
-    let rows = mgr.status();
+    let rows = mgr.status(&[]);
     let mut all_ok = true;
     for i in &rows {
         let m = i.pid.and_then(|p| mon.process(p));

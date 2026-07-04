@@ -61,7 +61,7 @@ async fn main() {
     let mut mon = Monitor::new();
     let _ = mon.sample();
     std::thread::sleep(Duration::from_millis(400));
-    for s in mgr.status() {
+    for s in mgr.status(&[]) {
         let met = s.pid.and_then(|p| mon.process(p));
         let metric = met
             .map(|m| format!("cpu {:.1}% ram {} MB", m.cpu_percent, m.ram_mb))
