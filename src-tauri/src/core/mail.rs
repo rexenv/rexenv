@@ -43,7 +43,7 @@ pub fn sendmail_path(mailpit_bin: &Path) -> String {
 
 /// Start the Mailpit server (loopback SMTP + HTTP, persistent DB) via
 /// `ProcessSupervisor`; stdout/stderr go to a per-service log.
-pub fn start(platform: &dyn Platform, mailpit_bin: &PathBuf) -> Result<Child> {
+pub fn start(platform: &dyn Platform, mailpit_bin: &Path) -> Result<Child> {
     let dir = data_dir(platform)?;
     std::fs::create_dir_all(&dir)?;
     let db = dir.join("mailpit.db");

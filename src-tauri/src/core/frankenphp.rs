@@ -8,6 +8,7 @@
 //!   - `admin off` — never grab the :2019 admin port the edge owns (and so multiple
 //!     per-site backends don't fight over it);
 //!   - `default_bind 127.0.0.1` — listen on loopback only.
+//!
 //! PHP is served by FrankenPHP's embedded runtime (`php_server`), NOT the §1
 //! php-fpm pools — so an override site's PHP version is the FrankenPHP build's.
 

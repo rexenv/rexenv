@@ -113,7 +113,7 @@ impl RequestHandler for DnsHandler {
 /// itself and every subdomain of it (`foo.test`, `a.b.mysite.test`).
 fn name_under_tld(name: &Name, tld: &str) -> bool {
     name.iter()
-        .last()
+        .next_back()
         .is_some_and(|label| label.eq_ignore_ascii_case(tld.as_bytes()))
 }
 

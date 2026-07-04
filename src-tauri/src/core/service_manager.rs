@@ -223,7 +223,7 @@ impl ServiceManager {
         // so the single-site path keeps working). Pools own their deterministic ports.
         let mut minors: Vec<String> = php_minors.to_vec();
         let default_minor = php::minor_of(binaries::PHP_VERSION);
-        if !minors.iter().any(|m| *m == default_minor) {
+        if !minors.contains(&default_minor) {
             minors.push(default_minor);
         }
         self.pools.start(platform, &minors).await?;

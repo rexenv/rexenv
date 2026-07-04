@@ -473,7 +473,7 @@ impl MacosBinaryProvider {
         }
         let listing = String::from_utf8_lossy(&out.stdout);
         for line in listing.lines().skip(1) {
-            let dep = match line.trim().split_whitespace().next() {
+            let dep = match line.split_whitespace().next() {
                 Some(d) => d,
                 None => continue,
             };
