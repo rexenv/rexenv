@@ -71,7 +71,10 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   `ensure_db` remains as spawn+await convenience (examples/tests). Verified: new
   `await_ready_is_concurrent_and_names_every_failure` unit test (empty/ok batches,
   both failures named + log hint kept, 4×500ms probes finish in ~1 probe's time) +
-  134/134 lib tests, clippy 0 (lib+examples), all examples compile.
+  134/134 lib tests, clippy 0 (lib+examples), all examples compile. **Live-verified**
+  (`examples/ready_split_check.rs`, real PostgreSQL): spawn tracks the child +
+  returns the check, re-spawn is a no-op, `await_ready` drives it to
+  `engine.running()`, `stop_db` cleans up.
 
 - [x] **M6 — Monitor refreshes all processes per service per poll**
   (`monitor.rs` + `commands/services.rs`, `commands/database.rs`). ✓ done. Split the
