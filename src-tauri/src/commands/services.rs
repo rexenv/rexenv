@@ -37,15 +37,23 @@ fn start_inputs(
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     let (sites, php_minors) = start_inputs(&state)?;
-    // Phase 1 (locked): start everything except the edge; get the Caddyfile + plan.
+    // Phase 1 (locked): spawn everything except the edge; collect the readiness
+    // probes + Caddyfile. Spawning is fast — no waiting happens under the lock.
+    let (caddyfile, checks) = {
+        let mut mgr = state.services.lock().await;
+        mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors)
+            .await?
+    };
+    // Phase 2 (UNLOCKED): await readiness concurrently — a slow MySQL/Mailpit/
+    // FrankenPHP no longer parks the service manager (M4); a service that never
+    // comes up still fails HERE naming itself + its log (M3).
+    core::service_manager::await_ready(checks).await?;
+    // Phase 3 (locked briefly): gate the edge start now that backends are ready.
     let plan = {
         let mut mgr = state.services.lock().await;
-        let caddyfile = mgr
-            .start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors)
-            .await?;
         mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
     };
-    // Phase 2 (UNLOCKED): the privileged edge start blocks on the admin-password
+    // Phase 4 (UNLOCKED): the privileged edge start blocks on the admin-password
     // prompt — with the services lock free, status polls keep working meanwhile.
     if let Some(plan) = plan {
         if plan.privileged {

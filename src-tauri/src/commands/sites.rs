@@ -70,11 +70,17 @@ pub async fn create_site(
         (created, core::sites::list(&conn)?, blueprint)
     };
     let minor = php::minor_of(&created.php_version);
-    let mut mgr = state.services.lock().await;
 
     // WordPress needs a database + a one-click install before it's browsable.
+    // The services lock is held only to SPAWN MySQL; the readiness wait and the
+    // (long) installer run with it released (M4), so other commands and status
+    // stay responsive during a site create.
     if matches!(created.site_type, SiteType::Wordpress) {
-        mgr.ensure_db(state.platform.as_ref(), DbEngine::Mysql).await?;
+        let check = {
+            let mut mgr = state.services.lock().await;
+            mgr.spawn_db(state.platform.as_ref(), DbEngine::Mysql).await?
+        };
+        core::service_manager::await_ready(check.into_iter().collect()).await?;
         let patch = php::patch_for_minor(&minor)
             .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
         let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
@@ -108,12 +114,18 @@ pub async fn create_site(
         }
     }
 
-    if mgr.is_running() {
-        if !matches!(created.web_server, WebServer::Frankenphp) {
-            mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            if !matches!(created.web_server, WebServer::Frankenphp) {
+                mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+            }
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+        } else {
+            Vec::new()
         }
-        mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
-    }
+    };
+    core::service_manager::await_ready(checks).await?;
     Ok(created)
 }
 
@@ -132,16 +144,23 @@ pub async fn set_site_web_server(
         (updated, core::sites::list(&conn)?)
     };
     if let Some(ref s) = site {
-        let mut mgr = state.services.lock().await;
-        if mgr.is_running() {
-            // Switching to an nginx-served site needs its PHP version's pool up;
-            // FrankenPHP uses its embedded PHP, so no pool is needed.
-            if !matches!(s.web_server, WebServer::Frankenphp) {
-                let minor = core::php::minor_of(&s.php_version);
-                mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+        // Readiness of a newly spawned FrankenPHP backend is awaited with the
+        // services lock released (M4).
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                // Switching to an nginx-served site needs its PHP version's pool up;
+                // FrankenPHP uses its embedded PHP, so no pool is needed.
+                if !matches!(s.web_server, WebServer::Frankenphp) {
+                    let minor = core::php::minor_of(&s.php_version);
+                    mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+                }
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+            } else {
+                Vec::new()
             }
-            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
-        }
+        };
+        core::service_manager::await_ready(checks).await?;
     }
     Ok(site)
 }
@@ -162,11 +181,16 @@ pub async fn set_site_php_version(
     };
     if let Some(ref s) = site {
         let minor = core::php::minor_of(&s.php_version);
-        let mut mgr = state.services.lock().await;
-        if mgr.is_running() {
-            mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
-            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
-        }
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await?;
     }
     Ok(site)
 }
@@ -180,7 +204,8 @@ pub async fn delete_site(state: State<'_, AppState>, id: String) -> Result<bool>
         let removed = core::sites::teardown(&conn, state.platform.as_ref(), &id)?;
         (removed, core::sites::list(&conn)?)
     };
-    // Best-effort reload (no-op if services aren't running).
+    // Best-effort reload (no-op if services aren't running). A delete only
+    // REMOVES backends, so there are no readiness probes to await.
     let mut mgr = state.services.lock().await;
     let _ = mgr.reload(state.platform.as_ref(), &state.ca, &sites).await;
     Ok(removed)

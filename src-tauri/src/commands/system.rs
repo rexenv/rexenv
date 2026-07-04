@@ -201,11 +201,17 @@ pub async fn regenerate_certs(state: State<'_, AppState>) -> Result<u32> {
     }
     reissue(core::adminer::ADMINER_HOST)?;
 
-    // Reload the edge so Caddy serves the fresh certs (only if it's up).
-    let mut mgr = state.services.lock().await;
-    if mgr.is_running() {
-        mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
-    }
+    // Reload the edge so Caddy serves the fresh certs (only if it's up). Await
+    // any backend readiness with the services lock released (M4).
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+        } else {
+            Vec::new()
+        }
+    };
+    core::service_manager::await_ready(checks).await?;
     Ok(count)
 }
 

@@ -15,7 +15,7 @@
 //!
 //! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example multisite_wildcard_check`
 
-use rexenv_lib::core::service_manager::{Ports, ServiceManager};
+use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{binaries, services, sites, ssl, wordpress};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
@@ -89,7 +89,8 @@ async fn main() {
     println!("✓ converted to subdomain multisite; persisted mode = {}", updated.multisite.as_db());
 
     let sites_now = sites::list(&conn).unwrap();
-    mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    let checks = mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    service_manager::await_ready(checks).await.expect("backends ready");
 
     // Configs carry the wildcard host.
     let cfg_dir = plat.paths().config_dir().unwrap();

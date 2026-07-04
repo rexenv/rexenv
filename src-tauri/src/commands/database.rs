@@ -78,8 +78,13 @@ fn engine_from_key(key: &str) -> Result<DbEngine> {
 #[tauri::command]
 pub async fn start_database(state: State<'_, AppState>, key: String) -> Result<()> {
     let engine = engine_from_key(&key)?;
-    let mut mgr = state.services.lock().await;
-    mgr.ensure_db(state.platform.as_ref(), engine).await
+    // Spawn under the lock, await readiness with it released (M4) — a slow DB
+    // start doesn't block other service commands or the manager.
+    let check = {
+        let mut mgr = state.services.lock().await;
+        mgr.spawn_db(state.platform.as_ref(), engine).await?
+    };
+    crate::core::service_manager::await_ready(check.into_iter().collect()).await
 }
 
 /// Stop a running database engine.

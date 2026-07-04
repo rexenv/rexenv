@@ -58,8 +58,20 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   service no longer parks a tokio worker (up to 15s) — the worker yields to other tasks
   during the wait. The three call sites (`ensure_db`/`ensure_mailpit`/`reconcile_overrides`)
   `.await` it; the readiness test moved to `#[tokio::test]`. Verified: 120/120 lib tests.
-  NB: only the worker-parking half is fixed — the AppState mutex is still *held* across
-  the wait (inherent to the current lock granularity, a separate larger refactor).
+
+- [x] **M4-residual — services lock held across the readiness waits.** ✓ done. The spawn
+  phase is now split from the wait phase (same shape as the existing `prepare_edge`
+  two-phase pattern): `spawn_db`/`spawn_mailpit`/`reconcile_overrides` start children
+  under the lock (fast) and return `ReadyCheck` probes; `start_core`/`reload` bubble
+  them up, and the COMMANDS `await_ready(checks)` after dropping the services lock —
+  concurrently (worst case = slowest probe, not the sum), aggregating every failure
+  into one M3-style "named service + log" error. `create_site` additionally stops
+  holding the manager across the (long) WordPress install; `start_services` orders
+  edge start AFTER readiness so the edge never routes to still-starting backends.
+  `ensure_db` remains as spawn+await convenience (examples/tests). Verified: new
+  `await_ready_is_concurrent_and_names_every_failure` unit test (empty/ok batches,
+  both failures named + log hint kept, 4×500ms probes finish in ~1 probe's time) +
+  134/134 lib tests, clippy 0 (lib+examples), all examples compile.
 
 - [x] **M6 — Monitor refreshes all processes per service per poll**
   (`monitor.rs` + `commands/services.rs`, `commands/database.rs`). ✓ done. Split the

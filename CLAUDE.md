@@ -162,7 +162,11 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
   convert_multisite / teardown) · `setup` · `ports` · `monitor` (sysinfo) · `service_manager` (owns the
   whole stack: dbs, pools, overrides, mail, adminer, edge).
 - `state/`: `db` (migrations v1–v4) · `models` (incl. `Blueprint*`) · `store` (repo) · `app` (`AppState` =
-  db + platform + monitor + CA + `ServiceManager` + Terminals/Tunnels registries, behind an async Mutex).
+  db + platform + monitor + CA + `ServiceManager` + Terminals/Tunnels registries — **field-level locks**,
+  not one big mutex; only `ServiceManager` is behind an async Mutex, status polls read a `try_lock` cache).
+- **Locking rule (M4):** never hold the services lock across a wait — manager methods **spawn** under the
+  lock and return `ReadyCheck` probes; commands `await_ready(checks)` AFTER dropping it (concurrent,
+  M3-style named-service errors). Same two-phase shape as `prepare_edge` (privileged edge prompt).
 - `commands/` (thin): `system` (incl. DNS/SSL/autostart) · `sites` · `services` · `database` · `php` ·
   `settings` · `wordpress` · `mail` · `logs` · `terminal` · `tunnels` · `blueprints`.
 - `platform/macos/mod.rs`: all 9 trait impls real (incl. `AutostartManager`); `windows`/`linux` = `todo!()`.

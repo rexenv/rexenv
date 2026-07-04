@@ -10,7 +10,7 @@
 //!
 //! all HTTP 200, no docroot/cert/DB rebuild. Cleans up at the end.
 
-use rexenv_lib::core::service_manager::{Ports, ServiceManager};
+use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
@@ -66,7 +66,8 @@ async fn main() {
 
     // Switch → FrankenPHP.
     sites::set_web_server(&conn, &site.id, WebServer::Frankenphp).unwrap();
-    mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap()).await.expect("reload→fp");
+    let checks = mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap()).await.expect("reload→fp");
+    service_manager::await_ready(checks).await.expect("fp backend ready");
     std::thread::sleep(Duration::from_millis(1200));
     let (c1, v1) = fetch(&ca_pem);
     println!("frankenphp  → http={c1}  PHP {v1}");
@@ -74,7 +75,8 @@ async fn main() {
 
     // Switch back → Nginx.
     sites::set_web_server(&conn, &site.id, WebServer::Nginx).unwrap();
-    mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap()).await.expect("reload→nginx");
+    let checks = mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap()).await.expect("reload→nginx");
+    service_manager::await_ready(checks).await.expect("ready after switch back");
     std::thread::sleep(Duration::from_millis(1200));
     let (c2, v2) = fetch(&ca_pem);
     println!("nginx again → http={c2}  PHP {v2}  (same shared 8.3 pool — no per-server pool)");

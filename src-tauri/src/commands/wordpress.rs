@@ -319,10 +319,16 @@ pub async fn wp_multisite_convert(
         (updated, core::sites::list(&conn)?)
     };
     if site.is_some() {
-        let mut mgr = state.services.lock().await;
-        if mgr.is_running() {
-            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?;
-        }
+        // Await any backend readiness with the services lock released (M4).
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await?;
     }
     Ok(site)
 }

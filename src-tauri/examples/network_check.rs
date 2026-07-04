@@ -12,7 +12,7 @@
 //!
 //! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example network_check`
 
-use rexenv_lib::core::service_manager::{Ports, ServiceManager};
+use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{binaries, services, sites, ssl, wordpress};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
@@ -91,7 +91,8 @@ async fn main() {
     sites::convert_multisite(&conn, &php, &wp, &docroot, &site.id, MultisiteMode::Subdirectory)
         .expect("convert").expect("site exists");
     let sites_now = sites::list(&conn).unwrap();
-    mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    let checks = mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    service_manager::await_ready(checks).await.expect("backends ready");
     println!("✓ subdirectory network ready");
 
     // 1) Create a sub-site + list.

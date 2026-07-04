@@ -7,7 +7,7 @@
 //!
 //! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example multisite_check`
 
-use rexenv_lib::core::service_manager::{Ports, ServiceManager};
+use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{binaries, services, sites, ssl, wordpress};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
@@ -114,7 +114,8 @@ async fn main() {
 
     // Reload the edge from the updated site list → nginx gets the subdirectory template.
     let sites_now = sites::list(&conn).unwrap();
-    mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    let checks = mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    service_manager::await_ready(checks).await.expect("backends ready");
     let nginx_conf = plat.paths().config_dir().unwrap().join("nginx.conf");
     let conf = std::fs::read_to_string(&nginx_conf).unwrap();
     assert!(conf.contains("rewrite /wp-admin$"), "nginx.conf missing the subdirectory-multisite rewrite");

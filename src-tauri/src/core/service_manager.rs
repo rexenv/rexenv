@@ -121,22 +121,35 @@ impl ServiceManager {
             .ok_or_else(|| Error::Other("internal: binaries not resolved yet (ensure_bins must run first)".into()))
     }
 
-    /// Ensure a database engine is running (start it if we don't already manage
-    /// it), port-gated. Used by `start_all` (MySQL) and the Databases UI.
-    pub async fn ensure_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
+    /// Spawn a database engine if we don't already manage it (port-gated) and
+    /// return its readiness probe for the caller to [`await_ready`] AFTER
+    /// dropping the services lock (M4) — `None` if it was already running.
+    pub async fn spawn_db(
+        &mut self,
+        platform: &dyn Platform,
+        engine: DbEngine,
+    ) -> Result<Option<ReadyCheck>> {
         if self.dbs.contains_key(&engine) {
-            return Ok(());
+            return Ok(None);
         }
         ports::ensure_free(engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform).await?;
         self.dbs.insert(engine, child);
-        wait_until_ready(
-            engine.label(),
-            &stdout_log(platform, engine.key())?,
-            30,
-            || engine.running(),
-        )
-        .await?;
+        Ok(Some(ReadyCheck {
+            service: engine.label().to_string(),
+            log: stdout_log(platform, engine.key())?,
+            tries: 30,
+            probe: Box::new(move || engine.running()),
+        }))
+    }
+
+    /// Ensure a database engine is running: spawn + await readiness inline.
+    /// Convenience for examples/tests that hold no lock — commands use
+    /// [`Self::spawn_db`] and await with the services lock released.
+    pub async fn ensure_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
+        if let Some(check) = self.spawn_db(platform, engine).await? {
+            await_ready(vec![check]).await?;
+        }
         Ok(())
     }
 
@@ -179,8 +192,10 @@ impl ServiceManager {
     }
 
     /// Start the whole stack (idempotent per service). Convenience wrapper used by
-    /// examples/tests. The `start_services` command instead calls `start_core` +
-    /// `prepare_edge` so the privileged edge prompt doesn't hold the services lock.
+    /// examples/tests — it awaits readiness inline. The `start_services` command
+    /// instead calls `start_core` + [`await_ready`] + `prepare_edge` in separate
+    /// lock scopes so neither the readiness waits (M4) nor the privileged edge
+    /// prompt holds the services lock.
     pub async fn start_all(
         &mut self,
         platform: &dyn Platform,
@@ -188,7 +203,8 @@ impl ServiceManager {
         sites: &[Site],
         php_minors: &[String],
     ) -> Result<()> {
-        let caddyfile = self.start_core(platform, ca, sites, php_minors).await?;
+        let (caddyfile, checks) = self.start_core(platform, ca, sites, php_minors).await?;
+        await_ready(checks).await?;
         if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
             if plan.privileged {
                 proxy::start_privileged(platform, &plan.caddy_bin, &plan.caddyfile)?;
@@ -202,20 +218,25 @@ impl ServiceManager {
     }
 
     /// Start everything EXCEPT the Caddy edge (DBs, adminer, mailpit, php pools,
-    /// overrides, nginx) and return the generated Caddyfile path. Run under the
-    /// services lock; the caller then starts the (blocking, privileged) edge
-    /// WITHOUT the lock so status polls never block on it (see `prepare_edge`).
+    /// overrides, nginx) and return the generated Caddyfile path plus the batch
+    /// of readiness probes. Run under the services lock; the caller then (1)
+    /// [`await_ready`]s the probes and (2) starts the (blocking, privileged)
+    /// edge — both WITHOUT the lock, so neither a slow-starting service (M4)
+    /// nor the admin-password prompt blocks status polls or other commands
+    /// (see `prepare_edge`). Spawning is fast (spawn + insert handle); only the
+    /// waiting is deferred.
     pub async fn start_core(
         &mut self,
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
         sites: &[Site],
         php_minors: &[String],
-    ) -> Result<PathBuf> {
+    ) -> Result<(PathBuf, Vec<ReadyCheck>)> {
         self.ensure_bins(platform).await?;
+        let mut checks = Vec::new();
 
         // MySQL — the site stack needs it (started via the DB engine manager).
-        self.ensure_db(platform, DbEngine::Mysql).await?;
+        checks.extend(self.spawn_db(platform, DbEngine::Mysql).await?);
 
         // Adminer docroot (§5.2): download + stage `adminer.php` so the internal
         // vhost the configs reference is actually served.
@@ -223,7 +244,8 @@ impl ServiceManager {
 
         // Mailpit BEFORE the pools so each pool's config can route PHP `mail()` to
         // it (§2.2): resolves the binary (sets `mailpit_bin`) and starts the sink.
-        self.ensure_mailpit(platform).await?;
+        // The pools only need the BINARY path (sendmail shim), not a ready Mailpit.
+        checks.extend(self.spawn_mailpit(platform).await?);
         let sendmail = self.mailpit_bin.as_ref().map(|b| mail::sendmail_path(b));
         self.pools.set_sendmail_path(sendmail);
 
@@ -237,7 +259,7 @@ impl ServiceManager {
         self.pools.start(platform, &minors).await?;
 
         // Per-site override backends (FrankenPHP) for the current site set.
-        self.reconcile_overrides(platform, sites).await?;
+        checks.extend(self.reconcile_overrides(platform, sites).await?);
 
         let bins = self.bins()?;
 
@@ -257,7 +279,7 @@ impl ServiceManager {
             self.nginx = Some(services::start_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?);
         }
 
-        Ok(cfg.caddyfile)
+        Ok((cfg.caddyfile, checks))
     }
 
     /// Prepare the Caddy edge start. If the edge is stopped, clear any stale edge
@@ -307,11 +329,13 @@ impl ServiceManager {
         self.pools.ensure(platform, minor).await
     }
 
-    /// Ensure Mailpit is running (resolve its binary + spawn on first use),
-    /// port-gated on its SMTP + HTTP ports. Idempotent. Owns start lifecycle (§2.1).
-    pub async fn ensure_mailpit(&mut self, platform: &dyn Platform) -> Result<()> {
+    /// Spawn Mailpit if not already managed (resolve its binary on first use),
+    /// port-gated on its SMTP + HTTP ports. Returns its readiness probe for the
+    /// caller to [`await_ready`] once the services lock is dropped (M4);
+    /// `None` if it was already running. Owns start lifecycle (§2.1).
+    pub async fn spawn_mailpit(&mut self, platform: &dyn Platform) -> Result<Option<ReadyCheck>> {
         if self.mailpit.is_some() {
-            return Ok(());
+            return Ok(None);
         }
         ports::ensure_free(mail::MAILPIT_SMTP_PORT, ports::Proto::Tcp, "Mailpit (SMTP)")?;
         ports::ensure_free(mail::MAILPIT_HTTP_PORT, ports::Proto::Tcp, "Mailpit (HTTP)")?;
@@ -324,8 +348,12 @@ impl ServiceManager {
             }
         };
         self.mailpit = Some(mail::start(platform, &bin)?);
-        wait_until_ready("Mailpit", &stdout_log(platform, "mailpit")?, 20, mail::running).await?;
-        Ok(())
+        Ok(Some(ReadyCheck {
+            service: "Mailpit".to_string(),
+            log: stdout_log(platform, "mailpit")?,
+            tries: 20,
+            probe: Box::new(mail::running),
+        }))
     }
 
     /// Stop Mailpit if we manage it (no-op otherwise).
@@ -350,8 +378,14 @@ impl ServiceManager {
     /// Bring the running per-site override backends (FrankenPHP) in line with the
     /// site set: start one for each FrankenPHP site that isn't up, stop any whose
     /// site was deleted or switched away. Each backend listens on the site's
-    /// deterministic override port (`frankenphp::site_port`).
-    async fn reconcile_overrides(&mut self, platform: &dyn Platform, sites: &[Site]) -> Result<()> {
+    /// deterministic override port (`frankenphp::site_port`). Returns one
+    /// readiness probe per newly spawned backend — the caller [`await_ready`]s
+    /// them (concurrently) after dropping the services lock (M4).
+    async fn reconcile_overrides(
+        &mut self,
+        platform: &dyn Platform,
+        sites: &[Site],
+    ) -> Result<Vec<ReadyCheck>> {
         // Desired FrankenPHP backends: domain → (docroot, port, rewrite mode). The
         // rewrite mode is the site's real one (M5): a subdirectory-multisite override
         // needs WordPress's network rewrites, not the single-site default.
@@ -385,6 +419,7 @@ impl ServiceManager {
         }
 
         // Start backends that are wanted but not yet running.
+        let mut checks = Vec::new();
         for (domain, (docroot, port, rewrite)) in &desired {
             if self.overrides.contains_key(domain) {
                 continue;
@@ -394,28 +429,32 @@ impl ServiceManager {
             let conf = frankenphp::write_config(platform, domain, docroot, *port, *rewrite)?;
             let child = frankenphp::start(platform, &bin, domain, &conf)?;
             self.overrides.insert(domain.clone(), child);
-            wait_until_ready(
-                &format!("FrankenPHP ({domain})"),
-                &stdout_log(platform, &format!("frankenphp-{domain}"))?,
-                20,
-                || frankenphp::running(*port),
-            )
-            .await?;
+            let port = *port;
+            checks.push(ReadyCheck {
+                service: format!("FrankenPHP ({domain})"),
+                log: stdout_log(platform, &format!("frankenphp-{domain}"))?,
+                tries: 20,
+                probe: Box::new(move || frankenphp::running(port)),
+            });
         }
-        Ok(())
+        Ok(checks)
     }
 
     /// Reload the edge from the current site set (after create / delete / server
     /// switch): reconcile per-site override backends, then regenerate + reload
     /// Nginx and Caddy. The edge routes each site to its backend (shared Nginx or
-    /// its own override port) via `rebuild_configs`.
+    /// its own override port) via `rebuild_configs`. Returns the readiness probes
+    /// of any newly spawned backends — callers [`await_ready`] them after
+    /// dropping the services lock (M4). Until a backend is ready the edge may
+    /// briefly 502 that one site; the command still fails with the named-service
+    /// error (M3) if it never comes up.
     pub async fn reload(
         &mut self,
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
         sites: &[Site],
-    ) -> Result<()> {
-        self.reconcile_overrides(platform, sites).await?;
+    ) -> Result<Vec<ReadyCheck>> {
+        let checks = self.reconcile_overrides(platform, sites).await?;
         let bins = self
             .bins
             .as_ref()
@@ -430,7 +469,7 @@ impl ServiceManager {
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile)?;
-        Ok(())
+        Ok(checks)
     }
 
     /// Stop the whole stack.
@@ -636,6 +675,49 @@ impl Drop for ServiceManager {
 /// `std::thread::sleep` — the latter parks a tokio worker for up to `tries`×500ms
 /// while the AppState lock is held, starving unrelated tasks (M4). The `cond` probes
 /// are quick TCP checks and stay synchronous.
+/// A deferred readiness probe for a just-spawned service: everything
+/// [`await_ready`] needs to wait for it and to produce the M3 "named service +
+/// its log" timeout error. Produced by the spawn phase (run under the services
+/// lock), awaited by the caller AFTER dropping the lock — so a slow-starting
+/// service never parks the whole service manager (M4). Probes are pure port /
+/// socket checks and hold no reference to the manager.
+pub struct ReadyCheck {
+    service: String,
+    log: PathBuf,
+    tries: u32,
+    probe: Box<dyn Fn() -> bool + Send + Sync>,
+}
+
+/// Await a batch of [`ReadyCheck`]s CONCURRENTLY (worst case = the slowest
+/// single probe, not the sum) with no lock held. All probes run to completion
+/// so every failed service is named, then failures are joined into one error.
+/// An empty batch is `Ok` immediately.
+pub async fn await_ready(checks: Vec<ReadyCheck>) -> Result<()> {
+    if checks.is_empty() {
+        return Ok(());
+    }
+    let mut set = tokio::task::JoinSet::new();
+    for check in checks {
+        set.spawn(async move {
+            let ReadyCheck { service, log, tries, probe } = check;
+            wait_until_ready(&service, &log, tries, probe).await
+        });
+    }
+    let mut failures = Vec::new();
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => failures.push(e.to_string()),
+            Err(e) => failures.push(format!("readiness task failed: {e}")),
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Other(failures.join("; ")))
+    }
+}
+
 async fn wait_until(mut cond: impl FnMut() -> bool, tries: u32) -> bool {
     for _ in 0..tries {
         if cond() {
@@ -807,6 +889,41 @@ mod tests {
             .to_string();
         assert!(err.contains("MySQL"), "error names the service: {err}");
         assert!(err.contains("mysql-stdout.log"), "error names the log: {err}");
+    }
+
+    #[tokio::test]
+    async fn await_ready_is_concurrent_and_names_every_failure() {
+        let check = |service: &str, ok: bool| ReadyCheck {
+            service: service.into(),
+            log: PathBuf::from(format!("/var/log/{}-stdout.log", service.to_lowercase())),
+            tries: 1,
+            probe: Box::new(move || ok),
+        };
+
+        // Empty batch and an all-ready batch are Ok.
+        assert!(await_ready(Vec::new()).await.is_ok());
+        assert!(await_ready(vec![check("A", true), check("B", true)]).await.is_ok());
+
+        // Two never-ready probes: BOTH are named (all checks run to completion,
+        // no early abort), and the M3 log-path hint survives the join.
+        let err = await_ready(vec![check("MySQL", false), check("Mailpit", false), check("OK", true)])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("MySQL"), "first failure named: {err}");
+        assert!(err.contains("Mailpit"), "second failure named: {err}");
+        assert!(err.contains("mysql-stdout.log"), "log hint kept: {err}");
+        assert!(!err.contains("OK "), "ready service not reported as failed: {err}");
+
+        // Concurrency: N failing probes (500ms each) finish in ~one probe's time,
+        // not N× — the whole point of deferring the waits (M4).
+        let start = std::time::Instant::now();
+        let _ = await_ready((0..4).map(|i| check(&format!("S{i}"), false)).collect()).await;
+        assert!(
+            start.elapsed() < Duration::from_millis(1600),
+            "4×500ms probes ran concurrently, took {:?}",
+            start.elapsed()
+        );
     }
 
     #[test]
