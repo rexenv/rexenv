@@ -140,6 +140,9 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
   and app-data paths contain spaces) → Mailpit's `sendmail -t -S 127.0.0.1:1025` shim → SMTP sink.
 - **Tunnel discrimination:** behind the edge `REMOTE_ADDR` is always `127.0.0.1`, so loopback-only enforcement
   (e.g. the "Log in as" mu-plugin) keys off `CF-*` headers + leftmost `X-Forwarded-For` + `Host`, never the IP.
+- **Tunnel URL rewrite (§9.3):** `core/wp_tunnel` bakes the public origin into an auto-managed mu-plugin on
+  tunnel start (removed on stop) — CF-marked requests get `HTTP_HOST`/`HTTPS` overrides + siteurl/home/content
+  filters + an output-buffer rewrite (plain/JSON-escaped/%-encoded), local `.test` requests stay untouched.
 - **Multisite (§10):** mode in `sites.multisite` (migration v3) → `RewriteMode` (Phase 1 §6.2 templates);
   subdomain adds a wildcard `server_name`/Caddy host (`mysite.test, *.mysite.test`) over the per-site wildcard
   SAN cert — exact hosts still win, so it never shadows other `.test` sites.
@@ -156,7 +159,8 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 - `core/`: `binaries` · `dns` · `ssl` · `proxy` (Caddy edge + stale-edge recovery) ·
   `services` (nginx + php-fpm) · `php` (multi-version pools + registry) · `frankenphp` (per-site
   override backend) · `database` (MySQL) · `postgres` · `db` (`DbEngine` abstraction) · `wordpress` ·
-  `wp_login` (single-use loopback magic link) · `mail` (Mailpit + HTTP API) · `adminer` (internal vhost
+  `wp_login` (single-use loopback magic link) · `wp_tunnel` (public-URL rewrite while shared) ·
+  `mail` (Mailpit + HTTP API) · `adminer` (internal vhost
   + deep-link wrapper) · `logs` (per-service tail) · `terminal` (PTY) · `tunnels` (cloudflared) ·
   `blueprints` (apply preset) · `sites` (provision / rebuild_configs / set_php_version / set_web_server /
   convert_multisite / teardown) · `setup` · `ports` · `monitor` (sysinfo) · `service_manager` (owns the

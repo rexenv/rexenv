@@ -4,15 +4,26 @@
 //! tunnel can only be started for a real site (looked up by id) — internal
 //! tooling vhosts aren't sites, so they can never be shared.
 
-use crate::core::{binaries, services, tunnels};
+use crate::core::{binaries, services, tunnels, wp_tunnel};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
+use crate::state::models::{Site, SiteType};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::Child;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::State;
+
+/// Look up the site a tunnel command targets (brief DB lock).
+fn tunnel_site(state: &State<'_, AppState>, id: &str) -> Result<Site> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+    crate::core::sites::get(&conn, id)?.ok_or_else(|| Error::Other(format!("no site {id}")))
+}
 
 struct TunnelEntry {
     child: Child,
@@ -43,15 +54,8 @@ pub async fn start_tunnel(
     tunnels: State<'_, Tunnels>,
     id: String,
 ) -> Result<TunnelInfo> {
-    let domain = {
-        let conn = state
-            .db
-            .lock()
-            .map_err(|_| Error::Other("database lock poisoned".into()))?;
-        crate::core::sites::get(&conn, &id)?
-            .ok_or_else(|| Error::Other(format!("no site {id}")))?
-            .domain
-    };
+    let site = tunnel_site(&state, &id)?;
+    let domain = site.domain.clone();
 
     // Already sharing this site? Return the live URL.
     {
@@ -80,6 +84,21 @@ pub async fn start_tunnel(
         tokio::time::sleep(Duration::from_millis(300)).await;
     };
 
+    // WordPress: bake the public origin into the URL-rewrite mu-plugin so the
+    // whole site (admin, menus, permalinks, media, previews) is navigable from
+    // any device through the tunnel — not just on this machine (§9.2). Sharing
+    // without it is broken enough that a write failure fails the start.
+    if site.site_type == SiteType::Wordpress {
+        if let Err(e) = wp_tunnel::enable(Path::new(&site.path), &url) {
+            let _ = tunnels::stop(state.platform.as_ref(), child.id());
+            let mut c = child;
+            let _ = c.wait();
+            return Err(Error::Other(format!(
+                "tunnel started but the URL-rewrite mu-plugin could not be written: {e}"
+            )));
+        }
+    }
+
     tunnels
         .0
         .lock()
@@ -95,23 +114,22 @@ pub async fn stop_tunnel(
     tunnels: State<'_, Tunnels>,
     id: String,
 ) -> Result<()> {
-    let domain = {
-        let conn = state
-            .db
-            .lock()
-            .map_err(|_| Error::Other("database lock poisoned".into()))?;
-        crate::core::sites::get(&conn, &id)?
-            .ok_or_else(|| Error::Other(format!("no site {id}")))?
-            .domain
-    };
+    let site = tunnel_site(&state, &id)?;
     let entry = tunnels
         .0
         .lock()
         .map_err(|_| Error::Other("tunnel registry poisoned".into()))?
-        .remove(&domain);
+        .remove(&site.domain);
     if let Some(mut e) = entry {
         let _ = tunnels::stop(state.platform.as_ref(), e.child.id());
         let _ = e.child.wait();
+    }
+    // Best-effort: the tunnel is already down, so a leftover mu-plugin is inert
+    // (its dead URL receives no requests) — don't fail the stop over it.
+    if site.site_type == SiteType::Wordpress {
+        if let Err(e) = wp_tunnel::disable(Path::new(&site.path)) {
+            log::warn!("rexenv: could not remove the tunnel mu-plugin for {}: {e}", site.domain);
+        }
     }
     Ok(())
 }

@@ -376,6 +376,24 @@ service pattern, and gives WordPress work a place to see captured mail.
   active tunnel off-Tauri). Verified: dev screenshot shows the list with Acme active (URL + copy + open +
   Public badge, toggle on) and the others off; tsc + vite build clean. (commit pending)
 
+- [x] **9.3 Tunnel URL rewrite — full-site navigation through the public URL**
+  *Done when:* a WordPress site shared via a tunnel is fully navigable from any device: admin, menus,
+  post/page permalinks, previews, media and REST URLs all use the public `trycloudflare.com` origin for
+  requests that arrive through the tunnel, while local `.test` browsing stays untouched. Depends on 9.1.
+  ✓ New `core/wp_tunnel.rs`: an auto-managed mu-plugin (`rexenv-tunnel.php`) written on `start_tunnel` with
+  the public origin **baked in** (cloudflared rewrites `Host` back to the local domain via
+  `--http-host-header`, so PHP can't read the public origin from the request) and removed on `stop_tunnel`.
+  Tunnel requests are detected by the Cloudflare header set — the same set the §7.1 login mu-plugin denies on
+  (complementary). For those requests it overrides `HTTP_HOST`/`HTTPS` (kills the `redirect_canonical` loop,
+  scopes cookies to the public host), filters `option_siteurl`/`option_home`/`content_url`/`plugins_url`/
+  `upload_dir`, and `ob_start`-rewrites leftover local URLs in the output — plain, JSON-escaped (REST/inline
+  settings), and %-encoded — with a lookalike-safe host boundary. Origin validated (`https://` + plain host)
+  before being baked into PHP source. WP-only (gated on `SiteType::Wordpress`); WP-CLI runs untouched.
+  Verified: `cargo run --example tunnel_muplugin_check` — the REAL bundled PHP lints and executes the plugin:
+  local requests inert; CF-marked requests get host override + origin filters; the shutdown flush rewrites
+  plain/JSON-escaped/%-encoded URLs and leaves `mysite.tester.com` / `sub.mysite.test` alone. `cargo test
+  --lib` 137 pass, clippy (lib + examples) clean.
+
 ## 10. WordPress Multisite / Network (cross-cutting, highest-risk — PROJECT_SPEC §2.1)
 
 Last, once single-site WP management is solid. Exercises the **Phase 1 §6.2** rewrite-template slots and the

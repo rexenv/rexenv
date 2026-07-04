@@ -26,4 +26,5 @@ pub mod ssl;
 pub mod terminal;
 pub mod tunnels;
 pub mod wp_login;
+pub mod wp_tunnel;
 pub mod wordpress;
