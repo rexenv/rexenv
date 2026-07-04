@@ -92,7 +92,6 @@ pub fn run() {
             commands::system::app_info,
             commands::system::init_error,
             commands::system::global_status,
-            commands::system::port_status,
             commands::system::open_external,
             commands::system::dns_status,
             commands::system::system_setup,

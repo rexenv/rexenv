@@ -119,36 +119,11 @@ fn summarize(infos: &[crate::core::service_manager::ServiceInfo]) -> (u32, u32, 
     (running, total, summary)
 }
 
-/// One service's port availability (mirrors a frontend `PortStatus`).
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PortStatus {
-    pub service: String,
-    pub port: u16,
-    pub proto: String,
-    pub free: bool,
-}
-
 /// Open a path or URL in the OS default handler — Finder for a docroot, the
 /// default browser for an `http(s)` link (Phase 3 §1.3 Overview quick links).
 #[tauri::command]
 pub fn open_external(state: State<'_, AppState>, target: String) -> Result<()> {
     state.platform.shell().open(&target)
-}
-
-/// Probe rexenv's required ports (task 10.1) so the UI can warn about conflicts
-/// (e.g. another stack already on :443) before starting services.
-#[tauri::command]
-pub fn port_status() -> Vec<PortStatus> {
-    core::ports::check(&core::ports::default_ports())
-        .into_iter()
-        .map(|s| PortStatus {
-            service: s.service.to_string(),
-            port: s.port,
-            proto: s.proto.as_str().to_string(),
-            free: s.free,
-        })
-        .collect()
 }
 
 // ── DNS & SSL + autostart (Settings, §11.1) ──────────────────────────────────

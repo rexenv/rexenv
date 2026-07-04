@@ -113,6 +113,14 @@ impl ServiceManager {
         }
     }
 
+    /// The resolved binary set — a clean error (not a panic) if a caller runs a
+    /// bins-dependent step before `ensure_bins`.
+    fn bins(&self) -> Result<&Bins> {
+        self.bins
+            .as_ref()
+            .ok_or_else(|| Error::Other("internal: binaries not resolved yet (ensure_bins must run first)".into()))
+    }
+
     /// Ensure a database engine is running (start it if we don't already manage
     /// it), port-gated. Used by `start_all` (MySQL) and the Databases UI.
     pub async fn ensure_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
@@ -231,7 +239,7 @@ impl ServiceManager {
         // Per-site override backends (FrankenPHP) for the current site set.
         self.reconcile_overrides(platform, sites).await?;
 
-        let bins = self.bins.as_ref().expect("bins resolved");
+        let bins = self.bins()?;
 
         // Configs derived from all sites.
         let cfg = sites::rebuild_configs_for(
@@ -264,7 +272,7 @@ impl ServiceManager {
         if !matches!(self.caddy, CaddyHandle::Stopped) {
             return Ok(None);
         }
-        let bins = self.bins.as_ref().expect("bins resolved");
+        let bins = self.bins()?;
         // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
         // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
         // default :2019 admin is never touched (task 2.4 / M1).
