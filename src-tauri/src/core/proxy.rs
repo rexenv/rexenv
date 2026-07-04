@@ -165,8 +165,19 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
     // uid comes from our app-data dir's owner (the invoking user), so it works for any
     // account. `&&` keeps a failed `caddy start` a failure (the chown group's exit
     // code must not mask it); the chown/chmod are best-effort (`|| true`).
+    //
+    // `caddy start` MUST have its output redirected away from osascript's pipes: the
+    // detached `caddy run` it spawns inherits them and holds the write ends open for
+    // its whole lifetime, and `do shell script` waits for EOF — so without the
+    // redirect run_privileged blocks until the edge EXITS (the edge serves fine, but
+    // start_services never finishes and the edge reads as stopped). A log file keeps
+    // the start diagnostics without keeping the pipe; on failure it is replayed to
+    // stderr (the pipe is safe then — a failed start leaves no live child) so the
+    // surfaced error stays actionable.
+    let start_log = platform.paths().log_dir()?.join("caddy-start.log");
     let cmd = format!(
-        "{caddy} start --config {cfg} --adapter caddyfile && {{ \
+        "{caddy} start --config {cfg} --adapter caddyfile >{log} 2>&1 \
+         || {{ cat {log} 1>&2 ; exit 1 ; }} ; {{ \
          for i in 1 2 3 4 5 6 7 8 9 10; do [ -S {sock} ] && break; sleep 0.2; done ; \
          chown $(stat -f %u {appdata}) {sock} 2>/dev/null || true ; \
          chmod 600 {sock} 2>/dev/null || true ; }}",
@@ -174,6 +185,7 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
         cfg = sh_quote(caddyfile),
         sock = sh_quote(&sock),
         appdata = sh_quote(&appdata),
+        log = sh_quote(&start_log),
     );
     platform.privileges().run_privileged(&cmd)?;
     Ok(())
