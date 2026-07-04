@@ -11,6 +11,7 @@ import {
   autostartStatus,
   deleteBlueprint,
   dnsStatus,
+  getAppInfo,
   listBlueprints,
   listPhpVersions,
   openExternal,
@@ -639,8 +640,6 @@ function UninstallSetting() {
   );
 }
 
-const APP_VERSION = "0.1.0";
-
 /** The violet crown medallion (used by About). */
 function CrownBadge({ size }: { size: number }) {
   return (
@@ -666,6 +665,7 @@ function CrownBadge({ size }: { size: number }) {
 
 /** The About section — identity, version, links, credits. */
 function AboutSetting() {
+  const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
   const linkRow = (
     icon: React.ReactNode,
     color: string,
@@ -702,7 +702,7 @@ function AboutSetting() {
             rexenv
           </div>
           <div className="mt-1 font-mono text-[11.5px] text-rex-text-muted">
-            {APP_VERSION} (build 104) · macOS · Apple silicon
+            {info && `v${info.version} · ${info.platform}`}
           </div>
         </div>
         <div className="max-w-[380px] text-[12.5px] leading-[1.55] text-rex-text-muted">

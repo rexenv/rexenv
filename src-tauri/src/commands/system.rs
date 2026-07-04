@@ -13,6 +13,27 @@ pub struct AppInfo {
     pub name: String,
     pub version: String,
     pub tauri_version: String,
+    /// Human-readable OS + CPU, e.g. `macOS · Apple silicon` — derived from the
+    /// build target, not hardcoded, so it stays correct on Windows/Linux/Intel.
+    pub platform: String,
+}
+
+/// A friendly "OS · CPU" label from the compile-time target (`std::env::consts`).
+fn platform_label() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "macOS",
+        "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    };
+    let arch = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "Apple silicon",
+        ("macos", "x86_64") => "Intel",
+        (_, "aarch64") => "ARM64",
+        (_, "x86_64") => "x64",
+        (_, other) => other,
+    };
+    format!("{os} · {arch}")
 }
 
 /// Round-trip smoke test for the typed IPC bridge (Phase 1 task 0.5).
@@ -22,6 +43,7 @@ pub fn app_info() -> AppInfo {
         name: "rexenv".into(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         tauri_version: tauri::VERSION.to_string(),
+        platform: platform_label(),
     }
 }
 

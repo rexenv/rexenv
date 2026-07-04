@@ -8,6 +8,7 @@
  */
 import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteServing, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
+  mockAppInfo,
   mockDatabases,
   mockGlobalStatus,
   mockMailDetail,
@@ -28,8 +29,9 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(cmd, args);
 }
 
-/** Round-trip smoke test for the IPC bridge (task 0.5). */
+/** App name/version/platform for the About card. Mock fallback outside Tauri. */
 export async function getAppInfo(): Promise<AppInfo> {
+  if (!isTauri()) return mockAppInfo;
   return invoke<AppInfo>("app_info");
 }
 

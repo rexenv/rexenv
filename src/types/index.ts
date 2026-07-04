@@ -76,6 +76,8 @@ export interface AppInfo {
   name: string;
   version: string;
   tauriVersion: string;
+  /** Human-readable OS + CPU, e.g. "macOS · Apple silicon" (from the build target). */
+  platform: string;
 }
 
 /** Which group a service belongs to on the Services screen. */

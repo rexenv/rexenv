@@ -4,7 +4,18 @@ import { cn } from "@/lib/utils";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
 import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
-import { mockGlobalStatus } from "@/lib/mock";
+import type { GlobalStatus } from "@/types";
+
+/** Neutral placeholder until the first real `global_status` poll — all-zero so the
+ *  footer + nav badges never flash fake numbers on first paint. */
+const ZERO_STATUS: GlobalStatus = {
+  summary: "stopped",
+  running: 0,
+  total: 0,
+  cpuPercent: 0,
+  ramMb: 0,
+  ramTotalMb: 0,
+};
 
 /** A nav badge value: shown only when the count is > 0 (a nav full of "0"s is noise). */
 function badgeCount(n: number): string | undefined {
@@ -81,7 +92,7 @@ export function Sidebar() {
     queryKey: ["global-status"],
     queryFn: getGlobalStatus,
     refetchInterval: 2000,
-    initialData: mockGlobalStatus,
+    initialData: ZERO_STATUS,
   });
 
   // Live nav-badge counts. Each query reuses its screen's queryKey, so the cache is

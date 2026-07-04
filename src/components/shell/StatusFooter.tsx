@@ -98,11 +98,11 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
           </div>
 
           <div className="mb-3.5 flex flex-col gap-2.5">
-            <Meter label="CPU" value={`${status.cpuPercent}%`} pct={status.cpuPercent} />
+            <Meter label="CPU" value={`${status.cpuPercent.toFixed(1)}%`} pct={status.cpuPercent} />
             <Meter
               label="RAM"
               value={`${(status.ramMb / 1024).toFixed(1)} GB`}
-              pct={(status.ramMb / status.ramTotalMb) * 100}
+              pct={status.ramTotalMb ? (status.ramMb / status.ramTotalMb) * 100 : 0}
             />
           </div>
 

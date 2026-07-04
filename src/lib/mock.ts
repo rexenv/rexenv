@@ -2,7 +2,14 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { DbStatus, GlobalStatus, MailDetail, MailList, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
+
+export const mockAppInfo: AppInfo = {
+  name: "rexenv",
+  version: "0.1.0",
+  tauriVersion: "2",
+  platform: "macOS · Apple silicon",
+};
 
 export const mockSites: Site[] = [
   {

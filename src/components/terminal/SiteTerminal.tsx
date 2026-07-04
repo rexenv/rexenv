@@ -109,7 +109,7 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
       <div className="flex items-center justify-between border-b border-rex-border bg-rex-surface-1 px-3 py-2">
-        <span className="font-mono text-[11.5px] text-rex-text-muted">zsh · bundled php + wp on PATH</span>
+        <span className="font-mono text-[11.5px] text-rex-text-muted">bundled php + wp on PATH</span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => termRef.current?.clear()}

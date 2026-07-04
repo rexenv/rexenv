@@ -580,7 +580,6 @@ function UsersPanel({ siteId }: { siteId: string }) {
             <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
               <span className="flex-1">User</span>
               <span className="w-[120px]">Role</span>
-              <span className="w-[100px]">Last login</span>
               <span className="w-[84px]" />
             </div>
             {users.map((u) => (
@@ -624,8 +623,6 @@ function UserRow({ u, busy, onLoginAs }: { u: WpUser; busy: boolean; onLoginAs: 
           </span>
         )}
       </span>
-      {/* Last-login isn't in the WpUser DTO yet (TODO). */}
-      <span className="w-[100px] font-mono text-[11px] text-rex-text-dim">—</span>
       <button className={BTN + " flex w-[84px] items-center justify-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
         <LogIn className="h-3.5 w-3.5" />
         Log in

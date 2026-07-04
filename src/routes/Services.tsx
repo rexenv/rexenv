@@ -167,7 +167,7 @@ function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
             pct={(totalRam / RAM_BUDGET_MB) * 100}
           />
           <div className="mt-[5px] font-mono text-[10px] text-rex-text-label">
-            of 4.0 GB budget · stays light
+            of {(RAM_BUDGET_MB / 1024).toFixed(1)} GB budget · stays light
           </div>
         </div>
         <div className="flex items-center gap-[18px] border-l border-[#23262F] pl-4">
