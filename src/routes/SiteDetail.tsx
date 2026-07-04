@@ -256,7 +256,7 @@ function SiteHeader({
             Open in browser
           </Button>
           {isWordpress && (
-            <Button variant="primary" onClick={() => openExternal(`${url}/wp-admin`)}>
+            <Button variant="primary" onClick={() => openExternal(`${url}/wp-admin/`)}>
               <Settings className="h-[15px] w-[15px]" strokeWidth={1.7} />
               Open admin
             </Button>
@@ -392,7 +392,7 @@ function Overview({
                 icon={<ExternalLink className="h-4 w-4" />}
                 iconColor="text-[#7DB8D8]"
                 label="WP admin"
-                onClick={() => openExternal(`${url}/wp-admin`)}
+                onClick={() => openExternal(`${url}/wp-admin/`)}
               />
             )}
             <QuickTile

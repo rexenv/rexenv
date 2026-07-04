@@ -220,10 +220,15 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
         RewriteMode::SubdomainMultisite => format!("{d} *.{d}", d = site.domain),
         _ => site.domain.clone(),
     };
+    // `absolute_redirect off` → nginx issues RELATIVE redirects. It listens on an
+    // internal loopback port behind the Caddy edge, so an absolute redirect (e.g. the
+    // `/wp-admin` → `/wp-admin/` directory redirect) would otherwise leak
+    // `http://<host>:8088/…` to the browser and break the request.
     format!(
         "\n\tserver {{\n\
          \t\tlisten 127.0.0.1:{port};\n\
          \t\tserver_name {server_name};\n\
+         \t\tabsolute_redirect off;\n\
          \t\troot \"{root}\";\n\
          \t\tindex index.php index.html;\n\
          {rewrite}\
@@ -463,6 +468,9 @@ mod tests {
         assert!(cfg.contains("listen 127.0.0.1:8088;"));
         assert!(cfg.contains("server_name acme.test;"));
         assert!(cfg.contains("root \"/Sites/acme/public\";"));
+        // Relative redirects only, so nginx's internal :8088 never leaks to the browser
+        // on a directory redirect like /wp-admin → /wp-admin/.
+        assert!(cfg.contains("absolute_redirect off;"));
         assert!(cfg.contains("fastcgi_pass 127.0.0.1:9783;"));
         assert!(cfg.contains("fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;"));
         assert!(cfg.contains("try_files $uri $uri/ /index.php?$args;"));

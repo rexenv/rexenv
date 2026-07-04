@@ -212,7 +212,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                 <IconBtn title="Visit" onClick={() => openExternal(s.url)}>
                   <Globe className="h-3.5 w-3.5" />
                 </IconBtn>
-                <IconBtn title="Admin" onClick={() => openExternal(`${s.url.replace(/\/$/, "")}/wp-admin`)}>
+                <IconBtn title="Admin" onClick={() => openExternal(`${s.url.replace(/\/$/, "")}/wp-admin/`)}>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </IconBtn>
                 <button
