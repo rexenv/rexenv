@@ -90,18 +90,22 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 // no checksums; downloaded and hashed each artifact). The bulk build includes
 // mysqli (required by WordPress) + a wide extension set, unlike "common".
 // One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned together.
+// NOTE: upstream REBUILDS these artifacts in place (same URL, new bytes) — a
+// sudden checksum mismatch in the wild usually means a rebuild, not tampering.
+// On mismatch: download, verify (`php -v` version + `php -m` has mysqli, Mach-O
+// arch), then re-pin. 8.2/8.3 re-pinned 2026-07-05 after the 2026-07-01 rebuild.
 const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "b721271659d6e3448c29c0dc5755ffc4b8a1498c4709e1aba6602cfb584a84e4";
 const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "5fe69256365f96a270e34208ec574be7012c8c08a23bdf52948d0d16d4d8ec6a";
 const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "c5faad9eac5ce9753c30a17fb2a2023dcf72e5b367e0ac76b81d006647ea0e52";
 const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "eab87df298d83c8182f296e3f56ac4025cdb2a74baa4b6587d27ea39ac31b5e6";
-const PHP_8_2_31_CLI_MAC_ARM64_SHA256: &str = "6d200388047dcc1f6296775d54ff250dcbacf0afccb208b651c242de588b074e";
-const PHP_8_2_31_CLI_MAC_AMD64_SHA256: &str = "6eb5901e0ea85f621951a5813eeac88917e827e89f6a8ffc6b74234b184cefd3";
-const PHP_8_2_31_FPM_MAC_ARM64_SHA256: &str = "52043aa04dc70c929e3aebe306f5de77e18e7d3ffe6c28f0c7cd50f0958d6474";
-const PHP_8_2_31_FPM_MAC_AMD64_SHA256: &str = "aaca332df658e3a5e0d58e94980aae6c285e5cd7b6291192173224abebd75598";
-const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "058e11878840ad42eb5e59fe111eb49a712d512fad383b28aef1b8bbd498a44e";
-const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "15b6e94f4d5f1c7e3ba7a646095bfe4a7bdae8f7480c4129152096b4a6f1652e";
-const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "6b0605c82a8126e6431fce70cb9488fb35c35126eef238ece339e93afb356bc4";
-const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "08958f8c80a2c380eff1b7584fed09136fb1ce8b51a73981e382d255fc134b14";
+const PHP_8_2_31_CLI_MAC_ARM64_SHA256: &str = "f4ed44af2ad24588ba2ac1934bfaf794a923dd629fbc8958e37caabef9a592aa";
+const PHP_8_2_31_CLI_MAC_AMD64_SHA256: &str = "5e38df46d55b058765ea81c54b5368ce951cf2974591f42377d41b78426b75e0";
+const PHP_8_2_31_FPM_MAC_ARM64_SHA256: &str = "d2041fbb23cdfcedd4561edc76be81e2d2ea07e4e0d9a2033f224ef5a30954f1";
+const PHP_8_2_31_FPM_MAC_AMD64_SHA256: &str = "33984f891a586baa98ac847a224d050f294278dbc8953e84c2358aef1949c395";
+const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "8dd2089ced9f07165fe7d8c1789810547e27936b9d3b3075f91cf608dbf65bb9";
+const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "a3b39184563f7e53b7d53df94ec38ac02d69388aefec5bf7b5fd82d6061cc753";
+const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "1995f59e7eecfd7897e837929bdeb45fc277bad3d0375a228eaa74c0862188cb";
+const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "33e10b2eac7a478f913ed6ce6bfd7c10e0b8177ebf26747e9c8175408308d3eb";
 
 // jirutka/nginx-binaries SHA-256 (computed at pin time; cross-checked vs the
 // project's published SHA-1).
@@ -444,7 +448,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     }
 
     let bytes = http_get(&spec.url).await?;
-    verify_checksum(&bytes, &spec.checksum)?;
+    verify_checksum(&bytes, &spec.checksum, &spec.url)?;
 
     // Stage in a temp dir on the same filesystem, prepare it there, then publish
     // atomically — so a failed `set_executable`/`prepare_binary` (an unrelinkable
@@ -491,7 +495,7 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
         return Ok(path);
     }
     let bytes = http_get(&spec.url).await?;
-    verify_checksum(&bytes, &spec.checksum)?;
+    verify_checksum(&bytes, &spec.checksum, &spec.url)?;
     // Stage + publish atomically so an interrupted write never caches a truncated
     // script (task 2.5 / H4). No chmod/codesign — it's a script, not a Mach-O.
     let staging = staging_path(&bin_dir, name, version);
@@ -534,7 +538,7 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     }
 
     let bytes = http_get(&spec.url).await?;
-    verify_checksum(&bytes, &spec.checksum)?;
+    verify_checksum(&bytes, &spec.checksum, &spec.url)?;
     // Extract into a staging dir, then publish atomically — a download/extract that
     // fails partway never leaves a partial tree that later resolves accept via the
     // `bin/` short-circuit (task 2.5 / H4). MySQL's binaries are Oracle-signed +
@@ -645,7 +649,7 @@ async fn fetch_once(client: &reqwest::Client, url: &str) -> std::result::Result<
     }
 }
 
-fn verify_checksum(bytes: &[u8], checksum: &Checksum) -> Result<()> {
+fn verify_checksum(bytes: &[u8], checksum: &Checksum, url: &str) -> Result<()> {
     use sha2::{Digest, Sha256, Sha512};
     let (got, expected) = match checksum {
         Checksum::Sha256(hex) => {
@@ -663,7 +667,9 @@ fn verify_checksum(bytes: &[u8], checksum: &Checksum) -> Result<()> {
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "checksum mismatch: expected {expected}, got {got}"
+            "checksum mismatch for {url}: expected {expected}, got {got} — the \
+             upstream file changed (rebuilt release or tampering); rexenv needs \
+             an update with a re-verified pin"
         )))
     }
 }
@@ -1059,9 +1065,13 @@ mod tests {
         // SHA-256("abc") and SHA-512("abc")
         let s256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         let s512 = "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
-        assert!(verify_checksum(b"abc", &Checksum::Sha256(s256.into())).is_ok());
-        assert!(verify_checksum(b"abc", &Checksum::Sha512(s512.into())).is_ok());
-        assert!(verify_checksum(b"abcd", &Checksum::Sha256(s256.into())).is_err());
+        assert!(verify_checksum(b"abc", &Checksum::Sha256(s256.into()), "u").is_ok());
+        assert!(verify_checksum(b"abc", &Checksum::Sha512(s512.into()), "u").is_ok());
+        // A mismatch names the URL so the user knows WHICH download went stale.
+        let err = verify_checksum(b"abcd", &Checksum::Sha256(s256.into()), "https://x/y.tar.gz")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("https://x/y.tar.gz"), "{err}");
     }
 
     #[test]
