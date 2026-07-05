@@ -3177,6 +3177,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-log",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "uuid",
  "x509-parser",

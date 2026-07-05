@@ -19,6 +19,24 @@ pub const CA_KEY_FILE: &str = "rexenv-ca-key.pem";
 pub const SITE_CERT_FILE: &str = "cert.pem";
 pub const SITE_KEY_FILE: &str = "key.pem";
 
+/// Leaf (server) cert lifetime in days. Apple/WebKit rejects any TLS *leaf* whose
+/// validity exceeds **398 days** (macOS Big Sur+), surfacing as
+/// `CSSMERR_TP_CERT_SUSPENDED` — Safari fails to load even when the CA is trusted,
+/// while Chrome (which exempts locally-trusted roots) still works. Stay under the
+/// cap with margin. The CA *root* has no such lifetime limit.
+const LEAF_VALIDITY_DAYS: i64 = 397;
+
+/// Now-anchored leaf validity window (`not_before`, `not_after`), ≤398 days.
+/// Anchored to the system clock — fixed calendar dates would eventually fall
+/// outside the 398-day window or expire. 1-day back-date absorbs clock skew.
+fn leaf_validity_window() -> (time::OffsetDateTime, time::OffsetDateTime) {
+    let now = time::OffsetDateTime::now_utc();
+    (
+        now - time::Duration::days(1),
+        now + time::Duration::days(LEAF_VALIDITY_DAYS - 1),
+    )
+}
+
 /// Loaded CA material (PEM) plus its on-disk locations.
 #[derive(Debug, Clone)]
 pub struct LocalCa {
@@ -126,8 +144,10 @@ pub fn generate_site_cert(ca: &LocalCa, domain: &str) -> Result<(String, String)
     params.is_ca = IsCa::ExplicitNoCa;
     params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
-    params.not_before = date_time_ymd(2024, 1, 1);
-    params.not_after = date_time_ymd(2034, 1, 1);
+    // Leaf lifetime must stay ≤398 days or Safari/WebKit rejects it — see LEAF_VALIDITY_DAYS.
+    let (not_before, not_after) = leaf_validity_window();
+    params.not_before = not_before;
+    params.not_after = not_after;
 
     let site_key = KeyPair::generate().map_err(|e| Error::Other(format!("site keygen: {e}")))?;
     let cert = params
@@ -273,6 +293,24 @@ mod tests {
         assert!(sans.contains(&"*.mysite.test".to_string()), "sans: {sans:?}");
         // Signed by our CA.
         assert_eq!(issuer_cn(&cert_pem), "rexenv Local CA");
+    }
+
+    #[test]
+    fn site_cert_validity_stays_under_safari_398_day_cap() {
+        let (ca_cert, ca_key) = generate_ca().unwrap();
+        let ca = LocalCa {
+            cert_pem: ca_cert,
+            key_pem: ca_key,
+            cert_path: PathBuf::new(),
+            key_path: PathBuf::new(),
+        };
+        let (cert_pem, _) = generate_site_cert(&ca, "mysite.test").unwrap();
+        let (_, pem) = x509_parser::pem::parse_x509_pem(cert_pem.as_bytes()).unwrap();
+        let (_, cert) = x509_parser::parse_x509_certificate(&pem.contents).unwrap();
+        let v = cert.validity();
+        let span_days = (v.not_after.timestamp() - v.not_before.timestamp()) / 86_400;
+        // Apple/WebKit rejects leaves > 398 days (CSSMERR_TP_CERT_SUSPENDED).
+        assert!(span_days <= 398, "leaf validity {span_days} days exceeds Safari's 398-day cap");
     }
 
     #[test]
