@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { toast } from "@/lib/toast";
+import { toastBackendError } from "@/lib/toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -81,12 +81,12 @@ export function SiteDetail() {
   const switchPhp = useMutation({
     mutationFn: (version: string) => setSitePhpVersion(id!, version),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const switchServer = useMutation({
     mutationFn: (server: WebServer) => setSiteWebServer(id!, server),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   if (!site) {

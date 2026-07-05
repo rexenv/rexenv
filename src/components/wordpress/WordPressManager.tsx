@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toast } from "@/lib/toast";
+import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, Check, Download, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
@@ -137,12 +137,12 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   const sitesRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-network-sites", siteId] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const pluginRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const superRun = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
@@ -150,7 +150,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
       setAdmin("");
       qc.invalidateQueries({ queryKey: ["wp-super-admins", siteId] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const modeLabel = mode === "subdomain" ? "Subdomain" : "Subdirectory";
@@ -329,36 +329,36 @@ function ToolsPanel({ siteId }: { siteId: string }) {
   const toggleDebug = useMutation({
     mutationFn: (on: boolean) => wpDebugSet(siteId, on),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-debug", siteId] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const searchReplace = useMutation({
     mutationFn: () => wpSearchReplace(siteId, from.trim(), to.trim(), dryRun),
     onSuccess: (n) =>
       setSrResult(dryRun ? `${n} row(s) would change (dry run — nothing modified)` : `${n} row(s) changed`),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const flush = useMutation({
     mutationFn: () => wpRewriteFlush(siteId),
     onSuccess: () => toast.success("Permalinks regenerated."),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const coreUpdate = useMutation({
     mutationFn: () => wpCoreUpdate(siteId),
     onSuccess: (out) => setCoreOut(out),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const coreReinstall = useMutation({
     mutationFn: () => wpCoreReinstall(siteId),
     onSuccess: (out) => setCoreOut(out),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const adminLogin = useMutation({
     mutationFn: () => wpUserLoginUrl(siteId, 1),
     onSuccess: (url) => openExternal(url),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const working = coreUpdate.isPending || coreReinstall.isPending;
   // No backend yet for DB export / full reset — UI shells.
@@ -524,13 +524,13 @@ function UsersPanel({ siteId }: { siteId: string }) {
       setEmail("");
       qc.invalidateQueries({ queryKey: ["wp-users", siteId] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const loginAs = useMutation({
     mutationFn: (userId: number) => wpUserLoginUrl(siteId, userId),
     onSuccess: (url) => openExternal(url),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   return (
@@ -644,7 +644,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   const run = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const busy = run.isPending;
 
@@ -859,7 +859,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const busy = run.isPending;
 

@@ -10,6 +10,7 @@
 
 use crate::core::{db, dns, mail, php, proxy, services};
 use crate::error::{Error, Result};
+use crate::platform::traits::Platform;
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::time::Duration;
 
@@ -67,16 +68,33 @@ pub fn is_listening(port: u16) -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
 }
 
-/// Error if `port` is not free, naming the service so the message is actionable.
-pub fn ensure_free(port: u16, proto: Proto, service: &str) -> Result<()> {
+/// Error if `port` is not free — names the service, the process holding the
+/// port (when discoverable), and a copy-paste command that frees it, so the
+/// user can resolve the conflict without leaving the error message.
+///
+/// **Format contract with the frontend:** a suggested shell command, when
+/// present, is the last line and starts with `"$ "` — the toast layer parses
+/// it out to render a copyable command block.
+pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &str) -> Result<()> {
     if is_free(port, proto) {
-        Ok(())
-    } else {
-        Err(Error::Other(format!(
-            "port {port}/{} (needed by {service}) is already in use",
-            proto.as_str()
-        )))
+        return Ok(());
     }
+    let help = platform.supervisor().port_conflict_help(port, matches!(proto, Proto::Udp));
+    let by = match &help.holder {
+        Some(h) => format!(" by {h}"),
+        None => String::new(),
+    };
+    let mut msg = format!(
+        "port {port}/{} (needed by {service}) is already in use{by}.",
+        proto.as_str()
+    );
+    if let Some(cmd) = &help.free_command {
+        msg.push_str(&format!(
+            " To free it, run this in a terminal (it stops the process listening \
+             on port {port}), then start services again:\n$ {cmd}"
+        ));
+    }
+    Err(Error::Other(msg))
 }
 
 /// The canonical ports rexenv's services use, in startup order. One php-fpm port
@@ -129,9 +147,17 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         assert!(!is_free(port, Proto::Tcp));
         // The error must name the port + the service that needs it (§2.1).
-        let err = ensure_free(port, Proto::Tcp, "edge").unwrap_err().to_string();
+        let platform = crate::platform::current();
+        let err = ensure_free(&*platform, port, Proto::Tcp, "edge").unwrap_err().to_string();
         assert!(err.contains(&port.to_string()), "msg: {err}");
         assert!(err.contains("edge") && err.contains("in use"), "msg: {err}");
+        // macOS discovers the holder (this test process) + suggests a command
+        // on a `$ `-prefixed last line (the frontend's parsing contract).
+        #[cfg(target_os = "macos")]
+        {
+            assert!(err.contains(&format!("pid {}", std::process::id())), "msg: {err}");
+            assert!(err.lines().last().unwrap().starts_with("$ sudo kill"), "msg: {err}");
+        }
         drop(listener);
         assert!(is_free(port, Proto::Tcp));
     }

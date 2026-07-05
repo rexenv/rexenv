@@ -6,11 +6,14 @@ export interface Toast {
   id: number;
   message: string;
   kind: ToastKind;
+  /** Optional copyable shell command rendered as a code block (e.g. the
+   *  "free this port" one-liner from a port-conflict error). */
+  command?: string;
 }
 
 interface ToastState {
   toasts: Toast[];
-  push: (message: string, kind: ToastKind) => void;
+  push: (message: string, kind: ToastKind, command?: string) => void;
   dismiss: (id: number) => void;
 }
 
@@ -18,10 +21,11 @@ let nextId = 1;
 
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  push: (message, kind) => {
+  push: (message, kind, command) => {
     const id = nextId++;
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind }] }));
-    const ttl = kind === "error" ? 7000 : 4000;
+    set((s) => ({ toasts: [...s.toasts, { id, message, kind, command }] }));
+    // Toasts carrying a command stay long enough to read + copy it.
+    const ttl = command ? 30000 : kind === "error" ? 7000 : 4000;
     setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), ttl);
   },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
@@ -32,7 +36,23 @@ export const useToastStore = create<ToastState>((set) => ({
  * `window.alert`, which WKWebView (Tauri) doesn't reliably show.
  */
 export const toast = {
-  error: (message: string) => useToastStore.getState().push(message, "error"),
+  error: (message: string, command?: string) =>
+    useToastStore.getState().push(message, "error", command),
   success: (message: string) => useToastStore.getState().push(message, "success"),
   info: (message: string) => useToastStore.getState().push(message, "info"),
 };
+
+/**
+ * Show a backend error, extracting an embedded suggested command if present.
+ * Backend contract (`core/ports::ensure_free`): when an error carries a fix-it
+ * shell command, it is the LAST line and starts with `"$ "`.
+ */
+export function toastBackendError(e: unknown) {
+  const raw = String(e);
+  const nl = raw.lastIndexOf("\n$ ");
+  if (nl !== -1) {
+    toast.error(raw.slice(0, nl).trim(), raw.slice(nl + 3).trim());
+  } else {
+    toast.error(raw);
+  }
+}

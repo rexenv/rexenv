@@ -132,7 +132,7 @@ impl ServiceManager {
         if self.dbs.contains_key(&engine) {
             return Ok(None);
         }
-        ports::ensure_free(engine.port(), ports::Proto::Tcp, engine.label())?;
+        ports::ensure_free(platform, engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform).await?;
         self.dbs.insert(engine, child);
         Ok(Some(ReadyCheck {
@@ -275,7 +275,7 @@ impl ServiceManager {
 
         // Shared Nginx.
         if self.nginx.is_none() {
-            ports::ensure_free(self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
+            ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
             self.nginx = Some(services::start_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?);
         }
 
@@ -299,7 +299,7 @@ impl ServiceManager {
         // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
         // default :2019 admin is never touched (task 2.4 / M1).
         proxy::recover_stale_edge(platform, &bins.caddy)?;
-        ports::ensure_free(self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
+        ports::ensure_free(platform, self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
         Ok(Some(EdgePlan {
             privileged: self.ports.https < 1024,
             caddy_bin: bins.caddy.clone(),
@@ -337,8 +337,8 @@ impl ServiceManager {
         if self.mailpit.is_some() {
             return Ok(None);
         }
-        ports::ensure_free(mail::MAILPIT_SMTP_PORT, ports::Proto::Tcp, "Mailpit (SMTP)")?;
-        ports::ensure_free(mail::MAILPIT_HTTP_PORT, ports::Proto::Tcp, "Mailpit (HTTP)")?;
+        ports::ensure_free(platform, mail::MAILPIT_SMTP_PORT, ports::Proto::Tcp, "Mailpit (SMTP)")?;
+        ports::ensure_free(platform, mail::MAILPIT_HTTP_PORT, ports::Proto::Tcp, "Mailpit (HTTP)")?;
         let bin = match &self.mailpit_bin {
             Some(p) => p.clone(),
             None => {
@@ -424,7 +424,7 @@ impl ServiceManager {
             if self.overrides.contains_key(domain) {
                 continue;
             }
-            ports::ensure_free(*port, ports::Proto::Tcp, "FrankenPHP")?;
+            ports::ensure_free(platform, *port, ports::Proto::Tcp, "FrankenPHP")?;
             let bin = self.ensure_frankenphp_bin(platform).await?;
             let conf = frankenphp::write_config(platform, domain, docroot, *port, *rewrite)?;
             let child = frankenphp::start(platform, &bin, domain, &conf)?;

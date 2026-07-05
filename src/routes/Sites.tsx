@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { toast } from "@/lib/toast";
+import { toastBackendError } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Globe, FolderOpen, Database, LayoutDashboard, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
@@ -283,13 +283,13 @@ export function Sites() {
   const remove = useMutation({
     mutationFn: (site: Site) => deleteSite(site.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => renameSite(id, name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   // In-app modals (WKWebView doesn't support window.confirm/prompt reliably).

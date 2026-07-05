@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { toast } from "@/lib/toast";
+import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,7 @@ export function Mail() {
       setSelectedId(null);
       qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const running = !!mp?.running;

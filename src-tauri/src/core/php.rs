@@ -197,7 +197,7 @@ impl PhpFpmPools {
             .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
         let port =
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
-        ports::ensure_free(port, ports::Proto::Tcp, "PHP-FPM")?;
+        ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM")?;
         let bin = binaries::resolve(platform, "php-fpm", patch).await?;
         let conf = services::write_fpm_config(platform, minor, port, self.sendmail_path.as_deref())?;
         let child = services::start_fpm(platform, &bin, &conf)?;

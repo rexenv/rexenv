@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "@/lib/toast";
+import { toastBackendError } from "@/lib/toast";
 import { Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startServices, stopServices } from "@/lib/ipc";
@@ -66,7 +66,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
     },
     // Surface a busy-port / cancelled-prompt / download failure instead of
     // silently doing nothing (§2 robustness).
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   return (

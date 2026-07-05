@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toast } from "@/lib/toast";
+import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ export function Tunnels() {
       else await stopTunnel(id);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tunnels"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const active = sites.filter((s) => byDomain.get(s.domain)?.running).length;
@@ -46,7 +46,7 @@ export function Tunnels() {
       await Promise.all(ids.map((id) => stopTunnel(id)));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tunnels"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const stopAllBtn =

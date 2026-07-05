@@ -14,6 +14,7 @@
 //! Run: `cargo run --example robustness_check`
 
 use rexenv_lib::core::{binaries, ports};
+use rexenv_lib::platform;
 use std::net::{Ipv4Addr, TcpListener};
 use std::time::Instant;
 
@@ -22,7 +23,8 @@ async fn main() {
     // 2.1 — busy port.
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let port = listener.local_addr().unwrap().port();
-    let err = ports::ensure_free(port, ports::Proto::Tcp, "edge").unwrap_err().to_string();
+    let plat = platform::current();
+    let err = ports::ensure_free(&*plat, port, ports::Proto::Tcp, "edge").unwrap_err().to_string();
     println!("2.1 busy port → {err}");
     assert!(err.contains(&port.to_string()) && err.contains("edge") && err.contains("in use"));
     drop(listener);

@@ -27,7 +27,7 @@ async fn main() {
     std::fs::create_dir_all(&docroot).unwrap();
     std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n").unwrap();
 
-    if let Err(e) = ports::ensure_free(PORT, ports::Proto::Tcp, "FrankenPHP") {
+    if let Err(e) = ports::ensure_free(&*plat, PORT, ports::Proto::Tcp, "FrankenPHP") {
         eprintln!("port {PORT} busy: {e}");
         std::process::exit(1);
     }

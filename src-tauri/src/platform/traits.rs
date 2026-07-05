@@ -107,6 +107,24 @@ pub trait ProcessSupervisor: Send + Sync {
     fn owned_pids(&self, _marker: &str) -> Vec<u32> {
         Vec::new()
     }
+
+    /// Help for a port-conflict error: who is holding `port` (any process, not
+    /// just ours — this is diagnostic, never used to kill anything ourselves)
+    /// and a copy-paste shell command the USER can run to terminate the holder
+    /// (macOS/Linux: `lsof`+`kill`; Windows: `Get-NetTCPConnection`+`Stop-Process`).
+    /// Default: no help — the plain "port in use" error stands on its own.
+    fn port_conflict_help(&self, _port: u16, _udp: bool) -> PortConflictHelp {
+        PortConflictHelp { holder: None, free_command: None }
+    }
+}
+
+/// What [`ProcessSupervisor::port_conflict_help`] discovered about a busy port.
+#[derive(Debug, Clone, Default)]
+pub struct PortConflictHelp {
+    /// The listener, if discoverable without privileges — e.g. `nginx (pid 554)`.
+    pub holder: Option<String>,
+    /// A shell one-liner that stops whatever holds the port (run by the user).
+    pub free_command: Option<String>,
 }
 
 /// Registers / unregisters rexenv (or its services) to start on login/boot.

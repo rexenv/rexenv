@@ -19,7 +19,7 @@ async fn bring_up(
     plat: &dyn rexenv_lib::platform::traits::Platform,
     engine: DbEngine,
 ) -> Option<(u32, std::process::Child)> {
-    if let Err(e) = ports::ensure_free(engine.port(), ports::Proto::Tcp, engine.label()) {
+    if let Err(e) = ports::ensure_free(plat, engine.port(), ports::Proto::Tcp, engine.label()) {
         eprintln!("{} port busy: {e}", engine.label());
         return None;
     }

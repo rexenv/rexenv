@@ -1,4 +1,5 @@
-import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
+import { useState } from "react";
+import { AlertCircle, Check, CheckCircle2, Copy, Info, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToastStore, type ToastKind } from "@/lib/toast";
 
@@ -25,9 +26,12 @@ export function Toaster() {
             )}
           >
             <Icon className="mt-px h-4 w-4 flex-none" style={{ color }} strokeWidth={1.9} />
-            <span className="min-w-0 flex-1 break-words text-[12.5px] leading-[1.5] text-rex-text-bright">
-              {t.message}
-            </span>
+            <div className="min-w-0 flex-1">
+              <span className="break-words text-[12.5px] leading-[1.5] text-rex-text-bright">
+                {t.message}
+              </span>
+              {t.command && <CommandBlock command={t.command} />}
+            </div>
             <button
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss"
@@ -38,6 +42,36 @@ export function Toaster() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** A suggested fix-it shell command: monospace, horizontally scrollable, copyable. */
+function CommandBlock({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-2 flex items-center gap-1.5 rounded-[7px] border border-rex-border bg-rex-surface-2 py-1.5 pl-2.5 pr-1.5">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-[11px] leading-[1.5] text-rex-text-bright">
+        {command}
+      </code>
+      <button
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(command);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          } catch {
+            /* clipboard unavailable */
+          }
+        }}
+        aria-label="Copy command"
+        className={cn(
+          "flex h-6 w-6 flex-none items-center justify-center rounded transition-colors hover:bg-white/[0.07]",
+          copied ? "text-status-running-bright" : "text-rex-text-muted",
+        )}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
     </div>
   );
 }

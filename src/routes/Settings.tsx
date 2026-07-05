@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { toast } from "@/lib/toast";
+import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, promptText } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
@@ -123,7 +123,7 @@ function GeneralPrefsCard() {
   const setDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
@@ -133,7 +133,7 @@ function GeneralPrefsCard() {
       qc.invalidateQueries({ queryKey: ["sites-folder"] });
       qc.invalidateQueries({ queryKey: ["setting", SITES_DIR_KEY] });
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   return (
@@ -247,12 +247,12 @@ function PhpVersionsSetting() {
     mutationFn: ({ minor, installed }: { minor: string; installed: boolean }) =>
       setPhpVersionInstalled(minor, installed),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const makeDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const busyFor = (minor: string) =>
     (toggle.isPending && toggle.variables?.minor === minor) ||
@@ -322,12 +322,12 @@ function DnsSslSetting() {
   const trust = useMutation({
     mutationFn: trustLocalCa,
     onSuccess: () => setMsg("Local CA re-trusted in your login keychain."),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const regen = useMutation({
     mutationFn: regenerateCerts,
     onSuccess: (n) => setMsg(`Regenerated ${n} site certificate${n === 1 ? "" : "s"}.`),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const dnsActive = !!dns?.running && !!dns?.resolverInstalled;
@@ -430,7 +430,7 @@ function ServicePrefsCard() {
   const toggle = useMutation({
     mutationFn: (on: boolean) => setAutostart(on),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["autostart"] }),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const [stopIdle, setStopIdle] = useState(false);
 
@@ -505,12 +505,12 @@ function BlueprintsSetting() {
       setName(""); setPlugins(""); setThemes(""); setWpDebug(false); setMultisite("none");
       invalidate();
     },
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
   const remove = useMutation({
     mutationFn: (id: string) => deleteBlueprint(id),
     onSuccess: invalidate,
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   const add = () => {
@@ -604,7 +604,7 @@ function UninstallSetting() {
     mutationFn: uninstallSystem,
     onSuccess: () =>
       setMsg("System changes removed: services stopped, .test resolver deleted, local CA untrusted. You can now quit and delete rexenv."),
-    onError: (e) => toast.error(String(e)),
+    onError: (e) => toastBackendError(e),
   });
 
   return (

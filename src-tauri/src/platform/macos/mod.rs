@@ -314,6 +314,39 @@ impl ProcessSupervisor for MacosSupervisor {
             })
             .collect()
     }
+
+    fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
+        // `-i` selector for the port; UDP has no LISTEN state to filter on.
+        let (sel, state): (String, &[&str]) = if udp {
+            (format!("-iUDP:{port}"), &[])
+        } else {
+            (format!("-iTCP:{port}"), &["-sTCP:LISTEN"])
+        };
+        // Unprivileged lsof only sees this user's processes — a root-owned
+        // listener yields no holder, but the suggested command (run with sudo
+        // by the user) still finds and stops it.
+        let holder = std::process::Command::new("lsof")
+            .args(["-nP", &sel])
+            .args(state)
+            .arg("-t")
+            .output()
+            .ok()
+            .and_then(|o| {
+                let pid: u32 = String::from_utf8_lossy(&o.stdout).lines().next()?.trim().parse().ok()?;
+                let name = std::process::Command::new("ps")
+                    .args(["-p", &pid.to_string(), "-o", "comm="])
+                    .output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .filter(|n| !n.is_empty())?;
+                // Just the executable name, not its full path.
+                let name = name.rsplit('/').next().unwrap_or(&name).to_string();
+                Some(format!("{name} (pid {pid})"))
+            });
+        let free_command =
+            Some(format!("sudo kill $(sudo lsof -t {sel}{})", if udp { "" } else { " -sTCP:LISTEN" }));
+        PortConflictHelp { holder, free_command }
+    }
 }
 
 /// launchd label for the per-user LaunchAgent — the one canonical app identity.
