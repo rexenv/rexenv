@@ -71,6 +71,37 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
     }
 }
 
+/// Create a database if it doesn't exist, via the **bundled** `mysql` client
+/// (TCP to the loopback server, root/no password — the local-dev setup).
+/// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
+/// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
+/// must always use its own client from the extracted MySQL tree.
+pub fn create_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err(Error::Other(format!("invalid database name {name:?}")));
+    }
+    let out = std::process::Command::new(mysql_client_bin(basedir))
+        .args([
+            "--no-defaults",
+            "--protocol=TCP",
+            "--host=127.0.0.1",
+            &format!("--port={port}"),
+            "--user=root",
+            "-e",
+            &format!("CREATE DATABASE IF NOT EXISTS `{name}`"),
+        ])
+        .output()?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "creating database `{name}` failed (exit {:?}): {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )))
+    }
+}
+
 /// Start the shared MySQL server (foreground) via `ProcessSupervisor`.
 pub fn start(
     platform: &dyn Platform,
@@ -135,5 +166,13 @@ mod tests {
     #[test]
     fn mysql_running_false_on_closed_port() {
         assert!(!mysql_running(9));
+    }
+
+    #[test]
+    fn create_database_rejects_unsafe_names() {
+        let base = Path::new("/nonexistent");
+        for bad in ["", "wp;drop", "a`b", "a b", "a-b"] {
+            assert!(create_database(base, 13306, bad).is_err(), "accepted {bad:?}");
+        }
     }
 }

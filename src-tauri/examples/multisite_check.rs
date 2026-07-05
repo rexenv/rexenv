@@ -65,8 +65,8 @@ async fn main() {
 
     // Clean slate (re-runnable): drop any leftover DB + docroot from a prior run so
     // we genuinely start single-site before converting.
+    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
     {
-        let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
         let _ = std::process::Command::new(mysql_base.join("bin/mysql"))
             .args([
                 "-h127.0.0.1",
@@ -87,6 +87,7 @@ async fn main() {
         domain,
         "Network",
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
+        &mysql_base,
         &Default::default(),
     )
     .expect("install wordpress");

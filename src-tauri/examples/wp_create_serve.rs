@@ -78,6 +78,7 @@ async fn main() {
         &site.domain,
         &site.name,
         &db_host,
+        &mysql_base,
         &InstallOptions {
             admin_user: "owner".into(),
             admin_password: "rexenv-pw".into(),

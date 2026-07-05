@@ -491,6 +491,8 @@ pub struct WpInstall<'a> {
     pub db_name: &'a str,
     /// `host:port`, e.g. `127.0.0.1:13306`.
     pub db_host: &'a str,
+    /// Extracted MySQL tree (for the bundled `mysql` client that creates the DB).
+    pub mysql_basedir: &'a Path,
     /// Full site URL, e.g. `https://mysite.test`.
     pub url: &'a str,
     pub title: &'a str,
@@ -550,8 +552,16 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
         )?;
     }
 
-    // 3) Create the database (ignore "already exists").
-    let _ = wp_cli(php_bin, wp_phar, &["db", "create", &path], None);
+    // 3) Create the database (idempotent) with the BUNDLED mysql client.
+    //    `wp db create` shells out to a `mysql` found on PATH — absent in a
+    //    Finder-launched app — and its swallowed failure used to surface later
+    //    as `wp core install`'s "Cannot select database".
+    let port = opts
+        .db_host
+        .rsplit_once(':')
+        .and_then(|(_, p)| p.parse().ok())
+        .unwrap_or(super::database::MYSQL_PORT);
+    super::database::create_database(opts.mysql_basedir, port, opts.db_name)?;
 
     // 4) Install (single-site) if not already installed.
     let installed = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
@@ -578,7 +588,9 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
 /// One-click install for a provisioned site (Phase 3 §1.2): fill the install
 /// fields from `opts`, defaulting from `domain`/`name` where empty, and delegate
 /// to [`install_wordpress`]. The canonical URL is `https://<domain>`; the DB name
-/// is derived from the domain. `db_host` is `host:port` (e.g. `127.0.0.1:13306`).
+/// is derived from the domain. `db_host` is `host:port` (e.g. `127.0.0.1:13306`);
+/// `mysql_basedir` is the extracted MySQL tree (bundled client creates the DB).
+#[allow(clippy::too_many_arguments)] // flat mirror of the New Site dialog inputs
 pub fn install_for_site(
     php_bin: &Path,
     wp_phar: &Path,
@@ -586,6 +598,7 @@ pub fn install_for_site(
     domain: &str,
     name: &str,
     db_host: &str,
+    mysql_basedir: &Path,
     opts: &InstallOptions,
 ) -> Result<()> {
     let nonempty = |s: &str| !s.trim().is_empty();
@@ -609,6 +622,7 @@ pub fn install_for_site(
             docroot,
             db_name: &db_name,
             db_host,
+            mysql_basedir,
             url: &url,
             title: &title,
             admin_user: &admin_user,

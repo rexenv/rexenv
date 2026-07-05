@@ -70,8 +70,8 @@ async fn main() {
     // Real DB with tables to land in.
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
+    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
     {
-        let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
         let _ = Command::new(mysql_base.join("bin/mysql"))
             .args(["-h127.0.0.1", "-P13306", "-uroot", "-e", &format!("DROP DATABASE IF EXISTS {db_name}")])
             .status();
@@ -81,6 +81,7 @@ async fn main() {
     wordpress::install_for_site(
         &php, &wp, &docroot, domain, "DB Site",
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
+        &mysql_base,
         &Default::default(),
     )
     .expect("install wordpress");

@@ -73,6 +73,7 @@ async fn main() {
     // Install WordPress (MySQL is up now).
     let php = rexenv_lib::core::binaries::resolve(&*plat, "php", rexenv_lib::core::binaries::PHP_VERSION).await.unwrap();
     let wp = rexenv_lib::core::binaries::resolve_file(&*plat, "wp-cli", rexenv_lib::core::binaries::WP_CLI_VERSION).await.unwrap();
+    let mysql_base = rexenv_lib::core::binaries::resolve_dir(&*plat, "mysql", rexenv_lib::core::binaries::MYSQL_VERSION).await.unwrap();
     wordpress::install_for_site(
         &php,
         &wp,
@@ -80,6 +81,7 @@ async fn main() {
         domain,
         "WP Login",
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
+        &mysql_base,
         &Default::default(),
     )
     .expect("install wordpress");

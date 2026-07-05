@@ -82,6 +82,7 @@ async fn main() {
             docroot: &docroot,
             db_name: &db_name,
             db_host: &format!("127.0.0.1:{}", database::MYSQL_PORT),
+            mysql_basedir: &mysql_base,
             url: &url,
             title: "rexenv WP Demo",
             admin_user: "admin",

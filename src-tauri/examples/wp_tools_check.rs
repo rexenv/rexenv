@@ -63,6 +63,7 @@ async fn main() {
         domain,
         "WP Tools",
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
+        &mysql_base,
         &Default::default(),
     )
     .expect("install wordpress");

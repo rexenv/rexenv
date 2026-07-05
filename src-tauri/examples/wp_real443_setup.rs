@@ -51,6 +51,7 @@ async fn main() {
         docroot: std::path::Path::new(&site.path),
         db_name: &wordpress::db_name_for(domain),
         db_host: &format!("127.0.0.1:{}", database::MYSQL_PORT),
+        mysql_basedir: &mysql_base,
         url: &format!("https://{domain}"),
         title: "rexenv WP Demo",
         admin_user: "admin",

@@ -88,6 +88,9 @@ pub async fn create_site(
             binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
                 .await?;
         let db_host = format!("127.0.0.1:{}", DbEngine::Mysql.port());
+        let mysql_base =
+            binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION)
+                .await?;
         let docroot = Path::new(&created.path);
         core::wordpress::install_for_site(
             &php_bin,
@@ -96,6 +99,7 @@ pub async fn create_site(
             &created.domain,
             &created.name,
             &db_host,
+            &mysql_base,
             &wp.unwrap_or_default(),
         )?;
 
