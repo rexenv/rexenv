@@ -61,13 +61,20 @@ pub fn run() {
                     if let Err(e) = core::php::seed_registry(&conn) {
                         log::error!("php: failed to seed version registry: {e}");
                     }
-                    // Self-heal: clear rexenv-owned service orphans left by a prior
-                    // session (crash, or quitting while services ran detached) so we
-                    // boot to a clean baseline. Runs on a throwaway empty manager, so
-                    // it only stops things this session didn't start. Best-effort.
-                    core::service_manager::ServiceManager::default()
-                        .reconcile_startup(platform.as_ref());
-                    app.manage(state::app::AppState::new(conn, platform, ca));
+                    // Services OUTLIVE the app: closing rexenv doesn't stop the
+                    // stack, so adopt any rexenv-owned survivors into this session's
+                    // manager — status shows them running, Stop all works, Start all
+                    // skips them. (Replaces the old stop-orphans-at-boot behavior.)
+                    let sites = core::sites::list(&conn).unwrap_or_default();
+                    let state = state::app::AppState::new(conn, platform, ca);
+                    {
+                        let mut mgr = tauri::async_runtime::block_on(state.services.lock());
+                        let adopted = mgr.adopt_startup(state.platform.as_ref(), &sites);
+                        if adopted > 0 {
+                            log::info!("adopted {adopted} running service(s) from a prior session");
+                        }
+                    }
+                    app.manage(state);
                     None
                 }
                 (Err(e), _) => {

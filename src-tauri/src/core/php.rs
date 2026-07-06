@@ -10,11 +10,12 @@
 //! DB-agnostic (mirroring how `ServiceManager` is handed the site list).
 
 use crate::core::{binaries, ports, services};
+use crate::core::proc::Proc;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::{models::PhpVersion, store};
 use rusqlite::Connection;
-use std::process::Child;
+
 
 /// Base for per-version FPM ports: `9700 + major*10 + minor`, so 8.1 → 9781,
 /// 8.2 → 9782, 8.3 → 9783 (keeps the Phase-1 port for 8.3).
@@ -166,7 +167,7 @@ pub struct PoolStatus {
 struct Pool {
     minor: String,
     port: u16,
-    child: Child,
+    child: Proc,
 }
 
 /// Owns one php-fpm master per PHP version. Held by the `ServiceManager`.
@@ -204,9 +205,20 @@ impl PhpFpmPools {
         self.pools.push(Pool {
             minor: minor.to_string(),
             port,
-            child,
+            child: child.into(),
         });
         Ok(())
+    }
+
+    /// Adopt a pool master surviving from a prior app session (services outlive
+    /// the app; see `ServiceManager::adopt_startup`). The pool is then managed
+    /// exactly like a spawned one: listed in status, skipped by `ensure`,
+    /// stopped by `stop_all`.
+    pub fn adopt(&mut self, minor: &str, port: u16, pid: u32) {
+        if self.pools.iter().any(|p| p.minor == minor) {
+            return;
+        }
+        self.pools.push(Pool { minor: minor.to_string(), port, child: Proc::Adopted(pid) });
     }
 
     /// Ensure a pool is running for each minor in `minors`.
@@ -221,7 +233,7 @@ impl PhpFpmPools {
     pub fn stop_all(&mut self, platform: &dyn Platform) {
         for mut p in std::mem::take(&mut self.pools) {
             let _ = services::stop(platform, p.child.id());
-            let _ = p.child.wait();
+            p.child.wait();
         }
     }
 
@@ -251,7 +263,7 @@ impl Drop for PhpFpmPools {
     fn drop(&mut self) {
         // Best-effort SIGKILL so no pool is orphaned if stop_all wasn't called.
         for p in &mut self.pools {
-            let _ = p.child.kill();
+            p.child.kill();
         }
     }
 }

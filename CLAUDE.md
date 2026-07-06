@@ -134,6 +134,11 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 - **Edge recovery (§7.3):** before binding the edge, `proxy::recover_stale_edge` stops a leftover Caddy on
   `:2019` via the admin API (`caddy stop`) — works on a **root** edge with no privilege (admin API has no
   owner check), then errors clearly if the port still can't be freed.
+- **Services OUTLIVE the app:** closing rexenv does NOT stop the stack; on launch
+  `ServiceManager::adopt_startup` ADOPTS rexenv-owned survivors (ownership = our fixed port + app-data
+  marker on the cmdline → masters only; root edge via OUR admin unix socket) as pid-based `Proc::Adopted`
+  handles — status/Stop all/Start all treat them like spawned children. The old stop-orphans-at-boot
+  (`reconcile_startup`) remains only as an explicit cleanup path.
 - **Phase 3 fixed ports:** Mailpit SMTP `1025` / HTTP-API `8025` (`core/mail`). Adminer + the tunnel origin
   reuse the shared nginx + php-fpm stack (no new inbound port); `cloudflared` is outbound-only.
 - **Mail routing:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips bare quotes

@@ -15,6 +15,7 @@ use crate::platform::traits::Platform;
 use crate::state::models::{Site, SiteServing, WebServer};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use crate::core::proc::Proc;
 use std::process::Child;
 use std::time::Duration;
 
@@ -83,17 +84,17 @@ pub struct DbInfo {
 pub struct ServiceManager {
     bins: Option<Bins>,
     ports: Ports,
-    dbs: HashMap<DbEngine, Child>,
+    dbs: HashMap<DbEngine, Proc>,
     pools: php::PhpFpmPools,
     /// Per-site override backends (FrankenPHP), keyed by domain (§4.1).
-    overrides: HashMap<String, Child>,
+    overrides: HashMap<String, Proc>,
     /// FrankenPHP binary, resolved lazily on first override (avoids a download
     /// when no site uses it).
     frankenphp_bin: Option<PathBuf>,
-    nginx: Option<Child>,
+    nginx: Option<Proc>,
     caddy: CaddyHandle,
     /// Mailpit mail-catcher (§2.1), resolved + started lazily.
-    mailpit: Option<Child>,
+    mailpit: Option<Proc>,
     mailpit_bin: Option<PathBuf>,
 }
 
@@ -134,7 +135,7 @@ impl ServiceManager {
         }
         ports::ensure_free(platform, engine.port(), ports::Proto::Tcp, engine.label())?;
         let child = engine.start(platform).await?;
-        self.dbs.insert(engine, child);
+        self.dbs.insert(engine, child.into());
         Ok(Some(ReadyCheck {
             service: engine.label().to_string(),
             log: stdout_log(platform, engine.key())?,
@@ -157,7 +158,7 @@ impl ServiceManager {
     pub fn stop_db(&mut self, platform: &dyn Platform, engine: DbEngine) -> Result<()> {
         if let Some(mut child) = self.dbs.remove(&engine) {
             let _ = engine.stop(platform, child.id());
-            let _ = child.wait();
+            child.wait();
         }
         Ok(())
     }
@@ -173,7 +174,7 @@ impl ServiceManager {
                 // bare port-listen (a foreign/system DB on the port doesn't count),
                 // so status is honest and Stop acts only on ours (task 2.2 / H2).
                 running: self.dbs.contains_key(&engine) && engine.running(),
-                pid: self.dbs.get(&engine).map(Child::id),
+                pid: self.dbs.get(&engine).map(Proc::id),
             })
             .collect()
     }
@@ -276,7 +277,7 @@ impl ServiceManager {
         // Shared Nginx.
         if self.nginx.is_none() {
             ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
-            self.nginx = Some(services::start_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?);
+            self.nginx = Some(services::start_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?.into());
         }
 
         Ok((cfg.caddyfile, checks))
@@ -347,7 +348,7 @@ impl ServiceManager {
                 p
             }
         };
-        self.mailpit = Some(mail::start(platform, &bin)?);
+        self.mailpit = Some(mail::start(platform, &bin)?.into());
         Ok(Some(ReadyCheck {
             service: "Mailpit".to_string(),
             log: stdout_log(platform, "mailpit")?,
@@ -360,7 +361,7 @@ impl ServiceManager {
     pub fn stop_mailpit(&mut self, platform: &dyn Platform) -> Result<()> {
         if let Some(mut child) = self.mailpit.take() {
             let _ = mail::stop(platform, child.id());
-            let _ = child.wait();
+            child.wait();
         }
         Ok(())
     }
@@ -414,7 +415,7 @@ impl ServiceManager {
         for domain in stale {
             if let Some(mut child) = self.overrides.remove(&domain) {
                 let _ = frankenphp::stop(platform, child.id());
-                let _ = child.wait();
+                child.wait();
             }
         }
 
@@ -428,7 +429,7 @@ impl ServiceManager {
             let bin = self.ensure_frankenphp_bin(platform).await?;
             let conf = frankenphp::write_config(platform, domain, docroot, *port, *rewrite)?;
             let child = frankenphp::start(platform, &bin, domain, &conf)?;
-            self.overrides.insert(domain.clone(), child);
+            self.overrides.insert(domain.clone(), child.into());
             let port = *port;
             checks.push(ReadyCheck {
                 service: format!("FrankenPHP ({domain})"),
@@ -491,15 +492,15 @@ impl ServiceManager {
         self.pools.stop_all(platform);
         for (_domain, mut child) in std::mem::take(&mut self.overrides) {
             let _ = frankenphp::stop(platform, child.id());
-            let _ = child.wait();
+            child.wait();
         }
         for (engine, mut child) in std::mem::take(&mut self.dbs) {
             let _ = engine.stop(platform, child.id());
-            let _ = child.wait();
+            child.wait();
         }
         if let Some(mut c) = self.nginx.take() {
             let _ = services::stop(platform, c.id());
-            let _ = c.wait();
+            c.wait();
         }
         // Orphan sweep: kill any rexenv-owned process STILL on one of our managed
         // ports that the handle-based stops above missed — a survivor of an app
@@ -552,12 +553,97 @@ impl ServiceManager {
         }
     }
 
-    /// On app launch, clear rexenv-owned service orphans left by a PRIOR session
-    /// (a crash, or quitting the app while services ran detached) so we start from
-    /// a known-clean baseline: status is accurate and a later Start all won't hit
-    /// `port in use`. Best-effort and guarded to our own processes; a clean launch
-    /// with no orphans is a cheap no-op. Runs on a fresh (empty) manager, so it only
-    /// ever stops things we didn't start this session.
+    /// On app launch, ADOPT rexenv-owned services surviving from a prior session
+    /// instead of restarting or stopping them: closing the app is NOT a stop —
+    /// the stack keeps serving until the user explicitly stops it, and the next
+    /// launch picks the survivors back up (accurate status, Stop all works,
+    /// Start all skips them). Ownership-gated exactly like the orphan sweep: a
+    /// process must hold one of our fixed ports AND reference our app-data dir
+    /// on its command line (which matches only nginx/php-fpm MASTERS — workers
+    /// have rewritten titles — so stops stay graceful); the root edge, invisible
+    /// to unprivileged `lsof`, is adopted iff OUR admin unix socket answers.
+    /// Returns how many services were adopted.
+    pub fn adopt_startup(&mut self, platform: &dyn Platform, sites: &[Site]) -> u32 {
+        let marker = match platform.paths().app_data_dir() {
+            Ok(p) => p.display().to_string(),
+            Err(_) => return 0,
+        };
+        if marker.is_empty() {
+            return 0;
+        }
+        let owned = |port: u16| {
+            platform
+                .supervisor()
+                .owned_listeners(port, &marker)
+                .into_iter()
+                .min() // masters fork first → lowest pid (workers rarely match anyway)
+        };
+        let mut adopted = 0u32;
+
+        if self.nginx.is_none() {
+            if let Some(pid) = owned(self.ports.nginx) {
+                self.nginx = Some(Proc::Adopted(pid));
+                adopted += 1;
+            }
+        }
+        for minor in php::all_minors() {
+            if let Some(port) = php::fpm_port(&minor) {
+                if let Some(pid) = owned(port) {
+                    self.pools.adopt(&minor, port, pid);
+                    adopted += 1;
+                }
+            }
+        }
+        for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = self.dbs.entry(engine) {
+                if let Some(pid) = owned(engine.port()) {
+                    slot.insert(Proc::Adopted(pid));
+                    adopted += 1;
+                }
+            }
+        }
+        if self.mailpit.is_none() {
+            if let Some(pid) = owned(mail::MAILPIT_SMTP_PORT) {
+                self.mailpit = Some(Proc::Adopted(pid));
+                adopted += 1;
+            }
+        }
+        for site in sites.iter().filter(|s| matches!(s.web_server, WebServer::Frankenphp)) {
+            if !self.overrides.contains_key(&site.domain) {
+                if let Some(pid) = owned(frankenphp::site_port(&site.domain)) {
+                    self.overrides.insert(site.domain.clone(), Proc::Adopted(pid));
+                    adopted += 1;
+                }
+            }
+        }
+        // Root edge: adopted iff our admin unix socket (0600, under our config
+        // dir) accepts a connection — the same channel reload/stop already use.
+        if matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_alive(platform) {
+            self.caddy = CaddyHandle::Privileged;
+            adopted += 1;
+        }
+        // Adopted services imply cached binaries — wire up `bins` (stop_all's
+        // edge stop and `reload` need them) strictly offline: existence-checked
+        // paths, never a download at startup.
+        if adopted > 0 && self.bins.is_none() {
+            if let Ok(bin_dir) = platform.paths().bin_dir() {
+                let nginx =
+                    bin_dir.join(format!("nginx-{}", binaries::NGINX_VERSION)).join("nginx");
+                let caddy =
+                    bin_dir.join(format!("caddy-{}", binaries::CADDY_VERSION)).join("caddy");
+                if nginx.exists() && caddy.exists() {
+                    self.bins = Some(Bins { nginx, caddy });
+                }
+            }
+        }
+        adopted
+    }
+
+    /// Stop rexenv-owned service orphans left by a prior session — the explicit
+    /// cleanup path (NO LONGER run at boot; launch ADOPTS survivors instead, see
+    /// [`Self::adopt_startup`]). Best-effort and guarded to our own processes;
+    /// with no orphans it's a cheap no-op. Runs on a fresh (empty) manager, so it
+    /// only ever stops things this session didn't start.
     pub fn reconcile_startup(&self, platform: &dyn Platform) {
         self.stop_stale_owned(platform);
         // Also clear a leftover Caddy edge if its binary is already cached (no
@@ -589,7 +675,7 @@ impl ServiceManager {
                 name: engine.label().to_string(),
                 // Owned + alive, not a bare port-listen (task 2.2 / H2).
                 running: self.dbs.contains_key(&engine) && engine.running(),
-                pid: self.dbs.get(&engine).map(Child::id),
+                pid: self.dbs.get(&engine).map(Proc::id),
                 port: engine.port(),
             });
         }
@@ -612,7 +698,7 @@ impl ServiceManager {
         }
 
         // One row per per-site FrankenPHP override backend (sorted for stable display).
-        let mut overrides: Vec<(&String, &Child)> = self.overrides.iter().collect();
+        let mut overrides: Vec<(&String, &Proc)> = self.overrides.iter().collect();
         overrides.sort_by(|a, b| a.0.cmp(b.0));
         for (domain, child) in overrides {
             let port = frankenphp::site_port(domain);
@@ -628,7 +714,7 @@ impl ServiceManager {
             name: "Nginx".to_string(),
             // Owned (we hold the child) + alive, not a bare port-listen (task 2.2 / H2).
             running: self.nginx.is_some() && services::nginx_running(self.ports.nginx),
-            pid: self.nginx.as_ref().map(Child::id),
+            pid: self.nginx.as_ref().map(Proc::id),
             port: self.ports.nginx,
         });
         infos.push(ServiceInfo {
@@ -649,7 +735,7 @@ impl ServiceManager {
         infos.push(ServiceInfo {
             name: "Mailpit".to_string(),
             running: self.mailpit.is_some() && mail::running(),
-            pid: self.mailpit.as_ref().map(Child::id),
+            pid: self.mailpit.as_ref().map(Proc::id),
             port: mail::MAILPIT_HTTP_PORT,
         });
         infos
@@ -662,16 +748,16 @@ impl Drop for ServiceManager {
         // stop_all wasn't called. (A privileged-root Caddy can't be killed here;
         // the php-fpm pools clean themselves up via PhpFpmPools::drop.)
         for child in self.dbs.values_mut() {
-            let _ = child.kill();
+            child.kill();
         }
         for child in self.overrides.values_mut() {
-            let _ = child.kill();
+            child.kill();
         }
         if let Some(c) = &mut self.mailpit {
-            let _ = c.kill();
+            c.kill();
         }
         if let Some(c) = &mut self.nginx {
-            let _ = c.kill();
+            c.kill();
         }
         if let CaddyHandle::Child(c) = &mut self.caddy {
             let _ = c.kill();
