@@ -20,6 +20,15 @@ function token(name: string, fallback: string): string {
   return v || fallback;
 }
 
+function xtermTheme() {
+  return {
+    background: token("--rex-bg", "#0d0e12"),
+    foreground: token("--rex-text", "#e7e9ee"),
+    cursor: token("--rex-brand", "#7c5cff"),
+    selectionBackground: token("--rex-selection", "rgba(124, 92, 255, 0.3)"),
+  };
+}
+
 /** An interactive xterm.js terminal bound to a site's PTY session (§4.2). */
 export function SiteTerminal({ siteId }: { siteId: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -40,12 +49,7 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
       fontFamily: token("--rex-font-mono", "ui-monospace, monospace"),
       fontSize: 12,
       cursorBlink: true,
-      theme: {
-        background: token("--rex-bg", "#0d0e12"),
-        foreground: token("--rex-text", "#e7e9ee"),
-        cursor: token("--rex-brand", "#7c5cff"),
-        selectionBackground: token("--rex-selection", "rgba(124, 92, 255, 0.3)"),
-      },
+      theme: xtermTheme(),
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -85,8 +89,15 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
     });
     ro.observe(mount);
 
+    // Re-read token values when the app theme flips (data-theme on <html>).
+    const mo = new MutationObserver(() => {
+      term.options.theme = xtermTheme();
+    });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
     return () => {
       disposed = true;
+      mo.disconnect();
       ro.disconnect();
       onData.dispose();
       if (unlisten) unlisten();

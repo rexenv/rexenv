@@ -243,7 +243,7 @@ function CopyButton({ value }: { value: string }) {
         }
       }}
       className={cn(
-        "flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[11.5px] transition-colors hover:bg-white/[0.06]",
+        "flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[11.5px] transition-colors hover:bg-rex-hover-strong",
         copied ? "text-status-running-bright" : "text-rex-text-muted",
       )}
     >

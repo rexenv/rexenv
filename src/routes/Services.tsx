@@ -143,8 +143,7 @@ function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
   const totalRam = services.reduce((a, s) => a + s.ramMb, 0);
 
   return (
-    // Summary-card gradient endpoints are scene-fixed (Services.dc.html art), not palette tokens.
-    <div className="mb-[18px] rounded-[15px] border border-rex-panel-border bg-gradient-to-br from-[#171A21] to-[#121419] px-5 py-[18px]">
+    <div className="mb-[18px] rounded-[15px] border border-rex-panel-border bg-gradient-to-br from-rex-panel-grad-from to-rex-panel-grad-to px-5 py-[18px]">
       <div className="mb-4 flex items-center gap-[9px]">
         <span className="relative inline-flex h-2 w-2">
           <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />

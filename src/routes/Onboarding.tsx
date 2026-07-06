@@ -25,12 +25,12 @@ export function Onboarding() {
   const meta = STEP_META[step];
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[radial-gradient(130%_100%_at_50%_-10%,#1A1530,#0D0E12_60%)]">
+    <div className="relative flex h-full flex-col overflow-hidden bg-[radial-gradient(130%_100%_at_50%_-10%,var(--rex-hero-bg-from),var(--rex-hero-bg-to)_60%)]">
       {/* dotted texture + violet top aura */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
-          backgroundImage: "radial-gradient(circle at 1px 1px,rgba(255,255,255,.02) 1px,transparent 0)",
+          backgroundImage: "radial-gradient(circle at 1px 1px,var(--rex-texture-dot) 1px,transparent 0)",
           backgroundSize: "22px 22px",
         }}
       />
@@ -45,7 +45,7 @@ export function Onboarding() {
           <span
             key={i}
             className="h-[6px] rounded-full transition-all duration-300"
-            style={{ width: i === step ? "26px" : "6px", background: i <= step ? "var(--rex-brand)" : "#2A2E38" }}
+            style={{ width: i === step ? "26px" : "6px", background: i <= step ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
           />
         ))}
       </div>
@@ -85,12 +85,9 @@ export function Onboarding() {
   );
 }
 
-// The onboarding hero is a scene: its washes, gradients, and glass-chip alphas
-// are fixed dark-hero art from Onboarding.dc.html (they don't follow the theme),
-// so those stay literal; brand/crown/text identities below use tokens.
 function CrownHero() {
   return (
-    <div className="relative mb-[26px] flex h-[88px] w-[88px] animate-rex-float items-center justify-center rounded-[24px] border border-[#34304E] bg-gradient-to-br from-[#23263180] to-[#13151Bc0] shadow-[0_16px_44px_rgba(124,92,255,.34)] motion-reduce:animate-none">
+    <div className="relative mb-[26px] flex h-[88px] w-[88px] animate-rex-float items-center justify-center rounded-[24px] border border-rex-hero-chip-border bg-gradient-to-br from-rex-hero-chip-from to-rex-hero-chip-to shadow-[0_16px_44px_rgba(124,92,255,.34)] motion-reduce:animate-none">
       <div
         className="pointer-events-none absolute -inset-[14px] rounded-full blur-[8px]"
         style={{ background: "radial-gradient(circle,rgba(124,92,255,.4),transparent 68%)" }}
@@ -279,7 +276,7 @@ function DoneChip({ label }: { label: string }) {
 function Done() {
   return (
     <div className="flex flex-col items-center">
-      <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-status-running-border bg-gradient-to-br from-[#1A3322] to-[#13201A] shadow-[0_14px_38px_rgba(63,185,80,0.26)]">
+      <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-status-running-border bg-gradient-to-br from-rex-success-chip-from to-rex-success-chip-to shadow-[0_14px_38px_rgba(63,185,80,0.26)]">
         <div
           className="pointer-events-none absolute -inset-3 rounded-full blur-[7px]"
           style={{ background: "radial-gradient(circle,rgba(63,185,80,.32),transparent 68%)" }}

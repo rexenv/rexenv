@@ -29,6 +29,24 @@
   --rex-crown-gem: #b9a6ff; /* crown side gems */
   --rex-crown-gem-bright: #d7ccff; /* crown center gem (onboarding hero) */
 
+  /* ── Interaction fills (ghost hover/active — flip polarity per theme) ── */
+  --rex-hover: rgba(255, 255, 255, 0.05);
+  --rex-hover-strong: rgba(255, 255, 255, 0.07);
+  --rex-active: rgba(255, 255, 255, 0.085);
+
+  /* ── Scene gradients & textures (panels/hero chips that were dark-only) ── */
+  --rex-panel-grad-from: #171a21; /* services summary panel */
+  --rex-panel-grad-to: #121419;
+  --rex-hero-bg-from: #1a1530; /* onboarding hero wash */
+  --rex-hero-bg-to: #0d0e12;
+  --rex-hero-chip-border: #34304e; /* onboarding crown glass chip */
+  --rex-hero-chip-from: rgba(35, 38, 49, 0.5);
+  --rex-hero-chip-to: rgba(19, 21, 27, 0.75);
+  --rex-success-chip-from: #1a3322; /* onboarding "done" green chip */
+  --rex-success-chip-to: #13201a;
+  --rex-texture-dot: rgba(255, 255, 255, 0.02); /* onboarding dotted grid */
+  --rex-texture-stripe: rgba(255, 255, 255, 0.014); /* placeholder diagonal stripes */
+
   /* ── Text ── */
   --rex-text: #e7e9ee;
   --rex-text-bright: #c7cbd4;
@@ -175,12 +193,37 @@
   --rex-surface-1: #ffffff;
   --rex-surface-2: #f0f1f4;
   --rex-surface-3: #e6e8ed; /* raised rows / inputs-on-surface */
+  --rex-surface-2-hover: #e8eaef; /* secondary-button hover fill */
   --rex-well: #e8eaee; /* recessed track (meter background) */
 
   /* ── Borders ── */
   --rex-border: #d7dae1;
   --rex-border-subtle: #e3e5ea;
   --rex-border-strong: #c4c9d2;
+  --rex-border-strong-hover: #aeb5c2; /* secondary-button hover border */
+  --rex-crown-border: #d6dae3; /* crown mark border */
+  --rex-crown-chip-from: #ffffff; /* crown logo-chip gradient */
+  --rex-crown-chip-to: #eceef3;
+  --rex-crown-gem: #7c5cff; /* gems need saturation on a light chip */
+  --rex-crown-gem-bright: #6b4ae8;
+
+  /* ── Interaction fills (dark ink over light surfaces) ── */
+  --rex-hover: rgba(15, 18, 28, 0.05);
+  --rex-hover-strong: rgba(15, 18, 28, 0.08);
+  --rex-active: rgba(15, 18, 28, 0.1);
+
+  /* ── Scene gradients & textures ── */
+  --rex-panel-grad-from: #ffffff;
+  --rex-panel-grad-to: #f1f2f6;
+  --rex-hero-bg-from: #ebe7f7;
+  --rex-hero-bg-to: #f5f6f8;
+  --rex-hero-chip-border: #d5cdf0;
+  --rex-hero-chip-from: rgba(255, 255, 255, 0.9);
+  --rex-hero-chip-to: rgba(235, 231, 247, 0.85);
+  --rex-success-chip-from: #e3f4e8;
+  --rex-success-chip-to: #d2ecdc;
+  --rex-texture-dot: rgba(15, 18, 28, 0.04);
+  --rex-texture-stripe: rgba(15, 18, 28, 0.02);
 
   /* ── Text (descending emphasis, mirrors the dark scale) ── */
   --rex-text: #1b1e26;
@@ -188,8 +231,40 @@
   --rex-text-muted: #5a6170;
   --rex-text-dim: #767d8a;
   --rex-text-faint: #8b919d;
-  --rex-text-label: #9aa0ab; /* mono section labels */
+  --rex-text-label: #6d7482; /* mono section labels (darker: small type needs AA) */
   --rex-text-value: #3d4453; /* neutral value text in detail/summary rows */
+  --rex-text-hero: #17131f; /* display headings on the onboarding hero */
+  --rex-link: #17618f; /* mono URL links */
+  --rex-placeholder: #a6acb8; /* unbuilt-screen placeholder icon/label */
+  --rex-placeholder-hint: #8f95a1;
+  --rex-lock-secure: #5f6673; /* SSL: trusted (closed lock, neutral) */
+  --rex-lock-insecure: #9a6700; /* SSL: none (open lock, amber) */
+
+  /* ── Brand (nudged darker so violet text/fills hold AA on light) ── */
+  --rex-brand: #6b4ae8;
+  --rex-brand-hover: #7c5cff;
+  --rex-brand-strong: #5a38d6;
+  --rex-brand-light: #7c5cff;
+  --rex-brand-tint: #5a3fd0; /* on-tint text accents (was pale lavender) */
+
+  /* ── Status (darkened for AA text on light surfaces) ── */
+  --rex-running: #1a7f37;
+  --rex-running-bright: #116329;
+  --rex-stopped: #59636e;
+  --rex-error: #cf222e;
+  --rex-error-bright: #a40e26;
+  --rex-warning: #9a6700;
+  --rex-warning-bright: #8a5d00;
+
+  /* ── Accent hues (darkened for AA chip/badge text on light) ── */
+  --rex-accent-blue: #2e6f94;
+  --rex-accent-red: #bb3f38;
+  --rex-accent-periwinkle: #5a5fae;
+  --rex-accent-teal: #177a66;
+
+  /* ── Toggle tracks ── */
+  --rex-toggle-off: #d0d5dd;
+  --rex-toggle-off-border: #b9c2cf;
 
   /* ── Recessed wells (deep panels flatten to the light well scale) ── */
   --rex-well-deep: var(--rex-well);
@@ -199,4 +274,5 @@
   /* ── Elevation (softer, light-appropriate) ── */
   --rex-shadow-card: 0 18px 48px rgba(20, 22, 30, 0.12),
     0 6px 16px rgba(20, 22, 30, 0.08);
+  --rex-shadow-menu: 0 18px 44px rgba(20, 22, 30, 0.16);
 }

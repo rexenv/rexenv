@@ -247,7 +247,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
             {step === 2 && (
               <button
                 onClick={() => setStep(1)}
-                className="flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium text-rex-text-bright transition-colors hover:bg-white/[0.05]"
+                className="flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium text-rex-text-bright transition-colors hover:bg-rex-hover"
               >
                 <ChevronLeft className="h-[15px] w-[15px]" strokeWidth={2} />
                 Back
@@ -489,7 +489,7 @@ function Step2(p: {
               <button
                 onClick={() => p.setShowPassword(!p.showPassword)}
                 aria-label="Toggle password visibility"
-                className="flex h-7 w-7 flex-none items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-white/[0.06] hover:text-rex-text"
+                className="flex h-7 w-7 flex-none items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
               >
                 {p.showPassword ? <EyeOff className="h-[15px] w-[15px]" /> : <Eye className="h-[15px] w-[15px]" />}
               </button>

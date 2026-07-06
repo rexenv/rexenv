@@ -211,7 +211,7 @@ function SiteRow({
           <button
             type="button"
             aria-label="More actions"
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-white/[0.07] hover:text-rex-text"
+            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
           >
             <MoreVertical className="h-4 w-4" />
           </button>
@@ -375,8 +375,7 @@ export function Sites() {
           />
         ) : sites.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
-            {/* Empty-state chip gradient is scene-fixed (Sites Screen.dc.html art). */}
-            <div className="flex h-[60px] w-[60px] items-center justify-center rounded-2xl border border-[#2A2E39] bg-gradient-to-br from-[#1C2029] to-[#14161C] shadow-glow-crown">
+            <div className="flex h-[60px] w-[60px] items-center justify-center rounded-2xl border border-rex-crown-border bg-gradient-to-br from-rex-crown-chip-from to-rex-crown-chip-to shadow-glow-crown">
               <svg width="28" height="28" viewBox="0 0 24 24" className="block">
                 <path
                   d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"

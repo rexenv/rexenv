@@ -13,7 +13,7 @@ const buttonVariants = cva(
         secondary:
           "bg-rex-surface-2 text-rex-text border border-rex-border-strong hover:bg-rex-surface-2-hover hover:border-rex-border-strong-hover active:translate-y-px",
         ghost:
-          "text-rex-text-muted hover:bg-white/[0.045] hover:text-rex-text active:bg-white/[0.085] active:translate-y-px",
+          "text-rex-text-muted hover:bg-rex-hover hover:text-rex-text active:bg-rex-active active:translate-y-px",
         danger:
           "bg-danger text-white hover:bg-danger-hover active:bg-danger-active active:translate-y-px",
       },

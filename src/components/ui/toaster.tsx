@@ -35,7 +35,7 @@ export function Toaster() {
             <button
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss"
-              className="flex h-5 w-5 flex-none items-center justify-center rounded text-rex-text-muted transition-colors hover:bg-white/[0.07] hover:text-rex-text"
+              className="flex h-5 w-5 flex-none items-center justify-center rounded text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -66,7 +66,7 @@ function CommandBlock({ command }: { command: string }) {
         }}
         aria-label="Copy command"
         className={cn(
-          "flex h-6 w-6 flex-none items-center justify-center rounded transition-colors hover:bg-white/[0.07]",
+          "flex h-6 w-6 flex-none items-center justify-center rounded transition-colors hover:bg-rex-hover-strong",
           copied ? "text-status-running-bright" : "text-rex-text-muted",
         )}
       >

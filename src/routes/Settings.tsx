@@ -780,7 +780,7 @@ export function Settings() {
                   "flex items-center gap-2.5 rounded-[9px] px-[11px] py-[9px] text-left text-[13px] transition-colors",
                   active
                     ? "bg-brand-active text-brand-tint"
-                    : "text-rex-text-muted hover:bg-white/[0.04] hover:text-rex-text",
+                    : "text-rex-text-muted hover:bg-rex-hover hover:text-rex-text",
                 )}
               >
                 <Icon className="h-4 w-4 flex-none" strokeWidth={1.7} />
