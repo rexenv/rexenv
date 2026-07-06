@@ -24,11 +24,17 @@ pub fn run() {
                 )?;
             }
 
+            let platform = platform::current();
+
             // Start the embedded DNS resolver as a managed background task on a
-            // fixed loopback port. Held in app state so it lives for the app's
-            // lifetime and is aborted cleanly on exit (DnsService::drop). A bind
-            // failure is logged, not fatal — the app still runs.
-            match tauri::async_runtime::block_on(core::dns::DnsService::start_default()) {
+            // fixed loopback port, gated on ports::ensure_free (a conflict names
+            // the holder + a free-it command). Held in app state so it lives for
+            // the app's lifetime and is aborted cleanly on exit
+            // (DnsService::drop). A failure is logged, not fatal — the app
+            // still runs.
+            match tauri::async_runtime::block_on(core::dns::DnsService::start_default(
+                platform.as_ref(),
+            )) {
                 Ok(dns) => {
                     app.manage(dns);
                 }
@@ -44,7 +50,6 @@ pub fn run() {
 
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.
-            let platform = platform::current();
             // Fatal init: open the DB + load/create the CA. On failure `AppState` can't
             // be built — so we do NOT leave it unmanaged (every AppState command would
             // then panic with a cryptic "state not managed"). Instead we record a

@@ -149,8 +149,16 @@ impl DnsService {
         Ok(Self { addr: local, handle })
     }
 
-    /// Start on the fixed default loopback port (`DEFAULT_DNS_PORT`).
-    pub async fn start_default() -> Result<Self> {
+    /// Start on the fixed default loopback port (`DEFAULT_DNS_PORT`), gated on
+    /// `ports::ensure_free` like every other service — a conflict names the
+    /// holder and a command to free the port instead of a raw bind error.
+    pub async fn start_default(platform: &dyn Platform) -> Result<Self> {
+        crate::core::ports::ensure_free(
+            platform,
+            DEFAULT_DNS_PORT,
+            crate::core::ports::Proto::Udp,
+            "DNS resolver",
+        )?;
         Self::start(SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_DNS_PORT))).await
     }
 
@@ -221,6 +229,23 @@ mod tests {
         // …and free again once released.
         drop(held);
         assert!(!port_bound(port), "a released UDP port should read as free");
+    }
+
+    /// A conflict on the fixed resolver port must surface ports::ensure_free's
+    /// named error (port + "DNS resolver" + free-it help), not a raw bind error.
+    #[tokio::test]
+    async fn start_default_conflict_names_service_and_port() {
+        // Hold the fixed port ourselves; if an external process (e.g. a running
+        // rexenv) already holds it, the conflict exists either way.
+        let _held = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, DEFAULT_DNS_PORT)).ok();
+        let platform = crate::platform::current();
+        let err = match DnsService::start_default(platform.as_ref()).await {
+            Ok(_) => panic!("start_default must fail while the port is held"),
+            Err(e) => e.to_string(),
+        };
+        eprintln!("dns conflict error: {err}");
+        assert!(err.contains(&DEFAULT_DNS_PORT.to_string()), "msg: {err}");
+        assert!(err.contains("DNS resolver"), "msg: {err}");
     }
 
     /// Start the resolver on an ephemeral loopback port; return its address and
