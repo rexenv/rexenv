@@ -19,12 +19,12 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
     (live status, start/stop).
   - **Resource monitor** — live RAM/CPU for every supervised service (pools, FrankenPHP backends,
     DB engines).
-  - **Edge recovery** — a stale Caddy on `:2019` is auto-stopped via its admin API on startup
-    (no more `sudo pkill`).
+  - **Edge recovery** — a leftover rexenv Caddy is auto-stopped on startup via OUR private
+    admin unix socket (no more `sudo pkill`; see the unix-socket note below).
 - **Phase 3 — done** (per-task evidence in **TASKS-PHASE3.md**):
   - **WordPress Manager** — plugins/themes/users (incl. one-time, single-use, loopback-only
     "Log in as" magic link), Tools (WP_DEBUG, search-replace, permalinks, core update/reinstall).
-  - **Mailpit** — sendmail-shim → SMTP `:1025` sink; inbox UI reads its HTTP API `:8025`.
+  - **Mailpit** — sendmail-shim → SMTP `:11025` sink; inbox UI reads its HTTP API `:18025`.
   - **Adminer** — internal `adminer.rexenv.test` vhost (never a tunnel origin) + **per-site
     deep-link** wrapper (passwordless loopback auto-login straight into the site's DB).
   - **Logs viewer** (per-service tail) · **Terminal** (xterm + PTY, bundled `php`/`wp` on PATH).
@@ -101,7 +101,8 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
 ## Implementation notes (as built — macOS)
 - **Fixed loopback ports:** DNS `15353` (`DEFAULT_DNS_PORT`), shared Nginx `8088`, php-fpm `9783`,
   MySQL `13306`; edge Caddy on real `:80`/`:443`. Every service start is port-gated via
-  `core/ports::ensure_free`.
+  `core/ports::ensure_free` (incl. the DNS resolver) — a conflict names the holder + a
+  copy-paste free command.
 - **Pinned, checksum-locked binaries** (`core/binaries.rs`): Caddy `2.11.4`, PHP `8.3.31`
   (**static-php "bulk" build — "common" lacks `mysqli`, which WP requires**), Nginx `1.30.3`
   (jirutka static), MySQL `8.4.6` (official), WP-CLI `2.12.0`.
@@ -124,25 +125,31 @@ sharing — from one UI. **macOS first**, then Windows, then Linux.
   pool. Switching a site's version **or** server = config regen + reload, never a docroot/cert/DB rebuild.
 - **Per-site override (Phase 2):** **FrankenPHP `1.12.4`** (one static binary, embeds its OWN PHP — not the
   §1 pools) runs as a loopback backend on a per-site port in `8200..8300` (FNV-1a of the domain), with
-  `auto_https off` + `admin off` — it must never be the edge, never bind `:443`/`:2019`. The edge routes an
+  `auto_https off` + `admin off` — it must never be the edge, never bind `:443` or expose an admin
+  endpoint. The edge routes an
   override site's Host → its backend; default sites stay on the shared Nginx pool. `ServiceManager` owns the
   per-site backends (`reconcile_overrides` on start/reload).
 - **Databases (Phase 2):** `core/db.rs` `DbEngine` unifies engines (MySQL delegates to `core/database`).
   **PostgreSQL `18.4.0`** (theseus-rs portable, `TarGzTree`, runs unsigned on Apple Silicon) on `15432`,
   **TCP-only** (`unix_socket_directories=` empty — sidesteps macOS's ~104-char Unix-socket-path limit).
   MariaDB/Redis deferred (§7) — no clean macOS binary.
-- **Edge recovery (§7.3):** before binding the edge, `proxy::recover_stale_edge` stops a leftover Caddy on
-  `:2019` via the admin API (`caddy stop`) — works on a **root** edge with no privilege (admin API has no
-  owner check), then errors clearly if the port still can't be freed.
+- **Edge admin = unix socket, NOT TCP `:2019` (H5/M1):** the edge Caddy's admin API binds a private
+  unix socket (`<config>/caddy-admin.sock`, mode `0600`) — a TCP `:2019` admin on a root Caddy would
+  let any local process POST config = arbitrary file read/write as root. `reload`/`stop` drive
+  `caddy --address unix//…`. **Edge recovery** (`proxy::recover_stale_edge`): before binding, probe
+  OUR socket; a live leftover rexenv edge is stopped via `caddy stop` over it (no privilege needed),
+  then error clearly if `:443` still isn't free. A developer's own Caddy on TCP `:2019` (e.g. Herd's)
+  is never touched — rexenv neither binds nor queries TCP `2019` anywhere.
 - **Services OUTLIVE the app:** closing rexenv does NOT stop the stack; on launch
   `ServiceManager::adopt_startup` ADOPTS rexenv-owned survivors (ownership = our fixed port + app-data
   marker on the cmdline → masters only; root edge via OUR admin unix socket) as pid-based `Proc::Adopted`
   handles — status/Stop all/Start all treat them like spawned children. The old stop-orphans-at-boot
   (`reconcile_startup`) remains only as an explicit cleanup path.
-- **Phase 3 fixed ports:** Mailpit SMTP `1025` / HTTP-API `8025` (`core/mail`). Adminer + the tunnel origin
+- **Phase 3 fixed ports:** Mailpit SMTP `11025` / HTTP-API `18025` (`core/mail` — offset from Mailpit's
+  stock 1025/8025 so a standalone Mailpit/MailHog or Herd Pro's bundled Mailpit never clashes). Adminer + the tunnel origin
   reuse the shared nginx + php-fpm stack (no new inbound port); `cloudflared` is outbound-only.
 - **Mail routing:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips bare quotes
-  and app-data paths contain spaces) → Mailpit's `sendmail -t -S 127.0.0.1:1025` shim → SMTP sink.
+  and app-data paths contain spaces) → Mailpit's `sendmail -t -S 127.0.0.1:11025` shim → SMTP sink.
 - **Tunnel discrimination:** behind the edge `REMOTE_ADDR` is always `127.0.0.1`, so loopback-only enforcement
   (e.g. the "Log in as" mu-plugin) keys off `CF-*` headers + leftmost `X-Forwarded-For` + `Host`, never the IP.
 - **Tunnel URL rewrite (§9.3):** `core/wp_tunnel` bakes the public origin into an auto-managed mu-plugin on
