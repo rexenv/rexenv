@@ -27,13 +27,51 @@ pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
 ///     remote host;
 ///   - `loginForm()` auto-submits Adminer's OWN rendered form (which already
 ///     carries the CSRF token + CSP nonce) when `?rexenv_auto` is set, guarded by
-///     sessionStorage so a failed login can't loop.
+///     sessionStorage so a failed login can't loop;
+///   - `headers()`/`csp()` replace Adminer's blanket `X-Frame-Options: deny` with
+///     `frame-ancestors` scoped to the rexenv webview origins, so the in-app
+///     Database Browser `<iframe>` renders while any OTHER site framing this
+///     passwordless vhost (clickjacking from a page in the user's browser —
+///     `adminer.rexenv.test` resolves locally for them too) stays blocked;
+///   - a `header_register_callback` rewrites every `Set-Cookie` to
+///     `SameSite=None; Secure; Partitioned`: inside the app the iframe is a
+///     cross-site embed (webview origin ≠ `adminer.rexenv.test`), so Adminer's
+///     default `SameSite=lax` session/key cookies are withheld from the login
+///     POST and every login bounces back to the form. `Partitioned` (CHIPS)
+///     keeps the embedded jar isolated per top-level site, and Adminer's own
+///     CSRF token still guards every state-changing request.
 ///
 /// SECURITY: Adminer here is an INTERNAL vhost (`adminer.rexenv.test` → 127.0.0.1)
 /// behind the local edge and is NEVER a public tunnel origin (§9), so passwordless
 /// loopback access stays confined to the local machine.
 const WRAPPER_INDEX_PHP: &str = r#"<?php
 // rexenv Adminer deep-link wrapper (§11.4) — generated; do not edit by hand.
+
+// The Database Browser embeds this vhost in a cross-site <iframe> (webview
+// origin != adminer.rexenv.test), where SameSite=lax cookies are withheld and
+// the login POST loses its session. Rewrite every cookie to
+// "SameSite=None; Secure; Partitioned" at flush time (covers the PHP session
+// cookie and Adminer's own key/permanent cookies alike). CSRF stays covered by
+// Adminer's per-session token; framing stays limited by frame-ancestors below.
+header_register_callback(function () {
+    $rewritten = array();
+    foreach (headers_list() as $h) {
+        if (stripos($h, 'Set-Cookie:') === 0) {
+            $v = preg_replace('/;\s*SameSite=\w+/i', '', trim(substr($h, 11)));
+            if (stripos($v, 'secure') === false) {
+                $v .= '; Secure';
+            }
+            $rewritten[] = $v . '; SameSite=None; Partitioned';
+        }
+    }
+    if ($rewritten) {
+        header_remove('Set-Cookie');
+        foreach ($rewritten as $v) {
+            header('Set-Cookie: ' . $v, false);
+        }
+    }
+});
+
 function adminer_object() {
     if (!class_exists('RexenvAdminer')) {
         class RexenvAdminer extends \Adminer\Adminer {
@@ -48,10 +86,23 @@ function adminer_object() {
                     echo "<script" . \Adminer\nonce() . ">"
                        . "if(!sessionStorage.getItem('rexenv_autologin')){"
                        . "sessionStorage.setItem('rexenv_autologin','1');"
-                       . "var f=document.querySelector('input[name=\"auth[driver]\"]');"
+                       . "var f=document.querySelector('[name=\"auth[driver]\"]');"
                        . "if(f&&f.form){f.form.submit();}}"
                        . "</script>";
                 }
+            }
+            function headers() {
+                // Adminer hardcodes "X-Frame-Options: deny", which blanks the
+                // rexenv Database Browser <iframe>. Drop it; the csp() hook below
+                // re-adds frame protection scoped to the app's webview origins.
+                header_remove('X-Frame-Options');
+            }
+            function csp(array $csp) {
+                // Embeddable ONLY by the rexenv app webview (prod macOS/Linux,
+                // prod Windows, Vite dev) — every other ancestor stays blocked.
+                $csp[0]['frame-ancestors'] =
+                    'tauri://localhost https://tauri.localhost http://localhost:1420';
+                return $csp;
             }
         }
     }
@@ -115,5 +166,27 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains("\\Adminer\\nonce()"));
         // It serves the real Adminer beside it.
         assert!(WRAPPER_INDEX_PHP.contains("require __DIR__ . '/adminer.php'"));
+    }
+
+    #[test]
+    fn wrapper_allows_framing_only_from_the_app_webview() {
+        // Adminer's blanket deny is dropped (it blanks the in-app iframe)…
+        assert!(WRAPPER_INDEX_PHP.contains("header_remove('X-Frame-Options')"));
+        // …and replaced by frame-ancestors scoped to rexenv webview origins.
+        assert!(WRAPPER_INDEX_PHP.contains("function csp("));
+        assert!(WRAPPER_INDEX_PHP.contains("'frame-ancestors'"));
+        assert!(WRAPPER_INDEX_PHP.contains("tauri://localhost"));
+        assert!(WRAPPER_INDEX_PHP.contains("http://localhost:1420"));
+        // No wildcard — never embeddable by arbitrary origins.
+        assert!(!WRAPPER_INDEX_PHP.contains("frame-ancestors *"));
+    }
+
+    #[test]
+    fn wrapper_rewrites_cookies_for_the_cross_site_iframe() {
+        // SameSite=lax cookies are withheld from the embedded iframe's login
+        // POST; the wrapper rewrites them to None+Secure+Partitioned at flush.
+        assert!(WRAPPER_INDEX_PHP.contains("header_register_callback"));
+        assert!(WRAPPER_INDEX_PHP.contains("SameSite=None; Partitioned"));
+        assert!(WRAPPER_INDEX_PHP.contains("Secure"));
     }
 }
