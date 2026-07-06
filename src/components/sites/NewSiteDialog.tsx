@@ -130,9 +130,6 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const domainBase = domainEdited ? slug(domain) : slug(name);
   const effectiveDomain = domainBase ? `${domainBase}.test` : "";
   const isWordpress = siteType === "wordpress";
-  const domainTaken =
-    effectiveDomain !== "" && sites.some((s) => s.domain.toLowerCase() === effectiveDomain.toLowerCase());
-  const domainOk = effectiveDomain !== "" && !domainTaken;
 
   const create = useMutation({
     mutationFn: async () => {
@@ -153,6 +150,16 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
     },
     onError: (e) => toastBackendError(e),
   });
+
+  // The backend persists the site row BEFORE the WordPress install finishes, and
+  // the sidebar's 2s poll refreshes ["sites"] — so while the install runs, the
+  // domain being created would flag itself as "already in use". Freeze the check
+  // during the mutation; it resumes if creation fails.
+  const domainTaken =
+    !create.isPending &&
+    effectiveDomain !== "" &&
+    sites.some((s) => s.domain.toLowerCase() === effectiveDomain.toLowerCase());
+  const domainOk = effectiveDomain !== "" && !domainTaken;
 
   const canSubmit =
     name.trim() !== "" &&
