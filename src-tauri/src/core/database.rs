@@ -71,15 +71,18 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
     }
 }
 
-/// Create a database if it doesn't exist, via the **bundled** `mysql` client
-/// (TCP to the loopback server, root/no password — the local-dev setup).
-/// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
-/// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
-/// must always use its own client from the extracted MySQL tree.
-pub fn create_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
+/// Guard for identifiers we interpolate into SQL: DB names are derived from a
+/// validated site domain (`wordpress::db_name_for`), and this is the backstop.
+fn validate_db_name(name: &str) -> Result<()> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err(Error::Other(format!("invalid database name {name:?}")));
     }
+    Ok(())
+}
+
+/// Run one SQL statement via the **bundled** `mysql` client (TCP to the loopback
+/// server, root/no password — the local-dev setup). `what` labels the error.
+fn mysql_exec(basedir: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
     let out = std::process::Command::new(mysql_client_bin(basedir))
         .args([
             "--no-defaults",
@@ -88,18 +91,45 @@ pub fn create_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
             &format!("--port={port}"),
             "--user=root",
             "-e",
-            &format!("CREATE DATABASE IF NOT EXISTS `{name}`"),
+            sql,
         ])
         .output()?;
     if out.status.success() {
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "creating database `{name}` failed (exit {:?}): {}",
+            "{what} failed (exit {:?}): {}",
             out.status.code(),
             String::from_utf8_lossy(&out.stderr).trim()
         )))
     }
+}
+
+/// Create a database if it doesn't exist, via the bundled `mysql` client.
+/// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
+/// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
+/// must always use its own client from the extracted MySQL tree.
+pub fn create_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
+    validate_db_name(name)?;
+    mysql_exec(
+        basedir,
+        port,
+        &format!("CREATE DATABASE IF NOT EXISTS `{name}`"),
+        &format!("creating database `{name}`"),
+    )
+}
+
+/// Drop a site's database if it exists (site teardown). Same strict name rule
+/// as [`create_database`] — the caller passes only a name derived from the
+/// site's validated domain, so an arbitrary/other database can't be named.
+pub fn drop_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
+    validate_db_name(name)?;
+    mysql_exec(
+        basedir,
+        port,
+        &format!("DROP DATABASE IF EXISTS `{name}`"),
+        &format!("dropping database `{name}`"),
+    )
 }
 
 /// Start the shared MySQL server (foreground) via `ProcessSupervisor`.
@@ -173,6 +203,14 @@ mod tests {
         let base = Path::new("/nonexistent");
         for bad in ["", "wp;drop", "a`b", "a b", "a-b"] {
             assert!(create_database(base, 13306, bad).is_err(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn drop_database_rejects_unsafe_names() {
+        let base = Path::new("/nonexistent");
+        for bad in ["", "wp;drop", "a`b", "a b", "a-b", "*", "wp_x.y"] {
+            assert!(drop_database(base, 13306, bad).is_err(), "accepted {bad:?}");
         }
     }
 }

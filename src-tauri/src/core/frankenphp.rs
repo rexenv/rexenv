@@ -97,8 +97,24 @@ pub fn generate_config(docroot: &Path, port: u16, mode: RewriteMode) -> String {
     )
 }
 
+/// Per-site FrankenPHP config path (named per site so several backends coexist).
+pub fn config_path(platform: &dyn Platform, domain: &str) -> Result<PathBuf> {
+    Ok(platform
+        .paths()
+        .config_dir()?
+        .join(format!("frankenphp-{domain}.Caddyfile")))
+}
+
+/// Per-site FrankenPHP backend log (stdout+stderr).
+pub fn log_path(platform: &dyn Platform, domain: &str) -> Result<PathBuf> {
+    Ok(platform
+        .paths()
+        .log_dir()?
+        .join(format!("frankenphp-{domain}-stdout.log")))
+}
+
 /// Write the FrankenPHP config for `domain` (on `port`) under the config dir.
-/// Returns the config path. The file is named per site so several backends coexist.
+/// Returns the config path.
 pub fn write_config(
     platform: &dyn Platform,
     domain: &str,
@@ -106,9 +122,10 @@ pub fn write_config(
     port: u16,
     mode: RewriteMode,
 ) -> Result<PathBuf> {
-    let config_dir = platform.paths().config_dir()?;
-    std::fs::create_dir_all(&config_dir)?;
-    let conf = config_dir.join(format!("frankenphp-{domain}.Caddyfile"));
+    let conf = config_path(platform, domain)?;
+    if let Some(dir) = conf.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     std::fs::write(&conf, generate_config(docroot, port, mode))?;
     Ok(conf)
 }
@@ -128,10 +145,7 @@ pub fn start(
         "--adapter".to_string(),
         "caddyfile".to_string(),
     ];
-    let log = platform
-        .paths()
-        .log_dir()?
-        .join(format!("frankenphp-{domain}-stdout.log"));
+    let log = log_path(platform, domain)?;
     platform.supervisor().spawn_logged(frankenphp_bin, &args, &log)
 }
 

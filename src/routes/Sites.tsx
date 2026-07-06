@@ -464,7 +464,8 @@ export function Sites() {
           message={
             <>
               This permanently removes <span className="font-mono text-rex-text">{deleteTarget.domain}</span>,
-              its files, and its certificate. This can't be undone.
+              its files{deleteTarget.type === "wordpress" ? ", its database," : ""} and its
+              certificate. This can't be undone.
             </>
           }
           confirmLabel="Delete site"

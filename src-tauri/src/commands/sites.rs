@@ -199,10 +199,52 @@ pub async fn set_site_php_version(
     Ok(site)
 }
 
-/// Delete a site: remove its DB row, cert, and docroot, then reload the running
-/// stack so it stops being served. Returns whether it existed.
+/// Delete a site — complete cleanup: stop its public tunnel, drop its MySQL
+/// database, then tear down the DB row + cert + per-site configs/logs + docroot,
+/// and reload the running stack so it stops being served. Returns whether it
+/// existed. If the database drop fails the site is left intact (retryable) —
+/// never a silently orphaned database.
 #[tauri::command]
-pub async fn delete_site(state: State<'_, AppState>, id: String) -> Result<bool> {
+pub async fn delete_site(
+    state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
+    id: String,
+) -> Result<bool> {
+    let site = {
+        let conn = lock(&state)?;
+        core::sites::get(&conn, &id)?
+    };
+    let Some(site) = site else { return Ok(false) };
+
+    // 1) A deleted site must not stay publicly shared: kill its live tunnel
+    //    (registry keyed by domain; the mu-plugin goes away with the docroot).
+    tunnels.stop_for_domain(state.platform.as_ref(), &site.domain);
+
+    // 2) Drop the site's database. Only WordPress sites get one (`wp_<domain>`,
+    //    derived from the validated stored domain — `drop_database` re-validates
+    //    the name, so nothing else can be named). No per-site DB user exists to
+    //    remove (local-dev connects as passwordless root). Skipped entirely when
+    //    the MySQL datadir was never initialized (then no database can exist);
+    //    otherwise MySQL is brought up first, exactly like site creation does.
+    if matches!(site.site_type, SiteType::Wordpress)
+        && core::database::is_initialized(&core::database::data_dir(state.platform.as_ref())?)
+    {
+        let check = {
+            let mut mgr = state.services.lock().await;
+            mgr.spawn_db(state.platform.as_ref(), DbEngine::Mysql).await?
+        };
+        core::service_manager::await_ready(check.into_iter().collect()).await?;
+        let mysql_base =
+            binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION)
+                .await?;
+        core::database::drop_database(
+            &mysql_base,
+            DbEngine::Mysql.port(),
+            &core::wordpress::db_name_for(&site.domain),
+        )?;
+    }
+
+    // 3) Row + cert + per-site configs/logs + docroot.
     let (removed, sites) = {
         let conn = lock(&state)?;
         let removed = core::sites::teardown(&conn, state.platform.as_ref(), &id)?;

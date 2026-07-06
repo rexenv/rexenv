@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, frankenphp, php, proxy, services, ssl};
+use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{MultisiteMode, NewSite, ServiceStatus, Site, SiteType, WebServer};
@@ -178,11 +178,13 @@ pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Opt
     get(conn, id)
 }
 
-/// Full teardown of a site: remove its DB row, cert material, and docroot.
-/// Returns `false` if the site didn't exist. Does NOT rewrite the shared configs
-/// — call [`rebuild_configs`] + reload after so the site stops being served.
-/// (The docroot is only removed if it lives under our sites dir — a safety guard
-/// against deleting an arbitrary path.)
+/// Full teardown of a site: remove its DB row, cert material, per-site
+/// config/log artifacts, and docroot. Returns `false` if the site didn't exist.
+/// Does NOT rewrite the shared configs — call [`rebuild_configs`] + reload after
+/// so the site stops being served — and does NOT drop the site's MySQL database
+/// (that needs a running server + resolved binaries; `commands::delete_site`
+/// does it before calling here). (The docroot is only removed if it lives under
+/// our sites dir — a safety guard against deleting an arbitrary path.)
 pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<bool> {
     let site = match get(conn, id)? {
         Some(s) => s,
@@ -194,6 +196,20 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     // Remove the per-site cert dir (best-effort).
     let cert_dir = ssl::site_cert_dir(platform.paths(), &site.domain)?;
     let _ = std::fs::remove_dir_all(&cert_dir);
+
+    // Remove per-site config/log artifacts (best-effort): the FrankenPHP
+    // override config + log (if the site ever ran the override server) and the
+    // tunnel log (if it was ever shared). Paths come from the owning modules so
+    // the names can't drift.
+    if let Ok(conf) = frankenphp::config_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(conf);
+    }
+    if let Ok(log) = frankenphp::log_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    if let Ok(log) = tunnels::log_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(log);
+    }
 
     // Remove the docroot, but only if it's under a managed sites dir — the
     // configured one OR the app-data default (so changing the setting doesn't
@@ -544,14 +560,30 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn teardown_removes_row() {
+    fn teardown_removes_row_and_per_site_artifacts() {
         let conn = db::open_in_memory().unwrap();
         let platform = crate::platform::current();
         // sample() path is "~/Sites/<name>" (not under the sites dir), so the
         // docroot-removal guard skips it — the test won't touch real dirs.
         let site = create(&conn, sample("Teardown", "teardown.test")).unwrap();
+
+        // Plant the per-site config/log artifacts a site can accrue (FrankenPHP
+        // override config + log, tunnel log) and assert teardown sweeps them.
+        let artifacts = [
+            frankenphp::config_path(&*platform, &site.domain).unwrap(),
+            frankenphp::log_path(&*platform, &site.domain).unwrap(),
+            tunnels::log_path(&*platform, &site.domain).unwrap(),
+        ];
+        for p in &artifacts {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+
         assert!(teardown(&conn, &*platform, &site.id).unwrap());
         assert!(get(&conn, &site.id).unwrap().is_none());
+        for p in &artifacts {
+            assert!(!p.exists(), "orphaned artifact left behind: {}", p.display());
+        }
         // Deleting again is a no-op.
         assert!(!teardown(&conn, &*platform, &site.id).unwrap());
     }

@@ -34,6 +34,23 @@ struct TunnelEntry {
 #[derive(Default)]
 pub struct Tunnels(Mutex<HashMap<String, TunnelEntry>>);
 
+impl Tunnels {
+    /// Remove and kill a site's live tunnel; `true` if one was running. No-op
+    /// when the site isn't shared. Used by `stop_tunnel` and site deletion (a
+    /// deleted site must not stay publicly reachable).
+    pub fn stop_for_domain(&self, platform: &dyn crate::platform::traits::Platform, domain: &str) -> bool {
+        let entry = self.0.lock().ok().and_then(|mut m| m.remove(domain));
+        match entry {
+            Some(mut e) => {
+                let _ = tunnels::stop(platform, e.child.id());
+                let _ = e.child.wait();
+                true
+            }
+            None => false,
+        }
+    }
+}
+
 /// A tunnel's public status for the UI.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -115,15 +132,7 @@ pub async fn stop_tunnel(
     id: String,
 ) -> Result<()> {
     let site = tunnel_site(&state, &id)?;
-    let entry = tunnels
-        .0
-        .lock()
-        .map_err(|_| Error::Other("tunnel registry poisoned".into()))?
-        .remove(&site.domain);
-    if let Some(mut e) = entry {
-        let _ = tunnels::stop(state.platform.as_ref(), e.child.id());
-        let _ = e.child.wait();
-    }
+    tunnels.stop_for_domain(state.platform.as_ref(), &site.domain);
     // Best-effort: the tunnel is already down, so a leftover mu-plugin is inert
     // (its dead URL receives no requests) — don't fail the stop over it.
     if site.site_type == SiteType::Wordpress {
