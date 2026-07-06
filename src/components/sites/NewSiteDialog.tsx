@@ -393,14 +393,15 @@ function Step2(p: {
         <Field label="Domain">
           <div
             className={cn(
-              "flex h-9 items-center rounded-[9px] border bg-rex-well px-[11px]",
-              p.domainTaken ? "border-status-error" : "border-rex-border-strong focus-within:border-brand",
+              "flex h-9 items-center rounded-[9px] border bg-rex-well px-[11px] transition-colors",
+              "has-[input:focus]:shadow-[0_0_0_3px_var(--rex-focus-ring)]",
+              p.domainTaken ? "border-status-error" : "border-rex-border-strong has-[input:focus]:border-brand",
             )}
           >
             <input
               value={p.domainBase}
               onChange={(e) => p.onDomainBase(e.target.value.replace(/\.test$/, ""))}
-              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
             />
             <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.test</span>
             {p.domainOk && <Check className="ml-2 h-[15px] w-[15px] flex-none text-status-running" strokeWidth={2} />}
@@ -477,13 +478,13 @@ function Step2(p: {
             </Field>
           </div>
           <Field label="Admin password">
-            <div className="flex h-9 items-center rounded-[9px] border border-rex-border-strong bg-rex-well pl-[11px] pr-1.5 focus-within:border-brand">
+            <div className="flex h-9 items-center rounded-[9px] border border-rex-border-strong bg-rex-well pl-[11px] pr-1.5 transition-colors has-[input:focus]:border-brand has-[input:focus]:shadow-[0_0_0_3px_var(--rex-focus-ring)]">
               <input
                 type={p.showPassword ? "text" : "password"}
                 value={p.adminPassword}
                 placeholder="••••••••"
                 onChange={(e) => p.setAdminPassword(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none"
+                className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
               />
               <button
                 onClick={() => p.setShowPassword(!p.showPassword)}
