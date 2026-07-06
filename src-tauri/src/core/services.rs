@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn fpm_config_pins_sendmail_path_when_given() {
-        let shim = "'/opt/mailpit' sendmail -t -S 127.0.0.1:1025";
+        let shim = "'/opt/mailpit' sendmail -t -S 127.0.0.1:11025";
         let cfg = generate_fpm_config(
             9783,
             Path::new("/run/php-fpm-8.3.pid"),

@@ -1,7 +1,9 @@
 //! core::mail — Mailpit mail-catching service (Phase 3 §2.1).
 //!
 //! Mailpit is a single static Go binary that runs an SMTP sink plus a web UI /
-//! HTTP API. We bind both to loopback on fixed ports (SMTP 1025, HTTP/API 8025)
+//! HTTP API. We bind both to loopback on fixed ports (SMTP 11025, HTTP/API
+//! 18025 — offset from Mailpit's stock 1025/8025 so we never clash with a
+//! standalone Mailpit/MailHog or Herd Pro's bundled Mailpit)
 //! and persist captured mail to a SQLite file under app-data so it survives
 //! restarts. Supervised like the other services via `ProcessSupervisor`.
 //! Platform-agnostic: talks to `platform/` traits only.
@@ -15,9 +17,11 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 
 /// SMTP bind port — where php-fpm's sendmail shim delivers (§2.2).
-pub const MAILPIT_SMTP_PORT: u16 = 1025;
+/// NOT Mailpit's stock 1025: rexenv-offset, like every other internal port.
+pub const MAILPIT_SMTP_PORT: u16 = 11025;
 /// HTTP port — the web UI and the REST API (`/api/v1/…`), and our health probe.
-pub const MAILPIT_HTTP_PORT: u16 = 8025;
+/// NOT Mailpit's stock 8025: rexenv-offset, like every other internal port.
+pub const MAILPIT_HTTP_PORT: u16 = 18025;
 
 /// Mailpit's persistent message store under app-data.
 pub fn data_dir(platform: &dyn Platform) -> Result<PathBuf> {
@@ -304,7 +308,7 @@ mod tests {
 
     #[test]
     fn api_base_targets_loopback_http_port() {
-        assert_eq!(api_base(), "http://127.0.0.1:8025");
+        assert_eq!(api_base(), "http://127.0.0.1:18025");
     }
 
     #[test]
@@ -325,6 +329,6 @@ mod tests {
         // Binary path single-quoted (it contains a space).
         assert!(shim.starts_with("'/App Support/bin/mailpit' sendmail"));
         assert!(shim.contains("-t"));
-        assert!(shim.contains("-S 127.0.0.1:1025"));
+        assert!(shim.contains("-S 127.0.0.1:11025"));
     }
 }

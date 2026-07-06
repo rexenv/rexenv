@@ -78,9 +78,9 @@ export function Mail() {
   const running = !!mp?.running;
   const apiPort = (() => {
     try {
-      return new URL(mp?.uiUrl ?? "").port || "8025";
+      return new URL(mp?.uiUrl ?? "").port || "18025";
     } catch {
-      return "8025";
+      return "18025";
     }
   })();
 
@@ -179,7 +179,7 @@ export function Mail() {
                 </div>
               </div>
               <span className="rounded-md border border-rex-border-strong bg-rex-surface-1 px-2.5 py-1 font-mono text-[10.5px] text-rex-text-dim">
-                SMTP · 127.0.0.1:{mp?.smtpPort ?? 1025} · auto-configured
+                SMTP · 127.0.0.1:{mp?.smtpPort ?? 11025} · auto-configured
               </span>
             </div>
           )}

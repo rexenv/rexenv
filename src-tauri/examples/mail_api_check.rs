@@ -2,7 +2,7 @@
 //! clear) parses real Mailpit responses. Starts Mailpit, injects two messages via
 //! the sendmail shim, then exercises every `core::mail` API function.
 //!
-//! Run (ports 1025/8025 free): `cargo run --example mail_api_check`
+//! Run (ports 11025/18025 free): `cargo run --example mail_api_check`
 
 use rexenv_lib::core::{binaries, mail};
 use rexenv_lib::platform;

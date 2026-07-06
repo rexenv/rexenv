@@ -6,7 +6,7 @@
 //! edge (browser → Caddy → Nginx → php-fpm) → assert Mailpit's API count went up
 //! and the captured message carries our subject.
 //!
-//! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example mail_route_check`
+//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example mail_route_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{mail, services, sites, ssl};

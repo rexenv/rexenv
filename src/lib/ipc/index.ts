@@ -174,7 +174,7 @@ export async function wpInfo(id: string): Promise<WpInfo> {
 /** Mailpit mail-catcher status + endpoints. Mock fallback outside Tauri. */
 export async function mailpitStatus(): Promise<MailpitStatus> {
   if (!isTauri()) {
-    return { running: true, smtpPort: 1025, httpPort: 8025, uiUrl: "http://127.0.0.1:8025" };
+    return { running: true, smtpPort: 11025, httpPort: 18025, uiUrl: "http://127.0.0.1:18025" };
   }
   return invoke<MailpitStatus>("mailpit_status");
 }

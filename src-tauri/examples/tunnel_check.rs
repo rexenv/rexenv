@@ -4,7 +4,7 @@
 //! fetches it from the public internet and asserts it serves the LOCAL site.
 //! Finally stops the tunnel.
 //!
-//! Run (ports 8443/8080/8088/9783/13306/1025/8025 free, internet up):
+//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free, internet up):
 //!   `cargo run --example tunnel_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};

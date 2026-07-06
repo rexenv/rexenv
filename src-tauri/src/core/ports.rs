@@ -190,8 +190,8 @@ mod tests {
         assert!(reqs.iter().any(|r| r.port == crate::core::db::REDIS_PORT));
         // Mailpit binds two ports (SMTP + HTTP).
         assert!(names.contains(&"Mailpit (SMTP)"));
-        assert!(reqs.iter().any(|r| r.port == 1025 && r.proto == Proto::Tcp));
-        assert!(reqs.iter().any(|r| r.port == 8025 && r.proto == Proto::Tcp));
+        assert!(reqs.iter().any(|r| r.port == 11025 && r.proto == Proto::Tcp));
+        assert!(reqs.iter().any(|r| r.port == 18025 && r.proto == Proto::Tcp));
         // DNS + 2 Caddy + Nginx = 4 fixed, plus one php-fpm per version + one per DB
         // engine + Mailpit's 2 ports.
         assert_eq!(reqs.len(), 4 + fpm + dbs + 2);

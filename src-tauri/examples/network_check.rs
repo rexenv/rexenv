@@ -10,7 +10,7 @@
 //!   - `super_admin_add` + `super_admin_list` includes the granted user;
 //!   - `network_site_delete` removes the sub-site (list shrinks back).
 //!
-//! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example network_check`
+//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example network_check`
 
 use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{binaries, services, sites, ssl, wordpress};

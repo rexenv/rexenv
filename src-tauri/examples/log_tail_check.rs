@@ -3,7 +3,7 @@
 //! hitting the site through the edge — proving new access lines appear in
 //! near-real-time — and prints the site's log targets + a php-fpm pool tail.
 //!
-//! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example log_tail_check`
+//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example log_tail_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{logs, services, sites, ssl};

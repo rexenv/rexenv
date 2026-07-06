@@ -1,8 +1,8 @@
 //! Phase-3 §2.1 check: Mailpit binary provider + lifecycle.
 //! Resolves Mailpit via `BinaryProvider` (sign + de-quarantine), runs
 //! `mailpit version`, starts it via `ProcessSupervisor::spawn_logged`, then
-//! verifies the SMTP port (:1025) accepts a TCP connection AND the HTTP API
-//! (:8025 `GET /api/v1/messages`) responds.
+//! verifies the SMTP port (:11025) accepts a TCP connection AND the HTTP API
+//! (:18025 `GET /api/v1/messages`) responds.
 //!
 //! Run: `cargo run --example mailpit_check`
 
@@ -42,7 +42,7 @@ async fn main() {
     // SMTP port accepts a connection.
     let smtp = SocketAddr::from((Ipv4Addr::LOCALHOST, mail::MAILPIT_SMTP_PORT));
     TcpStream::connect_timeout(&smtp, Duration::from_millis(500))
-        .expect("connect mailpit SMTP :1025");
+        .expect("connect mailpit SMTP :11025");
     println!("✓ SMTP :{} accepts connections", mail::MAILPIT_SMTP_PORT);
 
     // HTTP API responds.

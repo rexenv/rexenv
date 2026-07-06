@@ -5,7 +5,7 @@
 //!   (C) a FRESH token presented with a Cloudflare tunnel header (`CF-Connecting-IP`)
 //!       → denied (loopback/local-only), so a shared-tunnel replay can't log in.
 //!
-//! Run (ports 8443/8080/8088/9783/13306/1025/8025 free): `cargo run --example wp_login_check`
+//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example wp_login_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{services, sites, ssl, wordpress, wp_login};
