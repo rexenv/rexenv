@@ -138,11 +138,16 @@ pub struct DnsStatus {
     /// The OS resolver file (`/etc/resolver/test`) is installed.
     pub resolver_installed: bool,
     pub resolver_path: String,
+    /// The local CA is trusted for THIS OS user (macOS: login keychain). Per-user,
+    /// unlike the resolver file — a fresh account needs its own trust step even
+    /// when the resolver already exists, so first-run routing checks BOTH.
+    pub ca_trusted: bool,
 }
 
-/// Embedded-DNS + OS-resolver status. `running` probes the loopback UDP port (the
-/// resolver binds UDP, so the TCP `is_listening` check doesn't apply); a failed
-/// bind means something — our in-process resolver — already holds it.
+/// Embedded-DNS + OS-resolver + CA-trust status. `running` probes the loopback
+/// UDP port (the resolver binds UDP, so the TCP `is_listening` check doesn't
+/// apply); a failed bind means something — our in-process resolver — already
+/// holds it.
 #[tauri::command]
 pub fn dns_status(state: State<'_, AppState>) -> DnsStatus {
     let port = core::dns::DEFAULT_DNS_PORT;
@@ -153,6 +158,7 @@ pub fn dns_status(state: State<'_, AppState>) -> DnsStatus {
         port,
         resolver_installed: path.exists(),
         resolver_path: path.display().to_string(),
+        ca_trusted: state.platform.cert_trust().is_trusted(&state.ca.cert_path),
     }
 }
 

@@ -23,11 +23,19 @@ pub fn resolver_install_script(platform: &dyn Platform, dns_port: u16) -> String
 
 /// Run system setup: ensure the CA exists, install the `.test` resolver file
 /// (admin prompt), then trust the CA (native trust dialog). Returns the CA.
+///
+/// The resolver step is skipped when the file already has the expected content
+/// — so on a second macOS account (resolver is system-wide, trust is per-user)
+/// setup only shows the keychain dialog, not a pointless admin prompt.
 pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
     // 1) privileged: install the resolver file (one admin prompt).
-    let script = resolver_install_script(platform, dns::DEFAULT_DNS_PORT);
-    platform.privileges().run_privileged(&script)?;
+    let expected = platform.dns().resolver_contents(dns::DEFAULT_DNS_PORT);
+    let current = std::fs::read_to_string(platform.dns().resolver_path()).unwrap_or_default();
+    if current != expected {
+        let script = resolver_install_script(platform, dns::DEFAULT_DNS_PORT);
+        platform.privileges().run_privileged(&script)?;
+    }
     // 2) user: trust the CA (native dialog; login keychain, no root).
     ssl::trust_ca(platform, &ca)?;
     Ok(ca)

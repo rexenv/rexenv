@@ -141,6 +141,17 @@ impl CertTrustManager for MacosCertTrust {
     fn untrust_ca(&self, ca_cert_path: &Path) -> Result<()> {
         Self::run_security(&Self::untrust_args(ca_cert_path))
     }
+    fn is_trusted(&self, ca_cert_path: &Path) -> bool {
+        // `security verify-cert` exits 0 iff the cert chains to a trust anchor
+        // for THIS user (login-keychain trust settings included); an untrusted
+        // local CA fails with CSSMERR_TP_NOT_TRUSTED. Verified empirically.
+        std::process::Command::new("security")
+            .args(["verify-cert", "-c"])
+            .arg(ca_cert_path)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
 }
 
 pub struct MacosPrivileges;

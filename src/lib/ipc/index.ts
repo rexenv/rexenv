@@ -542,7 +542,7 @@ export async function sitesFolder(): Promise<string> {
 /** Embedded-DNS + OS-resolver health. Mock fallback outside Tauri. */
 export async function dnsStatus(): Promise<DnsStatus> {
   if (!isTauri())
-    return { running: true, port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/test" };
+    return { running: true, port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/test", caTrusted: true };
   return invoke<DnsStatus>("dns_status");
 }
 

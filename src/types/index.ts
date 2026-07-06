@@ -181,6 +181,7 @@ export interface DnsStatus {
   port: number;
   resolverInstalled: boolean; // /etc/resolver/test present
   resolverPath: string;
+  caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
 }
 
 /** A network sub-site row (mirrors the Rust WpNetworkSite DTO / `wp site list`). */

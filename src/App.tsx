@@ -14,13 +14,17 @@ import { dnsStatus, initError } from "@/lib/ipc";
 import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
 
-/** First launch: if the .test resolver isn't installed yet, route to onboarding to
- *  run system setup; otherwise into the app. Reflects real resolver state
- *  (dns_status), so it keeps prompting until setup completes. */
+/** First launch: route to onboarding until system setup is complete for THIS
+ *  user — the .test resolver (system-wide) AND the local-CA trust (per-user
+ *  login keychain). Checking only the resolver skipped the trust step for any
+ *  second macOS account (the resolver file already existed), leaving HTTPS
+ *  broken there. Reflects real state (dns_status), so it keeps prompting until
+ *  both are done. */
 function FirstRunGate() {
   const { data, isLoading } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
   if (isLoading) return null;
-  return <Navigate to={data && !data.resolverInstalled ? "/onboarding" : "/sites"} replace />;
+  const needsSetup = data && (!data.resolverInstalled || !data.caTrusted);
+  return <Navigate to={needsSetup ? "/onboarding" : "/sites"} replace />;
 }
 
 /** Terminal screen when the backend failed to initialize (DB/CA) — task 1.2 / H3.

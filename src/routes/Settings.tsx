@@ -316,12 +316,16 @@ function ActionRow({
 }
 
 function DnsSslSetting() {
+  const qc = useQueryClient();
   const { data: dns } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
   const [msg, setMsg] = useState<string | null>(null);
 
   const trust = useMutation({
     mutationFn: trustLocalCa,
-    onSuccess: () => setMsg("Local CA re-trusted in your login keychain."),
+    onSuccess: () => {
+      setMsg("Local CA re-trusted in your login keychain.");
+      void qc.invalidateQueries({ queryKey: ["dns-status"] });
+    },
     onError: (e) => toastBackendError(e),
   });
   const regen = useMutation({
@@ -360,11 +364,17 @@ function DnsSslSetting() {
             </div>
           </div>
           <div className="flex items-center gap-[11px] rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
-            <Lock className="h-[18px] w-[18px] flex-none text-status-running" strokeWidth={1.8} />
+            <Lock
+              className={cn(
+                "h-[18px] w-[18px] flex-none",
+                dns?.caTrusted ? "text-status-running" : "text-rex-text-muted",
+              )}
+              strokeWidth={1.8}
+            />
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-rex-text">Local CA</div>
               <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
-                trusted · login keychain
+                {dns?.caTrusted ? "trusted · login keychain" : "not trusted — use Re-trust below"}
               </div>
             </div>
           </div>

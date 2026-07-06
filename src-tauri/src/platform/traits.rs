@@ -59,6 +59,14 @@ pub trait CertTrustManager: Send + Sync {
     fn trust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
     /// Remove the CA's trust setting.
     fn untrust_ca(&self, ca_cert_path: &std::path::Path) -> Result<()>;
+    /// Whether the CA is currently trusted for THIS OS user. Trust is per-user
+    /// (macOS: login keychain), so a fresh account needs its own [`trust_ca`]
+    /// even when system-wide setup (e.g. the resolver file) already happened —
+    /// first-run detection must check this, not just system-wide artifacts.
+    /// Default: `false` (conservative — re-offers setup).
+    fn is_trusted(&self, _ca_cert_path: &std::path::Path) -> bool {
+        false
+    }
 }
 
 /// Runs privileged shell operations behind a single OS authentication prompt.
