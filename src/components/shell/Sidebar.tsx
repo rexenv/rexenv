@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
+import { ThemeToggle } from "./ThemeToggle";
 import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
 import type { GlobalStatus } from "@/types";
 
@@ -149,9 +150,14 @@ export function Sidebar() {
           </div>
         ))}
         <div className="flex-1" />
-        {footer.map((item) => (
-          <NavButton key={item.to} item={withLiveBadge(item)} />
-        ))}
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            {footer.map((item) => (
+              <NavButton key={item.to} item={withLiveBadge(item)} />
+            ))}
+          </div>
+          <ThemeToggle />
+        </div>
       </nav>
 
       <StatusFooter status={status} />

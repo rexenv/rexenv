@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, promptText } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ import {
   trustLocalCa,
   uninstallSystem,
 } from "@/lib/ipc";
-import { getStoredTheme, setTheme, type Theme } from "@/lib/theme";
+import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
 import type { Blueprint, MultisiteMode, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
@@ -50,11 +50,9 @@ function Notice({ children }: { children: React.ReactNode }) {
 }
 
 function ThemeSetting() {
-  const [theme, setThemeState] = useState<Theme>(getStoredTheme());
-  const choose = (t: Theme) => {
-    setThemeState(t);
-    setTheme(t); // persists + applies immediately
-  };
+  // Shared store (lib/theme) — stays in sync with the sidebar ThemeToggle.
+  const theme = useSyncExternalStore(subscribeTheme, getStoredTheme);
+  const choose = setTheme; // persists + applies + notifies immediately
   // Light stays selectable — it shipped in §4.4 (the comp's "soon" badge is stale).
   // Preview swatches DEPICT each theme, so they are intentionally literal —
   // routing them through theme vars would make the Light tile flip in dark mode.

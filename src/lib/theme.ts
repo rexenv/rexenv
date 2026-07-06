@@ -36,10 +36,24 @@ export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = resolved(theme);
 }
 
+/** Subscribers notified whenever the stored preference changes (any control). */
+const listeners = new Set<() => void>();
+
+/** Subscribe to preference changes; returns an unsubscribe. Shape fits
+ *  `useSyncExternalStore(subscribeTheme, getStoredTheme)` so every theme
+ *  control (Settings tiles, sidebar toggle) shares one source of truth. */
+export function subscribeTheme(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
 /** Persist + apply a theme choice. */
 export function setTheme(theme: Theme): void {
   if (typeof localStorage !== "undefined") localStorage.setItem(KEY, theme);
   applyTheme(theme);
+  for (const fn of listeners) fn();
 }
 
 /**
