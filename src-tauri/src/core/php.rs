@@ -229,6 +229,40 @@ impl PhpFpmPools {
         Ok(())
     }
 
+    /// Drop pools that are dead — port closed OR master process gone — reaping
+    /// the child and any ORPHANED WORKERS still squatting on the pool port.
+    /// Returns the affected minors so the health watchdog can `ensure` them
+    /// again (a fresh spawn, same config path).
+    ///
+    /// The master-alive check matters: php-fpm workers outlive a SIGKILLed
+    /// master, keep the inherited listen socket accepting (so the port probe
+    /// stays green), but can't scale or recover — the exact "UI shows running,
+    /// every site hangs" failure. Workers also rewrite their process title to
+    /// `php-fpm: pool www` (no app-data path), so the marker-gated orphan sweep
+    /// can't see them; on OUR fixed pool port, a `php-fpm`-titled listener is
+    /// ours — kill it so the respawn's port gate passes.
+    pub fn reap_dead(&mut self, platform: &dyn Platform) -> Vec<String> {
+        let mut dead = Vec::new();
+        for mut p in std::mem::take(&mut self.pools) {
+            if !services::fpm_running(p.port) || !p.child.alive() {
+                dead.push(p);
+            } else {
+                self.pools.push(p);
+            }
+        }
+        dead.into_iter()
+            .map(|mut p| {
+                let _ = services::stop(platform, p.child.id()); // no-op if already gone
+                p.child.kill();
+                p.child.wait();
+                for pid in platform.supervisor().owned_listeners(p.port, "php-fpm") {
+                    let _ = platform.supervisor().stop(pid);
+                }
+                p.minor
+            })
+            .collect()
+    }
+
     /// Stop and clear every pool.
     pub fn stop_all(&mut self, platform: &dyn Platform) {
         for mut p in std::mem::take(&mut self.pools) {
@@ -261,9 +295,12 @@ impl PhpFpmPools {
 
 impl Drop for PhpFpmPools {
     fn drop(&mut self) {
-        // Best-effort SIGKILL so no pool is orphaned if stop_all wasn't called.
+        // Best-effort stop so no pool is orphaned if stop_all wasn't called.
+        // SIGTERM (graceful), NOT SIGKILL: a SIGKILLed fpm master leaks its
+        // workers, which keep the pool port accepting forever — the "UI shows
+        // running, every site hangs" failure.
         for p in &mut self.pools {
-            p.child.kill();
+            p.child.terminate();
         }
     }
 }

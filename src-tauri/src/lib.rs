@@ -100,6 +100,88 @@ pub fn run() {
                 }
             };
             app.manage(commands::system::InitError(init_error));
+
+            // Health watchdog: every 10s probe every service the manager OWNS and
+            // respawn dead ones (bounded attempts) — the UI used to show "running"
+            // forever off the initial start state while e.g. a crashed edge left
+            // every site unreachable until a manual Stop all / Start all. Uses
+            // try_lock so it never contends with a user-driven start/stop, and
+            // await_ready runs AFTER the lock is dropped (M4). Also restarts the
+            // in-process DNS resolver if its task died. Events are appended to
+            // <log_dir>/health.log and emitted as `service-health`.
+            let watchdog = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
+                let mut dns_failures: u32 = 0;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    let Some(state) = watchdog.try_state::<state::app::AppState>() else {
+                        continue; // init failed — nothing to supervise
+                    };
+                    // Snapshot the site set (brief DB lock, never held across .await).
+                    let sites = state
+                        .db
+                        .lock()
+                        .ok()
+                        .and_then(|conn| core::sites::list(&conn).ok())
+                        .unwrap_or_default();
+                    let (mut events, checks) = {
+                        let Ok(mut mgr) = state.services.try_lock() else {
+                            continue; // a start/stop is in flight — skip this tick
+                        };
+                        mgr.reconcile_health(state.platform.as_ref(), &state.ca, &sites)
+                            .await
+                    };
+                    // Readiness of respawned services — with the lock dropped.
+                    if let Err(e) = core::service_manager::await_ready(checks).await {
+                        log::warn!("health: a respawned service did not become ready: {e}");
+                    }
+
+                    // The embedded DNS resolver (in-process task, owned here not by
+                    // the manager). Only restart what once ran and died; a resolver
+                    // that never started (port conflict at launch) stays a Settings
+                    // problem. Bounded like the manager's services.
+                    let dns = watchdog.state::<state::app::DnsState>();
+                    let died = dns
+                        .0
+                        .lock()
+                        .map(|g| g.as_ref().is_some_and(|d| !d.is_running()))
+                        .unwrap_or(false);
+                    if died && dns_failures < 3 {
+                        match core::dns::DnsService::start_default(state.platform.as_ref()).await {
+                            Ok(new_dns) => {
+                                if let Ok(mut g) = dns.0.lock() {
+                                    *g = Some(new_dns);
+                                }
+                                dns_failures = 0;
+                                events.push(core::service_manager::HealthEvent {
+                                    service: "DNS".into(),
+                                    action: "restarted",
+                                    detail: "embedded resolver task had died; restarted".into(),
+                                });
+                            }
+                            Err(e) => {
+                                dns_failures += 1;
+                                events.push(core::service_manager::HealthEvent {
+                                    service: "DNS".into(),
+                                    action: "restart-failed",
+                                    detail: e.to_string(),
+                                });
+                            }
+                        }
+                    } else if !died {
+                        dns_failures = 0;
+                    }
+
+                    if !events.is_empty() {
+                        core::service_manager::log_health_events(state.platform.as_ref(), &events);
+                        for e in &events {
+                            log::warn!("health: [{}] {}: {}", e.action, e.service, e.detail);
+                        }
+                        let _ = watchdog.emit("service-health", &events);
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

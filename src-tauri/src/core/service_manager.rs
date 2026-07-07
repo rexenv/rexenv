@@ -80,6 +80,22 @@ pub struct DbInfo {
     pub pid: Option<u32>,
 }
 
+/// Consecutive automatic restarts the health watchdog attempts per service
+/// before giving up (a crash loop must surface, not restart-storm).
+pub const MAX_RESTART_ATTEMPTS: u32 = 3;
+
+/// One health-watchdog observation: a managed service found dead and what was
+/// done about it. Serialized to the frontend (`service-health` event) and
+/// appended to `<log_dir>/health.log` as root-cause evidence.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthEvent {
+    pub service: String,
+    /// "restarted" | "restart-failed" | "gave-up" | "edge-down".
+    pub action: &'static str,
+    pub detail: String,
+}
+
 #[derive(Default)]
 pub struct ServiceManager {
     bins: Option<Bins>,
@@ -96,6 +112,10 @@ pub struct ServiceManager {
     /// Mailpit mail-catcher (§2.1), resolved + started lazily.
     mailpit: Option<Proc>,
     mailpit_bin: Option<PathBuf>,
+    /// Consecutive health-watchdog restart attempts per service (keyed by the
+    /// status row name). Reset when the service is seen healthy again and on
+    /// manual start/stop, so a crash loop can't restart-storm forever.
+    restart_attempts: HashMap<String, u32>,
 }
 
 impl ServiceManager {
@@ -111,6 +131,7 @@ impl ServiceManager {
             caddy: CaddyHandle::Stopped,
             mailpit: None,
             mailpit_bin: None,
+            restart_attempts: HashMap::new(),
         }
     }
 
@@ -234,6 +255,8 @@ impl ServiceManager {
         php_minors: &[String],
     ) -> Result<(PathBuf, Vec<ReadyCheck>)> {
         self.ensure_bins(platform).await?;
+        // Manual intervention resets the watchdog's give-up counters.
+        self.restart_attempts.clear();
         let mut checks = Vec::new();
 
         // MySQL — the site stack needs it (started via the DB engine manager).
@@ -425,20 +448,32 @@ impl ServiceManager {
             if self.overrides.contains_key(domain) {
                 continue;
             }
-            ports::ensure_free(platform, *port, ports::Proto::Tcp, "FrankenPHP")?;
-            let bin = self.ensure_frankenphp_bin(platform).await?;
-            let conf = frankenphp::write_config(platform, domain, docroot, *port, *rewrite)?;
-            let child = frankenphp::start(platform, &bin, domain, &conf)?;
-            self.overrides.insert(domain.clone(), child.into());
-            let port = *port;
-            checks.push(ReadyCheck {
-                service: format!("FrankenPHP ({domain})"),
-                log: stdout_log(platform, &format!("frankenphp-{domain}"))?,
-                tries: 20,
-                probe: Box::new(move || frankenphp::running(port)),
-            });
+            checks.push(self.spawn_override(platform, domain, docroot, *port, *rewrite).await?);
         }
         Ok(checks)
+    }
+
+    /// Spawn one per-site FrankenPHP backend (port-gated) and track its handle.
+    /// Shared by [`Self::reconcile_overrides`] and the health watchdog's respawn.
+    async fn spawn_override(
+        &mut self,
+        platform: &dyn Platform,
+        domain: &str,
+        docroot: &Path,
+        port: u16,
+        rewrite: services::RewriteMode,
+    ) -> Result<ReadyCheck> {
+        ports::ensure_free(platform, port, ports::Proto::Tcp, "FrankenPHP")?;
+        let bin = self.ensure_frankenphp_bin(platform).await?;
+        let conf = frankenphp::write_config(platform, domain, docroot, port, rewrite)?;
+        let child = frankenphp::start(platform, &bin, domain, &conf)?;
+        self.overrides.insert(domain.to_string(), child.into());
+        Ok(ReadyCheck {
+            service: format!("FrankenPHP ({domain})"),
+            log: stdout_log(platform, &format!("frankenphp-{domain}"))?,
+            tries: 20,
+            probe: Box::new(move || frankenphp::running(port)),
+        })
     }
 
     /// Reload the edge from the current site set (after create / delete / server
@@ -475,6 +510,8 @@ impl ServiceManager {
 
     /// Stop the whole stack.
     pub fn stop_all(&mut self, platform: &dyn Platform) -> Result<()> {
+        // Manual intervention resets the watchdog's give-up counters.
+        self.restart_attempts.clear();
         // A tracked unprivileged child is killed by pid. For a root/privileged edge
         // — or a stray Caddy still on the admin port that we never tracked (common
         // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
@@ -550,6 +587,23 @@ impl ServiceManager {
             for pid in platform.supervisor().owned_listeners(port, &marker) {
                 let _ = platform.supervisor().stop(pid);
             }
+        }
+        // Orphaned WORKERS: php-fpm and nginx workers rewrite their process
+        // title (`php-fpm: pool www` / `nginx: worker process`) — the app-data
+        // marker above never matches, so a master killed uncleanly leaks
+        // workers that keep the port accepting forever (status reads running,
+        // sites hang, and the next start fails its port gate). On OUR fixed
+        // ports a listener with the service's title can only be ours — sweep
+        // those too.
+        for minor in php::all_minors() {
+            if let Some(port) = php::fpm_port(&minor) {
+                for pid in platform.supervisor().owned_listeners(port, "php-fpm") {
+                    let _ = platform.supervisor().stop(pid);
+                }
+            }
+        }
+        for pid in platform.supervisor().owned_listeners(self.ports.nginx, "nginx") {
+            let _ = platform.supervisor().stop(pid);
         }
     }
 
@@ -666,6 +720,261 @@ impl ServiceManager {
     /// (`FrankenPHP <domain>`), then Nginx and Caddy. `installed_php` comes from
     /// the registry (the manager has no DB access); the command layer enriches
     /// each row with live RAM/CPU from the monitor (by pid).
+    /// Bump the consecutive-restart counter for `service` and decide whether an
+    /// automatic restart is still allowed. Emits ONE "gave-up" event (on the
+    /// first tick past the cap), then stays silent until the counter is reset
+    /// by a healthy observation or a manual start/stop.
+    fn should_restart(&mut self, service: &str, events: &mut Vec<HealthEvent>) -> bool {
+        let n = self.restart_attempts.entry(service.to_string()).or_insert(0);
+        *n += 1;
+        if *n <= MAX_RESTART_ATTEMPTS {
+            return true;
+        }
+        if *n == MAX_RESTART_ATTEMPTS + 1 {
+            events.push(HealthEvent {
+                service: service.to_string(),
+                action: "gave-up",
+                detail: format!(
+                    "still dead after {MAX_RESTART_ATTEMPTS} automatic restarts — \
+                     check its log, then Stop all / Start all"
+                ),
+            });
+        }
+        false
+    }
+
+    /// Health watchdog pass: probe every service THIS manager owns and respawn
+    /// the dead ones (same spawn paths as `start_core`, so config/ports/logs are
+    /// identical), with a consecutive-attempt cap per service. The privileged
+    /// Caddy edge is the exception — restarting it needs the admin-password
+    /// prompt, which must never appear unprompted — so a dead edge is marked
+    /// stopped and reported instead ("edge-down"), making the UI tell the truth.
+    ///
+    /// Never STARTS anything the user didn't: only owned-but-dead services are
+    /// respawned; a stopped stack is a no-op. M4 shape: spawns happen under the
+    /// caller's services lock, the returned [`ReadyCheck`]s are awaited after
+    /// dropping it.
+    pub async fn reconcile_health(
+        &mut self,
+        platform: &dyn Platform,
+        ca: &ssl::LocalCa,
+        sites: &[Site],
+    ) -> (Vec<HealthEvent>, Vec<ReadyCheck>) {
+        let mut events = Vec::new();
+        let mut checks = Vec::new();
+
+        // Database engines.
+        let (dead_dbs, live_dbs): (Vec<DbEngine>, Vec<DbEngine>) =
+            self.dbs.keys().copied().partition(|e| !e.running());
+        for engine in live_dbs {
+            self.restart_attempts.remove(engine.label());
+        }
+        for engine in dead_dbs {
+            let name = engine.label().to_string();
+            if let Some(mut child) = self.dbs.remove(&engine) {
+                child.kill();
+                child.wait();
+            }
+            if !self.should_restart(&name, &mut events) {
+                continue;
+            }
+            match self.spawn_db(platform, engine).await {
+                Ok(check) => {
+                    checks.extend(check);
+                    events.push(HealthEvent {
+                        service: name,
+                        action: "restarted",
+                        detail: "process was dead (port closed); respawned".into(),
+                    });
+                }
+                Err(e) => events.push(HealthEvent {
+                    service: name,
+                    action: "restart-failed",
+                    detail: e.to_string(),
+                }),
+            }
+        }
+
+        // php-fpm pools: drop dead masters, then ensure those minors again.
+        for p in self.pools.status() {
+            if p.running {
+                self.restart_attempts.remove(&format!("PHP-FPM {}", p.minor));
+            }
+        }
+        for minor in self.pools.reap_dead(platform) {
+            let name = format!("PHP-FPM {minor}");
+            if !self.should_restart(&name, &mut events) {
+                continue;
+            }
+            match self.pools.ensure(platform, &minor).await {
+                Ok(()) => events.push(HealthEvent {
+                    service: name,
+                    action: "restarted",
+                    detail: "pool master was dead (port closed); respawned".into(),
+                }),
+                Err(e) => events.push(HealthEvent {
+                    service: name,
+                    action: "restart-failed",
+                    detail: e.to_string(),
+                }),
+            }
+        }
+
+        // Per-site FrankenPHP override backends. Respawn ONLY sites still on the
+        // override server — a switched/deleted site's dead handle is just dropped.
+        let dead_overrides: Vec<String> = self
+            .overrides
+            .iter()
+            .filter(|(d, _)| !frankenphp::running(frankenphp::site_port(d)))
+            .map(|(d, _)| d.clone())
+            .collect();
+        for (domain, _) in self.overrides.iter() {
+            if !dead_overrides.contains(domain) {
+                self.restart_attempts.remove(&format!("FrankenPHP {domain}"));
+            }
+        }
+        for domain in dead_overrides {
+            let name = format!("FrankenPHP {domain}");
+            if let Some(mut child) = self.overrides.remove(&domain) {
+                child.kill();
+                child.wait();
+            }
+            let Some(site) = sites
+                .iter()
+                .find(|s| s.domain == domain && matches!(s.web_server, WebServer::Frankenphp))
+            else {
+                continue;
+            };
+            if !self.should_restart(&name, &mut events) {
+                continue;
+            }
+            let spawned = self
+                .spawn_override(
+                    platform,
+                    &domain,
+                    &PathBuf::from(&site.path),
+                    frankenphp::site_port(&domain),
+                    sites::rewrite_mode_for(site.multisite),
+                )
+                .await;
+            match spawned {
+                Ok(check) => {
+                    checks.push(check);
+                    events.push(HealthEvent {
+                        service: name,
+                        action: "restarted",
+                        detail: "backend was dead (port closed); respawned".into(),
+                    });
+                }
+                Err(e) => events.push(HealthEvent {
+                    service: name,
+                    action: "restart-failed",
+                    detail: e.to_string(),
+                }),
+            }
+        }
+
+        // Mailpit.
+        if self.mailpit.is_some() {
+            if mail::running() {
+                self.restart_attempts.remove("Mailpit");
+            } else {
+                if let Some(mut child) = self.mailpit.take() {
+                    child.kill();
+                    child.wait();
+                }
+                if self.should_restart("Mailpit", &mut events) {
+                    match self.spawn_mailpit(platform).await {
+                        Ok(check) => {
+                            checks.extend(check);
+                            events.push(HealthEvent {
+                                service: "Mailpit".into(),
+                                action: "restarted",
+                                detail: "process was dead (port closed); respawned".into(),
+                            });
+                        }
+                        Err(e) => events.push(HealthEvent {
+                            service: "Mailpit".into(),
+                            action: "restart-failed",
+                            detail: e.to_string(),
+                        }),
+                    }
+                }
+            }
+        }
+
+        // Shared Nginx: regenerate configs from the current site set (identical
+        // to a reload) and respawn. Port probe AND master-alive — like php-fpm,
+        // a SIGKILLed nginx master leaves `nginx: worker process` children
+        // holding the port (title has no app-data marker), reading as healthy
+        // while frozen; on OUR fixed port an `nginx`-titled listener is ours.
+        if self.nginx.is_some() {
+            let master_alive = self.nginx.as_mut().is_some_and(Proc::alive);
+            if services::nginx_running(self.ports.nginx) && master_alive {
+                self.restart_attempts.remove("Nginx");
+            } else {
+                if let Some(mut child) = self.nginx.take() {
+                    child.kill();
+                    child.wait();
+                }
+                for pid in platform.supervisor().owned_listeners(self.ports.nginx, "nginx") {
+                    let _ = platform.supervisor().stop(pid);
+                }
+                if self.should_restart("Nginx", &mut events) {
+                    let mut respawn = || -> Result<()> {
+                        let nginx_bin = self.bins()?.nginx.clone();
+                        let cfg = sites::rebuild_configs_for(
+                            sites,
+                            platform,
+                            ca,
+                            self.ports.nginx,
+                            self.ports.http,
+                            self.ports.https,
+                        )?;
+                        ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
+                        self.nginx = Some(
+                            services::start_nginx(platform, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)?
+                                .into(),
+                        );
+                        Ok(())
+                    };
+                    match respawn() {
+                        Ok(()) => events.push(HealthEvent {
+                            service: "Nginx".into(),
+                            action: "restarted",
+                            detail: "process was dead (port closed); respawned".into(),
+                        }),
+                        Err(e) => events.push(HealthEvent {
+                            service: "Nginx".into(),
+                            action: "restart-failed",
+                            detail: e.to_string(),
+                        }),
+                    }
+                }
+            }
+        }
+
+        // Caddy edge: detect via our admin unix socket; NEVER auto-restart (the
+        // privileged start blocks on an admin-password prompt). Mark stopped so
+        // status/UI tell the truth; the user's next Start all brings it back.
+        if !matches!(self.caddy, CaddyHandle::Stopped) && !proxy::admin_alive(platform) {
+            if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            self.caddy = CaddyHandle::Stopped;
+            events.push(HealthEvent {
+                service: "Caddy".into(),
+                action: "edge-down",
+                detail: "edge stopped answering on its admin socket — every site is \
+                         unreachable until it is started again (Start all)"
+                    .into(),
+            });
+        }
+
+        (events, checks)
+    }
+
     pub fn status(&self, platform: &dyn Platform, installed_php: &[String]) -> Vec<ServiceInfo> {
         let mut infos = Vec::new();
 
@@ -745,20 +1054,23 @@ impl ServiceManager {
 
 impl Drop for ServiceManager {
     fn drop(&mut self) {
-        // Best-effort: SIGKILL our child processes so nothing is orphaned if
-        // stop_all wasn't called. (A privileged-root Caddy can't be killed here;
-        // the php-fpm pools clean themselves up via PhpFpmPools::drop.)
+        // Best-effort: stop our child processes so nothing is orphaned if
+        // stop_all wasn't called. SIGTERM-first (Proc::terminate), NOT a bare
+        // SIGKILL: a SIGKILLed nginx master leaks `nginx: worker process`
+        // children that keep :8088 accepting forever (same for php-fpm — its
+        // pools clean themselves up via PhpFpmPools::drop). A privileged-root
+        // Caddy can't be signalled from here.
         for child in self.dbs.values_mut() {
-            child.kill();
+            child.terminate();
         }
         for child in self.overrides.values_mut() {
-            child.kill();
+            child.terminate();
         }
         if let Some(c) = &mut self.mailpit {
-            c.kill();
+            c.terminate();
         }
         if let Some(c) = &mut self.nginx {
-            c.kill();
+            c.terminate();
         }
         if let CaddyHandle::Child(c) = &mut self.caddy {
             let _ = c.kill();
@@ -782,6 +1094,30 @@ pub struct ReadyCheck {
     log: PathBuf,
     tries: u32,
     probe: Box<dyn Fn() -> bool + Send + Sync>,
+}
+
+/// Append health-watchdog events to `<log_dir>/health.log` (timestamped) — the
+/// durable evidence trail for "why were my sites down at 3pm". Best-effort:
+/// logging must never take the watchdog down.
+pub fn log_health_events(platform: &dyn Platform, events: &[HealthEvent]) {
+    if events.is_empty() {
+        return;
+    }
+    let Ok(dir) = platform.paths().log_dir() else { return };
+    let _ = std::fs::create_dir_all(&dir);
+    let ts = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("health.log"))
+    {
+        use std::io::Write;
+        for e in events {
+            let _ = writeln!(f, "{ts} [{}] {}: {}", e.action, e.service, e.detail);
+        }
+    }
 }
 
 /// Await a batch of [`ReadyCheck`]s CONCURRENTLY (worst case = the slowest
@@ -1031,6 +1367,28 @@ mod tests {
         assert!(m.db_status().iter().all(|d| d.pid.is_none()));
         // H2: nothing we started ⇒ nothing running, regardless of a foreign DB.
         assert!(m.db_status().iter().all(|d| !d.running));
+    }
+
+    #[test]
+    fn watchdog_attempts_cap_then_one_gave_up_then_reset() {
+        let mut m = ServiceManager::default();
+        let mut events = Vec::new();
+        for _ in 0..MAX_RESTART_ATTEMPTS {
+            assert!(m.should_restart("Nginx", &mut events));
+        }
+        assert!(events.is_empty(), "no give-up while under the cap");
+        // Past the cap: restart denied + exactly ONE give-up event…
+        assert!(!m.should_restart("Nginx", &mut events));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].action, "gave-up");
+        // …then silence (no event spam every tick).
+        assert!(!m.should_restart("Nginx", &mut events));
+        assert_eq!(events.len(), 1);
+        // A healthy observation (or manual start/stop) resets the counter.
+        m.restart_attempts.remove("Nginx");
+        assert!(m.should_restart("Nginx", &mut events));
+        // Counters are per service.
+        assert!(m.should_restart("MySQL", &mut events));
     }
 
     #[test]

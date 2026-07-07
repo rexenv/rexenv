@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
 import { AppShell } from "@/components/shell/AppShell";
 import { Sites } from "@/routes/Sites";
@@ -10,7 +11,8 @@ import { Mail } from "@/routes/Mail";
 import { Tunnels } from "@/routes/Tunnels";
 import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
-import { dnsStatus, initError } from "@/lib/ipc";
+import { dnsStatus, initError, onServiceHealth } from "@/lib/ipc";
+import { toast } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
 
@@ -20,6 +22,37 @@ import { DialogHost } from "@/components/ui/dialog";
  *  second macOS account (the resolver file already existed), leaving HTTPS
  *  broken there. Reflects real state (dns_status), so it keeps prompting until
  *  both are done. */
+/** Global listener for backend health-watchdog events: toast what happened
+ *  (auto-restart / edge down / gave up) and refresh the status queries so the
+ *  Services view + sidebar footer flip immediately, not on the next poll. */
+function HealthWatch() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    onServiceHealth((events) => {
+      for (const e of events) {
+        if (e.action === "restarted") {
+          toast.info(`${e.service} stopped unexpectedly — restarted automatically`);
+        } else {
+          toast.error(`${e.service}: ${e.detail}`);
+        }
+      }
+      qc.invalidateQueries({ queryKey: ["services"] });
+      qc.invalidateQueries({ queryKey: ["global-status"] });
+      qc.invalidateQueries({ queryKey: ["databases"] });
+    }).then((f) => {
+      if (disposed) f();
+      else unlisten = f;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [qc]);
+  return null;
+}
+
 function FirstRunGate() {
   const { data, isLoading } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
   if (isLoading) return null;
@@ -72,6 +105,7 @@ export function App() {
       {/* App-wide in-app dialogs + toasts (WKWebView lacks window.confirm/alert). */}
       <DialogHost />
       <Toaster />
+      <HealthWatch />
     </>
   );
 }

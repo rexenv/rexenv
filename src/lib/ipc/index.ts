@@ -162,6 +162,25 @@ export async function onTerminalOutput(
   return listen<number[]>(`terminal://output/${id}`, (e) => cb(new Uint8Array(e.payload)));
 }
 
+/** One backend health-watchdog observation (a managed service found dead and
+ *  what was done about it). Mirrors the Rust `HealthEvent`. */
+export interface HealthEvent {
+  service: string;
+  action: "restarted" | "restart-failed" | "gave-up" | "edge-down";
+  detail: string;
+}
+
+/** Subscribe to health-watchdog events (`service-health`): a service died and
+ *  was auto-restarted, or needs attention (edge down / gave up). Returns an
+ *  unlisten function. No-op outside Tauri. */
+export async function onServiceHealth(
+  cb: (events: HealthEvent[]) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<HealthEvent[]>("service-health", (e) => cb(e.payload));
+}
+
 /** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */
 export async function wpInfo(id: string): Promise<WpInfo> {
   if (!isTauri()) {
