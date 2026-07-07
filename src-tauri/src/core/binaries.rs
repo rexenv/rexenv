@@ -519,18 +519,24 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
 
-    let bin_dir = platform.paths().bin_dir()?;
-    let dir = bin_dir.join(format!("{name}-{version}"));
-    if dir.join("bin").is_dir() {
-        return Ok(dir);
-    }
-
     let spec = manifest(name, version, os, arch).ok_or_else(|| {
         Error::Other(format!(
             "no binary manifest for {name} {version} on {os}/{}",
             php_arch(arch)
         ))
     })?;
+
+    let bin_dir = platform.paths().bin_dir()?;
+    let dir = bin_dir.join(format!("{name}-{version}"));
+    // Idempotent, but validate the PRIMARY binary — not just that `bin/` exists.
+    // A tree whose `bin/` survived while its main binary was stripped (partial
+    // extract, Gatekeeper/AV quarantine of a large Mach-O) must re-extract, else
+    // every later resolve returns a broken tree that fails at spawn with an opaque
+    // "No such file or directory" (task 2.5 / H4).
+    if dir.join(spec.member).exists() {
+        return Ok(dir);
+    }
+
     if spec.archive != Archive::TarGzTree {
         return Err(Error::Other(format!(
             "{name} is not a directory distribution — use resolve"
@@ -548,7 +554,7 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     let staged = (|| -> Result<()> {
         std::fs::create_dir_all(&staging)?;
         extract_tar_gz_tree(&bytes, &staging)?;
-        publish(&staging, &dir, "bin")
+        publish(&staging, &dir, spec.member)
     })();
     if staged.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
