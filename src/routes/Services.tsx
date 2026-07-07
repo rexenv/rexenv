@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toastBackendError } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
-import { Code, Database, ExternalLink, Globe, Inbox, Layers, Mail, Play, Server, Square, type LucideIcon } from "lucide-react";
+import { Code, Database, ExternalLink, Globe, Inbox, Layers, Mail, Server, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { cn } from "@/lib/utils";
-import { dnsStatus, servicesStatus, setDefaultPhpVersion, startServices, stopServices } from "@/lib/ipc";
+import { dnsStatus, servicesStatus, setDefaultPhpVersion } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
 
 /** Tinted accent per kind (matches the group icon colors). */
@@ -187,12 +187,6 @@ export function Services() {
   });
 
   const running = services.filter((s) => s.running).length;
-  const isStart = running === 0;
-  const toggleAll = useMutation({
-    mutationFn: () => (isStart ? startServices() : stopServices()),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["services"] }),
-    onError: (e) => toastBackendError(e),
-  });
 
   // The embedded DNS resolver — app-lifetime, never part of Start/Stop all, so
   // it lives outside the stoppable groups (and outside running/total counts).
@@ -202,26 +196,6 @@ export function Services() {
     refetchInterval: 5000,
   });
 
-  const startStopAll = (
-    <button
-      onClick={() => toggleAll.mutate()}
-      disabled={toggleAll.isPending || isLoading}
-      className={cn(
-        "flex h-9 items-center gap-2 rounded-[9px] px-4 text-[13px] font-medium transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
-        isStart
-          ? "bg-primary text-white shadow-glow-primary"
-          : "border border-rex-border-strong bg-rex-surface-2 text-rex-text-bright",
-      )}
-    >
-      {isStart ? (
-        <Play className="h-3 w-3 fill-current" />
-      ) : (
-        <Square className="h-3 w-3 fill-current" />
-      )}
-      {isStart ? "Start all" : "Stop all"}
-    </button>
-  );
-
   return (
     <>
       <TopBar
@@ -230,7 +204,6 @@ export function Services() {
           isLoading ? "Loading…" : `${running} of ${services.length} running`
         }
         showSearch={false}
-        action={startStopAll}
       />
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
         {isLoading ? (
