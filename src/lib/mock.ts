@@ -141,7 +141,12 @@ export function mockMailDetail(id: string): MailDetail {
     subject: s.subject,
     date: s.created,
     text: `${s.snippet}\n\nThis is mock message body text shown in the browser-only dev build.`,
-    html: `<p>${s.snippet}</p><p>This is a <b>mock</b> HTML body shown in the browser-only dev build.</p>`,
+    // wp_mail() sends plain-text only — mirror that on one message so the
+    // preview's text-fallback path is exercisable in the dev build.
+    html:
+      s.id === "m2"
+        ? ""
+        : `<p>${s.snippet}</p><p>This is a <b>mock</b> HTML body shown in the browser-only dev build.</p>`,
     headers: [
       { name: "From", value: s.from.address },
       { name: "To", value: s.to.map((t) => t.address).join(", ") },

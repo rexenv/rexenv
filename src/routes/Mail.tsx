@@ -368,6 +368,14 @@ function Preview({
     enabled: tab === "raw",
   });
 
+  // WordPress mail is usually plain-text only — land on the part that exists
+  // (once per message; manual tab clicks still win afterwards).
+  const msgHtml = msg ? !!msg.html : null;
+  useEffect(() => {
+    if (msgHtml === false && tab === "html") onTab("text");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on message load
+  }, [id, msgHtml]);
+
   if (!msg) return <div className="p-6 text-[12.5px] text-rex-text-muted">Loading…</div>;
 
   const tabs: PreviewTab[] = ["html", "text", "raw", "headers"];
