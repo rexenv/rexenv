@@ -26,6 +26,13 @@ pub fn generate_fpm_config(
     log_file: &Path,
     sendmail_path: Option<&str>,
 ) -> String {
+    // Pool sizing guards the "every site hangs while the UI shows running" spiral:
+    // ALL default sites share this one pool, so N wall-clock-stuck workers (heavy
+    // plugin imports, loopback self-requests) starve every site at once — the port
+    // still accepts, so no probe sees it. `request_terminate_timeout` (wall clock —
+    // PHP's own max_execution_time only counts CPU time on unix) recycles a stuck
+    // worker after 5min; `pm.max_requests` recycles leaky workers.
+    //
     // Wrap the value in DOUBLE quotes: PHP's ini parser strips the outer quotes
     // but preserves the inner single-quoted binary path verbatim, so the shim's
     // space-containing path survives to `sh -c`. (Bare single quotes get eaten by
@@ -42,10 +49,12 @@ pub fn generate_fpm_config(
          [www]\n\
          listen = 127.0.0.1:{port}\n\
          pm = dynamic\n\
-         pm.max_children = 5\n\
+         pm.max_children = 10\n\
          pm.start_servers = 2\n\
          pm.min_spare_servers = 1\n\
          pm.max_spare_servers = 3\n\
+         pm.max_requests = 500\n\
+         request_terminate_timeout = 300s\n\
          catch_workers_output = yes\n\
          {sendmail}",
         pid = pid_file.display(),
@@ -416,6 +425,11 @@ mod tests {
         assert!(cfg.contains("[www]"));
         assert!(cfg.contains("listen = 127.0.0.1:9783"));
         assert!(cfg.contains("pm = dynamic"));
+        // Starvation guards (all default sites share one pool): headroom + stuck-
+        // worker recycling — see generate_fpm_config.
+        assert!(cfg.contains("pm.max_children = 10"));
+        assert!(cfg.contains("request_terminate_timeout = 300s"));
+        assert!(cfg.contains("pm.max_requests = 500"));
         // No user/group: we run as the current user, not root.
         assert!(!cfg.contains("\nuser ="));
         assert!(!cfg.contains("\ngroup ="));
