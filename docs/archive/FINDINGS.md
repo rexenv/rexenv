@@ -1,4 +1,34 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # rexenv — Read-Only Code Review (Findings of Record)
+
+> ✅ **ALL 19 FINDINGS FIXED.** This is a record only — nothing here is an open bug.
+> Resolution map (finding → fixing commit / task), for tracing a regression to its
+> original fix:
+>
+> | ID | Fix | Commit |
+> |----|-----|--------|
+> | C1 | Onboarding wires first-run setup (TASKS-FIXES 1.1) | `d76b97e` |
+> | H1 | Site status from actual stack state (TASKS-FIXES 2.1) | `13c5238` |
+> | H2 | `running` gated on owned-process liveness (TASKS-FIXES 2.2) | `c3cef54` |
+> | H3 | Error screen on fatal init (TASKS-FIXES 1.2) | `f632e09` |
+> | H4 | Atomic binary-cache publish (TASKS-FIXES 2.5) | `ba6cf7c` |
+> | H5 | Caddy admin → 0600 unix socket (TASKS-FIXES 2.3) | `6d73ea6` |
+> | M1 | Ownership invariant — never stop a user's Caddy (TASKS-FIXES 2.4) | `d35db62` |
+> | M2 | Broken Mail/Services controls removed (TASKS-FIXES 1.3) | `3ff67bb` |
+> | M3 | Error when a service never becomes ready | `3f87238` |
+> | M4 | Async `wait_until` + lock-not-held-across-waits residual | `0e558fc`, `72ef82b` |
+> | M5 | FrankenPHP subdirectory-multisite: UI interim → real fix → guard removal | `f3bffa1`, `7e39019`, `bb29e8c` |
+> | M6 | One process-table sweep per monitor poll | `4135b0d` |
+> | M7 | Domain validated in core before path/config/cert/DB use | `c1107aa` |
+> | L1 | Sweep every pinned PHP minor | `af9e508` |
+> | L2 | Tar-tree path/symlink escape guard | `88637bf` |
+> | L3 | `stop` escalates to SIGKILL after grace | `71f1285` |
+> | L4 | `ShellRunner::run` errors on non-zero exit | `26088f7` |
+> | L5 | DNS liveness probe moved out of command layer | `c2a5e4d` |
+> | L6 | Dead auto-update UI removed | `d033283` |
 
 > Structured, read-only audit of the rexenv codebase (macOS-first Tauri 2 / Rust +
 > React/TS local dev environment) at the "limited release" stage. Judged against

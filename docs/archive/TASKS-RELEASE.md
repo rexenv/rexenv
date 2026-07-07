@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # TASKS — Release (macOS, limited closed-source distribution)
 
 > **Goal:** package the finished macOS app (Phase 1–3 feature work COMPLETE) into a

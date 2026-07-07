@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # TASKS — Phase 1 (macOS MVP)
 
 > ✅ **Phase 1 goal MET — verified on REAL :443.** One-click WordPress served at

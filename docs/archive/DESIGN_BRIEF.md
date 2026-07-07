@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # rexenv — Claude Design Brief
 
 > A paste-ready brief. Copy the **prompt blocks below into Claude Design, in order**. Each block is in English (most reliable for a design tool). Run them in the **same Claude Design session/canvas** so all screens stay consistent. Start with Block 1 (design system), then the rest.

@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # TASKS — Phase 3 (macOS) — COMPLETE
 
 > **Status: Phase 3 COMPLETE** (macOS). All sections done + verified (lib unit tests + live

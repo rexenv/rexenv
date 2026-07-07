@@ -1,6 +1,10 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # DESIGN-GAPS — UI fidelity vs `design/` (macOS)
 
-> **Status: OPEN — burndown not started.** Source of truth: the `design/*.dc.html` comps. This file
+> **Status: COMPLETE — burndown finished (all tasks `[x]`; §6 Databases items `[D]` deferred by decision). Historical record.** Source of truth: the `design/*.dc.html` comps. This file
 > tracks every place the shipped UI diverges from those comps, found by a per-screen audit (each comp
 > read against its React implementation). The *foundation* already matches well — palette, type roles
 > (Space Grotesk display / Inter UI / JetBrains Mono technical), radii (sm 6 / 9 / lg 13 / xl 14),
@@ -19,8 +23,8 @@
 >
 > ### Intentional divergences — DO NOT "fix" toward the comp
 > The comps are aspirational and predate the real architecture. These are correct as shipped:
-> - **Web-server options Nginx / FrankenPHP** (comps show Apache / OpenLiteSpeed) — Apache/OLS deferred (§7).
-> - **DB engines MySQL / PostgreSQL** (comps show MariaDB) — deferred (§7).
+> - **Web-server options Nginx / FrankenPHP** (comps show Apache / OpenLiteSpeed) — Apache/OLS deferred (see `docs/TODO.md`).
+> - **DB engines MySQL / PostgreSQL** (comps show MariaDB) — deferred (see `docs/TODO.md`).
 > - **Light theme is selectable + applied** though the Settings comp gates it "soon" — per the §4.4 decision.
 > - **Terminal tab** (Site Detail), **Blueprints card** + **Uninstall card** (Settings) — real Phase-3 /
 >   release features the comps don't include. Keep them.

@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # TASKS — Pre-Release Fixes (from the read-only audit)
 
 > The actionable subset of **FINDINGS.md** that must land before the .dmg goes to

@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # rexenv — Project Specification
 
 > **Goal:** A native, lightweight, limitless local development environment. No Docker. macOS first, then Windows and Linux. Built with Claude Code.

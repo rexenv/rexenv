@@ -1,3 +1,7 @@
+> ⚠️ **HISTORICAL** — reflects plans/state at the time of writing, NOT current code.
+> Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
+> without checking the code.
+
 # BACKLOG — Post-Release (from the read-only audit)
 
 > Findings from **FINDINGS.md** deferred past the pre-release .dmg. The pre-release
@@ -151,7 +155,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred · `[→
   shows in About, so nothing real is lost. Re-add when the Tauri updater lands (release §6.1).
   Verified: no dangling refs + `pnpm build` passes (strict tsc).
 
-- [ ] **L7 — Nginx's internal port `8088` is a moderately popular alt-HTTP port** (`core/services.rs`
+- [>] *(moved to `docs/TODO.md`)* **L7 — Nginx's internal port `8088` is a moderately popular alt-HTTP port** (`core/services.rs`
   `NGINX_HTTP_PORT`). Hadoop YARN's ResourceManager UI and assorted dev proxies default to 8088, so a
   developer running one of those collides with the shared nginx. Low risk — the port is loopback-only,
   bind-tested at every start (`ports::ensure_free`), and the error names the holder + a free command —
