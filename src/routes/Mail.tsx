@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { ChevronRight, ExternalLink, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
 import {
+  listSites,
   mailpitClear,
   mailpitMessage,
   mailpitMessageRaw,
@@ -13,7 +14,7 @@ import {
   mailpitStatus,
   openExternal,
 } from "@/lib/ipc";
-import type { MailSummary } from "@/types";
+import type { MailSummary, Site } from "@/types";
 
 type PreviewTab = "html" | "text" | "raw" | "headers";
 
@@ -43,9 +44,81 @@ function initial(a: { name: string; address: string }): string {
   return (a.name || a.address).trim().charAt(0).toUpperCase() || "?";
 }
 
+const OTHER_GROUP_KEY = "__other__";
+
+interface MailGroup {
+  key: string; // site id, or OTHER_GROUP_KEY for unmatched mail
+  name: string;
+  domain: string | null;
+  messages: MailSummary[];
+  unread: number;
+  latest: number; // most recent message timestamp (group sort key)
+}
+
+function addressDomain(address: string): string | null {
+  const at = address.lastIndexOf("@");
+  return at === -1 ? null : address.slice(at + 1).toLowerCase();
+}
+
+/** True when a mail domain belongs to a site — exact, or a subdomain (multisite). */
+function domainMatches(mailDomain: string, siteDomain: string): boolean {
+  return mailDomain === siteDomain || mailDomain.endsWith(`.${siteDomain}`);
+}
+
+/** Match a message to a site by sender domain first, then any recipient domain. */
+function siteFor(m: MailSummary, sites: Site[]): Site | null {
+  const domains = [m.from.address, ...m.to.map((a) => a.address)]
+    .map(addressDomain)
+    .filter((d): d is string => d !== null);
+  for (const d of domains) {
+    const site = sites.find((s) => domainMatches(d, s.domain.toLowerCase()));
+    if (site) return site;
+  }
+  return null;
+}
+
+/** Group messages by site, groups sorted by latest activity, messages newest first. */
+function groupBySite(messages: MailSummary[], sites: Site[]): MailGroup[] {
+  const byKey = new Map<string, MailGroup>();
+  for (const m of messages) {
+    const site = siteFor(m, sites);
+    const key = site?.id ?? OTHER_GROUP_KEY;
+    let g = byKey.get(key);
+    if (!g) {
+      g = {
+        key,
+        name: site?.name ?? "Other",
+        domain: site?.domain ?? null,
+        messages: [],
+        unread: 0,
+        latest: 0,
+      };
+      byKey.set(key, g);
+    }
+    g.messages.push(m);
+    if (!m.read) g.unread += 1;
+    const t = new Date(m.created).getTime();
+    if (!Number.isNaN(t) && t > g.latest) g.latest = t;
+  }
+  const groups = [...byKey.values()];
+  for (const g of groups) {
+    g.messages.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+  }
+  // "Other" always sinks below real sites; sites sort by most recent activity.
+  groups.sort((a, b) => {
+    if ((a.key === OTHER_GROUP_KEY) !== (b.key === OTHER_GROUP_KEY)) {
+      return a.key === OTHER_GROUP_KEY ? 1 : -1;
+    }
+    return b.latest - a.latest;
+  });
+  return groups;
+}
+
 export function Mail() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [siteFilter, setSiteFilter] = useState<string>("all");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<PreviewTab>("html");
 
@@ -59,8 +132,26 @@ export function Mail() {
     queryFn: () => mailpitMessages(search),
     refetchInterval: 5000,
   });
+  const { data: sites } = useQuery({ queryKey: ["sites"], queryFn: listSites });
 
   const messages = list?.messages ?? [];
+  const groups = useMemo(() => groupBySite(messages, sites ?? []), [messages, sites]);
+  const visibleGroups = siteFilter === "all" ? groups : groups.filter((g) => g.key === siteFilter);
+
+  // Drop a stale site filter once its group no longer exists (e.g. after Clear all).
+  useEffect(() => {
+    if (siteFilter !== "all" && messages.length > 0 && !groups.some((g) => g.key === siteFilter)) {
+      setSiteFilter("all");
+    }
+  }, [groups, messages.length, siteFilter]);
+
+  const toggleGroup = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   // Keep a valid selection as the inbox changes.
   useEffect(() => {
     if (selectedId && !messages.some((m) => m.id === selectedId)) setSelectedId(null);
@@ -122,7 +213,7 @@ export function Mail() {
       <div className="flex min-h-0 flex-1">
         {/* List pane */}
         <div className="flex w-[344px] shrink-0 flex-col border-r border-rex-border">
-          <div className="border-b border-rex-border p-2.5">
+          <div className="flex flex-col gap-2 border-b border-rex-border p-2.5">
             <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5">
               <Search className="h-3.5 w-3.5 text-rex-text-muted" />
               <input
@@ -132,23 +223,66 @@ export function Mail() {
                 className="h-[34px] flex-1 bg-transparent text-[12.5px] text-rex-text outline-none placeholder:text-rex-text-muted"
               />
             </div>
+            <select
+              value={siteFilter}
+              onChange={(e) => setSiteFilter(e.target.value)}
+              className="h-[30px] w-full rounded-lg border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none"
+            >
+              <option value="all">All sites</option>
+              {groups.map((g) => (
+                <option key={g.key} value={g.key}>
+                  {g.domain ? `${g.name} · ${g.domain}` : g.name} ({g.messages.length})
+                </option>
+              ))}
+            </select>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            {messages.length === 0 ? (
+            {visibleGroups.length === 0 ? (
               <div className="p-6 text-center text-[12.5px] text-rex-text-muted">
                 {search ? "No messages match your search." : "No mail captured yet."}
               </div>
             ) : (
-              messages.map((m) => (
-                <MessageRow
-                  key={m.id}
-                  m={m}
-                  active={m.id === selectedId}
-                  onClick={() => {
-                    setSelectedId(m.id);
-                    setTab("html");
-                  }}
-                />
+              visibleGroups.map((g) => (
+                <div key={g.key}>
+                  <button
+                    onClick={() => toggleGroup(g.key)}
+                    className="sticky top-0 z-10 flex w-full items-center gap-2 border-b border-rex-border-subtle bg-rex-surface-1 px-3 py-2 text-left transition-colors hover:bg-rex-surface-2/50"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 text-rex-text-muted transition-transform",
+                        !collapsed.has(g.key) && "rotate-90",
+                      )}
+                    />
+                    <Globe className="h-3.5 w-3.5 shrink-0 text-rex-text-dim" />
+                    <span className="truncate text-[12px] font-semibold text-rex-text">{g.name}</span>
+                    {g.domain && (
+                      <span className="truncate font-mono text-[10.5px] text-rex-text-muted">{g.domain}</span>
+                    )}
+                    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                      {g.unread > 0 && (
+                        <span className="rounded-full bg-brand px-1.5 py-px font-mono text-[9.5px] font-semibold text-white">
+                          {g.unread}
+                        </span>
+                      )}
+                      <span className="rounded-md border border-rex-border-strong bg-rex-surface-2 px-1.5 py-px font-mono text-[10px] text-rex-text-dim">
+                        {g.messages.length}
+                      </span>
+                    </span>
+                  </button>
+                  {!collapsed.has(g.key) &&
+                    g.messages.map((m) => (
+                      <MessageRow
+                        key={m.id}
+                        m={m}
+                        active={m.id === selectedId}
+                        onClick={() => {
+                          setSelectedId(m.id);
+                          setTab("html");
+                        }}
+                      />
+                    ))}
+                </div>
               ))
             )}
           </div>
