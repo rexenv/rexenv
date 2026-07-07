@@ -1,7 +1,7 @@
 //! Manual check for shared nginx → php-fpm (task 6.2).
 //! Starts the shared php-fpm pool + nginx, serving a PHP docroot for ~12s. Probe:
-//!   curl -H 'Host: test6.test' http://127.0.0.1:8088/        # PHP via FastCGI
-//!   curl -H 'Host: test6.test' http://127.0.0.1:8088/hi.txt  # static file
+//!   curl -H 'Host: test6.test' http://127.0.0.1:18088/        # PHP via FastCGI
+//!   curl -H 'Host: test6.test' http://127.0.0.1:18088/hi.txt  # static file
 
 use rexenv_lib::core::{binaries, services};
 use rexenv_lib::platform;

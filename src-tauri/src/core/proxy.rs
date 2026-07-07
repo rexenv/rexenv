@@ -389,7 +389,7 @@ mod tests {
         cfg.routes.push(SiteRoute {
             host: "mysite.test".into(),
             wildcard: true,
-            upstream: "127.0.0.1:8088".into(),
+            upstream: "127.0.0.1:18088".into(),
             cert_path: "/c/m.pem".into(),
             key_path: "/c/m.key".into(),
         });

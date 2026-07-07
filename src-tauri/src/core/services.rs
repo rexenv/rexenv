@@ -139,7 +139,7 @@ pub fn fpm_running(port: u16) -> bool {
 // the shared php-fpm pool. Caddy proxies all `*.test` to this port.
 
 /// Internal loopback HTTP port the shared nginx listens on (Caddy's upstream).
-pub const NGINX_HTTP_PORT: u16 = 8088;
+pub const NGINX_HTTP_PORT: u16 = 18088;
 
 /// WordPress rewrite mode for a site. Phase 1 exercises `Single`; the multisite
 /// slots exist so Phase 3 needs no refactor.
@@ -232,7 +232,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
     // `absolute_redirect off` → nginx issues RELATIVE redirects. It listens on an
     // internal loopback port behind the Caddy edge, so an absolute redirect (e.g. the
     // `/wp-admin` → `/wp-admin/` directory redirect) would otherwise leak
-    // `http://<host>:8088/…` to the browser and break the request.
+    // `http://<host>:18088/…` to the browser and break the request.
     format!(
         "\n\tserver {{\n\
          \t\tlisten 127.0.0.1:{port};\n\
@@ -466,7 +466,7 @@ mod tests {
 
     fn nginx_cfg(mode: RewriteMode) -> NginxConfig {
         NginxConfig {
-            http_port: 8088,
+            http_port: 18088,
             pid: PathBuf::from("/run/nginx.pid"),
             error_log: PathBuf::from("/logs/nginx-error.log"),
             access_log: PathBuf::from("/logs/nginx-access.log"),
@@ -484,10 +484,10 @@ mod tests {
     fn nginx_config_has_shared_listen_and_fastcgi() {
         let cfg = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
         assert!(cfg.contains("daemon off;"));
-        assert!(cfg.contains("listen 127.0.0.1:8088;"));
+        assert!(cfg.contains("listen 127.0.0.1:18088;"));
         assert!(cfg.contains("server_name acme.test;"));
         assert!(cfg.contains("root \"/Sites/acme/public\";"));
-        // Relative redirects only, so nginx's internal :8088 never leaks to the browser
+        // Relative redirects only, so nginx's internal :18088 never leaks to the browser
         // on a directory redirect like /wp-admin → /wp-admin/.
         assert!(cfg.contains("absolute_redirect off;"));
         assert!(cfg.contains("fastcgi_pass 127.0.0.1:9783;"));

@@ -1065,7 +1065,7 @@ impl Drop for ServiceManager {
         // Best-effort: stop our child processes so nothing is orphaned if
         // stop_all wasn't called. SIGTERM-first (Proc::terminate), NOT a bare
         // SIGKILL: a SIGKILLed nginx master leaks `nginx: worker process`
-        // children that keep :8088 accepting forever (same for php-fpm — its
+        // children that keep :18088 accepting forever (same for php-fpm — its
         // pools clean themselves up via PhpFpmPools::drop). A privileged-root
         // Caddy can't be signalled from here.
         for child in self.dbs.values_mut() {

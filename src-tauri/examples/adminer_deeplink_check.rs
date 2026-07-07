@@ -9,7 +9,7 @@
 //!     authenticated session straight in the site's DB (its tables are listed),
 //!     instead of the stock "does not support accessing without a password" wall.
 //!
-//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example adminer_deeplink_check`
+//! Run (ports 8443/8080/18088/9783/13306/11025/18025 free): `cargo run --example adminer_deeplink_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{adminer, binaries, services, sites, ssl, wordpress};

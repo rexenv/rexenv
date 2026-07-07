@@ -630,14 +630,14 @@ mod tests {
         assert!(!is_nginx_served(&fp));
 
         // Edge upstream: nginx site → shared nginx port; FrankenPHP site → its backend.
-        assert_eq!(site_upstream(&ng, 8088), "127.0.0.1:8088");
+        assert_eq!(site_upstream(&ng, 18088), "127.0.0.1:18088");
         assert_eq!(
-            site_upstream(&fp, 8088),
+            site_upstream(&fp, 18088),
             format!("127.0.0.1:{}", frankenphp::site_port("fp.test"))
         );
         // The FrankenPHP backend port is in the override range, not the nginx port.
         assert!(frankenphp::site_port("fp.test") >= frankenphp::FRANKENPHP_BASE_PORT);
-        assert_ne!(frankenphp::site_port("fp.test"), 8088);
+        assert_ne!(frankenphp::site_port("fp.test"), 18088);
     }
 
     #[test]

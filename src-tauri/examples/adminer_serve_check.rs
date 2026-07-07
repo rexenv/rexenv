@@ -8,7 +8,7 @@
 //! UI login uses a JS-injected CSRF token, so the interactive login is a one-click
 //! browser step — not scriptable headlessly.)
 //!
-//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example adminer_serve_check`
+//! Run (ports 8443/8080/18088/9783/13306/11025/18025 free): `cargo run --example adminer_serve_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{adminer, services, sites, ssl};

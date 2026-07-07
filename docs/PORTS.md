@@ -11,7 +11,7 @@ binary, update THIS file in the same commit.
 | Caddy edge HTTPS | **443** | TCP | `core/proxy.rs` `DEFAULT_HTTPS_PORT` |
 | Caddy admin | **unix socket** (`<config>/caddy-admin.sock`, `0600`) — never TCP `:2019` | — | `core/proxy.rs` `ADMIN_SOCKET_FILE` |
 | Embedded DNS | **15353** | UDP | `core/dns.rs` `DEFAULT_DNS_PORT` |
-| Shared Nginx | **8088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` (L7: may move to 18088, see TODO) |
+| Shared Nginx | **18088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` |
 | php-fpm pools | **9781 / 9782 / 9783** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.1/8.2/8.3) |
 | FrankenPHP override backends | **8200–8299** (per-site, FNV-1a of domain) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT` |
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |

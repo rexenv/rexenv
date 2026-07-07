@@ -5,7 +5,7 @@
 //!     regenerated nginx.conf gains the WP network rewrite rules;
 //!   - `/wp-admin/network/` is recognized (redirects to wp-login, not a 404).
 //!
-//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example multisite_check`
+//! Run (ports 8443/8080/18088/9783/13306/11025/18025 free): `cargo run --example multisite_check`
 
 use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{binaries, services, sites, ssl, wordpress};

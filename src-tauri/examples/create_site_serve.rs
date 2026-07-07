@@ -12,7 +12,7 @@ use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::thread;
 use std::time::Duration;
 
-const NGINX_PORT: u16 = services::NGINX_HTTP_PORT; // 8088
+const NGINX_PORT: u16 = services::NGINX_HTTP_PORT; // 18088
 const CADDY_HTTP: u16 = 8080;
 const CADDY_HTTPS: u16 = 8443;
 

@@ -6,10 +6,13 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
-- [ ] **L7 — move shared Nginx off 8088** (from BACKLOG). `8088` collides with Hadoop
-  YARN / common dev proxies; move to a quieter port (e.g. `18088`). Low risk: loopback-only,
-  bind-tested at start. Touch `core/services.rs` `NGINX_HTTP_PORT`, regen configs, update
-  `docs/PORTS.md`.
+- [x] **L7 — move shared Nginx off 8088** (from BACKLOG). `8088` collides with Hadoop
+  YARN / common dev proxies; moved to `18088`. Low risk: loopback-only, bind-tested at
+  start. ✓ **Done:** `core/services.rs` `NGINX_HTTP_PORT` = 18088; configs regenerate
+  from the constant on every stack start (`rebuild_configs_for`); tests/examples/mock/
+  docs updated; `cargo test --lib` green. Transition note: a stack left running by a
+  pre-change build keeps its old nginx on 8088 — it is not adopted (adoption keys on the
+  new port) and not auto-reaped; kill it manually or via the old build's Stop all.
 - [ ] **Release 1.5 — cold first run on a second Mac / clean account** (from TASKS-RELEASE).
   Hands-on: install the .dmg on a machine that has never seen rexenv, run the full first-run
   flow. Pairs with the next item.

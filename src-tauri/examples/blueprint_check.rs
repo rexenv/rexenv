@@ -6,7 +6,7 @@
 //!     "site setup" automation — installs + activates its plugin, turns on
 //!     WP_DEBUG, and converts to multisite — the same path `create_site` runs.
 //!
-//! Run (ports 8443/8080/8088/9783/13306/11025/18025 free): `cargo run --example blueprint_check`
+//! Run (ports 8443/8080/18088/9783/13306/11025/18025 free): `cargo run --example blueprint_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{binaries, blueprints, services, sites, ssl, wordpress};

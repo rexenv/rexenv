@@ -23,7 +23,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
   (pinned versions, checksum-locked). macOS `prepare_binary` order: de-quarantine →
   relink Homebrew dylibs to `/usr/lib` → ad-hoc codesign **LAST**.
 - **Request topology (default sites):** browser → Caddy `:443` (TLS, local-CA certs,
-  auto-HTTPS disabled) → ONE shared Nginx `:8088` (vhost by `server_name`) → one php-fpm
+  auto-HTTPS disabled) → ONE shared Nginx `:18088` (vhost by `server_name`) → one php-fpm
   pool **per PHP version** (not per site) → WordPress → DB. No direct Caddy→php-fpm.
   FrankenPHP per-site overrides are loopback backends only — never the edge, never `:443`.
 - **Edge admin = private unix socket (`0600`), NEVER TCP `:2019`** — a TCP admin on a

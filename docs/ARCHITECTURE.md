@@ -48,7 +48,7 @@ Default site:
 browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per domain)
                      │  proxies ALL *.test by Host
                      ▼
-                shared Nginx :8088 (ONE process, a server block per site, vhost by server_name)
+                shared Nginx :18088 (ONE process, a server block per site, vhost by server_name)
                      │  fastcgi_pass → the site's PHP version's pool
                      ▼
                 php-fpm pool 978x (ONE pool per PHP minor, not per site)
