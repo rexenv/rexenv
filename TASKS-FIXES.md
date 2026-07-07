@@ -208,6 +208,40 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   *Done when:* exactly one global start/stop control exists, it drives `stop_all`, and
   its Start/Stop label reflects live service state.
 
+- [x] **3.3 Mail inbox grouped by WordPress site** — ✓ done (commit `6d4caef`). The flat
+  message list made it impossible to tell which site sent what. The list pane now groups
+  messages by site: a message matches a site by the domain of its sender (then any
+  recipient) against `sites.domain`, with subdomains matching too (multisite); unmatched
+  mail lands in an **Other** group that always sorts last. Group headers are sticky and
+  collapsible (chevron), show site name + `domain`, an unread badge and a total count;
+  groups sort by most recent activity, messages within a group newest-first. A site
+  dropdown above the list filters to one group ("All sites" default; a stale selection
+  auto-resets after Clear all). Grouping is a single O(n) `useMemo` pass client-side —
+  Mailpit's server-side content search is untouched, and the preview pane is unchanged.
+  **Verified:** strict `tsc` clean; live browser click-through — groups render with
+  correct counts (mock inbox: Acme Store 2 / Portfolio 1), collapse hides rows and keeps
+  badges, the site filter shows only the chosen group, and a message still opens in the
+  preview.
+  *Done when:* messages are grouped under site-name + domain headers with per-group
+  counts, groups collapse/expand and sort by latest activity (newest-first within),
+  unmatched mail falls into an Other group, and a site filter narrows the list — with
+  the preview pane behavior unchanged.
+
+- [x] **3.4 Mail preview lands on the part that exists (no more "No HTML part")** —
+  ✓ done (commit `e778d0c`). Every WP email opened on "No HTML part": `wp_mail()` sends
+  plain-text-only mail, and the preview always started on the HTML tab. Confirmed against
+  live Mailpit (real message: `HTML len: 0, Text len: 631`); the Rust `HTML`-field mapping
+  was already correct. The preview now falls back to the **Text** tab once per message
+  when the HTML part is empty but text exists; a manual HTML click afterwards sticks
+  (shows "No HTML part" honestly), and messages with an HTML part still open on HTML.
+  One mock message is now text-only so the browser dev build exercises the path.
+  **Verified:** strict `tsc` clean; live browser — text-only message opens on Text,
+  manual HTML click stays on "No HTML part", an HTML message still opens on the HTML
+  iframe.
+  *Done when:* selecting a plain-text-only email shows its text body immediately (no
+  dead-end "No HTML part" landing), HTML emails still open on the HTML tab, and manual
+  tab choices are respected.
+
 ---
 
 ## Notes
