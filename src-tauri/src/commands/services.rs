@@ -74,31 +74,52 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
     mgr.stop_all(state.platform.as_ref())
 }
 
-/// Per-service status + live RAM/CPU for the Services view.
-#[tauri::command]
-pub async fn services_status(
-    state: State<'_, AppState>,
-    dns: State<'_, crate::state::app::DnsState>,
-) -> Result<Vec<ServiceStatus>> {
-    // Single source of truth (shared with `global_status`); non-blocking.
+/// The SINGLE monitor source of truth for resource numbers — both the Services
+/// rows and the sidebar footer's app-total (which just sums these) read here,
+/// so the two can never diverge. Each row is its FULL process tree (master +
+/// workers: php-fpm/nginx keep most real memory in workers — a masters-only
+/// read undercounted by ~100MB on a small stack). The root-privileged Caddy
+/// edge has no child handle (pid unknown) and is invisible to sysinfo's
+/// same-user read — discover its pid by our binary path in the cmdline
+/// (marker-gated, never a foreign caddy) and fall back to the world-readable
+/// `ps` accounting. CPU is per-core percent (Activity-Monitor style).
+pub fn enriched_status(state: &AppState, dns_running: bool) -> Result<Vec<ServiceStatus>> {
     let infos = state.service_infos();
     let mut monitor = state
         .monitor
         .lock()
         .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
     monitor.refresh_processes(); // one sweep per poll, then read each pid (M6)
+    let sup = state.platform.supervisor();
+    // OUR edge caddy's binary path — a cmdline marker only rexenv's edge has.
+    let caddy_marker = state.platform.paths().bin_dir().ok().map(|b| {
+        b.join(format!("caddy-{}", core::binaries::CADDY_VERSION))
+            .join("caddy")
+            .display()
+            .to_string()
+    });
+
     let mut out: Vec<ServiceStatus> = infos
         .into_iter()
         .map(|i| {
-            let m = i.pid.and_then(|p| monitor.process(p));
-            ServiceStatus {
-                name: i.name,
-                running: i.running,
-                pid: i.pid,
-                port: i.port,
-                cpu_percent: m.map(|m| m.cpu_percent).unwrap_or(0.0),
-                ram_mb: m.map(|m| m.ram_mb).unwrap_or(0),
-            }
+            let pid = i.pid.or_else(|| {
+                // Privileged edge: running but pid-less — marker-gated lookup.
+                (i.running && i.name == "Caddy")
+                    .then(|| {
+                        caddy_marker
+                            .as_deref()
+                            .and_then(|m| sup.owned_pids(m).into_iter().next())
+                    })
+                    .flatten()
+            });
+            let tree = pid.and_then(|p| monitor.tree(p));
+            let (cpu_percent, ram_mb) = match tree {
+                // ram 0 for a live service ⇒ sysinfo couldn't actually read it
+                // (cross-user) — use the ps fallback instead.
+                Some(t) if t.ram_mb > 0 => (t.cpu_percent, t.ram_mb),
+                _ => pid.and_then(|p| sup.resource_usage(p)).unwrap_or((0.0, 0)),
+            };
+            ServiceStatus { name: i.name, running: i.running, pid, port: i.port, cpu_percent, ram_mb }
         })
         .collect();
     // The embedded DNS resolver — in-process (no pid/metrics of its own), but a
@@ -106,11 +127,20 @@ pub async fn services_status(
     // here, not only in Settings.
     out.push(ServiceStatus {
         name: "DNS".to_string(),
-        running: dns.running(),
+        running: dns_running,
         pid: None,
         port: core::dns::DEFAULT_DNS_PORT,
         cpu_percent: 0.0,
         ram_mb: 0,
     });
     Ok(out)
+}
+
+/// Per-service status + live RAM/CPU for the Services view.
+#[tauri::command]
+pub async fn services_status(
+    state: State<'_, AppState>,
+    dns: State<'_, crate::state::app::DnsState>,
+) -> Result<Vec<ServiceStatus>> {
+    enriched_status(&state, dns.running())
 }

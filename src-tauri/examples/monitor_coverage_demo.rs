@@ -57,7 +57,7 @@ async fn main() {
     let rows = mgr.status(&*plat, &[]);
     let mut all_ok = true;
     for i in &rows {
-        let m = i.pid.and_then(|p| mon.process(p));
+        let m = i.pid.and_then(|p| mon.tree(p));
         let (cpu, ram) = m.map(|m| (m.cpu_percent, m.ram_mb)).unwrap_or((0.0, 0));
         println!(
             "  {:<18} running={:<5} pid={:<7} cpu={:>5.1}%  ram={:>5} MB",

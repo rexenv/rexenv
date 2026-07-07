@@ -59,10 +59,11 @@ async fn main() {
 
     println!("\n=== service status + live metrics ===");
     let mut mon = Monitor::new();
-    let _ = mon.sample();
+    mon.refresh_processes();
     std::thread::sleep(Duration::from_millis(400));
+    mon.refresh_processes();
     for s in mgr.status(&*plat, &[]) {
-        let met = s.pid.and_then(|p| mon.process(p));
+        let met = s.pid.and_then(|p| mon.tree(p));
         let metric = met
             .map(|m| format!("cpu {:.1}% ram {} MB", m.cpu_percent, m.ram_mb))
             .unwrap_or_else(|| "-".into());

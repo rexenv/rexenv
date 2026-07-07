@@ -47,7 +47,9 @@ pub async fn databases_status(state: State<'_, AppState>) -> Result<Vec<DbStatus
     Ok(infos
         .into_iter()
         .map(|i| {
-            let m = i.pid.and_then(|p| monitor.process(p));
+            // Full process tree: postgres runs a worker family under its
+            // postmaster (same lesson as php-fpm/nginx workers).
+            let m = i.pid.and_then(|p| monitor.tree(p));
             DbStatus {
                 key: i.engine.key().to_string(),
                 label: i.engine.label().to_string(),

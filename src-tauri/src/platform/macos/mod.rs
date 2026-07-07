@@ -304,6 +304,20 @@ impl ProcessSupervisor for MacosSupervisor {
             .collect()
     }
 
+    fn resource_usage(&self, pid: u32) -> Option<(f32, u64)> {
+        // `ps` reads world-readable kinfo_proc, so this works for the ROOT edge
+        // Caddy where sysinfo's proc_pidinfo (same-user only) returns nothing.
+        let out = std::process::Command::new("ps")
+            .args(["-o", "%cpu=,rss=", "-p", &pid.to_string()])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut it = text.split_whitespace();
+        let cpu: f32 = it.next()?.parse().ok()?;
+        let rss_kb: u64 = it.next()?.parse().ok()?;
+        Some((cpu, rss_kb / 1024))
+    }
+
     fn owned_pids(&self, marker: &str) -> Vec<u32> {
         // Substring match against every process's full command (robust vs. a regex
         // over paths with spaces/dots). `marker` is an owned app-data path, so only

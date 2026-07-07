@@ -97,11 +97,27 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
             </span>
           </div>
 
-          <div className="mb-3.5 flex flex-col gap-2.5">
-            <Meter label="CPU" value={`${status.cpuPercent.toFixed(1)}%`} pct={status.cpuPercent} />
+          {/* rexenv's OWN usage (sum of every supervised process tree — masters
+              + workers + the root edge), NOT the whole machine. The CPU value is
+              a per-core sum (Activity-Monitor style, can exceed 100); the meter
+              fill is its 0-100 machine share (÷ cores). RAM fill = share of
+              machine RAM. */}
+          <div
+            className="mb-3.5 flex flex-col gap-2.5"
+            title="rexenv services only (all their processes, workers included) — not the whole machine"
+          >
+            <Meter
+              label="CPU"
+              value={`${status.cpuPercent.toFixed(1)}%`}
+              pct={status.cpuCores ? status.cpuPercent / status.cpuCores : 0}
+            />
             <Meter
               label="RAM"
-              value={`${(status.ramMb / 1024).toFixed(1)} GB`}
+              value={
+                status.ramMb >= 1024
+                  ? `${(status.ramMb / 1024).toFixed(1)} GB`
+                  : `${status.ramMb} MB`
+              }
               pct={status.ramTotalMb ? (status.ramMb / status.ramTotalMb) * 100 : 0}
             />
           </div>

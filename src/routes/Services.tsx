@@ -103,89 +103,6 @@ function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
   );
 }
 
-const RAM_BUDGET_MB = 4096;
-
-function UsageMetric({
-  label,
-  value,
-  unit,
-  pct,
-}: {
-  label: string;
-  value: number;
-  unit: string;
-  pct: number;
-}) {
-  return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-[12.5px] text-rex-text-muted">{label}</span>
-        <span className="font-mono text-[20px] font-semibold text-rex-text">
-          {value}
-          <span className="text-[13px] text-rex-text-dim">{unit}</span>
-        </span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full border border-rex-panel-border bg-rex-well-deep">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-brand-strong to-brand-light shadow-glow-primary transition-[width] duration-700"
-          style={{ width: `${Math.min(100, pct)}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/** The headline "Total resource usage" card: aggregate CPU / Memory + running/idle. */
-function TotalUsageCard({ services }: { services: ServiceInfo[] }) {
-  const running = services.filter((s) => s.running).length;
-  const idle = services.length - running;
-  const totalCpu = Math.round(services.reduce((a, s) => a + s.cpuPercent, 0));
-  const totalRam = services.reduce((a, s) => a + s.ramMb, 0);
-
-  return (
-    <div className="mb-[18px] rounded-[15px] border border-rex-panel-border bg-gradient-to-br from-rex-panel-grad-from to-rex-panel-grad-to px-5 py-[18px]">
-      <div className="mb-4 flex items-center gap-[9px]">
-        <span className="relative inline-flex h-2 w-2">
-          <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />
-          <span className="relative h-2 w-2 rounded-full bg-status-running shadow-glow-run" />
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-rex-text-muted">
-          Total resource usage
-        </span>
-        <span className="flex-1" />
-        <span className="font-mono text-[10.5px] text-rex-text-faint">
-          live · updates every 2s
-        </span>
-      </div>
-      <div className="grid grid-cols-3 gap-[22px]">
-        <UsageMetric label="CPU" value={totalCpu} unit="%" pct={totalCpu} />
-        <div>
-          <UsageMetric
-            label="Memory"
-            value={totalRam}
-            unit=" MB"
-            pct={(totalRam / RAM_BUDGET_MB) * 100}
-          />
-          <div className="mt-[5px] font-mono text-[10px] text-rex-text-label">
-            of {(RAM_BUDGET_MB / 1024).toFixed(1)} GB budget · stays light
-          </div>
-        </div>
-        <div className="flex items-center gap-[18px] border-l border-rex-panel-border pl-4">
-          <div>
-            <div className="font-mono text-[22px] font-semibold text-status-running-bright">
-              {running}
-            </div>
-            <div className="mt-0.5 text-[11px] text-rex-text-muted">running</div>
-          </div>
-          <div>
-            <div className="font-mono text-[22px] font-semibold text-rex-text-dim">{idle}</div>
-            <div className="mt-0.5 text-[11px] text-rex-text-muted">idle</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ServiceRow({
   svc,
@@ -316,7 +233,7 @@ export function Services() {
           />
         ) : (
           <>
-            <TotalUsageCard services={services} />
+
             {GROUPS.map((g) => {
               const rows = services.filter((s) => serviceKind(s) === g.kind);
               if (rows.length === 0) return null;

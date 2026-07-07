@@ -51,8 +51,14 @@ export interface GlobalStatus {
   summary: "all" | "partial" | "stopped";
   running: number;
   total: number;
+  /** rexenv's OWN total: sum of per-core % across every supervised process
+   *  tree (Activity-Monitor style — can exceed 100). NOT machine-wide usage. */
   cpuPercent: number;
+  /** Logical cores — divide cpuPercent by this for a 0-100 machine share. */
+  cpuCores: number;
+  /** rexenv's OWN total RAM (all supervised process trees), MB. */
   ramMb: number;
+  /** The machine's total RAM, MB — meter denominator only. */
   ramTotalMb: number;
 }
 

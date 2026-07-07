@@ -116,6 +116,17 @@ pub trait ProcessSupervisor: Send + Sync {
         Vec::new()
     }
 
+    /// CPU% (per-core, Activity-Monitor style) + RAM MB for `pid`, readable
+    /// ACROSS users — the root-owned Caddy edge is invisible to sysinfo's
+    /// task-level read (`proc_pidinfo` is same-user only on macOS) but its
+    /// `kinfo_proc` accounting is world-readable via `ps`. Coarser than the
+    /// sysinfo path (ps CPU% is a decaying average, not an interval delta) —
+    /// used only as the fallback when the primary read yields nothing.
+    /// Default: unavailable.
+    fn resource_usage(&self, _pid: u32) -> Option<(f32, u64)> {
+        None
+    }
+
     /// Help for a port-conflict error: who is holding `port` (any process, not
     /// just ours — this is diagnostic, never used to kill anything ourselves)
     /// and a copy-paste shell command the USER can run to terminate the holder

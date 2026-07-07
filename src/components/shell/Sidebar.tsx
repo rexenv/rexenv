@@ -15,6 +15,7 @@ const ZERO_STATUS: GlobalStatus = {
   running: 0,
   total: 0,
   cpuPercent: 0,
+  cpuCores: 0,
   ramMb: 0,
   ramTotalMb: 0,
 };

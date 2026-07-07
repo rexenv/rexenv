@@ -61,8 +61,12 @@ pub fn init_error(state: State<'_, InitError>) -> Option<String> {
 }
 
 /// The sidebar status footer's global block. Mirrors the frontend `GlobalStatus`
-/// type. CPU/RAM are real system totals (`sysinfo`); running/total count LIVE
-/// services (the single source of truth shared with `services_status`).
+/// type. CPU/RAM are REXENV'S OWN totals — the sum of every supervised process
+/// tree (masters + workers, incl. the root edge) from the same enriched rows the
+/// Services tab shows — NOT the whole machine's usage. `cpu_percent` is a sum of
+/// per-core percents (Activity-Monitor style, can exceed 100); divide by
+/// `cpu_cores` for a 0-100 machine share. `ram_total_mb` is the machine's RAM,
+/// kept as the meter denominator ("rexenv uses X of Y GB").
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalStatus {
@@ -71,44 +75,40 @@ pub struct GlobalStatus {
     pub running: u32,
     pub total: u32,
     pub cpu_percent: f32,
+    pub cpu_cores: u32,
     pub ram_mb: u64,
     pub ram_total_mb: u64,
 }
 
-/// Live global status for the sidebar footer (task 7.4): real system CPU/RAM via
-/// `sysinfo` + a running/total derived from LIVE service status (`ServiceManager`),
-/// the single source of truth shared with `services_status` so the footer and the
-/// Services tab can never disagree about whether the stack is up.
+/// Live global status for the sidebar footer (task 7.4): running/total AND the
+/// app-total CPU/RAM both derive from `enriched_status` — the single monitor
+/// source of truth shared with `services_status`, so the footer and the
+/// Services tab can never disagree (about liveness OR resources).
 #[tauri::command]
-pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
-    let metrics = {
+pub fn global_status(
+    state: State<'_, AppState>,
+    dns: State<'_, crate::state::app::DnsState>,
+) -> Result<GlobalStatus> {
+    let rows = crate::commands::services::enriched_status(&state, dns.running())?;
+    let (running, total, summary) = summarize(&rows.iter().map(|r| r.running).collect::<Vec<_>>());
+    let cpu_percent = rows.iter().map(|r| r.cpu_percent).sum();
+    let ram_mb = rows.iter().map(|r| r.ram_mb).sum();
+    let (cpu_cores, ram_total_mb) = {
         let mut monitor = state
             .monitor
             .lock()
             .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
-        monitor.sample()
+        (monitor.cpu_cores(), monitor.machine_ram_total_mb())
     };
-
-    // Running/total/summary derive from live service status (NOT the sites table),
-    // via the same `AppState::service_infos` the Services tab reads.
-    let (running, total, summary) = summarize(&state.service_infos());
-
-    Ok(GlobalStatus {
-        summary,
-        running,
-        total,
-        cpu_percent: metrics.cpu_percent,
-        ram_mb: metrics.ram_used_mb,
-        ram_total_mb: metrics.ram_total_mb,
-    })
+    Ok(GlobalStatus { summary, running, total, cpu_percent, cpu_cores, ram_mb, ram_total_mb })
 }
 
-/// Reduce a live per-service snapshot to the footer's running/total/summary.
+/// Reduce live per-service running flags to the footer's running/total/summary.
 /// Pure (no locks/DB) so it is unit-testable and pins the invariant: "running"
 /// counts RUNNING SERVICES, never site DB rows.
-fn summarize(infos: &[crate::core::service_manager::ServiceInfo]) -> (u32, u32, &'static str) {
-    let total = infos.len() as u32;
-    let running = infos.iter().filter(|i| i.running).count() as u32;
+fn summarize(running_flags: &[bool]) -> (u32, u32, &'static str) {
+    let total = running_flags.len() as u32;
+    let running = running_flags.iter().filter(|r| **r).count() as u32;
     let summary = if running == 0 {
         "stopped"
     } else if running == total {
@@ -263,11 +263,6 @@ pub async fn uninstall_system(state: State<'_, AppState>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::summarize;
-    use crate::core::service_manager::ServiceInfo;
-
-    fn svc(name: &str, running: bool) -> ServiceInfo {
-        ServiceInfo { name: name.into(), running, pid: None, port: 0 }
-    }
 
     /// Pins the fix: `global_status` running/total/summary come from RUNNING
     /// SERVICES, never site DB rows — so the footer (global_status) and the
@@ -278,20 +273,11 @@ mod tests {
         assert_eq!(summarize(&[]), (0, 0, "stopped"));
         // Services present but none running → stopped. (Even if a site row were
         // marked Running elsewhere, summarize never sees sites — that's the point.)
-        assert_eq!(
-            summarize(&[svc("Nginx", false), svc("MySQL", false)]),
-            (0, 2, "stopped"),
-        );
+        assert_eq!(summarize(&[false, false]), (0, 2, "stopped"));
         // Some running → partial — the exact case the footer used to get wrong
         // (stack up, zero sites DB-marked Running ⇒ must still be "running").
-        assert_eq!(
-            summarize(&[svc("Nginx", true), svc("MySQL", false)]),
-            (1, 2, "partial"),
-        );
+        assert_eq!(summarize(&[true, false]), (1, 2, "partial"));
         // All running → all.
-        assert_eq!(
-            summarize(&[svc("Nginx", true), svc("MySQL", true)]),
-            (2, 2, "all"),
-        );
+        assert_eq!(summarize(&[true, true]), (2, 2, "all"));
     }
 }

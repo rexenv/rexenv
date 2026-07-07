@@ -92,6 +92,7 @@ export const mockGlobalStatus: GlobalStatus = {
   running: mockServices.filter((s) => s.running).length,
   total: mockServices.length,
   cpuPercent: 14,
+  cpuCores: 8,
   ramMb: 612,
   ramTotalMb: 16384,
 };
