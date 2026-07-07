@@ -164,23 +164,30 @@ fn wp_config_text(docroot: &Path) -> Option<String> {
 /// sites anyway).
 pub fn wp_debug_log_status(docroot: &Path) -> WpDebugLogStatus {
     let config = wp_config_text(docroot).unwrap_or_default();
-    let mut debug = false;
-    let mut log_enabled = false;
+    let mut debug = None;
+    let mut log_enabled = None;
     let mut path = docroot.join("wp-content").join("debug.log");
+    // First define wins, like PHP's `define()` — stock wp-config carries a
+    // guarded `define('WP_DEBUG', false)` fallback BELOW where WP-CLI inserts.
     for line in config.lines() {
-        if let Some(v) = define_value(line, "WP_DEBUG") {
-            debug = is_truthy(&v);
+        if debug.is_none() {
+            if let Some(v) = define_value(line, "WP_DEBUG") {
+                debug = Some(is_truthy(&v));
+            }
         }
-        if let Some(v) = define_value(line, "WP_DEBUG_LOG") {
-            if let Some(custom) = as_path(&v) {
-                log_enabled = true;
-                let p = Path::new(custom);
-                path = if p.is_absolute() { p.to_path_buf() } else { docroot.join(p) };
-            } else {
-                log_enabled = is_truthy(&v);
+        if log_enabled.is_none() {
+            if let Some(v) = define_value(line, "WP_DEBUG_LOG") {
+                if let Some(custom) = as_path(&v) {
+                    log_enabled = Some(true);
+                    let p = Path::new(custom);
+                    path = if p.is_absolute() { p.to_path_buf() } else { docroot.join(p) };
+                } else {
+                    log_enabled = Some(is_truthy(&v));
+                }
             }
         }
     }
+    let (debug, log_enabled) = (debug.unwrap_or(false), log_enabled.unwrap_or(false));
     let meta = std::fs::metadata(&path).ok();
     WpDebugLogStatus {
         debug,
@@ -315,6 +322,23 @@ mod tests {
         assert!(!s.debug && s.log_enabled);
         assert!(s.path.ends_with("logs/wp.log"), "{}", s.path);
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn debug_log_status_first_define_wins_over_guarded_fallback() {
+        let dir = std::env::temp_dir().join("rexenv-wp-debug-firstwins-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // WP-CLI inserts real defines ABOVE the stock guarded fallback.
+        std::fs::write(
+            dir.join("wp-config.php"),
+            "<?php\ndefine( 'WP_DEBUG', true );\ndefine( 'WP_DEBUG_LOG', true );\n\
+             if ( ! defined( 'WP_DEBUG' ) ) {\n\tdefine( 'WP_DEBUG', false );\n}\n",
+        )
+        .unwrap();
+        let s = wp_debug_log_status(&dir);
+        assert!(s.debug && s.log_enabled);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

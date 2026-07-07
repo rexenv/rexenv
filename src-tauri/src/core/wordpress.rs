@@ -446,11 +446,26 @@ pub fn wp_debug_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<bo
     Ok(matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true"))
 }
 
-/// Toggle `WP_DEBUG` (`wp config set WP_DEBUG true|false --raw` — `--raw` so it's
-/// a boolean constant, not the string `"true"`).
+/// Toggle full WordPress debugging (`wp config set … --raw` so values are
+/// boolean constants, not the string `"true"`).
+///
+/// On ⇒ the recommended development trio: `WP_DEBUG` + `WP_DEBUG_LOG` (write to
+/// `wp-content/debug.log` — PHP creates the file on the first entry) with
+/// `WP_DEBUG_DISPLAY` false (log, don't print; core's `wp_debug_mode()` also
+/// runs `ini_set('display_errors', 0)` for us when it's false).
+/// Off ⇒ `WP_DEBUG`/`WP_DEBUG_LOG` false and `WP_DEBUG_DISPLAY` removed, i.e.
+/// back to a stock wp-config.
 pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) -> Result<String> {
     let val = if on { "true" } else { "false" };
-    wp_run(php_bin, wp_phar, docroot, &["config", "set", "WP_DEBUG", val, "--raw"])
+    let out = wp_run(php_bin, wp_phar, docroot, &["config", "set", "WP_DEBUG", val, "--raw"])?;
+    wp_run(php_bin, wp_phar, docroot, &["config", "set", "WP_DEBUG_LOG", val, "--raw"])?;
+    if on {
+        wp_run(php_bin, wp_phar, docroot, &["config", "set", "WP_DEBUG_DISPLAY", "false", "--raw"])?;
+    } else {
+        // May not exist (e.g. debugging was enabled by hand) — not an error.
+        let _ = wp_run(php_bin, wp_phar, docroot, &["config", "delete", "WP_DEBUG_DISPLAY"]);
+    }
+    Ok(out)
 }
 
 /// Run `wp search-replace <from> <to> [--dry-run] --format=count` and return the
