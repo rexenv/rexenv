@@ -178,6 +178,38 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
 
 ---
 
+## 3. Live-testing fixes (found after the audit)
+
+- [x] **3.1 Always-on DNS resolver out of the Stop-all contract** — ✓ done (commit
+  `ec2a8b0`). The embedded resolver (in-process task, app-lifetime, watchdog-restarted —
+  deliberately NOT in `stop_all`) was listed as a stoppable Services row, so after Stop
+  all the footer stayed "Partial" and never offered "Start all" — a "running" the button
+  couldn't clear (same source-of-truth class as 2.1/H1). Chose the intentional-keep-running
+  fix: dropped the DNS row from `enriched_status` (running/total/summary + both global
+  toggle labels now count only manager-owned services) and surfaced the resolver as a
+  separate **"Always on"** indicator on Services fed by `dns_status` — green when up, red
+  **"Down"** (error pill, not gray "Idle") when the task dies. Resolver lifecycle +
+  watchdog untouched. **Verified:** 152/152 lib tests (`summarize(&[false,…]) == "stopped"`
+  pins the footer); live — stack fully stopped (`lsof` shows :443/:8088/:9783/:13306/:11025
+  free) while the resolver holds UDP `:15353`, footer reads Stopped/"Start all", DNS
+  indicator green; confirmed in-app by the user.
+  *Done when:* UI and reality agree — no "running" that Stop-all can't clear; the DNS
+  indicator stays visible (and goes red on a dead resolver) without ever affecting the
+  global Start/Stop-all state.
+
+- [x] **3.2 One global Stop all, not two** — ✓ done (commit `a54833a`). Removed the
+  Services-header Start/Stop-all — a pure duplicate of the footer control (same
+  `start_services`/`stop_services` IPC, nothing page-specific). Kept the **footer** one:
+  it lives with the global status + app-total resources and invalidates both the
+  `services` and `global-status` queries (the header copy only refreshed `services`).
+  The TopBar keeps its "N of M running" subtitle. **Verified:** strict `tsc` clean at the
+  commit + browser render (header action gone, single footer control whose label derives
+  from live `global_status.running`); confirmed in-app by the user.
+  *Done when:* exactly one global start/stop control exists, it drives `stop_all`, and
+  its Start/Stop label reflects live service state.
+
+---
+
 ## Notes
 
 - **Ordering rationale:** §1 first (a fresh install is unusable/opaque without it), then
