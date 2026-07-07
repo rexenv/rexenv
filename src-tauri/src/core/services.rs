@@ -267,7 +267,12 @@ pub fn generate_nginx_config(cfg: &NginxConfig) -> String {
     s.push_str(&format!("error_log \"{}\";\n", cfg.error_log.display()));
     s.push_str("events {\n\tworker_connections 256;\n}\n\n");
     s.push_str("http {\n");
-    s.push_str(&format!("\taccess_log \"{}\";\n", cfg.access_log.display()));
+    // Per-HOST access lines (host + ISO time + bytes) — the default "combined"
+    // format has no $host, so per-site activity (req/min + bytes on the Sites
+    // page) couldn't be attributed. Kept minimal on purpose: this log is parsed
+    // every poll (core::site_metrics).
+    s.push_str("\tlog_format rexenv '$host $time_iso8601 $body_bytes_sent';\n");
+    s.push_str(&format!("\taccess_log \"{}\" rexenv;\n", cfg.access_log.display()));
     s.push_str(
         "\ttypes {\n\
          \t\ttext/html html htm;\n\

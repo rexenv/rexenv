@@ -62,6 +62,21 @@ export interface GlobalStatus {
   ramTotalMb: number;
 }
 
+/** Honest per-site resources (mirrors the Rust SiteResources). A site is not a
+ *  process: only FrankenPHP-override sites (`dedicated`) have real CPU/RAM;
+ *  shared nginx+pool sites get ACTIVITY (last-60s requests/bytes) + DB size —
+ *  never a fabricated per-site CPU/RAM. */
+export interface SiteResources {
+  id: string;
+  domain: string;
+  dedicated: boolean;
+  cpuPercent: number | null;
+  ramMb: number | null;
+  requestsPerMin: number | null;
+  bytesPerMin: number | null;
+  dbSizeBytes: number | null;
+}
+
 /** Live per-site serving status (mirrors the Rust SiteServing). `serving` is true
  *  only when the edge is up AND the site's own upstream is up. Keyed by domain. */
 export interface SiteServing {

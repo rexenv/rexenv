@@ -22,6 +22,7 @@ pub mod proxy;
 pub mod service_manager;
 pub mod services;
 pub mod setup;
+pub mod site_metrics;
 pub mod sites;
 pub mod ssl;
 pub mod terminal;

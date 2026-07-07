@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteServing, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -60,6 +60,13 @@ export async function listSites(): Promise<Site[]> {
 export async function getSitesServing(): Promise<SiteServing[]> {
   if (!isTauri()) return mockSitesServing;
   return invoke<SiteServing[]>("sites_serving");
+}
+
+/** Honest per-site resources for the Sites page (dedicated CPU/RAM only for
+ *  FrankenPHP sites; activity + DB size for shared ones). Empty outside Tauri. */
+export async function sitesResources(): Promise<SiteResources[]> {
+  if (!isTauri()) return [];
+  return invoke<SiteResources[]>("sites_resources");
 }
 
 /** Rename a site's display name (domain unchanged). No-op outside Tauri. */

@@ -201,6 +201,7 @@ pub fn run() {
             commands::blueprints::delete_blueprint,
             commands::sites::list_sites,
             commands::sites::sites_serving,
+            commands::sites::sites_resources,
             commands::sites::create_site,
             commands::sites::rename_site,
             commands::sites::set_site_php_version,

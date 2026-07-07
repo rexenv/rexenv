@@ -975,6 +975,14 @@ impl ServiceManager {
         (events, checks)
     }
 
+    /// Domain → pid of every live per-site FrankenPHP override backend — the
+    /// only sites with a process of their own, so the only ones that get REAL
+    /// per-site CPU/RAM on the Sites page (shared-pool sites get activity
+    /// metrics instead — see `core::site_metrics`).
+    pub fn override_pids(&self) -> Vec<(String, u32)> {
+        self.overrides.iter().map(|(d, p)| (d.clone(), p.id())).collect()
+    }
+
     pub fn status(&self, platform: &dyn Platform, installed_php: &[String]) -> Vec<ServiceInfo> {
         let mut infos = Vec::new();
 

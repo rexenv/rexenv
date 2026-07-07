@@ -132,6 +132,41 @@ pub fn drop_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
     )
 }
 
+/// Disk size (data + indexes) of every database, in bytes, via one
+/// `information_schema` query on the bundled client — backs the per-site "DB
+/// size" number on the Sites page (a REAL per-site figure even for sites that
+/// share nginx + a php-fpm pool). Requires the server to be running.
+pub fn db_sizes(basedir: &Path, port: u16) -> Result<Vec<(String, u64)>> {
+    let out = std::process::Command::new(mysql_client_bin(basedir))
+        .args([
+            "--no-defaults",
+            "--protocol=TCP",
+            "--host=127.0.0.1",
+            &format!("--port={port}"),
+            "--user=root",
+            "-N", // no header
+            "-B", // tab-separated batch mode
+            "-e",
+            "SELECT table_schema, COALESCE(SUM(data_length + index_length), 0) \
+             FROM information_schema.tables GROUP BY table_schema",
+        ])
+        .output()?;
+    if !out.status.success() {
+        return Err(Error::Other(format!(
+            "listing database sizes failed (exit {:?}): {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| {
+            let (name, size) = l.split_once('\t')?;
+            Some((name.to_string(), size.trim().parse().ok()?))
+        })
+        .collect())
+}
+
 /// Start the shared MySQL server (foreground) via `ProcessSupervisor`.
 pub fn start(
     platform: &dyn Platform,

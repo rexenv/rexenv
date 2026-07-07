@@ -38,6 +38,98 @@ pub fn sites_serving(state: State<'_, AppState>) -> Result<Vec<SiteServing>> {
     Ok(core::service_manager::site_serving(&sites, &state.service_infos()))
 }
 
+/// Honest per-site resource attribution (Sites page). A site is NOT a process
+/// here — default sites share nginx + a per-version php-fpm pool — so the shape
+/// is explicit about what each number IS:
+/// - FrankenPHP-override sites: REAL CPU/RAM from their own backend's process
+///   tree (same `Monitor::tree` source as the Services rows / footer).
+/// - Every WP/Laravel site: REAL MySQL database disk size.
+/// - Shared sites: ACTIVITY (requests + bytes over the last 60s window, from
+///   the shared nginx access log) — never a fabricated per-site CPU/RAM.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteResources {
+    pub id: String,
+    pub domain: String,
+    /// True for a FrankenPHP-override site (own process → real CPU/RAM);
+    /// false ⇒ shared nginx + pool (activity metrics only).
+    pub dedicated: bool,
+    pub cpu_percent: Option<f32>,
+    pub ram_mb: Option<u64>,
+    /// Requests / sent bytes in the last 60s (shared nginx sites only —
+    /// override sites bypass nginx).
+    pub requests_per_min: Option<u64>,
+    pub bytes_per_min: Option<u64>,
+    /// MySQL database size in bytes (`None`: no DB / MySQL not running).
+    pub db_size_bytes: Option<u64>,
+}
+
+/// Per-site resources for the Sites page — one monitor source of truth
+/// (`Monitor::tree`) for the dedicated numbers, the shared nginx access log
+/// for activity, one `information_schema` query for DB sizes.
+#[tauri::command]
+pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResources>> {
+    let sites = {
+        let conn = lock(&state)?;
+        core::sites::list(&conn)?
+    };
+
+    // FrankenPHP override backends (domain → pid). try_lock: during a long
+    // start/stop just omit the dedicated numbers for one poll.
+    let override_pids: std::collections::HashMap<String, u32> = state
+        .services
+        .try_lock()
+        .map(|mgr| mgr.override_pids().into_iter().collect())
+        .unwrap_or_default();
+
+    // Activity per host from the shared nginx access log (last 60s).
+    let access_log = state.platform.paths().log_dir()?.join("nginx-access.log");
+    let activity =
+        core::site_metrics::activity_by_host(&access_log, time::OffsetDateTime::now_utc());
+
+    // DB sizes: one query — only when MySQL is actually up, and only resolved
+    // from the already-extracted tree (never a download from a status poll).
+    let db_sizes: std::collections::HashMap<String, u64> = if DbEngine::Mysql.running() {
+        state
+            .platform
+            .paths()
+            .bin_dir()
+            .ok()
+            .map(|b| b.join(format!("mysql-{}", binaries::MYSQL_VERSION)))
+            .filter(|base| base.join("bin").is_dir())
+            .and_then(|base| core::database::db_sizes(&base, DbEngine::Mysql.port()).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    } else {
+        Default::default()
+    };
+
+    let mut monitor = state
+        .monitor
+        .lock()
+        .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
+    monitor.refresh_processes();
+
+    Ok(sites
+        .into_iter()
+        .map(|s| {
+            let tree = override_pids.get(&s.domain).and_then(|pid| monitor.tree(*pid));
+            let act = activity.get(&s.domain);
+            SiteResources {
+                dedicated: matches!(s.web_server, WebServer::Frankenphp),
+                cpu_percent: tree.map(|t| t.cpu_percent),
+                ram_mb: tree.map(|t| t.ram_mb),
+                requests_per_min: act.map(|a| a.requests),
+                bytes_per_min: act.map(|a| a.bytes),
+                db_size_bytes: db_sizes.get(&core::wordpress::db_name_for(&s.domain)).copied(),
+                id: s.id,
+                domain: s.domain,
+            }
+        })
+        .collect())
+}
+
 /// Rename a site's display name (domain/docroot/DB/certs unchanged); returns the
 /// updated site.
 #[tauri::command]

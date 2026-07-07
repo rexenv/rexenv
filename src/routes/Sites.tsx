@@ -12,8 +12,53 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { listSites, deleteSite, renameSite, openExternal, getSitesServing } from "@/lib/ipc";
-import type { Site } from "@/types";
+import { listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources } from "@/lib/ipc";
+import type { Site, SiteResources } from "@/types";
+
+/** Compact bytes for the per-site DB size. */
+function fmtBytes(b: number): string {
+  if (b >= 1024 * 1024 * 1024) return `${(b / (1024 * 1024 * 1024)).toFixed(1)}G`;
+  if (b >= 1024 * 1024) return `${Math.round(b / (1024 * 1024))}M`;
+  return `${Math.max(1, Math.round(b / 1024))}K`;
+}
+
+/** Honest per-site resources. A site is not a process: only FrankenPHP sites
+ *  (dedicated backend) get real CPU/RAM; shared nginx+pool sites show ACTIVITY
+ *  (last-60s requests) + DB size behind a "shared" badge — never a fabricated
+ *  per-site CPU/RAM. */
+function SiteMetrics({ res }: { res?: SiteResources }) {
+  if (!res) return <span className="w-[168px] flex-none" />;
+  const db = res.dbSizeBytes != null ? `${fmtBytes(res.dbSizeBytes)} DB` : null;
+  if (res.dedicated) {
+    const own =
+      res.ramMb != null
+        ? `${res.ramMb}M · ${(res.cpuPercent ?? 0).toFixed(1)}%`
+        : "not running";
+    return (
+      <span
+        className="w-[168px] flex-none truncate text-right font-mono text-[10.5px] text-rex-text-dim"
+        title="Dedicated FrankenPHP process — real CPU/RAM for this site (plus its DB size)"
+      >
+        {own}
+        {db ? ` · ${db}` : ""}
+      </span>
+    );
+  }
+  const req = res.requestsPerMin ?? 0;
+  return (
+    <span
+      className="flex w-[168px] flex-none items-center justify-end gap-[6px] font-mono text-[10.5px] text-rex-text-dim"
+      title="Shared nginx + PHP pool — a per-site CPU/RAM number doesn't exist here; showing real activity (requests in the last 60s) and DB size instead"
+    >
+      <span className="rounded-[5px] border border-rex-border bg-rex-surface-2 px-[5px] py-px text-[9px] uppercase tracking-[0.08em] text-rex-text-faint">
+        shared
+      </span>
+      <span className="truncate">
+        {req}/min{db ? ` · ${db}` : ""}
+      </span>
+    </span>
+  );
+}
 
 function Badge({
   children,
@@ -100,6 +145,7 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
 function SiteRow({
   site,
   status,
+  resources,
   onOpen,
   onDelete,
   onOpenDatabase,
@@ -109,6 +155,7 @@ function SiteRow({
 }: {
   site: Site;
   status: Site["status"];
+  resources?: SiteResources;
   onOpen: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
@@ -191,6 +238,7 @@ function SiteRow({
         )}
       </div>
       <div className="flex-1" />
+      <SiteMetrics res={resources} />
       <span
         title={site.ssl ? "SSL · trusted" : "No SSL"}
         className="flex flex-none items-center"
@@ -273,6 +321,17 @@ export function Sites() {
     queryFn: getSitesServing,
     refetchInterval: 2000,
   });
+  // Honest per-site resources (dedicated CPU/RAM vs activity+DB) — 5s poll:
+  // each read parses the nginx access-log tail + one DB-sizes query.
+  const { data: resources } = useQuery({
+    queryKey: ["sites-resources"],
+    queryFn: sitesResources,
+    refetchInterval: 5000,
+  });
+  const resourcesMap = useMemo(
+    () => new Map((resources ?? []).map((r) => [r.id, r])),
+    [resources],
+  );
   const servingMap = useMemo(
     () => new Map((serving ?? []).map((s) => [s.domain, s.serving])),
     [serving],
@@ -416,6 +475,7 @@ export function Sites() {
                 key={site.id}
                 site={site}
                 status={statusOf(site)}
+                resources={resourcesMap.get(site.id)}
                 onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
