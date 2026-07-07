@@ -143,32 +143,48 @@ mod tests {
     #[test]
     fn high_tcp_port_bind_probe() {
         // Bind a high TCP port; while held it reads as not-free, then free.
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = listener.local_addr().unwrap().port();
-        assert!(!is_free(port, Proto::Tcp));
-        // The error must name the port + the service that needs it (§2.1).
-        let platform = crate::platform::current();
-        let err = ensure_free(&*platform, port, Proto::Tcp, "edge").unwrap_err().to_string();
-        assert!(err.contains(&port.to_string()), "msg: {err}");
-        assert!(err.contains("edge") && err.contains("in use"), "msg: {err}");
-        // macOS discovers the holder (this test process) + suggests a command
-        // on a `$ `-prefixed last line (the frontend's parsing contract).
-        #[cfg(target_os = "macos")]
-        {
-            assert!(err.contains(&format!("pid {}", std::process::id())), "msg: {err}");
-            assert!(err.lines().last().unwrap().starts_with("$ sudo kill"), "msg: {err}");
+        // Same ephemeral-port-reuse race as the UDP twin below: a concurrent
+        // test can re-grab the just-freed port before the second probe, so
+        // retry on a fresh port when that happens.
+        for _ in 0..10 {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let port = listener.local_addr().unwrap().port();
+            assert!(!is_free(port, Proto::Tcp));
+            // The error must name the port + the service that needs it (§2.1).
+            let platform = crate::platform::current();
+            let err = ensure_free(&*platform, port, Proto::Tcp, "edge").unwrap_err().to_string();
+            assert!(err.contains(&port.to_string()), "msg: {err}");
+            assert!(err.contains("edge") && err.contains("in use"), "msg: {err}");
+            // macOS discovers the holder (this test process) + suggests a command
+            // on a `$ `-prefixed last line (the frontend's parsing contract).
+            #[cfg(target_os = "macos")]
+            {
+                assert!(err.contains(&format!("pid {}", std::process::id())), "msg: {err}");
+                assert!(err.lines().last().unwrap().starts_with("$ sudo kill"), "msg: {err}");
+            }
+            drop(listener);
+            if is_free(port, Proto::Tcp) {
+                return;
+            }
         }
-        drop(listener);
-        assert!(is_free(port, Proto::Tcp));
+        panic!("freed TCP port never probed free across 10 attempts");
     }
 
     #[test]
     fn high_udp_port_bind_probe() {
-        let sock = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = sock.local_addr().unwrap().port();
-        assert!(!is_free(port, Proto::Udp));
-        drop(sock);
-        assert!(is_free(port, Proto::Udp));
+        // A concurrent test binding UDP :0 (e.g. the DNS ones) can re-grab our
+        // just-freed ephemeral port before the second probe — macOS hands the
+        // last-freed port right back. Retry on a fresh port when that happens.
+        for _ in 0..10 {
+            let sock = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let port = sock.local_addr().unwrap().port();
+            assert!(!is_free(port, Proto::Udp));
+            drop(sock);
+            if is_free(port, Proto::Udp) {
+                return;
+            }
+        }
+        panic!("freed UDP port never probed free across 10 attempts");
     }
 
     #[test]
