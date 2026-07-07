@@ -185,6 +185,37 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
     ))
 }
 
+/// One-click "Open admin": issue a magic login URL for the site's PRIMARY
+/// administrator (lowest-ID admin — the install's original account). Same
+/// hardened single-use / short-TTL / loopback-only token as `wp_user_login_url`
+/// (§7.1); the mu-plugin lands the browser on `/wp-admin/`. Scoped to managed
+/// sites by construction: the site row must exist in OUR database, and the
+/// token is planted via WP-CLI in that site's own docroot.
+#[tauri::command]
+pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Result<String> {
+    let site = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
+    };
+    let (php_bin, wp_phar) = wp_tools(&state, &site.php_version).await?;
+    let docroot = Path::new(&site.path);
+    let admin_id = core::wordpress::primary_admin_id(&php_bin, &wp_phar, docroot)?;
+    let token = core::wp_login::issue(
+        &php_bin,
+        &wp_phar,
+        docroot,
+        admin_id,
+        core::wp_login::LOGIN_TTL_SECS,
+    )?;
+    Ok(format!(
+        "https://{}/?rexenv_login={}&rexenv_user={}",
+        site.domain, token, admin_id
+    ))
+}
+
 /// Whether WP_DEBUG is on for the site.
 #[tauri::command]
 pub async fn wp_debug_get(state: State<'_, AppState>, id: String) -> Result<bool> {

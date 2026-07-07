@@ -38,9 +38,24 @@ import {
   setSitePhpVersion,
   setSiteWebServer,
   tailLog,
+  wpAdminLoginUrl,
   wpInfo,
 } from "@/lib/ipc";
+import { toast } from "@/lib/toast";
 import type { Site, WebServer } from "@/types";
+
+/** One-click "Open admin": open a magic auto-login link for the site's primary
+ *  administrator (lands on /wp-admin/). If the link can't be issued — services
+ *  stopped, no admin user, tools missing — say so and fall back to the plain
+ *  WordPress login page. */
+async function openWpAdmin(site: Pick<Site, "id" | "domain">) {
+  try {
+    await openExternal(await wpAdminLoginUrl(site.id));
+  } catch (e) {
+    toast.error(`Auto-login unavailable — opening the WordPress login page instead.\n${String(e)}`);
+    await openExternal(`https://${site.domain}/wp-admin/`);
+  }
+}
 
 /** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
 const SERVERS: { value: WebServer; label: string }[] = [
@@ -220,6 +235,15 @@ function SiteHeader({
 }) {
   const t = siteTypeMeta(site.type);
   const url = `https://${site.domain}`;
+  const [adminBusy, setAdminBusy] = useState(false);
+  const onOpenAdmin = async () => {
+    setAdminBusy(true);
+    try {
+      await openWpAdmin(site);
+    } finally {
+      setAdminBusy(false);
+    }
+  };
   return (
     <div className="flex-none border-b border-rex-border-subtle px-[22px] pt-[18px]">
       <button
@@ -256,9 +280,9 @@ function SiteHeader({
             Open in browser
           </Button>
           {isWordpress && (
-            <Button variant="primary" onClick={() => openExternal(`${url}/wp-admin/`)}>
+            <Button variant="primary" disabled={adminBusy} onClick={onOpenAdmin}>
               <Settings className="h-[15px] w-[15px]" strokeWidth={1.7} />
-              Open admin
+              {adminBusy ? "Signing in…" : "Open admin"}
             </Button>
           )}
         </div>
@@ -392,7 +416,7 @@ function Overview({
                 icon={<ExternalLink className="h-4 w-4" />}
                 iconColor="text-rex-accent-blue"
                 label="WP admin"
-                onClick={() => openExternal(`${url}/wp-admin/`)}
+                onClick={() => void openWpAdmin(site)}
               />
             )}
             <QuickTile

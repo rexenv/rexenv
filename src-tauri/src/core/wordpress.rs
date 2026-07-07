@@ -282,6 +282,24 @@ pub fn user_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<W
         .collect())
 }
 
+/// The site's PRIMARY administrator: the lowest-ID user holding the
+/// `administrator` role — the install's original admin on a one-click site
+/// (rexenv installs create it as user 1). Backs the "Open admin" one-click
+/// login, which must never guess: no administrator ⇒ clean error, the caller
+/// falls back to the plain login page.
+pub fn primary_admin_id(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<u64> {
+    let out = wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["user", "list", "--role=administrator", "--field=ID", "--orderby=ID", "--order=ASC"],
+    )?;
+    out.lines()
+        .next()
+        .and_then(|l| l.trim().parse::<u64>().ok())
+        .ok_or_else(|| Error::Other("no administrator user found on this site".into()))
+}
+
 /// Create a user (`wp user create <login> <email> --role=<role>`). WP-CLI
 /// generates a random password; returns the new user's id (via `--porcelain`).
 pub fn user_create(

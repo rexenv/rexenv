@@ -105,12 +105,25 @@ async fn main() {
     assert!(a_login, "(A) expected a wordpress_logged_in cookie");
     println!("✓ (A) loopback magic link → logged in (302 → wp-admin, auth cookie set)");
 
-    // (B) reuse the SAME token → single-use, denied.
+    // (B) reuse the SAME token → single-use, denied — and the deny is a graceful
+    // 302 to the normal login page with the rexenv_denied notice (the "Open
+    // admin" fallback UX), not a dead-end error page.
     let b = client.get(magic(&token)).send().await.expect("B");
     let b_login = has_login_cookie(&b);
-    println!("(B) reuse: status={} logged_in_cookie={b_login}", b.status().as_u16());
+    let b_status = b.status().as_u16();
+    let b_location = b
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    println!("(B) reuse: status={b_status} logged_in_cookie={b_login} location={b_location}");
     assert!(!b_login, "(B) token was reusable — NOT single-use");
-    println!("✓ (B) reused token → denied (single-use)");
+    assert!(
+        b_location.contains("wp-login.php") && b_location.contains("rexenv_denied=1"),
+        "(B) deny must fall back to the login page with the rexenv_denied notice, got {b_location:?}"
+    );
+    println!("✓ (B) reused token → denied (single-use) + graceful login-page fallback");
 
     // (C) fresh token + Cloudflare tunnel header → loopback/local-only denies it.
     let token2 = wp_login::issue(&php, &wp, &docroot, 1, wp_login::LOGIN_TTL_SECS).unwrap();
@@ -126,6 +139,33 @@ async fn main() {
     println!("✓ (C) tunnel-proxied token → denied (loopback/local-only)");
     // (Note: a tunnel attempt is rejected BEFORE the token is consumed — by design,
     // so a remote attacker can't burn a user's pending token.)
+
+    // (D) "Open admin" one-click flow: the PRIMARY admin resolves (the one-click
+    // install's original account, user 1) and its magic link lands logged-in on
+    // /wp-admin/ in one hop.
+    let admin_id = wordpress::primary_admin_id(&php, &wp, &docroot).expect("primary admin");
+    println!("(D) primary administrator id = {admin_id}");
+    assert_eq!(admin_id, 1, "(D) one-click install's primary admin must be user 1");
+    let token3 = wp_login::issue(&php, &wp, &docroot, admin_id, wp_login::LOGIN_TTL_SECS).unwrap();
+    let d = client
+        .get(format!(
+            "https://{domain}:{HTTPS}/?rexenv_login={token3}&rexenv_user={admin_id}"
+        ))
+        .send()
+        .await
+        .expect("D");
+    let d_location = d
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    assert!(has_login_cookie(&d), "(D) expected a wordpress_logged_in cookie");
+    assert!(
+        d_location.contains("/wp-admin"),
+        "(D) expected a redirect to /wp-admin/, got {d_location:?}"
+    );
+    println!("✓ (D) Open-admin flow → primary admin logged in, redirected to /wp-admin/");
 
     mgr.stop_all(&*plat).unwrap();
     println!("\nALL GOOD — magic login is single-use, short-TTL, and loopback/local-only.");

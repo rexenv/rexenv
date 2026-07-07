@@ -373,6 +373,16 @@ export async function wpUserLoginUrl(id: string, userId: number): Promise<string
   return invoke<string>("wp_user_login_url", { id, userId });
 }
 
+/** One-click "Open admin": a one-time magic URL that logs the browser in as
+ *  the site's PRIMARY administrator and lands on /wp-admin/. Same hardened
+ *  single-use / short-TTL / loopback-only token as `wpUserLoginUrl`. Throws if
+ *  the link can't be issued (no admin user, tools missing) — callers fall back
+ *  to the plain login page. Desktop-app only. */
+export async function wpAdminLoginUrl(id: string): Promise<string> {
+  if (!isTauri()) throw new Error('"Open admin" requires the rexenv desktop app.');
+  return invoke<string>("wp_admin_login_url", { id });
+}
+
 // ── WordPress Manager — tools (§7.2) ────────────────────────────────────────
 
 /** Whether WP_DEBUG is on. Mock fallback outside Tauri. */

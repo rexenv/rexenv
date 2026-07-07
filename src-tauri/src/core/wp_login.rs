@@ -26,6 +26,16 @@ const MU_PLUGIN: &str = r#"<?php
 /* Plugin Name: rexenv one-time login
  * Description: Auto-managed by rexenv for the "Log in as" feature. Safe to delete.
  */
+// A denied magic link falls back to the normal login page with a clear notice
+// (rexenv_denied=1 below) instead of a dead-end error page.
+add_filter('login_message', function ($message) {
+    if (!empty($_GET['rexenv_denied'])) {
+        $message = '<div id="login_error">rexenv: the one-click login link was invalid, expired,'
+            . ' already used, or not local. Log in manually below.</div>' . $message;
+    }
+    return $message;
+});
+
 add_action('init', function () {
     if (empty($_GET['rexenv_login'])) {
         return;
@@ -34,7 +44,8 @@ add_action('init', function () {
     $user_id = isset($_GET['rexenv_user']) ? (int) $_GET['rexenv_user'] : 0;
 
     $deny = function () {
-        wp_die('rexenv: login link is invalid, expired, already used, or not local.', 'Login', ['response' => 403]);
+        wp_safe_redirect(add_query_arg('rexenv_denied', '1', wp_login_url()));
+        exit;
     };
 
     // Local-only: never honor a magic login proxied through a public tunnel.

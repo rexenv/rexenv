@@ -224,6 +224,7 @@ pub fn run() {
             commands::wordpress::wp_users,
             commands::wordpress::wp_user_create,
             commands::wordpress::wp_user_login_url,
+            commands::wordpress::wp_admin_login_url,
             commands::wordpress::wp_debug_get,
             commands::wordpress::wp_debug_set,
             commands::wordpress::wp_search_replace,
