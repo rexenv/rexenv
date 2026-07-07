@@ -5,8 +5,8 @@ A native, lightweight, limitless local development environment for web & WordPre
 > **Status:** Phase 1 (MVP), Phase 2 core, and Phase 3 are **complete on macOS** — one-click
 > WordPress on real `https://*.test`, multi-PHP, Nginx + per-site FrankenPHP, MySQL +
 > PostgreSQL, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
-> Cloudflare tunnels, blueprints, autostart. Current work: pre-release hardening +
-> packaging (see `TASKS-RELEASE.md`); Windows/Linux ports are `todo!()` stubs by design.
+> Cloudflare tunnels, blueprints, autostart. Open work is tracked in `docs/TODO.md`;
+> Windows/Linux ports are `todo!()` stubs by design.
 
 ---
 
@@ -21,10 +21,12 @@ quick tunnels) — all native and lightweight, from one UI.
 
 ## Docs
 
-- **`PROJECT_SPEC.md`** — architecture decisions, feature list, tech stack, the platform-abstraction plan, and the build phases. *Read this first.*
-- **`DESIGN_BRIEF.md`** — the Claude Design brief: design DNA + paste-ready prompts for every screen (comps in `design/*.dc.html`).
-- **`CLAUDE.md`** — as-built status, module map, and the implementation notes that matter day-to-day.
-- **`TASKS*.md`** — per-phase task logs with "Done when" evidence (Phase 1 / 2 / 3, release, audit fixes).
+- **`docs/ARCHITECTURE.md`** — how rexenv works today, end-to-end. *Read this first.*
+- **`docs/PORTS.md`** — the full port map + pinned binary versions.
+- **`docs/TODO.md`** — all open work (the single active-work file).
+- **`CLAUDE.md`** — agent router: non-negotiable rules + "for X read Y" index.
+- **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide / clean-Mac release checklist.
+- **`docs/archive/`** — historical: founding spec, design brief, phase task logs, audit record. May contradict current code.
 
 ## Tech stack
 
@@ -47,7 +49,7 @@ pnpm tauri dev
 
 # checks
 pnpm build                                 # strict tsc + vite build
-cargo test --lib   # in src-tauri/        # 133 unit tests
+cargo test --lib   # in src-tauri/        # 153 unit tests
 cargo run --example <name>                 # live verification binaries (see src-tauri/examples/)
 ```
 
@@ -65,12 +67,11 @@ demand, checksum-pinned, and prepared for macOS automatically.
 ```
 rexenv/
 ├── README.md                   # this file
-├── PROJECT_SPEC.md             # architecture + features + roadmap
-├── DESIGN_BRIEF.md             # design DNA (tokens, type roles, screens)
-├── CLAUDE.md                   # as-built status + module map + working rules
-├── TASKS*.md                   # per-phase task logs with verification evidence
+├── CLAUDE.md                   # agent router: rules + doc index
 ├── design/                     # reference comps (*.dc.html) — one per screen
-├── docs/                       # deep-dives (e.g. xdebug-debug-build.md)
+├── docs/                       # ARCHITECTURE.md · PORTS.md · TODO.md · INSTALL.md
+│   │                           #   SMOKE-TEST.md · xdebug-debug-build.md
+│   └── archive/                # historical: spec, design brief, task logs, audit
 ├── package.json · tsconfig.json · vite.config.ts
 ├── tailwind.config.js · postcss.config.js · index.html
 │
@@ -142,16 +143,16 @@ rexenv/
 - **`platform/` is the whole cross-platform strategy.** Every OS difference (DNS, trust store, privileges, process supervision, paths, binaries, permissions, shell) is a trait with per-OS impls. Build the macOS impls now and leave Windows/Linux as `todo!()` — adding them later means filling stubs, **not** restructuring.
 - **`core/` never imports OS-specific code** — it talks to `platform/` traits only. This keeps the Windows/Linux ports clean.
 - **`commands/` stay thin** — they translate IPC calls into `core/` calls, so the business logic is testable without the UI.
-- **Frontend mirrors the design** — `routes/` map 1:1 to the screens in `DESIGN_BRIEF.md`; `components/shell/` is the app shell; `lib/ipc/` is the typed bridge to Rust.
+- **Frontend mirrors the design** — `routes/` map 1:1 to the screens in `docs/archive/DESIGN_BRIEF.md`; `components/shell/` is the app shell; `lib/ipc/` is the typed bridge to Rust.
 
 ---
 
 ## Build phases (summary)
 
 1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test`.
-2. **Phase 2 core** — ✅ done. Multi-PHP (8.1/8.2/8.3), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *(Apache/OpenLiteSpeed/MariaDB/Redis deferred — no clean portable macOS binaries; see PROJECT_SPEC §7.)*
+2. **Phase 2 core** — ✅ done. Multi-PHP (8.1/8.2/8.3), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *(Apache/OpenLiteSpeed/MariaDB/Redis deferred — no clean portable macOS binaries; see `docs/TODO.md` "Deferred services".)*
 3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
-4. **Release** — in progress: hardening + `.dmg` packaging (`TASKS-RELEASE.md`, audit fixes in `TASKS-FIXES.md`/`BACKLOG.md`).
+4. **Release** — hardening + `.dmg` packaging done except the clean-Mac verification (`docs/TODO.md`); audit history in `docs/archive/`.
 5. **Phase 4/5** — Windows, then Linux ports (fill the `platform/` stubs).
 
-See `PROJECT_SPEC.md` for the full detail.
+Founding spec (historical): `docs/archive/PROJECT_SPEC.md`. Current system reference: `docs/ARCHITECTURE.md`.
