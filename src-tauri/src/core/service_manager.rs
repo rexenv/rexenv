@@ -666,7 +666,7 @@ impl ServiceManager {
     /// (`FrankenPHP <domain>`), then Nginx and Caddy. `installed_php` comes from
     /// the registry (the manager has no DB access); the command layer enriches
     /// each row with live RAM/CPU from the monitor (by pid).
-    pub fn status(&self, installed_php: &[String]) -> Vec<ServiceInfo> {
+    pub fn status(&self, platform: &dyn Platform, installed_php: &[String]) -> Vec<ServiceInfo> {
         let mut infos = Vec::new();
 
         // Database engines (available ones) — always listed, running-state per port.
@@ -719,13 +719,14 @@ impl ServiceManager {
         });
         infos.push(ServiceInfo {
             name: "Caddy".to_string(),
-            // Ownership + start: true only when WE started the edge (handle != Stopped,
-            // set only after a confirmed start, cleared on stop). A foreign listener on
-            // :443 (e.g. another local server) must NOT read as rexenv's edge being up
-            // (task 2.2 / H2). The admin channel is now a unix socket (task 2.3 / H5),
-            // so there is no port to probe here; a rare post-start crash self-heals on
-            // the next reconcile/stop.
-            running: !matches!(self.caddy, CaddyHandle::Stopped),
+            // Ownership + liveness: true only when WE started the edge (handle !=
+            // Stopped, set only after a confirmed start, cleared on stop) AND its
+            // private admin unix socket still answers. A foreign listener on :443
+            // (e.g. another local server) must NOT read as rexenv's edge being up
+            // (task 2.2 / H2) — the socket path is ours, so the probe stays
+            // ownership-scoped. Without the probe, a crashed root edge kept showing
+            // "running" forever while every site was unreachable.
+            running: !matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_alive(platform),
             pid: match &self.caddy {
                 CaddyHandle::Child(c) => Some(c.id()),
                 _ => None,
@@ -1035,7 +1036,7 @@ mod tests {
     #[test]
     fn status_lists_core_services_when_stopped() {
         let m = ServiceManager::default();
-        let s = m.status(&["8.1".to_string(), "8.3".to_string()]);
+        let s = m.status(&*crate::platform::current(), &["8.1".to_string(), "8.3".to_string()]);
         let names: Vec<_> = s.iter().map(|i| i.name.as_str()).collect();
         // When stopped: the available DB engines + every INSTALLED php minor (idle
         // rows — the list must not grow/shrink with Start/Stop all) + Nginx + Caddy +

@@ -32,16 +32,18 @@ pub fn run() {
             // the app's lifetime and is aborted cleanly on exit
             // (DnsService::drop). A failure is logged, not fatal — the app
             // still runs.
-            match tauri::async_runtime::block_on(core::dns::DnsService::start_default(
+            let dns = match tauri::async_runtime::block_on(core::dns::DnsService::start_default(
                 platform.as_ref(),
             )) {
-                Ok(dns) => {
-                    app.manage(dns);
-                }
+                Ok(dns) => Some(dns),
                 Err(e) => {
                     log::error!("dns: failed to start embedded resolver: {e}");
+                    None
                 }
-            }
+            };
+            // ALWAYS managed (even as None) so status + the health watchdog can
+            // read/restart it without a missing-state panic.
+            app.manage(state::app::DnsState(std::sync::Mutex::new(dns)));
 
             // Registry of live PTY terminal sessions (§4.1).
             app.manage(commands::terminal::Terminals::default());

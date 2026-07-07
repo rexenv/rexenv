@@ -76,7 +76,10 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
 
 /// Per-service status + live RAM/CPU for the Services view.
 #[tauri::command]
-pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceStatus>> {
+pub async fn services_status(
+    state: State<'_, AppState>,
+    dns: State<'_, crate::state::app::DnsState>,
+) -> Result<Vec<ServiceStatus>> {
     // Single source of truth (shared with `global_status`); non-blocking.
     let infos = state.service_infos();
     let mut monitor = state
@@ -84,7 +87,7 @@ pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceSt
         .lock()
         .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
     monitor.refresh_processes(); // one sweep per poll, then read each pid (M6)
-    Ok(infos
+    let mut out: Vec<ServiceStatus> = infos
         .into_iter()
         .map(|i| {
             let m = i.pid.and_then(|p| monitor.process(p));
@@ -97,5 +100,17 @@ pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceSt
                 ram_mb: m.map(|m| m.ram_mb).unwrap_or(0),
             }
         })
-        .collect())
+        .collect();
+    // The embedded DNS resolver — in-process (no pid/metrics of its own), but a
+    // dead resolver makes EVERY `.test` site unreachable, so it must be visible
+    // here, not only in Settings.
+    out.push(ServiceStatus {
+        name: "DNS".to_string(),
+        running: dns.running(),
+        pid: None,
+        port: core::dns::DEFAULT_DNS_PORT,
+        cpu_percent: 0.0,
+        ram_mb: 0,
+    });
+    Ok(out)
 }

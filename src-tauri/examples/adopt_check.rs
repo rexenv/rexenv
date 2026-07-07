@@ -35,7 +35,7 @@ async fn main() {
             let adopted = mgr.adopt_startup(&*plat, &[]);
             println!("phase2: adopted {adopted} service(s)");
             assert!(adopted >= 1, "should adopt at least the surviving mysqld");
-            let infos = mgr.status(&[]);
+            let infos = mgr.status(&*plat, &[]);
             let mysql = infos.iter().find(|i| i.name == "MySQL").expect("MySQL row");
             assert!(mysql.running, "adopted MySQL should report running");
             assert!(mysql.pid.is_some(), "adopted MySQL should have a pid");

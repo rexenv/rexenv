@@ -7,6 +7,24 @@ use crate::platform::traits::Platform;
 use rusqlite::Connection;
 use std::sync::Mutex;
 
+/// The embedded DNS resolver task, managed as its OWN Tauri state (separate from
+/// `AppState` — it starts before, and must survive failure of, the DB/CA init).
+/// ALWAYS managed: `None` when the resolver failed to start or has died, so
+/// status can report the truth and the health watchdog can restart it in place.
+pub struct DnsState(pub Mutex<Option<crate::core::dns::DnsService>>);
+
+impl DnsState {
+    /// Whether the in-process resolver task is alive (the authoritative check —
+    /// a task that panicked or returned leaves `is_running()` false even though
+    /// nothing external changed).
+    pub fn running(&self) -> bool {
+        self.0
+            .lock()
+            .map(|g| g.as_ref().is_some_and(|d| d.is_running()))
+            .unwrap_or(false)
+    }
+}
+
 /// Shared application state. The SQLite connection is behind a `Mutex` (rusqlite
 /// `Connection` is `Send` but not `Sync`); commands lock it briefly. The platform
 /// impl backs filesystem ops; the `Monitor` is kept across polls; the `LocalCa`
@@ -42,7 +60,7 @@ impl AppState {
             .unwrap_or_default();
         match self.services.try_lock() {
             Ok(mgr) => {
-                let infos = mgr.status(&installed_php);
+                let infos = mgr.status(self.platform.as_ref(), &installed_php);
                 if let Ok(mut cache) = self.service_status_cache.lock() {
                     *cache = infos.clone();
                 }

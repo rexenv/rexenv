@@ -149,9 +149,15 @@ pub struct DnsStatus {
 /// apply); a failed bind means something — our in-process resolver — already
 /// holds it.
 #[tauri::command]
-pub fn dns_status(state: State<'_, AppState>) -> DnsStatus {
+pub fn dns_status(
+    state: State<'_, AppState>,
+    dns: State<'_, crate::state::app::DnsState>,
+) -> DnsStatus {
     let port = core::dns::DEFAULT_DNS_PORT;
-    let running = core::dns::port_bound(port);
+    // Authoritative: the in-process task handle (a dead task leaves the port
+    // unbound, but the reverse port probe can false-positive on a foreign
+    // process). Fall back to the port probe only when we never got a handle.
+    let running = dns.running() || core::dns::port_bound(port);
     let path = state.platform.dns().resolver_path();
     DnsStatus {
         running,
