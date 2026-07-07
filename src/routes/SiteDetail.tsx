@@ -8,7 +8,9 @@ import {
   ChevronRight,
   Copy,
   Database,
+  Download,
   ExternalLink,
+  FileText,
   FolderOpen,
   Globe,
   LayoutGrid,
@@ -16,8 +18,10 @@ import {
   LockOpen,
   Pause,
   Play,
+  RefreshCw,
   Settings,
   TerminalSquare,
+  Trash2,
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
@@ -39,6 +43,10 @@ import {
   setSiteWebServer,
   tailLog,
   wpAdminLoginUrl,
+  wpDebugLogClear,
+  wpDebugLogDownload,
+  wpDebugLogStatus,
+  wpDebugLogTail,
   wpInfo,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
@@ -207,7 +215,7 @@ export function SiteDetail() {
             ) : (
               <AdminerFrame src={adminerUrl({ engine: "mysql", db: siteDbName(site.domain) })} />
             ))}
-          {active === "logs" && <LogsTab siteId={site.id} />}
+          {active === "logs" && <LogsTab siteId={site.id} isWordpress={isWordpress} />}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}
           {active === "settings" && (
             <Placeholder
@@ -501,7 +509,7 @@ function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => vo
 
 const LOG_LINES = 500;
 
-function LogsTab({ siteId }: { siteId: string }) {
+function LogsTab({ siteId, isWordpress }: { siteId: string; isWordpress: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -535,42 +543,232 @@ function LogsTab({ siteId }: { siteId: string }) {
   }
 
   return (
-    <div className="rounded-xl border border-rex-border bg-rex-surface-1">
-      <div className="flex items-center justify-between gap-2 border-b border-rex-border p-2.5">
-        <select
-          value={active ?? ""}
-          onChange={(e) => setSelected(e.target.value)}
-          className={SELECT_CLS}
+    <>
+      <div className="rounded-xl border border-rex-border bg-rex-surface-1">
+        <div className="flex items-center justify-between gap-2 border-b border-rex-border p-2.5">
+          <select
+            value={active ?? ""}
+            onChange={(e) => setSelected(e.target.value)}
+            className={SELECT_CLS}
+          >
+            {targets.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setPaused((p) => !p)}
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+          >
+            {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            {paused ? "Resume" : "Pause"}
+          </button>
+        </div>
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className={`${isWordpress ? "h-[42vh]" : "h-[60vh]"} overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[11.5px] leading-relaxed text-rex-text`}
         >
-          {targets.map((t) => (
-            <option key={t.key} value={t.key}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => setPaused((p) => !p)}
-          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
-        >
-          {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-          {paused ? "Resume" : "Pause"}
-        </button>
+          {lines.length === 0 ? (
+            <div className="text-rex-text-muted">
+              No log output yet — start the site's services and traffic will appear here.
+            </div>
+          ) : (
+            lines.map((l, i) => (
+              <div key={i} className="whitespace-pre-wrap break-all">
+                {l}
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      {isWordpress && <WpDebugLogCard siteId={siteId} />}
+    </>
+  );
+}
+
+/** Human-readable byte count for the debug-log size chip. */
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** WordPress debug.log viewer: status-aware (WP_DEBUG / WP_DEBUG_LOG), live
+ *  tail with pause, plus Clear / Download / Open-file actions. */
+function WpDebugLogCard({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [paused, setPaused] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+
+  const { data: status } = useQuery({
+    queryKey: ["wp-debug-log-status", siteId],
+    queryFn: () => wpDebugLogStatus(siteId),
+    refetchInterval: paused ? false : 5000,
+  });
+
+  const loggingOn = !!status && status.debug && status.logEnabled;
+  const { data: lines = [], refetch } = useQuery({
+    queryKey: ["wp-debug-log-tail", siteId],
+    queryFn: () => wpDebugLogTail(siteId, LOG_LINES),
+    // Only poll while the log is live; a stale file stays readable on demand.
+    enabled: !!status?.exists,
+    refetchInterval: paused || !loggingOn ? false : 2000,
+  });
+
+  const clear = useMutation({
+    mutationFn: () => wpDebugLogClear(siteId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wp-debug-log-tail", siteId] });
+      qc.invalidateQueries({ queryKey: ["wp-debug-log-status", siteId] });
+      toast.success("Debug log cleared.");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const download = useMutation({
+    mutationFn: () => wpDebugLogDownload(siteId),
+    onSuccess: (dest) => toast.success(`Saved to ${dest}`),
+    onError: (e) => toastBackendError(e),
+  });
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && atBottomRef.current && !paused) el.scrollTop = el.scrollHeight;
+  }, [lines, paused]);
+
+  function onScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  }
+
+  const actionCls =
+    "flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand disabled:opacity-50";
+
+  return (
+    <div className="rounded-xl border border-rex-border bg-rex-surface-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rex-border p-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <FileText className="h-4 w-4 flex-none text-rex-text-muted" strokeWidth={1.7} />
+          <span className="text-[13px] font-medium text-rex-text">WordPress debug log</span>
+          {status && (
+            <span
+              className={cn(
+                "rounded-full border px-2 py-0.5 font-mono text-[10.5px]",
+                loggingOn
+                  ? "border-rex-border text-status-running"
+                  : "border-rex-border text-rex-text-dim",
+              )}
+            >
+              {loggingOn ? "logging on" : "logging off"}
+            </span>
+          )}
+          {status?.exists && (
+            <span className="font-mono text-[10.5px] text-rex-text-dim">
+              {fmtBytes(status.sizeBytes)}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-none items-center gap-1.5">
+          <button
+            onClick={() => (paused ? setPaused(false) : void refetch())}
+            title={paused ? "Resume live refresh" : "Refresh now"}
+            className={actionCls}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+          <button
+            onClick={() => setPaused((p) => !p)}
+            title={paused ? "Resume live refresh" : "Pause live refresh"}
+            className={actionCls}
+          >
+            {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            {paused ? "Resume" : "Pause"}
+          </button>
+          <button
+            onClick={() => clear.mutate()}
+            disabled={!status?.exists || clear.isPending}
+            title="Empty the debug.log file"
+            className={actionCls}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Clear
+          </button>
+          <button
+            onClick={() => download.mutate()}
+            disabled={!status?.exists || download.isPending}
+            title="Save a copy to Downloads"
+            className={actionCls}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download
+          </button>
+          <button
+            onClick={() => status && void openExternal(status.path)}
+            disabled={!status?.exists}
+            title="Open the log file in the default app"
+            className={actionCls}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open file
+          </button>
+        </div>
+      </div>
+
+      {status && (
+        <div className="border-b border-rex-border-subtle px-3 py-1.5">
+          <span className="truncate font-mono text-[11px] text-rex-text-dim" title={status.path}>
+            {status.path}
+          </span>
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="h-[60vh] overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[11.5px] leading-relaxed text-rex-text"
+        className="h-[32vh] overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[11.5px] leading-relaxed text-rex-text"
       >
-        {lines.length === 0 ? (
-          <div className="text-rex-text-muted">
-            No log output yet — start the site's services and traffic will appear here.
-          </div>
-        ) : (
-          lines.map((l, i) => (
-            <div key={i} className="whitespace-pre-wrap break-all">
-              {l}
+        {!status ? null : !loggingOn && !status.exists ? (
+          <div className="flex flex-col gap-2 text-rex-text-muted">
+            <div>
+              WordPress debug logging is off — nothing is being written to{" "}
+              <span className="font-mono">debug.log</span>.
             </div>
-          ))
+            <div>
+              Turn on <span className="font-mono">WP_DEBUG</span> from the{" "}
+              <span className="text-rex-text">WordPress → Tools</span> tab, and add this to{" "}
+              <span className="font-mono">wp-config.php</span> to log to a file:
+            </div>
+            <pre className="w-fit rounded-lg border border-rex-border-subtle bg-rex-well px-3 py-2 text-[11px] text-rex-text-bright">
+              {"define( 'WP_DEBUG', true );\ndefine( 'WP_DEBUG_LOG', true );"}
+            </pre>
+          </div>
+        ) : !status.exists ? (
+          <div className="text-rex-text-muted">
+            No <span className="font-mono">debug.log</span> yet — WordPress creates it when the
+            first notice, warning, or error is logged.
+          </div>
+        ) : lines.length === 0 ? (
+          <div className="text-rex-text-muted">The debug log is empty.</div>
+        ) : (
+          <>
+            {!loggingOn && (
+              <div className="mb-2 text-rex-text-dim">
+                Note: logging is currently off (
+                {!status.debug ? "WP_DEBUG is false" : "WP_DEBUG_LOG is false"}) — these are
+                older entries.
+              </div>
+            )}
+            {lines.map((l, i) => (
+              <div key={i} className={cn("whitespace-pre-wrap break-all", logLineColor(l))}>
+                {l}
+              </div>
+            ))}
+          </>
         )}
       </div>
     </div>

@@ -227,6 +227,15 @@ export interface LogTarget {
   label: string;
 }
 
+/** WordPress debug-log status (mirrors the Rust WpDebugLogStatus DTO). */
+export interface WpDebugLogStatus {
+  debug: boolean; // WP_DEBUG constant
+  logEnabled: boolean; // WP_DEBUG_LOG truthy or a custom path
+  path: string; // resolved debug.log path
+  exists: boolean;
+  sizeBytes: number;
+}
+
 /** An email address (display name may be empty). */
 export interface MailAddress {
   name: string;

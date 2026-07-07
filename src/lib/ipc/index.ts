@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -226,6 +226,43 @@ export async function tailLog(key: string, lines: number): Promise<string[]> {
     return Array.from({ length: 12 }, (_, i) => `${now} [${key}] mock log line ${i + 1}`).slice(-lines);
   }
   return invoke<string[]>("tail_log", { key, lines });
+}
+
+/** WordPress debug-log status for a site (WP_DEBUG/WP_DEBUG_LOG, path, size). */
+export async function wpDebugLogStatus(siteId: string): Promise<WpDebugLogStatus> {
+  if (!isTauri()) {
+    return {
+      debug: true,
+      logEnabled: true,
+      path: "/Users/dev/Sites/demo/wp-content/debug.log",
+      exists: true,
+      sizeBytes: 2048,
+    };
+  }
+  return invoke<WpDebugLogStatus>("wp_debug_log_status", { siteId });
+}
+
+/** Last `lines` lines of a site's WordPress debug.log. Mock outside Tauri. */
+export async function wpDebugLogTail(siteId: string, lines: number): Promise<string[]> {
+  if (!isTauri()) {
+    return [
+      "[07-Jul-2026 10:12:03 UTC] PHP Notice: Undefined index 'foo' in functions.php on line 12",
+      "[07-Jul-2026 10:12:04 UTC] PHP Deprecated: Function create_function() is deprecated",
+    ].slice(-lines);
+  }
+  return invoke<string[]>("wp_debug_log_tail", { siteId, lines });
+}
+
+/** Truncate a site's WordPress debug.log to empty. */
+export async function wpDebugLogClear(siteId: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_debug_log_clear", { siteId });
+}
+
+/** Copy a site's debug.log to Downloads; resolves to the saved path. */
+export async function wpDebugLogDownload(siteId: string): Promise<string> {
+  if (!isTauri()) return "/Users/dev/Downloads/demo.test-debug.log";
+  return invoke<string>("wp_debug_log_download", { siteId });
 }
 
 // Mutable copy of the mock inbox so the dev build's delete / mark-read / clear
