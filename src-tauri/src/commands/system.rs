@@ -85,11 +85,8 @@ pub struct GlobalStatus {
 /// source of truth shared with `services_status`, so the footer and the
 /// Services tab can never disagree (about liveness OR resources).
 #[tauri::command]
-pub fn global_status(
-    state: State<'_, AppState>,
-    dns: State<'_, crate::state::app::DnsState>,
-) -> Result<GlobalStatus> {
-    let rows = crate::commands::services::enriched_status(&state, dns.running())?;
+pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
+    let rows = crate::commands::services::enriched_status(&state)?;
     let (running, total, summary) = summarize(&rows.iter().map(|r| r.running).collect::<Vec<_>>());
     let cpu_percent = rows.iter().map(|r| r.cpu_percent).sum();
     let ram_mb = rows.iter().map(|r| r.ram_mb).sum();

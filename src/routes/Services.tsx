@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toastBackendError } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
-import { Code, Database, ExternalLink, Inbox, Layers, Mail, Play, Server, Square, type LucideIcon } from "lucide-react";
+import { Code, Database, ExternalLink, Globe, Inbox, Layers, Mail, Play, Server, Square, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { cn } from "@/lib/utils";
-import { servicesStatus, setDefaultPhpVersion, startServices, stopServices } from "@/lib/ipc";
+import { dnsStatus, servicesStatus, setDefaultPhpVersion, startServices, stopServices } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
 
 /** Tinted accent per kind (matches the group icon colors). */
@@ -194,6 +194,14 @@ export function Services() {
     onError: (e) => toastBackendError(e),
   });
 
+  // The embedded DNS resolver — app-lifetime, never part of Start/Stop all, so
+  // it lives outside the stoppable groups (and outside running/total counts).
+  const { data: dns } = useQuery({
+    queryKey: ["dns-status"],
+    queryFn: dnsStatus,
+    refetchInterval: 5000,
+  });
+
   const startStopAll = (
     <button
       onClick={() => toggleAll.mutate()}
@@ -264,6 +272,52 @@ export function Services() {
                 </div>
               );
             })}
+
+            {/* Always-on DNS resolver — in-process, app-lifetime, NOT controlled
+                by Start/Stop all (a dead resolver breaks every .test domain, so
+                it must stay visible; the watchdog restarts it automatically). */}
+            {dns && (
+              <div className="mb-[18px] last:mb-0">
+                <div className="mb-[9px] flex items-center gap-2.5 px-0.5">
+                  <span className="flex text-rex-text-dim">
+                    <Globe className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                  </span>
+                  <span className="text-[13.5px] font-semibold text-rex-text">Always on</span>
+                  <span className="font-mono text-[11px] text-rex-text-dim">
+                    runs with the app — not affected by Stop all
+                  </span>
+                </div>
+                <div className="overflow-hidden rounded-[13px] border border-rex-border-subtle bg-rex-surface-1">
+                  <div className="flex items-center gap-4 px-4 py-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-[11px]">
+                      <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-rex-border-strong bg-rex-surface-2 font-mono text-[10px] font-bold text-rex-text-bright">
+                        Dn
+                      </span>
+                      <div className="min-w-0">
+                        <span className="text-[13.5px] font-semibold text-rex-text">
+                          DNS resolver
+                        </span>
+                        <div className="text-[11px] text-rex-text-dim">
+                          Resolves <span className="font-mono">*.test</span> — restarted
+                          automatically if it dies
+                        </div>
+                      </div>
+                    </div>
+                    <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
+                      :{dns.port}
+                    </div>
+                    {/* Down = red error, not gray "Idle": always-on means a dead
+                        resolver is a fault (every .test breaks), never a normal
+                        stopped state. */}
+                    <StatusPill
+                      status={dns.running ? "running" : "error"}
+                      label={dns.running ? undefined : "Down"}
+                      className="w-[86px]"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

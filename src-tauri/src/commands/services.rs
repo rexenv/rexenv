@@ -83,7 +83,12 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
 /// same-user read — discover its pid by our binary path in the cmdline
 /// (marker-gated, never a foreign caddy) and fall back to the world-readable
 /// `ps` accounting. CPU is per-core percent (Activity-Monitor style).
-pub fn enriched_status(state: &AppState, dns_running: bool) -> Result<Vec<ServiceStatus>> {
+/// The embedded DNS resolver is deliberately NOT a row here: it's app-lifetime
+/// (in-process task, never controlled by start/stop-all), so listing it would
+/// make the footer's running/total + "Stop all" lie about what they control.
+/// Its health is surfaced separately via `dns_status` (Services indicator +
+/// Settings).
+pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
     let infos = state.service_infos();
     let mut monitor = state
         .monitor
@@ -99,7 +104,7 @@ pub fn enriched_status(state: &AppState, dns_running: bool) -> Result<Vec<Servic
             .to_string()
     });
 
-    let mut out: Vec<ServiceStatus> = infos
+    let out: Vec<ServiceStatus> = infos
         .into_iter()
         .map(|i| {
             let pid = i.pid.or_else(|| {
@@ -122,25 +127,11 @@ pub fn enriched_status(state: &AppState, dns_running: bool) -> Result<Vec<Servic
             ServiceStatus { name: i.name, running: i.running, pid, port: i.port, cpu_percent, ram_mb }
         })
         .collect();
-    // The embedded DNS resolver — in-process (no pid/metrics of its own), but a
-    // dead resolver makes EVERY `.test` site unreachable, so it must be visible
-    // here, not only in Settings.
-    out.push(ServiceStatus {
-        name: "DNS".to_string(),
-        running: dns_running,
-        pid: None,
-        port: core::dns::DEFAULT_DNS_PORT,
-        cpu_percent: 0.0,
-        ram_mb: 0,
-    });
     Ok(out)
 }
 
 /// Per-service status + live RAM/CPU for the Services view.
 #[tauri::command]
-pub async fn services_status(
-    state: State<'_, AppState>,
-    dns: State<'_, crate::state::app::DnsState>,
-) -> Result<Vec<ServiceStatus>> {
-    enriched_status(&state, dns.running())
+pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceStatus>> {
+    enriched_status(&state)
 }
