@@ -6,6 +6,26 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [x] **Edge "stops by itself" — adopt a live edge, never kill it.** Root cause of the
+  `health.log` `edge-down` entries: every edge death was rexenv's own `caddy stop` —
+  (a) `prepare_edge` treated a LIVE edge as a stale leftover (`recover_stale_edge`)
+  whenever the manager's state said stopped, so Start-all killed the healthy root edge
+  and re-prompted for the password; (b) the watchdog was one-way (running→stopped,
+  never back), so one stale edge-down left the UI lying and invited exactly that
+  Start-all; (c) live-check examples share the real app-data dir and stop the edge via
+  the shared admin socket (`health_watchdog_check` artifacts match the Jul 7 event
+  exactly — see item below). ✓ **Done:** `prepare_edge` adopts+reloads a live edge
+  (fresh-start path only if the reload is refused); `reconcile_health` re-adopts a live
+  edge (`"adopted"` event, surfaced as an info toast); verified live against the running
+  root edge — pid unchanged through both flows (`examples/edge_adopt_reload_check.rs`),
+  `cargo test --lib` 153 green, site 200 through the edge after.
+- [ ] **Isolate live-check examples from the real stack.** `examples/*.rs` use
+  `platform::current()` → the REAL app-data dir: their `start_all`/`stop_all`/
+  `recover_stale_edge` stop the USER'S running edge over the shared admin socket (and
+  restart shared services). Adopt-don't-kill removed the worst path, but an example's
+  explicit `stop_all` still tears the stack down. Options: env-var app-data override for
+  example runs, or a guard that refuses `stop_all` when the edge wasn't started by the
+  example.
 - [x] **L7 — move shared Nginx off 8088** (from BACKLOG). `8088` collides with Hadoop
   YARN / common dev proxies; moved to `18088`. Low risk: loopback-only, bind-tested at
   start. ✓ **Done:** `core/services.rs` `NGINX_HTTP_PORT` = 18088; configs regenerate

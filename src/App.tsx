@@ -34,6 +34,8 @@ function HealthWatch() {
       for (const e of events) {
         if (e.action === "restarted") {
           toast.info(`${e.service} stopped unexpectedly — restarted automatically`);
+        } else if (e.action === "adopted") {
+          toast.info(`${e.service}: ${e.detail}`);
         } else {
           toast.error(`${e.service}: ${e.detail}`);
         }

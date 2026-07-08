@@ -91,7 +91,7 @@ pub const MAX_RESTART_ATTEMPTS: u32 = 3;
 #[serde(rename_all = "camelCase")]
 pub struct HealthEvent {
     pub service: String,
-    /// "restarted" | "restart-failed" | "gave-up" | "edge-down".
+    /// "restarted" | "restart-failed" | "gave-up" | "edge-down" | "adopted".
     pub action: &'static str,
     pub detail: String,
 }
@@ -309,7 +309,11 @@ impl ServiceManager {
     /// Prepare the Caddy edge start. If the edge is stopped, clear any stale edge
     /// and gate the port, then return a plan the caller runs WITHOUT the services
     /// lock (the privileged start blocks on the admin-password prompt). `None` if
-    /// the edge is already running.
+    /// the edge is already running — including an edge found LIVE on our admin
+    /// socket while this manager thought it stopped (a prior session's survivor,
+    /// or a stale edge-down mark): that edge is adopted and reloaded in place,
+    /// never stopped — stopping it would drop every site mid-serve and force a
+    /// fresh admin-password prompt for a stack that was already up.
     pub fn prepare_edge(
         &mut self,
         platform: &dyn Platform,
@@ -319,6 +323,16 @@ impl ServiceManager {
             return Ok(None);
         }
         let bins = self.bins()?;
+        // A live listener on OUR admin socket is rexenv's own edge (private path,
+        // 0600) — adopt it and push the current config through its admin API. Only
+        // if the reload is refused (wedged edge, or a port set it can't rebind) do
+        // we fall through to the stop + fresh-start path.
+        if proxy::admin_alive(platform)
+            && proxy::reload(platform, &bins.caddy, &caddyfile).is_ok()
+        {
+            self.caddy = CaddyHandle::Privileged;
+            return Ok(None);
+        }
         // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
         // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
         // default :2019 admin is never touched (task 2.4 / M1).
@@ -334,6 +348,14 @@ impl ServiceManager {
     /// Record the edge as a root-privileged Caddy (started via osascript).
     pub fn set_edge_privileged(&mut self) {
         self.caddy = CaddyHandle::Privileged;
+    }
+
+    /// Forget the edge WITHOUT stopping anything — reproduces a stale edge-down
+    /// mark (manager says stopped, edge still serving). Live-check hook for
+    /// `examples/edge_adopt_reload_check.rs`; the app itself only reaches this
+    /// state through `reconcile_health`.
+    pub fn mark_edge_stopped(&mut self) {
+        self.caddy = CaddyHandle::Stopped;
     }
 
     /// Record the edge as a child Caddy we own (unprivileged high port).
@@ -957,6 +979,11 @@ impl ServiceManager {
         // Caddy edge: detect via our admin unix socket; NEVER auto-restart (the
         // privileged start blocks on an admin-password prompt). Mark stopped so
         // status/UI tell the truth; the user's next Start all brings it back.
+        // The reverse transition heals too: an edge answering on OUR socket while
+        // this manager says stopped (transient probe failure, adoption missed at
+        // launch) is re-adopted — no start, just truth — so a stale edge-down
+        // never leaves the UI lying or invites a Start-all that would kill a
+        // healthy edge.
         if !matches!(self.caddy, CaddyHandle::Stopped) && !proxy::admin_alive(platform) {
             if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
                 let _ = c.kill();
@@ -968,6 +995,15 @@ impl ServiceManager {
                 action: "edge-down",
                 detail: "edge stopped answering on its admin socket — every site is \
                          unreachable until it is started again (Start all)"
+                    .into(),
+            });
+        } else if matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_alive(platform) {
+            self.caddy = CaddyHandle::Privileged;
+            events.push(HealthEvent {
+                service: "Caddy".into(),
+                action: "adopted",
+                detail: "edge is answering on its admin socket again — re-adopted \
+                         (sites were being served the whole time)"
                     .into(),
             });
         }

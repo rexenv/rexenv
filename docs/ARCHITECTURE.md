@@ -85,10 +85,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   socket to the invoking user. A TCP admin on a root Caddy would let any local process
   POST config = arbitrary file read/write as root.
 - `admin_alive()` actually **connects** (the socket file outlives a crash; a stat would lie).
-- `recover_stale_edge()` (startup): probe OUR socket; a live leftover rexenv edge gets
-  `caddy stop` over it (no privilege needed), polled up to 10×500ms, then a clear error
-  if `:443` still isn't free. Ownership-gated: rexenv never binds nor queries TCP `2019`,
-  so a developer's own Caddy (e.g. Herd's) is never touched (M1 invariant, `d35db62`).
+- **A live edge is adopted, never killed.** `prepare_edge()` first probes OUR socket:
+  if it answers, the edge is adopted (`CaddyHandle::Privileged`) and the current config
+  is pushed via `caddy reload` — no stop, no re-prompt, sites never drop. The health
+  watchdog heals the reverse way too: an edge answering while the manager says stopped
+  is re-adopted (`"adopted"` event) instead of leaving a stale edge-down. This closed
+  the "Caddy stops by itself" loop: a stale stopped-mark + Start all used to
+  `caddy stop` the healthy edge (live check: `examples/edge_adopt_reload_check.rs`).
+- `recover_stale_edge()` (fallback, only when the live edge refuses the reload): probe
+  OUR socket; a live leftover rexenv edge gets `caddy stop` over it (no privilege
+  needed), polled up to 10×500ms, then a clear error if `:443` still isn't free.
+  Ownership-gated: rexenv never binds nor queries TCP `2019`, so a developer's own
+  Caddy (e.g. Herd's) is never touched (M1 invariant, `d35db62`).
 - `stop_edge()`: graceful admin-API stop, then reap processes running OUR caddy binary
   path (`owned_pids(marker)`). A root remnant may survive — logged; it holds no ports.
 
