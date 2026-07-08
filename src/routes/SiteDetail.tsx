@@ -24,6 +24,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
+import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { Button } from "@/components/ui/button";
@@ -253,7 +254,10 @@ function SiteHeader({
     }
   };
   return (
-    <div className="flex-none border-b border-rex-border-subtle px-[22px] pt-[18px]">
+    <div
+      onMouseDown={onTitleBarMouseDown}
+      className="drag-region flex-none border-b border-rex-border-subtle px-[22px] pt-[18px]"
+    >
       <button
         onClick={onBack}
         className="mb-[13px] inline-flex items-center gap-1.5 text-[12px] text-rex-text-dim transition-colors hover:text-rex-text-bright"
