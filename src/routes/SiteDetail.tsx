@@ -393,8 +393,8 @@ function Overview({
         </div>
       </div>
 
-      <div className="grid grid-cols-[1.25fr_1fr] gap-[14px]">
-        <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+      <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-[14px]">
+        <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
           <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
             Paths
           </div>
@@ -408,7 +408,7 @@ function Overview({
           </div>
         </div>
 
-        <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+        <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
           <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
             Quick links
           </div>
