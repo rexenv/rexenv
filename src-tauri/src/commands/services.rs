@@ -37,6 +37,13 @@ fn start_inputs(
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     let (sites, php_minors) = start_inputs(&state)?;
+    // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
+    // one through the download hub — real progress events for the UI, EVERY
+    // failure surfaced (not just the first), and no download ever streams while
+    // the services lock is held (status polls stay live on a cold first run).
+    // After this, the resolves inside start_core are cache hits.
+    let plan = core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors);
+    core::downloads::prefetch(state.platform.as_ref(), "Start all", &plan).await?;
     // Phase 1 (locked): spawn everything except the edge; collect the readiness
     // probes + Caddyfile. Spawning is fast — no waiting happens under the lock.
     let (caddyfile, checks) = {

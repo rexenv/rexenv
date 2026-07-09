@@ -423,6 +423,25 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
     }
 }
 
+/// Whether `name`@`version` is already fully published in the binary cache —
+/// the same marker files the resolves' early-return checks use (a partially
+/// published dir never has its marker: the staging→rename publish is atomic,
+/// H4). Unknown manifest = not cached. Used by the download planner to split
+/// an action's binary set into cached vs to-download without resolving.
+pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
+    let Ok(bin_dir) = platform.paths().bin_dir() else {
+        return false;
+    };
+    let dir = bin_dir.join(format!("{name}-{version}"));
+    let arch = platform.binaries().arch();
+    match manifest(name, version, std::env::consts::OS, arch) {
+        // `member` is the marker for file/tree distributions; executables are
+        // published at `dir/<name>` (for those, member == name anyway).
+        Some(spec) => dir.join(spec.member).exists() || dir.join(name).exists(),
+        None => false,
+    }
+}
+
 /// Resolve `name`@`version` to a ready-to-run cached binary path, downloading +
 /// verifying + extracting + signing on first use. Idempotent: a cached binary is
 /// returned without re-downloading.

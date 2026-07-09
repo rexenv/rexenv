@@ -10,6 +10,11 @@
 //! tauri-free — the app layer (lib.rs) subscribes via [`Hub::subscribe`] and
 //! forwards snapshots to the frontend as Tauri events.
 
+use crate::core::db::DbEngine;
+use crate::core::{binaries, php};
+use crate::error::{Error, Result};
+use crate::platform::traits::Platform;
+use crate::state::models::{Site, WebServer};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
@@ -141,6 +146,184 @@ pub fn label_for(name: &str, version: &str) -> String {
         "frankenphp" => "FrankenPHP".into(),
         "cloudflared" => "cloudflared (tunnels)".into(),
         _ => format!("{name} {version}"),
+    }
+}
+
+/// One binary an action needs: enough to plan (cached split), display (via
+/// [`Planned`]) and fetch (via [`resolve_any`]'s name-based dispatch).
+#[derive(Debug, Clone)]
+pub struct PlannedBinary {
+    pub name: String,
+    pub version: String,
+    pub cached: bool,
+}
+
+impl PlannedBinary {
+    fn new(platform: &dyn Platform, name: &str, version: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            version: version.to_string(),
+            cached: binaries::is_cached(platform, name, version),
+        }
+    }
+    fn planned(&self) -> Planned {
+        Planned {
+            id: item_id(&self.name, &self.version),
+            label: label_for(&self.name, &self.version),
+            cached: self.cached,
+        }
+    }
+}
+
+/// The full binary set a "Start all" needs, split into cached vs to-download:
+/// the shared stack (edge, web server, MySQL, mail sink, DB browser), one
+/// php-fpm per installed minor (the default minor always, mirroring
+/// `start_core`), and FrankenPHP only when a site actually overrides to it.
+pub fn plan_for_start(
+    platform: &dyn Platform,
+    sites: &[Site],
+    php_minors: &[String],
+) -> Vec<PlannedBinary> {
+    let mut set: Vec<(&str, &str)> = vec![
+        ("caddy", binaries::CADDY_VERSION),
+        ("nginx", binaries::NGINX_VERSION),
+        ("mysql", binaries::MYSQL_VERSION),
+        ("mailpit", binaries::MAILPIT_VERSION),
+        ("adminer", binaries::ADMINER_VERSION),
+    ];
+    let mut minors = php_minors.to_vec();
+    let default_minor = php::minor_of(binaries::PHP_VERSION);
+    if !minors.contains(&default_minor) {
+        minors.push(default_minor);
+    }
+    for minor in &minors {
+        if let Some(patch) = php::patch_for_minor(minor) {
+            set.push(("php-fpm", patch));
+        }
+    }
+    if sites.iter().any(|s| matches!(s.web_server, WebServer::Frankenphp)) {
+        set.push(("frankenphp", binaries::FRANKENPHP_VERSION));
+    }
+    set.into_iter()
+        .map(|(n, v)| PlannedBinary::new(platform, n, v))
+        .collect()
+}
+
+/// The binary set for starting one DB engine on demand. Empty for engines
+/// without a pinned portable build (their spawn errors with the real message).
+pub fn plan_for_engine(platform: &dyn Platform, engine: DbEngine) -> Vec<PlannedBinary> {
+    match engine {
+        DbEngine::Mysql => vec![PlannedBinary::new(platform, "mysql", binaries::MYSQL_VERSION)],
+        DbEngine::Postgres => {
+            vec![PlannedBinary::new(platform, "postgres", binaries::POSTGRES_VERSION)]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The binary set for installing a PHP version: its FPM build (the pool) plus
+/// its CLI build (WP-CLI operations). Empty if the minor has no pinned build.
+pub fn plan_for_php(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+    match php::patch_for_minor(minor) {
+        Some(patch) => vec![
+            PlannedBinary::new(platform, "php-fpm", patch),
+            PlannedBinary::new(platform, "php", patch),
+        ],
+        None => Vec::new(),
+    }
+}
+
+/// Just one minor's php-fpm pool binary — for the site-create / PHP-switch
+/// paths, whose `ensure_php_pool` runs under the services lock and must hit
+/// cache. Empty if the minor has no pinned build (`ensure` then errors clearly).
+pub fn plan_for_pool(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+    match php::patch_for_minor(minor) {
+        Some(patch) => vec![PlannedBinary::new(platform, "php-fpm", patch)],
+        None => Vec::new(),
+    }
+}
+
+/// WP install tooling for a site create: the minor's PHP CLI build + WP-CLI.
+pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+    let mut plan = Vec::new();
+    if let Some(patch) = php::patch_for_minor(minor) {
+        plan.push(PlannedBinary::new(platform, "php", patch));
+    }
+    plan.push(PlannedBinary::new(platform, "wp-cli", binaries::WP_CLI_VERSION));
+    plan
+}
+
+/// The FrankenPHP override backend — for site create/switch onto FrankenPHP,
+/// whose `reconcile_overrides` (inside the locked reload) must hit cache.
+pub fn plan_for_override(platform: &dyn Platform) -> Vec<PlannedBinary> {
+    vec![PlannedBinary::new(platform, "frankenphp", binaries::FRANKENPHP_VERSION)]
+}
+
+/// Resolve one binary through whichever resolver its distribution shape needs.
+/// The per-item retry command reuses this — idempotent, so retrying something
+/// that meanwhile resolved returns instantly.
+pub async fn resolve_any(platform: &dyn Platform, name: &str, version: &str) -> Result<()> {
+    match name {
+        "mysql" | "postgres" => binaries::resolve_dir(platform, name, version).await.map(drop),
+        "wp-cli" | "adminer" => binaries::resolve_file(platform, name, version).await.map(drop),
+        _ => binaries::resolve(platform, name, version).await.map(drop),
+    }
+}
+
+/// How many downloads stream at once during a prefetch. Purely a bandwidth
+/// choice — bodies stream to disk, so RAM does not scale with this.
+const PREFETCH_CONCURRENCY: usize = 2;
+
+/// Download everything an action's `plan` is missing, as one hub batch with
+/// live progress. Runs WITHOUT any service lock — callers prefetch first, then
+/// take the services lock for the actual start (which then hits cache).
+///
+/// A failure does NOT stop the batch: remaining items still download (each
+/// failure lands on its hub row for per-item retry), and the returned error
+/// names EVERY failed binary — not just the first.
+pub async fn prefetch(
+    platform: &dyn Platform,
+    action: &str,
+    plan: &[PlannedBinary],
+) -> Result<()> {
+    let missing: Vec<&PlannedBinary> = plan.iter().filter(|p| !p.cached).collect();
+    // Nothing to download → no batch, no events: warm-cache actions (every site
+    // create / PHP switch after first run) stay UI-silent. Cached rows are only
+    // shown alongside an actual download (mixed batch).
+    if missing.is_empty() {
+        return Ok(());
+    }
+    hub().begin_batch(action, &plan.iter().map(PlannedBinary::planned).collect::<Vec<_>>());
+    let mut failures: Vec<String> = Vec::new();
+    for pair in missing.chunks(PREFETCH_CONCURRENCY) {
+        // Bounded fan-out without spawning (platform is a borrow): the pair's
+        // futures interleave on this task — downloads are IO-bound.
+        let results: Vec<(&PlannedBinary, Result<()>)> = match pair {
+            [a] => vec![(a, resolve_any(platform, &a.name, &a.version).await)],
+            [a, b] => {
+                let (ra, rb) = tokio::join!(
+                    resolve_any(platform, &a.name, &a.version),
+                    resolve_any(platform, &b.name, &b.version),
+                );
+                vec![(a, ra), (b, rb)]
+            }
+            _ => unreachable!("chunks({PREFETCH_CONCURRENCY})"),
+        };
+        for (p, r) in results {
+            if let Err(e) = r {
+                failures.push(format!("{}: {e}", label_for(&p.name, &p.version)));
+            }
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "{} of {} downloads failed — fix the connection (or retry per item in the download panel), then start again. {}",
+            failures.len(),
+            missing.len(),
+            failures.join("; ")
+        )))
     }
 }
 
@@ -451,6 +634,66 @@ mod tests {
         assert_eq!(label_for("mysql", "8.4.6"), "MySQL 8.4");
         assert_eq!(label_for("caddy", "2.11.4"), "Caddy (edge router)");
         assert_eq!(label_for("something", "9.9"), "something 9.9");
+    }
+
+    fn site(ws: WebServer) -> Site {
+        use crate::state::models::{MultisiteMode, ServiceStatus, SiteType};
+        Site {
+            id: "s.test".into(),
+            name: "s.test".into(),
+            domain: "s.test".into(),
+            site_type: SiteType::Php,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: ws,
+            ssl: true,
+            path: "/tmp/s.test".into(),
+            created_at: "now".into(),
+            multisite: MultisiteMode::None,
+        }
+    }
+
+    #[test]
+    fn plan_for_start_covers_stack_pools_and_conditional_frankenphp() {
+        let plat = crate::platform::current();
+        let plan = plan_for_start(&*plat, &[site(WebServer::Nginx)], &["8.1".into()]);
+        let names: Vec<(&str, &str)> = plan
+            .iter()
+            .map(|p| (p.name.as_str(), p.version.as_str()))
+            .collect();
+        for expected in [
+            ("caddy", binaries::CADDY_VERSION),
+            ("nginx", binaries::NGINX_VERSION),
+            ("mysql", binaries::MYSQL_VERSION),
+            ("mailpit", binaries::MAILPIT_VERSION),
+            ("adminer", binaries::ADMINER_VERSION),
+        ] {
+            assert!(names.contains(&expected), "missing {expected:?} in {names:?}");
+        }
+        // Requested minor's pool AND the always-included default minor's pool
+        // (mirrors start_core), each exactly once.
+        let fpms: Vec<&&str> = names.iter().filter(|(n, _)| *n == "php-fpm").map(|(_, v)| v).collect();
+        assert!(fpms.contains(&&php::patch_for_minor("8.1").unwrap()));
+        assert!(fpms.contains(&&binaries::PHP_VERSION));
+        assert_eq!(fpms.len(), 2, "{names:?}");
+        // No FrankenPHP: no site overrides to it.
+        assert!(!names.iter().any(|(n, _)| *n == "frankenphp"));
+
+        let plan = plan_for_start(&*plat, &[site(WebServer::Frankenphp)], &[]);
+        assert!(plan.iter().any(|p| p.name == "frankenphp"));
+    }
+
+    #[test]
+    fn plan_for_php_maps_minor_to_pinned_fpm_and_cli() {
+        let plat = crate::platform::current();
+        let plan = plan_for_php(&*plat, "8.2");
+        let patch = php::patch_for_minor("8.2").unwrap();
+        let names: Vec<(&str, &str)> = plan
+            .iter()
+            .map(|p| (p.name.as_str(), p.version.as_str()))
+            .collect();
+        assert_eq!(names, vec![("php-fpm", patch), ("php", patch)]);
+        assert!(plan_for_php(&*plat, "7.0").is_empty(), "unpinned minor → nothing to fetch");
     }
 
     #[test]

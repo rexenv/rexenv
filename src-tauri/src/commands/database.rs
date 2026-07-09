@@ -80,6 +80,16 @@ fn engine_from_key(key: &str) -> Result<DbEngine> {
 #[tauri::command]
 pub async fn start_database(state: State<'_, AppState>, key: String) -> Result<()> {
     let engine = engine_from_key(&key)?;
+    // Prefetch the engine's binary tree BEFORE taking the services lock — the
+    // (potentially 600MB) first-run download streams with hub progress while
+    // status polls stay live; the spawn below then hits cache.
+    let plan = crate::core::downloads::plan_for_engine(state.platform.as_ref(), engine);
+    crate::core::downloads::prefetch(
+        state.platform.as_ref(),
+        &format!("Start {}", engine.label()),
+        &plan,
+    )
+    .await?;
     // Spawn under the lock, await readiness with it released (M4) — a slow DB
     // start doesn't block other service commands or the manager.
     let check = {

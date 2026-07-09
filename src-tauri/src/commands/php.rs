@@ -24,16 +24,31 @@ pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersion>> 
 }
 
 /// Enable (install) or disable (remove) a PHP version. Guarded in `core::php`
-/// (can't remove the default or a version a site is using). The pool set
-/// reconciles on the next `start_services`.
+/// (can't remove the default or a version a site is using). Installing
+/// prefetches the version's FPM + CLI builds right away (hub batch with live
+/// progress) instead of silently deferring the download to the next
+/// `start_services`; the pool itself still reconciles on the next start.
 #[tauri::command]
-pub fn set_php_version_installed(
+pub async fn set_php_version_installed(
     state: State<'_, AppState>,
     minor: String,
     installed: bool,
 ) -> Result<()> {
-    let conn = lock(&state)?;
-    core::php::set_installed(&conn, &minor, installed)
+    {
+        // Registry update under a brief DB lock, dropped before any await.
+        let conn = lock(&state)?;
+        core::php::set_installed(&conn, &minor, installed)?;
+    }
+    if installed {
+        let plan = core::downloads::plan_for_php(state.platform.as_ref(), &minor);
+        core::downloads::prefetch(
+            state.platform.as_ref(),
+            &format!("Install PHP {minor}"),
+            &plan,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Make a PHP version the default for new sites (§4.4). Guarded in `core::php`

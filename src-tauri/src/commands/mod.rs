@@ -3,6 +3,7 @@
 
 pub mod blueprints;
 pub mod database;
+pub mod downloads;
 pub mod logs;
 pub mod mail;
 pub mod php;

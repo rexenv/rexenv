@@ -109,6 +109,24 @@ pub fn run() {
             // await_ready runs AFTER the lock is dropped (M4). Also restarts the
             // in-process DNS resolver if its task died. Events are appended to
             // <log_dir>/health.log and emitted as `service-health`.
+            // Download-progress bridge: forward download-hub snapshots to the
+            // frontend as `download-progress` events. Same race-free pattern as
+            // `service-health`: full snapshots, not deltas, so event order can't
+            // matter. The watch channel + 100ms pause coalesces chunk-level
+            // updates to ≤10 events/s, always ending on the final state (the
+            // last change re-arms `changed()`, so the terminal snapshot is
+            // always emitted).
+            let dl = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
+                let mut rx = core::downloads::hub().subscribe();
+                while rx.changed().await.is_ok() {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    rx.borrow_and_update(); // mark the burst seen, then emit its final state
+                    let _ = dl.emit("download-progress", core::downloads::hub().snapshot());
+                }
+            });
+
             let watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 use tauri::Emitter;
@@ -245,6 +263,8 @@ pub fn run() {
             commands::services::start_services,
             commands::services::stop_services,
             commands::services::services_status,
+            commands::downloads::downloads_state,
+            commands::downloads::retry_download,
             commands::logs::log_targets,
             commands::logs::tail_log,
             commands::logs::wp_debug_log_status,

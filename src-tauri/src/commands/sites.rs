@@ -163,6 +163,21 @@ pub async fn create_site(
     };
     let minor = php::minor_of(&created.php_version);
 
+    // Prefetch everything this create could need BEFORE any services-lock scope
+    // below — `spawn_db` / `ensure_php_pool` / the reload's override reconcile
+    // all run under the lock and must hit cache, or a cold cache would stream
+    // downloads while holding it. No-op (no batch) when everything's cached.
+    let mut plan = if matches!(created.web_server, WebServer::Frankenphp) {
+        core::downloads::plan_for_override(state.platform.as_ref())
+    } else {
+        core::downloads::plan_for_pool(state.platform.as_ref(), &minor)
+    };
+    if matches!(created.site_type, SiteType::Wordpress) {
+        plan.extend(core::downloads::plan_for_engine(state.platform.as_ref(), DbEngine::Mysql));
+        plan.extend(core::downloads::plan_for_wp_tooling(state.platform.as_ref(), &minor));
+    }
+    core::downloads::prefetch(state.platform.as_ref(), "Create site", &plan).await?;
+
     // WordPress needs a database + a one-click install before it's browsable.
     // The services lock is held only to SPAWN MySQL; the readiness wait and the
     // (long) installer run with it released (M4), so other commands and status
@@ -240,6 +255,17 @@ pub async fn set_site_web_server(
         (updated, core::sites::list(&conn)?)
     };
     if let Some(ref s) = site {
+        // The new backend's binary must be cached BEFORE the locked scope below
+        // (pool ensure / override reconcile download otherwise). No-op when warm.
+        let plan = if matches!(s.web_server, WebServer::Frankenphp) {
+            core::downloads::plan_for_override(state.platform.as_ref())
+        } else {
+            core::downloads::plan_for_pool(
+                state.platform.as_ref(),
+                &core::php::minor_of(&s.php_version),
+            )
+        };
+        core::downloads::prefetch(state.platform.as_ref(), "Switch web server", &plan).await?;
         // Readiness of a newly spawned FrankenPHP backend is awaited with the
         // services lock released (M4).
         let checks = {
@@ -277,6 +303,9 @@ pub async fn set_site_php_version(
     };
     if let Some(ref s) = site {
         let minor = core::php::minor_of(&s.php_version);
+        // Pool binary cached before the locked ensure below. No-op when warm.
+        let plan = core::downloads::plan_for_pool(state.platform.as_ref(), &minor);
+        core::downloads::prefetch(state.platform.as_ref(), "Switch PHP version", &plan).await?;
         let checks = {
             let mut mgr = state.services.lock().await;
             if mgr.is_running() {
@@ -321,6 +350,10 @@ pub async fn delete_site(
     if matches!(site.site_type, SiteType::Wordpress)
         && core::database::is_initialized(&core::database::data_dir(state.platform.as_ref())?)
     {
+        // MySQL tree cached before the locked spawn below (an initialized datadir
+        // with an evicted binary cache would otherwise download under the lock).
+        let plan = core::downloads::plan_for_engine(state.platform.as_ref(), DbEngine::Mysql);
+        core::downloads::prefetch(state.platform.as_ref(), "Delete site", &plan).await?;
         let check = {
             let mut mgr = state.services.lock().await;
             mgr.spawn_db(state.platform.as_ref(), DbEngine::Mysql).await?
