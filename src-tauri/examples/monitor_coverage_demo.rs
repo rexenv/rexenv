@@ -10,7 +10,7 @@
 use rexenv_lib::core::monitor::Monitor;
 use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{sites, ssl};
+use rexenv_lib::core::{services, sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
