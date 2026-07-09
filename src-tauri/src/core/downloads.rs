@@ -1,0 +1,466 @@
+//! core::downloads — the download manager hub: the SINGLE source of truth for
+//! binary-download state (mirror of the ServiceManager pattern for service
+//! status). `core::binaries` reports every real download into the hub as it
+//! streams; actions (Start all, install PHP x.y, start a DB engine) group their
+//! needed binaries into a *batch* so the UI can say "downloading 2 of 5".
+//!
+//! The hub is a process-wide singleton (`hub()`): `binaries::resolve*` is called
+//! deep inside core with only a `&dyn Platform`, so threading a sink through
+//! every call site would churn ~10 signatures for no gain. Platform-agnostic and
+//! tauri-free — the app layer (lib.rs) subscribes via [`Hub::subscribe`] and
+//! forwards snapshots to the frontend as Tauri events.
+
+use serde::Serialize;
+use std::collections::VecDeque;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+use tokio::sync::watch;
+
+/// Where a download item is in its life. `Preparing` covers everything after
+/// the verified download (extract, relink, codesign) — it can take seconds for
+/// the big DB trees. There is no separate "verifying" phase: the checksum is
+/// hashed incrementally while streaming, so verification is instant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Phase {
+    Pending,
+    Downloading,
+    Preparing,
+    Done,
+    Cached,
+    Failed,
+}
+
+impl Phase {
+    /// Terminal phases are swept from the item list when a new batch begins.
+    fn is_terminal(self) -> bool {
+        matches!(self, Phase::Done | Phase::Cached | Phase::Failed)
+    }
+    fn is_complete(self) -> bool {
+        matches!(self, Phase::Done | Phase::Cached)
+    }
+}
+
+/// One binary's download state as exposed to the UI (camelCase for IPC).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemSnapshot {
+    /// Stable id: `<name>-<version>` (same key as the binary cache dir).
+    pub id: String,
+    /// Human label, e.g. "PHP 8.3 (FPM)".
+    pub label: String,
+    pub phase: Phase,
+    pub downloaded_bytes: u64,
+    /// `None` = the server sent no Content-Length → indeterminate progress.
+    pub total_bytes: Option<u64>,
+    /// Sliding-window transfer rate; `None` until enough samples exist.
+    pub bytes_per_sec: Option<u64>,
+    pub error: Option<String>,
+}
+
+/// The active action's batch: how many of its downloads are complete.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchSnapshot {
+    pub action: String,
+    pub done: usize,
+    pub total: usize,
+}
+
+/// Full hub state — emitted whole (small: at most a dozen items) so the UI can
+/// simply replace its state; no event-ordering races.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snapshot {
+    pub batch: Option<BatchSnapshot>,
+    pub items: Vec<ItemSnapshot>,
+}
+
+/// One planned download for [`Hub::begin_batch`]: `cached` items are listed as
+/// already-complete rows (the onboarding checklist wants them visible); only
+/// missing items count toward the batch's done/total.
+#[derive(Debug, Clone)]
+pub struct Planned {
+    pub id: String,
+    pub label: String,
+    pub cached: bool,
+}
+
+struct Item {
+    snap: ItemSnapshot,
+    /// (when, downloaded-bytes) samples for the sliding-window rate.
+    samples: VecDeque<(Instant, u64)>,
+}
+
+struct HubState {
+    batch: Option<(String, Vec<String>)>, // (action, missing item ids)
+    items: Vec<Item>,
+}
+
+/// The download manager. All mutations bump a `watch` counter; subscribers pull
+/// a fresh [`Snapshot`] when it changes (coalescing is free — watch keeps only
+/// the latest value).
+pub struct Hub {
+    state: Mutex<HubState>,
+    tx: watch::Sender<u64>,
+}
+
+static HUB: OnceLock<Hub> = OnceLock::new();
+
+/// The process-wide hub.
+pub fn hub() -> &'static Hub {
+    HUB.get_or_init(|| {
+        let (tx, _) = watch::channel(0);
+        Hub {
+            state: Mutex::new(HubState { batch: None, items: Vec::new() }),
+            tx,
+        }
+    })
+}
+
+/// Stable item id for `name`@`version` — matches the binary cache dir name.
+pub fn item_id(name: &str, version: &str) -> String {
+    format!("{name}-{version}")
+}
+
+/// Human label for a pinned binary. Falls back to `name version`.
+pub fn label_for(name: &str, version: &str) -> String {
+    let minor = |v: &str| v.rsplit_once('.').map(|(m, _)| m.to_string()).unwrap_or_else(|| v.into());
+    match name {
+        "php" => format!("PHP {} (CLI)", minor(version)),
+        "php-fpm" => format!("PHP {} (FPM)", minor(version)),
+        "php-debug" => format!("PHP {} debug (CLI)", minor(version)),
+        "php-fpm-debug" => format!("PHP {} debug (FPM)", minor(version)),
+        "caddy" => "Caddy (edge router)".into(),
+        "nginx" => "Nginx (web server)".into(),
+        "mysql" => format!("MySQL {}", minor(version)),
+        "postgres" => format!("PostgreSQL {}", minor(version)),
+        "mailpit" => "Mailpit (mail catcher)".into(),
+        "adminer" => "Adminer (DB browser)".into(),
+        "wp-cli" => "WP-CLI".into(),
+        "frankenphp" => "FrankenPHP".into(),
+        "cloudflared" => "cloudflared (tunnels)".into(),
+        _ => format!("{name} {version}"),
+    }
+}
+
+/// Minimum sample span before a rate is computed (avoids nonsense rates from
+/// two near-simultaneous chunks) and the window the rate is averaged over.
+const RATE_MIN_SPAN: Duration = Duration::from_millis(300);
+const RATE_WINDOW: Duration = Duration::from_secs(3);
+
+/// Sliding-window rate from progress samples: bytes/sec across the retained
+/// window, `None` until the span is meaningful. Pure — unit-testable with
+/// synthetic instants.
+fn rate_of(samples: &VecDeque<(Instant, u64)>) -> Option<u64> {
+    let (first, oldest) = samples.front()?;
+    let (last, newest) = samples.back()?;
+    let span = last.duration_since(*first);
+    if span < RATE_MIN_SPAN || newest <= oldest {
+        return None;
+    }
+    Some(((newest - oldest) as f64 / span.as_secs_f64()) as u64)
+}
+
+fn prune_samples(samples: &mut VecDeque<(Instant, u64)>, now: Instant) {
+    while let Some((t, _)) = samples.front() {
+        if now.duration_since(*t) > RATE_WINDOW {
+            samples.pop_front();
+        } else {
+            break;
+        }
+    }
+}
+
+impl Hub {
+    /// Run `f` on the locked state, then notify subscribers.
+    fn mutate<R>(&self, f: impl FnOnce(&mut HubState) -> R) -> R {
+        let r = {
+            let mut s = self.state.lock().unwrap_or_else(|p| p.into_inner());
+            f(&mut s)
+        };
+        self.tx.send_modify(|v| *v = v.wrapping_add(1));
+        r
+    }
+
+    fn with_item<R>(s: &mut HubState, id: &str, f: impl FnOnce(&mut Item) -> R) -> Option<R> {
+        s.items.iter_mut().find(|i| i.snap.id == id).map(f)
+    }
+
+    /// Start a new action's batch: terminal leftovers from prior work are swept,
+    /// every planned item gets a visible row (cached ones as `Cached`), and the
+    /// batch counts only the missing ones. In-flight items from another action
+    /// keep streaming untouched.
+    pub fn begin_batch(&self, action: &str, planned: &[Planned]) {
+        self.mutate(|s| {
+            s.items.retain(|i| !i.snap.phase.is_terminal());
+            let mut missing = Vec::new();
+            for p in planned {
+                if !p.cached {
+                    missing.push(p.id.clone());
+                }
+                if s.items.iter().any(|i| i.snap.id == p.id) {
+                    continue; // already in flight — keep its live state
+                }
+                s.items.push(Item {
+                    snap: ItemSnapshot {
+                        id: p.id.clone(),
+                        label: p.label.clone(),
+                        phase: if p.cached { Phase::Cached } else { Phase::Pending },
+                        downloaded_bytes: 0,
+                        total_bytes: None,
+                        bytes_per_sec: None,
+                        error: None,
+                    },
+                    samples: VecDeque::new(),
+                });
+            }
+            s.batch = Some((action.to_string(), missing));
+        });
+    }
+
+    /// A download began (or a retry attempt restarted it). Creates the row if
+    /// the action didn't plan it (on-demand resolves, e.g. cloudflared).
+    pub fn item_started(&self, id: &str, label: &str) {
+        self.mutate(|s| {
+            if Self::with_item(s, id, |i| {
+                i.snap.phase = Phase::Downloading;
+                i.snap.downloaded_bytes = 0;
+                i.snap.bytes_per_sec = None;
+                i.snap.error = None;
+                i.samples.clear();
+            })
+            .is_none()
+            {
+                s.items.push(Item {
+                    snap: ItemSnapshot {
+                        id: id.to_string(),
+                        label: label.to_string(),
+                        phase: Phase::Downloading,
+                        downloaded_bytes: 0,
+                        total_bytes: None,
+                        bytes_per_sec: None,
+                        error: None,
+                    },
+                    samples: VecDeque::new(),
+                });
+            }
+        });
+    }
+
+    /// Byte progress from the stream. `total` is the Content-Length when the
+    /// server sent one (`None` → the UI shows an indeterminate bar).
+    pub fn item_progress(&self, id: &str, downloaded: u64, total: Option<u64>) {
+        let now = Instant::now();
+        self.mutate(|s| {
+            Self::with_item(s, id, |i| {
+                i.snap.phase = Phase::Downloading;
+                i.snap.downloaded_bytes = downloaded;
+                i.snap.total_bytes = total;
+                i.samples.push_back((now, downloaded));
+                prune_samples(&mut i.samples, now);
+                if let Some(r) = rate_of(&i.samples) {
+                    i.snap.bytes_per_sec = Some(r);
+                }
+            });
+        });
+    }
+
+    /// Download verified — now extracting/relinking/codesigning.
+    pub fn item_preparing(&self, id: &str) {
+        self.mutate(|s| {
+            Self::with_item(s, id, |i| {
+                i.snap.phase = Phase::Preparing;
+                i.snap.bytes_per_sec = None;
+            });
+        });
+    }
+
+    pub fn item_done(&self, id: &str) {
+        self.mutate(|s| {
+            Self::with_item(s, id, |i| {
+                i.snap.phase = Phase::Done;
+                i.snap.bytes_per_sec = None;
+            });
+        });
+    }
+
+    pub fn item_failed(&self, id: &str, error: &str) {
+        self.mutate(|s| {
+            Self::with_item(s, id, |i| {
+                i.snap.phase = Phase::Failed;
+                i.snap.bytes_per_sec = None;
+                i.snap.error = Some(error.to_string());
+            });
+        });
+    }
+
+    /// Current full state (batch progress + all item rows).
+    pub fn snapshot(&self) -> Snapshot {
+        let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        let batch = s.batch.as_ref().map(|(action, ids)| BatchSnapshot {
+            action: action.clone(),
+            done: ids
+                .iter()
+                .filter(|id| {
+                    s.items
+                        .iter()
+                        .any(|i| &i.snap.id == *id && i.snap.phase.is_complete())
+                })
+                .count(),
+            total: ids.len(),
+        });
+        Snapshot {
+            batch,
+            items: s.items.iter().map(|i| i.snap.clone()).collect(),
+        }
+    }
+
+    /// Change signal: the value bumps on every mutation; pull [`Hub::snapshot`]
+    /// when it does. The app layer throttles + forwards to the frontend.
+    pub fn subscribe(&self) -> watch::Receiver<u64> {
+        self.tx.subscribe()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh hub per test (the global one is shared across the test binary).
+    fn fresh() -> Hub {
+        let (tx, _) = watch::channel(0);
+        Hub {
+            state: Mutex::new(HubState { batch: None, items: Vec::new() }),
+            tx,
+        }
+    }
+
+    fn planned(id: &str, cached: bool) -> Planned {
+        Planned { id: id.into(), label: id.into(), cached }
+    }
+
+    #[test]
+    fn item_lifecycle_started_progress_preparing_done() {
+        let h = fresh();
+        h.item_started("nginx-1.30.3", "Nginx (web server)");
+        h.item_progress("nginx-1.30.3", 1024, Some(4096));
+        let s = h.snapshot();
+        assert_eq!(s.items.len(), 1);
+        assert_eq!(s.items[0].phase, Phase::Downloading);
+        assert_eq!(s.items[0].downloaded_bytes, 1024);
+        assert_eq!(s.items[0].total_bytes, Some(4096));
+
+        h.item_preparing("nginx-1.30.3");
+        assert_eq!(h.snapshot().items[0].phase, Phase::Preparing);
+        h.item_done("nginx-1.30.3");
+        assert_eq!(h.snapshot().items[0].phase, Phase::Done);
+    }
+
+    #[test]
+    fn unknown_total_stays_none_for_indeterminate_ui() {
+        let h = fresh();
+        h.item_started("x-1", "x");
+        h.item_progress("x-1", 500, None);
+        let i = &h.snapshot().items[0];
+        assert_eq!(i.total_bytes, None);
+        assert_eq!(i.downloaded_bytes, 500);
+    }
+
+    #[test]
+    fn failed_keeps_error_and_new_batch_sweeps_it() {
+        let h = fresh();
+        h.item_started("caddy-2.11.4", "Caddy");
+        h.item_failed("caddy-2.11.4", "checksum mismatch for https://x");
+        let s = h.snapshot();
+        assert_eq!(s.items[0].phase, Phase::Failed);
+        assert!(s.items[0].error.as_deref().unwrap().contains("checksum"));
+
+        h.begin_batch("Start all", &[planned("nginx-1.30.3", false)]);
+        let s = h.snapshot();
+        assert_eq!(s.items.len(), 1, "failed leftover swept");
+        assert_eq!(s.items[0].id, "nginx-1.30.3");
+    }
+
+    #[test]
+    fn batch_counts_only_missing_and_completes_with_done_and_cached() {
+        let h = fresh();
+        h.begin_batch(
+            "Start all",
+            &[
+                planned("caddy-2.11.4", true), // cached — visible row, not counted
+                planned("nginx-1.30.3", false),
+                planned("mysql-8.4.6", false),
+            ],
+        );
+        let s = h.snapshot();
+        let b = s.batch.as_ref().unwrap();
+        assert_eq!((b.done, b.total), (0, 2));
+        assert_eq!(s.items.len(), 3);
+        assert_eq!(s.items[0].phase, Phase::Cached);
+
+        h.item_started("nginx-1.30.3", "Nginx");
+        h.item_done("nginx-1.30.3");
+        let b = h.snapshot().batch.unwrap();
+        assert_eq!((b.done, b.total), (1, 2));
+    }
+
+    #[test]
+    fn retry_restart_resets_bytes_and_error() {
+        let h = fresh();
+        h.item_started("wp-cli-2.12.0", "WP-CLI");
+        h.item_progress("wp-cli-2.12.0", 9000, Some(10000));
+        h.item_failed("wp-cli-2.12.0", "download stalled");
+        h.item_started("wp-cli-2.12.0", "WP-CLI"); // retry
+        let i = &h.snapshot().items[0];
+        assert_eq!(i.phase, Phase::Downloading);
+        assert_eq!(i.downloaded_bytes, 0);
+        assert_eq!(i.error, None);
+    }
+
+    #[test]
+    fn rate_needs_span_then_averages_window() {
+        let now = Instant::now();
+        let mut s: VecDeque<(Instant, u64)> = VecDeque::new();
+        s.push_back((now, 0));
+        assert_eq!(rate_of(&s), None, "single sample → no rate");
+        s.push_back((now + Duration::from_millis(10), 4096));
+        assert_eq!(rate_of(&s), None, "span under minimum → no rate");
+        s.push_back((now + Duration::from_secs(1), 1_000_000));
+        let r = rate_of(&s).unwrap();
+        assert!((900_000..=1_100_000).contains(&r), "~1MB/s, got {r}");
+    }
+
+    #[test]
+    fn prune_drops_samples_outside_window() {
+        let now = Instant::now();
+        let mut s: VecDeque<(Instant, u64)> = VecDeque::new();
+        s.push_back((now, 0));
+        s.push_back((now + Duration::from_secs(2), 100));
+        s.push_back((now + Duration::from_secs(5), 200));
+        prune_samples(&mut s, now + Duration::from_secs(5));
+        assert_eq!(s.len(), 2, "sample older than the window dropped");
+        assert_eq!(s.front().unwrap().1, 100);
+    }
+
+    #[test]
+    fn labels_and_ids() {
+        assert_eq!(item_id("php-fpm", "8.3.31"), "php-fpm-8.3.31");
+        assert_eq!(label_for("php-fpm", "8.3.31"), "PHP 8.3 (FPM)");
+        assert_eq!(label_for("php", "8.1.34"), "PHP 8.1 (CLI)");
+        assert_eq!(label_for("mysql", "8.4.6"), "MySQL 8.4");
+        assert_eq!(label_for("caddy", "2.11.4"), "Caddy (edge router)");
+        assert_eq!(label_for("something", "9.9"), "something 9.9");
+    }
+
+    #[test]
+    fn in_flight_item_survives_new_batch_planning_it() {
+        let h = fresh();
+        h.item_started("mysql-8.4.6", "MySQL 8.4");
+        h.item_progress("mysql-8.4.6", 5_000_000, Some(600_000_000));
+        h.begin_batch("Start all", &[planned("mysql-8.4.6", false)]);
+        let i = &h.snapshot().items[0];
+        assert_eq!(i.phase, Phase::Downloading, "live download not reset by plan");
+        assert_eq!(i.downloaded_bytes, 5_000_000);
+    }
+}

@@ -6,8 +6,10 @@
 //! `BinaryProvider` / `PermissionManager` platform traits. No binaries are
 //! bundled; everything is fetched on demand and checksum-verified.
 
+use crate::core::downloads;
 use crate::error::{Error, Result};
 use crate::platform::traits::{Arch, Platform};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -447,33 +449,58 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         )));
     }
 
-    let bytes = http_get(&spec.url).await?;
-    verify_checksum(&bytes, &spec.checksum, &spec.url)?;
-
     // Stage in a temp dir on the same filesystem, prepare it there, then publish
     // atomically — so a failed `set_executable`/`prepare_binary` (an unrelinkable
     // dylib dep, a codesign error) NEVER leaves a poisoned (unsigned/unrelinked)
     // binary at the cached path that every later `resolve` returns via `exists()`
     // and Apple Silicon SIGKILLs. On any failure the staging dir is removed, so a
-    // retry re-downloads and prepares cleanly (task 2.5 / H4).
+    // retry re-downloads and prepares cleanly (task 2.5 / H4). The download
+    // streams straight into the staging dir (checksum hashed in-flight) and is
+    // reported to the download hub as it goes.
+    let id = downloads::item_id(name, version);
+    downloads::hub().item_started(&id, &downloads::label_for(name, version));
     let staging = staging_path(&bin_dir, name, version);
     let staged_bin = staging.join(name);
-    let staged = (|| -> Result<()> {
+    let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
         match spec.archive {
-            Archive::TarGz => extract_tar_gz_member(&bytes, spec.member, &staged_bin)?,
-            Archive::Raw => std::fs::write(&staged_bin, &bytes)?,
+            Archive::TarGz => {
+                let archive = staging.join(".archive.tar.gz");
+                download(&spec.url, &archive, Some(&spec.checksum), Some(&id)).await?;
+                downloads::hub().item_preparing(&id);
+                extract_tar_gz_member(open_buffered(&archive)?, spec.member, &staged_bin)?;
+                std::fs::remove_file(&archive)?;
+            }
+            Archive::Raw => {
+                download(&spec.url, &staged_bin, Some(&spec.checksum), Some(&id)).await?;
+                downloads::hub().item_preparing(&id);
+            }
             Archive::TarGzTree => unreachable!("TarGzTree returned above"),
         }
         platform.permissions().set_executable(&staged_bin)?;
         platform.binaries().prepare_binary(&staged_bin)?;
         publish(&staging, &dir, name)
-    })();
+    }
+    .await;
     if staged.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
     }
+    finish_item(&id, &staged);
     staged?;
     Ok(bin_path)
+}
+
+/// Report a resolve's outcome to the download hub (done, or failed with the
+/// error the UI's retry row will show).
+fn finish_item(id: &str, outcome: &Result<()>) {
+    match outcome {
+        Ok(()) => downloads::hub().item_done(id),
+        Err(e) => downloads::hub().item_failed(id, &e.to_string()),
+    }
+}
+
+fn open_buffered(path: &Path) -> Result<std::io::BufReader<std::fs::File>> {
+    Ok(std::io::BufReader::new(std::fs::File::open(path)?))
 }
 
 /// Resolve a raw, non-executable artifact (a `Raw` archive that is NOT a native
@@ -494,19 +521,24 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
     if path.exists() {
         return Ok(path);
     }
-    let bytes = http_get(&spec.url).await?;
-    verify_checksum(&bytes, &spec.checksum, &spec.url)?;
     // Stage + publish atomically so an interrupted write never caches a truncated
-    // script (task 2.5 / H4). No chmod/codesign — it's a script, not a Mach-O.
+    // script (task 2.5 / H4): the stream lands in the staging dir and is only
+    // renamed into place after the checksum verifies. No chmod/codesign — it's a
+    // script, not a Mach-O.
+    let id = downloads::item_id(name, version);
+    downloads::hub().item_started(&id, &downloads::label_for(name, version));
     let staging = staging_path(&bin_dir, name, version);
-    let staged = (|| -> Result<()> {
+    let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
-        std::fs::write(staging.join(spec.member), &bytes)?;
+        download(&spec.url, &staging.join(spec.member), Some(&spec.checksum), Some(&id)).await?;
+        downloads::hub().item_preparing(&id);
         publish(&staging, &dir, spec.member)
-    })();
+    }
+    .await;
     if staged.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
     }
+    finish_item(&id, &staged);
     staged?;
     Ok(path)
 }
@@ -543,22 +575,32 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
         )));
     }
 
-    let bytes = http_get(&spec.url).await?;
-    verify_checksum(&bytes, &spec.checksum, &spec.url)?;
-    // Extract into a staging dir, then publish atomically — a download/extract that
-    // fails partway never leaves a partial tree that later resolves accept via the
-    // `bin/` short-circuit (task 2.5 / H4). MySQL's binaries are Oracle-signed +
-    // notarized (Postgres is relocatable/unsigned-ok), and a reqwest download adds no
-    // quarantine attribute, so there's no ad-hoc re-signing step here.
+    // Stream the archive into the staging dir (checksum hashed in-flight — the
+    // ~600MB MySQL tarball never sits in RAM), extract there, then publish
+    // atomically — a download/extract that fails partway never leaves a partial
+    // tree that later resolves accept via the marker short-circuit (task 2.5 /
+    // H4). MySQL's binaries are Oracle-signed + notarized (Postgres is
+    // relocatable/unsigned-ok), and a reqwest download adds no quarantine
+    // attribute, so there's no ad-hoc re-signing step here.
+    let id = downloads::item_id(name, version);
+    downloads::hub().item_started(&id, &downloads::label_for(name, version));
     let staging = staging_path(&bin_dir, name, version);
-    let staged = (|| -> Result<()> {
+    let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
-        extract_tar_gz_tree(&bytes, &staging)?;
+        let archive = staging.join(".archive.tar.gz");
+        download(&spec.url, &archive, Some(&spec.checksum), Some(&id)).await?;
+        downloads::hub().item_preparing(&id);
+        extract_tar_gz_tree(open_buffered(&archive)?, &staging)?;
+        // Drop the archive BEFORE publishing so the cached tree doesn't carry a
+        // dead 600MB tarball into the final dir.
+        std::fs::remove_file(&archive)?;
         publish(&staging, &dir, spec.member)
-    })();
+    }
+    .await;
     if staged.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
     }
+    finish_item(&id, &staged);
     staged?;
     Ok(dir)
 }
@@ -583,31 +625,68 @@ fn status_is_transient(status: reqwest::StatusCode) -> bool {
     status.is_server_error()
 }
 
-/// Download `url` into memory with bounded retries + a connect timeout. Public so
-/// the §2 robustness checks can exercise the retry / connectivity-error behavior
-/// directly; normal callers use `resolve`/`resolve_file`/`resolve_dir`.
-pub async fn http_get(url: &str) -> Result<Vec<u8>> {
+/// Per-chunk inactivity timeout while streaming a download. Replaces the old
+/// whole-request timeout (120s), which silently capped how BIG a download could
+/// be on a slow link (the 600MB MySQL tree at <5MB/s would have aborted); a
+/// stall guard is what we actually want.
+const CHUNK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn http_client() -> Result<reqwest::Client> {
     // Some CDNs (e.g. dev.mysql.com) reject the default reqwest User-Agent with
     // 403; present a browser-like UA so downloads are accepted everywhere. Bound
-    // each attempt with a connect timeout so "no internet" fails fast (not a hang).
-    let client = reqwest::Client::builder()
+    // connects so "no internet" fails fast (not a hang); the body is guarded by
+    // the per-chunk CHUNK_TIMEOUT instead of a total deadline.
+    reqwest::Client::builder()
         .user_agent(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
              AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         )
         .connect_timeout(std::time::Duration::from_secs(15))
-        .timeout(std::time::Duration::from_secs(120))
         .build()
-        .map_err(|e| Error::Other(format!("http client: {e}")))?;
+        .map_err(|e| Error::Other(format!("http client: {e}")))
+}
 
+/// Download `url` into memory with bounded retries + a connect timeout. Public so
+/// the §2 robustness checks can exercise the retry / connectivity-error behavior
+/// directly; normal callers use `resolve`/`resolve_file`/`resolve_dir`, which
+/// stream to disk (no whole-body buffering) via [`download`].
+pub async fn http_get(url: &str) -> Result<Vec<u8>> {
+    let tmp = std::env::temp_dir().join(format!(
+        "rexenv-http-{}-{}",
+        std::process::id(),
+        STAGING_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    let out = match download(url, &tmp, None, None).await {
+        Ok(()) => std::fs::read(&tmp).map_err(Error::from),
+        Err(e) => Err(e),
+    };
+    let _ = std::fs::remove_file(&tmp);
+    out
+}
+
+/// Stream `url` to `dest` with bounded retries, hashing incrementally when a
+/// `checksum` is given (verification costs no extra read) and reporting byte
+/// progress into the download hub under `item`. The whole body never sits in
+/// memory — peak RAM is one chunk. On any failure `dest` is removed.
+async fn download(
+    url: &str,
+    dest: &Path,
+    checksum: Option<&Checksum>,
+    item: Option<&str>,
+) -> Result<()> {
+    let client = http_client()?;
     let mut last_err = String::new();
     for attempt in 1..=DOWNLOAD_ATTEMPTS {
-        match fetch_once(&client, url).await {
-            Ok(bytes) => return Ok(bytes),
-            // A permanent failure (4xx / non-Mach-O response) won't get better on
-            // retry — surface it immediately.
-            Err(FetchError::Permanent(msg)) => return Err(Error::Other(msg)),
+        match fetch_to_file(&client, url, dest, checksum, item).await {
+            Ok(()) => return Ok(()),
+            // A permanent failure (4xx / checksum mismatch / local write error)
+            // won't get better on retry — surface it immediately.
+            Err(FetchError::Permanent(msg)) => {
+                let _ = std::fs::remove_file(dest);
+                return Err(Error::Other(msg));
+            }
             Err(FetchError::Transient(msg)) => {
+                let _ = std::fs::remove_file(dest);
                 last_err = msg;
                 log::warn!("rexenv: download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed: {last_err}");
                 if attempt < DOWNLOAD_ATTEMPTS {
@@ -629,14 +708,20 @@ enum FetchError {
     Transient(String),
 }
 
-async fn fetch_once(client: &reqwest::Client, url: &str) -> std::result::Result<Vec<u8>, FetchError> {
+async fn fetch_to_file(
+    client: &reqwest::Client,
+    url: &str,
+    dest: &Path,
+    checksum: Option<&Checksum>,
+    item: Option<&str>,
+) -> std::result::Result<(), FetchError> {
     let resp = match client.get(url).send().await {
         Ok(r) => r,
         // Connect/timeout/transport problems are transient (retry); they're also
         // what "no internet" looks like, so use the connectivity-aware message.
         Err(e) => return Err(FetchError::Transient(download_error_message(url, &e))),
     };
-    let resp = match resp.error_for_status() {
+    let mut resp = match resp.error_for_status() {
         Ok(r) => r,
         Err(e) => {
             let msg = format!("download {url} failed: {e}");
@@ -648,36 +733,97 @@ async fn fetch_once(client: &reqwest::Client, url: &str) -> std::result::Result<
             });
         }
     };
-    match resp.bytes().await {
-        // A body read cut off mid-stream (aborted download) is transient.
-        Ok(b) => Ok(b.to_vec()),
-        Err(e) => Err(FetchError::Transient(download_error_message(url, &e))),
+    // Content-Length when the server sends one; `None` → the UI shows an
+    // indeterminate bar. Report 0/total up front so a slow first chunk still
+    // renders as an active download.
+    let total = resp.content_length();
+    if let Some(id) = item {
+        downloads::hub().item_progress(id, 0, total);
+    }
+    let mut file = std::fs::File::create(dest)
+        .map_err(|e| FetchError::Permanent(format!("can't write {}: {e}", dest.display())))?;
+    let mut hasher = checksum.map(StreamHasher::new);
+    let mut downloaded: u64 = 0;
+    loop {
+        let chunk = match tokio::time::timeout(CHUNK_TIMEOUT, resp.chunk()).await {
+            // No bytes for the whole guard window: a stalled transfer, not a
+            // slow one (slow links keep chunks trickling in) — retryable.
+            Err(_) => {
+                return Err(FetchError::Transient(format!(
+                    "download {url} stalled (no data for {}s)",
+                    CHUNK_TIMEOUT.as_secs()
+                )))
+            }
+            // A body read cut off mid-stream (aborted download) is transient.
+            Ok(Err(e)) => return Err(FetchError::Transient(download_error_message(url, &e))),
+            Ok(Ok(None)) => break,
+            Ok(Ok(Some(c))) => c,
+        };
+        file.write_all(&chunk)
+            .map_err(|e| FetchError::Permanent(format!("can't write {}: {e}", dest.display())))?;
+        if let Some(h) = hasher.as_mut() {
+            h.update(&chunk);
+        }
+        downloaded += chunk.len() as u64;
+        if let Some(id) = item {
+            downloads::hub().item_progress(id, downloaded, total);
+        }
+    }
+    if let (Some(h), Some(c)) = (hasher, checksum) {
+        let got = h.finish();
+        let expected = checksum_hex(c);
+        if !got.eq_ignore_ascii_case(expected) {
+            return Err(FetchError::Permanent(checksum_mismatch_message(
+                url, expected, &got,
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Incremental digest matching a pinned [`Checksum`]'s algorithm, fed chunk by
+/// chunk while streaming — so verifying a 600MB tree costs no second read.
+enum StreamHasher {
+    Sha256(sha2::Sha256),
+    Sha512(sha2::Sha512),
+}
+
+impl StreamHasher {
+    fn new(checksum: &Checksum) -> Self {
+        use sha2::Digest;
+        match checksum {
+            Checksum::Sha256(_) => StreamHasher::Sha256(sha2::Sha256::new()),
+            Checksum::Sha512(_) => StreamHasher::Sha512(sha2::Sha512::new()),
+        }
+    }
+    fn update(&mut self, bytes: &[u8]) {
+        use sha2::Digest;
+        match self {
+            StreamHasher::Sha256(h) => h.update(bytes),
+            StreamHasher::Sha512(h) => h.update(bytes),
+        }
+    }
+    fn finish(self) -> String {
+        use sha2::Digest;
+        match self {
+            StreamHasher::Sha256(h) => hex_lower(&h.finalize()),
+            StreamHasher::Sha512(h) => hex_lower(&h.finalize()),
+        }
     }
 }
 
-fn verify_checksum(bytes: &[u8], checksum: &Checksum, url: &str) -> Result<()> {
-    use sha2::{Digest, Sha256, Sha512};
-    let (got, expected) = match checksum {
-        Checksum::Sha256(hex) => {
-            let mut h = Sha256::new();
-            h.update(bytes);
-            (hex_lower(&h.finalize()), hex)
-        }
-        Checksum::Sha512(hex) => {
-            let mut h = Sha512::new();
-            h.update(bytes);
-            (hex_lower(&h.finalize()), hex)
-        }
-    };
-    if got.eq_ignore_ascii_case(expected) {
-        Ok(())
-    } else {
-        Err(Error::Other(format!(
-            "checksum mismatch for {url}: expected {expected}, got {got} — the \
-             upstream file changed (rebuilt release or tampering); rexenv needs \
-             an update with a re-verified pin"
-        )))
+fn checksum_hex(c: &Checksum) -> &str {
+    match c {
+        Checksum::Sha256(h) | Checksum::Sha512(h) => h,
     }
+}
+
+fn checksum_mismatch_message(url: &str, expected: &str, got: &str) -> String {
+    format!(
+        "checksum mismatch for {url}: expected {expected}, got {got} — the \
+         upstream file changed (rebuilt release or tampering); rexenv needs \
+         an update with a re-verified pin"
+    )
 }
 
 fn hex_lower(bytes: &[u8]) -> String {
@@ -688,11 +834,11 @@ fn hex_lower(bytes: &[u8]) -> String {
     s
 }
 
-fn extract_tar_gz_member(bytes: &[u8], member: &str, dest: &Path) -> Result<()> {
+fn extract_tar_gz_member(reader: impl std::io::Read, member: &str, dest: &Path) -> Result<()> {
     use flate2::read::GzDecoder;
     use tar::Archive as TarArchive;
 
-    let mut archive = TarArchive::new(GzDecoder::new(bytes));
+    let mut archive = TarArchive::new(GzDecoder::new(reader));
     for entry in archive.entries()? {
         let mut entry = entry?;
         let is_member = entry
@@ -720,12 +866,12 @@ fn extract_tar_gz_member(bytes: &[u8], member: &str, dest: &Path) -> Result<()> 
 /// `tar` crate's own extraction guards — so we re-add them (L2, defense-in-depth;
 /// archives are already checksum-pinned): every entry must resolve inside `dest`,
 /// both by path (no `..`/absolute components) and, for links, by target.
-fn extract_tar_gz_tree(bytes: &[u8], dest: &Path) -> Result<()> {
+fn extract_tar_gz_tree(reader: impl std::io::Read, dest: &Path) -> Result<()> {
     use flate2::read::GzDecoder;
     use std::path::PathBuf;
     use tar::Archive as TarArchive;
 
-    let mut archive = TarArchive::new(GzDecoder::new(bytes));
+    let mut archive = TarArchive::new(GzDecoder::new(reader));
     for entry in archive.entries()? {
         let mut entry = entry?;
         // Drop the leading top-level component.
@@ -856,12 +1002,6 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn checksum_hex(c: &Checksum) -> &str {
-        match c {
-            Checksum::Sha256(h) | Checksum::Sha512(h) => h,
-        }
-    }
 
     #[test]
     fn manifest_resolves_caddy_per_arch() {
@@ -1067,17 +1207,27 @@ mod tests {
     }
 
     #[test]
-    fn checksum_verification_sha256_and_sha512() {
-        // SHA-256("abc") and SHA-512("abc")
+    fn stream_hasher_verifies_sha256_and_sha512_incrementally() {
+        // SHA-256("abc") and SHA-512("abc"), fed in split chunks — the streaming
+        // path must equal the one-shot digest.
         let s256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         let s512 = "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
-        assert!(verify_checksum(b"abc", &Checksum::Sha256(s256.into()), "u").is_ok());
-        assert!(verify_checksum(b"abc", &Checksum::Sha512(s512.into()), "u").is_ok());
+        let c256 = Checksum::Sha256(s256.into());
+        let mut h = StreamHasher::new(&c256);
+        h.update(b"ab");
+        h.update(b"c");
+        assert!(h.finish().eq_ignore_ascii_case(checksum_hex(&c256)));
+
+        let c512 = Checksum::Sha512(s512.into());
+        let mut h = StreamHasher::new(&c512);
+        h.update(b"a");
+        h.update(b"bc");
+        assert!(h.finish().eq_ignore_ascii_case(checksum_hex(&c512)));
+
         // A mismatch names the URL so the user knows WHICH download went stale.
-        let err = verify_checksum(b"abcd", &Checksum::Sha256(s256.into()), "https://x/y.tar.gz")
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("https://x/y.tar.gz"), "{err}");
+        let msg = checksum_mismatch_message("https://x/y.tar.gz", s256, "deadbeef");
+        assert!(msg.contains("https://x/y.tar.gz"), "{msg}");
+        assert!(msg.contains("deadbeef"), "{msg}");
     }
 
     #[test]
