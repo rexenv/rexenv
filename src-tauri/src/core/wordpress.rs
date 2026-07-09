@@ -117,6 +117,26 @@ pub fn wp_info(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpInfo>
     Ok(WpInfo { is_wordpress, version, multisite })
 }
 
+/// WP-CLI's `update` field is a string ("none" | "available" | "version higher
+/// than expected") for regular plugins/themes but a BOOLEAN for must-use +
+/// drop-in rows (e.g. rexenv's own `rexenv-login` mu-plugin — present on every
+/// rexenv site, so a strict `String` made the whole list fail to parse).
+fn de_update<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Update {
+        S(String),
+        B(bool),
+        Null,
+    }
+    Ok(match Update::deserialize(d)? {
+        Update::S(s) => s,
+        Update::B(true) => "available".into(),
+        Update::B(false) => "none".into(),
+        Update::Null => "none".into(),
+    })
+}
+
 /// One plugin row from `wp plugin list --format=json` (§6.1). Field names match
 /// WP-CLI's JSON (all lowercase) and the frontend DTO. `update == "available"`
 /// drives the update-available badge.
@@ -127,7 +147,7 @@ pub struct WpPlugin {
     pub status: String,
     #[serde(default)]
     pub version: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_update")]
     pub update: String,
 }
 
@@ -218,7 +238,7 @@ pub struct WpTheme {
     pub status: String,
     #[serde(default)]
     pub version: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "de_update")]
     pub update: String,
     #[serde(default)]
     pub screenshot: Option<String>,
@@ -731,6 +751,22 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn plugin_rows_parse_boolean_update() {
+        // Verbatim `wp plugin list --format=json` from a live rexenv site: the
+        // must-use rexenv-login row reports `update` as a BOOLEAN — a strict
+        // String field made the entire plugin list fail to deserialize.
+        let json = r#"[
+            {"name":"akismet","status":"inactive","update":"none","version":"5.7"},
+            {"name":"rexenv-login","status":"must-use","update":false,"version":""},
+            {"name":"other-mu","status":"must-use","update":true,"version":""}
+        ]"#;
+        let rows: Vec<WpPlugin> = serde_json::from_str(json).unwrap();
+        assert_eq!(rows[0].update, "none");
+        assert_eq!(rows[1].update, "none");
+        assert_eq!(rows[2].update, "available");
     }
 
     #[test]
