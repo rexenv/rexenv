@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -210,6 +210,30 @@ export async function onDownloadProgress(
 export async function retryDownload(name: string, version: string): Promise<void> {
   if (!isTauri()) return;
   return invoke<void>("retry_download", { name, version });
+}
+
+/** The core binary set (the Start-all plan) with cached flags — row source for
+ *  the onboarding Install step. Static-ish mock outside Tauri (vite dev). */
+export async function coreBinariesPlan(): Promise<PlannedDownload[]> {
+  if (!isTauri()) {
+    return [
+      { id: "caddy-x", name: "caddy", version: "x", label: "Caddy (edge router)", cached: false },
+      { id: "nginx-x", name: "nginx", version: "x", label: "Nginx (web server)", cached: false },
+      { id: "mysql-x", name: "mysql", version: "x", label: "MySQL 8.4", cached: false },
+      { id: "mailpit-x", name: "mailpit", version: "x", label: "Mailpit (mail catcher)", cached: true },
+      { id: "adminer-x", name: "adminer", version: "x", label: "Adminer (DB browser)", cached: true },
+      { id: "php-fpm-x", name: "php-fpm", version: "x", label: "PHP 8.3 (FPM)", cached: false },
+    ];
+  }
+  return invoke<PlannedDownload[]>("core_binaries_plan");
+}
+
+/** Kick off the core-set prefetch (onboarding auto-download). Fire WITHOUT
+ *  awaiting — progress arrives via `onDownloadProgress`, and leaving onboarding
+ *  never cancels the downloads (they live in the backend hub). */
+export async function prefetchCoreBinaries(): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("prefetch_core_binaries");
 }
 
 /** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */

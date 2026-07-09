@@ -1,7 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Globe, Lock, Shield } from "lucide-react";
-import { systemSetup } from "@/lib/ipc";
+import { Check, ChevronRight, Globe, Lock, RotateCw, Shield } from "lucide-react";
+import { coreBinariesPlan, prefetchCoreBinaries, retryDownload, systemSetup } from "@/lib/ipc";
+import { useDownloads } from "@/lib/useDownloads";
+import { Track, pctOf } from "@/components/shell/DownloadPanel";
+import type { DownloadItem, DownloadPhase, PlannedDownload } from "@/types";
 
 /**
  * First-run onboarding — a 4-step wizard (Welcome → Install → Domains & SSL →
@@ -136,40 +139,135 @@ function StepHeading({ title, subtitle }: { title: string; subtitle: ReactNode }
   );
 }
 
-const INSTALL_ROWS = [
-  { abbr: "PHP", name: "PHP 8.3 runtime", bg: "var(--rex-accent-periwinkle-bg)", border: "var(--rex-accent-periwinkle-border)", color: "var(--rex-accent-periwinkle)" },
-  { abbr: "Nx", name: "Nginx web server", bg: "var(--rex-accent-teal-bg)", border: "var(--rex-accent-teal-border)", color: "var(--rex-accent-teal)" },
-  { abbr: "Cf", name: "Edge router", bg: "var(--rex-accent-blue-bg)", border: "var(--rex-accent-blue-border)", color: "var(--rex-accent-blue)" },
-];
+/** Chip visuals per binary (accent tokens only). Fallback: periwinkle. */
+const CHIP: Record<string, { abbr: string; tone: "periwinkle" | "teal" | "blue" | "amber" | "red" }> = {
+  php: { abbr: "PHP", tone: "periwinkle" },
+  "php-fpm": { abbr: "PHP", tone: "periwinkle" },
+  nginx: { abbr: "Nx", tone: "teal" },
+  caddy: { abbr: "Cf", tone: "blue" },
+  mysql: { abbr: "My", tone: "amber" },
+  mailpit: { abbr: "Mp", tone: "red" },
+  adminer: { abbr: "Ad", tone: "blue" },
+  frankenphp: { abbr: "Fp", tone: "periwinkle" },
+};
+
+function chipStyle(name: string) {
+  const tone = (CHIP[name] ?? { tone: "periwinkle" as const }).tone;
+  return {
+    background: `var(--rex-accent-${tone}-bg)`,
+    borderColor: `var(--rex-accent-${tone}-border)`,
+    color: `var(--rex-accent-${tone})`,
+  };
+}
+
+/** One core component row: static plan info + the live hub item overlaid. The
+ *  Track keeps identical geometry through every phase (no layout shift). */
+function InstallRow({ planned, item }: { planned: PlannedDownload; item?: DownloadItem }) {
+  const [retrying, setRetrying] = useState(false);
+  const phase: DownloadPhase = item?.phase ?? (planned.cached ? "cached" : "pending");
+  const pct = item ? pctOf(item) : null;
+  const status =
+    phase === "cached" || phase === "done"
+      ? "Ready"
+      : phase === "pending"
+        ? "Queued"
+        : phase === "preparing"
+          ? "Preparing…"
+          : phase === "failed"
+            ? "Failed"
+            : pct != null
+              ? `${pct}%`
+              : "…";
+  const trackState =
+    phase === "failed"
+      ? ("error" as const)
+      : phase === "done" || phase === "cached"
+        ? ("ok" as const)
+        : phase === "pending"
+          ? ("idle" as const)
+          : ("run" as const);
+
+  return (
+    <div className="rounded-[10px] border border-rex-border-subtle bg-rex-surface-1 px-3 py-2.5">
+      <div className="mb-2 flex items-center gap-2.5">
+        <span
+          className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border font-mono text-[10px] font-bold"
+          style={chipStyle(planned.name)}
+        >
+          {(CHIP[planned.name] ?? { abbr: planned.name.slice(0, 2) }).abbr}
+        </span>
+        <span className="flex-1 truncate text-left text-[13.5px] font-medium text-rex-text">
+          {planned.label}
+        </span>
+        {phase === "failed" ? (
+          <button
+            onClick={() => {
+              setRetrying(true);
+              void retryDownload(planned.name, planned.version).finally(() => setRetrying(false));
+            }}
+            disabled={retrying}
+            title={item?.error ?? undefined}
+            className="flex flex-none items-center gap-1 rounded-[6px] border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
+          >
+            <RotateCw className={retrying ? "h-[10px] w-[10px] animate-rex-spin" : "h-[10px] w-[10px]"} strokeWidth={2.2} />
+            Retry
+          </button>
+        ) : (
+          <span className="flex flex-none items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.1em] text-rex-text-dim">
+            {(phase === "cached" || phase === "done") && (
+              <Check className="h-[12px] w-[12px] text-status-running" strokeWidth={2.4} />
+            )}
+            {status}
+          </span>
+        )}
+      </div>
+      <Track pct={pct} state={trackState} />
+    </div>
+  );
+}
 
 function Install() {
+  const [plan, setPlan] = useState<PlannedDownload[] | null>(null);
+  const downloads = useDownloads();
+  const fired = useRef(false);
+  // Auto-prefetch on entering the step — fire WITHOUT awaiting: progress
+  // arrives via download-progress events, failures land on their rows, and
+  // continuing (or skipping) onboarding never cancels the backend downloads.
+  useEffect(() => {
+    void coreBinariesPlan().then(setPlan).catch(() => setPlan([]));
+    if (!fired.current) {
+      fired.current = true;
+      void prefetchCoreBinaries().catch(() => {
+        // Row-level errors already carry the details; nothing extra to do.
+      });
+    }
+  }, []);
+
+  const items = new Map(downloads.items.map((i) => [i.id, i]));
+  const ready =
+    plan !== null &&
+    plan.every((p) => {
+      const phase = items.get(p.id)?.phase ?? (p.cached ? "cached" : "pending");
+      return phase === "cached" || phase === "done";
+    });
+
   return (
     <div className="w-full max-w-[440px]">
       <StepHeading
         title="Bundled core components"
-        subtitle="rexenv ships its own runtimes, so nothing touches your system setup. Each one is fetched automatically the first time you start a service."
+        subtitle="rexenv ships its own runtimes, so nothing touches your system setup. They're downloading now — you can keep going while that runs in the background."
       />
       <div className="mt-[26px] flex flex-col gap-[10px] text-left">
-        {INSTALL_ROWS.map((r) => (
-          <div
-            key={r.abbr}
-            className="flex items-center gap-2.5 rounded-[10px] border border-rex-border-subtle bg-rex-surface-1 px-3 py-2.5"
-          >
-            <span
-              className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border font-mono text-[10px] font-bold"
-              style={{ background: r.bg, borderColor: r.border, color: r.color }}
-            >
-              {r.abbr}
-            </span>
-            <span className="flex-1 text-[13.5px] font-medium text-rex-text">{r.name}</span>
-            <span className="font-mono text-[10.5px] uppercase tracking-[0.1em] text-rex-text-dim">
-              Bundled
-            </span>
+        {plan === null ? (
+          <div className="py-4 text-center font-mono text-[11px] text-rex-text-dim">
+            Checking components…
           </div>
-        ))}
+        ) : (
+          plan.map((p) => <InstallRow key={p.id} planned={p} item={items.get(p.id)} />)
+        )}
       </div>
       <div className="mt-6 text-center font-mono text-[11px] text-rex-text-dim">
-        Downloaded on first use · no system changes
+        {ready ? "All components ready · no system changes" : "Downloads continue in the background · no system changes"}
       </div>
     </div>
   );

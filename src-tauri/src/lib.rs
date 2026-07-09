@@ -265,6 +265,8 @@ pub fn run() {
             commands::services::services_status,
             commands::downloads::downloads_state,
             commands::downloads::retry_download,
+            commands::downloads::core_binaries_plan,
+            commands::downloads::prefetch_core_binaries,
             commands::logs::log_targets,
             commands::logs::tail_log,
             commands::logs::wp_debug_log_status,

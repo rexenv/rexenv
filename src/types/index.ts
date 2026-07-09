@@ -321,3 +321,13 @@ export interface DownloadsSnapshot {
   batch: DownloadBatch | null;
   items: DownloadItem[];
 }
+
+/** One planned core binary (onboarding Install rows): static row source with a
+ *  cached flag; live progress overlays via `DownloadsSnapshot` items by `id`. */
+export interface PlannedDownload {
+  id: string;
+  name: string;
+  version: string;
+  label: string;
+  cached: boolean;
+}
