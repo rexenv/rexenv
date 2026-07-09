@@ -137,6 +137,13 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   it (concurrent, named-service errors — M3). Same two-phase shape as `prepare_edge`.
   Status polls use `try_lock` with a cached-snapshot fallback (`state/app.rs`) so a long
   start/stop never blocks the UI.
+- **Prefetch-before-lock invariant (download manager):** any command that can resolve a
+  binary while holding the services lock MUST prefetch the needed binaries FIRST
+  (unlocked), via the download hub (`core/downloads.rs` — plan → `prefetch` → then lock,
+  whose resolves are then cache hits). Downloading under the lock blocks all status reads
+  on a cold cache — the silent-hang bug. Current prefetch sites: `start_services`,
+  `start_database`, `set_php_version_installed`, `create_site`, `set_site_web_server`,
+  `set_site_php_version`, `delete_site`. Add new binary-resolving commands to this list.
 - Long-running children spawn via `ProcessSupervisor::spawn_logged` →
   `<log_dir>/<svc>-stdout.log`. `stop` escalates to SIGKILL after a grace window (L3).
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can
