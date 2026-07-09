@@ -33,6 +33,13 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   docs updated; `cargo test --lib` green. Transition note: a stack left running by a
   pre-change build keeps its old nginx on 8088 — it is not adopted (adoption keys on the
   new port) and not auto-reaped; kill it manually or via the old build's Stop all.
+- [ ] **In-flight download dedup** (download-manager follow-up, NOT a release blocker):
+  add a per-(name,version) async once-lock (single-flight map) in `core/binaries.rs`
+  `resolve*` so concurrent callers await the same download instead of racing — today the
+  same bytes download twice and the hub progress bar jitters between the two streams.
+  Pre-existing race (any two commands resolving the same binary); onboarding's
+  auto-prefetch makes it easier to trigger. Correctness is fine (atomic staging/publish
+  keeps one winner) — this is efficiency/polish.
 - [ ] **Release 1.5 — cold first run on a second Mac / clean account** (from TASKS-RELEASE).
   Hands-on: install the .dmg on a machine that has never seen rexenv, run the full first-run
   flow. Pairs with the next item.
