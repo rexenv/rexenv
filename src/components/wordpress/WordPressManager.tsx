@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, Check, Download, ExternalLink, Globe, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -53,6 +53,87 @@ type SubTab = "plugins" | "themes" | "users" | "network" | "tools";
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[12px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
+// Every WP-CLI list call boots WordPress (~0.5s+) — cache results briefly, skip
+// window-focus refetches, and fail after ONE retry so a broken site surfaces an
+// error instead of spinning through react-query's default 3 retries.
+const WP_QUERY = { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } as const;
+
+/** Plugins in two passes: an instant list (no update check), then a background
+ *  pass with the wordpress.org update check (slow; a hang when offline) that
+ *  only refreshes the update badges when it lands. Mutations invalidate
+ *  `["wp-plugins", siteId]`, which prefix-matches both keys. */
+function useWpPlugins(siteId: string) {
+  const fast = useQuery({
+    queryKey: ["wp-plugins", siteId],
+    queryFn: () => wpPlugins(siteId),
+    ...WP_QUERY,
+  });
+  const updates = useQuery({
+    queryKey: ["wp-plugins", siteId, "updates"],
+    queryFn: () => wpPlugins(siteId, true),
+    enabled: fast.isSuccess,
+    ...WP_QUERY,
+    staleTime: 5 * 60_000,
+  });
+  const plugins = useMemo(() => {
+    const base = fast.data ?? [];
+    if (!updates.data) return base;
+    const upd = new Map(updates.data.map((p) => [p.name, p.update]));
+    return base.map((p) => ({ ...p, update: upd.get(p.name) ?? p.update }));
+  }, [fast.data, updates.data]);
+  return { plugins, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
+}
+
+/** Themes, same two-pass shape as `useWpPlugins`. */
+function useWpThemes(siteId: string) {
+  const fast = useQuery({
+    queryKey: ["wp-themes", siteId],
+    queryFn: () => wpThemes(siteId),
+    ...WP_QUERY,
+  });
+  const updates = useQuery({
+    queryKey: ["wp-themes", siteId, "updates"],
+    queryFn: () => wpThemes(siteId, true),
+    enabled: fast.isSuccess,
+    ...WP_QUERY,
+    staleTime: 5 * 60_000,
+  });
+  const themes = useMemo(() => {
+    const base = fast.data ?? [];
+    if (!updates.data) return base;
+    const upd = new Map(updates.data.map((t) => [t.name, t.update]));
+    return base.map((t) => ({ ...t, update: upd.get(t.name) ?? t.update }));
+  }, [fast.data, updates.data]);
+  return { themes, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
+}
+
+function useWpUsers(siteId: string) {
+  return useQuery({ queryKey: ["wp-users", siteId], queryFn: () => wpUsers(siteId), ...WP_QUERY });
+}
+
+function PanelLoading({ what }: { what: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 p-6 text-[12.5px] text-rex-text-muted">
+      <Loader2 className="h-4 w-4 animate-spin" />
+      Loading {what}…
+    </div>
+  );
+}
+
+function PanelError({ what, error, onRetry }: { what: string; error: unknown; onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-2 p-6 text-center">
+      <AlertTriangle className="h-5 w-5 text-status-error-bright" />
+      <div className="text-[12.5px] font-medium text-rex-text">Couldn't load {what}</div>
+      <div className="max-w-[440px] break-words font-mono text-[11px] text-rex-text-muted">{String(error)}</div>
+      <button className={BTN + " mt-1 flex items-center gap-1.5"} onClick={onRetry}>
+        <RefreshCw className="h-3.5 w-3.5" />
+        Retry
+      </button>
+    </div>
+  );
+}
+
 export function WordPressManager({
   siteId,
   multisite = "none",
@@ -66,13 +147,14 @@ export function WordPressManager({
   const [sub, setSub] = useState<SubTab>("plugins");
 
   // Counts for the tab badges (react-query reuses the panels' cached results).
-  const { data: plugins = [] } = useQuery({ queryKey: ["wp-plugins", siteId], queryFn: () => wpPlugins(siteId) });
-  const { data: themes = [] } = useQuery({ queryKey: ["wp-themes", siteId], queryFn: () => wpThemes(siteId) });
-  const { data: users = [] } = useQuery({ queryKey: ["wp-users", siteId], queryFn: () => wpUsers(siteId) });
+  const { plugins } = useWpPlugins(siteId);
+  const { themes } = useWpThemes(siteId);
+  const { data: users = [] } = useWpUsers(siteId);
   const { data: netSites = [] } = useQuery({
     queryKey: ["wp-network-sites", siteId],
     queryFn: () => wpNetworkSites(siteId),
     enabled: isNetwork,
+    ...WP_QUERY,
   });
 
   const subs: { key: SubTab; label: string; count?: number }[] = [
@@ -121,17 +203,22 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   const [slug, setSlug] = useState("");
   const [admin, setAdmin] = useState("");
 
-  const { data: sites = [], isLoading } = useQuery({
+  const {
+    data: sites = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["wp-network-sites", siteId],
     queryFn: () => wpNetworkSites(siteId),
+    ...WP_QUERY,
   });
-  const { data: plugins = [] } = useQuery({
-    queryKey: ["wp-plugins", siteId],
-    queryFn: () => wpPlugins(siteId),
-  });
+  const { plugins } = useWpPlugins(siteId);
   const { data: supers = [] } = useQuery({
     queryKey: ["wp-super-admins", siteId],
     queryFn: () => wpSuperAdmins(siteId),
+    ...WP_QUERY,
   });
 
   const sitesRun = useMutation({
@@ -188,7 +275,9 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
           </button>
         </div>
         {isLoading ? (
-          <div className="py-4 text-center text-[12.5px] text-rex-text-muted">Loading sub-sites…</div>
+          <PanelLoading what="sub-sites" />
+        ) : isError ? (
+          <PanelError what="sub-sites" error={error} onRetry={refetch} />
         ) : sites.length === 0 ? (
           <div className="py-4 text-center text-[12.5px] text-rex-text-muted">No sub-sites yet.</div>
         ) : (
@@ -324,6 +413,7 @@ function ToolsPanel({ siteId }: { siteId: string }) {
   const { data: wpDebug } = useQuery({
     queryKey: ["wp-debug", siteId],
     queryFn: () => wpDebugGet(siteId),
+    ...WP_QUERY,
   });
 
   const toggleDebug = useMutation({
@@ -512,10 +602,7 @@ function UsersPanel({ siteId }: { siteId: string }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("subscriber");
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ["wp-users", siteId],
-    queryFn: () => wpUsers(siteId),
-  });
+  const { data: users = [], isLoading, isError, error, refetch } = useWpUsers(siteId);
 
   const create = useMutation({
     mutationFn: () => wpUserCreate(siteId, login.trim(), email.trim(), role),
@@ -572,7 +659,9 @@ function UsersPanel({ siteId }: { siteId: string }) {
 
       <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
         {isLoading ? (
-          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">Loading users…</div>
+          <PanelLoading what="users" />
+        ) : isError ? (
+          <PanelError what="users" error={error} onRetry={refetch} />
         ) : users.length === 0 ? (
           <div className="p-6 text-center text-[12.5px] text-rex-text-muted">No users.</div>
         ) : (
@@ -636,10 +725,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   const [slug, setSlug] = useState("");
   const [activateOnAdd, setActivateOnAdd] = useState(false);
 
-  const { data: themes = [], isLoading } = useQuery({
-    queryKey: ["wp-themes", siteId],
-    queryFn: () => wpThemes(siteId),
-  });
+  const { themes, isLoading, isError, error, refetch } = useWpThemes(siteId);
 
   const run = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
@@ -681,8 +767,12 @@ function ThemesPanel({ siteId }: { siteId: string }) {
         </div>
       )}
       {isLoading ? (
-        <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[12.5px] text-rex-text-muted">
-          Loading themes…
+        <div className="rounded-xl border border-rex-border bg-rex-surface-1">
+          <PanelLoading what="themes" />
+        </div>
+      ) : isError ? (
+        <div className="rounded-xl border border-rex-border bg-rex-surface-1">
+          <PanelError what="themes" error={error} onRetry={refetch} />
         </div>
       ) : themes.length === 0 ? (
         <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[12.5px] text-rex-text-muted">
@@ -730,8 +820,19 @@ function ThemeCard({
         active ? "border-brand/60" : "border-rex-border"
       }`}
     >
-      <div className="relative flex aspect-[4/3] items-center justify-center rounded-t-xl bg-gradient-to-br from-rex-surface-3 to-rex-surface-1 text-rex-text-dim">
-        <Palette className="h-7 w-7" strokeWidth={1.4} />
+      <div className="relative aspect-[4/3] overflow-hidden rounded-t-xl bg-gradient-to-br from-rex-surface-3 to-rex-surface-1">
+        {t.screenshot ? (
+          <img
+            src={t.screenshot}
+            alt={`${t.name} preview`}
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-rex-text-dim">
+            <Palette className="h-7 w-7" strokeWidth={1.4} />
+          </div>
+        )}
         {active && (
           <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-status-running-bg px-2 py-0.5 text-[10px] font-medium text-status-running-bright">
             <span className="h-1.5 w-1.5 rounded-full bg-status-running" />
@@ -834,10 +935,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PluginFilter>("all");
 
-  const { data: plugins = [], isLoading } = useQuery({
-    queryKey: ["wp-plugins", siteId],
-    queryFn: () => wpPlugins(siteId),
-  });
+  const { plugins, isLoading, isError, error, refetch } = useWpPlugins(siteId);
 
   const isActive = (p: WpPlugin) => p.status === "active" || p.status === "active-network";
   const counts: Record<PluginFilter, number> = {
@@ -947,7 +1045,9 @@ function PluginsPanel({ siteId }: { siteId: string }) {
       {/* List */}
       <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
         {isLoading ? (
-          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">Loading plugins…</div>
+          <PanelLoading what="plugins" />
+        ) : isError ? (
+          <PanelError what="plugins" error={error} onRetry={refetch} />
         ) : visible.length === 0 ? (
           <div className="p-6 text-center text-[12.5px] text-rex-text-muted">
             {plugins.length === 0 ? "No plugins installed." : "No plugins match."}

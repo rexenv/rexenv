@@ -160,6 +160,8 @@ export interface WpTheme {
   status: string; // active | inactive | parent
   version: string;
   update: string; // none | available | …
+  /** The theme's screenshot.* preview as a `data:` URL; null when it has none. */
+  screenshot?: string | null;
 }
 
 /** A WordPress user row (mirrors the Rust WpUser DTO / `wp user list`). */

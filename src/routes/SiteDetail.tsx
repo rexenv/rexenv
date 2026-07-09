@@ -87,10 +87,15 @@ export function SiteDetail() {
   const site = sites.find((s) => s.id === id);
 
   // WordPress detection drives whether the WordPress tab shows + the WP-admin link.
+  // It runs three WP-CLI calls (each boots WordPress) — cache it and skip
+  // window-focus refetches; the answer only changes on install/convert.
   const { data: wp } = useQuery({
     queryKey: ["wp-info", id],
     queryFn: () => wpInfo(id!),
     enabled: !!id,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    retry: 1,
   });
 
   // Displayed status is this site's live *serving* state, not sites.status — serving

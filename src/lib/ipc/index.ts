@@ -318,10 +318,13 @@ const mockWpPlugins: WpPlugin[] = [
   { name: "woocommerce", status: "active", version: "9.1.2", update: "none" },
 ];
 
-/** List a site's plugins (`wp plugin list`). Mock fallback outside Tauri. */
-export async function wpPlugins(id: string): Promise<WpPlugin[]> {
+/** List a site's plugins (`wp plugin list`). `checkUpdates` opts into the
+ *  api.wordpress.org update check — slow (and a hang offline), so list fast
+ *  without it and refresh update badges in a background query. Mock fallback
+ *  outside Tauri. */
+export async function wpPlugins(id: string, checkUpdates = false): Promise<WpPlugin[]> {
   if (!isTauri()) return mockWpPlugins;
-  return invoke<WpPlugin[]>("wp_plugins", { id });
+  return invoke<WpPlugin[]>("wp_plugins", { id, checkUpdates });
 }
 
 /** Install a plugin by slug (optionally activate). No-op outside Tauri. */
@@ -362,10 +365,11 @@ const mockWpThemes: WpTheme[] = [
   { name: "twentytwentythree", status: "inactive", version: "1.6", update: "none" },
 ];
 
-/** List a site's themes (`wp theme list`). Mock fallback outside Tauri. */
-export async function wpThemes(id: string): Promise<WpTheme[]> {
+/** List a site's themes (`wp theme list`), each with its screenshot as a
+ *  `data:` URL. `checkUpdates` as in `wpPlugins`. Mock fallback outside Tauri. */
+export async function wpThemes(id: string, checkUpdates = false): Promise<WpTheme[]> {
   if (!isTauri()) return mockWpThemes;
-  return invoke<WpTheme[]>("wp_themes", { id });
+  return invoke<WpTheme[]>("wp_themes", { id, checkUpdates });
 }
 
 /** Install a theme by slug (optionally activate). No-op outside Tauri. */
