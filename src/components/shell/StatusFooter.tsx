@@ -1,8 +1,11 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toastBackendError } from "@/lib/toast";
-import { Play, Square } from "lucide-react";
+import { ArrowDownToLine, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startServices, stopServices } from "@/lib/ipc";
+import { useDownloads } from "@/lib/useDownloads";
+import { DownloadPanel, Track, pctOf } from "@/components/shell/DownloadPanel";
 import type { GlobalStatus } from "@/types";
 
 // Per-summary visuals. `accent` is the translucent top strip; `glow` is the
@@ -57,6 +60,24 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
   const isStart = status.running === 0;
   const pulsing = status.running > 0;
 
+  // The ONE mount of the download-manager state; the indicator + panel below
+  // render from this snapshot only. Visible while a batch is still working or
+  // any item needs a retry; a fully successful batch disappears quietly.
+  const downloads = useDownloads();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const failed = downloads.items.filter((i) => i.phase === "failed");
+  const batchActive =
+    downloads.batch !== null && downloads.batch.done < downloads.batch.total;
+  const showDownloads = batchActive || failed.length > 0;
+  useEffect(() => {
+    if (!showDownloads) setPanelOpen(false);
+  }, [showDownloads]);
+  // The row the compact indicator narrates: an actively streaming item first,
+  // else one still being prepared (extract/codesign).
+  const current =
+    downloads.items.find((i) => i.phase === "downloading") ??
+    downloads.items.find((i) => i.phase === "preparing");
+
   const qc = useQueryClient();
   const toggleAll = useMutation({
     mutationFn: () => (isStart ? startServices() : stopServices()),
@@ -70,7 +91,8 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
   });
 
   return (
-    <div className="flex-none p-2.5 pb-3">
+    <div className="relative flex-none p-2.5 pb-3">
+      {panelOpen && <DownloadPanel snapshot={downloads} />}
       <div className="overflow-hidden rounded-lg border border-rex-border bg-rex-surface-2">
         <div className="h-0.5" style={{ background: meta.accent }} />
         <div className="p-3">
@@ -121,6 +143,47 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
               pct={status.ramTotalMb ? (status.ramMb / status.ramTotalMb) * 100 : 0}
             />
           </div>
+
+          {showDownloads && (
+            <button
+              onClick={() => setPanelOpen((o) => !o)}
+              className="mb-3 w-full rounded-[8px] border border-rex-border bg-rex-surface-1 px-2.5 py-2 text-left transition-colors hover:border-rex-border-strong"
+              title="Show download details"
+            >
+              <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                <span
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5 text-[11px] font-medium",
+                    failed.length > 0 && !batchActive
+                      ? "text-status-error-bright"
+                      : "text-rex-text-bright",
+                  )}
+                >
+                  <ArrowDownToLine className="h-3 w-3 flex-none" strokeWidth={2.2} />
+                  <span className="truncate">
+                    {batchActive && downloads.batch
+                      ? `Downloading ${Math.min(downloads.batch.done + 1, downloads.batch.total)} of ${downloads.batch.total}` +
+                        (failed.length > 0 ? ` · ${failed.length} failed` : "")
+                      : `${failed.length} download${failed.length === 1 ? "" : "s"} failed`}
+                  </span>
+                </span>
+                {current && (
+                  <span className="flex-none font-mono text-[10px] text-rex-text-dim">
+                    {pctOf(current) != null ? `${pctOf(current)}%` : "…"}
+                  </span>
+                )}
+              </div>
+              <Track
+                pct={current ? pctOf(current) : null}
+                state={failed.length > 0 && !batchActive ? "error" : batchActive ? "run" : "idle"}
+              />
+              {current && (
+                <div className="mt-1 truncate font-mono text-[9.5px] text-rex-text-dim">
+                  {current.label}
+                </div>
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => toggleAll.mutate()}

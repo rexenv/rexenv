@@ -280,3 +280,44 @@ export interface MailDetail {
   html: string;
   headers: MailHeader[];
 }
+
+/** Where one binary download is in its life (mirrors Rust `downloads::Phase`).
+ *  `preparing` = post-download extract/relink/codesign; `cached` = was already
+ *  on disk when the action planned its batch. */
+export type DownloadPhase =
+  | "pending"
+  | "downloading"
+  | "preparing"
+  | "done"
+  | "cached"
+  | "failed";
+
+/** One binary's download state (mirrors the Rust `downloads::ItemSnapshot`). */
+export interface DownloadItem {
+  id: string;
+  /** Manifest name + pinned version — pass back to `retryDownload`. */
+  name: string;
+  version: string;
+  label: string;
+  phase: DownloadPhase;
+  downloadedBytes: number;
+  /** null = server sent no Content-Length → render indeterminate. */
+  totalBytes: number | null;
+  bytesPerSec: number | null;
+  error: string | null;
+}
+
+/** The active action's batch: `done`/`total` count only items that actually
+ *  needed downloading (cached rows are listed but not counted). */
+export interface DownloadBatch {
+  action: string;
+  done: number;
+  total: number;
+}
+
+/** Full download-manager state — the `download-progress` event payload and the
+ *  `downloads_state` seed share this shape (snapshot, not delta). */
+export interface DownloadsSnapshot {
+  batch: DownloadBatch | null;
+  items: DownloadItem[];
+}

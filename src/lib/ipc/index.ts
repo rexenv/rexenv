@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -186,6 +186,30 @@ export async function onServiceHealth(
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   return listen<HealthEvent[]>("service-health", (e) => cb(e.payload));
+}
+
+/** Current download-manager state (seed on mount; live updates arrive via
+ *  `onDownloadProgress` with the same snapshot shape). Empty outside Tauri. */
+export async function downloadsState(): Promise<DownloadsSnapshot> {
+  if (!isTauri()) return { batch: null, items: [] };
+  return invoke<DownloadsSnapshot>("downloads_state");
+}
+
+/** Subscribe to download-manager snapshots (`download-progress`, coalesced to
+ *  ≤10/s by the backend). Returns an unlisten function. No-op outside Tauri. */
+export async function onDownloadProgress(
+  cb: (snapshot: DownloadsSnapshot) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<DownloadsSnapshot>("download-progress", (e) => cb(e.payload));
+}
+
+/** Retry ONE failed download (per-item retry in the download panel).
+ *  Idempotent — a binary that meanwhile resolved returns instantly. */
+export async function retryDownload(name: string, version: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("retry_download", { name, version });
 }
 
 /** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */

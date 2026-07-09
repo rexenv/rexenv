@@ -52,6 +52,9 @@ impl Phase {
 pub struct ItemSnapshot {
     /// Stable id: `<name>-<version>` (same key as the binary cache dir).
     pub id: String,
+    /// Manifest name + pinned version — what `retry_download` takes back.
+    pub name: String,
+    pub version: String,
     /// Human label, e.g. "PHP 8.3 (FPM)".
     pub label: String,
     pub phase: Phase,
@@ -86,8 +89,8 @@ pub struct Snapshot {
 /// missing items count toward the batch's done/total.
 #[derive(Debug, Clone)]
 pub struct Planned {
-    pub id: String,
-    pub label: String,
+    pub name: String,
+    pub version: String,
     pub cached: bool,
 }
 
@@ -168,8 +171,8 @@ impl PlannedBinary {
     }
     fn planned(&self) -> Planned {
         Planned {
-            id: item_id(&self.name, &self.version),
-            label: label_for(&self.name, &self.version),
+            name: self.name.clone(),
+            version: self.version.clone(),
             cached: self.cached,
         }
     }
@@ -379,16 +382,19 @@ impl Hub {
             s.items.retain(|i| !i.snap.phase.is_terminal());
             let mut missing = Vec::new();
             for p in planned {
+                let id = item_id(&p.name, &p.version);
                 if !p.cached {
-                    missing.push(p.id.clone());
+                    missing.push(id.clone());
                 }
-                if s.items.iter().any(|i| i.snap.id == p.id) {
+                if s.items.iter().any(|i| i.snap.id == id) {
                     continue; // already in flight — keep its live state
                 }
                 s.items.push(Item {
                     snap: ItemSnapshot {
-                        id: p.id.clone(),
-                        label: p.label.clone(),
+                        id,
+                        name: p.name.clone(),
+                        version: p.version.clone(),
+                        label: label_for(&p.name, &p.version),
                         phase: if p.cached { Phase::Cached } else { Phase::Pending },
                         downloaded_bytes: 0,
                         total_bytes: None,
@@ -404,9 +410,10 @@ impl Hub {
 
     /// A download began (or a retry attempt restarted it). Creates the row if
     /// the action didn't plan it (on-demand resolves, e.g. cloudflared).
-    pub fn item_started(&self, id: &str, label: &str) {
+    pub fn item_started(&self, name: &str, version: &str) {
+        let id = item_id(name, version);
         self.mutate(|s| {
-            if Self::with_item(s, id, |i| {
+            if Self::with_item(s, &id, |i| {
                 i.snap.phase = Phase::Downloading;
                 i.snap.downloaded_bytes = 0;
                 i.snap.bytes_per_sec = None;
@@ -417,8 +424,10 @@ impl Hub {
             {
                 s.items.push(Item {
                     snap: ItemSnapshot {
-                        id: id.to_string(),
-                        label: label.to_string(),
+                        id,
+                        name: name.to_string(),
+                        version: version.to_string(),
+                        label: label_for(name, version),
                         phase: Phase::Downloading,
                         downloaded_bytes: 0,
                         total_bytes: None,
@@ -519,14 +528,14 @@ mod tests {
         }
     }
 
-    fn planned(id: &str, cached: bool) -> Planned {
-        Planned { id: id.into(), label: id.into(), cached }
+    fn planned(name: &str, version: &str, cached: bool) -> Planned {
+        Planned { name: name.into(), version: version.into(), cached }
     }
 
     #[test]
     fn item_lifecycle_started_progress_preparing_done() {
         let h = fresh();
-        h.item_started("nginx-1.30.3", "Nginx (web server)");
+        h.item_started("nginx", "1.30.3");
         h.item_progress("nginx-1.30.3", 1024, Some(4096));
         let s = h.snapshot();
         assert_eq!(s.items.len(), 1);
@@ -543,7 +552,7 @@ mod tests {
     #[test]
     fn unknown_total_stays_none_for_indeterminate_ui() {
         let h = fresh();
-        h.item_started("x-1", "x");
+        h.item_started("x", "1");
         h.item_progress("x-1", 500, None);
         let i = &h.snapshot().items[0];
         assert_eq!(i.total_bytes, None);
@@ -553,16 +562,17 @@ mod tests {
     #[test]
     fn failed_keeps_error_and_new_batch_sweeps_it() {
         let h = fresh();
-        h.item_started("caddy-2.11.4", "Caddy");
+        h.item_started("caddy", "2.11.4");
         h.item_failed("caddy-2.11.4", "checksum mismatch for https://x");
         let s = h.snapshot();
         assert_eq!(s.items[0].phase, Phase::Failed);
         assert!(s.items[0].error.as_deref().unwrap().contains("checksum"));
 
-        h.begin_batch("Start all", &[planned("nginx-1.30.3", false)]);
+        h.begin_batch("Start all", &[planned("nginx", "1.30.3", false)]);
         let s = h.snapshot();
         assert_eq!(s.items.len(), 1, "failed leftover swept");
         assert_eq!(s.items[0].id, "nginx-1.30.3");
+        assert_eq!((s.items[0].name.as_str(), s.items[0].version.as_str()), ("nginx", "1.30.3"));
     }
 
     #[test]
@@ -571,9 +581,9 @@ mod tests {
         h.begin_batch(
             "Start all",
             &[
-                planned("caddy-2.11.4", true), // cached — visible row, not counted
-                planned("nginx-1.30.3", false),
-                planned("mysql-8.4.6", false),
+                planned("caddy", "2.11.4", true), // cached — visible row, not counted
+                planned("nginx", "1.30.3", false),
+                planned("mysql", "8.4.6", false),
             ],
         );
         let s = h.snapshot();
@@ -582,7 +592,7 @@ mod tests {
         assert_eq!(s.items.len(), 3);
         assert_eq!(s.items[0].phase, Phase::Cached);
 
-        h.item_started("nginx-1.30.3", "Nginx");
+        h.item_started("nginx", "1.30.3");
         h.item_done("nginx-1.30.3");
         let b = h.snapshot().batch.unwrap();
         assert_eq!((b.done, b.total), (1, 2));
@@ -591,10 +601,10 @@ mod tests {
     #[test]
     fn retry_restart_resets_bytes_and_error() {
         let h = fresh();
-        h.item_started("wp-cli-2.12.0", "WP-CLI");
+        h.item_started("wp-cli", "2.12.0");
         h.item_progress("wp-cli-2.12.0", 9000, Some(10000));
         h.item_failed("wp-cli-2.12.0", "download stalled");
-        h.item_started("wp-cli-2.12.0", "WP-CLI"); // retry
+        h.item_started("wp-cli", "2.12.0"); // retry
         let i = &h.snapshot().items[0];
         assert_eq!(i.phase, Phase::Downloading);
         assert_eq!(i.downloaded_bytes, 0);
@@ -699,9 +709,9 @@ mod tests {
     #[test]
     fn in_flight_item_survives_new_batch_planning_it() {
         let h = fresh();
-        h.item_started("mysql-8.4.6", "MySQL 8.4");
+        h.item_started("mysql", "8.4.6");
         h.item_progress("mysql-8.4.6", 5_000_000, Some(600_000_000));
-        h.begin_batch("Start all", &[planned("mysql-8.4.6", false)]);
+        h.begin_batch("Start all", &[planned("mysql", "8.4.6", false)]);
         let i = &h.snapshot().items[0];
         assert_eq!(i.phase, Phase::Downloading, "live download not reset by plan");
         assert_eq!(i.downloaded_bytes, 5_000_000);

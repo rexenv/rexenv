@@ -477,7 +477,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     // streams straight into the staging dir (checksum hashed in-flight) and is
     // reported to the download hub as it goes.
     let id = downloads::item_id(name, version);
-    downloads::hub().item_started(&id, &downloads::label_for(name, version));
+    downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
     let staged_bin = staging.join(name);
     let staged: Result<()> = async {
@@ -545,7 +545,7 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
     // renamed into place after the checksum verifies. No chmod/codesign — it's a
     // script, not a Mach-O.
     let id = downloads::item_id(name, version);
-    downloads::hub().item_started(&id, &downloads::label_for(name, version));
+    downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
     let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
@@ -602,7 +602,7 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     // relocatable/unsigned-ok), and a reqwest download adds no quarantine
     // attribute, so there's no ad-hoc re-signing step here.
     let id = downloads::item_id(name, version);
-    downloads::hub().item_started(&id, &downloads::label_for(name, version));
+    downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
     let staged: Result<()> = async {
         std::fs::create_dir_all(&staging)?;
