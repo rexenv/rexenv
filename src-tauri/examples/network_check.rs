@@ -123,7 +123,7 @@ async fn main() {
 
     // 3) Network-activate a bundled plugin → status becomes `active-network` (badge).
     wordpress::plugin_activate_network(&php, &wp, &docroot, &["akismet".into()]).expect("network activate");
-    let plugins = wordpress::plugin_list(&php, &wp, &docroot).expect("plugin list");
+    let plugins = wordpress::plugin_list(&php, &wp, &docroot, false).expect("plugin list");
     let akismet = plugins.iter().find(|p| p.name == "akismet").expect("akismet present");
     println!("akismet status after --network = {}", akismet.status);
     assert_eq!(akismet.status, "active-network", "akismet not network-active");

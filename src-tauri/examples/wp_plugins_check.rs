@@ -73,7 +73,7 @@ async fn main() {
 
     // Install hello-dolly by slug + activate.
     wordpress::plugin_install(&php, &wp, &docroot, "hello-dolly", true).expect("install hello-dolly");
-    let list = wordpress::plugin_list(&php, &wp, &docroot).expect("list");
+    let list = wordpress::plugin_list(&php, &wp, &docroot, false).expect("list");
     println!("after install+activate: hello-dolly status = {}", status(&list, "hello-dolly"));
     assert!(has(&list, "hello-dolly"), "hello-dolly not installed");
     assert_eq!(status(&list, "hello-dolly"), "active", "hello-dolly not active");
@@ -81,13 +81,13 @@ async fn main() {
 
     // Bulk-deactivate (one call), confirm inactive.
     wordpress::plugin_deactivate(&php, &wp, &docroot, &["hello-dolly".into()]).expect("deactivate");
-    let list = wordpress::plugin_list(&php, &wp, &docroot).unwrap();
+    let list = wordpress::plugin_list(&php, &wp, &docroot, false).unwrap();
     assert_eq!(status(&list, "hello-dolly"), "inactive", "not deactivated");
     println!("✓ bulk-deactivate → Inactive");
 
     // Delete, confirm gone.
     wordpress::plugin_delete(&php, &wp, &docroot, &["hello-dolly".into()]).expect("delete");
-    let list = wordpress::plugin_list(&php, &wp, &docroot).unwrap();
+    let list = wordpress::plugin_list(&php, &wp, &docroot, false).unwrap();
     assert!(!has(&list, "hello-dolly"), "hello-dolly still present after delete");
     println!("✓ delete → gone ({} plugins remain)", list.len());
 

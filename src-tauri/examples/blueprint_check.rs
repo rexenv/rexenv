@@ -120,7 +120,7 @@ async fn main() {
         .expect("convert").expect("site");
 
     // Assert the outcomes the blueprint promised.
-    let plugins = wordpress::plugin_list(&php, &wp, &docroot).expect("plugin list");
+    let plugins = wordpress::plugin_list(&php, &wp, &docroot, false).expect("plugin list");
     let hello = plugins.iter().find(|p| p.name == "hello-dolly").expect("hello-dolly installed");
     println!("hello-dolly status = {}", hello.status);
     assert!(hello.status.starts_with("active"), "blueprint plugin not active");

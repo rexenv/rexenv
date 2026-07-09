@@ -131,9 +131,21 @@ pub struct WpPlugin {
     pub update: String,
 }
 
-/// `wp plugin list` (name, status, version, update).
-pub fn plugin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpPlugin>> {
-    wp_json(php_bin, wp_phar, docroot, &["plugin", "list"])
+/// `wp plugin list` (name, status, version, update). `check_updates: false`
+/// passes `--skip-update-check` — the default check hits api.wordpress.org on
+/// EVERY list (seconds when slow, a hang when offline), so the UI lists fast
+/// without it and refreshes update badges in a background pass.
+pub fn plugin_list(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    check_updates: bool,
+) -> Result<Vec<WpPlugin>> {
+    let mut args = vec!["plugin", "list"];
+    if !check_updates {
+        args.push("--skip-update-check");
+    }
+    wp_json(php_bin, wp_phar, docroot, &args)
 }
 
 /// Run `wp <noun> <verb> <names…>` (bulk-capable: one call for many items).
@@ -197,7 +209,8 @@ pub fn plugin_install(
 }
 
 /// One theme row from `wp theme list --format=json` (§6.2). `status == "active"`
-/// marks the live theme.
+/// marks the live theme. `screenshot` is filled AFTER parsing (it's not a WP-CLI
+/// field): the theme's `screenshot.*` file as a `data:` URL, `None` when absent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WpTheme {
     pub name: String,
@@ -207,11 +220,49 @@ pub struct WpTheme {
     pub version: String,
     #[serde(default)]
     pub update: String,
+    #[serde(default)]
+    pub screenshot: Option<String>,
 }
 
-/// `wp theme list` (name, status, version, update).
-pub fn theme_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpTheme>> {
-    wp_json(php_bin, wp_phar, docroot, &["theme", "list"])
+/// A theme's `screenshot.*` preview as a `data:` URL. WP-CLI's `name` field is
+/// the stylesheet slug — the theme's directory under `wp-content/themes/`.
+/// Missing file (screenshots are optional) ⇒ `None`, never an error.
+fn theme_screenshot(docroot: &Path, slug: &str) -> Option<String> {
+    use base64::Engine;
+    let dir = docroot.join("wp-content").join("themes").join(slug);
+    for (ext, mime) in [
+        ("png", "image/png"),
+        ("jpg", "image/jpeg"),
+        ("jpeg", "image/jpeg"),
+        ("webp", "image/webp"),
+        ("gif", "image/gif"),
+    ] {
+        if let Ok(bytes) = std::fs::read(dir.join(format!("screenshot.{ext}"))) {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+            return Some(format!("data:{mime};base64,{b64}"));
+        }
+    }
+    None
+}
+
+/// `wp theme list` (name, status, version, update) + each theme's screenshot as
+/// a `data:` URL. `check_updates: false` passes `--skip-update-check` (same
+/// api.wordpress.org round-trip as [`plugin_list`]).
+pub fn theme_list(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    check_updates: bool,
+) -> Result<Vec<WpTheme>> {
+    let mut args = vec!["theme", "list"];
+    if !check_updates {
+        args.push("--skip-update-check");
+    }
+    let mut themes: Vec<WpTheme> = wp_json(php_bin, wp_phar, docroot, &args)?;
+    for t in &mut themes {
+        t.screenshot = theme_screenshot(docroot, &t.name);
+    }
+    Ok(themes)
 }
 
 /// Activate a theme (`wp theme activate <name>`) — only one can be live.
@@ -680,5 +731,19 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn theme_screenshot_data_url_and_missing() {
+        let docroot = std::env::temp_dir().join(format!("rexenv-shot-{}", std::process::id()));
+        let dir = docroot.join("wp-content/themes/twentytwentyfive");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("screenshot.png"), [0x89, b'P', b'N', b'G']).unwrap();
+
+        let url = theme_screenshot(&docroot, "twentytwentyfive").expect("screenshot found");
+        assert!(url.starts_with("data:image/png;base64,"), "{url}");
+        assert!(theme_screenshot(&docroot, "no-such-theme").is_none());
+
+        std::fs::remove_dir_all(&docroot).unwrap();
     }
 }
