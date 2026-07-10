@@ -50,7 +50,39 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   10 July 2026 — onboarding system setup, live binary downloads, WordPress site over HTTPS
   with a valid lock, rest of the app all worked end to end.
 - [ ] **Release 5.4 — execute the clean-Mac smoke test** — checklist already written:
-  `docs/SMOKE-TEST.md`.
+  `docs/SMOKE-TEST.md`. First pass (fresh-account, 10 Jul 2026) all green except the
+  multisite-convert item, untestable because the convert UI didn't exist — fixed below;
+  re-verify converted-multisite items + onboarding fixes on the next cold run.
+
+## Smoke-test fallout (10 Jul 2026 fresh-account run) — all fixed
+
+- [x] **Multisite convert missing from the UI** (spec §2.1 "one-click enable/convert").
+  Never surfaced, not a regression: §10.1 shipped backend+IPC only, §10.3's Network tab
+  was gated multisite-only, and 12.3's toggle was create-time only — the convert-an-
+  existing-site seam fell between the three. ✓ **Done** `f72ee5c`: Network sub-tab
+  always shows; single sites get a convert panel (subdomain/subdirectory cards, wp-config
+  + URL-structure warning, confirm) that flips to the network manager on success.
+  Verified live both modes: subdirectory sub-site at `/site1`, subdomain sub-site over
+  HTTPS with a valid lock (wildcard cert/route end-to-end), and Reset on a converted
+  site returns a clean single-site install.
+- [x] **Onboarding "Domains & SSL" was skippable** → app where no site loads (no
+  resolver/CA). ✓ **Done** `fbe72be`: Continue locked until `dns_status` reports
+  `resolverInstalled && caTrusted` (real state, refetched after every setup attempt);
+  Welcome's "Skip setup" removed (same hole). No dead-end: setup stays retryable with
+  the friendly cancelled-prompt error, window stays quittable. Logic verified; locked
+  visual to be eyeballed on the next cold run (warm machines always show it unlocked).
+- [x] **Onboarding window not draggable** (renders outside AppShell → no drag-region
+  header). ✓ **Done** `d99d095`: 60px title-bar drag strip wired to the shared
+  `onTitleBarMouseDown` (drag + double-click maximize). Verified via `#/onboarding` on
+  tauri dev.
+- [x] **Onboarding content clipped at small window heights** — flex-1 without min-h-0
+  pushed the footer (Continue) out of the overflow-hidden root, no scroll. ✓ **Done**
+  `6031a34`: content scrolls under a pinned footer; inner min-h-full wrapper keeps steps
+  centered when there's room. Verified at the 640px minimum on the Install step.
+- [x] **DB-export toast: "Show in Finder"** (nicety). ✓ **Done** `2d243f8`: new
+  `ShellRunner::reveal` (macOS `open -R`, win/linux `todo!()`), thin `reveal_path`
+  command, toasts gained an optional action button (10s TTL); both export call sites
+  (Tools + Reset dialog) reveal the written `.sql`. Verified live from both.
 
 ## Blocked on external work
 
