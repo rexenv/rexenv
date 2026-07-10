@@ -20,6 +20,8 @@ import {
   wpMaintenanceSet,
   wpMultisiteConvert,
   wpNetworkSiteCreate,
+  wpPermalinkGet,
+  wpPermalinkSet,
   wpNetworkSiteDelete,
   wpNetworkSites,
   wpPluginActivateNetwork,
@@ -505,6 +507,16 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   );
 }
 
+/** wp-admin's stock permalink choices (mirrors the Rust PERMALINK_STRUCTURES
+ *  whitelist — the backend rejects anything else). */
+const PERMALINK_PRESETS: { value: string; label: string; sample: string }[] = [
+  { value: "", label: "Plain", sample: "/?p=123" },
+  { value: "/%year%/%monthnum%/%day%/%postname%/", label: "Day and name", sample: "/2026/07/11/sample-post/" },
+  { value: "/%year%/%monthnum%/%postname%/", label: "Month and name", sample: "/2026/07/sample-post/" },
+  { value: "/archives/%post_id%", label: "Numeric", sample: "/archives/123" },
+  { value: "/%postname%/", label: "Post name", sample: "/sample-post/" },
+];
+
 /** The individually-toggleable debug constants (Tools → Debugging). */
 const DEBUG_FLAG_ROWS: { name: WpDebugFlag; hint: string }[] = [
   { name: "WP_DEBUG_LOG", hint: "write errors to wp-content/debug.log" },
@@ -585,6 +597,21 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const flush = useMutation({
     mutationFn: () => wpRewriteFlush(siteId),
     onSuccess: () => toast.success("Permalinks regenerated."),
+    onError: (e) => toastBackendError(e),
+  });
+
+  const { data: permalink } = useQuery({
+    queryKey: ["wp-permalink", siteId],
+    queryFn: () => wpPermalinkGet(siteId),
+    ...WP_QUERY,
+  });
+
+  const setPermalink = useMutation({
+    mutationFn: (structure: string) => wpPermalinkSet(siteId, structure),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wp-permalink", siteId] });
+      toast.success("Permalink structure updated (rewrites flushed).");
+    },
     onError: (e) => toastBackendError(e),
   });
 
@@ -702,6 +729,34 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
         </div>
       </Card>
 
+      {/* Permalinks */}
+      <Card title="Permalinks">
+        <div className="flex flex-col gap-2">
+          <select
+            value={permalink ?? ""}
+            disabled={permalink === undefined || setPermalink.isPending}
+            onChange={(e) => setPermalink.mutate(e.target.value)}
+            className="h-[30px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+          >
+            {permalink !== undefined &&
+              !PERMALINK_PRESETS.some((p) => p.value === permalink) && (
+                <option value={permalink}>Custom ({permalink})</option>
+              )}
+            {PERMALINK_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label} — {p.sample}
+              </option>
+            ))}
+          </select>
+          <div className="font-mono text-[11.5px] text-rex-text-dim">
+            {permalink === undefined ? "…" : permalink === "" ? "?p=123 (plain)" : permalink}
+          </div>
+          <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
+            Regenerate permalinks
+          </button>
+        </div>
+      </Card>
+
       {/* Maintenance */}
       <Card title="Maintenance">
         <div className="flex flex-col gap-2">
@@ -716,9 +771,6 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
               label="Toggle maintenance mode"
             />
           </div>
-          <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
-            Regenerate permalinks
-          </button>
           <button className={maintBtn} disabled={dbExport.isPending} onClick={() => dbExport.mutate()}>
             <Download className="h-3.5 w-3.5" />
             {dbExport.isPending ? "Exporting…" : "Export database"}

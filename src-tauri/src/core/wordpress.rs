@@ -539,6 +539,49 @@ pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) ->
     Ok(out)
 }
 
+/// Permalink structures the UI picker offers (wp-admin's stock choices; `""` =
+/// Plain). Whitelisted like [`DEBUG_FLAGS`]: the value lands in wp-cli argv.
+pub const PERMALINK_STRUCTURES: [&str; 5] = [
+    "",
+    "/%year%/%monthnum%/%day%/%postname%/",
+    "/%year%/%monthnum%/%postname%/",
+    "/archives/%post_id%",
+    "/%postname%/",
+];
+
+/// The site's current permalink structure (`""` = Plain).
+pub fn permalink_structure_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    Ok(
+        wp_run(php_bin, wp_phar, docroot, &["option", "get", "permalink_structure"])
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    )
+}
+
+/// Set the permalink structure to one of [`PERMALINK_STRUCTURES`] and flush the
+/// rewrite rules. `option update` (not `rewrite structure`) so Plain's empty
+/// string takes the same path as every preset.
+pub fn permalink_structure_set(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    structure: &str,
+) -> Result<String> {
+    if !PERMALINK_STRUCTURES.contains(&structure) {
+        return Err(Error::Other(format!(
+            "not a supported permalink structure: {structure:?}"
+        )));
+    }
+    wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["option", "update", "permalink_structure", structure],
+    )?;
+    rewrite_flush(php_bin, wp_phar, docroot)
+}
+
 /// Boolean wp-config constants the UI may toggle individually (Tools →
 /// Debugging). A whitelist: the name lands in wp-cli argv, so free-form input
 /// would be config injection at the trust boundary.
@@ -903,6 +946,16 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn permalink_whitelist_covers_presets_and_only_presets() {
+        assert!(PERMALINK_STRUCTURES.contains(&""), "Plain must be offered");
+        assert!(PERMALINK_STRUCTURES.contains(&"/%postname%/"));
+        // Anything else is rejected before reaching wp-cli.
+        for bad in ["/custom/%postname%/", "%postname%", "/index.php/%postname%/"] {
+            assert!(!PERMALINK_STRUCTURES.contains(&bad), "{bad:?} should not pass");
+        }
     }
 
     #[test]

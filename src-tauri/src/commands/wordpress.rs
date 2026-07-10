@@ -333,6 +333,27 @@ pub async fn wp_search_replace(
         .await
 }
 
+/// The site's current permalink structure (`""` = Plain).
+#[tauri::command]
+pub async fn wp_permalink_get(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::permalink_structure_get(&php, &wp, &docroot)).await
+}
+
+/// Set the permalink structure (whitelisted presets only) + flush rewrites.
+#[tauri::command]
+pub async fn wp_permalink_set(
+    state: State<'_, AppState>,
+    id: String,
+    structure: String,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::permalink_structure_set(&php, &wp, &docroot, &structure).map(|_| ())
+    })
+    .await
+}
+
 /// Regenerate permalinks (`wp rewrite flush`).
 #[tauri::command]
 pub async fn wp_rewrite_flush(state: State<'_, AppState>, id: String) -> Result<()> {

@@ -517,6 +517,19 @@ export async function wpDebugSet(id: string, on: boolean): Promise<void> {
   await invoke("wp_debug_set", { id, on });
 }
 
+/** The site's current permalink structure ("" = Plain). */
+export async function wpPermalinkGet(id: string): Promise<string> {
+  if (!isTauri()) return "/%postname%/";
+  return invoke<string>("wp_permalink_get", { id });
+}
+
+/** Set the permalink structure (backend accepts the stock presets only) and
+ *  flush rewrite rules. No-op outside Tauri. */
+export async function wpPermalinkSet(id: string, structure: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_permalink_set", { id, structure });
+}
+
 /** The wp-config debug constants toggleable individually (mirrors the Rust
  *  DEBUG_FLAGS whitelist — the backend rejects anything else). */
 export type WpDebugFlag = "WP_DEBUG_LOG" | "WP_DEBUG_DISPLAY" | "SCRIPT_DEBUG";
