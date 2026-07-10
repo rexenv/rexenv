@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Globe, Lock, RotateCw, Shield } from "lucide-react";
 import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, systemSetup } from "@/lib/ipc";
+import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { useDownloads } from "@/lib/useDownloads";
 import { Track, pctOf } from "@/components/shell/DownloadPanel";
 import type { DownloadItem, DownloadPhase, PlannedDownload } from "@/types";
@@ -49,6 +50,15 @@ export function Onboarding() {
       <div
         className="pointer-events-none absolute -top-[120px] left-1/2 h-[280px] w-[420px] animate-rex-aura rounded-full blur-[20px] motion-reduce:animate-none"
         style={{ background: "radial-gradient(circle,rgba(124,92,255,.22),transparent 70%)" }}
+      />
+
+      {/* Title-bar drag strip — onboarding renders outside AppShell, so it has
+          none of the shell's drag-region headers; without this the window
+          can't be moved. Covers the traffic-light band + progress dots (no
+          interactive elements there). */}
+      <div
+        onMouseDown={onTitleBarMouseDown}
+        className="drag-region absolute inset-x-0 top-0 z-20 h-[60px]"
       />
 
       {/* progress dots */}
