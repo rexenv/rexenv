@@ -222,12 +222,18 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     }
 
     // Remove the docroot, but only if it's under a managed sites dir — the
-    // configured one OR the app-data default (so changing the setting doesn't
-    // strand teardown of pre-existing sites).
+    // configured one, the current default, OR the legacy app-data default (so
+    // neither changing the setting nor the default-change to ~/rexenv/Sites
+    // strands teardown of pre-existing sites).
     let configured = sites_dir(conn, platform)?;
-    let default_dir = default_sites_dir(platform)?;
+    let default_dir = default_sites_dir()?;
+    let legacy_dir = legacy_sites_dir(platform)?;
     let path = Path::new(&site.path);
-    if !site.path.is_empty() && (path.starts_with(&configured) || path.starts_with(&default_dir)) {
+    if !site.path.is_empty()
+        && (path.starts_with(&configured)
+            || path.starts_with(&default_dir)
+            || path.starts_with(&legacy_dir))
+    {
         let _ = std::fs::remove_dir_all(path);
     }
 
@@ -243,18 +249,42 @@ pub fn needs_database(site_type: SiteType) -> bool {
 /// Settings key for the configurable sites root.
 pub const SITES_DIR_KEY: &str = "sites_dir";
 
-/// Default site docroot root under app-data.
-fn default_sites_dir(platform: &dyn Platform) -> Result<PathBuf> {
+/// Default site docroot root: `~/rexenv/Sites` — user-visible and Finder
+/// friendly (`directories` resolves the home dir correctly per OS). Only a
+/// DEFAULT: an explicitly configured `sites_dir` setting always wins, and
+/// existing site rows hold absolute paths, so changing the default never
+/// orphans previously created sites.
+fn default_sites_dir() -> Result<PathBuf> {
+    let base = directories::BaseDirs::new()
+        .ok_or_else(|| Error::Other("could not resolve the home directory".into()))?;
+    Ok(base.home_dir().join("rexenv").join("Sites"))
+}
+
+/// The pre-`~/rexenv/Sites` default under app-data. Kept ONLY so teardown can
+/// still delete the docroots of sites created under the old default — without
+/// it, deleting such a site would silently strand its files on disk.
+fn legacy_sites_dir(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().app_data_dir()?.join("sites"))
 }
 
 /// Root directory for site docroots: the `sites_dir` setting if set, else the
-/// app-data default.
-pub fn sites_dir(conn: &Connection, platform: &dyn Platform) -> Result<PathBuf> {
+/// `~/rexenv/Sites` default.
+pub fn sites_dir(conn: &Connection, _platform: &dyn Platform) -> Result<PathBuf> {
     match store::get_setting(conn, SITES_DIR_KEY)? {
         Some(p) if !p.trim().is_empty() => Ok(PathBuf::from(p)),
-        _ => default_sites_dir(platform),
+        _ => default_sites_dir(),
     }
+}
+
+/// Ensure the resolved sites root exists — first run creates `~/rexenv/Sites`
+/// (`create_dir_all`: fine when `~/rexenv` already exists without `Sites`,
+/// idempotent when both do). Also recreates a user-configured folder that
+/// vanished. The caller logs a failure (unwritable home, permissions) without
+/// aborting startup — provision surfaces its own clear error later.
+pub fn ensure_sites_dir(conn: &Connection, platform: &dyn Platform) -> Result<PathBuf> {
+    let dir = sites_dir(conn, platform)?;
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 /// Provision a new site end-to-end (filesystem + cert + DB row). The docroot is
@@ -613,8 +643,8 @@ mod tests {
     fn sites_dir_uses_setting_or_default() {
         let conn = db::open_in_memory().unwrap();
         let platform = crate::platform::current();
-        // Default ends in "sites".
-        assert!(sites_dir(&conn, &*platform).unwrap().ends_with("sites"));
+        // Default is ~/rexenv/Sites (exact casing).
+        assert!(sites_dir(&conn, &*platform).unwrap().ends_with("rexenv/Sites"));
         // A configured value overrides it.
         store::set_setting(&conn, SITES_DIR_KEY, "/tmp/custom-sites").unwrap();
         assert_eq!(

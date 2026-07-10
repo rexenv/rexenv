@@ -75,6 +75,12 @@ pub fn run() {
                     // manager — status shows them running, Stop all works, Start all
                     // skips them. (Replaces the old stop-orphans-at-boot behavior.)
                     let sites = core::sites::list(&conn).unwrap_or_default();
+                    // First run: create the sites root (~/rexenv/Sites, or the
+                    // user's configured folder). Non-fatal — provision gives
+                    // its own clear error if the folder still can't be made.
+                    if let Err(e) = core::sites::ensure_sites_dir(&conn, platform.as_ref()) {
+                        log::error!("sites: could not create the sites folder: {e}");
+                    }
                     let state = state::app::AppState::new(conn, platform, ca);
                     {
                         let mut mgr = tauri::async_runtime::block_on(state.services.lock());

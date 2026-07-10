@@ -690,7 +690,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
 
 /** The resolved sites folder (setting or app-data default). */
 export async function sitesFolder(): Promise<string> {
-  if (!isTauri()) return "~/Library/Application Support/dev.rexenv.rexenv/sites";
+  if (!isTauri()) return "~/rexenv/Sites";
   return invoke<string>("sites_folder");
 }
 
