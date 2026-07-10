@@ -724,6 +724,34 @@ pub fn core_verify_checksums(
     Ok(WpChecksumReport { ok: out.status.success(), real, benign, output: text })
 }
 
+/// Export site content (posts, pages, comments, menus, terms) as WXR XML into
+/// the user's Downloads folder (`wp export --dir=…` — same destination
+/// convention as the DB export). WP-CLI names the files itself
+/// (`<site>.WordPress.<date>.xml`) and may split a large export into several;
+/// the paths are parsed from its "Writing to file" lines.
+pub fn content_export_to_downloads(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+) -> Result<Vec<String>> {
+    let downloads = directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
+        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))?;
+    let dir_arg = format!("--dir={}", downloads.display());
+    let out = wp_run(php_bin, wp_phar, docroot, &["export", &dir_arg])?;
+    let files: Vec<String> = out
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("Writing to file "))
+        .map(|p| p.trim().to_string())
+        .collect();
+    if files.is_empty() {
+        return Err(Error::Other(format!(
+            "wp export reported no output file — output was: {out}"
+        )));
+    }
+    Ok(files)
+}
+
 /// Flush the WordPress object cache (`wp cache flush`).
 pub fn cache_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
     wp_run(php_bin, wp_phar, docroot, &["cache", "flush"])

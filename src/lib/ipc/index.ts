@@ -655,6 +655,13 @@ export async function wpDbExport(id: string): Promise<string> {
   return invoke<string>("wp_db_export", { id });
 }
 
+/** Export site content as WXR XML into Downloads. Returns the written file
+ *  paths — wp-cli may split large exports into several files. */
+export async function wpContentExport(id: string): Promise<string[]> {
+  if (!isTauri()) return ["~/Downloads/mock.WordPress.2026-07-11.000.xml (mock)"];
+  return invoke<string[]>("wp_content_export", { id });
+}
+
 /** Import a `.sql` dump into the site's database. DESTRUCTIVE — the dump's
  *  tables overwrite existing ones; call only after the typed confirm. */
 export async function wpDbImport(id: string, path: string): Promise<void> {

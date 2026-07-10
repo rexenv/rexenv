@@ -488,6 +488,14 @@ pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<Stri
     .await
 }
 
+/// Export site content as WXR XML into the user's Downloads folder. Returns
+/// the written file paths (wp-cli may split large exports).
+#[tauri::command]
+pub async fn wp_content_export(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::content_export_to_downloads(&php, &wp, &docroot)).await
+}
+
 /// Import a `.sql` dump into the site's database (DESTRUCTIVE — the dump's
 /// tables overwrite existing ones; the UI gates this behind a typed confirm +
 /// backup-first offer). Bundled `mysql` client over stdin, same PATH rationale

@@ -14,6 +14,7 @@ import {
   wpDbImport,
   wpSiteReset,
   wpCacheFlush,
+  wpContentExport,
   wpCoreUpdate,
   wpCoreVerifyChecksums,
   wpCronEvents,
@@ -633,6 +634,21 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
     onError: (e) => toastBackendError(e),
   });
 
+  const contentExport = useMutation({
+    mutationFn: () => wpContentExport(siteId),
+    onSuccess: (paths) =>
+      toast.success(
+        paths.length === 1
+          ? `Content exported to ${paths[0]}`
+          : `Content exported to ${paths.length} files in Downloads`,
+        {
+          label: "Show in Finder",
+          onClick: () => void revealPath(paths[0]).catch(toastBackendError),
+        },
+      ),
+    onError: (e) => toastBackendError(e),
+  });
+
   const transients = useMutation({
     mutationFn: () => wpTransientDeleteAll(siteId),
     onSuccess: (msg) =>
@@ -815,6 +831,14 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
           <button className={maintBtn} onClick={() => setImportOpen(true)}>
             <ArrowUpCircle className="h-3.5 w-3.5" />
             Import database…
+          </button>
+          <button
+            className={maintBtn}
+            disabled={contentExport.isPending}
+            onClick={() => contentExport.mutate()}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {contentExport.isPending ? "Exporting…" : "Export content (WXR)"}
           </button>
           <button
             className={maintBtn}

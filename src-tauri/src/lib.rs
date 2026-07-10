@@ -276,6 +276,7 @@ pub fn run() {
             commands::wordpress::wp_core_verify_checksums,
             commands::wordpress::wp_db_export,
             commands::wordpress::wp_db_import,
+            commands::wordpress::wp_content_export,
             commands::wordpress::wp_site_reset,
             commands::wordpress::wp_default_creds,
             commands::wordpress::wp_multisite_convert,
