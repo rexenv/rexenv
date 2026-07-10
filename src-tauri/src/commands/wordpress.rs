@@ -488,6 +488,47 @@ pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<Stri
     .await
 }
 
+/// Import a `.sql` dump into the site's database (DESTRUCTIVE — the dump's
+/// tables overwrite existing ones; the UI gates this behind a typed confirm +
+/// backup-first offer). Bundled `mysql` client over stdin, same PATH rationale
+/// as export. Fails fast when MySQL is down or the file isn't a `.sql`.
+#[tauri::command]
+pub async fn wp_db_import(state: State<'_, AppState>, id: String, path: String) -> Result<()> {
+    use crate::core::db::DbEngine;
+    let site = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
+    };
+    let file = std::path::PathBuf::from(&path);
+    if !file
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("sql"))
+    {
+        return Err(Error::Other(format!(
+            "{path} is not a .sql file — pick a SQL dump (e.g. one made by Export database)."
+        )));
+    }
+    if !DbEngine::Mysql.running() {
+        return Err(Error::Other(
+            "MySQL isn't running — start it (Services → Start all, or the Databases page), then import again.".into(),
+        ));
+    }
+    let mysql_base =
+        binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
+    wp_blocking(move || {
+        core::database::import_from_file(
+            &mysql_base,
+            DbEngine::Mysql.port(),
+            &core::wordpress::db_name_for(&site.domain),
+            &file,
+        )
+    })
+    .await
+}
+
 /// Reset a WordPress site to a clean **single-site** install: drop + recreate
 /// its database and re-run the installer with the default local-dev
 /// credentials (admin / admin) — files stay on disk. A multisite site is

@@ -39,6 +39,19 @@ export async function pickFolder(title: string, defaultPath?: string): Promise<s
   return typeof picked === "string" ? picked : null;
 }
 
+/** Native file picker limited to `.sql` dumps. Returns the chosen absolute
+ *  path, or null if the user cancelled. */
+export async function pickSqlFile(title: string): Promise<string | null> {
+  if (!isTauri()) return window.prompt(title, "");
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const picked = await open({
+    multiple: false,
+    title,
+    filters: [{ name: "SQL dump", extensions: ["sql"] }],
+  });
+  return typeof picked === "string" ? picked : null;
+}
+
 /** App name/version/platform for the About card. Mock fallback outside Tauri. */
 export async function getAppInfo(): Promise<AppInfo> {
   if (!isTauri()) return mockAppInfo;
@@ -640,6 +653,13 @@ export async function wpCoreReinstall(id: string): Promise<string> {
 export async function wpDbExport(id: string): Promise<string> {
   if (!isTauri()) return "~/Downloads/mock.test-db.sql (mock)";
   return invoke<string>("wp_db_export", { id });
+}
+
+/** Import a `.sql` dump into the site's database. DESTRUCTIVE — the dump's
+ *  tables overwrite existing ones; call only after the typed confirm. */
+export async function wpDbImport(id: string, path: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_db_import", { id, path });
 }
 
 /** Reset a WP site to a clean single-site install: drops + recreates the

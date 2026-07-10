@@ -2,14 +2,16 @@ import { useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   openExternal,
+  pickSqlFile,
   revealPath,
   wpCoreReinstall,
   wpDbExport,
+  wpDbImport,
   wpSiteReset,
   wpCacheFlush,
   wpCoreUpdate,
@@ -669,6 +671,7 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   });
   const working = coreUpdate.isPending || coreReinstall.isPending;
   const [resetOpen, setResetOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
 
   return (
@@ -809,6 +812,10 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
             <Download className="h-3.5 w-3.5" />
             {dbExport.isPending ? "Exporting…" : "Export database"}
           </button>
+          <button className={maintBtn} onClick={() => setImportOpen(true)}>
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+            Import database…
+          </button>
           <button
             className={maintBtn}
             disabled={coreUpdate.isPending}
@@ -860,6 +867,105 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
         <CronCard siteId={siteId} />
       </div>
       {resetOpen && <ResetSiteDialog siteId={siteId} domain={domain} onClose={() => setResetOpen(false)} />}
+      {importOpen && <ImportDbDialog siteId={siteId} domain={domain} onClose={() => setImportOpen(false)} />}
+    </div>
+  );
+}
+
+/** Type-to-confirm database import: DESTRUCTIVE (the dump's tables overwrite
+ *  existing ones), so it mirrors ResetSiteDialog — backup-first offer + typed
+ *  domain confirm before the Import button arms. */
+function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [typed, setTyped] = useState("");
+  const [file, setFile] = useState<string | null>(null);
+  const dbExport = useMutation({
+    mutationFn: () => wpDbExport(siteId),
+    onSuccess: (path) =>
+      toast.success(`Database exported to ${path}`, {
+        label: "Show in Finder",
+        onClick: () => void revealPath(path).catch(toastBackendError),
+      }),
+    onError: (e) => toastBackendError(e),
+  });
+  const doImport = useMutation({
+    mutationFn: () => wpDbImport(siteId, file!),
+    onSuccess: () => {
+      // Content, users, options — everything may have changed.
+      qc.invalidateQueries();
+      toast.success("Database imported.");
+      onClose();
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const busy = doImport.isPending;
+  const match = typed === domain;
+  const fileName = file?.split("/").pop() ?? null;
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="w-[440px] rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-[15px] font-semibold text-rex-text">Import a database dump?</div>
+        <div className="mt-2 flex flex-col gap-2 text-[13px] leading-[1.55] text-rex-text-muted">
+          <p>
+            This runs a <span className="font-mono">.sql</span> dump against{" "}
+            <span className="font-mono text-rex-text">{domain}</span>&rsquo;s database —{" "}
+            <span className="font-medium text-status-error-bright">tables in the dump overwrite existing ones</span>.
+            It cannot be undone.
+          </p>
+          <p>
+            A dump from a different site will carry its old URLs — run a search-replace (Tools) afterwards if the site
+            misbehaves.
+          </p>
+        </div>
+        <button
+          className={BTN + " mt-3 flex items-center gap-1.5"}
+          disabled={dbExport.isPending || busy}
+          onClick={() => dbExport.mutate()}
+        >
+          <Download className="h-3.5 w-3.5" />
+          {dbExport.isPending ? "Exporting…" : "Export current database first"}
+        </button>
+        <button
+          className={BTN + " mt-2 flex w-full items-center justify-center gap-1.5"}
+          disabled={busy}
+          onClick={async () => {
+            const picked = await pickSqlFile("Choose a .sql dump to import");
+            if (picked) setFile(picked);
+          }}
+        >
+          <FileUp className="h-3.5 w-3.5" />
+          {fileName ? `File: ${fileName}` : "Choose .sql file…"}
+        </button>
+        <div className="mt-4 text-[12.5px] text-rex-text-muted">
+          Type <span className="font-mono text-rex-text">{domain}</span> to confirm:
+        </div>
+        <input {...TECH_INPUT}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={domain}
+          disabled={busy}
+          autoFocus
+          className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button className={BTN} disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className={BTN + " border-status-error-border text-status-error-bright hover:bg-status-error-bg disabled:opacity-40"}
+            disabled={!match || !file || busy}
+            onClick={() => doImport.mutate()}
+          >
+            {busy ? "Importing…" : "Import & overwrite"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

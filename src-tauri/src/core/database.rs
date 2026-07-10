@@ -148,6 +148,42 @@ pub fn export_to_downloads(basedir: &Path, port: u16, domain: &str, name: &str) 
     Ok(dest)
 }
 
+/// Import a `.sql` dump into database `name` via the bundled `mysql` client,
+/// feeding the file over **stdin** (no shell, no quoting problems — same
+/// rationale as `--result-file` in [`export_to_downloads`]). DESTRUCTIVE: the
+/// dump executes as-is, so tables it contains overwrite existing ones; the
+/// caller owns the confirm/backup UX. Requires the MySQL server to be running.
+pub fn import_from_file(basedir: &Path, port: u16, name: &str, file: &Path) -> Result<()> {
+    validate_db_name(name)?;
+    let f = std::fs::File::open(file)
+        .map_err(|e| Error::Other(format!("open {}: {e}", file.display())))?;
+    if f.metadata()?.len() == 0 {
+        return Err(Error::Other(format!(
+            "{} is empty — not importing",
+            file.display()
+        )));
+    }
+    let out = std::process::Command::new(mysql_client_bin(basedir))
+        .args([
+            "--no-defaults",
+            "--protocol=TCP",
+            "--host=127.0.0.1",
+            &format!("--port={port}"),
+            "--user=root",
+            name,
+        ])
+        .stdin(std::process::Stdio::from(f))
+        .output()?;
+    if !out.status.success() {
+        return Err(Error::Other(format!(
+            "importing into `{name}` failed (exit {:?}): {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    Ok(())
+}
+
 /// Create a database if it doesn't exist, via the bundled `mysql` client.
 /// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
 /// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
