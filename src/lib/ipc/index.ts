@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -83,6 +83,13 @@ export async function sitesResources(): Promise<SiteResources[]> {
 export async function renameSite(id: string, name: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("rename_site", { id, name });
+}
+
+/** Read-only info about a site's HTTPS leaf cert (validity, SANs, cert folder).
+ *  Null when no cert has been issued yet — or outside Tauri. */
+export async function siteCertInfo(id: string): Promise<SiteCertInfo | null> {
+  if (!isTauri()) return null;
+  return invoke<SiteCertInfo | null>("site_cert_info", { id });
 }
 
 /** Create a site (provision + WordPress one-click install when type=wordpress +

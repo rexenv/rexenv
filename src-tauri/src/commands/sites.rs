@@ -138,6 +138,21 @@ pub fn rename_site(state: State<'_, AppState>, id: String, name: String) -> Resu
     core::sites::rename(&conn, &id, &name)
 }
 
+/// Read-only info about a site's HTTPS leaf cert (Settings tab): validity dates,
+/// days left, SANs, cert folder. `None` when no cert file exists yet.
+#[tauri::command]
+pub fn site_cert_info(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<core::ssl::SiteCertInfo>> {
+    let site = {
+        let conn = lock(&state)?;
+        core::sites::get(&conn, &id)?
+    }
+    .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+    core::ssl::site_cert_info(state.platform.paths(), &site.domain)
+}
+
 /// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
 /// row); for a **WordPress** site bring MySQL up and run the one-click installer
 /// (`wp`) so the site is browsable; then — if the stack is running — ensure its

@@ -26,6 +26,16 @@ export interface Site {
 /** WordPress multisite mode (mirrors the Rust MultisiteMode). */
 export type MultisiteMode = "none" | "subdomain" | "subdirectory";
 
+/** Read-only identity of a site's HTTPS leaf cert (mirrors the Rust SiteCertInfo).
+ *  Dates are RFC 3339 UTC; `daysLeft` goes negative once expired. */
+export interface SiteCertInfo {
+  notBefore: string;
+  notAfter: string;
+  daysLeft: number;
+  sans: string[];
+  certDir: string;
+}
+
 /** Input for creating a site (mirrors the Rust NewSite). */
 export interface NewSiteInput {
   name: string;

@@ -41,6 +41,7 @@ sysinfo = "0.36.1"
 portable-pty = "0.9"
 base64 = "0.22"
 tauri-plugin-dialog = "2"
+# Read-only parsing of our own issued certs (Settings tab cert info); also used by tests.
+x509-parser = "0.16"
 
 [dev-dependencies]
-x509-parser = "0.16"

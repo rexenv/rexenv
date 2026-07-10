@@ -203,6 +203,68 @@ pub fn ensure_site_cert(
     Ok(cert)
 }
 
+/// Read-only identity of a site's on-disk leaf cert (Settings tab). Dates are
+/// RFC 3339 UTC; `days_left` counts whole days until `not_after` (negative once
+/// expired). Issue/re-issue stays in [`ensure_site_cert`].
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteCertInfo {
+    pub not_before: String,
+    pub not_after: String,
+    pub days_left: i64,
+    pub sans: Vec<String>,
+    pub cert_dir: String,
+}
+
+/// Parse the site's existing leaf cert under app-data; `None` when no cert has
+/// been issued yet (a site gets one at provision, so this is the fresh-DB case).
+pub fn site_cert_info(paths: &dyn Paths, domain: &str) -> Result<Option<SiteCertInfo>> {
+    let dir = site_cert_dir(paths, domain)?;
+    let cert_path = dir.join(SITE_CERT_FILE);
+    if !cert_path.exists() {
+        return Ok(None);
+    }
+    parse_cert_info(&fs::read_to_string(&cert_path)?, &dir).map(Some)
+}
+
+/// PEM → [`SiteCertInfo`]. Split from the path lookup so tests can feed a PEM
+/// directly.
+fn parse_cert_info(cert_pem: &str, dir: &Path) -> Result<SiteCertInfo> {
+    use x509_parser::extensions::{GeneralName, ParsedExtension};
+    let (_, pem) = x509_parser::pem::parse_x509_pem(cert_pem.as_bytes())
+        .map_err(|e| Error::Other(format!("parse cert pem: {e}")))?;
+    let (_, cert) = x509_parser::parse_x509_certificate(&pem.contents)
+        .map_err(|e| Error::Other(format!("parse cert: {e}")))?;
+
+    let not_before = cert.validity().not_before.to_datetime();
+    let not_after = cert.validity().not_after.to_datetime();
+    let days_left = (not_after - time::OffsetDateTime::now_utc()).whole_days();
+
+    let mut sans = Vec::new();
+    for ext in cert.extensions() {
+        if let ParsedExtension::SubjectAlternativeName(san) = ext.parsed_extension() {
+            for gn in &san.general_names {
+                if let GeneralName::DNSName(d) = gn {
+                    sans.push(d.to_string());
+                }
+            }
+        }
+    }
+
+    let rfc3339 = &time::format_description::well_known::Rfc3339;
+    let fmt = |t: time::OffsetDateTime| {
+        t.format(rfc3339)
+            .map_err(|e| Error::Other(format!("format cert date: {e}")))
+    };
+    Ok(SiteCertInfo {
+        not_before: fmt(not_before)?,
+        not_after: fmt(not_after)?,
+        days_left,
+        sans,
+        cert_dir: dir.display().to_string(),
+    })
+}
+
 /// Trust the local CA in the user trust store (macOS: login keychain — shows a
 /// native auth dialog; no root).
 pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
@@ -293,6 +355,37 @@ mod tests {
         assert!(sans.contains(&"*.mysite.test".to_string()), "sans: {sans:?}");
         // Signed by our CA.
         assert_eq!(issuer_cn(&cert_pem), "rexenv Local CA");
+    }
+
+    #[test]
+    fn parse_cert_info_reads_dates_sans_and_days_left() {
+        let (ca_cert, ca_key) = generate_ca().unwrap();
+        let ca = LocalCa {
+            cert_pem: ca_cert,
+            key_pem: ca_key,
+            cert_path: PathBuf::new(),
+            key_path: PathBuf::new(),
+        };
+        let (cert_pem, _) = generate_site_cert(&ca, "info.test").unwrap();
+
+        let dir = PathBuf::from("/tmp/certs/info.test");
+        let info = parse_cert_info(&cert_pem, &dir).unwrap();
+
+        assert!(info.sans.contains(&"info.test".to_string()), "sans: {:?}", info.sans);
+        assert!(info.sans.contains(&"*.info.test".to_string()), "sans: {:?}", info.sans);
+        assert_eq!(info.cert_dir, dir.display().to_string());
+        // Freshly issued: not_after is LEAF_VALIDITY_DAYS-1 out (1-day back-date),
+        // so whole days left is that ±1 for the sub-day remainder.
+        assert!(
+            (LEAF_VALIDITY_DAYS - 3..=LEAF_VALIDITY_DAYS).contains(&info.days_left),
+            "days_left: {}",
+            info.days_left
+        );
+        // RFC 3339 round-trip proves the format the frontend will Date-parse.
+        let rfc = &time::format_description::well_known::Rfc3339;
+        let nb = time::OffsetDateTime::parse(&info.not_before, rfc).unwrap();
+        let na = time::OffsetDateTime::parse(&info.not_after, rfc).unwrap();
+        assert!(na > nb);
     }
 
     #[test]

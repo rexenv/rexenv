@@ -33,15 +33,18 @@ import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { adminerUrl, siteDbName } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
-import { cn } from "@/lib/utils";
+import { cn, TECH_INPUT } from "@/lib/utils";
 import {
   getSitesServing,
   listPhpVersions,
   listSites,
   logTargets,
   openExternal,
+  renameSite,
+  revealPath,
   setSitePhpVersion,
   setSiteWebServer,
+  siteCertInfo,
   tailLog,
   wpAdminLoginUrl,
   wpDebugLogClear,
@@ -223,13 +226,7 @@ export function SiteDetail() {
             ))}
           {active === "logs" && <LogsTab siteId={site.id} isWordpress={isWordpress} />}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}
-          {active === "settings" && (
-            <Placeholder
-              icon={<LayoutGrid className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-              label="Site settings"
-              hint="Per-site settings land in a later task."
-            />
-          )}
+          {active === "settings" && <SettingsTab site={site} />}
         </div>
       </div>
     </>
@@ -460,6 +457,154 @@ function Overview({
       </div>
 
       <RecentLogs siteId={site.id} onViewAll={onViewLogs} />
+    </>
+  );
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  wordpress: "WordPress",
+  laravel: "Laravel",
+  php: "Blank PHP",
+};
+
+const MULTISITE_LABELS: Record<string, string> = {
+  none: "—",
+  subdomain: "Subdomain network",
+  subdirectory: "Subdirectory network",
+};
+
+/** RFC 3339 → local "Jul 10, 2026". */
+function fmtCertDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function SettingsCard({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+      <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <div className="flex-none text-[12px] text-rex-text-muted">{label}</div>
+      <div className="min-w-0 text-right text-[13px] text-rex-text-bright">{children}</div>
+    </div>
+  );
+}
+
+function SettingsTab({ site }: { site: Site }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(site.name);
+  // Track renames that land from elsewhere (e.g. the Sites-list dialog).
+  useEffect(() => setName(site.name), [site.name]);
+
+  const rename = useMutation({
+    mutationFn: (n: string) => renameSite(site.id, n),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      toast.success("Site renamed");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const { data: cert, isLoading: certLoading } = useQuery({
+    queryKey: ["site-cert", site.id],
+    queryFn: () => siteCertInfo(site.id),
+  });
+
+  const trimmed = name.trim();
+  const dirty = trimmed.length > 0 && trimmed !== site.name;
+  const hasDb = site.type !== "php";
+
+  const days = cert?.daysLeft ?? 0;
+  const expiryTone =
+    days < 0
+      ? "text-status-error-bright"
+      : days < 30
+        ? "text-status-warning-bright"
+        : "text-rex-text-dim";
+  const expiryNote = days < 0 ? `expired ${-days} days ago` : `in ${days} days`;
+
+  return (
+    <>
+      <SettingsCard label="Site name">
+        <div className="flex items-center gap-2">
+          <input
+            {...TECH_INPUT}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && dirty && !rename.isPending) rename.mutate(trimmed);
+            }}
+            className="h-9 w-full max-w-[420px] rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[13px] text-rex-text outline-none transition-colors focus:border-brand"
+          />
+          <Button
+            variant="primary"
+            disabled={!dirty || rename.isPending}
+            onClick={() => rename.mutate(trimmed)}
+          >
+            {rename.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+        <div className="mt-2 text-[12px] text-rex-text-dim">
+          Display name only — the domain, folder and database are unchanged.
+        </div>
+      </SettingsCard>
+
+      <SettingsCard label="Site info">
+        <div className="flex max-w-[560px] flex-col gap-3">
+          <InfoRow label="Type">{TYPE_LABELS[site.type] ?? site.type}</InfoRow>
+          <InfoRow label="Database name">
+            {hasDb ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="truncate font-mono text-[12.5px]">{siteDbName(site.domain)}</span>
+                <CopyButton value={siteDbName(site.domain)} />
+              </span>
+            ) : (
+              <span className="text-rex-text-dim">— (no database)</span>
+            )}
+          </InfoRow>
+          <InfoRow label="Multisite">{MULTISITE_LABELS[site.multisite] ?? site.multisite}</InfoRow>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard label="HTTPS certificate">
+        {certLoading ? (
+          <div className="text-[12.5px] text-rex-text-dim">Reading certificate…</div>
+        ) : !cert ? (
+          <div className="text-[12.5px] text-rex-text-dim">
+            No certificate issued yet — one is created when the site is provisioned.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex max-w-[560px] flex-col gap-3">
+              <InfoRow label="Issued">{fmtCertDate(cert.notBefore)}</InfoRow>
+              <InfoRow label="Expires">
+                <span>{fmtCertDate(cert.notAfter)}</span>
+                <span className={cn("ml-2 font-mono text-[11.5px]", expiryTone)}>{expiryNote}</span>
+              </InfoRow>
+              <InfoRow label="Domains">
+                <span className="font-mono text-[12.5px]">{cert.sans.join(", ")}</span>
+              </InfoRow>
+            </div>
+            <PathField
+              label="Certificate folder"
+              value={cert.certDir}
+              onOpen={() => void revealPath(cert.certDir)}
+            />
+          </div>
+        )}
+      </SettingsCard>
     </>
   );
 }
@@ -795,7 +940,18 @@ function EnvMini({ label, children }: { label: string; children: React.ReactNode
 }
 
 /** A labelled path inside a recessed box: mono value + copy + open-folder. */
-function PathField({ label, value, openable }: { label: string; value: string; openable?: boolean }) {
+function PathField({
+  label,
+  value,
+  openable,
+  onOpen,
+}: {
+  label: string;
+  value: string;
+  openable?: boolean;
+  /** Custom open action (e.g. reveal in Finder); defaults to opening the path. */
+  onOpen?: () => void;
+}) {
   return (
     <div>
       <div className="mb-1.5 text-[12px] text-rex-text-muted">{label}</div>
@@ -807,8 +963,11 @@ function PathField({ label, value, openable }: { label: string; value: string; o
           {value}
         </span>
         <CopyButton value={value} />
-        {openable && (
-          <IconBtn title="Open folder" onClick={() => openExternal(value)}>
+        {(openable || onOpen) && (
+          <IconBtn
+            title={onOpen ? "Show in Finder" : "Open folder"}
+            onClick={onOpen ?? (() => openExternal(value))}
+          >
             <FolderOpen className="h-3.5 w-3.5" />
           </IconBtn>
         )}
