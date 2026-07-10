@@ -40,9 +40,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   Pre-existing race (any two commands resolving the same binary); onboarding's
   auto-prefetch makes it easier to trigger. Correctness is fine (atomic staging/publish
   keeps one winner) — this is efficiency/polish.
-- [ ] **Release 1.5 — cold first run on a second Mac / clean account** (from TASKS-RELEASE).
+- [x] **Release 1.5 — cold first run on a second Mac / clean account** (from TASKS-RELEASE).
   Hands-on: install the .dmg on a machine that has never seen rexenv, run the full first-run
-  flow. Pairs with the next item.
+  flow. Pairs with the next item. ✓ **Done:** verified by a real fresh-account cold run on
+  10 July 2026 — onboarding system setup, live binary downloads, WordPress site over HTTPS
+  with a valid lock, rest of the app all worked end to end.
 - [ ] **Release 5.4 — execute the clean-Mac smoke test** — checklist already written:
   `docs/SMOKE-TEST.md`.
 
