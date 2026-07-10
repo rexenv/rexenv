@@ -354,6 +354,20 @@ pub async fn wp_permalink_set(
     .await
 }
 
+/// Flush the object cache. Returns WP-CLI's confirmation message.
+#[tauri::command]
+pub async fn wp_cache_flush(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::cache_flush(&php, &wp, &docroot)).await
+}
+
+/// Delete all transients. Returns WP-CLI's "N transients deleted" message.
+#[tauri::command]
+pub async fn wp_transient_delete_all(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::transient_delete_all(&php, &wp, &docroot)).await
+}
+
 /// Regenerate permalinks (`wp rewrite flush`).
 #[tauri::command]
 pub async fn wp_rewrite_flush(state: State<'_, AppState>, id: String) -> Result<()> {

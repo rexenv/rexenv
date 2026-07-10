@@ -11,6 +11,7 @@ import {
   wpCoreReinstall,
   wpDbExport,
   wpSiteReset,
+  wpCacheFlush,
   wpCoreUpdate,
   wpDebugFlagGet,
   wpDebugFlagSet,
@@ -41,6 +42,7 @@ import {
   wpThemeInstall,
   wpThemeUpdate,
   wpThemes,
+  wpTransientDeleteAll,
   wpUserCreate,
   wpUserLoginUrl,
   wpUsers,
@@ -615,6 +617,20 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
     onError: (e) => toastBackendError(e),
   });
 
+  const cacheFlush = useMutation({
+    mutationFn: () => wpCacheFlush(siteId),
+    onSuccess: (msg) =>
+      toast.success(msg.replace(/^Success:\s*/, "").trim() || "Object cache flushed."),
+    onError: (e) => toastBackendError(e),
+  });
+
+  const transients = useMutation({
+    mutationFn: () => wpTransientDeleteAll(siteId),
+    onSuccess: (msg) =>
+      toast.success(msg.replace(/^Success:\s*/, "").trim() || "Transients deleted."),
+    onError: (e) => toastBackendError(e),
+  });
+
   const coreUpdate = useMutation({
     mutationFn: () => wpCoreUpdate(siteId),
     onSuccess: (out) => setCoreOut(out),
@@ -771,6 +787,12 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
               label="Toggle maintenance mode"
             />
           </div>
+          <button className={maintBtn} disabled={cacheFlush.isPending} onClick={() => cacheFlush.mutate()}>
+            {cacheFlush.isPending ? "Flushing…" : "Flush object cache"}
+          </button>
+          <button className={maintBtn} disabled={transients.isPending} onClick={() => transients.mutate()}>
+            {transients.isPending ? "Deleting…" : "Delete all transients"}
+          </button>
           <button className={maintBtn} disabled={dbExport.isPending} onClick={() => dbExport.mutate()}>
             <Download className="h-3.5 w-3.5" />
             {dbExport.isPending ? "Exporting…" : "Export database"}

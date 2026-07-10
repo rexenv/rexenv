@@ -517,6 +517,18 @@ export async function wpDebugSet(id: string, on: boolean): Promise<void> {
   await invoke("wp_debug_set", { id, on });
 }
 
+/** Flush the object cache; returns WP-CLI's confirmation message. */
+export async function wpCacheFlush(id: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("wp_cache_flush", { id });
+}
+
+/** Delete all transients; returns WP-CLI's "N transients deleted" message. */
+export async function wpTransientDeleteAll(id: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("wp_transient_delete_all", { id });
+}
+
 /** The site's current permalink structure ("" = Plain). */
 export async function wpPermalinkGet(id: string): Promise<string> {
   if (!isTauri()) return "/%postname%/";

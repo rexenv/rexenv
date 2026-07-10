@@ -539,6 +539,17 @@ pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) ->
     Ok(out)
 }
 
+/// Flush the WordPress object cache (`wp cache flush`).
+pub fn cache_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["cache", "flush"])
+}
+
+/// Delete ALL transients — expired or not (`wp transient delete --all`).
+/// Returns WP-CLI's "N transients deleted" message for the UI toast.
+pub fn transient_delete_all(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["transient", "delete", "--all"])
+}
+
 /// Permalink structures the UI picker offers (wp-admin's stock choices; `""` =
 /// Plain). Whitelisted like [`DEBUG_FLAGS`]: the value lands in wp-cli argv.
 pub const PERMALINK_STRUCTURES: [&str; 5] = [

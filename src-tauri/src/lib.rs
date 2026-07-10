@@ -263,6 +263,8 @@ pub fn run() {
             commands::wordpress::wp_search_replace,
             commands::wordpress::wp_permalink_get,
             commands::wordpress::wp_permalink_set,
+            commands::wordpress::wp_cache_flush,
+            commands::wordpress::wp_transient_delete_all,
             commands::wordpress::wp_rewrite_flush,
             commands::wordpress::wp_core_update,
             commands::wordpress::wp_core_reinstall,
