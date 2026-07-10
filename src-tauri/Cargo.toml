@@ -40,6 +40,7 @@ flate2 = "1"
 sysinfo = "0.36.1"
 portable-pty = "0.9"
 base64 = "0.22"
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 x509-parser = "0.16"

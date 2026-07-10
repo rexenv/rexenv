@@ -29,6 +29,16 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(cmd, args);
 }
 
+/** Native folder picker (tauri-plugin-dialog). Returns the chosen absolute
+ *  path, or null if the user cancelled. Browser dev falls back to a plain
+ *  prompt (WKWebView lacks window.prompt — real browsers don't). */
+export async function pickFolder(title: string, defaultPath?: string): Promise<string | null> {
+  if (!isTauri()) return window.prompt(title, defaultPath ?? "");
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const picked = await open({ directory: true, multiple: false, title, defaultPath });
+  return typeof picked === "string" ? picked : null;
+}
+
 /** App name/version/platform for the About card. Mock fallback outside Tauri. */
 export async function getAppInfo(): Promise<AppInfo> {
   if (!isTauri()) return mockAppInfo;

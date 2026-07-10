@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
-import { confirm, promptText } from "@/components/ui/dialog";
+import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
@@ -15,6 +15,7 @@ import {
   listBlueprints,
   listPhpVersions,
   openExternal,
+  pickFolder,
   regenerateCerts,
   saveBlueprint,
   setAutostart,
@@ -162,16 +163,9 @@ function GeneralPrefsCard() {
             {resolved ?? "…"}
           </div>
         </div>
-        {/* TODO(backend): a native folder picker; prompt() is the dev stand-in. */}
         <button
           onClick={async () => {
-            const v = await promptText({
-              title: "Sites folder",
-              label: "Folder path",
-              initialValue: resolved ?? "",
-              mono: true,
-              submitLabel: "Save",
-            });
+            const v = await pickFolder("Choose your sites folder", resolved ?? undefined);
             if (v && v.trim()) saveFolder.mutate(v.trim());
           }}
           className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
