@@ -8,12 +8,6 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { createSite, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
 import type { MultisiteMode, SiteType, WebServer } from "@/types";
 
-const DB_ENGINES = [
-  { value: "mysql", label: "MySQL" },
-  { value: "postgres", label: "PostgreSQL" },
-  { value: "none", label: "None" },
-];
-
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
   const buf = new Uint32Array(16);
@@ -97,7 +91,6 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const [siteType, setSiteType] = useState<SiteType>(initial?.siteType ?? "php");
   const [phpVersion, setPhpVersion] = useState(initial?.phpVersion ?? defaultVersion);
   const [webServer, setWebServer] = useState<WebServer>(initial?.webServer ?? "nginx");
-  const [dbEngine, setDbEngine] = useState("mysql");
   const [domainEdited, setDomainEdited] = useState(false);
   const [blueprintId, setBlueprintId] = useState("");
   const [wpTitle, setWpTitle] = useState("");
@@ -216,8 +209,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setPhpVersion={setPhpVersion}
               webServer={webServer}
               setWebServer={setWebServer}
-              dbEngine={dbEngine}
-              setDbEngine={setDbEngine}
+              needsDb={siteType !== "php"}
               isWordpress={isWordpress}
               wpTitle={wpTitle}
               setWpTitle={setWpTitle}
@@ -351,8 +343,7 @@ function Step2(p: {
   setPhpVersion: (v: string) => void;
   webServer: WebServer;
   setWebServer: (v: WebServer) => void;
-  dbEngine: string;
-  setDbEngine: (v: string) => void;
+  needsDb: boolean;
   isWordpress: boolean;
   wpTitle: string;
   setWpTitle: (v: string) => void;
@@ -438,15 +429,13 @@ function Step2(p: {
             ))}
           </select>
         </Field>
-        {/* DB selector is UI-only — NewSiteInput has no engine field yet (TODO). */}
+        {/* Read-only: engine choice isn't wired yet (deferred per-site engine
+            work) — show what the backend actually provisions instead of a
+            selector whose choice would be silently ignored. */}
         <Field label="Database">
-          <select value={p.dbEngine} onChange={(e) => p.setDbEngine(e.target.value)} className={FIELD_SELECT}>
-            {DB_ENGINES.map((d) => (
-              <option key={d.value} value={d.value}>
-                {d.label}
-              </option>
-            ))}
-          </select>
+          <div className={cn(FIELD_INPUT, "flex items-center text-[12.5px] text-rex-text-muted")}>
+            {p.needsDb ? "MySQL" : "None"}
+          </div>
         </Field>
       </div>
 
