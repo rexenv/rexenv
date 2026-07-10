@@ -442,10 +442,34 @@ pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
     }
 }
 
+/// Single-flight guard for concurrent resolves of the same `name`@`version`:
+/// the second caller waits for the first download to publish, then hits the
+/// resolve's cached-path early return instead of racing a duplicate download
+/// (same bytes twice, hub progress jittering between the two streams). If the
+/// first attempt FAILS, the waiter proceeds and downloads normally — a natural
+/// retry, same semantics as the panel's retry button. One async mutex per
+/// distinct pinned binary; the map only ever holds that small fixed set, so
+/// entries are never evicted.
+async fn in_flight(name: &str, version: &str) -> tokio::sync::OwnedMutexGuard<()> {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+    static FLIGHTS: OnceLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> =
+        OnceLock::new();
+    let flight = FLIGHTS
+        .get_or_init(Default::default)
+        .lock()
+        .expect("in-flight download map lock poisoned")
+        .entry(downloads::item_id(name, version))
+        .or_default()
+        .clone();
+    flight.lock_owned().await
+}
+
 /// Resolve `name`@`version` to a ready-to-run cached binary path, downloading +
 /// verifying + extracting + signing on first use. Idempotent: a cached binary is
 /// returned without re-downloading.
 pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let _flight = in_flight(name, version).await;
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
 
@@ -527,6 +551,7 @@ fn open_buffered(path: &Path) -> Result<std::io::BufReader<std::fs::File>> {
 /// verifies + writes it under `bin_dir/<name>-<version>/<member>`; does NOT
 /// chmod +x or codesign (it's a script, not a Mach-O). Idempotent.
 pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let _flight = in_flight(name, version).await;
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
     let spec = manifest(name, version, os, arch)
@@ -567,6 +592,7 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
 /// top-level dir in the tarball is stripped, so the base dir directly contains
 /// `bin/`, `lib/`, `share/`. Idempotent: a cached tree is returned as-is.
 pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let _flight = in_flight(name, version).await;
     let arch = platform.binaries().arch();
     let os = std::env::consts::OS;
 
@@ -1360,5 +1386,34 @@ mod tests {
         assert!(status_is_transient(StatusCode::BAD_GATEWAY));
         assert!(!status_is_transient(StatusCode::NOT_FOUND));
         assert!(!status_is_transient(StatusCode::FORBIDDEN));
+    }
+
+    #[tokio::test]
+    async fn in_flight_serializes_same_binary_but_not_different_ones() {
+        use std::time::Duration;
+        use tokio::time::timeout;
+        // Same (name, version): the second caller must WAIT for the first.
+        let held = in_flight("flight-test", "1.0").await;
+        assert!(
+            timeout(Duration::from_millis(100), in_flight("flight-test", "1.0"))
+                .await
+                .is_err(),
+            "second resolve of the same binary must wait for the in-flight one"
+        );
+        // A different (name, version) is an independent flight — no blocking.
+        assert!(
+            timeout(Duration::from_millis(100), in_flight("flight-test", "2.0"))
+                .await
+                .is_ok(),
+            "a different version must not share the flight lock"
+        );
+        // Releasing the first lets the waiter proceed (cache re-check path).
+        drop(held);
+        assert!(
+            timeout(Duration::from_millis(100), in_flight("flight-test", "1.0"))
+                .await
+                .is_ok(),
+            "the flight lock must be released when the first resolve finishes"
+        );
     }
 }
