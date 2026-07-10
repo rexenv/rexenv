@@ -251,6 +251,8 @@ pub fn run() {
             commands::wordpress::wp_core_update,
             commands::wordpress::wp_core_reinstall,
             commands::wordpress::wp_db_export,
+            commands::wordpress::wp_site_reset,
+            commands::wordpress::wp_default_creds,
             commands::wordpress::wp_multisite_convert,
             commands::wordpress::wp_network_sites,
             commands::wordpress::wp_network_site_create,

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { siteTypeMeta } from "@/lib/siteType";
-import { listSites, openExternal, startTunnel, stopTunnel, tunnelsStatus } from "@/lib/ipc";
+import { listSites, openExternal, startTunnel, stopTunnel, tunnelsStatus, wpDefaultCreds } from "@/lib/ipc";
 import type { Site, TunnelInfo } from "@/types";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -144,6 +144,17 @@ function TunnelCard({
 }) {
   const on = !!tunnel?.running;
   const state: CardState = busy ? (on ? "stopping" : "starting") : on ? "live" : "idle";
+  // Default-credentials heads-up (WP sites only): admin/admin is a local-dev
+  // convenience, but behind a public tunnel URL it's an open wp-admin. One
+  // wp-cli check per card, cached; any failure reads as "no warning".
+  const { data: defaultCreds = false } = useQuery({
+    queryKey: ["wp-default-creds", site.id],
+    queryFn: () => wpDefaultCreds(site.id),
+    enabled: site.type === "wordpress",
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 0,
+  });
   const border = {
     live: "border-status-running-border shadow-[0_0_0_1px_var(--rex-running-bg)]",
     stopping: "border-status-running-border",
@@ -183,6 +194,16 @@ function TunnelCard({
           label={`${on ? "Stop" : "Start"} sharing ${site.name}`}
         />
       </div>
+
+      {defaultCreds && (
+        <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[12px] leading-[1.5] text-status-warning-bright">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />
+          <span>
+            This site uses the default <span className="font-mono">admin/admin</span> credentials — anyone with
+            the public URL could log into wp-admin.
+          </span>
+        </div>
+      )}
 
       {on && tunnel && (
         <>

@@ -345,6 +345,71 @@ pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<Stri
     .await
 }
 
+/// Reset a WordPress site to a clean **single-site** install: drop + recreate
+/// its database and re-run the installer with the default local-dev
+/// credentials (admin / admin) — files stay on disk. A multisite site is
+/// flipped back to single-site — constants cleared by the core reset, row
+/// updated here, configs regenerated/reloaded (its rewrite rules are
+/// multisite-specific). Fails fast when MySQL is down.
+#[tauri::command]
+pub async fn wp_site_reset(state: State<'_, AppState>, id: String) -> Result<()> {
+    use crate::core::db::DbEngine;
+    let site = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
+    };
+    // Fail fast with an actionable message (same guard as the DB export).
+    if !DbEngine::Mysql.running() {
+        return Err(Error::Other(
+            "MySQL isn't running — start it (Services → Start all, or the Databases page), then reset again.".into(),
+        ));
+    }
+    let mysql_base =
+        binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
+    let (php, wp) = wp_tools(&state, &site.php_version).await?;
+    let was_multisite = !matches!(site.multisite, MultisiteMode::None);
+    let (docroot, domain, name) =
+        (PathBuf::from(&site.path), site.domain.clone(), site.name.clone());
+    wp_blocking(move || {
+        core::wordpress::reset_site(&php, &wp, &docroot, &domain, &name, &mysql_base)
+    })
+    .await?;
+    if was_multisite {
+        // Back to single-site: flip the row, then regenerate + reload configs
+        // (multisite rewrite rules differ) — same flow as wp_multisite_convert.
+        let sites = {
+            let conn = state
+                .db
+                .lock()
+                .map_err(|_| Error::Other("database lock poisoned".into()))?;
+            core::sites::clear_multisite(&conn, &id)?;
+            core::sites::list(&conn)?
+        };
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await?;
+    }
+    Ok(())
+}
+
+/// Whether the site still accepts the default admin / admin credentials —
+/// backs the tunnel-share warning (public URL + default creds = open
+/// wp-admin). Any failure (no admin user, broken/non-WP site) reads `false`.
+#[tauri::command]
+pub async fn wp_default_creds(state: State<'_, AppState>, id: String) -> Result<bool> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || Ok(core::wordpress::default_creds_active(&php, &wp, &docroot))).await
+}
+
 // ── Network / multisite management (§10.3) ───────────────────────────────────
 
 /// List the network's sub-sites (`wp site list`). Multisite-only.

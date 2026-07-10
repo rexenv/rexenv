@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, X as XIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, TECH_INPUT } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { createSite, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
@@ -109,7 +109,9 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   // WordPress one-click fields (used only when siteType === "wordpress").
   const [adminUser, setAdminUser] = useState("admin");
   const [adminEmail, setAdminEmail] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
+  // Default local-dev credentials admin/admin (consistent with site reset);
+  // the tunnels UI warns if a site still accepting them is shared publicly.
+  const [adminPassword, setAdminPassword] = useState("admin");
   const [language, setLanguage] = useState("");
   const [multisite, setMultisite] = useState<MultisiteMode>("none");
 
@@ -199,7 +201,10 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               domainBase={domainBase}
               onDomainBase={(v) => {
                 setDomainEdited(true);
-                setDomain(v);
+                // Lowercase AS TYPED (not on submit): domains are lowercase by
+                // convention, and macOS auto-capitalize/paste would otherwise
+                // land "Test1" in the field.
+                setDomain(v.toLowerCase());
               }}
               domainOk={domainOk}
               domainTaken={domainTaken}
@@ -379,7 +384,7 @@ function Step2(p: {
 
       <div className="grid grid-cols-2 gap-[13px]">
         <Field label="Site name">
-          <input autoFocus value={p.name} placeholder="my-site" onChange={(e) => p.setName(e.target.value)} className={FIELD_INPUT} />
+          <input {...TECH_INPUT} autoFocus value={p.name} placeholder="my-site" onChange={(e) => p.setName(e.target.value)} className={FIELD_INPUT} />
         </Field>
         <Field label="Domain">
           <div
@@ -389,7 +394,7 @@ function Step2(p: {
               p.domainTaken ? "border-status-error" : "border-rex-border-strong has-[input:focus]:border-brand",
             )}
           >
-            <input
+            <input {...TECH_INPUT}
               value={p.domainBase}
               onChange={(e) => p.onDomainBase(e.target.value.replace(/\.test$/, ""))}
               className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
@@ -446,7 +451,7 @@ function Step2(p: {
           </div>
           <div className="grid grid-cols-2 gap-[13px]">
             <Field label="Site title">
-              <input value={p.wpTitle} placeholder="My WordPress Site" onChange={(e) => p.setWpTitle(e.target.value)} className={FIELD_INPUT} />
+              <input {...TECH_INPUT} value={p.wpTitle} placeholder="My WordPress Site" onChange={(e) => p.setWpTitle(e.target.value)} className={FIELD_INPUT} />
             </Field>
             <Field label="Language">
               <select value={p.language} onChange={(e) => p.setLanguage(e.target.value)} className={FIELD_SELECT}>
@@ -460,15 +465,16 @@ function Step2(p: {
           </div>
           <div className="grid grid-cols-2 gap-[13px]">
             <Field label="Admin username">
-              <input value={p.adminUser} placeholder="admin" onChange={(e) => p.setAdminUser(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+              <input {...TECH_INPUT} value={p.adminUser} placeholder="admin" onChange={(e) => p.setAdminUser(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
             </Field>
             <Field label="Admin email">
-              <input value={p.adminEmail} placeholder="you@example.com" onChange={(e) => p.setAdminEmail(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+              <input {...TECH_INPUT} value={p.adminEmail} placeholder="you@example.com" onChange={(e) => p.setAdminEmail(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
             </Field>
           </div>
           <Field label="Admin password">
             <div className="flex h-9 items-center rounded-[9px] border border-rex-border-strong bg-rex-well pl-[11px] pr-1.5 transition-colors has-[input:focus]:border-brand has-[input:focus]:shadow-[0_0_0_3px_var(--rex-focus-ring)]">
-              <input
+              <input {...TECH_INPUT}
+                autoComplete="new-password"
                 type={p.showPassword ? "text" : "password"}
                 value={p.adminPassword}
                 placeholder="••••••••"

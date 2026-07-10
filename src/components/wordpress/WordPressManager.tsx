@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, LogIn, Network, Palette, Plus, RefreshCw, Replace, Search, Shield, Trash2, UserPlus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   openExternal,
   wpCoreReinstall,
   wpDbExport,
+  wpSiteReset,
   wpCoreUpdate,
   wpDebugGet,
   wpDebugSet,
@@ -194,7 +195,7 @@ export function WordPressManager({
       {sub === "network" && isNetwork && (
         <NetworkPanel siteId={siteId} mode={multisite} domain={domain} />
       )}
-      {sub === "tools" && <ToolsPanel siteId={siteId} />}
+      {sub === "tools" && <ToolsPanel siteId={siteId} domain={domain} />}
     </>
   );
 }
@@ -257,7 +258,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
       {/* Sub-sites */}
       <Card title="Sub-sites">
         <div className="mb-3 flex items-center gap-2">
-          <input
+          <input {...TECH_INPUT}
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder={mode === "subdomain" ? `slug (→ slug.${domain})` : `slug (→ ${domain}/slug)`}
@@ -365,7 +366,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
       <Card title="Super admins">
         <div className="mb-3 flex items-center gap-2">
           <Shield className="h-4 w-4 text-rex-text-muted" />
-          <input
+          <input {...TECH_INPUT}
             value={admin}
             onChange={(e) => setAdmin(e.target.value)}
             placeholder="username or email"
@@ -403,7 +404,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   );
 }
 
-function ToolsPanel({ siteId }: { siteId: string }) {
+function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const qc = useQueryClient();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -457,6 +458,7 @@ function ToolsPanel({ siteId }: { siteId: string }) {
     onError: (e) => toastBackendError(e),
   });
   const working = coreUpdate.isPending || coreReinstall.isPending;
+  const [resetOpen, setResetOpen] = useState(false);
   const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
 
   return (
@@ -466,14 +468,14 @@ function ToolsPanel({ siteId }: { siteId: string }) {
         <Card title="Search & replace">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <input
+              <input {...TECH_INPUT}
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
                 placeholder="old (e.g. old.test)"
                 className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
               />
               <span className="text-rex-text-muted">→</span>
-              <input
+              <input {...TECH_INPUT}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 placeholder="new (e.g. new.test)"
@@ -561,10 +563,119 @@ function ToolsPanel({ siteId }: { siteId: string }) {
           >
             Re-install core
           </button>
+          <button
+            className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
+            onClick={() => setResetOpen(true)}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Erase database &amp; reset site
+          </button>
           {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
         </div>
         {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
       </Card>
+      {resetOpen && <ResetSiteDialog siteId={siteId} domain={domain} onClose={() => setResetOpen(false)} />}
+    </div>
+  );
+}
+
+/** Type-to-confirm erase + reset. The fresh install uses the default
+ *  local-dev credentials (admin / admin) — deterministic, nothing stored. */
+function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [typed, setTyped] = useState("");
+  const [done, setDone] = useState(false);
+  const dbExport = useMutation({
+    mutationFn: () => wpDbExport(siteId),
+    onSuccess: (path) => toast.success(`Database exported to ${path}`),
+    onError: (e) => toastBackendError(e),
+  });
+  const reset = useMutation({
+    mutationFn: () => wpSiteReset(siteId),
+    onSuccess: () => {
+      setDone(true);
+      // Everything about this site changed (content, users, multisite flag).
+      qc.invalidateQueries();
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const match = typed === domain;
+  const busy = reset.isPending;
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="w-[440px] rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {done ? (
+          <>
+            <div className="text-[15px] font-semibold text-rex-text">Site reset complete</div>
+            <div className="mt-2 text-[13px] leading-[1.55] text-rex-text-muted">
+              <span className="font-mono">{domain}</span> is a clean WordPress install again. Admin account:
+            </div>
+            <div className="mt-3 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 py-2.5 font-mono text-[12.5px] text-rex-text-bright">
+              admin / admin
+            </div>
+            <div className="mt-2 text-[12px] text-rex-text-muted">One-click admin login keeps working too.</div>
+            <div className="mt-4 flex justify-end">
+              <button className={BTN} onClick={onClose}>
+                Close
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-[15px] font-semibold text-rex-text">Erase database &amp; reset site?</div>
+            <div className="mt-2 flex flex-col gap-2 text-[13px] leading-[1.55] text-rex-text-muted">
+              <p>
+                This <span className="font-medium text-status-error-bright">permanently erases the database</span> of{" "}
+                <span className="font-mono text-rex-text">{domain}</span> — all posts, pages, comments, users, and
+                settings. It cannot be undone.
+              </p>
+              <p>
+                Files stay on disk: plugins (they end up deactivated), themes, and uploads (no longer in the Media
+                Library). A fresh admin account is created with the default local credentials{" "}
+                <span className="font-mono text-rex-text">admin / admin</span>.
+              </p>
+            </div>
+            <button
+              className={BTN + " mt-3 flex items-center gap-1.5"}
+              disabled={dbExport.isPending || busy}
+              onClick={() => dbExport.mutate()}
+            >
+              <Download className="h-3.5 w-3.5" />
+              {dbExport.isPending ? "Exporting…" : "Export database first"}
+            </button>
+            <div className="mt-4 text-[12.5px] text-rex-text-muted">
+              Type <span className="font-mono text-rex-text">{domain}</span> to confirm:
+            </div>
+            <input {...TECH_INPUT}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={domain}
+              disabled={busy}
+              autoFocus
+              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button className={BTN} disabled={busy} onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                className={BTN + " flex items-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
+                disabled={!match || busy}
+                onClick={() => reset.mutate()}
+              >
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-rex-spin" />}
+                {busy ? "Erasing & reinstalling…" : "Erase database & reset"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -618,13 +729,13 @@ function UsersPanel({ siteId }: { siteId: string }) {
     <div className="flex flex-col gap-3">
       {/* Add user */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <input
+        <input {...TECH_INPUT}
           value={login}
           onChange={(e) => setLogin(e.target.value)}
           placeholder="username"
           className="h-[30px] w-32 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
-        <input
+        <input {...TECH_INPUT}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="email@site.test"
@@ -731,7 +842,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <input
+        <input {...TECH_INPUT}
           value={slug}
           onChange={(e) => setSlug(e.target.value)}
           placeholder="Theme slug (e.g. twentytwentyfour)"
@@ -967,7 +1078,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
     <div className="flex flex-col gap-3">
       {/* Add by slug */}
       <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <input
+        <input {...TECH_INPUT}
           value={slug}
           onChange={(e) => setSlug(e.target.value)}
           placeholder="Plugin slug (e.g. hello-dolly)"
@@ -994,7 +1105,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
       <div className="flex items-center gap-2">
         <div className="relative w-[230px]">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-rex-text-muted" />
-          <input
+          <input {...TECH_INPUT}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search plugins…"

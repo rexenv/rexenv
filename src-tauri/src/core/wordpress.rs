@@ -714,8 +714,11 @@ pub fn install_for_site(
     } else {
         format!("admin@{domain}")
     };
-    let admin_password =
-        if nonempty(&opts.admin_password) { opts.admin_password.clone() } else { "password".into() };
+    let admin_password = if nonempty(&opts.admin_password) {
+        opts.admin_password.clone()
+    } else {
+        DEFAULT_ADMIN.into() // local-dev default, consistent with reset_site
+    };
     let url = format!("https://{domain}");
     let db_name = db_name_for(domain);
 
@@ -735,6 +738,91 @@ pub fn install_for_site(
             locale: opts.language.trim(),
         },
     )
+}
+
+/// Multisite constants `wp core multisite-convert` writes into wp-config.php.
+/// A reset must clear them: a wp-config that still defines `MULTISITE` over a
+/// fresh single-site database is a fatal config error on every request.
+const MULTISITE_CONSTANTS: &[&str] = &[
+    "WP_ALLOW_MULTISITE",
+    "MULTISITE",
+    "SUBDOMAIN_INSTALL",
+    "DOMAIN_CURRENT_SITE",
+    "PATH_CURRENT_SITE",
+    "SITE_ID_CURRENT_SITE",
+    "BLOG_ID_CURRENT_SITE",
+];
+
+/// Default local-dev admin credentials (`admin` / `admin`) — used by the
+/// site reset and the New-site fallback. A deliberate convenience for a
+/// LOCAL-only site; the tunnels UI warns when a site still accepting these is
+/// shared publicly (see [`default_creds_active`]).
+pub const DEFAULT_ADMIN: &str = "admin";
+
+/// Reset a WordPress site to a clean **single-site** install: DROP the
+/// database, clear any multisite constants from wp-config.php, and re-run the
+/// step-skipping installer with the default local-dev credentials
+/// (admin / admin, `admin@<domain>`). Files stay on disk — core, wp-config
+/// (same DB name/salts), plugins, themes, uploads; only the database is
+/// recreated. Re-runnable: each step skips or tolerates already-done work, so
+/// a failure partway is fixed by running it again.
+pub fn reset_site(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    domain: &str,
+    site_name: &str,
+    mysql_basedir: &Path,
+) -> Result<()> {
+    // 1) Erase: drop the database with the bundled client (PATH-safe).
+    let db_name = db_name_for(domain);
+    super::database::drop_database(mysql_basedir, super::database::MYSQL_PORT, &db_name)?;
+
+    // 2) Clear multisite constants — best effort per constant (`wp config
+    //    delete` errors on one that isn't defined, which is the common case).
+    let path = format!("--path={}", docroot.display());
+    for constant in MULTISITE_CONSTANTS {
+        let _ = wp_cli(php_bin, wp_phar, &["config", "delete", constant, &path], None);
+    }
+
+    // 3) Fresh install via the existing re-runnable flow: core download and
+    //    wp-config creation skip (files kept), the DB is recreated, and
+    //    `wp core install` runs because `is-installed` is now false.
+    let db_host = format!("127.0.0.1:{}", super::database::MYSQL_PORT);
+    let url = format!("https://{domain}");
+    let admin_email = format!("admin@{domain}");
+    install_wordpress(
+        php_bin,
+        wp_phar,
+        &WpInstall {
+            docroot,
+            db_name: &db_name,
+            db_host: &db_host,
+            mysql_basedir,
+            url: &url,
+            title: site_name,
+            admin_user: DEFAULT_ADMIN,
+            admin_password: DEFAULT_ADMIN,
+            admin_email: &admin_email,
+            locale: "",
+        },
+    )
+}
+
+/// Whether the site still accepts the default local-dev credentials
+/// (admin / admin). Backs the tunnel-share warning: locally the default is a
+/// convenience, but on a public tunnel URL it's an open wp-admin. Any failure
+/// (no `admin` user, broken site, non-WP docroot) reads as `false`.
+pub fn default_creds_active(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> bool {
+    let path = format!("--path={}", docroot.display());
+    wp_cli(
+        php_bin,
+        wp_phar,
+        &["user", "check-password", DEFAULT_ADMIN, DEFAULT_ADMIN, &path],
+        None,
+    )
+    .map(|o| o.status.success())
+    .unwrap_or(false)
 }
 
 /// The wp-config.php path for a docroot (used by callers/tests).

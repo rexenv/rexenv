@@ -162,6 +162,16 @@ pub fn convert_multisite(
     get(conn, id)
 }
 
+/// Flip a site back to single-site after a reset — the fresh database has no
+/// network, and the reset cleared the multisite constants from wp-config.
+/// Returns the updated site (`None` if it doesn't exist).
+pub fn clear_multisite(conn: &Connection, id: &str) -> Result<Option<Site>> {
+    if !store::set_site_multisite(conn, id, MultisiteMode::None.as_db())? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// Switch a site's PHP version (Phase 2 §1.4): update ONLY the `php_version`
 /// column — no docroot, cert, or DB rebuild — and return the updated site (or
 /// `None` if it doesn't exist). The version must have a pinned build and is

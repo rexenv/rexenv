@@ -525,6 +525,21 @@ export async function wpDbExport(id: string): Promise<string> {
   return invoke<string>("wp_db_export", { id });
 }
 
+/** Reset a WP site to a clean single-site install: drops + recreates the
+ *  database and re-runs the installer with the default local-dev credentials
+ *  (admin / admin). Files stay on disk. */
+export async function wpSiteReset(id: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_site_reset", { id });
+}
+
+/** Whether the site still accepts the default admin / admin credentials
+ *  (backs the tunnel-share warning). */
+export async function wpDefaultCreds(id: string): Promise<boolean> {
+  if (!isTauri()) return true;
+  return invoke<boolean>("wp_default_creds", { id });
+}
+
 /** Convert a WP site to multisite ("subdomain" | "subdirectory"). Returns the
  *  updated site. No-op (null) outside Tauri. */
 export async function wpMultisiteConvert(id: string, mode: "subdomain" | "subdirectory"): Promise<Site | null> {
