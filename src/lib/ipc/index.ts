@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -528,6 +528,13 @@ export async function wpDebugGet(id: string): Promise<boolean> {
 export async function wpDebugSet(id: string, on: boolean): Promise<void> {
   if (!isTauri()) return;
   await invoke("wp_debug_set", { id, on });
+}
+
+/** Verify core files against wordpress.org checksums. ok=false + warnings is a
+ *  normal result (modified/missing/foreign files), not a thrown error. */
+export async function wpCoreVerifyChecksums(id: string): Promise<WpChecksumReport> {
+  if (!isTauri()) return { ok: true, real: [], benign: [], output: "" };
+  return invoke<WpChecksumReport>("wp_core_verify_checksums", { id });
 }
 
 /** The site's scheduled cron events, soonest first. */

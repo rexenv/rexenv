@@ -183,6 +183,20 @@ export interface WpUser {
   name: string;
 }
 
+/** Result of `wp core verify-checksums` (mirrors the Rust WpChecksumReport).
+ *  A failed verification is a normal result, split into real issues
+ *  (modified/missing/foreign core files) vs benign OS clutter (.DS_Store etc.,
+ *  "should not exist" findings only). */
+export interface WpChecksumReport {
+  /** Raw wp-cli exit verdict. Extra "should not exist" files do NOT fail it
+   *  (exit 0 + Success line); only modified/missing core files do. Never
+   *  drive a pass decision from `ok` alone — `real` is the signal. */
+  ok: boolean;
+  real: string[];
+  benign: string[];
+  output: string;
+}
+
 /** One scheduled cron event (mirrors the Rust WpCronEvent / `wp cron event list`). */
 export interface WpCronEvent {
   hook: string;

@@ -13,6 +13,7 @@ import {
   wpSiteReset,
   wpCacheFlush,
   wpCoreUpdate,
+  wpCoreVerifyChecksums,
   wpCronEvents,
   wpCronRunDue,
   wpCronRunHook,
@@ -53,7 +54,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
-import type { MultisiteMode, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpPlugin, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -538,6 +539,7 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const [dryRun, setDryRun] = useState(true);
   const [srResult, setSrResult] = useState<string | null>(null);
   const [coreOut, setCoreOut] = useState<string | null>(null);
+  const [verifyOut, setVerifyOut] = useState<WpChecksumReport | null>(null);
 
   const { data: wpDebug } = useQuery({
     queryKey: ["wp-debug", siteId],
@@ -644,6 +646,11 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const coreReinstall = useMutation({
     mutationFn: () => wpCoreReinstall(siteId),
     onSuccess: (out) => setCoreOut(out),
+    onError: (e) => toastBackendError(e),
+  });
+  const verify = useMutation({
+    mutationFn: () => wpCoreVerifyChecksums(siteId),
+    onSuccess: (r) => setVerifyOut(r),
     onError: (e) => toastBackendError(e),
   });
   const adminLogin = useMutation({
@@ -826,6 +833,18 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
             Re-install core
           </button>
           <button
+            className={maintBtn}
+            disabled={verify.isPending}
+            onClick={() => {
+              setVerifyOut(null);
+              verify.mutate();
+            }}
+          >
+            <Shield className="h-3.5 w-3.5" />
+            {verify.isPending ? "Verifying…" : "Verify core checksums"}
+          </button>
+          {verifyOut && <ChecksumResult r={verifyOut} />}
+          <button
             className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
             onClick={() => setResetOpen(true)}
           >
@@ -841,6 +860,61 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
         <CronCard siteId={siteId} />
       </div>
       {resetOpen && <ResetSiteDialog siteId={siteId} domain={domain} onClose={() => setResetOpen(false)} />}
+    </div>
+  );
+}
+
+/** Checksum verdict, four states, checked in this order so real findings can
+ *  never be swallowed: real issues (amber, benign collapsed to one dim line) →
+ *  wp-cli itself failed with no parsed findings (e.g. checksum download
+ *  failed: amber + raw output) → pass with benign OS clutter (soft green) →
+ *  clean pass. NOTE: wp-cli's own exit code is 0 even with "should not exist"
+ *  extras — it only fails on modified/missing core files — so `r.ok` alone
+ *  must never drive the pass branch. */
+function ChecksumResult({ r }: { r: WpChecksumReport }) {
+  const hasReal = r.real.length > 0;
+  const toolFailed = !hasReal && !r.ok;
+  const pass = !hasReal && !toolFailed;
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 rounded-lg border border-rex-border-strong border-l-[3px] bg-rex-surface-2 px-3 py-2.5",
+        pass ? "border-l-status-running" : "border-l-status-warning-bright",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {pass ? (
+          <Check className="h-4 w-4 flex-none text-status-running" />
+        ) : (
+          <AlertTriangle className="h-4 w-4 flex-none text-status-warning-bright" />
+        )}
+        <span className="text-[12px] text-rex-text-bright">
+          {hasReal
+            ? "Verification found modified, missing or foreign core files:"
+            : toolFailed
+              ? "Verification could not complete:"
+              : r.benign.length > 0
+                ? `Core files verify. ${r.benign.length} macOS system file(s) found — harmless, safe to ignore.`
+                : "Core files verify against wordpress.org checksums."}
+        </span>
+      </div>
+      {hasReal && (
+        <pre className="max-h-[160px] overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-rex-text-muted">
+          {r.real.join("\n")}
+        </pre>
+      )}
+      {toolFailed && (
+        <pre className="max-h-[160px] overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-rex-text-muted">
+          {r.output}
+        </pre>
+      )}
+      {r.benign.length > 0 && (
+        <div className="font-mono text-[10.5px] text-rex-text-dim" title={r.benign.join("\n")}>
+          {pass
+            ? r.benign.join("  ·  ")
+            : `+ ${r.benign.length} OS system file(s) (.DS_Store etc.) — harmless.`}
+        </div>
+      )}
     </div>
   );
 }

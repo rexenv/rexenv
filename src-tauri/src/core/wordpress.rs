@@ -643,6 +643,87 @@ pub fn cron_run_hook(
     wp_run(php_bin, wp_phar, docroot, &["cron", "event", "run", hook])
 }
 
+/// Result of `wp core verify-checksums` (Tools → Maintenance). A failed
+/// verification is a RESULT, not an `Err` — errors are reserved for wp-cli
+/// itself failing to run. Findings are split so the UI can tell harmless OS
+/// clutter from a genuinely modified install:
+/// - `real`: modified core files, missing core files, and foreign files that
+///   are NOT known OS noise (plus any warning we don't recognize — unknown
+///   stays loud, never silently benign).
+/// - `benign`: foreign files whose basename is known OS/Finder clutter
+///   (`.DS_Store`, AppleDouble `._*`, `Thumbs.db`, …). ONLY "should not
+///   exist" findings can be benign — a modified/missing core file never is.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpChecksumReport {
+    /// Raw wp-cli exit verdict. CAVEAT (verified live): extra "should not
+    /// exist" files do NOT fail the command — it exits 0 with a Success line
+    /// despite those warnings; only modified/missing core files exit 1. So
+    /// `ok` alone must never drive a pass decision; `real` is the signal.
+    pub ok: bool,
+    pub real: Vec<String>,
+    pub benign: Vec<String>,
+    /// Raw combined stdout+stderr (warnings arrive on stderr).
+    pub output: String,
+}
+
+/// OS/editor clutter that Finder & co. drop into directories — matched on the
+/// path's basename only, so `foo/.DS_Store-backdoor.php` stays a real finding.
+fn is_os_noise(path: &str) -> bool {
+    const NOISE: [&str; 7] = [
+        ".DS_Store",
+        "Thumbs.db",
+        "desktop.ini",
+        ".Spotlight-V100",
+        ".fseventsd",
+        ".Trashes",
+        ".localized",
+    ];
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    NOISE.contains(&name) || name.starts_with("._")
+}
+
+/// Split WP-CLI's verify-checksums warnings into real vs benign (see
+/// [`WpChecksumReport`]). The trailing "Error: … doesn't verify" summary line
+/// carries no per-file info and is skipped.
+fn classify_checksum_output(text: &str) -> (Vec<String>, Vec<String>) {
+    let mut real = Vec::new();
+    let mut benign = Vec::new();
+    for line in text.lines() {
+        let Some(msg) = line.trim().strip_prefix("Warning: ") else {
+            continue;
+        };
+        match msg.strip_prefix("File should not exist: ") {
+            Some(path) if is_os_noise(path) => benign.push(path.to_string()),
+            // Non-noise extras, modified ("doesn't verify against checksum"),
+            // missing ("doesn't exist"), and anything unrecognized: loud.
+            _ => real.push(msg.to_string()),
+        }
+    }
+    (real, benign)
+}
+
+/// Verify core files against wordpress.org's checksums for the installed
+/// version. Detects modified/missing core files and foreign files in core dirs.
+pub fn core_verify_checksums(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+) -> Result<WpChecksumReport> {
+    let path = format!("--path={}", docroot.display());
+    let out = wp_cli(php_bin, wp_phar, &["core", "verify-checksums", &path], None)?;
+    let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if !err.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&err);
+    }
+    let (real, benign) = classify_checksum_output(&text);
+    Ok(WpChecksumReport { ok: out.status.success(), real, benign, output: text })
+}
+
 /// Flush the WordPress object cache (`wp cache flush`).
 pub fn cache_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
     wp_run(php_bin, wp_phar, docroot, &["cache", "flush"])
@@ -1061,6 +1142,36 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn checksum_findings_split_real_from_os_noise() {
+        let out = "\
+Warning: File doesn't verify against checksum: wp-includes/version.php
+Warning: File should not exist: wp-admin/.DS_Store
+Warning: File should not exist: wp-includes/._blocks
+Warning: File should not exist: wp-admin/backdoor.php
+Warning: File doesn't exist: wp-includes/functions.php
+Warning: something new wp-cli might say: mystery.php
+Error: WordPress installation doesn't verify against checksums.";
+        let (real, benign) = classify_checksum_output(out);
+        // Benign: basename-matched OS clutter among "should not exist" only.
+        assert_eq!(benign, vec!["wp-admin/.DS_Store", "wp-includes/._blocks"]);
+        // Real: modified, non-noise extra, missing, and the unknown warning.
+        assert_eq!(real.len(), 4, "real: {real:?}");
+        assert!(real.iter().any(|r| r.contains("version.php")));
+        assert!(real.iter().any(|r| r.contains("backdoor.php")));
+        assert!(real.iter().any(|r| r.contains("functions.php")));
+        assert!(real.iter().any(|r| r.contains("mystery.php")));
+        // A noise-looking name buried in a real filename stays real.
+        let (real2, benign2) =
+            classify_checksum_output("Warning: File should not exist: x/.DS_Store-backdoor.php");
+        assert!(benign2.is_empty() && real2.len() == 1);
+        // Modified/missing core files are NEVER benign, even with noise names.
+        let (real3, benign3) = classify_checksum_output(
+            "Warning: File doesn't verify against checksum: wp-admin/.DS_Store",
+        );
+        assert!(benign3.is_empty() && real3.len() == 1);
     }
 
     #[test]

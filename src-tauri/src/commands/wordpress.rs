@@ -406,6 +406,17 @@ pub async fn wp_cron_run_hook(
     wp_blocking(move || core::wordpress::cron_run_hook(&php, &wp, &docroot, &hook)).await
 }
 
+/// Verify core files against wordpress.org checksums. `ok: false` + per-file
+/// warnings is a normal result, not an error.
+#[tauri::command]
+pub async fn wp_core_verify_checksums(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<core::wordpress::WpChecksumReport> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::core_verify_checksums(&php, &wp, &docroot)).await
+}
+
 /// Flush the object cache. Returns WP-CLI's confirmation message.
 #[tauri::command]
 pub async fn wp_cache_flush(state: State<'_, AppState>, id: String) -> Result<String> {
