@@ -12,6 +12,7 @@ import {
   deleteBlueprint,
   dnsStatus,
   getAppInfo,
+  getSetting,
   listBlueprints,
   listPhpVersions,
   openExternal,
@@ -126,6 +127,12 @@ function GeneralPrefsCard() {
   });
 
   const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
+  // The RAW setting (null/blank = using the computed default) — drives the
+  // "Reset to default" affordance, which is only shown for a custom folder.
+  const { data: customDir } = useQuery({
+    queryKey: ["setting", SITES_DIR_KEY],
+    queryFn: () => getSetting(SITES_DIR_KEY),
+  });
   const saveFolder = useMutation({
     mutationFn: (v: string) => setSetting(SITES_DIR_KEY, v),
     onSuccess: () => {
@@ -163,6 +170,16 @@ function GeneralPrefsCard() {
             {resolved ?? "…"}
           </div>
         </div>
+        {!!customDir?.trim() && (
+          <button
+            onClick={() => saveFolder.mutate("")}
+            disabled={saveFolder.isPending}
+            title="Use the default folder (~/rexenv/Sites) for new sites — existing sites stay where they are"
+            className="flex h-8 flex-none items-center rounded-[9px] px-[9px] text-[12px] text-rex-text-muted transition-colors hover:text-rex-text-bright disabled:opacity-40"
+          >
+            Reset to default
+          </button>
+        )}
         <button
           onClick={async () => {
             const v = await pickFolder("Choose your sites folder", resolved ?? undefined);
