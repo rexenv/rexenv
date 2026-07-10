@@ -378,6 +378,34 @@ pub async fn wp_permalink_set(
     .await
 }
 
+/// List the site's scheduled cron events (soonest first).
+#[tauri::command]
+pub async fn wp_cron_events(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<core::wordpress::WpCronEvent>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::cron_event_list(&php, &wp, &docroot)).await
+}
+
+/// Run all currently-due cron events. Returns WP-CLI's summary message.
+#[tauri::command]
+pub async fn wp_cron_run_due(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::cron_run_due(&php, &wp, &docroot)).await
+}
+
+/// Run one hook's scheduled event(s) immediately, due or not.
+#[tauri::command]
+pub async fn wp_cron_run_hook(
+    state: State<'_, AppState>,
+    id: String,
+    hook: String,
+) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::cron_run_hook(&php, &wp, &docroot, &hook)).await
+}
+
 /// Flush the object cache. Returns WP-CLI's confirmation message.
 #[tauri::command]
 pub async fn wp_cache_flush(state: State<'_, AppState>, id: String) -> Result<String> {

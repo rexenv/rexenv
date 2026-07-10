@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -528,6 +528,25 @@ export async function wpDebugGet(id: string): Promise<boolean> {
 export async function wpDebugSet(id: string, on: boolean): Promise<void> {
   if (!isTauri()) return;
   await invoke("wp_debug_set", { id, on });
+}
+
+/** The site's scheduled cron events, soonest first. */
+export async function wpCronEvents(id: string): Promise<WpCronEvent[]> {
+  if (!isTauri()) return [];
+  return invoke<WpCronEvent[]>("wp_cron_events", { id });
+}
+
+/** Run all currently-due cron events; returns WP-CLI's summary message. */
+export async function wpCronRunDue(id: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("wp_cron_run_due", { id });
+}
+
+/** Run one hook's scheduled event(s) immediately, due or not. A hook scheduled
+ *  more than once runs every instance (WP-CLI has no per-instance id). */
+export async function wpCronRunHook(id: string, hook: string): Promise<string> {
+  if (!isTauri()) return "";
+  return invoke<string>("wp_cron_run_hook", { id, hook });
 }
 
 /** Flush the object cache; returns WP-CLI's confirmation message. */

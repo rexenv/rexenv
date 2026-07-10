@@ -13,6 +13,9 @@ import {
   wpSiteReset,
   wpCacheFlush,
   wpCoreUpdate,
+  wpCronEvents,
+  wpCronRunDue,
+  wpCronRunHook,
   wpDebugFlagGet,
   wpDebugFlagSet,
   wpDebugGet,
@@ -833,8 +836,107 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
         </div>
         {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
       </Card>
+      {/* Cron — spans the row */}
+      <div className="col-span-2">
+        <CronCard siteId={siteId} />
+      </div>
       {resetOpen && <ResetSiteDialog siteId={siteId} domain={domain} onClose={() => setResetOpen(false)} />}
     </div>
+  );
+}
+
+/** Read-only cron schedule + a "run due now" trigger (Tools → Cron). */
+function CronCard({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const { data: events, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["wp-cron", siteId],
+    queryFn: () => wpCronEvents(siteId),
+    ...WP_QUERY,
+  });
+
+  const runDue = useMutation({
+    mutationFn: () => wpCronRunDue(siteId),
+    onSuccess: (msg) => {
+      toast.success(msg.replace(/^Success:\s*/, "").trim() || "Due cron events executed.");
+      qc.invalidateQueries({ queryKey: ["wp-cron", siteId] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const runHook = useMutation({
+    mutationFn: (hook: string) => wpCronRunHook(siteId, hook),
+    onSuccess: (msg) => {
+      toast.success(msg.replace(/^Success:\s*/, "").trim() || "Event executed.");
+      qc.invalidateQueries({ queryKey: ["wp-cron", siteId] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const busy = runDue.isPending || runHook.isPending;
+
+  return (
+    <Card title="Cron">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] text-rex-text-muted">
+            {events ? `${events.length} scheduled event(s)` : "…"} — local dev has no visitors,
+            so overdue events are normal; run them on demand.
+          </span>
+          <button
+            className={BTN + " flex items-center gap-1.5"}
+            disabled={busy}
+            onClick={() => runDue.mutate()}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {runDue.isPending ? "Running…" : "Run due now"}
+          </button>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-rex-border-subtle">
+          {isLoading ? (
+            <PanelLoading what="cron events" />
+          ) : isError ? (
+            <PanelError what="cron events" error={error} onRetry={refetch} />
+          ) : !events || events.length === 0 ? (
+            <div className="p-4 text-center text-[12.5px] text-rex-text-muted">
+              No scheduled cron events.
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
+                <span className="flex-1">Hook</span>
+                <span className="w-[170px]">Next run</span>
+                <span className="w-[110px]">Recurrence</span>
+                <span className="w-[64px]" />
+              </div>
+              <div className="max-h-[300px] overflow-y-auto">
+                {events.map((e, i) => (
+                  <div
+                    key={`${e.hook}-${i}`}
+                    className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-text-bright" title={e.hook}>
+                      {e.hook}
+                    </span>
+                    <span className="w-[170px] text-[12px] text-rex-text-muted" title={`${e.nextRun} GMT`}>
+                      {e.nextRunRelative || "now"}
+                    </span>
+                    <span className="w-[110px] text-[12px] text-rex-text-muted">{e.recurrence}</span>
+                    <button
+                      className={BTN + " w-[64px] justify-center text-center"}
+                      title={`Run ${e.hook} now (due or not)`}
+                      disabled={busy}
+                      onClick={() => runHook.mutate(e.hook)}
+                    >
+                      {runHook.isPending && runHook.variables === e.hook ? "…" : "Run"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 

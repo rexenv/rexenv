@@ -574,6 +574,75 @@ pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) ->
     Ok(out)
 }
 
+/// One scheduled cron event (Tools → Cron).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpCronEvent {
+    pub hook: String,
+    /// GMT timestamp, WP-CLI's `next_run_gmt` (e.g. `2026-07-11 12:00:00`).
+    pub next_run: String,
+    /// Human offset, WP-CLI's `next_run_relative` (e.g. `11 hours 4 minutes`).
+    pub next_run_relative: String,
+    /// `1 hour`, `1 day`, … or `Non-repeating`.
+    pub recurrence: String,
+}
+
+// `wp cron event list --format=json` wire shape (WP-CLI's snake_case keys).
+#[derive(Deserialize)]
+struct WireCronEvent {
+    #[serde(default)]
+    hook: String,
+    #[serde(default)]
+    next_run_gmt: String,
+    #[serde(default)]
+    next_run_relative: String,
+    #[serde(default)]
+    recurrence: String,
+}
+
+/// List scheduled cron events, soonest first (WP-CLI's default order).
+pub fn cron_event_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpCronEvent>> {
+    let wire: Vec<WireCronEvent> = wp_json(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["cron", "event", "list", "--fields=hook,next_run_gmt,next_run_relative,recurrence"],
+    )?;
+    Ok(wire
+        .into_iter()
+        .map(|e| WpCronEvent {
+            hook: e.hook,
+            next_run: e.next_run_gmt,
+            next_run_relative: e.next_run_relative,
+            recurrence: e.recurrence,
+        })
+        .collect())
+}
+
+/// Run every cron event that is currently due (`wp cron event run --due-now`).
+/// Returns WP-CLI's "Executed a total of N cron events" message.
+pub fn cron_run_due(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["cron", "event", "run", "--due-now"])
+}
+
+/// Run ONE hook's scheduled event(s) immediately, due or not
+/// (`wp cron event run <hook>`). WP-CLI addresses cron events by hook name —
+/// there is no per-instance id — so a hook scheduled more than once runs every
+/// instance. Hook names are site-defined (no whitelist possible); they pass as
+/// a single argv element, never through a shell.
+pub fn cron_run_hook(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    hook: &str,
+) -> Result<String> {
+    let hook = hook.trim();
+    if hook.is_empty() {
+        return Err(Error::Other("empty cron hook name".into()));
+    }
+    wp_run(php_bin, wp_phar, docroot, &["cron", "event", "run", hook])
+}
+
 /// Flush the WordPress object cache (`wp cache flush`).
 pub fn cache_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
     wp_run(php_bin, wp_phar, docroot, &["cache", "flush"])

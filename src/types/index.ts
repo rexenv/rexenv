@@ -183,6 +183,14 @@ export interface WpUser {
   name: string;
 }
 
+/** One scheduled cron event (mirrors the Rust WpCronEvent / `wp cron event list`). */
+export interface WpCronEvent {
+  hook: string;
+  nextRun: string; // GMT timestamp, e.g. "2026-07-11 12:00:00"
+  nextRunRelative: string; // e.g. "11 hours 4 minutes"
+  recurrence: string; // "1 hour", "1 day", … or "Non-repeating"
+}
+
 /** One plugin/theme in a blueprint (slug + activate-on-install). §11.3 */
 export interface BlueprintItem {
   slug: string;
