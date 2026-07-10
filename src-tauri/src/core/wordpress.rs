@@ -539,6 +539,43 @@ pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) ->
     Ok(out)
 }
 
+/// Boolean wp-config constants the UI may toggle individually (Tools →
+/// Debugging). A whitelist: the name lands in wp-cli argv, so free-form input
+/// would be config injection at the trust boundary.
+pub const DEBUG_FLAGS: [&str; 3] = ["WP_DEBUG_LOG", "WP_DEBUG_DISPLAY", "SCRIPT_DEBUG"];
+
+fn ensure_debug_flag(name: &str) -> Result<()> {
+    if DEBUG_FLAGS.contains(&name) {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "not a toggleable debug constant: {name}"
+        )))
+    }
+}
+
+/// Read one whitelisted boolean wp-config constant (unset ⇒ false).
+pub fn config_flag_get(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<bool> {
+    ensure_debug_flag(name)?;
+    let v = wp_run(php_bin, wp_phar, docroot, &["config", "get", name]).unwrap_or_default();
+    Ok(matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true"))
+}
+
+/// Set one whitelisted boolean wp-config constant (`--raw` ⇒ a real boolean,
+/// not the string `"true"`). Explicit `false` rather than delete, so the state
+/// the UI shows is the state wp-config declares.
+pub fn config_flag_set(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    name: &str,
+    on: bool,
+) -> Result<String> {
+    ensure_debug_flag(name)?;
+    let val = if on { "true" } else { "false" };
+    wp_run(php_bin, wp_phar, docroot, &["config", "set", name, val, "--raw"])
+}
+
 /// Whether WP-CLI maintenance mode is active for the site (the `.maintenance`
 /// file WP-CLI manages in the docroot). `is-active` exits 0 when active,
 /// non-zero when not — same status-as-answer shape as `core is-installed`.
@@ -866,6 +903,17 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn debug_flag_whitelist_blocks_arbitrary_constants() {
+        for ok in DEBUG_FLAGS {
+            assert!(ensure_debug_flag(ok).is_ok(), "{ok} should be allowed");
+        }
+        // Free-form names would reach wp-cli argv — config injection.
+        for bad in ["WP_DEBUG", "DISALLOW_FILE_MODS", "X; rm -rf", "", "wp_debug_log"] {
+            assert!(ensure_debug_flag(bad).is_err(), "{bad:?} should be rejected");
+        }
     }
 
     #[test]

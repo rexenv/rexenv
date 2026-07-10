@@ -273,6 +273,33 @@ pub async fn wp_debug_set(state: State<'_, AppState>, id: String, on: bool) -> R
     wp_blocking(move || core::wordpress::wp_debug_set(&php, &wp, &docroot, on).map(|_| ())).await
 }
 
+/// Read one whitelisted boolean wp-config debug constant
+/// (WP_DEBUG_LOG / WP_DEBUG_DISPLAY / SCRIPT_DEBUG).
+#[tauri::command]
+pub async fn wp_debug_flag_get(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<bool> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::config_flag_get(&php, &wp, &docroot, &name)).await
+}
+
+/// Set one whitelisted boolean wp-config debug constant.
+#[tauri::command]
+pub async fn wp_debug_flag_set(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    on: bool,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::config_flag_set(&php, &wp, &docroot, &name, on).map(|_| ())
+    })
+    .await
+}
+
 /// Whether maintenance mode is active for the site.
 #[tauri::command]
 pub async fn wp_maintenance_get(state: State<'_, AppState>, id: String) -> Result<bool> {

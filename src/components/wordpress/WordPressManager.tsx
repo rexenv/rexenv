@@ -12,6 +12,8 @@ import {
   wpDbExport,
   wpSiteReset,
   wpCoreUpdate,
+  wpDebugFlagGet,
+  wpDebugFlagSet,
   wpDebugGet,
   wpDebugSet,
   wpMaintenanceGet,
@@ -41,6 +43,7 @@ import {
   wpUserLoginUrl,
   wpUsers,
 } from "@/lib/ipc";
+import type { WpDebugFlag } from "@/lib/ipc";
 import type { MultisiteMode, WpPlugin, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
@@ -502,6 +505,13 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
   );
 }
 
+/** The individually-toggleable debug constants (Tools → Debugging). */
+const DEBUG_FLAG_ROWS: { name: WpDebugFlag; hint: string }[] = [
+  { name: "WP_DEBUG_LOG", hint: "write errors to wp-content/debug.log" },
+  { name: "WP_DEBUG_DISPLAY", hint: "print errors on pages" },
+  { name: "SCRIPT_DEBUG", hint: "use unminified core JS/CSS" },
+];
+
 function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const qc = useQueryClient();
   const [from, setFrom] = useState("");
@@ -518,7 +528,31 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
 
   const toggleDebug = useMutation({
     mutationFn: (on: boolean) => wpDebugSet(siteId, on),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-debug", siteId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wp-debug", siteId] });
+      // The main toggle writes WP_DEBUG_LOG/WP_DEBUG_DISPLAY too.
+      qc.invalidateQueries({ queryKey: ["wp-debug-flags", siteId] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const { data: debugFlags } = useQuery({
+    queryKey: ["wp-debug-flags", siteId],
+    queryFn: async () => {
+      const [log, display, script] = await Promise.all([
+        wpDebugFlagGet(siteId, "WP_DEBUG_LOG"),
+        wpDebugFlagGet(siteId, "WP_DEBUG_DISPLAY"),
+        wpDebugFlagGet(siteId, "SCRIPT_DEBUG"),
+      ]);
+      return { WP_DEBUG_LOG: log, WP_DEBUG_DISPLAY: display, SCRIPT_DEBUG: script };
+    },
+    ...WP_QUERY,
+  });
+
+  const setDebugFlag = useMutation({
+    mutationFn: ({ name, on }: { name: WpDebugFlag; on: boolean }) =>
+      wpDebugFlagSet(siteId, name, on),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-debug-flags", siteId] }),
     onError: (e) => toastBackendError(e),
   });
 
@@ -635,7 +669,8 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12.5px] text-rex-text-muted">
-              Log PHP notices/errors to <span className="font-mono">wp-content/debug.log</span>.
+              <span className="font-mono text-[11.5px] text-rex-text-bright">WP_DEBUG</span>
+              <span className="ml-1.5">— sets the recommended trio (log on, display off).</span>
             </span>
             <StartStopToggle
               running={!!wpDebug}
@@ -643,6 +678,22 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
               onToggle={() => toggleDebug.mutate(!wpDebug)}
               label="Toggle WP_DEBUG"
             />
+          </div>
+          <div className="flex flex-col gap-2 border-t border-rex-border-subtle pt-2.5">
+            {DEBUG_FLAG_ROWS.map((f) => (
+              <div key={f.name} className="flex items-center justify-between gap-2">
+                <span className="min-w-0 text-[12.5px] text-rex-text-muted">
+                  <span className="font-mono text-[11.5px] text-rex-text-bright">{f.name}</span>
+                  <span className="ml-1.5">— {f.hint}</span>
+                </span>
+                <StartStopToggle
+                  running={!!debugFlags?.[f.name]}
+                  variant="setting"
+                  onToggle={() => setDebugFlag.mutate({ name: f.name, on: !debugFlags?.[f.name] })}
+                  label={`Toggle ${f.name}`}
+                />
+              </div>
+            ))}
           </div>
           <button className={maintBtn} disabled={adminLogin.isPending} onClick={() => adminLogin.mutate()}>
             <LogIn className="h-3.5 w-3.5" />

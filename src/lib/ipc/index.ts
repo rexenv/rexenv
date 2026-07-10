@@ -517,6 +517,22 @@ export async function wpDebugSet(id: string, on: boolean): Promise<void> {
   await invoke("wp_debug_set", { id, on });
 }
 
+/** The wp-config debug constants toggleable individually (mirrors the Rust
+ *  DEBUG_FLAGS whitelist — the backend rejects anything else). */
+export type WpDebugFlag = "WP_DEBUG_LOG" | "WP_DEBUG_DISPLAY" | "SCRIPT_DEBUG";
+
+/** Read one boolean wp-config debug constant (unset ⇒ false). */
+export async function wpDebugFlagGet(id: string, name: WpDebugFlag): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("wp_debug_flag_get", { id, name });
+}
+
+/** Set one boolean wp-config debug constant. No-op outside Tauri. */
+export async function wpDebugFlagSet(id: string, name: WpDebugFlag, on: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_debug_flag_set", { id, name, on });
+}
+
 /** Whether maintenance mode is active. Mock fallback outside Tauri. */
 export async function wpMaintenanceGet(id: string): Promise<boolean> {
   if (!isTauri()) return false;
