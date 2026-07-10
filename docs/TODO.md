@@ -106,7 +106,7 @@ Each line = one feature, live-verified before its commit.
   plus a fix for the global Settings button: a byte-identical Caddyfile makes plain
   `caddy reload` a no-op, so re-issued certs were never served until an edge restart —
   both paths now force-reload; re-issue is atomic (temp-write + rename, never
-  delete-first), so a failure leaves the old cert intact and served
+  delete-first), so a failure leaves the old cert intact and served `57b7281`
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
