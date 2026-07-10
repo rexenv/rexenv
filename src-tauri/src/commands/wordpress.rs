@@ -273,6 +273,24 @@ pub async fn wp_debug_set(state: State<'_, AppState>, id: String, on: bool) -> R
     wp_blocking(move || core::wordpress::wp_debug_set(&php, &wp, &docroot, on).map(|_| ())).await
 }
 
+/// Whether maintenance mode is active for the site.
+#[tauri::command]
+pub async fn wp_maintenance_get(state: State<'_, AppState>, id: String) -> Result<bool> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::maintenance_mode_get(&php, &wp, &docroot)).await
+}
+
+/// Toggle maintenance mode for the site (visitors see WordPress's
+/// "briefly unavailable" page while it's on).
+#[tauri::command]
+pub async fn wp_maintenance_set(state: State<'_, AppState>, id: String, on: bool) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::maintenance_mode_set(&php, &wp, &docroot, on).map(|_| ())
+    })
+    .await
+}
+
 /// Search-replace across the DB; `dryRun` reports the count without changing data.
 /// Returns the number of replacements.
 #[tauri::command]

@@ -256,6 +256,8 @@ pub fn run() {
             commands::wordpress::wp_admin_login_url,
             commands::wordpress::wp_debug_get,
             commands::wordpress::wp_debug_set,
+            commands::wordpress::wp_maintenance_get,
+            commands::wordpress::wp_maintenance_set,
             commands::wordpress::wp_search_replace,
             commands::wordpress::wp_rewrite_flush,
             commands::wordpress::wp_core_update,

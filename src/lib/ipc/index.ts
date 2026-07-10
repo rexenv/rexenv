@@ -517,6 +517,19 @@ export async function wpDebugSet(id: string, on: boolean): Promise<void> {
   await invoke("wp_debug_set", { id, on });
 }
 
+/** Whether maintenance mode is active. Mock fallback outside Tauri. */
+export async function wpMaintenanceGet(id: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("wp_maintenance_get", { id });
+}
+
+/** Toggle maintenance mode (visitors see the "briefly unavailable" page).
+ *  No-op outside Tauri. */
+export async function wpMaintenanceSet(id: string, on: boolean): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_maintenance_set", { id, on });
+}
+
 /** Search-replace across the DB; `dryRun` reports the count without changing data.
  *  Returns the number of replacements. Mock returns a sample count outside Tauri. */
 export async function wpSearchReplace(id: string, from: string, to: string, dryRun: boolean): Promise<number> {

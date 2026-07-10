@@ -539,6 +539,33 @@ pub fn wp_debug_set(php_bin: &Path, wp_phar: &Path, docroot: &Path, on: bool) ->
     Ok(out)
 }
 
+/// Whether WP-CLI maintenance mode is active for the site (the `.maintenance`
+/// file WP-CLI manages in the docroot). `is-active` exits 0 when active,
+/// non-zero when not — same status-as-answer shape as `core is-installed`.
+pub fn maintenance_mode_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<bool> {
+    let path = format!("--path={}", docroot.display());
+    Ok(
+        wp_cli(php_bin, wp_phar, &["maintenance-mode", "is-active", &path], None)
+            .map(|o| o.status.success())
+            .unwrap_or(false),
+    )
+}
+
+/// Toggle maintenance mode. Idempotent: WP-CLI errors on activate-when-active /
+/// deactivate-when-inactive, so an already-in-state site is a no-op success.
+pub fn maintenance_mode_set(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    on: bool,
+) -> Result<String> {
+    if maintenance_mode_get(php_bin, wp_phar, docroot)? == on {
+        return Ok(String::new());
+    }
+    let sub = if on { "activate" } else { "deactivate" };
+    wp_run(php_bin, wp_phar, docroot, &["maintenance-mode", sub])
+}
+
 /// Run `wp search-replace <from> <to> [--dry-run] --format=count` and return the
 /// number of replacements (a dry-run reports the count WITHOUT changing data).
 pub fn search_replace(

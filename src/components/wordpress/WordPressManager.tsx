@@ -14,6 +14,8 @@ import {
   wpCoreUpdate,
   wpDebugGet,
   wpDebugSet,
+  wpMaintenanceGet,
+  wpMaintenanceSet,
   wpMultisiteConvert,
   wpNetworkSiteCreate,
   wpNetworkSiteDelete,
@@ -520,6 +522,25 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
     onError: (e) => toastBackendError(e),
   });
 
+  const { data: maint } = useQuery({
+    queryKey: ["wp-maintenance", siteId],
+    queryFn: () => wpMaintenanceGet(siteId),
+    ...WP_QUERY,
+  });
+
+  const toggleMaint = useMutation({
+    mutationFn: (on: boolean) => wpMaintenanceSet(siteId, on),
+    onSuccess: (_data, on) => {
+      qc.invalidateQueries({ queryKey: ["wp-maintenance", siteId] });
+      toast.success(
+        on
+          ? "Maintenance mode on — visitors see the “briefly unavailable” page."
+          : "Maintenance mode off — the site is public again.",
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   const searchReplace = useMutation({
     mutationFn: () => wpSearchReplace(siteId, from.trim(), to.trim(), dryRun),
     onSuccess: (n) =>
@@ -633,6 +654,17 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
       {/* Maintenance */}
       <Card title="Maintenance">
         <div className="flex flex-col gap-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[12.5px] text-rex-text-muted">
+              Maintenance mode — visitors see &ldquo;briefly unavailable&rdquo;.
+            </span>
+            <StartStopToggle
+              running={!!maint}
+              variant="setting"
+              onToggle={() => toggleMaint.mutate(!maint)}
+              label="Toggle maintenance mode"
+            />
+          </div>
           <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
             Regenerate permalinks
           </button>
