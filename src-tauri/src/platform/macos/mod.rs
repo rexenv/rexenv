@@ -491,6 +491,15 @@ impl ShellRunner for MacosShell {
             Err(Error::Other(format!("`open {target}` failed: {status}")))
         }
     }
+
+    fn reveal(&self, path: &str) -> Result<()> {
+        let status = std::process::Command::new("open").args(["-R", path]).status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("`open -R {path}` failed: {status}")))
+        }
+    }
 }
 
 pub struct MacosBinaryProvider;

@@ -173,6 +173,10 @@ pub trait ShellRunner: Send + Sync {
     /// Open a path or URL in the OS default handler (Finder for a folder, the
     /// default browser for an `http(s)` URL). macOS: `open <target>`.
     fn open(&self, target: &str) -> Result<()>;
+
+    /// Reveal a file in the OS file manager with the file selected (not opened).
+    /// macOS: `open -R <path>`.
+    fn reveal(&self, path: &str) -> Result<()>;
 }
 
 /// Target architecture, used by `BinaryProvider` to pick the right artifact.

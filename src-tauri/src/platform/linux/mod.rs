@@ -103,6 +103,9 @@ impl ShellRunner for LinuxShell {
     fn open(&self, _target: &str) -> Result<()> {
         todo!("linux shell open")
     }
+    fn reveal(&self, _path: &str) -> Result<()> {
+        todo!("linux shell reveal")
+    }
 }
 
 pub struct LinuxBinaryProvider;

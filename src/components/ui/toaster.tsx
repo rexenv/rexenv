@@ -31,6 +31,17 @@ export function Toaster() {
                 {t.message}
               </span>
               {t.command && <CommandBlock command={t.command} />}
+              {t.action && (
+                <button
+                  onClick={() => {
+                    t.action?.onClick();
+                    dismiss(t.id);
+                  }}
+                  className="mt-2 rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[12px] text-rex-text transition-colors hover:border-brand"
+                >
+                  {t.action.label}
+                </button>
+              )}
             </div>
             <button
               onClick={() => dismiss(t.id)}

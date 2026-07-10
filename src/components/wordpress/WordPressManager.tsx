@@ -7,6 +7,7 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   openExternal,
+  revealPath,
   wpCoreReinstall,
   wpDbExport,
   wpSiteReset,
@@ -549,7 +550,11 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
   });
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
-    onSuccess: (path) => toast.success(`Database exported to ${path}`),
+    onSuccess: (path) =>
+      toast.success(`Database exported to ${path}`, {
+        label: "Show in Finder",
+        onClick: () => void revealPath(path).catch(toastBackendError),
+      }),
     onError: (e) => toastBackendError(e),
   });
   const working = coreUpdate.isPending || coreReinstall.isPending;
@@ -682,7 +687,11 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
   const [done, setDone] = useState(false);
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
-    onSuccess: (path) => toast.success(`Database exported to ${path}`),
+    onSuccess: (path) =>
+      toast.success(`Database exported to ${path}`, {
+        label: "Show in Finder",
+        onClick: () => void revealPath(path).catch(toastBackendError),
+      }),
     onError: (e) => toastBackendError(e),
   });
   const reset = useMutation({

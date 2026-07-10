@@ -143,6 +143,13 @@ export async function openExternal(target: string): Promise<void> {
   await invoke("open_external", { target });
 }
 
+/** Reveal a file in the OS file manager with the file selected (macOS:
+ *  `open -R`). No-op outside Tauri. */
+export async function revealPath(path: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("reveal_path", { path });
+}
+
 /** Open a PTY shell in a site's docroot (bundled PHP + `wp` on PATH). Returns the
  *  session id; output streams via {@link onTerminalOutput}. Desktop-app only. */
 export async function openTerminal(siteId: string, rows: number, cols: number): Promise<string> {

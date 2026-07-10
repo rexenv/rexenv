@@ -104,6 +104,9 @@ impl ShellRunner for WindowsShell {
     fn open(&self, _target: &str) -> Result<()> {
         todo!("windows shell open")
     }
+    fn reveal(&self, _path: &str) -> Result<()> {
+        todo!("windows shell reveal")
+    }
 }
 
 pub struct WindowsBinaryProvider;

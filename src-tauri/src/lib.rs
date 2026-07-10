@@ -215,6 +215,7 @@ pub fn run() {
             commands::system::init_error,
             commands::system::global_status,
             commands::system::open_external,
+            commands::system::reveal_path,
             commands::system::dns_status,
             commands::system::system_setup,
             commands::system::trust_local_ca,

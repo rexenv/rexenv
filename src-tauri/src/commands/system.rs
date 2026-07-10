@@ -123,6 +123,13 @@ pub fn open_external(state: State<'_, AppState>, target: String) -> Result<()> {
     state.platform.shell().open(&target)
 }
 
+/// Reveal a file in the OS file manager with the file selected — e.g. the
+/// "Show in Finder" action on the database-export success toast.
+#[tauri::command]
+pub fn reveal_path(state: State<'_, AppState>, path: String) -> Result<()> {
+    state.platform.shell().reveal(&path)
+}
+
 // ── DNS & SSL + autostart (Settings, §11.1) ──────────────────────────────────
 
 /// DNS resolver health for the Settings indicator (mirrors the frontend `DnsStatus`).
