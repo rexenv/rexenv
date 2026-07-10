@@ -84,6 +84,41 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   command, toasts gained an optional action button (10s TTL); both export call sites
   (Tools + Reset dialog) reveal the written `.sql`. Verified live from both.
 
+## ✓ Shipped — 11 Jul 2026 session (Site Settings + WP Manager expansion)
+
+Each line = one feature, live-verified before its commit.
+
+- [x] Site Settings tab v1 — rename, site info (type / DB name / multisite), HTTPS
+  cert card (issued/expires/SANs/folder via `ssl::site_cert_info`) `5f091c1`
+- [x] Maintenance mode toggle (Tools) `edd3255`
+- [x] Debug-constant toggles — WP_DEBUG_LOG / WP_DEBUG_DISPLAY / SCRIPT_DEBUG,
+  core-whitelisted `baae862`
+- [x] Permalink structure picker (stock presets, honest Custom display) `780c8c2`
+- [x] Cache flush + delete-all-transients `8b69ffb`
+- [x] Per-user role dropdown; primary-admin guard enforced in core `b4416ce`
+- [x] Cron viewer + run-due + per-hook forceful run `3b95253`
+- [x] Core checksum verify with benign/real triage (exit code never drives the
+  verdict) `6b31503`
+- [x] DB import — typed confirm + backup-first, bundled mysql over stdin `fe7654b`
+- [x] WXR content export to Downloads `59c400c`
+- [x] Tools regrouped: Backup & restore / Core / Maintenance cards `66d528e`
+
+## Parked (deliberate — needs explicit go; don't pick up silently)
+
+- **Cert regenerate** (Settings-tab follow-up) — re-issue must orchestrate an edge
+  reload to actually serve the new leaf; read-only cert info shipped instead.
+- **Site language switch** — needs a language list + download flow (M).
+- **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
+  and the DB name derives from the domain (L).
+- **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
+- **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
+  seam (L).
+- **Options editor** (arbitrary `wp option update`) — foot-gun UI (M).
+- **Core version pick / downgrade** — needs a version-list source + `--force`
+  semantics (M).
+- **Checksum "clean up macOS system files" action** — safe scoped delete proposed
+  (basename-matched noise only, under the docroot), not confirmed (S).
+
 ## Known baselines (not bugs)
 
 - WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"

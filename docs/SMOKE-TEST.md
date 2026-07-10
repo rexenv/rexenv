@@ -22,10 +22,15 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] Site loads at **`https://<name>.test`** with a valid lock (no cert warning).
 - [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in.
 
+## Site Settings tab
+- [ ] Site → **Settings** shows real content: rename sticks (Sites list updates), DB name matches Adminer, cert card shows issued/expires dates + SANs.
+
 ## WordPress Manager
 - [ ] Plugins tab lists plugins; install + activate a plugin works.
 - [ ] Themes tab lists themes; activate works.
 - [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change).
+- [ ] Tools → Maintenance: toggle **Maintenance mode** on → site shows "briefly unavailable" in a private window; off → normal again.
+- [ ] Tools → Backup & restore: **Export database** writes a `.sql` to Downloads; **Import database** round-trips it (make a post → export → delete the post → import → post is back).
 
 ## Mail (Mailpit)
 - [ ] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments).

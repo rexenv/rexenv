@@ -194,6 +194,21 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   128M). Switching PHP version or web server = config regen + reload, never a
   docroot/cert/DB rebuild. Domains are validated in core before becoming a
   path/config/cert/DB name (M7).
+- **wp-cli argument hygiene (extends M7):** anything that lands in wp-cli argv from IPC
+  is whitelisted in core (`DEBUG_FLAGS`, `PERMALINK_STRUCTURES`, `USER_ROLES`); names
+  that can't be whitelisted because they're site-defined (cron hooks) pass as a single
+  argv element, never through a shell. Guards live in CORE, not the UI: the primary
+  administrator (lowest-ID admin — the one-click-login anchor) is refused by
+  `user_set_role` itself, so no IPC path can demote it.
+- **Bundled-client rule (recurring trap):** `wp db create/export/import` shell out to a
+  PATH `mysql`/`mysqldump` that a Finder-launched app doesn't have (bare launchd PATH).
+  Any DB feature must use the bundled clients from the extracted MySQL tree with
+  shell-free I/O — `--result-file` for output, stdin for input — never `wp db …`,
+  never shell redirection (app-data paths contain spaces).
+- **Tool results ≠ app errors:** `wp core verify-checksums` exits 0 even with
+  "should not exist" extras (verified live) — verdicts derive from PARSED findings,
+  never exit codes alone; extras triage as benign only when the basename is known OS
+  noise (`.DS_Store`, `._*`, …), and unknown warnings stay loud.
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
@@ -217,7 +232,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 10. Verification pattern
 
-- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (~153 and growing).
+- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (~172 and growing).
 - Live checks = standalone `src-tauri/examples/*.rs` binaries (spawn real services,
   probe real ports) — the repo's convention instead of mocked integration tests.
 - Manual release gate: `docs/SMOKE-TEST.md` on a clean Mac.
