@@ -84,6 +84,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   command, toasts gained an optional action button (10s TTL); both export call sites
   (Tools + Reset dialog) reveal the written `.sql`. Verified live from both.
 
+## Known baselines (not bugs)
+
+- WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"
+  in checksum verify until wordpress.org's manifest covers them. Honest tool
+  output, not a bug — intentionally not filtered.
+
 ## Blocked on external work
 
 - [ ] **Xdebug per-site toggle** (Phase 3 §8.2) — blocked on §11.2: no hosted

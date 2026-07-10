@@ -804,26 +804,9 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
         </div>
       </Card>
 
-      {/* Maintenance */}
-      <Card title="Maintenance">
+      {/* Backup & restore */}
+      <Card title="Backup & restore">
         <div className="flex flex-col gap-2">
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <span className="text-[12.5px] text-rex-text-muted">
-              Maintenance mode — visitors see &ldquo;briefly unavailable&rdquo;.
-            </span>
-            <StartStopToggle
-              running={!!maint}
-              variant="setting"
-              onToggle={() => toggleMaint.mutate(!maint)}
-              label="Toggle maintenance mode"
-            />
-          </div>
-          <button className={maintBtn} disabled={cacheFlush.isPending} onClick={() => cacheFlush.mutate()}>
-            {cacheFlush.isPending ? "Flushing…" : "Flush object cache"}
-          </button>
-          <button className={maintBtn} disabled={transients.isPending} onClick={() => transients.mutate()}>
-            {transients.isPending ? "Deleting…" : "Delete all transients"}
-          </button>
           <button className={maintBtn} disabled={dbExport.isPending} onClick={() => dbExport.mutate()}>
             <Download className="h-3.5 w-3.5" />
             {dbExport.isPending ? "Exporting…" : "Export database"}
@@ -840,6 +823,12 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
             <Download className="h-3.5 w-3.5" />
             {contentExport.isPending ? "Exporting…" : "Export content (WXR)"}
           </button>
+        </div>
+      </Card>
+
+      {/* Core */}
+      <Card title="Core">
+        <div className="flex flex-col gap-2">
           <button
             className={maintBtn}
             disabled={coreUpdate.isPending}
@@ -875,6 +864,31 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
             {verify.isPending ? "Verifying…" : "Verify core checksums"}
           </button>
           {verifyOut && <ChecksumResult r={verifyOut} />}
+          {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
+        </div>
+        {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
+      </Card>
+
+      {/* Maintenance */}
+      <Card title="Maintenance">
+        <div className="flex flex-col gap-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[12.5px] text-rex-text-muted">
+              Maintenance mode — visitors see &ldquo;briefly unavailable&rdquo;.
+            </span>
+            <StartStopToggle
+              running={!!maint}
+              variant="setting"
+              onToggle={() => toggleMaint.mutate(!maint)}
+              label="Toggle maintenance mode"
+            />
+          </div>
+          <button className={maintBtn} disabled={cacheFlush.isPending} onClick={() => cacheFlush.mutate()}>
+            {cacheFlush.isPending ? "Flushing…" : "Flush object cache"}
+          </button>
+          <button className={maintBtn} disabled={transients.isPending} onClick={() => transients.mutate()}>
+            {transients.isPending ? "Deleting…" : "Delete all transients"}
+          </button>
           <button
             className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
             onClick={() => setResetOpen(true)}
@@ -882,9 +896,7 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
             <RotateCcw className="h-3.5 w-3.5" />
             Erase database &amp; reset site
           </button>
-          {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
         </div>
-        {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
       </Card>
       {/* Cron — spans the row */}
       <div className="col-span-2">
