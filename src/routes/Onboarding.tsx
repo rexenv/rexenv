@@ -72,12 +72,19 @@ export function Onboarding() {
         ))}
       </div>
 
-      {/* step content */}
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-12 text-center">
-        {step === 0 && <Welcome />}
-        {step === 1 && <Install />}
-        {step === 2 && <Domains />}
-        {step === 3 && <Done />}
+      {/* step content — scrollable so the pinned footer's Continue stays
+          reachable at any window height: min-h-0 lets this area shrink instead
+          of pushing the footer out of the clipped root; the inner min-h-full +
+          justify-center centers when there's room yet scrolls from the top
+          when there isn't (justify-center directly on a scroll container
+          would make the top unreachable). */}
+      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-12 text-center">
+        <div className="flex min-h-full flex-col items-center justify-center py-5">
+          {step === 0 && <Welcome />}
+          {step === 1 && <Install />}
+          {step === 2 && <Domains />}
+          {step === 3 && <Done />}
+        </div>
       </div>
 
       {/* footer: skip · step label · primary */}
