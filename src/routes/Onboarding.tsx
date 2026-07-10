@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Globe, Lock, RotateCw, Shield } from "lucide-react";
-import { coreBinariesPlan, prefetchCoreBinaries, retryDownload, systemSetup } from "@/lib/ipc";
+import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, systemSetup } from "@/lib/ipc";
 import { useDownloads } from "@/lib/useDownloads";
 import { Track, pctOf } from "@/components/shell/DownloadPanel";
 import type { DownloadItem, DownloadPhase, PlannedDownload } from "@/types";
@@ -26,6 +27,14 @@ export function Onboarding() {
   const finish = () => navigate("/sites");
   const next = () => (step >= STEP_COUNT - 1 ? finish() : setStep(step + 1));
   const meta = STEP_META[step];
+
+  // The Domains & SSL step is MANDATORY: without the resolver + trusted CA no
+  // site loads, so Continue stays locked until real state says both are done
+  // (same ["dns-status"] source as FirstRunGate; Domains invalidates it after
+  // a successful setup run).
+  const { data: dns } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
+  const setupDone = !!dns?.resolverInstalled && !!dns?.caTrusted;
+  const locked = step === 2 && !setupDone;
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-[radial-gradient(130%_100%_at_50%_-10%,var(--rex-hero-bg-from),var(--rex-hero-bg-to)_60%)]">
@@ -63,21 +72,16 @@ export function Onboarding() {
 
       {/* footer: skip · step label · primary */}
       <div className="relative z-10 flex flex-none items-center justify-between gap-3 px-[34px] pb-[30px]">
-        <div className="min-w-[90px]">
-          {step === 0 && (
-            <button
-              onClick={finish}
-              className="px-1 py-2 text-[13px] text-rex-text-dim transition-colors hover:text-rex-text-bright"
-            >
-              Skip setup
-            </button>
-          )}
-        </div>
+        {/* No "Skip setup": skipping lands in an app where no site can load
+            (resolver/CA missing) — the same hole the locked Continue closes. */}
+        <div className="min-w-[90px]" />
         <div className="font-mono text-[11px] text-rex-text-label">{meta.label}</div>
         <div className="flex min-w-[90px] justify-end">
           <button
             onClick={next}
-            className="flex h-10 items-center gap-2 rounded-[11px] bg-primary px-[18px] text-[13.5px] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110"
+            disabled={locked}
+            title={locked ? "Finish the domains & SSL setup to continue" : undefined}
+            className="flex h-10 items-center gap-2 rounded-[11px] bg-primary px-[18px] text-[13.5px] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
           >
             {meta.primary}
             {step < STEP_COUNT - 1 && <ChevronRight className="h-[15px] w-[15px]" strokeWidth={2.2} />}
@@ -283,6 +287,7 @@ function StatusPill({ icon, label }: { icon: ReactNode; label: string }) {
 }
 
 function Domains() {
+  const qc = useQueryClient();
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [error, setError] = useState("");
   // Real privileged setup: install the .test resolver (admin prompt) + trust the
@@ -296,6 +301,11 @@ function Domains() {
     } catch (e) {
       setError(String(e));
       setState("error");
+    } finally {
+      // Unlock (or keep locked) the wizard's Continue from real state — also
+      // refreshes FirstRunGate's view after a partial run (e.g. resolver
+      // installed but the keychain dialog cancelled).
+      void qc.invalidateQueries({ queryKey: ["dns-status"] });
     }
   };
   return (
