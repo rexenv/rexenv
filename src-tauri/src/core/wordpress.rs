@@ -385,6 +385,41 @@ pub fn user_create(
     wp_run(php_bin, wp_phar, docroot, &["user", "create", login, email, &role_arg, "--porcelain"])
 }
 
+/// Stock roles assignable from the UI. Whitelisted like [`DEBUG_FLAGS`]: the
+/// role lands in wp-cli argv.
+pub const USER_ROLES: [&str; 5] =
+    ["administrator", "editor", "author", "contributor", "subscriber"];
+
+/// Change a user's role (`wp user set-role` — replaces all current roles, same
+/// as wp-admin's dropdown). Whitelisted roles only, and the PRIMARY
+/// administrator ([`primary_admin_id`]) is protected: demoting it breaks
+/// one-click admin login / site tools and can lock the install out of
+/// wp-admin entirely.
+pub fn user_set_role(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    user_id: u64,
+    role: &str,
+) -> Result<String> {
+    if !USER_ROLES.contains(&role) {
+        return Err(Error::Other(format!("not an assignable role: {role}")));
+    }
+    if user_id == primary_admin_id(php_bin, wp_phar, docroot)? {
+        return Err(Error::Other(
+            "the primary administrator's role is protected — one-click admin login and \
+             rexenv's site tools depend on it. Create another administrator first."
+                .into(),
+        ));
+    }
+    wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["user", "set-role", &user_id.to_string(), role],
+    )
+}
+
 /// Convert a single-site WordPress install to a network (`wp core
 /// multisite-convert [--subdomains]`), writing the network constants into
 /// wp-config. `subdomains` chooses subdomain vs subdirectory install (§10.1).
@@ -957,6 +992,16 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn role_whitelist_is_the_stock_five() {
+        for ok in ["administrator", "editor", "author", "contributor", "subscriber"] {
+            assert!(USER_ROLES.contains(&ok), "{ok} should be assignable");
+        }
+        for bad in ["super-admin", "Administrator", "", "none", "custom_role"] {
+            assert!(!USER_ROLES.contains(&bad), "{bad:?} should be rejected");
+        }
     }
 
     #[test]

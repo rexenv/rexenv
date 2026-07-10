@@ -487,6 +487,19 @@ export async function wpUserCreate(id: string, login: string, email: string, rol
   await invoke("wp_user_create", { id, login, email, role });
 }
 
+/** Change a user's role (stock roles only; the primary administrator is
+ *  refused by the backend). No-op outside Tauri. */
+export async function wpUserSetRole(id: string, userId: number, role: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_user_set_role", { id, userId, role });
+}
+
+/** The site's primary administrator id (lowest-ID admin) — its role is locked. */
+export async function wpPrimaryAdmin(id: string): Promise<number> {
+  if (!isTauri()) return 1;
+  return invoke<number>("wp_primary_admin", { id });
+}
+
 /** Issue a one-time "Log in as" magic URL for a user. Desktop-app only. */
 export async function wpUserLoginUrl(id: string, userId: number): Promise<string> {
   if (!isTauri()) throw new Error('"Log in as" requires the rexenv desktop app.');

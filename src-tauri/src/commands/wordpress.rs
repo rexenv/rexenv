@@ -201,6 +201,30 @@ pub async fn wp_user_create(
     .await
 }
 
+/// The site's PRIMARY administrator id (lowest-ID admin). The UI locks this
+/// user's role control — core::user_set_role refuses it regardless.
+#[tauri::command]
+pub async fn wp_primary_admin(state: State<'_, AppState>, id: String) -> Result<u64> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::primary_admin_id(&php, &wp, &docroot)).await
+}
+
+/// Change a user's role (whitelisted stock roles; the primary administrator is
+/// refused in core).
+#[tauri::command]
+pub async fn wp_user_set_role(
+    state: State<'_, AppState>,
+    id: String,
+    user_id: u64,
+    role: String,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::user_set_role(&php, &wp, &docroot, user_id, &role).map(|_| ())
+    })
+    .await
+}
+
 /// Issue a one-time "Log in as" URL for `userId`: a single-use, short-TTL,
 /// loopback-only magic link the UI opens in the browser (§7.1).
 #[tauri::command]

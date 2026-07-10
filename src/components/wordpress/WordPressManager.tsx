@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -35,6 +35,7 @@ import {
   wpPluginInstall,
   wpPluginUpdate,
   wpPlugins,
+  wpPrimaryAdmin,
   wpSuperAdminAdd,
   wpSuperAdmins,
   wpThemeActivate,
@@ -45,6 +46,7 @@ import {
   wpTransientDeleteAll,
   wpUserCreate,
   wpUserLoginUrl,
+  wpUserSetRole,
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
@@ -986,6 +988,22 @@ function UsersPanel({ siteId }: { siteId: string }) {
     onError: (e) => toastBackendError(e),
   });
 
+  const { data: primaryAdmin } = useQuery({
+    queryKey: ["wp-primary-admin", siteId],
+    queryFn: () => wpPrimaryAdmin(siteId),
+    ...WP_QUERY,
+  });
+
+  const changeRole = useMutation({
+    mutationFn: ({ userId, role: r }: { userId: number; role: string }) =>
+      wpUserSetRole(siteId, userId, r),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wp-users", siteId] });
+      toast.success("Role updated.");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   return (
     <div className="flex flex-col gap-3">
       {/* Add user */}
@@ -1043,6 +1061,9 @@ function UsersPanel({ siteId }: { siteId: string }) {
                 u={u}
                 busy={loginAs.isPending}
                 onLoginAs={() => loginAs.mutate(u.id)}
+                primary={u.id === primaryAdmin}
+                roleBusy={changeRole.isPending}
+                onSetRole={(r) => changeRole.mutate({ userId: u.id, role: r })}
               />
             ))}
           </>
@@ -1052,7 +1073,22 @@ function UsersPanel({ siteId }: { siteId: string }) {
   );
 }
 
-function UserRow({ u, busy, onLoginAs }: { u: WpUser; busy: boolean; onLoginAs: () => void }) {
+function UserRow({
+  u,
+  busy,
+  onLoginAs,
+  primary,
+  roleBusy,
+  onSetRole,
+}: {
+  u: WpUser;
+  busy: boolean;
+  onLoginAs: () => void;
+  /** The primary administrator — its role is locked (backend refuses too). */
+  primary: boolean;
+  roleBusy: boolean;
+  onSetRole: (role: string) => void;
+}) {
   const role = u.roles.split(",")[0]?.trim() || "";
   const rm = roleMeta(role);
   const initial = (u.name || u.login).trim().charAt(0).toUpperCase() || "?";
@@ -1069,13 +1105,29 @@ function UserRow({ u, busy, onLoginAs }: { u: WpUser; busy: boolean; onLoginAs: 
         <div className="truncate font-mono text-[11px] text-rex-text-dim">{u.email}</div>
       </div>
       <span className="w-[120px]">
-        {role && (
+        {primary ? (
           <span
-            className="rounded-full border px-2 py-0.5 text-[10.5px] font-medium capitalize"
+            title="Primary administrator — role locked (one-click login and site tools depend on it)"
+            className="inline-flex cursor-help items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium capitalize"
             style={{ background: rm.bg, color: rm.color, borderColor: rm.border }}
           >
             {role}
+            <Lock className="h-2.5 w-2.5" strokeWidth={2.2} />
           </span>
+        ) : (
+          <select
+            value={role}
+            disabled={roleBusy}
+            onChange={(e) => onSetRole(e.target.value)}
+            className="h-[26px] w-full rounded border border-rex-border bg-rex-surface-2 px-1.5 text-[11.5px] capitalize text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+          >
+            {!WP_ROLES.includes(role) && role && <option value={role}>{role}</option>}
+            {WP_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
         )}
       </span>
       <button className={BTN + " flex w-[84px] items-center justify-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
