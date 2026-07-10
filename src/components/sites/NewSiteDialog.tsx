@@ -537,7 +537,7 @@ function Step2(p: {
   );
 }
 
-function MultiCard({
+export function MultiCard({
   label,
   example,
   selected,

@@ -13,6 +13,7 @@ import {
   wpCoreUpdate,
   wpDebugGet,
   wpDebugSet,
+  wpMultisiteConvert,
   wpNetworkSiteCreate,
   wpNetworkSiteDelete,
   wpNetworkSites,
@@ -38,6 +39,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { MultisiteMode, WpPlugin, WpTheme, WpUser } from "@/types";
+import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
 
@@ -164,7 +166,9 @@ export function WordPressManager({
     { key: "themes", label: "Themes", count: themes.length },
     { key: "users", label: "Users", count: users.length },
     { key: "tools", label: "Tools" },
-    ...(isNetwork ? [{ key: "network" as const, label: "Network", count: netSites.length }] : []),
+    // Always shown: multisite sites get the network manager, single sites the
+    // convert panel (the §10.1 convert had no post-create UI until this).
+    { key: "network", label: "Network", count: isNetwork ? netSites.length : undefined },
   ];
 
   return (
@@ -192,11 +196,102 @@ export function WordPressManager({
       {sub === "plugins" && <PluginsPanel siteId={siteId} />}
       {sub === "themes" && <ThemesPanel siteId={siteId} />}
       {sub === "users" && <UsersPanel siteId={siteId} />}
-      {sub === "network" && isNetwork && (
-        <NetworkPanel siteId={siteId} mode={multisite} domain={domain} />
-      )}
+      {sub === "network" &&
+        (isNetwork ? (
+          <NetworkPanel siteId={siteId} mode={multisite} domain={domain} />
+        ) : (
+          <ConvertPanel siteId={siteId} domain={domain} />
+        ))}
       {sub === "tools" && <ToolsPanel siteId={siteId} domain={domain} />}
     </>
+  );
+}
+
+/** Network sub-tab for a single (non-multisite) site: convert it to a network.
+ *  Backend (`wp_multisite_convert`, §10.1) persists the mode and reloads the
+ *  edge — subdomain mode picks up the wildcard cert/route automatically (the
+ *  per-site cert always carries the `*.domain` SAN). On success the parent's
+ *  `multisite` prop refreshes via ["sites"] and this tab flips to NetworkPanel. */
+function ConvertPanel({ siteId, domain }: { siteId: string; domain: string }) {
+  const qc = useQueryClient();
+  const [mode, setMode] = useState<Exclude<MultisiteMode, "none">>("subdirectory");
+
+  const convert = useMutation({
+    mutationFn: () => wpMultisiteConvert(siteId, mode),
+    onSuccess: () => {
+      toast.success(`Converted to ${mode} multisite`);
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      qc.invalidateQueries({ queryKey: ["wp-info", siteId] });
+      qc.invalidateQueries({ queryKey: ["wp-network-sites", siteId] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-3">
+        <Network className="h-4 w-4 text-brand" />
+        <span className="text-[13px] font-medium text-rex-text">Multisite network</span>
+        <span className="rounded-full bg-rex-well px-2 py-0.5 text-[11px] font-medium text-rex-text-muted">
+          Not enabled
+        </span>
+      </div>
+
+      <Card title="Convert to multisite">
+        <div className="text-[12.5px] leading-[1.5] text-rex-text-muted">
+          Run many sites from this one WordPress install. Choose how sub-sites are addressed:
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-[10px]">
+          <MultiCard
+            label="Subdomain"
+            example={`site1.${domain}`}
+            selected={mode === "subdomain"}
+            onClick={() => setMode("subdomain")}
+          />
+          <MultiCard
+            label="Subdirectory"
+            example={`${domain}/site1`}
+            selected={mode === "subdirectory"}
+            onClick={() => setMode("subdirectory")}
+          />
+        </div>
+        {mode === "subdomain" && (
+          <div className="mt-2.5 text-[12px] text-rex-text-muted">
+            <span className="font-mono">*.{domain}</span> DNS, HTTPS certificate and routing are
+            handled automatically.
+          </div>
+        )}
+        <div className="mt-2.5 flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[12px] leading-[1.5] text-status-warning-bright">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          <span>
+            Conversion edits <span className="font-mono">wp-config.php</span> and changes the
+            site's URL structure. Switching between subdomain and subdirectory later isn't
+            straightforward — pick the mode you'll keep.
+          </span>
+        </div>
+        <button
+          className={BTN + " mt-3 flex items-center gap-1.5"}
+          disabled={convert.isPending}
+          onClick={async () => {
+            if (
+              await confirm({
+                title: "Convert to multisite?",
+                message: `Convert ${domain} to a ${mode} network? This edits wp-config.php and changes the URL structure. (Reset site returns it to a clean single-site install.)`,
+                confirmLabel: "Convert",
+              })
+            )
+              convert.mutate();
+          }}
+        >
+          {convert.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Network className="h-3.5 w-3.5" />
+          )}
+          {convert.isPending ? "Converting…" : "Convert to multisite"}
+        </button>
+      </Card>
+    </div>
   );
 }
 
