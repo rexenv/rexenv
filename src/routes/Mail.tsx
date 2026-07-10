@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, ExternalLink, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
 import {
@@ -216,7 +216,7 @@ export function Mail() {
           <div className="flex flex-col gap-2 border-b border-rex-border p-2.5">
             <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5">
               <Search className="h-3.5 w-3.5 text-rex-text-muted" />
-              <input
+              <input {...TECH_INPUT}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search mail…"

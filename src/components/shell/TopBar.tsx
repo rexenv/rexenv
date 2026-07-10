@@ -1,6 +1,7 @@
 import { Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
+import { TECH_INPUT } from "@/lib/utils";
 
 interface TopBarProps {
   title: string;
@@ -45,7 +46,7 @@ export function TopBar({
               className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-rex-text-dim"
               strokeWidth={1.9}
             />
-            <input
+            <input {...TECH_INPUT}
               type="text"
               placeholder={searchPlaceholder ?? "Search…"}
               value={onSearchChange ? searchValue ?? "" : undefined}

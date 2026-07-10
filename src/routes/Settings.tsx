@@ -3,7 +3,7 @@ import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, promptText } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -473,7 +473,7 @@ function DefaultPortsCard() {
   const input = (label: string, value: string, onChange: (v: string) => void) => (
     <div>
       <label className="mb-1.5 block text-[12px] text-rex-text-muted">{label}</label>
-      <input
+      <input {...TECH_INPUT}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="h-[34px] w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] font-mono text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
@@ -565,7 +565,7 @@ function BlueprintsSetting() {
       {/* Add */}
       <div className="flex flex-col gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
         <div className="flex items-center gap-2">
-          <input
+          <input {...TECH_INPUT}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Blueprint name"
@@ -577,13 +577,13 @@ function BlueprintsSetting() {
             <option value="subdirectory">Subdirectory MS</option>
           </select>
         </div>
-        <input
+        <input {...TECH_INPUT}
           value={plugins}
           onChange={(e) => setPlugins(e.target.value)}
           placeholder="Plugin slugs (comma-separated, e.g. woocommerce, jetpack)"
           className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
-        <input
+        <input {...TECH_INPUT}
           value={themes}
           onChange={(e) => setThemes(e.target.value)}
           placeholder="Theme slugs (comma-separated)"

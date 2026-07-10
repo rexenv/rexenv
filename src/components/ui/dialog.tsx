@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
 import { Button } from "@/components/ui/button";
+import { TECH_INPUT } from "@/lib/utils";
 
 /** Shared overlay + centered card for in-app modals. WKWebView (Tauri) doesn't
  *  reliably support window.alert/confirm/prompt, so we use these instead. */
@@ -87,7 +88,7 @@ export function PromptDialog({
     <Overlay onClose={onCancel}>
       <div className="text-[15px] font-semibold text-rex-text">{title}</div>
       {label && <label className="mb-1.5 mt-3 block text-[12px] text-rex-text-muted">{label}</label>}
-      <input
+      <input {...TECH_INPUT}
         autoFocus
         value={value}
         placeholder={placeholder}
