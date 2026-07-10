@@ -315,10 +315,12 @@ pub fn provision(
     // Issue the per-site cert (wildcard SAN) signed by our CA.
     ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &new.domain)?;
 
-    // Database branch (pluggable): Blank PHP needs none. WordPress/Laravel will
-    // provision MySQL here (9.2) — left as a hook so that flow reuses provision.
+    // Database branch (pluggable): Blank PHP needs none. For WordPress the DB is
+    // created downstream by `wordpress::install_wordpress` (bundled-mysql
+    // `create_database` before `wp core install`), not here.
     if needs_database(new.site_type) {
-        // TODO(§8/§9): create the site's database before persisting.
+        // Intentionally empty — marks where a site type needing a DB at
+        // provision time (rather than at install time) would plug in.
     }
 
     new.path = docroot.display().to_string();
