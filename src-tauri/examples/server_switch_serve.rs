@@ -66,7 +66,7 @@ async fn main() {
 
     // Switch → FrankenPHP.
     sites::set_web_server(&conn, &site.id, WebServer::Frankenphp).unwrap();
-    let checks = mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap()).await.expect("reload→fp");
+    let checks = mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap(), false).await.expect("reload→fp");
     service_manager::await_ready(checks).await.expect("fp backend ready");
     std::thread::sleep(Duration::from_millis(1200));
     let (c1, v1) = fetch(&ca_pem);
@@ -75,7 +75,7 @@ async fn main() {
 
     // Switch back → Nginx.
     sites::set_web_server(&conn, &site.id, WebServer::Nginx).unwrap();
-    let checks = mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap()).await.expect("reload→nginx");
+    let checks = mgr.reload(&*plat, &ca, &sites::list(&conn).unwrap(), false).await.expect("reload→nginx");
     service_manager::await_ready(checks).await.expect("ready after switch back");
     std::thread::sleep(Duration::from_millis(1200));
     let (c2, v2) = fetch(&ca_pem);

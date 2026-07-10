@@ -232,6 +232,7 @@ pub fn run() {
             commands::sites::create_site,
             commands::sites::rename_site,
             commands::sites::site_cert_info,
+            commands::sites::regenerate_site_cert,
             commands::sites::set_site_php_version,
             commands::sites::set_site_web_server,
             commands::sites::delete_site,

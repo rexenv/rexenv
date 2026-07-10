@@ -193,9 +193,16 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
 
 /// Reload Caddy's config via its admin API (no privilege needed even though
 /// Caddy may run as root). Run after writing a new Caddyfile (e.g. site added).
-pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Result<()> {
+///
+/// `force` matters for **cert rotation**: cert paths are stable, so a re-issued
+/// leaf leaves the Caddyfile byte-identical — and Caddy SKIPS a reload whose
+/// config is unchanged, keeping the OLD cert in its in-memory cache until the
+/// edge restarts. `--force` re-provisions the tls app so the file loaders
+/// re-read the cert files. Pass `false` for config-shape changes (site
+/// add/delete/switch), `true` after re-issuing certs.
+pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path, force: bool) -> Result<()> {
     let sock = admin_socket_path(platform)?;
-    let args = vec![
+    let mut args = vec![
         "reload".to_string(),
         "--config".to_string(),
         caddyfile.display().to_string(),
@@ -205,6 +212,9 @@ pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Re
         "--address".to_string(),
         admin_address(&sock),
     ];
+    if force {
+        args.push("--force".to_string());
+    }
     wait_ok(platform.supervisor().spawn(caddy_bin, &args)?, "caddy reload")
 }
 

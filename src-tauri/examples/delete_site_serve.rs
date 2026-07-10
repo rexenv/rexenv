@@ -76,7 +76,7 @@ async fn main() {
     let removed = sites::teardown(&conn, &*plat, &del.id).unwrap();
     let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     services::reload_nginx(&*plat, &nginx_bin, &cfg2.nginx_conf, &cfg2.nginx_prefix).unwrap();
-    proxy::reload(&*plat, &caddy_bin, &cfg2.caddyfile).unwrap();
+    proxy::reload(&*plat, &caddy_bin, &cfg2.caddyfile, false).unwrap();
     tokio::time::sleep(Duration::from_millis(800)).await;
 
     println!("removed={removed}; remaining sites={:?}", sites::list(&conn).unwrap().iter().map(|s| s.domain.clone()).collect::<Vec<_>>());

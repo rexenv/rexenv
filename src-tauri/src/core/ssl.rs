@@ -203,6 +203,58 @@ pub fn ensure_site_cert(
     Ok(cert)
 }
 
+/// Always re-issue a site cert at explicit paths, atomically: the new pair is
+/// generated and written to temp files first, then renamed over the old ones.
+/// A failure at any point leaves the previous cert/key fully intact — NEVER
+/// delete-first (a failed issuance after a delete leaves the site cert-less and
+/// the Caddyfile pointing at missing files, which breaks the next edge start).
+pub fn reissue_site_cert_at(
+    cert_path: &Path,
+    key_path: &Path,
+    ca: &LocalCa,
+    domain: &str,
+) -> Result<SiteCert> {
+    let (cert_pem, key_pem) = generate_site_cert(ca, domain)?;
+    if let Some(parent) = cert_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let cert_tmp = cert_path.with_extension("pem.tmp");
+    let key_tmp = key_path.with_extension("pem.tmp");
+    let write_both = || -> Result<()> {
+        fs::write(&cert_tmp, &cert_pem)?;
+        fs::write(&key_tmp, &key_pem)?;
+        fs::rename(&key_tmp, key_path)?;
+        fs::rename(&cert_tmp, cert_path)?;
+        Ok(())
+    };
+    if let Err(e) = write_both() {
+        let _ = fs::remove_file(&cert_tmp);
+        let _ = fs::remove_file(&key_tmp);
+        return Err(e);
+    }
+    Ok(SiteCert {
+        cert_pem,
+        key_pem,
+        cert_path: cert_path.to_path_buf(),
+        key_path: key_path.to_path_buf(),
+    })
+}
+
+/// Always re-issue a site's cert under app-data (atomic — see
+/// [`reissue_site_cert_at`]); the key file is hardened 0600. Use for the
+/// Regenerate actions; first-time issue stays [`ensure_site_cert`].
+pub fn reissue_site_cert(
+    paths: &dyn Paths,
+    perms: &dyn PermissionManager,
+    ca: &LocalCa,
+    domain: &str,
+) -> Result<SiteCert> {
+    let dir = site_cert_dir(paths, domain)?;
+    let cert = reissue_site_cert_at(&dir.join(SITE_CERT_FILE), &dir.join(SITE_KEY_FILE), ca, domain)?;
+    perms.set_private(&cert.key_path)?;
+    Ok(cert)
+}
+
 /// Read-only identity of a site's on-disk leaf cert (Settings tab). Dates are
 /// RFC 3339 UTC; `days_left` counts whole days until `not_after` (negative once
 /// expired). Issue/re-issue stays in [`ensure_site_cert`].
@@ -425,6 +477,43 @@ mod tests {
         // Reused, not re-issued.
         assert_eq!(a.cert_pem, b.cert_pem);
         assert_eq!(a.key_pem, b.key_pem);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reissue_site_cert_replaces_material_and_leaves_no_temp_files() {
+        let (ca_cert, ca_key) = generate_ca().unwrap();
+        let ca = LocalCa {
+            cert_pem: ca_cert,
+            key_pem: ca_key,
+            cert_path: PathBuf::new(),
+            key_path: PathBuf::new(),
+        };
+        let dir = std::env::temp_dir().join("rexenv-reissue-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cert = dir.join(SITE_CERT_FILE);
+        let key = dir.join(SITE_KEY_FILE);
+
+        // Works with no pre-existing files (deleted/corrupted-cert recovery)…
+        let a = reissue_site_cert_at(&cert, &key, &ca, "mysite.test").unwrap();
+        assert!(cert.exists() && key.exists());
+        // …and ALWAYS re-issues over an existing pair (unlike ensure_site_cert).
+        let b = reissue_site_cert_at(&cert, &key, &ca, "mysite.test").unwrap();
+        assert_ne!(a.cert_pem, b.cert_pem);
+        assert_ne!(a.key_pem, b.key_pem);
+        // On-disk pair is the NEW material (rename landed), still a valid signed leaf.
+        assert_eq!(std::fs::read_to_string(&cert).unwrap(), b.cert_pem);
+        assert_eq!(std::fs::read_to_string(&key).unwrap(), b.key_pem);
+        assert_eq!(issuer_cn(&b.cert_pem), "rexenv Local CA");
+        assert!(dns_sans(&b.cert_pem).contains(&"*.mysite.test".to_string()));
+        // Atomic path cleaned up: no .tmp files left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "temp files left: {leftovers:?}");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

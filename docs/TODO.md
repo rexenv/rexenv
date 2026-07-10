@@ -102,11 +102,14 @@ Each line = one feature, live-verified before its commit.
 - [x] DB import — typed confirm + backup-first, bundled mysql over stdin `fe7654b`
 - [x] WXR content export to Downloads `59c400c`
 - [x] Tools regrouped: Backup & restore / Core / Maintenance cards `66d528e`
+- [x] Cert regenerate — per-site Regenerate in the SiteDetail Settings-tab cert card,
+  plus a fix for the global Settings button: a byte-identical Caddyfile makes plain
+  `caddy reload` a no-op, so re-issued certs were never served until an edge restart —
+  both paths now force-reload; re-issue is atomic (temp-write + rename, never
+  delete-first), so a failure leaves the old cert intact and served
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- **Cert regenerate** (Settings-tab follow-up) — re-issue must orchestrate an edge
-  reload to actually serve the new leaf; read-only cert info shipped instead.
 - **Site language switch** — needs a language list + download flow (M).
 - **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
   and the DB name derives from the domain (L).

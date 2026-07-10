@@ -105,6 +105,14 @@ export async function siteCertInfo(id: string): Promise<SiteCertInfo | null> {
   return invoke<SiteCertInfo | null>("site_cert_info", { id });
 }
 
+/** Re-issue one site's HTTPS leaf cert and force-reload the edge so it's served
+ *  immediately. On a failed reload the old cert stays served (error says so).
+ *  No-op outside Tauri. */
+export async function regenerateSiteCert(id: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("regenerate_site_cert", { id });
+}
+
 /** Create a site (provision + WordPress one-click install when type=wordpress +
  *  bring up if the stack is running). A `blueprintId` applies that preset's
  *  plugins/themes/multisite after install (§11.3). No-op outside Tauri. */

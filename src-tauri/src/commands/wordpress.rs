@@ -583,7 +583,7 @@ pub async fn wp_site_reset(state: State<'_, AppState>, id: String) -> Result<()>
         let checks = {
             let mut mgr = state.services.lock().await;
             if mgr.is_running() {
-                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
             } else {
                 Vec::new()
             }
@@ -711,7 +711,7 @@ pub async fn wp_multisite_convert(
         let checks = {
             let mut mgr = state.services.lock().await;
             if mgr.is_running() {
-                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
             } else {
                 Vec::new()
             }

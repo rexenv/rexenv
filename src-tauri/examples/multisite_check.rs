@@ -115,7 +115,7 @@ async fn main() {
 
     // Reload the edge from the updated site list → nginx gets the subdirectory template.
     let sites_now = sites::list(&conn).unwrap();
-    let checks = mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    let checks = mgr.reload(&*plat, &ca, &sites_now, false).await.expect("reload");
     service_manager::await_ready(checks).await.expect("backends ready");
     let nginx_conf = plat.paths().config_dir().unwrap().join("nginx.conf");
     let conf = std::fs::read_to_string(&nginx_conf).unwrap();

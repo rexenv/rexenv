@@ -92,7 +92,7 @@ async fn main() {
     sites::convert_multisite(&conn, &php, &wp, &docroot, &site.id, MultisiteMode::Subdirectory)
         .expect("convert").expect("site exists");
     let sites_now = sites::list(&conn).unwrap();
-    let checks = mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    let checks = mgr.reload(&*plat, &ca, &sites_now, false).await.expect("reload");
     service_manager::await_ready(checks).await.expect("backends ready");
     println!("✓ subdirectory network ready");
 

@@ -90,7 +90,7 @@ async fn main() {
     println!("✓ converted to subdomain multisite; persisted mode = {}", updated.multisite.as_db());
 
     let sites_now = sites::list(&conn).unwrap();
-    let checks = mgr.reload(&*plat, &ca, &sites_now).await.expect("reload");
+    let checks = mgr.reload(&*plat, &ca, &sites_now, false).await.expect("reload");
     service_manager::await_ready(checks).await.expect("backends ready");
 
     // Configs carry the wildcard host.

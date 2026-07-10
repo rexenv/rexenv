@@ -189,9 +189,42 @@ pub fn trust_local_ca(state: State<'_, AppState>) -> Result<()> {
     core::ssl::trust_ca(state.platform.as_ref(), &state.ca)
 }
 
-/// Regenerate every site's TLS cert (delete + re-issue from the local CA), plus the
-/// internal Adminer vhost cert, then reload the edge if the stack is running. Returns
-/// how many certs were re-issued. Use after re-trusting the CA or if a cert is stale.
+/// FORCED edge reload after a cert re-issue, with an honest failure: cert paths
+/// are stable, so re-issuing leaves the Caddyfile byte-identical and a plain
+/// reload is skipped by Caddy (the OLD leaf stays in its in-memory cache until
+/// an edge restart) — `force: true` is what makes the new cert actually served.
+/// On failure the previous (still valid) cert keeps being served — the new pair
+/// is on disk and picked up at the next successful reload/start — so the error
+/// says exactly that. No-op when the stack isn't running: the cert loads at the
+/// next start. Awaits backend readiness with the services lock released (M4).
+pub(crate) async fn reload_edge_for_new_certs(
+    state: &State<'_, AppState>,
+    sites: &[crate::state::models::Site],
+) -> Result<()> {
+    let run = async {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, sites, true).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await
+    };
+    run.await.map_err(|e| {
+        Error::Other(format!(
+            "Certificate re-issued, but the edge reload failed — the previous \
+             certificate is still being served. Retry, or restart services. ({e})"
+        ))
+    })
+}
+
+/// Regenerate every site's TLS cert (re-issue from the local CA — atomic, the old
+/// pair survives a failed issuance), plus the internal Adminer vhost cert, then
+/// FORCE-reload the edge if the stack is running so Caddy actually serves the new
+/// leaves. Returns how many certs were re-issued. Use after re-trusting the CA or
+/// if a cert is stale.
 #[tauri::command]
 pub async fn regenerate_certs(state: State<'_, AppState>) -> Result<u32> {
     let sites = {
@@ -204,30 +237,13 @@ pub async fn regenerate_certs(state: State<'_, AppState>) -> Result<u32> {
     let paths = state.platform.paths();
     let perms = state.platform.permissions();
     let mut count = 0u32;
-    let reissue = |domain: &str| -> Result<()> {
-        // Delete first so the idempotent issuer actually regenerates the material.
-        let dir = core::ssl::site_cert_dir(paths, domain)?;
-        let _ = std::fs::remove_dir_all(&dir);
-        core::ssl::ensure_site_cert(paths, perms, &state.ca, domain)?;
-        Ok(())
-    };
     for s in &sites {
-        reissue(&s.domain)?;
+        core::ssl::reissue_site_cert(paths, perms, &state.ca, &s.domain)?;
         count += 1;
     }
-    reissue(core::adminer::ADMINER_HOST)?;
+    core::ssl::reissue_site_cert(paths, perms, &state.ca, core::adminer::ADMINER_HOST)?;
 
-    // Reload the edge so Caddy serves the fresh certs (only if it's up). Await
-    // any backend readiness with the services lock released (M4).
-    let checks = {
-        let mut mgr = state.services.lock().await;
-        if mgr.is_running() {
-            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
-        } else {
-            Vec::new()
-        }
-    };
-    core::service_manager::await_ready(checks).await?;
+    reload_edge_for_new_certs(&state, &sites).await?;
     Ok(count)
 }
 

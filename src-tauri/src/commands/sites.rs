@@ -153,6 +153,29 @@ pub fn site_cert_info(
     core::ssl::site_cert_info(state.platform.paths(), &site.domain)
 }
 
+/// Re-issue one site's HTTPS leaf cert (same local CA, SANs `domain` + `*.domain`)
+/// and FORCE-reload the edge so Caddy serves it immediately. The re-issue is
+/// atomic (temp-write + rename — a failure leaves the old cert intact and served);
+/// a failed reload keeps the old, still-valid cert served and says so. Backs the
+/// Settings-tab "Regenerate certificate" action; also the recovery path for a
+/// deleted/corrupted cert or one nearing the 398-day Safari cap.
+#[tauri::command]
+pub async fn regenerate_site_cert(state: State<'_, AppState>, id: String) -> Result<()> {
+    let (site, sites) = {
+        let conn = lock(&state)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        (site, core::sites::list(&conn)?)
+    };
+    core::ssl::reissue_site_cert(
+        state.platform.paths(),
+        state.platform.permissions(),
+        &state.ca,
+        &site.domain,
+    )?;
+    super::system::reload_edge_for_new_certs(&state, &sites).await
+}
+
 /// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
 /// row); for a **WordPress** site bring MySQL up and run the one-click installer
 /// (`wp`) so the site is browsable; then — if the stack is running — ensure its
@@ -246,7 +269,7 @@ pub async fn create_site(
             if !matches!(created.web_server, WebServer::Frankenphp) {
                 mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
             }
-            mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
         } else {
             Vec::new()
         }
@@ -292,7 +315,7 @@ pub async fn set_site_web_server(
                     let minor = core::php::minor_of(&s.php_version);
                     mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
                 }
-                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
             } else {
                 Vec::new()
             }
@@ -325,7 +348,7 @@ pub async fn set_site_php_version(
             let mut mgr = state.services.lock().await;
             if mgr.is_running() {
                 mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
-                mgr.reload(state.platform.as_ref(), &state.ca, &sites).await?
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
             } else {
                 Vec::new()
             }
@@ -393,6 +416,6 @@ pub async fn delete_site(
     // Best-effort reload (no-op if services aren't running). A delete only
     // REMOVES backends, so there are no readiness probes to await.
     let mut mgr = state.services.lock().await;
-    let _ = mgr.reload(state.platform.as_ref(), &state.ca, &sites).await;
+    let _ = mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await;
     Ok(removed)
 }

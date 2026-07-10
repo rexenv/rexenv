@@ -328,7 +328,7 @@ impl ServiceManager {
         // if the reload is refused (wedged edge, or a port set it can't rebind) do
         // we fall through to the stop + fresh-start path.
         if proxy::admin_alive(platform)
-            && proxy::reload(platform, &bins.caddy, &caddyfile).is_ok()
+            && proxy::reload(platform, &bins.caddy, &caddyfile, false).is_ok()
         {
             self.caddy = CaddyHandle::Privileged;
             return Ok(None);
@@ -506,11 +506,17 @@ impl ServiceManager {
     /// dropping the services lock (M4). Until a backend is ready the edge may
     /// briefly 502 that one site; the command still fails with the named-service
     /// error (M3) if it never comes up.
+    ///
+    /// `force` forces the Caddy config reload even when the Caddyfile is
+    /// byte-identical — required after re-issuing certs (stable cert paths mean
+    /// an unchanged config, which Caddy otherwise skips, leaving the OLD leaf
+    /// served from its in-memory cache). See [`proxy::reload`].
     pub async fn reload(
         &mut self,
         platform: &dyn Platform,
         ca: &ssl::LocalCa,
         sites: &[Site],
+        force: bool,
     ) -> Result<Vec<ReadyCheck>> {
         let checks = self.reconcile_overrides(platform, sites).await?;
         let bins = self
@@ -526,7 +532,7 @@ impl ServiceManager {
             self.ports.https,
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
-        proxy::reload(platform, &bins.caddy, &cfg.caddyfile)?;
+        proxy::reload(platform, &bins.caddy, &cfg.caddyfile, force)?;
         Ok(checks)
     }
 

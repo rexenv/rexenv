@@ -28,6 +28,7 @@ import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
@@ -40,6 +41,7 @@ import {
   listSites,
   logTargets,
   openExternal,
+  regenerateSiteCert,
   renameSite,
   revealPath,
   setSitePhpVersion,
@@ -522,6 +524,35 @@ function SettingsTab({ site }: { site: Site }) {
     queryFn: () => siteCertInfo(site.id),
   });
 
+  const regenCert = useMutation({
+    mutationFn: () => regenerateSiteCert(site.id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+      toast.success("Certificate re-issued — the edge is serving it now.");
+    },
+    onError: (e) => {
+      // A failed edge reload still leaves the new cert on disk — refresh the
+      // card so the dates reflect what will be served after a retry/restart.
+      void qc.invalidateQueries({ queryKey: ["site-cert", site.id] });
+      toastBackendError(e);
+    },
+  });
+  const askRegenCert = async () => {
+    const ok = await confirm({
+      title: cert ? "Regenerate HTTPS certificate?" : "Issue HTTPS certificate?",
+      message: (
+        <>
+          Re-issues the certificate for <span className="font-mono">{site.domain}</span> and{" "}
+          <span className="font-mono">*.{site.domain}</span> from the local CA (valid ~397 days),
+          then briefly reloads the edge proxy — open connections to your sites may drop for a
+          moment. No site data is affected.
+        </>
+      ),
+      confirmLabel: cert ? "Regenerate" : "Issue certificate",
+    });
+    if (ok) regenCert.mutate();
+  };
+
   const trimmed = name.trim();
   const dirty = trimmed.length > 0 && trimmed !== site.name;
   const hasDb = site.type !== "php";
@@ -582,8 +613,14 @@ function SettingsTab({ site }: { site: Site }) {
         {certLoading ? (
           <div className="text-[12.5px] text-rex-text-dim">Reading certificate…</div>
         ) : !cert ? (
-          <div className="text-[12.5px] text-rex-text-dim">
-            No certificate issued yet — one is created when the site is provisioned.
+          <div className="flex items-center justify-between gap-4">
+            <div className="text-[12.5px] text-rex-text-dim">
+              No certificate on disk — issue one so HTTPS works (normally created when the site
+              is provisioned).
+            </div>
+            <Button variant="secondary" disabled={regenCert.isPending} onClick={() => void askRegenCert()}>
+              {regenCert.isPending ? "Issuing…" : "Issue certificate"}
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -602,6 +639,19 @@ function SettingsTab({ site }: { site: Site }) {
               value={cert.certDir}
               onOpen={() => void revealPath(cert.certDir)}
             />
+            <div className="mt-1 flex items-center justify-between gap-4 border-t border-rex-border-subtle pt-3">
+              <div className="text-[12px] text-rex-text-dim">
+                Re-issue from the local CA — for a cert nearing expiry, a corrupted file, or after
+                the CA was re-created. Briefly reloads the edge.
+              </div>
+              <Button
+                variant="secondary"
+                disabled={regenCert.isPending}
+                onClick={() => void askRegenCert()}
+              >
+                {regenCert.isPending ? "Regenerating…" : "Regenerate"}
+              </Button>
+            </div>
           </div>
         )}
       </SettingsCard>
