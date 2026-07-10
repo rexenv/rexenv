@@ -518,6 +518,13 @@ export async function wpCoreReinstall(id: string): Promise<string> {
   return invoke<string>("wp_core_reinstall", { id });
 }
 
+/** Export the site's database to Downloads (bundled mysqldump). Returns the
+ *  written path. */
+export async function wpDbExport(id: string): Promise<string> {
+  if (!isTauri()) return "~/Downloads/mock.test-db.sql (mock)";
+  return invoke<string>("wp_db_export", { id });
+}
+
 /** Convert a WP site to multisite ("subdomain" | "subdirectory"). Returns the
  *  updated site. No-op (null) outside Tauri. */
 export async function wpMultisiteConvert(id: string, mode: "subdomain" | "subdirectory"): Promise<Site | null> {

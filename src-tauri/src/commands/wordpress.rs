@@ -309,6 +309,42 @@ pub async fn wp_core_reinstall(state: State<'_, AppState>, id: String) -> Result
     wp_blocking(move || core::wordpress::core_reinstall(&php, &wp, &docroot)).await
 }
 
+/// Export the site's database to the user's Downloads folder
+/// (`<domain>-db.sql`, numbered on collision). Uses the bundled `mysqldump`
+/// directly — WP-CLI's `wp db export` shells out to a PATH `mysqldump` a
+/// Finder-launched app doesn't have (see `core::database`). Returns the
+/// written path for the success toast.
+#[tauri::command]
+pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<String> {
+    use crate::core::db::DbEngine;
+    let site = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
+    };
+    // Fail fast with an actionable message — a stopped server would otherwise
+    // surface as mysqldump's opaque "Can't connect" error.
+    if !DbEngine::Mysql.running() {
+        return Err(Error::Other(
+            "MySQL isn't running — start it (Services → Start all, or the Databases page), then export again.".into(),
+        ));
+    }
+    let mysql_base =
+        binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
+    wp_blocking(move || {
+        core::database::export_to_downloads(
+            &mysql_base,
+            DbEngine::Mysql.port(),
+            &site.domain,
+            &core::wordpress::db_name_for(&site.domain),
+        )
+        .map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
+}
+
 // ── Network / multisite management (§10.3) ───────────────────────────────────
 
 /// List the network's sub-sites (`wp site list`). Multisite-only.

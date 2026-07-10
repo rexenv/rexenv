@@ -2,12 +2,13 @@ import { useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, Globe, Loader2, LogIn, Network, Palette, Plus, RefreshCw, Replace, Search, Shield, Trash2, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   openExternal,
   wpCoreReinstall,
+  wpDbExport,
   wpCoreUpdate,
   wpDebugGet,
   wpDebugSet,
@@ -450,9 +451,12 @@ function ToolsPanel({ siteId }: { siteId: string }) {
     onSuccess: (url) => openExternal(url),
     onError: (e) => toastBackendError(e),
   });
+  const dbExport = useMutation({
+    mutationFn: () => wpDbExport(siteId),
+    onSuccess: (path) => toast.success(`Database exported to ${path}`),
+    onError: (e) => toastBackendError(e),
+  });
   const working = coreUpdate.isPending || coreReinstall.isPending;
-  // No backend yet for DB export / full reset — UI shells.
-  const todo = (what: string) => toast.info(`${what} isn't wired yet (UI only).`);
   const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
 
   return (
@@ -530,9 +534,9 @@ function ToolsPanel({ siteId }: { siteId: string }) {
           <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
             Regenerate permalinks
           </button>
-          <button className={maintBtn} onClick={() => todo("Database export")}>
+          <button className={maintBtn} disabled={dbExport.isPending} onClick={() => dbExport.mutate()}>
             <Download className="h-3.5 w-3.5" />
-            Export database
+            {dbExport.isPending ? "Exporting…" : "Export database"}
           </button>
           <button
             className={maintBtn}
@@ -556,16 +560,6 @@ function ToolsPanel({ siteId }: { siteId: string }) {
             }}
           >
             Re-install core
-          </button>
-          <button
-            className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
-            onClick={async () => {
-              if (await confirm({ title: "Reset site?", message: "Reset this site to a clean WordPress install? This erases its content.", danger: true, confirmLabel: "Reset" }))
-                todo("Reset site");
-            }}
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reset site to a clean install
           </button>
           {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
         </div>

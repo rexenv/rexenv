@@ -105,6 +105,49 @@ fn mysql_exec(basedir: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
     }
 }
 
+/// Export database `name` into the user's Downloads folder as
+/// `<domain>-db.sql` (numbered on collision — same convention as the
+/// debug-log download), via the bundled `mysqldump` from the extracted MySQL
+/// tree. WP-CLI's `wp db export` shells out to a PATH `mysqldump` — absent in
+/// a Finder-launched app (same rationale as [`create_database`]). Returns the
+/// destination path. Requires the MySQL server to be running.
+pub fn export_to_downloads(basedir: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
+    validate_db_name(name)?;
+    let downloads = directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
+        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))?;
+    let mut dest = downloads.join(format!("{domain}-db.sql"));
+    let mut n = 1;
+    while dest.exists() {
+        dest = downloads.join(format!("{domain}-db-{n}.sql"));
+        n += 1;
+    }
+    // --result-file (not shell redirection): no shell involved, so a Downloads
+    // path with spaces can't break, and mysqldump writes the file itself.
+    let out = std::process::Command::new(basedir.join("bin/mysqldump"))
+        .args([
+            "--no-defaults",
+            "--protocol=TCP",
+            "--host=127.0.0.1",
+            &format!("--port={port}"),
+            "--user=root",
+            &format!("--result-file={}", dest.display()),
+            name,
+        ])
+        .output()?;
+    if !out.status.success() {
+        // A failed dump can leave a partial file — never leave it for the user
+        // to mistake for a good backup.
+        let _ = std::fs::remove_file(&dest);
+        return Err(Error::Other(format!(
+            "exporting database `{name}` failed (exit {:?}): {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    Ok(dest)
+}
+
 /// Create a database if it doesn't exist, via the bundled `mysql` client.
 /// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
 /// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
