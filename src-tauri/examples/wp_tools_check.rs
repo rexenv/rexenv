@@ -81,13 +81,15 @@ async fn main() {
     let siteurl = || wordpress::wp_run(&php, &wp, &docroot, &["option", "get", "siteurl"]).unwrap();
     let original = siteurl();
     println!("siteurl before = {original}");
-    let dry = wordpress::search_replace(&php, &wp, &docroot, domain, "changed.test", true).unwrap();
+    let dry =
+        wordpress::search_replace(&php, &wp, &docroot, domain, "changed.test", true, false).unwrap();
     println!("dry-run replacements = {dry}");
     assert!(dry > 0, "dry-run found no rows to change");
     assert_eq!(siteurl(), original, "dry-run MUTATED the DB (it must not)");
     println!("✓ dry-run reports {dry} rows, DB unchanged");
 
-    let real = wordpress::search_replace(&php, &wp, &docroot, domain, "changed.test", false).unwrap();
+    let real =
+        wordpress::search_replace(&php, &wp, &docroot, domain, "changed.test", false, false).unwrap();
     println!("real replacements = {real}");
     assert!(real > 0, "real run changed nothing");
     assert!(siteurl().contains("changed.test"), "real run didn't change siteurl");

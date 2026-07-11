@@ -42,7 +42,9 @@ import {
   listPhpVersions,
   listSites,
   logTargets,
+  moveSiteDocroot,
   openExternal,
+  pickFolder,
   regenerateSiteCert,
   renameSite,
   revealPath,
@@ -522,6 +524,40 @@ function SettingsTab({ site }: { site: Site }) {
     onError: (e) => toastBackendError(e),
   });
 
+  const moveSite = useMutation({
+    mutationFn: (destParent: string) => moveSiteDocroot(site.id, destParent),
+    onSuccess: (s) => {
+      qc.invalidateQueries();
+      toast.success(`Site folder moved to ${s?.path ?? "the new location"}`);
+    },
+    onError: (e) => {
+      // A late failure (config reload) can land after the files moved — refresh
+      // so the path shown is what's really on disk.
+      qc.invalidateQueries();
+      toastBackendError(e);
+    },
+  });
+  const askMove = async () => {
+    const parent = await pickFolder("Choose the new parent folder", site.path);
+    if (!parent) return;
+    const folder = site.path.replace(/\/+$/, "").split("/").pop() ?? site.domain;
+    const ok = await confirm({
+      title: "Move site folder?",
+      message: (
+        <>
+          Moves <span className="font-mono">{site.path}</span> to{" "}
+          <span className="font-mono">{`${parent}/${folder}`}</span> and updates the server config
+          (the site may blip for a moment). Files are verified at the destination before anything
+          old is removed. Two caveats: plugins that stored absolute paths in the database won't
+          follow the move, and a folder outside the rexenv sites folder is kept — not deleted — if
+          you ever delete the site.
+        </>
+      ),
+      confirmLabel: "Move folder",
+    });
+    if (ok) moveSite.mutate(parent);
+  };
+
   const { data: cert, isLoading: certLoading } = useQuery({
     queryKey: ["site-cert", site.id],
     queryFn: () => siteCertInfo(site.id),
@@ -618,6 +654,25 @@ function SettingsTab({ site }: { site: Site }) {
         </div>
       </SettingsCard>
       {domainOpen && <ChangeDomainDialog site={site} onClose={() => setDomainOpen(false)} />}
+
+      <SettingsCard label="Site folder">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="truncate font-mono text-[12.5px] text-rex-text-bright">{site.path}</div>
+            <div className="mt-1 text-[12px] text-rex-text-dim">
+              Move the site's files to another folder — domain, database and certificate stay the
+              same.
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={moveSite.isPending}
+            onClick={() => void askMove()}
+          >
+            {moveSite.isPending ? "Moving…" : "Move…"}
+          </Button>
+        </div>
+      </SettingsCard>
 
       <SettingsCard label="Site info">
         <div className="flex max-w-[560px] flex-col gap-3">

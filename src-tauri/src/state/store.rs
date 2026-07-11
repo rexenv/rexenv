@@ -128,6 +128,16 @@ pub fn set_site_domain(conn: &Connection, id: &str, domain: &str) -> Result<bool
     Ok(n > 0)
 }
 
+/// Update ONLY the docroot path column (after the files verifiably exist at the
+/// new location — see `commands::sites::move_site_docroot`).
+pub fn set_site_path(conn: &Connection, id: &str, path: &str) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE sites SET path = ?1 WHERE id = ?2",
+        params![path, id],
+    )?;
+    Ok(n > 0)
+}
+
 pub fn set_site_multisite(conn: &Connection, id: &str, mode: &str) -> Result<bool> {
     let affected = conn.execute(
         "UPDATE sites SET multisite = ?1 WHERE id = ?2",

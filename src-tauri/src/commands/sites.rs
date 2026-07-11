@@ -359,6 +359,83 @@ pub async fn set_site_php_version(
     Ok(site)
 }
 
+/// Move a site's docroot into a user-picked PARENT directory (the folder keeps
+/// its name). Ordered so the row NEVER points at a path that doesn't exist:
+///   preflight (all rejections, no file touched) → files to the new location
+///   (same-volume rename, else copy + verify with partial-copy cleanup) →
+///   sites.path update → config regen + reload (nginx root; a FrankenPHP
+///   override backend is restarted by the reconcile when its config changed;
+///   Caddy holds no docroot) → delete the old tree LAST (copy case only,
+///   best-effort). Not destructive: data is verified at the destination before
+///   anything old is removed. Works with the stack down (configs load at the
+///   next start). Returns the updated site.
+#[tauri::command]
+pub async fn move_site_docroot(
+    state: State<'_, AppState>,
+    id: String,
+    dest_parent: String,
+) -> Result<Site> {
+    let dest = std::path::PathBuf::from(&dest_parent);
+    let (site, target) = {
+        let conn = lock(&state)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        let target = core::sites::check_docroot_move(&site, &dest)?;
+        (site, target)
+    };
+    let src = std::path::PathBuf::from(&site.path);
+
+    // File work off the async runtime AND outside the DB lock — a cross-volume
+    // copy of a big docroot must not stall status polls or the UI.
+    let copied = {
+        let (s, t) = (src.clone(), target.clone());
+        super::wordpress::wp_blocking(move || core::sites::move_dir(&s, &t)).await?
+    };
+
+    // Files verifiably at the new location — only now flip the row.
+    let (updated, sites) = {
+        let conn = lock(&state)?;
+        let updated = core::sites::set_path(&conn, &id, &target)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        (updated, core::sites::list(&conn)?)
+    };
+
+    // Regenerate + reload so nginx's root (and any FrankenPHP override) points
+    // at the new path. Retriable: the row is already correct, so a later
+    // reload/start also serves from the new location.
+    let reload = async {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await
+    };
+    reload.await.map_err(|e| {
+        Error::Other(format!(
+            "Files moved to {}, but the config reload failed — the site may not serve \
+             until services reload. Retry from Services → Restart. ({e})",
+            target.display()
+        ))
+    })?;
+
+    // Cross-volume copy: the old tree still exists — delete it LAST, after the
+    // reload proved the new location serves. Best-effort: a failure leaves
+    // duplicate files, never a broken site.
+    if copied {
+        let old = src.clone();
+        let _ = super::wordpress::wp_blocking(move || {
+            std::fs::remove_dir_all(&old).map_err(crate::error::Error::from)
+        })
+        .await;
+    }
+
+    Ok(updated)
+}
+
 /// Result of a domain change: the updated site, where the pre-change database
 /// backup landed (WordPress sites only), and how many search-replace
 /// substitutions ran (both passes; 0 for non-WordPress sites).

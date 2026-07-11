@@ -109,6 +109,15 @@ export async function changeSiteDomain(id: string, domain: string): Promise<Doma
   return invoke<DomainChange>("change_site_domain", { id, domain });
 }
 
+/** Move a site's docroot into `destParent` (folder keeps its name). Files are
+ *  verified at the destination before the record flips, and the old tree (on a
+ *  cross-volume copy) is deleted only after the config reload — the site never
+ *  points at a missing path. Null outside Tauri. */
+export async function moveSiteDocroot(id: string, destParent: string): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site>("move_site_docroot", { id, destParent });
+}
+
 /** Read-only info about a site's HTTPS leaf cert (validity, SANs, cert folder).
  *  Null when no cert has been issued yet — or outside Tauri. */
 export async function siteCertInfo(id: string): Promise<SiteCertInfo | null> {

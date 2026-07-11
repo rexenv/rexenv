@@ -160,6 +160,119 @@ pub fn set_domain(conn: &Connection, id: &str, new_domain: &str) -> Result<Optio
     get(conn, id)
 }
 
+/// Preflight for moving a site's docroot into `dest_parent` (the user-picked
+/// PARENT directory — the folder keeps its current name). Every rejection
+/// happens here, BEFORE any file is touched. Returns the resolved target path
+/// `<dest_parent>/<folder name>`.
+pub fn check_docroot_move(site: &Site, dest_parent: &Path) -> Result<PathBuf> {
+    let src = Path::new(&site.path);
+    if site.path.is_empty() || !src.is_dir() {
+        return Err(Error::Other(format!(
+            "the site folder is missing on disk ({}) — can't move it. If the files live \
+             elsewhere, this site's record is stale.",
+            site.path
+        )));
+    }
+    let name = src
+        .file_name()
+        .ok_or_else(|| Error::Other(format!("bad site path: {}", site.path)))?;
+    if !dest_parent.is_absolute() {
+        return Err(Error::Other("destination must be an absolute path".into()));
+    }
+    if dest_parent.starts_with(src) {
+        return Err(Error::Other(
+            "the destination is inside the site folder itself — pick a folder outside it".into(),
+        ));
+    }
+    let target = dest_parent.join(name);
+    if target == src {
+        return Err(Error::Other("the site already lives in that folder".into()));
+    }
+    if target.exists() {
+        return Err(Error::Other(format!(
+            "{} already exists — move it away or pick another destination (never merged/overwritten)",
+            target.display()
+        )));
+    }
+    Ok(target)
+}
+
+/// Move a docroot to `target` (which must not exist — see [`check_docroot_move`]).
+/// Same volume: one `fs::rename`. Anything else (cross-volume rename fails):
+/// recursive copy → VERIFY (every file present with matching size) → the caller
+/// deletes the old tree only after configs are reloaded. A failed/partial copy
+/// removes the partial target and returns the error — the old path is untouched.
+/// Returns `true` when the copy fallback ran (old dir still present).
+pub fn move_dir(src: &Path, target: &Path) -> Result<bool> {
+    match std::fs::rename(src, target) {
+        Ok(()) => Ok(false),
+        // Cross-device moves fail with EXDEV; other failures (permissions,
+        // missing parent) fail the copy below too, with the accurate cause.
+        Err(_) => {
+            if let Err(e) = copy_dir_recursive(src, target).and_then(|()| verify_tree(src, target))
+            {
+                let _ = std::fs::remove_dir_all(target);
+                return Err(Error::Other(format!(
+                    "couldn't move {} to {}: {e} (nothing changed — the site still lives at \
+                     the old path)",
+                    src.display(),
+                    target.display()
+                )));
+            }
+            Ok(true)
+        }
+    }
+}
+
+/// Recursive dir copy. Symlinks are materialized via `fs::copy` (a symlink to a
+/// directory errors out, aborting the move cleanly — rare in a docroot).
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &to)?;
+        } else {
+            std::fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Verify a copied tree: every entry under `src` exists under `dst`, files with
+/// equal sizes. Runs BEFORE the old tree may be deleted.
+fn verify_tree(src: &Path, dst: &Path) -> Result<()> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let to = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            if !to.is_dir() {
+                return Err(Error::Other(format!("copy verify failed: missing dir {}", to.display())));
+            }
+            verify_tree(&entry.path(), &to)?;
+        } else {
+            let (a, b) = (entry.metadata()?.len(), to.metadata().map(|m| m.len()));
+            if b.ok() != Some(a) {
+                return Err(Error::Other(format!(
+                    "copy verify failed: {} missing or size mismatch",
+                    to.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Persist a moved docroot's new path (files must already exist there) and
+/// return the updated site.
+pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>> {
+    if !store::set_site_path(conn, id, &path.display().to_string())? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
 /// — no docroot/cert/DB rebuild — and return the updated site. Only Nginx and
 /// FrankenPHP have backends in Phase 2 (Apache/OLS are deferred). The caller
@@ -654,6 +767,129 @@ mod tests {
 
         // Nothing above changed the row.
         assert_eq!(get(&conn, &a.id).unwrap().unwrap().domain, "a.test");
+    }
+
+    /// Throwaway docroot with a nested file tree; returns (root, docroot).
+    fn tree(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!("rexenv-move-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let doc = root.join("from").join("acme.test");
+        std::fs::create_dir_all(doc.join("wp-content/uploads")).unwrap();
+        std::fs::write(doc.join("index.php"), "<?php phpinfo();\n").unwrap();
+        std::fs::write(doc.join("wp-content/uploads/a.jpg"), vec![7u8; 1024]).unwrap();
+        (root, doc)
+    }
+
+    fn site_at(doc: &Path) -> Site {
+        Site {
+            id: "m1".into(),
+            name: "Acme".into(),
+            domain: "acme.test".into(),
+            site_type: SiteType::Wordpress,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: WebServer::Nginx,
+            ssl: true,
+            path: doc.display().to_string(),
+            created_at: "now".into(),
+            multisite: MultisiteMode::None,
+            db_name: "wp_acme_test".into(),
+        }
+    }
+
+    #[test]
+    fn check_docroot_move_rejects_bad_destinations() {
+        let (root, doc) = tree("checks");
+        let site = site_at(&doc);
+
+        let inside = check_docroot_move(&site, &doc.join("sub")).unwrap_err().to_string();
+        assert!(inside.contains("inside the site folder"), "{inside}");
+
+        let noop = check_docroot_move(&site, doc.parent().unwrap()).unwrap_err().to_string();
+        assert!(noop.contains("already lives"), "{noop}");
+
+        let to = root.join("to");
+        std::fs::create_dir_all(to.join("acme.test")).unwrap();
+        let exists = check_docroot_move(&site, &to).unwrap_err().to_string();
+        assert!(exists.contains("already exists"), "{exists}");
+
+        let rel = check_docroot_move(&site, Path::new("relative/x")).unwrap_err().to_string();
+        assert!(rel.contains("absolute"), "{rel}");
+
+        let mut gone = site.clone();
+        gone.path = root.join("nope").display().to_string();
+        let missing = check_docroot_move(&gone, &to).unwrap_err().to_string();
+        assert!(missing.contains("missing on disk"), "{missing}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn move_dir_renames_within_a_volume_and_row_flips_via_set_path() {
+        let (root, doc) = tree("rename");
+        let site = site_at(&doc);
+        let dest = root.join("to");
+        std::fs::create_dir_all(&dest).unwrap();
+
+        let target = check_docroot_move(&site, &dest).unwrap();
+        let copied = move_dir(&doc, &target).unwrap();
+        assert!(!copied, "same-volume must be a rename");
+        assert!(!doc.exists(), "old path gone after rename");
+        assert!(target.join("wp-content/uploads/a.jpg").exists());
+
+        let conn = db::open_in_memory().unwrap();
+        let created = create(
+            &conn,
+            NewSite {
+                name: "Acme".into(),
+                domain: "acme.test".into(),
+                site_type: SiteType::Wordpress,
+                php_version: "8.3".into(),
+                web_server: WebServer::Nginx,
+                path: doc.display().to_string(),
+            },
+        )
+        .unwrap();
+        let updated = set_path(&conn, &created.id, &target).unwrap().unwrap();
+        assert_eq!(updated.path, target.display().to_string());
+        // Path-only: everything else untouched.
+        assert_eq!(updated.domain, "acme.test");
+        assert_eq!(updated.db_name, "wp_acme_test");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn copy_fallback_verifies_and_cleans_up_a_partial_copy() {
+        let (root, doc) = tree("copy");
+        let dest = root.join("to").join("acme.test");
+
+        // The copy+verify path itself (what a cross-volume move runs).
+        copy_dir_recursive(&doc, &dest).unwrap();
+        verify_tree(&doc, &dest).unwrap();
+        assert_eq!(dest.join("wp-content/uploads/a.jpg").metadata().unwrap().len(), 1024);
+
+        // Tamper with the copy → verify must fail.
+        std::fs::write(dest.join("wp-content/uploads/a.jpg"), b"short").unwrap();
+        let err = verify_tree(&doc, &dest).unwrap_err().to_string();
+        assert!(err.contains("size mismatch"), "{err}");
+
+        // move_dir into an unwritable parent: rename AND copy fail → error
+        // mentions the failure, no partial target left, source intact.
+        let locked = root.join("locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        let mut perms = std::fs::metadata(&locked).unwrap().permissions();
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o555);
+        std::fs::set_permissions(&locked, perms.clone()).unwrap();
+        let denied = move_dir(&doc, &locked.join("acme.test")).unwrap_err().to_string();
+        assert!(denied.contains("nothing changed"), "{denied}");
+        assert!(doc.join("index.php").exists(), "source untouched on failure");
+        assert!(!locked.join("acme.test").exists(), "no partial target left");
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&locked, perms).unwrap();
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

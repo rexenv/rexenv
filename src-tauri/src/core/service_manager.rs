@@ -479,11 +479,27 @@ impl ServiceManager {
             }
         }
 
-        // Start backends that are wanted but not yet running.
+        // Start backends that are wanted but not yet running — and RESTART any
+        // whose desired config no longer matches the one the running backend
+        // loaded (docroot moved, multisite rewrite changed). The on-disk config
+        // file is the record of what the backend was started with; a running
+        // backend never re-reads it, so a mismatch means stop + respawn
+        // (spawn_override rewrites the file).
         let mut checks = Vec::new();
         for (domain, (docroot, port, rewrite)) in &desired {
             if self.overrides.contains_key(domain) {
-                continue;
+                let wanted = frankenphp::generate_config(docroot, *port, *rewrite);
+                let current = frankenphp::config_path(platform, domain)
+                    .ok()
+                    .and_then(|p| std::fs::read_to_string(p).ok())
+                    .unwrap_or_default();
+                if wanted == current {
+                    continue;
+                }
+                if let Some(mut child) = self.overrides.remove(domain) {
+                    let _ = frankenphp::stop(platform, child.id());
+                    child.wait();
+                }
             }
             checks.push(self.spawn_override(platform, domain, docroot, *port, *rewrite).await?);
         }
