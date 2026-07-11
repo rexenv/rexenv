@@ -98,7 +98,7 @@ async fn main() {
     let magic = |token: &str| format!("https://{domain}:{HTTPS}/?rexenv_login={token}&rexenv_user=1");
 
     // (A) loopback magic link logs in.
-    let token = wp_login::issue(&php, &wp, &docroot, 1, wp_login::LOGIN_TTL_SECS).unwrap();
+    let token = wp_login::issue(&php, &wp, &docroot, domain, 1, wp_login::LOGIN_TTL_SECS).unwrap();
     let a = client.get(magic(&token)).send().await.expect("A");
     let a_status = a.status().as_u16();
     let a_login = has_login_cookie(&a);
@@ -127,7 +127,7 @@ async fn main() {
     println!("✓ (B) reused token → denied (single-use) + graceful login-page fallback");
 
     // (C) fresh token + Cloudflare tunnel header → loopback/local-only denies it.
-    let token2 = wp_login::issue(&php, &wp, &docroot, 1, wp_login::LOGIN_TTL_SECS).unwrap();
+    let token2 = wp_login::issue(&php, &wp, &docroot, domain, 1, wp_login::LOGIN_TTL_SECS).unwrap();
     let c = client
         .get(magic(&token2))
         .header("CF-Connecting-IP", "203.0.113.5")
@@ -147,7 +147,7 @@ async fn main() {
     let admin_id = wordpress::primary_admin_id(&php, &wp, &docroot).expect("primary admin");
     println!("(D) primary administrator id = {admin_id}");
     assert_eq!(admin_id, 1, "(D) one-click install's primary admin must be user 1");
-    let token3 = wp_login::issue(&php, &wp, &docroot, admin_id, wp_login::LOGIN_TTL_SECS).unwrap();
+    let token3 = wp_login::issue(&php, &wp, &docroot, domain, admin_id, wp_login::LOGIN_TTL_SECS).unwrap();
     let d = client
         .get(format!(
             "https://{domain}:{HTTPS}/?rexenv_login={token3}&rexenv_user={admin_id}"

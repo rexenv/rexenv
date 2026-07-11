@@ -9,8 +9,10 @@
 //!   - **loopback/local-only** — rejected if the request carries Cloudflare tunnel
 //!     headers (`CF-Connecting-IP`/`CF-Ray`/…), if the originating client (leftmost
 //!     `X-Forwarded-For`, else `REMOTE_ADDR`) isn't loopback, or if the `Host` isn't
-//!     a local `.test`/`localhost`. So a token captured while a site is shared over
-//!     a public Cloudflare tunnel (§9) can't be replayed through it.
+//!     local: `localhost`/`.localhost`/`.test`, or the site's OWN domain (injected
+//!     per-site so custom TLDs like `.rex` work) including its subdomains
+//!     (multisite). So a token captured while a site is shared over a public
+//!     Cloudflare tunnel (§9) can't be replayed through it.
 
 use crate::core::wordpress::wp_run;
 use crate::error::{Error, Result};
@@ -22,6 +24,10 @@ use uuid::Uuid;
 pub const LOGIN_TTL_SECS: u64 = 120;
 
 /// The auto-managed mu-plugin that consumes the one-time login token.
+/// Template: `{{SITE_DOMAIN}}` is replaced with the site's own (already
+/// validated, `[a-z0-9.-]`-only) domain by [`mu_plugin_source`], so the host
+/// allow-list covers custom TLDs like `.rex` without opening up to arbitrary
+/// hosts.
 const MU_PLUGIN: &str = r#"<?php
 /* Plugin Name: rexenv one-time login
  * Description: Auto-managed by rexenv for the "Log in as" feature. Safe to delete.
@@ -59,7 +65,11 @@ add_action('init', function () {
     if (!$loopback) { $deny(); }
 
     $host = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? '')[0]);
+    // rexenv injects this site's own domain so custom TLDs (e.g. .rex) pass;
+    // subdomains of it are allowed for multisite.
+    $site   = '{{SITE_DOMAIN}}';
     $local_host = $host === 'localhost' || $host === '127.0.0.1'
+        || $host === $site || substr($host, -strlen('.' . $site)) === '.' . $site
         || substr($host, -5) === '.test' || substr($host, -10) === '.localhost';
     if (!$local_host) { $deny(); }
 
@@ -86,15 +96,26 @@ fn mu_plugin_path(docroot: &Path) -> PathBuf {
     docroot.join("wp-content").join("mu-plugins").join("rexenv-login.php")
 }
 
-/// Write the mu-plugin if missing or changed (idempotent).
-pub fn ensure_muplugin(docroot: &Path) -> Result<()> {
+/// The mu-plugin source for a site: the template with the site's own domain
+/// injected into the host allow-list. `domain` is the stored (already
+/// `validate_domain`-vetted, `[a-z0-9.-]`-only) value — it can't escape the
+/// single-quoted PHP string.
+fn mu_plugin_source(domain: &str) -> String {
+    MU_PLUGIN.replace("{{SITE_DOMAIN}}", domain)
+}
+
+/// Write the mu-plugin if missing or changed (idempotent). Content is per-site
+/// (the domain is baked into the host allow-list), so a domain change is
+/// picked up by the next `issue` call rewriting the file.
+pub fn ensure_muplugin(docroot: &Path, domain: &str) -> Result<()> {
     let path = mu_plugin_path(docroot);
+    let source = mu_plugin_source(domain);
     let current = std::fs::read_to_string(&path).ok();
-    if current.as_deref() != Some(MU_PLUGIN) {
+    if current.as_deref() != Some(source.as_str()) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&path, MU_PLUGIN)?;
+        std::fs::write(&path, source)?;
     }
     Ok(())
 }
@@ -107,10 +128,11 @@ pub fn issue(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
+    domain: &str,
     user_id: u64,
     ttl_secs: u64,
 ) -> Result<String> {
-    ensure_muplugin(docroot)?;
+    ensure_muplugin(docroot, domain)?;
 
     // 256-bit token (two v4 UUIDs of randomness); store only its hash.
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
@@ -148,6 +170,7 @@ mod tests {
     fn mu_plugin_enforces_local_and_single_use() {
         // The shipped mu-plugin must check tunnel headers, loopback, host, expiry,
         // single-use deletion, and a timing-safe hash compare.
+        let src = mu_plugin_source("acme.rex");
         for needle in [
             "HTTP_CF_CONNECTING_IP",
             "HTTP_X_FORWARDED_FOR",
@@ -157,22 +180,27 @@ mod tests {
             "wp_set_auth_cookie",
             ".test",
         ] {
-            assert!(MU_PLUGIN.contains(needle), "mu-plugin missing guard: {needle}");
+            assert!(src.contains(needle), "mu-plugin missing guard: {needle}");
         }
+        // The site's own domain is baked into the host allow-list (custom TLDs),
+        // and no unexpanded placeholder survives.
+        assert!(src.contains("$site   = 'acme.rex';"), "site domain injected");
+        assert!(!src.contains("{{SITE_DOMAIN}}"));
     }
 
     #[test]
-    fn ensure_muplugin_writes_then_is_idempotent() {
+    fn ensure_muplugin_writes_then_is_idempotent_and_tracks_domain_changes() {
         let dir = std::env::temp_dir().join("rexenv-wplogin-test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        ensure_muplugin(&dir).unwrap();
+        ensure_muplugin(&dir, "acme.test").unwrap();
         let p = mu_plugin_path(&dir);
         assert!(p.is_file());
-        let mtime1 = std::fs::metadata(&p).unwrap().modified().unwrap();
-        ensure_muplugin(&dir).unwrap(); // no rewrite when unchanged
-        assert_eq!(std::fs::read_to_string(&p).unwrap(), MU_PLUGIN);
-        let _ = mtime1;
+        ensure_muplugin(&dir, "acme.test").unwrap(); // no rewrite when unchanged
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), mu_plugin_source("acme.test"));
+        // A domain change (Change domain → .rex) rewrites the allow-list.
+        ensure_muplugin(&dir, "acme.rex").unwrap();
+        assert!(std::fs::read_to_string(&p).unwrap().contains("'acme.rex'"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
