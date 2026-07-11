@@ -113,7 +113,7 @@ Each line = one feature, live-verified before its commit.
   offline download still exits 0 — same trap class as checksum verify); install capped
   at 60s wall-clock (WP's download_url waits 300s/attempt — offline that froze the
   spinner; timed-out child is SIGKILLed, error surfaces, old language kept); core
-  translations only, multisite note (main site only) shown honestly
+  translations only, multisite note (main site only) shown honestly `ed7d74e`
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
