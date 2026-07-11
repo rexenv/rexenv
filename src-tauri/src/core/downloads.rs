@@ -660,6 +660,7 @@ mod tests {
             path: "/tmp/s.test".into(),
             created_at: "now".into(),
             multisite: MultisiteMode::None,
+            db_name: "wp_s_test".into(),
         }
     }
 

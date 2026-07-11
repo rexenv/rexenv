@@ -80,6 +80,7 @@ async fn main() {
     }
     wordpress::install_for_site(
         &php, &wp, &docroot, domain, "DB Site",
+        &db_name,
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
         &mysql_base,
         &Default::default(),

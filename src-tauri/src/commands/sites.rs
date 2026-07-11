@@ -122,7 +122,7 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
                 ram_mb: tree.map(|t| t.ram_mb),
                 requests_per_min: act.map(|a| a.requests),
                 bytes_per_min: act.map(|a| a.bytes),
-                db_size_bytes: db_sizes.get(&core::wordpress::db_name_for(&s.domain)).copied(),
+                db_size_bytes: db_sizes.get(&s.db_name).copied(),
                 id: s.id,
                 domain: s.domain,
             }
@@ -243,6 +243,7 @@ pub async fn create_site(
             docroot,
             &created.domain,
             &created.name,
+            &created.db_name,
             &db_host,
             &mysql_base,
             &wp.unwrap_or_default(),
@@ -379,9 +380,10 @@ pub async fn delete_site(
     //    (registry keyed by domain; the mu-plugin goes away with the docroot).
     tunnels.stop_for_domain(state.platform.as_ref(), &site.domain);
 
-    // 2) Drop the site's database. Only WordPress sites get one (`wp_<domain>`,
-    //    derived from the validated stored domain — `drop_database` re-validates
-    //    the name, so nothing else can be named). No per-site DB user exists to
+    // 2) Drop the site's database. Only WordPress sites get one (the stored
+    //    `Site::db_name`, derived from the validated domain at creation —
+    //    `drop_database` re-validates the name, so nothing else can be named).
+    //    No per-site DB user exists to
     //    remove (local-dev connects as passwordless root). Skipped entirely when
     //    the MySQL datadir was never initialized (then no database can exist);
     //    otherwise MySQL is brought up first, exactly like site creation does.
@@ -403,7 +405,7 @@ pub async fn delete_site(
         core::database::drop_database(
             &mysql_base,
             DbEngine::Mysql.port(),
-            &core::wordpress::db_name_for(&site.domain),
+            &site.db_name,
         )?;
     }
 

@@ -86,6 +86,7 @@ async fn main() {
         &docroot,
         domain,
         "Network",
+        &wordpress::db_name_for(domain),
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
         &mysql_base,
         &Default::default(),

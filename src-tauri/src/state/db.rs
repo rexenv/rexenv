@@ -70,6 +70,16 @@ const MIGRATIONS: &[&str] = &[
         value  TEXT NOT NULL,
         PRIMARY KEY (minor, key)
     );",
+    // v6 — stored database name (change-domain prerequisite). Previously the DB
+    // name was re-derived from the domain on every operation
+    // (`wordpress::db_name_for`), which makes the domain immutable: changing it
+    // would silently point every later reset/import/export/drop at a database
+    // that doesn't exist. Now the name is derived ONCE (at creation / here for
+    // existing sites) and read from the row ever after. The backfill mirrors
+    // `db_name_for` exactly: `validate_domain` allows only [a-z0-9.-], so
+    // replacing '.' and '-' with '_' covers every non-alphanumeric character.
+    "ALTER TABLE sites ADD COLUMN db_name TEXT NOT NULL DEFAULT '';
+     UPDATE sites SET db_name = 'wp_' || replace(replace(domain, '.', '_'), '-', '_');",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -170,6 +180,41 @@ mod tests {
         assert_eq!(name, "Acme");
         assert_eq!(domain, "acme.test");
         assert_eq!(ssl, 1); // schema default
+    }
+
+    #[test]
+    fn v6_backfills_db_name_for_existing_sites() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Bring the schema up to v5 only, then insert sites the way they
+        // existed BEFORE db_name was stored.
+        for (i, stmt) in MIGRATIONS[..5].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        for (id, domain) in [("s1", "blog.test"), ("s2", "my-shop.test"), ("s3", "a.b-c.test")] {
+            conn.execute(
+                "INSERT INTO sites (id, name, domain, type, php_version, path)
+                 VALUES (?1, ?1, ?2, 'wordpress', '8.3', '/tmp')",
+                rusqlite::params![id, domain],
+            )
+            .unwrap();
+        }
+
+        // Applying the remaining migrations must backfill exactly what
+        // `wordpress::db_name_for` derives for each domain.
+        migrate(&conn).unwrap();
+        for (id, expect) in
+            [("s1", "wp_blog_test"), ("s2", "wp_my_shop_test"), ("s3", "wp_a_b_c_test")]
+        {
+            let (name, derived): (String, String) = conn
+                .query_row("SELECT db_name, domain FROM sites WHERE id = ?1", [id], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
+                .map(|(n, d): (String, String)| (n, crate::core::wordpress::db_name_for(&d)))
+                .unwrap();
+            assert_eq!(name, expect);
+            assert_eq!(name, derived, "SQL backfill must mirror db_name_for");
+        }
     }
 
     #[test]

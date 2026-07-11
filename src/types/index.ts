@@ -21,6 +21,7 @@ export interface Site {
   path: string;
   createdAt: string; // SQLite datetime, mirrors the Rust Site struct
   multisite: MultisiteMode; // WordPress multisite mode (§10.1)
+  dbName: string; // MySQL database name — stored at creation, stable across domain changes
 }
 
 /** WordPress multisite mode (mirrors the Rust MultisiteMode). */

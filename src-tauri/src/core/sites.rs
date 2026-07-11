@@ -65,6 +65,9 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
             new.domain
         )));
     }
+    // Derived from the domain ONCE, here — every later operation reads the
+    // stored value, so a domain change never re-points the database.
+    let db_name = super::wordpress::db_name_for(&new.domain);
     let site = Site {
         id: Uuid::new_v4().to_string(),
         name: new.name,
@@ -77,6 +80,7 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         path: new.path,
         created_at: store::db_now(conn)?,
         multisite: MultisiteMode::None,
+        db_name,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -566,6 +570,17 @@ mod tests {
         assert!(matches!(s.site_type, SiteType::Wordpress));
         assert!(matches!(s.web_server, WebServer::Nginx));
         assert_eq!(s.php_version, "8.3");
+        assert_eq!(s.db_name, "wp_acme_test");
+    }
+
+    #[test]
+    fn create_stores_the_derived_db_name() {
+        let conn = db::open_in_memory().unwrap();
+        let created = create(&conn, sample("Shop", "my-shop.test")).unwrap();
+        // Derived once at creation and persisted — reads must return the
+        // stored value, not a fresh derivation from the current domain.
+        assert_eq!(created.db_name, "wp_my_shop_test");
+        assert_eq!(get(&conn, &created.id).unwrap().unwrap().db_name, "wp_my_shop_test");
     }
 
     #[test]

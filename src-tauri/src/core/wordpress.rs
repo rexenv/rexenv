@@ -1546,7 +1546,10 @@ pub fn core_switch_version(
 }
 
 /// A valid MySQL database name derived from a site domain
-/// (`blog.test` → `wp_blog_test`).
+/// (`blog.test` → `wp_blog_test`). CREATION-TIME ONLY: the result is stored on
+/// the site row (`Site::db_name`, backfilled by migration v6 with identical
+/// logic) and every runtime operation reads the stored value — deriving from
+/// the domain at runtime would break sites whose domain has changed.
 pub fn db_name_for(domain: &str) -> String {
     let safe: String = domain
         .chars()
@@ -1657,9 +1660,11 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
 
 /// One-click install for a provisioned site (Phase 3 §1.2): fill the install
 /// fields from `opts`, defaulting from `domain`/`name` where empty, and delegate
-/// to [`install_wordpress`]. The canonical URL is `https://<domain>`; the DB name
-/// is derived from the domain. `db_host` is `host:port` (e.g. `127.0.0.1:13306`);
-/// `mysql_basedir` is the extracted MySQL tree (bundled client creates the DB).
+/// to [`install_wordpress`]. The canonical URL is `https://<domain>`; `db_name`
+/// is the site's STORED database name (`Site::db_name` — derived once at
+/// creation, never from the current domain). `db_host` is `host:port` (e.g.
+/// `127.0.0.1:13306`); `mysql_basedir` is the extracted MySQL tree (bundled
+/// client creates the DB).
 #[allow(clippy::too_many_arguments)] // flat mirror of the New Site dialog inputs
 pub fn install_for_site(
     php_bin: &Path,
@@ -1667,6 +1672,7 @@ pub fn install_for_site(
     docroot: &Path,
     domain: &str,
     name: &str,
+    db_name: &str,
     db_host: &str,
     mysql_basedir: &Path,
     opts: &InstallOptions,
@@ -1686,14 +1692,13 @@ pub fn install_for_site(
         DEFAULT_ADMIN.into() // local-dev default, consistent with reset_site
     };
     let url = format!("https://{domain}");
-    let db_name = db_name_for(domain);
 
     install_wordpress(
         php_bin,
         wp_phar,
         &WpInstall {
             docroot,
-            db_name: &db_name,
+            db_name,
             db_host,
             mysql_basedir,
             url: &url,
@@ -1728,21 +1733,22 @@ pub const DEFAULT_ADMIN: &str = "admin";
 /// Reset a WordPress site to a clean **single-site** install: DROP the
 /// database, clear any multisite constants from wp-config.php, and re-run the
 /// step-skipping installer with the default local-dev credentials
-/// (admin / admin, `admin@<domain>`). Files stay on disk — core, wp-config
-/// (same DB name/salts), plugins, themes, uploads; only the database is
-/// recreated. Re-runnable: each step skips or tolerates already-done work, so
-/// a failure partway is fixed by running it again.
+/// (admin / admin, `admin@<domain>`). `db_name` is the site's STORED database
+/// name (`Site::db_name`), never re-derived from the domain. Files stay on
+/// disk — core, wp-config (same DB name/salts), plugins, themes, uploads; only
+/// the database is recreated. Re-runnable: each step skips or tolerates
+/// already-done work, so a failure partway is fixed by running it again.
 pub fn reset_site(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
     domain: &str,
     site_name: &str,
+    db_name: &str,
     mysql_basedir: &Path,
 ) -> Result<()> {
     // 1) Erase: drop the database with the bundled client (PATH-safe).
-    let db_name = db_name_for(domain);
-    super::database::drop_database(mysql_basedir, super::database::MYSQL_PORT, &db_name)?;
+    super::database::drop_database(mysql_basedir, super::database::MYSQL_PORT, db_name)?;
 
     // 2) Clear multisite constants — best effort per constant (`wp config
     //    delete` errors on one that isn't defined, which is the common case).
@@ -1762,7 +1768,7 @@ pub fn reset_site(
         wp_phar,
         &WpInstall {
             docroot,
-            db_name: &db_name,
+            db_name,
             db_host: &db_host,
             mysql_basedir,
             url: &url,

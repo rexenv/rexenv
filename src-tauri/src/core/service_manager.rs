@@ -1423,6 +1423,7 @@ mod tests {
             path: format!("/tmp/{domain}"),
             created_at: "now".into(),
             multisite: MultisiteMode::None,
+            db_name: crate::core::wordpress::db_name_for(domain),
         };
 
         let sites = vec![

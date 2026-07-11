@@ -77,6 +77,7 @@ async fn main() {
         &docroot,
         &site.domain,
         &site.name,
+        &site.db_name,
         &db_host,
         &mysql_base,
         &InstallOptions {

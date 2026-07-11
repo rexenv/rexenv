@@ -581,7 +581,7 @@ pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<Stri
             &mysql_base,
             DbEngine::Mysql.port(),
             &site.domain,
-            &core::wordpress::db_name_for(&site.domain),
+            &site.db_name,
         )
         .map(|p| p.to_string_lossy().into_owned())
     })
@@ -630,7 +630,7 @@ pub async fn wp_db_import(state: State<'_, AppState>, id: String, path: String) 
         core::database::import_from_file(
             &mysql_base,
             DbEngine::Mysql.port(),
-            &core::wordpress::db_name_for(&site.domain),
+            &site.db_name,
             &file,
         )
     })
@@ -663,10 +663,14 @@ pub async fn wp_site_reset(state: State<'_, AppState>, id: String) -> Result<()>
         binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
     let (php, wp) = wp_tools(&state, &site.php_version).await?;
     let was_multisite = !matches!(site.multisite, MultisiteMode::None);
-    let (docroot, domain, name) =
-        (PathBuf::from(&site.path), site.domain.clone(), site.name.clone());
+    let (docroot, domain, name, db_name) = (
+        PathBuf::from(&site.path),
+        site.domain.clone(),
+        site.name.clone(),
+        site.db_name.clone(),
+    );
     wp_blocking(move || {
-        core::wordpress::reset_site(&php, &wp, &docroot, &domain, &name, &mysql_base)
+        core::wordpress::reset_site(&php, &wp, &docroot, &domain, &name, &db_name, &mysql_base)
     })
     .await?;
     if was_multisite {

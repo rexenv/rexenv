@@ -78,6 +78,10 @@ pub struct Site {
     pub created_at: String,
     /// WordPress multisite mode (`none` for a single site). Phase 3 §10.1.
     pub multisite: MultisiteMode,
+    /// MySQL database name, derived from the domain ONCE at creation
+    /// (`wordpress::db_name_for`) and stored — never re-derived, so a later
+    /// domain change leaves the database untouched.
+    pub db_name: String,
 }
 
 /// Live per-site serving status (H1 follow-up). `serving` is true only when the edge

@@ -10,7 +10,7 @@ use rusqlite::{params, Connection, Row};
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
 const SITE_COLUMNS: &str =
-    "id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite";
+    "id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -30,6 +30,7 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         path: row.get(8)?,
         created_at: row.get(9)?,
         multisite: MultisiteMode::parse_db(&multisite).map_err(to_sqlite_err)?,
+        db_name: row.get(11)?,
     })
 }
 
@@ -43,8 +44,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             site.id,
             site.name,
@@ -57,6 +58,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.path,
             site.created_at,
             site.multisite.as_db(),
+            site.db_name,
         ],
     )?;
     Ok(())
