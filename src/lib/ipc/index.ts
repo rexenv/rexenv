@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EnvVar, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EnvVar, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -944,6 +944,26 @@ export async function setSetting(key: string, value: string): Promise<void> {
 export async function sitesFolder(): Promise<string> {
   if (!isTauri()) return "~/rexenv/Sites";
   return invoke<string>("sites_folder");
+}
+
+/** The default TLD new sites are created under (setting, else "test"). */
+export async function defaultTld(): Promise<string> {
+  if (!isTauri()) return "test";
+  return invoke<string>("default_tld");
+}
+
+/** Set the default TLD for new sites. The backend refuses blocked TLDs
+ *  (.local, .dev, 2-letter, popular gTLDs) with the reason. Returns the
+ *  stored (normalized) value. */
+export async function setDefaultTld(tld: string): Promise<string> {
+  if (!isTauri()) throw new Error("Changing the default TLD requires the rexenv desktop app.");
+  return invoke<string>("set_default_tld", { tld });
+}
+
+/** Classify a TLD: blocked (with reason) / warn ("may shadow a real TLD") / safe. */
+export async function tldPolicy(tld: string): Promise<TldPolicy> {
+  if (!isTauri()) return { allowed: true, warn: tld !== "test", reason: "" };
+  return invoke<TldPolicy>("tld_policy", { tld });
 }
 
 // ── DNS & SSL + autostart (Settings, §11.1) ─────────────────────────────────

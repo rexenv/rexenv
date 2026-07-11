@@ -5,7 +5,7 @@ import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOf
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { createSite, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
+import { createSite, defaultTld, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
 import type { MultisiteMode, SiteType, WebServer } from "@/types";
 
 function generatePassword(): string {
@@ -83,11 +83,13 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const defaultVersion = installed.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "8.3";
   const { data: blueprints = [] } = useQuery({ queryKey: ["blueprints"], queryFn: listBlueprints });
   const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites });
+  // The default TLD for new sites (Settings → DNS & SSL). ".test" until loaded.
+  const { data: tld = "test" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
 
   // When prefilled (Duplicate), the type is known → jump straight to Configure.
   const [step, setStep] = useState<1 | 2>(initial ? 2 : 1);
   const [name, setName] = useState(initial?.name ?? "");
-  const [domain, setDomain] = useState(""); // the base, without ".test"
+  const [domain, setDomain] = useState(""); // the base, without the TLD suffix
   const [siteType, setSiteType] = useState<SiteType>(initial?.siteType ?? "php");
   const [phpVersion, setPhpVersion] = useState(initial?.phpVersion ?? defaultVersion);
   const [webServer, setWebServer] = useState<WebServer>(initial?.webServer ?? "nginx");
@@ -123,7 +125,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
 
   const slug = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const domainBase = domainEdited ? slug(domain) : slug(name);
-  const effectiveDomain = domainBase ? `${domainBase}.test` : "";
+  const effectiveDomain = domainBase ? `${domainBase}.${tld}` : "";
   const isWordpress = siteType === "wordpress";
 
   const create = useMutation({
@@ -198,6 +200,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               onPickBlueprint={onPickBlueprint}
               name={name}
               setName={setName}
+              tld={tld}
               domainBase={domainBase}
               onDomainBase={(v) => {
                 setDomainEdited(true);
@@ -338,6 +341,7 @@ function Step2(p: {
   onPickBlueprint: (id: string) => void;
   name: string;
   setName: (v: string) => void;
+  tld: string;
   domainBase: string;
   onDomainBase: (v: string) => void;
   domainOk: boolean;
@@ -396,10 +400,12 @@ function Step2(p: {
           >
             <input {...TECH_INPUT}
               value={p.domainBase}
-              onChange={(e) => p.onDomainBase(e.target.value.replace(/\.test$/, ""))}
+              // Pasting a full domain drops the suffix shown next to the field
+              // (the TLD is [a-z]+ by policy, so it's regex-safe).
+              onChange={(e) => p.onDomainBase(e.target.value.replace(new RegExp(`\\.${p.tld}$`), ""))}
               className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
             />
-            <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.test</span>
+            <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.{p.tld}</span>
             {p.domainOk && <Check className="ml-2 h-[15px] w-[15px] flex-none text-status-running" strokeWidth={2} />}
             {p.domainTaken && <XIcon className="ml-2 h-[15px] w-[15px] flex-none text-status-error" strokeWidth={2} />}
           </div>
@@ -409,7 +415,7 @@ function Step2(p: {
         <div className="-mt-1.5 flex items-center gap-[7px] text-[11.5px] text-status-error-bright">
           <AlertCircle className="h-[13px] w-[13px] flex-none" strokeWidth={2} />
           <span>
-            <span className="font-mono">{domainBase}.test</span> is already in use. Try another name.
+            <span className="font-mono">{domainBase}.{p.tld}</span> is already in use. Try another name.
           </span>
         </div>
       )}
@@ -518,13 +524,13 @@ function Step2(p: {
               <div className="mt-[13px] grid grid-cols-2 gap-[10px]">
                 <MultiCard
                   label="Subdomain"
-                  example={`site1.${domainBase}.test`}
+                  example={`site1.${domainBase}.${p.tld}`}
                   selected={p.multisite === "subdomain"}
                   onClick={() => p.setMultisite("subdomain")}
                 />
                 <MultiCard
                   label="Subdirectory"
-                  example={`${domainBase}.test/site1`}
+                  example={`${domainBase}.${p.tld}/site1`}
                   selected={p.multisite === "subdirectory"}
                   onClick={() => p.setMultisite("subdirectory")}
                 />

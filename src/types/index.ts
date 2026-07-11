@@ -325,6 +325,14 @@ export interface DnsStatus {
   caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
 }
 
+/** TLD policy classification (mirrors the Rust core::tld::TldPolicy DTO).
+ *  Display metadata only — the backend refuses blocked TLDs either way. */
+export interface TldPolicy {
+  allowed: boolean; // false = hard-blocked (.local, .dev, 2-letter, popular gTLDs)
+  warn: boolean; // allowed but outside {test, localhost, example, invalid}
+  reason: string; // why a blocked TLD is refused ("" when allowed)
+}
+
 /** A network sub-site row (mirrors the Rust WpNetworkSite DTO / `wp site list`). */
 export interface WpNetworkSite {
   id: string; // blog_id (1 = main site)

@@ -54,6 +54,7 @@ import {
   setSiteWebServer,
   siteCertInfo,
   tailLog,
+  tldPolicy,
   wpAdminLoginUrl,
   wpDebugLogClear,
   wpDebugLogDownload,
@@ -877,7 +878,19 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
   const [input, setInput] = useState("");
   const [done, setDone] = useState<DomainChange | null>(null);
   const next = input.trim().toLowerCase();
-  const valid = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.test$/.test(next) && next !== site.domain;
+  // Any development TLD (letters-only last label); the backend policy decides
+  // whether it's allowed — this regex only gates obvious syntax errors.
+  const wellFormed = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]+$/.test(next);
+  const nextTld = wellFormed ? next.split(".").pop()! : "";
+  // Backend policy for the entered TLD: blocked (refused with reason) or
+  // warn-tier ("may shadow a real internet TLD"). Enforcement is server-side
+  // either way — this is just early feedback.
+  const { data: policy } = useQuery({
+    queryKey: ["tld-policy", nextTld],
+    queryFn: () => tldPolicy(nextTld),
+    enabled: nextTld !== "",
+  });
+  const valid = wellFormed && next !== site.domain && policy?.allowed === true;
   const isWp = site.type === "wordpress";
 
   const change = useMutation({
@@ -982,9 +995,19 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
               className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
             />
             <div className="mt-1.5 text-[11.5px] text-rex-text-dim">
-              Lowercase letters, digits and hyphens, ending in{" "}
-              <span className="font-mono">.test</span>.
+              Lowercase letters, digits and hyphens, ending in a development TLD (e.g.{" "}
+              <span className="font-mono">.test</span> or your default). First use of a new TLD
+              asks for your password once to register it with macOS.
             </div>
+            {policy && !policy.allowed && (
+              <div className="mt-1.5 text-[11.5px] text-status-error-bright">{policy.reason}</div>
+            )}
+            {policy?.allowed && policy.warn && (
+              <div className="mt-1.5 text-[11.5px] text-status-warning-bright">
+                <span className="font-mono">.{nextTld}</span> may shadow a real internet TLD on
+                this machine. <span className="font-mono">.test</span> is always safe.
+              </div>
+            )}
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="secondary" disabled={busy} onClick={onClose}>
                 Cancel

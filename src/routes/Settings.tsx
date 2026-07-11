@@ -10,6 +10,7 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   applyPhpSettings,
   autostartStatus,
+  defaultTld,
   deleteBlueprint,
   dnsStatus,
   getAppInfo,
@@ -23,9 +24,11 @@ import {
   saveBlueprint,
   setAutostart,
   setDefaultPhpVersion,
+  setDefaultTld,
   setPhpVersionInstalled,
   setSetting,
   sitesFolder,
+  tldPolicy,
   trustLocalCa,
   uninstallSystem,
 } from "@/lib/ipc";
@@ -473,6 +476,8 @@ function DnsSslSetting() {
         </div>
       </div>
 
+      <DefaultTldCard />
+
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
         <ActionRow
           title="Re-trust local CA"
@@ -498,6 +503,84 @@ function DnsSslSetting() {
       </div>
       {msg && <Notice>{msg}</Notice>}
     </>
+  );
+}
+
+/** Default-TLD picker (configurable TLD v1): new sites are created under this
+ *  TLD. Existing sites keep their domain (re-point one via Change domain).
+ *  Blocked TLDs are refused by the BACKEND — the inline feedback here mirrors
+ *  the same `tld_policy` classification, it doesn't enforce anything. */
+function DefaultTldCard() {
+  const qc = useQueryClient();
+  const { data: current = "test" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
+  const [input, setInput] = useState<string | null>(null); // null = untouched
+  const value = (input ?? current).trim().replace(/^\./, "").toLowerCase();
+  const dirty = input !== null && value !== current;
+
+  const { data: policy } = useQuery({
+    queryKey: ["tld-policy", value],
+    queryFn: () => tldPolicy(value),
+    enabled: value !== "",
+  });
+
+  const save = useMutation({
+    mutationFn: () => setDefaultTld(value),
+    onSuccess: (stored) => {
+      setInput(null);
+      toast.success(`New sites will now be created under .${stored}`);
+      void qc.invalidateQueries({ queryKey: ["default-tld"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  return (
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
+      <div className="flex items-center gap-[14px]">
+        <div className="flex-1">
+          <div className="text-[13.5px] font-medium text-rex-text">Default domain ending</div>
+          <div className="mt-0.5 text-[12px] text-rex-text-muted">
+            New sites are created under this TLD. Existing sites keep their domain — re-point
+            one from its page via Change domain.
+          </div>
+        </div>
+        <div className="flex h-9 w-[150px] items-center rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] transition-colors has-[input:focus]:border-brand">
+          <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.</span>
+          <input
+            {...TECH_INPUT}
+            value={input ?? current}
+            onChange={(e) => setInput(e.target.value.toLowerCase())}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && dirty && policy?.allowed && !save.isPending) save.mutate();
+            }}
+            aria-label="Default TLD for new sites"
+            className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
+          />
+        </div>
+        <Button
+          variant="secondary"
+          disabled={!dirty || !policy?.allowed || save.isPending}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      {policy && !policy.allowed && value !== "" && (
+        <div className="mt-2.5 text-[11.5px] text-status-error-bright">{policy.reason}</div>
+      )}
+      {policy?.allowed && policy.warn && (
+        <div className="mt-2.5 text-[11.5px] text-status-warning-bright">
+          <span className="font-mono">.{value}</span> may shadow a real internet TLD on this
+          machine{value === "rex" ? " — and ICANN could delegate it for real use in the future" : ""}.
+          The reserved-for-testing TLDs (<span className="font-mono">.test</span>) can never
+          collide.
+        </div>
+      )}
+      <div className="mt-2.5 text-[11.5px] text-rex-text-dim">
+        <span className="font-mono">.test</span> always stays active alongside your choice
+        (rexenv's own tools use it). The first site on a new TLD asks for your password once to
+        register it with macOS.
+      </div>
+    </div>
   );
 }
 
@@ -705,16 +788,17 @@ function UninstallSetting() {
   const run = useMutation({
     mutationFn: uninstallSystem,
     onSuccess: () =>
-      setMsg("System changes removed: services stopped, .test resolver deleted, local CA untrusted. You can now quit and delete rexenv."),
+      setMsg("System changes removed: services stopped, all rexenv DNS resolver files deleted, local CA untrusted. You can now quit and delete rexenv."),
     onError: (e) => toastBackendError(e),
   });
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[12px] text-rex-text-muted">
-        Reverse the system-level changes rexenv made — stop all services, remove the{" "}
-        <span className="font-mono">.test</span> DNS resolver, and untrust the local HTTPS certificate
-        authority. Your site files and databases are <span className="font-medium">not</span> deleted.
+        Reverse the system-level changes rexenv made — stop all services, remove every rexenv DNS
+        resolver (<span className="font-mono">.test</span> plus any custom TLDs you added), and
+        untrust the local HTTPS certificate authority. Your site files and databases are{" "}
+        <span className="font-medium">not</span> deleted.
       </p>
       <div className="flex items-center justify-between rounded-lg border border-status-error/40 bg-status-error/5 p-3">
         <span className="text-[12.5px] text-rex-text">Remove rexenv's system changes</span>
@@ -727,7 +811,7 @@ function UninstallSetting() {
               await confirm({
                 title: "Remove rexenv's system changes?",
                 message:
-                  "This stops all services, deletes /etc/resolver/test, and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
+                  "This stops all services, deletes every rexenv file under /etc/resolver (.test and any custom TLDs), and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
                 danger: true,
                 confirmLabel: "Remove",
               })
