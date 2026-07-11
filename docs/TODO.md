@@ -175,7 +175,7 @@ Each line = one feature, live-verified before its commit.
   and the DB name derives from the domain (L). ✓ **Done** in two commits:
   `688142a` (prerequisite) stores `db_name` on the site row (v6 migration backfills,
   every runtime reader switched — user-verified reset + export/import round-trip on a
-  pre-migration site); `change_site_domain` orchestrates preflight (validate +
+  pre-migration site); `b0975b3` — `change_site_domain` orchestrates preflight (validate +
   uniqueness + multisite REFUSED honestly) → mandatory Downloads backup (abort on
   fail) → new-domain cert (additive) → `wp search-replace` dry-run gate then two real
   passes (`https://old→https://new`, bare `old→new`, `--all-tables`) → SQLite domain
