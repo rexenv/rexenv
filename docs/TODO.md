@@ -6,6 +6,15 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [x] **Configurable TLD (v1: default-TLD-for-new-sites)** — stored `default_tld`
+  setting; policy-driven `validate_domain` (hard-block `.local`/gTLDs/2-letter in CORE —
+  refused even via direct invoke; warn tier for non-RFC-2606 TLDs); answer-all DNS
+  handler + one `/etc/resolver/<tld>` per TLD (first-use prompt, no DNS restart);
+  uninstall sweeps all rexenv resolver files by content signature; `.test` backbone
+  permanent; wp-login mu-plugin allow-list now per-site domain; Settings picker +
+  TLD-aware dialogs. ✓ **Done** in 5 commits `bb1ba89`/`509ec95`/`7dad2de`/`dc6cb57`/
+  `b1e103d` — all self-checks green (224 lib tests, clippy, examples, tsc, vite);
+  **awaiting human runtime verification** — checklist in `docs/TLD-FEATURE-REPORT.md`.
 - [x] **Edge "stops by itself" — adopt a live edge, never kill it.** Root cause of the
   `health.log` `edge-down` entries: every edge death was rexenv's own `caddy stop` —
   (a) `prepare_edge` treated a LIVE edge as a stale leftover (`recover_stale_edge`)
