@@ -118,7 +118,7 @@ Each line = one feature, live-verified before its commit.
   four backend guards per file (is_os_noise basename reused, relative/no-`..`, lstat
   regular-file — the guard that stops a `.DS_Store` symlink from deleting its TARGET —
   canonicalize+prefix inside docroot); skip-not-abort with reasons; auto re-verify
-  refreshes the panel in the same round-trip
+  refreshes the panel in the same round-trip `24d35bd`
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
