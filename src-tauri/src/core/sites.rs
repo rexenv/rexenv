@@ -405,8 +405,48 @@ pub fn needs_database(site_type: SiteType) -> bool {
     matches!(site_type, SiteType::Wordpress | SiteType::Laravel)
 }
 
+/// The validated TLD of `domain` — its last label, returned only after the
+/// full domain validation (charset, labels, TLD policy) passes. Callers use it
+/// to key per-TLD side effects (the OS resolver file) off an already-vetted
+/// value, never off raw input.
+pub fn domain_tld(domain: &str) -> Result<String> {
+    validate_domain(domain)?;
+    Ok(domain
+        .rsplit('.')
+        .next()
+        .expect("validate_domain guarantees a TLD")
+        .to_string())
+}
+
 /// Settings key for the configurable sites root.
 pub const SITES_DIR_KEY: &str = "sites_dir";
+
+/// Settings key for the default TLD new sites are created under (v1 of the
+/// configurable-TLD feature: default-for-NEW-sites only — existing sites keep
+/// their domain; re-point one via Change domain if wanted).
+pub const DEFAULT_TLD_KEY: &str = "default_tld";
+
+/// The default TLD for new sites: the `default_tld` setting if it holds an
+/// allowed TLD, else the `.test` backbone. A stored value that no longer
+/// passes policy (edited DB, tightened blocklist) falls back rather than
+/// resurfacing a blocked TLD in the UI.
+pub fn default_tld(conn: &Connection) -> Result<String> {
+    match store::get_setting(conn, DEFAULT_TLD_KEY)? {
+        Some(t) if tld::ensure_allowed(&t).is_ok() => Ok(t),
+        _ => Ok(tld::BACKBONE_TLD.to_string()),
+    }
+}
+
+/// Set the default TLD for new sites. POLICY-GATED in the backend: a blocked
+/// TLD (.local, .dev, 2-letter, popular gTLDs …) is refused with the policy's
+/// reason — even via a direct IPC invoke. `.test` need not be the value; it
+/// stays active regardless (backbone).
+pub fn set_default_tld(conn: &Connection, new_tld: &str) -> Result<String> {
+    let new_tld = new_tld.trim().trim_start_matches('.');
+    tld::ensure_allowed(new_tld)?;
+    store::set_setting(conn, DEFAULT_TLD_KEY, new_tld)?;
+    Ok(new_tld.to_string())
+}
 
 /// Default site docroot root: `~/rexenv/Sites` — user-visible and Finder
 /// friendly (`directories` resolves the home dir correctly per OS). Only a
@@ -734,6 +774,39 @@ mod tests {
         let a = create(&conn, sample("A", "a.test")).unwrap();
         assert!(set_domain(&conn, &a.id, "a.dev").is_err());
         assert_eq!(get(&conn, &a.id).unwrap().unwrap().domain, "a.test");
+    }
+
+    #[test]
+    fn default_tld_setting_round_trips_and_is_policy_gated() {
+        let conn = db::open_in_memory().unwrap();
+        // Fresh DB (v8 seed) → test.
+        assert_eq!(default_tld(&conn).unwrap(), "test");
+
+        // Warn-tier value is allowed and persists ('.rex' form is normalized).
+        assert_eq!(set_default_tld(&conn, ".rex").unwrap(), "rex");
+        assert_eq!(default_tld(&conn).unwrap(), "rex");
+
+        // Blocked TLDs are refused AT THE BACKEND — direct calls included —
+        // and the stored value is untouched.
+        for t in ["local", "dev", "io", "com"] {
+            assert!(set_default_tld(&conn, t).is_err(), "must refuse {t}");
+        }
+        assert_eq!(default_tld(&conn).unwrap(), "rex");
+
+        // A blocked value smuggled into the settings table (bypassing the
+        // setter) falls back to the backbone instead of surfacing.
+        store::set_setting(&conn, DEFAULT_TLD_KEY, "com").unwrap();
+        assert_eq!(default_tld(&conn).unwrap(), "test");
+    }
+
+    #[test]
+    fn domain_tld_returns_validated_tld_only() {
+        assert_eq!(domain_tld("acme.test").unwrap(), "test");
+        assert_eq!(domain_tld("sub.mysite.rex").unwrap(), "rex");
+        // Invalid or blocked domains never yield a TLD to act on.
+        assert!(domain_tld("acme.local").is_err());
+        assert!(domain_tld("../evil.test").is_err());
+        assert!(domain_tld("acme").is_err());
     }
 
     #[test]

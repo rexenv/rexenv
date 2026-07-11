@@ -93,6 +93,11 @@ const MIGRATIONS: &[&str] = &[
         value   TEXT NOT NULL,
         PRIMARY KEY (site_id, name)
     );",
+    // v8 — configurable default TLD (v1: default-for-new-sites only). Seed the
+    // setting explicitly so the stored default is visible/queryable; the code
+    // still falls back to 'test' when the row is absent. OR IGNORE keeps any
+    // value a user already stored.
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('default_tld', 'test');",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -228,6 +233,31 @@ mod tests {
             assert_eq!(name, expect);
             assert_eq!(name, derived, "SQL backfill must mirror db_name_for");
         }
+    }
+
+    #[test]
+    fn v8_seeds_default_tld_without_clobbering_an_existing_value() {
+        // Fresh DB: the seed row exists.
+        let conn = memory_db();
+        let v: String = conn
+            .query_row("SELECT value FROM settings WHERE key='default_tld'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, "test");
+
+        // Upgrade path: a pre-v8 DB where the user somehow already stored a
+        // value — OR IGNORE must keep it.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..7].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute("INSERT INTO settings (key, value) VALUES ('default_tld', 'rex')", [])
+            .unwrap();
+        migrate(&conn).unwrap();
+        let v: String = conn
+            .query_row("SELECT value FROM settings WHERE key='default_tld'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, "rex", "v8 seed must not overwrite an existing value");
     }
 
     #[test]

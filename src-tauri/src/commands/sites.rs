@@ -189,6 +189,14 @@ pub async fn create_site(
     wp: Option<core::wordpress::InstallOptions>,
     blueprint_id: Option<String>,
 ) -> Result<Site> {
+    // The domain's TLD must resolve locally: install its OS resolver file on
+    // first use (one privileged prompt; no-op when already installed — `.test`
+    // lands during system setup). BEFORE provisioning, so a declined prompt or
+    // an invalid/blocked domain creates nothing. `domain_tld` fully validates
+    // the domain, so only a vetted label ever reaches the resolver command.
+    let site_tld = core::sites::domain_tld(&site.domain)?;
+    core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
+
     let (created, mut sites, blueprint) = {
         let conn = lock(&state)?;
         let created = core::sites::provision(&conn, state.platform.as_ref(), &state.ca, site)?;
@@ -517,10 +525,13 @@ pub struct DomainChange {
 /// domain (the DB restorable from the fresh backup); after the flip the only
 /// remaining step that can fail is the reload, which is retriable.
 ///
-/// DNS needs nothing: the embedded resolver wildcards `*.test`. The docroot
-/// folder and database name stay keyed to the old domain on purpose (cosmetic;
-/// renaming either is risk for zero value). Bare-domain pass also rewrites
-/// `…@old.test` email addresses — acceptable for local dev, stated in the UI.
+/// DNS: the embedded resolver answers any name, so the only DNS step is
+/// ensuring the new domain's TLD has its OS resolver file (first use of a TLD
+/// = one privileged prompt; `.test` and previously used TLDs are no-ops). The
+/// docroot folder and database name stay keyed to the old domain on purpose
+/// (cosmetic; renaming either is risk for zero value). Bare-domain pass also
+/// rewrites `…@old.test` email addresses — acceptable for local dev, stated in
+/// the UI.
 #[tauri::command]
 pub async fn change_site_domain(
     state: State<'_, AppState>,
@@ -539,6 +550,12 @@ pub async fn change_site_domain(
     };
     let old_domain = site.domain.clone();
     let is_wp = matches!(site.site_type, SiteType::Wordpress);
+
+    // New TLD → its OS resolver file must exist, or the renamed site wouldn't
+    // resolve. First use of a TLD = one privileged prompt; no-op otherwise.
+    // BEFORE the backup/search-replace, so declining the prompt changes nothing.
+    let new_tld = core::sites::domain_tld(&domain)?;
+    core::dns::ensure_resolver(state.platform.as_ref(), &new_tld, core::dns::DEFAULT_DNS_PORT)?;
 
     let mut backup_path = None;
     let mut replacements = 0u64;
