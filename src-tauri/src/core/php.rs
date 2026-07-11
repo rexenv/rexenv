@@ -611,11 +611,14 @@ mod tests {
 
     #[test]
     fn fpm_port_is_deterministic_and_keeps_phase1_port() {
+        assert_eq!(fpm_port("8.0"), Some(9780));
         assert_eq!(fpm_port("8.1"), Some(9781));
         assert_eq!(fpm_port("8.2"), Some(9782));
         // 8.3 must equal the Phase-1 single-pool port.
         assert_eq!(fpm_port("8.3"), Some(9783));
         assert_eq!(fpm_port("8.3"), Some(services::PHP_FPM_PORT));
+        assert_eq!(fpm_port("8.4"), Some(9784));
+        assert_eq!(fpm_port("8.5"), Some(9785));
         // Distinct per version.
         assert_ne!(fpm_port("8.1"), fpm_port("8.2"));
         // Rejects a patch string or junk.
@@ -626,15 +629,17 @@ mod tests {
     #[test]
     fn minors_and_patches_track_pinned_builds() {
         let minors = all_minors();
-        assert!(minors.contains(&"8.3".to_string()));
-        assert!(minors.len() >= 2);
+        // The offered set: 8.0–8.5 (no 7.4 — static-php never published it).
+        for want in ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"] {
+            assert!(minors.contains(&want.to_string()), "missing {want}");
+        }
         for m in &minors {
             // Every minor maps back to a pinned patch in the same series.
             let patch = patch_for_minor(m).unwrap();
             assert_eq!(&minor_of(patch), m);
             assert!(fpm_port(m).is_some());
         }
-        assert!(patch_for_minor("8.0").is_none());
+        assert!(patch_for_minor("7.4").is_none());
     }
 
     #[test]

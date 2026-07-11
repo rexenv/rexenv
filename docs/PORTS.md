@@ -12,7 +12,7 @@ binary, update THIS file in the same commit.
 | Caddy admin | **unix socket** (`<config>/caddy-admin.sock`, `0600`) — never TCP `:2019` | — | `core/proxy.rs` `ADMIN_SOCKET_FILE` |
 | Embedded DNS | **15353** | UDP | `core/dns.rs` `DEFAULT_DNS_PORT` |
 | Shared Nginx | **18088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` |
-| php-fpm pools | **9781 / 9782 / 9783** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.1/8.2/8.3) |
+| php-fpm pools | **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.0–8.5, one pool per installed minor) |
 | FrankenPHP override backends | **8200–8299** (per-site, FNV-1a of domain) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT` |
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |
 | MariaDB (stub) | **13307** | TCP | `core/db.rs` `MARIADB_PORT` |
@@ -34,7 +34,7 @@ binary, update THIS file in the same commit.
 | Binary | Version | Notes |
 |---|---|---|
 | Caddy | 2.11.4 | edge only |
-| PHP | 8.1.34 / 8.2.31 / 8.3.31 | static-php **"bulk"** build ("common" lacks `mysqli`) |
+| PHP | 8.0.30 / 8.1.34 / 8.2.31 / 8.3.31 / 8.4.23 / 8.5.8 | static-php **"bulk"** build ("common" lacks `mysqli`). 8.0 = upstream-EOL, frozen at .30. NO 7.4 (never published — needs self-hosting, like the Xdebug build) |
 | PHP debug (Xdebug 3.4.5) | 8.3.31 | wired but **unresolvable** — checksums empty until hosted (see `docs/xdebug-debug-build.md`) |
 | Nginx | 1.30.3 | jirutka static; Homebrew `libpcre2` relinked to `/usr/lib` |
 | MySQL | 8.4.6 | dir tree, Oracle-signed (no re-sign), CDN URL + browser UA |

@@ -21,7 +21,11 @@ pub const PHP_VERSION: &str = "8.3.31";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
-pub const PHP_VERSIONS: &[&str] = &["8.1.34", "8.2.31", "8.3.31"];
+/// 7.4 is deliberately absent: static-php.dev never published it — offering it
+/// needs a self-built + self-hosted artifact (same blocked path as the Xdebug
+/// debug build). 8.0 is upstream-EOL, frozen at 8.0.30 (its only bulk build).
+pub const PHP_VERSIONS: &[&str] =
+    &["8.0.30", "8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"];
 /// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
 /// per-site Xdebug debug pool. The stock static-php "bulk" builds ship NO Xdebug
 /// and a static PHP can't `dlopen` an external `xdebug.so` (§8.1), so this is a
@@ -96,6 +100,13 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 // sudden checksum mismatch in the wild usually means a rebuild, not tampering.
 // On mismatch: download, verify (`php -v` version + `php -m` has mysqli, Mach-O
 // arch), then re-pin. 8.2/8.3 re-pinned 2026-07-05 after the 2026-07-01 rebuild.
+// 8.0.30 / 8.4.23 / 8.5.8 pinned 2026-07-11: all 12 artifacts downloaded, hashed,
+// extracted, and RUN (arm64 native + x86_64 under Rosetta) — version + mysqli +
+// Mach-O arch verified on every one before pinning.
+const PHP_8_0_30_CLI_MAC_ARM64_SHA256: &str = "13c77c837cd50c027e1c614c192b25205123311a30d2335e9a3c8f82d23acb9a";
+const PHP_8_0_30_CLI_MAC_AMD64_SHA256: &str = "b025f2c343916dd97d4cad543f0cc4c07ac882af10bc72773ad27ab8f6c9f59a";
+const PHP_8_0_30_FPM_MAC_ARM64_SHA256: &str = "e91bc2624c4469ceb0d7f7d93d643e1aebadd451556b0b1cc8d5142531b14138";
+const PHP_8_0_30_FPM_MAC_AMD64_SHA256: &str = "ec02cd54162c190c0029ddccbc382e21442b4941aedef9455b8d6fd32bc472d5";
 const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "b721271659d6e3448c29c0dc5755ffc4b8a1498c4709e1aba6602cfb584a84e4";
 const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "5fe69256365f96a270e34208ec574be7012c8c08a23bdf52948d0d16d4d8ec6a";
 const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "c5faad9eac5ce9753c30a17fb2a2023dcf72e5b367e0ac76b81d006647ea0e52";
@@ -108,6 +119,14 @@ const PHP_8_3_31_CLI_MAC_ARM64_SHA256: &str = "8dd2089ced9f07165fe7d8c1789810547
 const PHP_8_3_31_CLI_MAC_AMD64_SHA256: &str = "a3b39184563f7e53b7d53df94ec38ac02d69388aefec5bf7b5fd82d6061cc753";
 const PHP_8_3_31_FPM_MAC_ARM64_SHA256: &str = "1995f59e7eecfd7897e837929bdeb45fc277bad3d0375a228eaa74c0862188cb";
 const PHP_8_3_31_FPM_MAC_AMD64_SHA256: &str = "33e10b2eac7a478f913ed6ce6bfd7c10e0b8177ebf26747e9c8175408308d3eb";
+const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "4a5dca6df0211f7fb21425cf1c867968b2dfb7c079f98cf37770c5728e0bf709";
+const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "be88a71134d43e8800946f8372da931ee1796c400a1fb4cf2afd718644251ffc";
+const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "1a417db44f0eb0b40a9f8cd862f24ecfabdea87f85863f30d218c4876bb688ef";
+const PHP_8_4_23_FPM_MAC_AMD64_SHA256: &str = "67bbb7f2b2543d45c8a4ab0e4759fbd956530e87fba47a00505c06f09c9b9950";
+const PHP_8_5_8_CLI_MAC_ARM64_SHA256: &str = "5e5032e8244a2367b1e8a9c70ff6f793dee7433966c9291da85fadf2167cd55f";
+const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "d5a9a505ebce66c7f6b4f4e16629c36f385f2d360df915875722d67fe8bb2161";
+const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "1d994fbc4e49015a7cd4ad4fcb7c03e7e219f65fdb14e5e33ef1c44d928368e9";
+const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "57cdce953a8392e655a800908eb5e8fa61e2b7d795b8e7d3f354b3d81939563d";
 
 // jirutka/nginx-binaries SHA-256 (computed at pin time; cross-checked vs the
 // project's published SHA-1).
@@ -210,12 +229,18 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
 /// together, so a `Some` for one arch implies a `Some` for the other.
 fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match (kind, version) {
+        ("cli", "8.0.30") => (PHP_8_0_30_CLI_MAC_ARM64_SHA256, PHP_8_0_30_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.0.30") => (PHP_8_0_30_FPM_MAC_ARM64_SHA256, PHP_8_0_30_FPM_MAC_AMD64_SHA256),
         ("cli", "8.1.34") => (PHP_8_1_34_CLI_MAC_ARM64_SHA256, PHP_8_1_34_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.1.34") => (PHP_8_1_34_FPM_MAC_ARM64_SHA256, PHP_8_1_34_FPM_MAC_AMD64_SHA256),
         ("cli", "8.2.31") => (PHP_8_2_31_CLI_MAC_ARM64_SHA256, PHP_8_2_31_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.2.31") => (PHP_8_2_31_FPM_MAC_ARM64_SHA256, PHP_8_2_31_FPM_MAC_AMD64_SHA256),
         ("cli", "8.3.31") => (PHP_8_3_31_CLI_MAC_ARM64_SHA256, PHP_8_3_31_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.3.31") => (PHP_8_3_31_FPM_MAC_ARM64_SHA256, PHP_8_3_31_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.4.23") => (PHP_8_4_23_CLI_MAC_ARM64_SHA256, PHP_8_4_23_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.4.23") => (PHP_8_4_23_FPM_MAC_ARM64_SHA256, PHP_8_4_23_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.5.8") => (PHP_8_5_8_CLI_MAC_ARM64_SHA256, PHP_8_5_8_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.5.8") => (PHP_8_5_8_FPM_MAC_ARM64_SHA256, PHP_8_5_8_FPM_MAC_AMD64_SHA256),
         _ => return None,
     };
     Some(match arch {

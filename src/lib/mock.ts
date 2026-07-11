@@ -71,9 +71,12 @@ export const mockServices: ServiceInfo[] = [
 ];
 
 export const mockPhpVersions: PhpVersion[] = [
+  { minor: "8.0", patch: "8.0.30", fpmPort: 9780, installed: false, isDefault: false },
   { minor: "8.1", patch: "8.1.34", fpmPort: 9781, installed: false, isDefault: false },
   { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: true, isDefault: false },
   { minor: "8.3", patch: "8.3.31", fpmPort: 9783, installed: true, isDefault: true },
+  { minor: "8.4", patch: "8.4.23", fpmPort: 9784, installed: false, isDefault: false },
+  { minor: "8.5", patch: "8.5.8", fpmPort: 9785, installed: false, isDefault: false },
 ];
 
 /** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */
