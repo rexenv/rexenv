@@ -46,18 +46,20 @@ impl Paths for MacosPaths {
 
 pub struct MacosDns;
 impl DnsManager for MacosDns {
-    fn resolver_path(&self) -> PathBuf {
-        // macOS reads /etc/resolver/<domain>; our local TLD is `test`.
-        PathBuf::from("/etc/resolver/test")
+    fn resolver_path(&self, tld: &str) -> PathBuf {
+        // macOS reads /etc/resolver/<domain> — one file per development TLD.
+        PathBuf::from("/etc/resolver").join(tld)
     }
 
     fn resolver_contents(&self, port: u16) -> String {
-        // macOS resolver(5): send `.test` to our loopback resolver on `port`.
+        // macOS resolver(5): send the TLD to our loopback resolver on `port`.
+        // Identical for every TLD — this content is the ownership signature
+        // core::dns uses to enumerate the files rexenv installed.
         format!("nameserver 127.0.0.1\nport {port}\n")
     }
 
-    fn install_command(&self, port: u16) -> String {
-        let path = self.resolver_path();
+    fn install_command(&self, tld: &str, port: u16) -> String {
+        let path = self.resolver_path(tld);
         let dir = path
             .parent()
             .map(|p| p.display().to_string())
@@ -73,13 +75,20 @@ impl DnsManager for MacosDns {
         )
     }
 
-    fn uninstall_command(&self) -> String {
-        // Remove the resolver file AND flush the DNS cache, so `.test` stops
-        // resolving immediately (mirror of install_command's flush — §3.2).
-        format!(
-            "rm -f {} && dscacheutil -flushcache && killall -HUP mDNSResponder",
-            self.resolver_path().display()
-        )
+    fn uninstall_command(&self, tlds: &[String]) -> String {
+        // Remove every listed resolver file, then ONE DNS-cache flush, so the
+        // TLDs stop resolving immediately (mirror of install_command's flush).
+        // `tld` values are policy-validated labels ([a-z]+), never raw input.
+        let files = tlds
+            .iter()
+            .map(|t| self.resolver_path(t).display().to_string())
+            .collect::<Vec<_>>()
+            .join(" ");
+        if files.is_empty() {
+            // Nothing to remove — `rm -f` with zero operands would error.
+            return "dscacheutil -flushcache && killall -HUP mDNSResponder".into();
+        }
+        format!("rm -f {files} && dscacheutil -flushcache && killall -HUP mDNSResponder")
     }
 }
 
@@ -715,7 +724,10 @@ mod tests {
     #[test]
     fn dns_resolver_path_and_contents() {
         let dns = MacosDns;
-        assert_eq!(dns.resolver_path(), PathBuf::from("/etc/resolver/test"));
+        // One file per TLD; the content is TLD-independent (the ownership
+        // signature core::dns matches when enumerating our files).
+        assert_eq!(dns.resolver_path("test"), PathBuf::from("/etc/resolver/test"));
+        assert_eq!(dns.resolver_path("rex"), PathBuf::from("/etc/resolver/rex"));
         assert_eq!(
             dns.resolver_contents(15353),
             "nameserver 127.0.0.1\nport 15353\n"
@@ -725,7 +737,7 @@ mod tests {
     #[test]
     fn dns_install_command_creates_dir_and_writes_file() {
         let dns = MacosDns;
-        let cmd = dns.install_command(15353);
+        let cmd = dns.install_command("test", 15353);
         assert!(cmd.contains("mkdir -p /etc/resolver"));
         // printf carries the file content with escaped newlines for sh.
         assert!(cmd.contains(r"printf 'nameserver 127.0.0.1\nport 15353\n'"));
@@ -733,15 +745,21 @@ mod tests {
         // flushes the DNS cache so the new resolver file takes effect at once.
         assert!(cmd.contains("dscacheutil -flushcache"));
         assert!(cmd.contains("killall -HUP mDNSResponder"));
+        // A non-default TLD writes its own file.
+        assert!(dns.install_command("rex", 15353).contains("> /etc/resolver/rex"));
     }
 
     #[test]
-    fn dns_uninstall_command_removes_file_and_flushes_cache() {
-        let cmd = MacosDns.uninstall_command();
-        assert!(cmd.contains("rm -f /etc/resolver/test"));
-        // Flush so `.test` stops resolving immediately after teardown (§3.2).
-        assert!(cmd.contains("dscacheutil -flushcache"));
+    fn dns_uninstall_command_removes_all_files_and_flushes_cache_once() {
+        let cmd = MacosDns.uninstall_command(&["test".into(), "rex".into()]);
+        assert!(cmd.contains("rm -f /etc/resolver/test /etc/resolver/rex"));
+        // ONE flush so the TLDs stop resolving immediately after teardown (§3.2).
+        assert_eq!(cmd.matches("dscacheutil -flushcache").count(), 1);
         assert!(cmd.contains("killall -HUP mDNSResponder"));
+        // Zero TLDs: no `rm -f` with no operands (that would error) — flush only.
+        let empty = MacosDns.uninstall_command(&[]);
+        assert!(!empty.contains("rm"), "no rm without operands: {empty}");
+        assert!(empty.contains("dscacheutil -flushcache"));
     }
 
     #[test]

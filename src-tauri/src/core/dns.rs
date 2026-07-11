@@ -1,9 +1,16 @@
-//! core::dns — embedded DNS resolver (Phase 1 task 2.1).
+//! core::dns — embedded DNS resolver (Phase 1 task 2.1; per-TLD since the
+//! configurable-TLD feature).
 //!
-//! Answers A queries for any `*.test` host with `127.0.0.1`. Because every name
-//! under `.test` resolves to loopback, WordPress subdomain multisite
-//! (`*.mysite.test`) works for free. This is platform-agnostic; pointing the OS
-//! resolver at this server is the per-OS `DnsManager` step (task 2.2).
+//! Answers A queries for ANY host with `127.0.0.1`. The handler is deliberately
+//! TLD-agnostic: WHICH TLDs ever reach it is scoped entirely by which OS
+//! resolver files exist (`/etc/resolver/<tld>` on macOS, one per TLD) — so
+//! there is no in-process TLD state and adding a TLD never restarts the DNS
+//! server. LOOPBACK-ONLY CAVEAT: this is safe precisely because the server
+//! binds 127.0.0.1 and only OS resolver files we install route queries to it;
+//! it must never be bound on a non-loopback interface, where answer-anything
+//! would turn it into an open wildcard resolver. Because every name resolves
+//! to loopback, WordPress subdomain multisite (`*.mysite.test`) works for
+//! free. Pointing the OS at this server is the per-OS `DnsManager` step.
 
 use crate::error::Result;
 use crate::platform::traits::Platform;
@@ -21,13 +28,11 @@ use tokio::net::UdpSocket;
 /// OS resolver config (task 2.2) points `.test` lookups here.
 pub const DEFAULT_DNS_PORT: u16 = 15353;
 
-/// The local development TLD this resolver is authoritative for.
-pub const LOCAL_TLD: &str = "test";
-
 /// TTL (seconds) on answers. Short, since these are local and may change.
 const ANSWER_TTL: u32 = 60;
 
-/// Request handler that maps `*.test` → a single loopback address.
+/// Request handler that maps EVERY A query → a single loopback address (TLD
+/// scope lives in the OS resolver files — see the module docs).
 pub struct DnsHandler {
     answer: Ipv4Addr,
 }
@@ -50,7 +55,6 @@ impl DnsHandler {
 
         let is_query = request.op_code() == OpCode::Query
             && request.message_type() == MessageType::Query;
-        let under_tld = name_under_tld(&name, LOCAL_TLD);
 
         let mut header = Header::response_from_request(request.header());
         header.set_authoritative(true);
@@ -58,18 +62,19 @@ impl DnsHandler {
         let mut answers: Vec<Record> = Vec::new();
         if !is_query {
             header.set_response_code(ResponseCode::Refused);
-        } else if !under_tld {
-            // We are not authoritative for anything outside `.test`.
-            header.set_response_code(ResponseCode::NXDomain);
         } else if qtype == RecordType::A {
+            // ANY name → loopback. No TLD check here on purpose: only queries
+            // for TLDs with an installed OS resolver file ever arrive, so the
+            // TLD scope lives in which files exist (loopback-only caveat in
+            // the module docs).
             answers.push(Record::from_rdata(
                 name.clone(),
                 ANSWER_TTL,
                 RData::A(A(self.answer)),
             ));
         }
-        // Under `.test` but non-A (e.g. AAAA): NOERROR with no records, so
-        // clients fall back to the A record instead of failing.
+        // Non-A (e.g. AAAA): NOERROR with no records, so clients fall back to
+        // the A record instead of failing.
 
         let builder = MessageResponseBuilder::from_message_request(request);
         let empty: Vec<Record> = Vec::new();
@@ -107,14 +112,6 @@ impl RequestHandler for DnsHandler {
             }
         }
     }
-}
-
-/// True if `name`'s last label equals `tld` (case-insensitive). Matches the TLD
-/// itself and every subdomain of it (`foo.test`, `a.b.mysite.test`).
-fn name_under_tld(name: &Name, tld: &str) -> bool {
-    name.iter()
-        .next_back()
-        .is_some_and(|label| label.eq_ignore_ascii_case(tld.as_bytes()))
 }
 
 /// Bind a UDP socket and build a resolver server on it. Returns the actually
@@ -184,19 +181,73 @@ impl Drop for DnsService {
     }
 }
 
-/// Install the `.test` OS resolver file (pointing at our resolver on `port`)
+/// Install the OS resolver file for `tld` (pointing at our resolver on `port`)
 /// through `PrivilegeManager` — one auth prompt. Standalone helper; the batched
 /// system-setup step (3.4) instead concatenates this with the CA-trust command
 /// to share a single prompt.
-pub fn configure_resolver(platform: &dyn Platform, port: u16) -> Result<()> {
-    let cmd = platform.dns().install_command(port);
+pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
+    let cmd = platform.dns().install_command(tld, port);
     platform.privileges().run_privileged(&cmd)?;
     Ok(())
 }
 
-/// Remove the `.test` OS resolver file through `PrivilegeManager`.
-pub fn remove_resolver(platform: &dyn Platform) -> Result<()> {
-    let cmd = platform.dns().uninstall_command();
+/// Whether `tld`'s OS resolver file is installed with our expected content.
+/// Used to skip the privileged prompt when there's nothing to do.
+pub fn resolver_installed(platform: &dyn Platform, tld: &str, port: u16) -> bool {
+    let expected = platform.dns().resolver_contents(port);
+    std::fs::read_to_string(platform.dns().resolver_path(tld)).ok().as_deref() == Some(&expected)
+}
+
+/// Ensure `tld` resolves locally: install its OS resolver file unless it's
+/// already installed with our content — so each TLD costs at most ONE
+/// privileged prompt, on first use. TLDs coexist (one file each); the embedded
+/// server needs no restart (it answers any name — module docs).
+pub fn ensure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
+    if resolver_installed(platform, tld, port) {
+        return Ok(());
+    }
+    configure_resolver(platform, tld, port)
+}
+
+/// The TLDs whose resolver files under `dir` are OURS — file content equals
+/// `signature` (`resolver_contents(port)`, i.e. loopback + our fixed port —
+/// the same ownership test as service adoption's port+marker). Pure directory
+/// scan, factored out of [`installed_tlds`] for testability. Non-UTF8 names
+/// and unreadable/foreign files are skipped.
+fn tlds_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut tlds: Vec<String> = entries
+        .flatten()
+        .filter(|e| std::fs::read_to_string(e.path()).ok().as_deref() == Some(signature))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+    tlds.sort();
+    tlds
+}
+
+/// Enumerate every TLD rexenv has an OS resolver file for — the files in the
+/// resolver directory whose content matches our port-`port` signature. The
+/// directory comes from the platform's `resolver_path` so this stays
+/// platform-agnostic (macOS: `/etc/resolver`, world-readable).
+pub fn installed_tlds(platform: &dyn Platform, port: u16) -> Vec<String> {
+    let probe = platform.dns().resolver_path(crate::core::tld::BACKBONE_TLD);
+    let Some(dir) = probe.parent() else {
+        return Vec::new();
+    };
+    tlds_matching_signature(dir, &platform.dns().resolver_contents(port))
+}
+
+/// Remove ALL rexenv-owned OS resolver files (every TLD matching our
+/// signature) through `PrivilegeManager` — one prompt, one cache flush.
+/// No-op (no prompt) when none are installed.
+pub fn remove_all_resolvers(platform: &dyn Platform, port: u16) -> Result<()> {
+    let tlds = installed_tlds(platform, port);
+    if tlds.is_empty() {
+        return Ok(());
+    }
+    let cmd = platform.dns().uninstall_command(&tlds);
     platform.privileges().run_privileged(&cmd)?;
     Ok(())
 }
@@ -306,13 +357,42 @@ mod tests {
         handle.abort();
     }
 
+    /// The handler is TLD-agnostic on purpose: ANY name answers loopback, and
+    /// TLD scope lives in which OS resolver files exist (only installed TLDs'
+    /// queries ever reach this server). So `.rex` — or even `.com` — answers
+    /// here; `.com` still resolves normally system-wide because no resolver
+    /// file routes it to us (and the policy refuses installing one).
     #[tokio::test]
-    async fn non_test_domain_is_nxdomain() {
+    async fn any_tld_answers_loopback() {
         let (addr, handle) = start().await;
-        let reply = query(addr, "example.com.", RecordType::A).await;
-        assert_eq!(reply.response_code(), ResponseCode::NXDomain);
-        assert!(first_a(&reply).is_none());
+        for host in ["foo.rex.", "bar.example.", "example.com."] {
+            let reply = query(addr, host, RecordType::A).await;
+            assert_eq!(reply.response_code(), ResponseCode::NoError, "{host}");
+            assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST), "{host}");
+        }
         handle.abort();
+    }
+
+    /// Enumerating our resolver files: exact-content signature match — foreign
+    /// files (a developer's own dnsmasq entry, different port) are never touched.
+    #[test]
+    fn tlds_matching_signature_finds_only_our_files() {
+        let dir = std::env::temp_dir().join(format!("rexenv-resolver-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sig = format!("nameserver 127.0.0.1\nport {DEFAULT_DNS_PORT}\n");
+
+        std::fs::write(dir.join("test"), &sig).unwrap();
+        std::fs::write(dir.join("rex"), &sig).unwrap();
+        // Foreign: another tool's resolver on a different port, and a
+        // same-nameserver file with extra options — neither is ours.
+        std::fs::write(dir.join("docker"), "nameserver 127.0.0.1\nport 19999\n").unwrap();
+        std::fs::write(dir.join("dev"), "nameserver 127.0.0.1\n").unwrap();
+
+        assert_eq!(tlds_matching_signature(&dir, &sig), vec!["rex", "test"]);
+        // Missing dir → empty, not an error (fresh machine, nothing installed).
+        assert!(tlds_matching_signature(&dir.join("nope"), &sig).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

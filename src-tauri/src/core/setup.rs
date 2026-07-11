@@ -11,42 +11,42 @@
 //! the login keychain for trust. A privileged-helper (SMAppService) would enable
 //! a single prompt later.
 
-use crate::core::{dns, ssl};
+use crate::core::{dns, ssl, tld};
 use crate::error::Result;
 use crate::platform::traits::Platform;
 
-/// The privileged part of setup (resolver file install) as a shell script —
-/// run via `PrivilegeManager`. Pure; exposed for inspection/testing.
+/// The privileged part of setup (the `.test` backbone resolver-file install)
+/// as a shell script — run via `PrivilegeManager`. Pure; exposed for
+/// inspection/testing.
 pub fn resolver_install_script(platform: &dyn Platform, dns_port: u16) -> String {
-    platform.dns().install_command(dns_port)
+    platform.dns().install_command(tld::BACKBONE_TLD, dns_port)
 }
 
-/// Run system setup: ensure the CA exists, install the `.test` resolver file
-/// (admin prompt), then trust the CA (native trust dialog). Returns the CA.
+/// Run system setup: ensure the CA exists, install the `.test` backbone
+/// resolver file (admin prompt), then trust the CA (native trust dialog).
+/// Returns the CA. `.test` is ALWAYS installed regardless of the configured
+/// default TLD (Adminer's `adminer.rexenv.test` and the backbone need it);
+/// other TLDs get their own resolver file on first use (site create /
+/// change-domain via `dns::ensure_resolver`).
 ///
 /// The resolver step is skipped when the file already has the expected content
 /// — so on a second macOS account (resolver is system-wide, trust is per-user)
 /// setup only shows the keychain dialog, not a pointless admin prompt.
 pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
-    // 1) privileged: install the resolver file (one admin prompt).
-    let expected = platform.dns().resolver_contents(dns::DEFAULT_DNS_PORT);
-    let current = std::fs::read_to_string(platform.dns().resolver_path()).unwrap_or_default();
-    if current != expected {
-        let script = resolver_install_script(platform, dns::DEFAULT_DNS_PORT);
-        platform.privileges().run_privileged(&script)?;
-    }
+    // 1) privileged: install the backbone resolver file (one admin prompt).
+    dns::ensure_resolver(platform, tld::BACKBONE_TLD, dns::DEFAULT_DNS_PORT)?;
     // 2) user: trust the CA (native dialog; login keychain, no root).
     ssl::trust_ca(platform, &ca)?;
     Ok(ca)
 }
 
-/// Reverse system setup: remove the resolver file (admin prompt) and untrust the CA.
+/// Reverse system setup: remove ALL rexenv-owned resolver files — every
+/// `/etc/resolver/<tld>` whose content matches our loopback+port signature,
+/// whichever TLDs were added over time (one admin prompt) — and untrust the CA.
 pub fn run_system_teardown(platform: &dyn Platform) -> Result<()> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
-    platform
-        .privileges()
-        .run_privileged(&platform.dns().uninstall_command())?;
+    dns::remove_all_resolvers(platform, dns::DEFAULT_DNS_PORT)?;
     ssl::untrust_ca(platform, &ca)?;
     Ok(())
 }

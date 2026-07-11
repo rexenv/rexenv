@@ -28,23 +28,31 @@ pub trait Paths: Send + Sync {
     fn hosts_file(&self) -> PathBuf;
 }
 
-/// Points the OS resolver at our embedded `hickory-dns` server so `*.test`
-/// resolves to `127.0.0.1`. The embedded server is platform-agnostic; only the
-/// "point the OS at it" step differs per OS.
+/// Points the OS resolver at our embedded `hickory-dns` server so `*.<tld>`
+/// resolves to `127.0.0.1`. The embedded server is platform-agnostic and
+/// answers ANY name; WHICH TLDs reach it is scoped per-OS by one resolver
+/// file per TLD (macOS: `/etc/resolver/<tld>`) — so adding a TLD never
+/// restarts the DNS server, and multiple TLDs coexist.
 ///
 /// These are pure command BUILDERS (no privilege, no side effects) so the
 /// install/remove can be unit-tested without sudo AND batched with other
 /// privileged ops into a single `PrivilegeManager` elevation (see core::dns +
 /// the batched system-setup step). The actual run goes through `PrivilegeManager`.
 pub trait DnsManager: Send + Sync {
-    /// Path of the OS resolver file (e.g. `/etc/resolver/test`).
-    fn resolver_path(&self) -> PathBuf;
-    /// Contents of the resolver file pointing `.test` at our resolver on `port`.
+    /// Path of the OS resolver file for `tld` (e.g. `/etc/resolver/test`).
+    /// `tld` is a bare label already validated by `core::tld` — callers never
+    /// pass user input here directly.
+    fn resolver_path(&self, tld: &str) -> PathBuf;
+    /// Contents of a resolver file pointing a TLD at our resolver on `port`.
+    /// TLD-independent (the TLD lives in the file NAME) — this exact content
+    /// is also the ownership signature used to enumerate OUR resolver files.
     fn resolver_contents(&self, port: u16) -> String;
-    /// Shell command(s) that install the resolver file — run via `PrivilegeManager`.
-    fn install_command(&self, port: u16) -> String;
-    /// Shell command(s) that remove the resolver file — run via `PrivilegeManager`.
-    fn uninstall_command(&self) -> String;
+    /// Shell command(s) that install the resolver file for `tld` — run via
+    /// `PrivilegeManager`.
+    fn install_command(&self, tld: &str, port: u16) -> String;
+    /// Shell command(s) that remove the resolver files for `tlds` (one batch,
+    /// one cache flush) — run via `PrivilegeManager`.
+    fn uninstall_command(&self, tlds: &[String]) -> String;
 }
 
 /// Installs / removes the local CA in the trust store.

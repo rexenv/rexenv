@@ -41,7 +41,10 @@ fn main() {
     let free = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).is_ok();
     assert!(free, "an unbound UDP port should be free (= 'stopped')");
     println!("✓ DNS UDP probe: held port reads in-use (running), unbound reads free (stopped)");
-    println!("  OS resolver path = {}", plat.dns().resolver_path().display());
+    println!(
+        "  OS resolver path = {}",
+        plat.dns().resolver_path(rexenv_lib::core::tld::BACKBONE_TLD).display()
+    );
 
     // 3) Cert regeneration: re-issue → fresh material, same wildcard SAN + CA issuer.
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");

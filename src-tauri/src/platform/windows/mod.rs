@@ -28,16 +28,16 @@ impl Paths for WindowsPaths {
 
 pub struct WindowsDns;
 impl DnsManager for WindowsDns {
-    fn resolver_path(&self) -> PathBuf {
+    fn resolver_path(&self, _tld: &str) -> PathBuf {
         todo!("windows DNS — no /etc/resolver equivalent")
     }
     fn resolver_contents(&self, _port: u16) -> String {
         todo!("windows DNS")
     }
-    fn install_command(&self, _port: u16) -> String {
+    fn install_command(&self, _tld: &str, _port: u16) -> String {
         todo!("windows DNS")
     }
-    fn uninstall_command(&self) -> String {
+    fn uninstall_command(&self, _tlds: &[String]) -> String {
         todo!("windows DNS")
     }
 }

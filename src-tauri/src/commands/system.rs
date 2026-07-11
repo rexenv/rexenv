@@ -162,7 +162,9 @@ pub fn dns_status(
     // unbound, but the reverse port probe can false-positive on a foreign
     // process). Fall back to the port probe only when we never got a handle.
     let running = dns.running() || core::dns::port_bound(port);
-    let path = state.platform.dns().resolver_path();
+    // The Settings indicator reports the BACKBONE (.test) resolver file — the
+    // one system setup installs and that always stays active.
+    let path = state.platform.dns().resolver_path(core::tld::BACKBONE_TLD);
     DnsStatus {
         running,
         port,
