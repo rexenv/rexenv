@@ -28,6 +28,7 @@ pub mod site_metrics;
 pub mod sites;
 pub mod ssl;
 pub mod terminal;
+pub mod tld;
 pub mod tunnels;
 pub mod wp_login;
 pub mod wp_tunnel;

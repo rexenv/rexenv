@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tunnels};
+use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{MultisiteMode, NewSite, ServiceStatus, Site, SiteType, WebServer};
@@ -17,8 +17,11 @@ use uuid::Uuid;
 /// Strict validation for a site domain (defense-in-depth — M7). The domain becomes a
 /// filesystem path (docroot), nginx/Caddy config tokens (`server_name`, host), a cert
 /// SAN, and a database name — so reject anything that could traverse a path, inject a
-/// config directive, or isn't a plain lowercase `.test` hostname. The UI already slugs
-/// input to this shape; this is the backstop for every other caller.
+/// config directive, or isn't a plain lowercase hostname. The TLD is POLICY-DRIVEN
+/// (`core::tld`): hard-blocked TLDs (`.local`, `.dev`, 2-letter, popular gTLDs) are
+/// refused here — the trust boundary for BOTH create and change-domain — so a blocked
+/// TLD can't get through even via a direct IPC invoke. The UI already slugs input to
+/// this shape; this is the backstop for every other caller.
 fn validate_domain(domain: &str) -> Result<()> {
     let reject = |why: &str| Error::Other(format!("invalid domain '{domain}': {why}"));
     // DNS caps a name at 253 chars; stay well under any fs/DB-identifier limit too.
@@ -26,13 +29,11 @@ fn validate_domain(domain: &str) -> Result<()> {
         return Err(reject("must be 1–253 characters"));
     }
     let labels: Vec<&str> = domain.split('.').collect();
-    // Development domains only, and at least one label before the TLD.
-    if labels.last() != Some(&"test") {
-        return Err(reject("must end in .test"));
-    }
+    // At least one label before the TLD, and a TLD the policy allows.
     if labels.len() < 2 {
-        return Err(reject("must have a label before .test"));
+        return Err(reject("must have a label before the TLD (e.g. mysite.test)"));
     }
+    tld::ensure_allowed(labels.last().expect("len >= 2"))?;
     for label in &labels {
         if label.is_empty() {
             return Err(reject("has an empty label"));
@@ -676,19 +677,26 @@ mod tests {
     }
 
     #[test]
-    fn validate_domain_accepts_test_hostnames() {
-        for d in ["acme.test", "my-site.test", "a.test", "sub.mysite.test", "wp123.test"] {
+    fn validate_domain_accepts_allowed_tld_hostnames() {
+        for d in [
+            // the safe set…
+            "acme.test", "my-site.test", "a.test", "sub.mysite.test", "wp123.test",
+            "acme.localhost", "acme.example", "acme.invalid",
+            // …and warn-tier custom TLDs (allowed; UI shows the shadow notice).
+            // "foo.test.evil" is a hostname under .evil — warn-tier, no longer
+            // special-cased just because "test" appears mid-name.
+            "acme.rex", "shop.internal", "foo.test.evil",
+        ] {
             assert!(validate_domain(d).is_ok(), "should accept {d}");
         }
     }
 
     #[test]
-    fn validate_domain_rejects_unsafe_or_non_test() {
+    fn validate_domain_rejects_unsafe_or_blocked() {
         for d in [
             "",              // empty
-            "acme.com",      // wrong TLD
             "acme",          // no TLD
-            ".test",         // no label before .test
+            ".test",         // no label before the TLD
             "../etc.test",   // path traversal
             "a/b.test",      // path separator
             "a b.test",      // space
@@ -699,10 +707,33 @@ mod tests {
             "-bad.test",     // leading hyphen
             "bad-.test",     // trailing hyphen
             "a..test",       // empty inner label
-            "foo.test.evil", // .test not last
+            "acme.t3st",     // TLD with a digit
         ] {
             assert!(validate_domain(d).is_err(), "should reject {d:?}");
         }
+    }
+
+    /// The trust boundary: a hard-blocked TLD is refused by the CORE validate —
+    /// i.e. even a direct `create`/`set_domain` call (bypassing the UI) fails.
+    #[test]
+    fn validate_domain_refuses_blocked_tlds_in_core() {
+        for d in [
+            "acme.local", // Bonjour/mDNS
+            "acme.dev",   // real gTLD
+            "acme.app", "acme.page", "acme.home", "acme.corp", "acme.mail",
+            "acme.com", "acme.net", "acme.org", "acme.cloud", "acme.site", "acme.online",
+            "acme.io", "acme.co", "acme.uk", // 2-letter rule
+        ] {
+            assert!(validate_domain(d).is_err(), "should refuse blocked TLD {d:?}");
+        }
+
+        // …and through the real entry points, not just the helper:
+        let conn = db::open_in_memory().unwrap();
+        assert!(create(&conn, sample("Blocked", "acme.local")).is_err());
+        assert!(list(&conn).unwrap().is_empty(), "nothing persisted");
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        assert!(set_domain(&conn, &a.id, "a.dev").is_err());
+        assert_eq!(get(&conn, &a.id).unwrap().unwrap().domain, "a.test");
     }
 
     #[test]
