@@ -131,6 +131,36 @@ Each line = one feature, live-verified before its commit.
   "Database Update Required" screen explicitly; honest confirm + Export-DB-first in
   the flow `0d3a6e5`
 
+## PHP-versions gap vs Herd/Valet (scoped 11 Jul 2026; #3 built, #1/#2 deferred)
+
+- [x] **Per-version PHP settings (#3)** — memory_limit / upload_max_filesize /
+  post_max_size / max_execution_time / max_input_time / max_input_vars, per minor
+  (matches shared per-version pools). Whitelisted+typed validation (`core::php::SETTINGS`,
+  default-deny like the options editor), `php-fpm -t` gate on a `.conf.candidate` before
+  any restart, values as `php_value[…]` lines in the pool conf, SQLite `php_settings`
+  table (migration v5). Both gotchas handled: per-site nginx `client_max_body_size`
+  mirrors max(upload, post) of the site's version + upload>post rejected as a set;
+  `request_terminate_timeout` rises to max_execution_time (300s floor, cap surfaced in
+  the UI note). FrankenPHP sites unaffected (own embedded PHP — stated in the UI).
+  Settings → PHP versions → per-installed-version "Settings" editor. ✓ **Done**
+  `70266a7`: live-verified on a throwaway site — 512M via ini_get; 64M upload/post lets
+  a >2M wp-admin Media upload through with `client_max_body_size 67108864` in that
+  site's nginx block; upload-alone rejected (cross-field); "banana" rejected with no
+  restart; cleared field reverts to default. 195 lib tests, clippy clean.
+- [ ] **DEFERRED — More PHP versions (#1):** add 8.0.30 / 8.4.x / 8.5.x pins only
+  (static-php.dev bulk publishes 8.0–8.5; verified live 11 Jul 2026). Mostly mechanical:
+  ~12 checksum consts + `PHP_VERSIONS` entries; registry/ports/pools/UI are already
+  version-driven. Verify each artifact (`php -v`, `php -m | grep mysqli`, Mach-O arch —
+  the `binaries.rs:96` re-pin procedure); smoke-test WP on 8.0. **7.4 is NOT doable now:**
+  static-php never shipped it — needs self-build + self-hosting, same blocked path as the
+  Xdebug debug build. Do AFTER the cold sanity run (touches download infra). Risk:
+  upstream rebuilds artifacts in place → 24 pins to babysit instead of 12.
+- [ ] **DEFERRED — PHP patch updates (#2): Option A only** — pins ride app releases
+  (maintainer bumps `PHP_VERSIONS`, `seed_registry` already updates `patch` per minor
+  preserving `installed`; add pool restart + old cache-dir GC). NO in-app TOFU updater —
+  static-php publishes no checksums, so runtime update-discovery would move pin trust
+  from the signed app binary to the user's machine; keep the signed-pin security model.
+
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
 - **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
