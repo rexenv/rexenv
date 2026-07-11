@@ -198,8 +198,17 @@ Each line = one feature, live-verified before its commit.
   Settings → Site folder card (picker + confirm with caveats). Live-verified:
   same-volume + cross-volume (hdiutil image) moves, reset-after-move, rejection
   errors, FrankenPHP serving from the new root post-move.
-- **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
-  seam (L).
+- [x] **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
+  seam (L). ✓ **Done** `7cc2751`: the seam existed after all — vars ride the REQUEST
+  (per-site nginx `fastcgi_param` lines), pools untouched; FrankenPHP overrides get
+  config `env` lines + real process env at spawn (own process per site;
+  `spawn_logged_env`, trait default errors so stubs can't drop vars). `core::site_env`
+  trust boundary: reserved-name list test-locked to `TEMPLATE_FCGI_PARAMS`, reject the
+  unescapable (`$`, `{}`, control chars), escape `\`/`"`. v7 `site_env` table (CASCADE),
+  manager map mirrors php_settings, Settings-tab editor with honest note. Live-verified
+  probe on BOTH servers: getenv()/$_SERVER/$_ENV all set; injection strings + reserved
+  names rejected; watchdog respawn keeps env. Footguns (variables_order EGPCS-no-ini,
+  FrankenPHP spawn env) recorded in ARCHITECTURE.md.
 
 ## Known baselines (not bugs)
 
