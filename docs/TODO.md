@@ -119,6 +119,11 @@ Each line = one feature, live-verified before its commit.
   regular-file — the guard that stops a `.DS_Store` symlink from deleting its TARGET —
   canonicalize+prefix inside docroot); skip-not-abort with reasons; auto re-verify
   refreshes the panel in the same round-trip `24d35bd`
+- [x] Site options editor — curated 11-option scalar whitelist (default-deny: siteurl/
+  home/active_plugins/serialized options unreachable by construction, `OPTION_FIELDS`
+  enum in core enforces name + per-kind value on every write); non-scalar values
+  refused at read AND write; typed inputs (timezone/role pickers fed live), confirm
+  old → new, form re-reads from the site after save
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
@@ -127,7 +132,6 @@ Each line = one feature, live-verified before its commit.
 - **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
 - **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
   seam (L).
-- **Options editor** (arbitrary `wp option update`) — foot-gun UI (M).
 - **Core version pick / downgrade** — needs a version-list source + `--force`
   semantics (M).
 

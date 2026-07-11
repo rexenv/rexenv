@@ -378,6 +378,31 @@ pub async fn wp_permalink_set(
     .await
 }
 
+/// The whitelisted site-options form (values + timezone/role choice lists).
+/// One `wp eval` + one `wp role list` — never a per-option wp-cli call.
+#[tauri::command]
+pub async fn wp_options(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<core::wordpress::WpOptionsForm> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::options_get(&php, &wp, &docroot)).await
+}
+
+/// Update one whitelisted option. Core enforces the whitelist by name
+/// ("not an editable option" for anything else — a bypassed UI can't write
+/// `siteurl`), validates the value per kind, and refuses non-scalar targets.
+#[tauri::command]
+pub async fn wp_option_update(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    value: String,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::option_update(&php, &wp, &docroot, &name, &value)).await
+}
+
 /// Delete the checksum panel's benign macOS-noise files, then re-run the
 /// checksum verify so the panel refreshes in one round-trip. The UI's paths
 /// are suggestions only — core re-validates every file (noise basename,

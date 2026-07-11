@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -556,6 +556,21 @@ export async function wpDebugSet(id: string, on: boolean): Promise<void> {
 export async function wpCoreVerifyChecksums(id: string): Promise<WpChecksumReport> {
   if (!isTauri()) return { ok: true, real: [], benign: [], output: "" };
   return invoke<WpChecksumReport>("wp_core_verify_checksums", { id });
+}
+
+/** The whitelisted site-options form (values + timezone/role choice lists).
+ *  Only the curated scalar whitelist is reachable — dangerous options
+ *  (siteurl, home, active_plugins…) don't exist in this API. */
+export async function wpOptions(id: string): Promise<WpOptionsForm> {
+  if (!isTauri()) return { fields: [], timezones: [], roles: [] };
+  return invoke<WpOptionsForm>("wp_options", { id });
+}
+
+/** Update one whitelisted option — the backend re-enforces the whitelist by
+ *  name and re-validates the value per kind; non-scalar targets are refused. */
+export async function wpOptionUpdate(id: string, name: string, value: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_option_update", { id, name, value });
 }
 
 /** Delete the checksum panel's benign macOS-noise files (backend re-validates

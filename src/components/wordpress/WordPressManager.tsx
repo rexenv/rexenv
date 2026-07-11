@@ -30,6 +30,8 @@ import {
   wpMaintenanceSet,
   wpMultisiteConvert,
   wpNetworkSiteCreate,
+  wpOptions,
+  wpOptionUpdate,
   wpPermalinkGet,
   wpPermalinkSet,
   wpNetworkSiteDelete,
@@ -60,7 +62,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
-import type { MultisiteMode, WpChecksumReport, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpOptionRow, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -889,6 +891,11 @@ function ToolsPanel({
         </div>
       </Card>
 
+      {/* Site options — spans the row */}
+      <div className="col-span-2">
+        <OptionsCard siteId={siteId} />
+      </div>
+
       {/* Backup & restore */}
       <Card title="Backup & restore">
         <div className="flex flex-col gap-2">
@@ -1404,6 +1411,160 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
         )}
       </div>
     </div>
+  );
+}
+
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+const OPTION_SELECT =
+  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
+
+/** Client-side pre-validation (Save disabled + hint) — the backend re-validates
+ *  every write regardless. */
+function optionDraftProblem(row: WpOptionRow, val: string): string | null {
+  if (row.kind === "int" || row.kind === "weekday") {
+    const n = Number(val);
+    if (!/^-?\d+$/.test(val.trim()) || (row.min != null && n < row.min) || (row.max != null && n > row.max))
+      return `whole number ${row.min}–${row.max}`;
+  }
+  if (row.kind === "email" && !/^\S+@\S+\.\S+$/.test(val)) return "not a valid email";
+  return null;
+}
+
+/** Curated site-options editor (Tools). Only the backend's scalar whitelist is
+ *  reachable — dangerous options (siteurl, home, active_plugins…) don't exist
+ *  in this API. Saves confirm old → new, then the form re-reads from the site
+ *  (never trusts its own draft). */
+function OptionsCard({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["wp-options", siteId],
+    queryFn: () => wpOptions(siteId),
+    ...WP_QUERY,
+  });
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const save = useMutation({
+    mutationFn: (v: { name: string; value: string; label: string }) =>
+      wpOptionUpdate(siteId, v.name, v.value),
+    onSuccess: (_d, v) => {
+      setDrafts((d) => {
+        const next = { ...d };
+        delete next[v.name];
+        return next;
+      });
+      qc.invalidateQueries({ queryKey: ["wp-options", siteId] });
+      toast.success(`${v.label} updated.`);
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const askSave = async (row: WpOptionRow, value: string) => {
+    if (
+      await confirm({
+        title: `Change ${row.label}?`,
+        message: (
+          <span className="font-mono text-[12px]">
+            “{row.value}” → “{value}”
+          </span>
+        ),
+        confirmLabel: "Save",
+      })
+    )
+      save.mutate({ name: row.name, value, label: row.label });
+  };
+
+  return (
+    <Card title="Site options">
+      {isLoading ? (
+        <div className="text-[12.5px] text-rex-text-dim">Reading options…</div>
+      ) : isError ? (
+        <div className="text-[12.5px] text-status-warning-bright">
+          Could not read options: {String(error)}
+        </div>
+      ) : !data ? null : (
+        <div className="flex flex-col gap-2">
+          {data.fields.map((row) => {
+            const draft = drafts[row.name] ?? row.value;
+            const dirty = draft !== row.value;
+            const problem = dirty ? optionDraftProblem(row, draft) : null;
+            const setDraft = (v: string) => setDrafts((d) => ({ ...d, [row.name]: v }));
+            const disabled = !row.editable || save.isPending;
+            return (
+              <div key={row.name} className="flex items-center gap-2">
+                <div className="w-[170px] flex-none text-[12px] text-rex-text-muted">
+                  {row.label}
+                </div>
+                {row.kind === "bool" ? (
+                  <select value={draft} disabled={disabled} onChange={(e) => setDraft(e.target.value)} className={cn(OPTION_SELECT, "w-[220px]")}>
+                    <option value="1">Yes</option>
+                    <option value="0">No</option>
+                  </select>
+                ) : row.kind === "weekday" ? (
+                  <select value={draft} disabled={disabled} onChange={(e) => setDraft(e.target.value)} className={cn(OPTION_SELECT, "w-[220px]")}>
+                    {WEEKDAYS.map((d, i) => (
+                      <option key={d} value={String(i)}>{d}</option>
+                    ))}
+                  </select>
+                ) : row.kind === "timezone" ? (
+                  <select value={draft} disabled={disabled} onChange={(e) => setDraft(e.target.value)} className={cn(OPTION_SELECT, "w-[220px]")}>
+                    <option value="">None (UTC offset)</option>
+                    {data.timezones.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                ) : row.kind === "role" ? (
+                  <select value={draft} disabled={disabled} onChange={(e) => setDraft(e.target.value)} className={cn(OPTION_SELECT, "w-[220px]")}>
+                    {data.roles.map((r) => (
+                      <option key={r.role} value={r.role}>{r.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input {...TECH_INPUT}
+                    value={draft}
+                    disabled={disabled}
+                    type={row.kind === "int" ? "number" : "text"}
+                    min={row.min ?? undefined}
+                    max={row.max ?? undefined}
+                    onChange={(e) => setDraft(e.target.value)}
+                    className={cn(OPTION_SELECT, "w-[220px] font-mono")}
+                  />
+                )}
+                {!row.editable && row.note && (
+                  <span className="text-[11.5px] text-rex-text-dim">{row.note}</span>
+                )}
+                {dirty && problem && (
+                  <span className="text-[11.5px] text-status-warning-bright">{problem}</span>
+                )}
+                {dirty && !problem && (
+                  <button
+                    className={BTN}
+                    disabled={save.isPending}
+                    onClick={() => void askSave(row, draft)}
+                  >
+                    {save.isPending ? "Saving…" : "Save"}
+                  </button>
+                )}
+                {dirty && (
+                  <button
+                    className="text-[11.5px] text-rex-text-dim hover:underline"
+                    onClick={() => setDrafts((d) => {
+                      const next = { ...d };
+                      delete next[row.name];
+                      return next;
+                    })}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <div className="mt-1 text-[11.5px] text-rex-text-dim">
+            Only this curated, known-safe set is editable — site URLs, plugin/theme state and
+            serialized options can't be changed here. Saves apply immediately (no undo).
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

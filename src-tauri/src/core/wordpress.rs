@@ -1038,6 +1038,291 @@ pub fn core_reinstall(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<
     wp_run(php_bin, wp_phar, docroot, &["core", "download", "--force", "--skip-content"])
 }
 
+/// Input/validation kind of a whitelisted option (drives the UI input AND the
+/// backend validation — both sides of the same rule).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OptionKind {
+    Text,
+    Email,
+    /// Integer within `[min, max]` inclusive.
+    IntRange(i64, i64),
+    /// `"0"` / `"1"` (WP stores booleans as those strings).
+    Bool,
+    /// Day-of-week int `0..=6` (0 = Sunday).
+    Weekday,
+    /// A PHP `timezone_identifiers_list()` entry, or empty (site uses a raw
+    /// UTC offset via `gmt_offset` — a legitimate state, seen live).
+    Timezone,
+    /// A role slug from `wp role list` (covers custom roles).
+    Role,
+}
+
+struct OptionField {
+    name: &'static str,
+    label: &'static str,
+    kind: OptionKind,
+}
+
+/// The options editor's ENTIRE reachable surface — default-deny. Nothing
+/// outside this list can be read for editing or written, so foot-guns
+/// (`siteurl`, `home`, `active_plugins`, `template`, any serialized option…)
+/// aren't "blocked", they're unreachable by construction. Every entry is a
+/// scalar on a standard install (verified live); non-scalar values are refused
+/// at read AND write time anyway. `WPLANG` is deliberately absent — the
+/// Language card owns it (install/download flow).
+const OPTION_FIELDS: &[OptionField] = &[
+    OptionField { name: "blogname", label: "Site title", kind: OptionKind::Text },
+    OptionField { name: "blogdescription", label: "Tagline", kind: OptionKind::Text },
+    OptionField { name: "admin_email", label: "Admin email", kind: OptionKind::Email },
+    OptionField { name: "timezone_string", label: "Timezone", kind: OptionKind::Timezone },
+    OptionField { name: "date_format", label: "Date format", kind: OptionKind::Text },
+    OptionField { name: "time_format", label: "Time format", kind: OptionKind::Text },
+    OptionField { name: "start_of_week", label: "Week starts on", kind: OptionKind::Weekday },
+    OptionField {
+        name: "posts_per_page",
+        label: "Posts per page",
+        kind: OptionKind::IntRange(1, 1000),
+    },
+    OptionField { name: "default_role", label: "New user default role", kind: OptionKind::Role },
+    OptionField {
+        name: "users_can_register",
+        label: "Anyone can register",
+        kind: OptionKind::Bool,
+    },
+    OptionField {
+        name: "blog_public",
+        label: "Visible to search engines",
+        kind: OptionKind::Bool,
+    },
+];
+
+fn option_field(name: &str) -> Option<&'static OptionField> {
+    OPTION_FIELDS.iter().find(|f| f.name == name)
+}
+
+/// Frontend tag for an [`OptionKind`].
+fn option_kind_str(kind: OptionKind) -> &'static str {
+    match kind {
+        OptionKind::Text => "text",
+        OptionKind::Email => "email",
+        OptionKind::IntRange(..) => "int",
+        OptionKind::Bool => "bool",
+        OptionKind::Weekday => "weekday",
+        OptionKind::Timezone => "timezone",
+        OptionKind::Role => "role",
+    }
+}
+
+/// A JSON scalar as its WP display/storage string; `None` for array/object/
+/// null — the "never round-trip PHP serialization" guard.
+fn scalar_display(v: &serde_json::Value) -> Option<String> {
+    match v {
+        serde_json::Value::String(s) => Some(s.clone()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        serde_json::Value::Bool(b) => Some(if *b { "1" } else { "0" }.into()),
+        _ => None,
+    }
+}
+
+/// Minimal email shape check (`local@domain.tld`, no whitespace) — enough to
+/// stop typos; WP itself does no validation on a direct option write.
+fn valid_email(v: &str) -> bool {
+    let Some((local, domain)) = v.split_once('@') else { return false };
+    !local.is_empty()
+        && !domain.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !v.contains(char::is_whitespace)
+}
+
+/// Backend per-kind validation — runs on every write regardless of what the
+/// UI already checked. `timezones`/`roles` are only consulted for those kinds.
+fn validate_option_value(
+    kind: OptionKind,
+    value: &str,
+    timezones: &[String],
+    roles: &[String],
+) -> std::result::Result<(), String> {
+    let int_in = |min: i64, max: i64| {
+        value
+            .parse::<i64>()
+            .ok()
+            .filter(|n| (min..=max).contains(n))
+            .map(|_| ())
+            .ok_or(format!("must be a whole number between {min} and {max}"))
+    };
+    match kind {
+        OptionKind::Text => Ok(()),
+        OptionKind::Email => {
+            if valid_email(value) {
+                Ok(())
+            } else {
+                Err("not a valid email address".into())
+            }
+        }
+        OptionKind::IntRange(min, max) => int_in(min, max),
+        OptionKind::Bool => {
+            if matches!(value, "0" | "1") {
+                Ok(())
+            } else {
+                Err("must be 0 or 1".into())
+            }
+        }
+        OptionKind::Weekday => int_in(0, 6),
+        OptionKind::Timezone => {
+            if value.is_empty() || timezones.iter().any(|t| t == value) {
+                Ok(())
+            } else {
+                Err("not a known timezone".into())
+            }
+        }
+        OptionKind::Role => {
+            if roles.iter().any(|r| r == value) {
+                Ok(())
+            } else {
+                Err("not an existing role".into())
+            }
+        }
+    }
+}
+
+/// One editable (or refused) option row (mirrors the frontend `WpOptionRow`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpOptionRow {
+    pub name: String,
+    pub label: String,
+    pub kind: String,
+    pub min: Option<i64>,
+    pub max: Option<i64>,
+    pub value: String,
+    pub editable: bool,
+    pub note: Option<String>,
+}
+
+/// A role (`wp role list` row).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WpRole {
+    pub name: String,
+    pub role: String,
+}
+
+/// The whole options form: rows + the choice lists the pickers need.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpOptionsForm {
+    pub fields: Vec<WpOptionRow>,
+    pub timezones: Vec<String>,
+    pub roles: Vec<WpRole>,
+}
+
+/// Fixed `wp eval` script reading every whitelisted option in ONE wp-cli call
+/// (11 separate `option get`s would cost ~10s of WP boots) plus the timezone
+/// list. Built ONLY from `OPTION_FIELDS` consts — no user input reaches it.
+fn options_eval_script() -> String {
+    let names = OPTION_FIELDS
+        .iter()
+        .map(|f| format!("\"{}\"", f.name))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "$n=[{names}];$v=[];foreach($n as $x){{$v[$x]=get_option($x);}}\
+         echo json_encode([\"values\"=>$v,\"timezones\"=>timezone_identifiers_list()]);"
+    )
+}
+
+/// Read the options form. `get_option` unserializes, so a serialized value
+/// arrives as a JSON array/object → refused per row (`editable: false`,
+/// "not editable (non-scalar value)") rather than shown as corruptible text.
+pub fn options_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpOptionsForm> {
+    #[derive(Deserialize)]
+    struct Eval {
+        values: serde_json::Map<String, serde_json::Value>,
+        timezones: Vec<String>,
+    }
+    let out = wp_run(php_bin, wp_phar, docroot, &["eval", &options_eval_script()])?;
+    let ev: Eval = serde_json::from_str(out.trim())
+        .map_err(|e| Error::Other(format!("options read: bad JSON: {e}")))?;
+    let roles: Vec<WpRole> = wp_json(php_bin, wp_phar, docroot, &["role", "list"])?;
+
+    let fields = OPTION_FIELDS
+        .iter()
+        .map(|f| {
+            let (min, max) = match f.kind {
+                OptionKind::IntRange(a, b) => (Some(a), Some(b)),
+                OptionKind::Weekday => (Some(0), Some(6)),
+                _ => (None, None),
+            };
+            let mut row = WpOptionRow {
+                name: f.name.into(),
+                label: f.label.into(),
+                kind: option_kind_str(f.kind).into(),
+                min,
+                max,
+                value: String::new(),
+                editable: false,
+                note: None,
+            };
+            match ev.values.get(f.name).map(scalar_display) {
+                Some(Some(v)) => {
+                    row.value = v;
+                    row.editable = true;
+                }
+                Some(None) => row.note = Some("not editable (non-scalar value)".into()),
+                None => row.note = Some("could not read".into()),
+            }
+            row
+        })
+        .collect();
+    Ok(WpOptionsForm { fields, timezones: ev.timezones, roles })
+}
+
+/// Update ONE whitelisted option. Guards, in order:
+/// 1. `name` must be in `OPTION_FIELDS` — anything else ("siteurl", "home",
+///    "active_plugins", …) is "not an editable option", checked BEFORE any
+///    wp-cli call, so a bypassed UI still can't write them;
+/// 2. per-kind value validation (choice kinds fetch their live list);
+/// 3. the CURRENT value must be a JSON scalar — a serialized option is never
+///    overwritten even if its name were whitelisted.
+pub fn option_update(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    name: &str,
+    value: &str,
+) -> Result<()> {
+    let field =
+        option_field(name).ok_or_else(|| Error::Other(format!("not an editable option: {name}")))?;
+
+    let timezones: Vec<String> = if field.kind == OptionKind::Timezone {
+        let out =
+            wp_run(php_bin, wp_phar, docroot, &["eval", "echo json_encode(timezone_identifiers_list());"])?;
+        serde_json::from_str(out.trim())
+            .map_err(|e| Error::Other(format!("timezone list: bad JSON: {e}")))?
+    } else {
+        Vec::new()
+    };
+    let roles: Vec<String> = if field.kind == OptionKind::Role {
+        let rows: Vec<WpRole> = wp_json(php_bin, wp_phar, docroot, &["role", "list"])?;
+        rows.into_iter().map(|r| r.role).collect()
+    } else {
+        Vec::new()
+    };
+    validate_option_value(field.kind, value, &timezones, &roles)
+        .map_err(|reason| Error::Other(format!("{}: {reason}", field.label)))?;
+
+    let cur = wp_run(php_bin, wp_phar, docroot, &["option", "get", name, "--format=json"])?;
+    let cur_v: serde_json::Value = serde_json::from_str(cur.trim())
+        .map_err(|e| Error::Other(format!("option {name}: bad JSON: {e}")))?;
+    if scalar_display(&cur_v).is_none() {
+        return Err(Error::Other(format!("{name} is not editable (non-scalar value)")));
+    }
+
+    wp_run(php_bin, wp_phar, docroot, &["option", "update", name, value])?;
+    Ok(())
+}
+
 /// One row of `wp language core list` (mirrors the frontend `WpLanguage`).
 /// `status` is `active` | `installed` | `uninstalled`; `en_US` is always
 /// present (the built-in default — activating it needs no files).
@@ -1489,6 +1774,82 @@ Error: WordPress installation doesn't verify against checksums.";
         for bad in ["", "e", "--skip-plugins", "-f", "fr_FR; rm -rf /", "fr FR", "FR_fr", "../x", "fr\u{2013}FR"] {
             assert!(!valid_locale(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn option_whitelist_makes_dangerous_options_unreachable() {
+        // Editable: on the list.
+        assert!(option_field("blogname").is_some());
+        assert!(option_field("posts_per_page").is_some());
+        // The foot-guns are not "blocked" — they simply don't exist here.
+        for dangerous in ["siteurl", "home", "active_plugins", "template", "stylesheet", "db_version", "WPLANG", ""] {
+            assert!(option_field(dangerous).is_none(), "{dangerous} must not be editable");
+        }
+        // option_update refuses BEFORE any wp-cli call: nonexistent binaries
+        // would yield an io error, not this message.
+        let e = option_update(
+            Path::new("/nonexistent/php"),
+            Path::new("/nonexistent/wp.phar"),
+            Path::new("/nonexistent/docroot"),
+            "siteurl",
+            "https://evil.example",
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("not an editable option"), "{e}");
+    }
+
+    #[test]
+    fn option_values_validate_per_kind_in_the_backend() {
+        let tz = vec!["Europe/Paris".to_string()];
+        let roles = vec!["subscriber".to_string(), "shop_manager".to_string()];
+        let v = |kind, val: &str| validate_option_value(kind, val, &tz, &roles);
+
+        // posts_per_page: 1..=1000.
+        for bad in ["0", "-1", "1001", "abc", "", "10.5"] {
+            assert!(v(OptionKind::IntRange(1, 1000), bad).is_err(), "{bad:?}");
+        }
+        assert!(v(OptionKind::IntRange(1, 1000), "1").is_ok());
+        assert!(v(OptionKind::IntRange(1, 1000), "1000").is_ok());
+        // Email shape.
+        for bad in ["", "nope", "@x.com", "a@b", "a b@c.d", "a@.com", "a@com."] {
+            assert!(v(OptionKind::Email, bad).is_err(), "{bad:?}");
+        }
+        assert!(v(OptionKind::Email, "admin@site.test").is_ok());
+        // Toggles are the two WP strings only.
+        assert!(v(OptionKind::Bool, "2").is_err());
+        assert!(v(OptionKind::Bool, "true").is_err());
+        assert!(v(OptionKind::Bool, "1").is_ok());
+        // Weekday 0..=6.
+        assert!(v(OptionKind::Weekday, "7").is_err());
+        assert!(v(OptionKind::Weekday, "0").is_ok());
+        // Timezone: from the list, or empty (gmt_offset mode — seen live).
+        assert!(v(OptionKind::Timezone, "Mars/Olympus").is_err());
+        assert!(v(OptionKind::Timezone, "Europe/Paris").is_ok());
+        assert!(v(OptionKind::Timezone, "").is_ok());
+        // Role: live list incl. custom roles.
+        assert!(v(OptionKind::Role, "administrator2").is_err());
+        assert!(v(OptionKind::Role, "shop_manager").is_ok());
+    }
+
+    #[test]
+    fn scalar_display_refuses_everything_serialized() {
+        use serde_json::json;
+        assert_eq!(scalar_display(&json!("Think Rank")).as_deref(), Some("Think Rank"));
+        assert_eq!(scalar_display(&json!(10)).as_deref(), Some("10"));
+        assert_eq!(scalar_display(&json!(false)).as_deref(), Some("0"));
+        // Arrays/objects (unserialized PHP data) and null: never editable.
+        assert_eq!(scalar_display(&json!(["a.php", "b.php"])), None);
+        assert_eq!(scalar_display(&json!({"k": "v"})), None);
+        assert_eq!(scalar_display(&serde_json::Value::Null), None);
+    }
+
+    #[test]
+    fn options_eval_script_contains_exactly_the_whitelist() {
+        let s = options_eval_script();
+        for f in OPTION_FIELDS {
+            assert!(s.contains(&format!("\"{}\"", f.name)), "{} missing", f.name);
+        }
+        assert!(!s.contains("siteurl") && !s.contains("active_plugins"));
     }
 
     #[test]

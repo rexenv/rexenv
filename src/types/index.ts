@@ -219,6 +219,32 @@ export interface WpChecksumCleanup {
   report: WpChecksumReport;
 }
 
+/** One whitelisted, typed site option (mirrors the Rust WpOptionRow). */
+export interface WpOptionRow {
+  name: string;
+  label: string;
+  kind: string; // text | email | int | bool | weekday | timezone | role
+  min: number | null;
+  max: number | null;
+  value: string;
+  /** false = shown but refused (non-scalar value / unreadable) — see note. */
+  editable: boolean;
+  note: string | null;
+}
+
+/** A role (`wp role list` row). */
+export interface WpRole {
+  name: string;
+  role: string;
+}
+
+/** The site-options form (mirrors the Rust WpOptionsForm). */
+export interface WpOptionsForm {
+  fields: WpOptionRow[];
+  timezones: string[];
+  roles: WpRole[];
+}
+
 /** One scheduled cron event (mirrors the Rust WpCronEvent / `wp cron event list`). */
 export interface WpCronEvent {
   hook: string;
