@@ -573,18 +573,7 @@ impl ServiceManager {
         }
         // Restart only a pool that was actually running; never start a new pool
         // as a side effect of a settings edit.
-        let mut check = None;
-        if self.pools.stop_one(platform, minor) {
-            self.pools.ensure(platform, minor).await?;
-            let port = php::fpm_port(minor)
-                .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
-            check = Some(ReadyCheck {
-                service: format!("PHP-FPM {minor}"),
-                log: platform.paths().log_dir()?.join(format!("php-fpm-{minor}.log")),
-                tries: 20,
-                probe: Box::new(move || services::fpm_running(port)),
-            });
-        }
+        let check = self.restart_php_pool(platform, minor).await?;
         // Nginx: regenerate with the new body limits + reload. Caddy routes are
         // untouched by ini settings — no edge reload needed.
         let bins = self.bins()?;
@@ -599,6 +588,55 @@ impl ServiceManager {
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
         Ok(check)
+    }
+
+    /// Whether a php-fpm pool for `minor` is currently managed (spawned or
+    /// adopted). Lets the startup patch-bump task skip minors with no live pool
+    /// (nothing to restart — the next start resolves the new pin anyway).
+    pub fn has_php_pool(&self, minor: &str) -> bool {
+        self.pools.has(minor)
+    }
+
+    /// Restart one pool IF it is currently managed: stop it (reaping orphaned
+    /// workers so the port gate passes) and re-`ensure` — which rewrites the
+    /// config from the current settings map AND resolves the currently pinned
+    /// patch, so this is both the settings-change and the patch-bump restart.
+    /// `None` if no pool for `minor` was running.
+    async fn restart_php_pool(
+        &mut self,
+        platform: &dyn Platform,
+        minor: &str,
+    ) -> Result<Option<ReadyCheck>> {
+        if !self.pools.stop_one(platform, minor) {
+            return Ok(None);
+        }
+        self.pools.ensure(platform, minor).await?;
+        let port = php::fpm_port(minor)
+            .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
+        Ok(Some(ReadyCheck {
+            service: format!("PHP-FPM {minor}"),
+            log: platform.paths().log_dir()?.join(format!("php-fpm-{minor}.log")),
+            tries: 20,
+            probe: Box::new(move || services::fpm_running(port)),
+        }))
+    }
+
+    /// Restart every listed minor's live pool (patch bump riding an app release
+    /// — Option A). The caller prefetches the new binaries FIRST (download hub,
+    /// no lock held) so the stop→ensure gap under the services lock is a cache
+    /// hit, not a download. Returns readiness probes to await after unlocking.
+    pub async fn restart_pools_for(
+        &mut self,
+        platform: &dyn Platform,
+        minors: &[String],
+    ) -> Result<Vec<ReadyCheck>> {
+        let mut checks = Vec::new();
+        for minor in minors {
+            if let Some(check) = self.restart_php_pool(platform, minor).await? {
+                checks.push(check);
+            }
+        }
+        Ok(checks)
     }
 
     /// Stop the whole stack.

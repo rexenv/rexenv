@@ -467,6 +467,53 @@ pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
     }
 }
 
+/// Whether a binary-cache dir name holds an OUTDATED patch of a pinned PHP
+/// minor — `php-8.3.30/` or `php-fpm-8.3.30/` once the pin moved to 8.3.31.
+/// Pure (name-only) so the GC rule is unit-testable. Deliberately narrow:
+/// only `php-`/`php-fpm-` dirs, only a strict `x.y.z` numeric version, only
+/// minors that HAVE a pin, and never the pinned patch itself — so the debug
+/// builds (`php-debug-…`), other binaries, staging dirs, and versions from a
+/// NEWER app (downgrade) are all left alone.
+pub fn is_outdated_php_cache(dir_name: &str) -> bool {
+    // Strip the longer prefix first — `php-` also matches `php-fpm-…`.
+    let Some(version) = dir_name
+        .strip_prefix("php-fpm-")
+        .or_else(|| dir_name.strip_prefix("php-"))
+    else {
+        return false;
+    };
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit())) {
+        return false; // not a plain x.y.z (e.g. `php-debug-8.3.31`)
+    }
+    let minor = crate::core::php::minor_of(version);
+    match crate::core::php::patch_for_minor(&minor) {
+        Some(pinned) => version != pinned,
+        None => false, // unpinned minor (newer app's cache) — don't touch
+    }
+}
+
+/// Remove cache dirs left behind by a PHP patch bump (Option A updates: pins
+/// move with an app release; the old `php-<oldpatch>/` trees would otherwise
+/// accumulate ~60MB per bump forever). Best-effort — a dir that can't be
+/// removed is skipped, never an error. Returns the removed dir names.
+pub fn gc_outdated_php_caches(platform: &dyn Platform) -> Vec<String> {
+    let Ok(bin_dir) = platform.paths().bin_dir() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&bin_dir) else {
+        return Vec::new();
+    };
+    let mut removed = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_outdated_php_cache(&name) && std::fs::remove_dir_all(entry.path()).is_ok() {
+            removed.push(name);
+        }
+    }
+    removed
+}
+
 /// Single-flight guard for concurrent resolves of the same `name`@`version`:
 /// the second caller waits for the first download to publish, then hits the
 /// resolve's cached-path early return instead of racing a duplicate download
@@ -1170,6 +1217,29 @@ mod tests {
         // An unpinned version is rejected.
         assert!(manifest("php", "8.0.0", "macos", Arch::Arm64).is_none());
         assert!(php_sha256("cli", "8.0.0", Arch::Arm64).is_none());
+    }
+
+    #[test]
+    fn outdated_php_cache_rule_is_narrow() {
+        // An old patch of a pinned minor — for both the cli and fpm dirs.
+        assert!(is_outdated_php_cache("php-8.3.30"));
+        assert!(is_outdated_php_cache("php-fpm-8.3.30"));
+        // The pinned patch itself is never outdated.
+        for v in PHP_VERSIONS {
+            assert!(!is_outdated_php_cache(&format!("php-{v}")));
+            assert!(!is_outdated_php_cache(&format!("php-fpm-{v}")));
+        }
+        // Everything else is left alone: debug builds, other binaries, staging
+        // dirs, non-x.y.z names, unpinned minors (a newer app's cache).
+        assert!(!is_outdated_php_cache("php-debug-8.3.31"));
+        assert!(!is_outdated_php_cache("php-fpm-debug-8.3.31"));
+        assert!(!is_outdated_php_cache("caddy-2.11.4"));
+        assert!(!is_outdated_php_cache("nginx-1.30.3"));
+        assert!(!is_outdated_php_cache(".staging-php-8.3.31-123-0"));
+        assert!(!is_outdated_php_cache("php-8.3"));
+        assert!(!is_outdated_php_cache("php-8.3.31.1"));
+        assert!(!is_outdated_php_cache("php-8.6.1")); // unpinned minor
+        assert!(!is_outdated_php_cache("php-7.4.33")); // unpinned minor
     }
 
     #[test]

@@ -67,13 +67,26 @@ pub fn fpm_port(minor: &str) -> Option<u16> {
 /// inserts unknown versions (the default minor enabled, others available), and on
 /// re-run updates `patch`/`fpm_port`/`is_default` while **preserving** the user's
 /// `installed` choices. Safe to call on every app start.
-pub fn seed_registry(conn: &Connection) -> Result<()> {
+///
+/// Returns the minors whose stored patch CHANGED — a pin bump riding an app
+/// release (Option A patch updates: pins only move with a release, there is no
+/// in-app updater). The startup task restarts those minors' live pools so an
+/// adopted survivor doesn't keep serving the old patch, and GCs the old caches.
+pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
     let default_minor = minor_of(binaries::PHP_VERSION);
+    let existing: std::collections::HashMap<String, String> = store::list_php_versions(conn)?
+        .into_iter()
+        .map(|v| (v.minor, v.patch))
+        .collect();
+    let mut bumped = Vec::new();
     for minor in all_minors() {
         let patch = patch_for_minor(&minor)
             .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
         let port =
             fpm_port(&minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
+        if existing.get(&minor).is_some_and(|old| old != patch) {
+            bumped.push(minor.clone());
+        }
         let is_default = minor == default_minor;
         store::upsert_php_version(
             conn,
@@ -88,7 +101,7 @@ pub fn seed_registry(conn: &Connection) -> Result<()> {
             },
         )?;
     }
-    Ok(())
+    Ok(bumped)
 }
 
 /// All registered PHP versions (installed + available), for the UI.
@@ -488,6 +501,11 @@ impl PhpFpmPools {
         self.pools.is_empty()
     }
 
+    /// Whether a pool for `minor` is currently managed (spawned or adopted).
+    pub fn has(&self, minor: &str) -> bool {
+        self.pools.iter().any(|p| p.minor == minor)
+    }
+
     /// Per-pool status, ordered by minor series.
     pub fn status(&self) -> Vec<PoolStatus> {
         let mut out: Vec<PoolStatus> = self
@@ -640,6 +658,31 @@ mod tests {
             assert!(fpm_port(m).is_some());
         }
         assert!(patch_for_minor("7.4").is_none());
+    }
+
+    #[test]
+    fn seed_registry_reports_patch_bumps_and_preserves_installed() {
+        let conn = db::open_in_memory().unwrap();
+        // First seed (fresh DB) and a same-pin re-seed report no bumps.
+        assert!(seed_registry(&conn).unwrap().is_empty());
+        assert!(seed_registry(&conn).unwrap().is_empty());
+        // Simulate a prior app release: 8.3 installed at an older patch.
+        conn.execute(
+            "UPDATE php_versions SET patch = '8.3.30', installed = 1 WHERE minor = '8.3'",
+            [],
+        )
+        .unwrap();
+        // This app's seed bumps the pin: reported, patch updated, installed kept.
+        assert_eq!(seed_registry(&conn).unwrap(), vec!["8.3".to_string()]);
+        let row = store::list_php_versions(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|v| v.minor == "8.3")
+            .unwrap();
+        assert_eq!(row.patch, patch_for_minor("8.3").unwrap());
+        assert!(row.installed);
+        // And the bump is one-shot: the next launch reports nothing.
+        assert!(seed_registry(&conn).unwrap().is_empty());
     }
 
     #[test]

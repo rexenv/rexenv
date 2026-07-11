@@ -66,10 +66,16 @@ pub fn run() {
             ) {
                 (Ok(conn), Ok(ca)) => {
                     // Seed/refresh the PHP version registry (Phase 2 §1.2);
-                    // preserves the user's installed choices on re-run.
-                    if let Err(e) = core::php::seed_registry(&conn) {
-                        log::error!("php: failed to seed version registry: {e}");
-                    }
+                    // preserves the user's installed choices on re-run. `bumped`
+                    // = minors whose pinned patch moved with THIS app release
+                    // (Option A updates) — their live pools are restarted below.
+                    let bumped = match core::php::seed_registry(&conn) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            log::error!("php: failed to seed version registry: {e}");
+                            Vec::new()
+                        }
+                    };
                     // Services OUTLIVE the app: closing rexenv doesn't stop the
                     // stack, so adopt any rexenv-owned survivors into this session's
                     // manager — status shows them running, Stop all works, Start all
@@ -90,6 +96,57 @@ pub fn run() {
                         }
                     }
                     app.manage(state);
+
+                    // PHP patch bump (pins ride app releases — Option A, no
+                    // in-app updater): adopted pools still serve the OLD patch
+                    // binary, so restart each bumped minor's live pool on the
+                    // new pin, then GC the outdated `php-<oldpatch>/` caches.
+                    // Prefetch happens FIRST and outside the services lock
+                    // (download hub progress; the locked stop→ensure gap is a
+                    // cache hit, not a download). Stack stopped ⇒ nothing to
+                    // restart; the next start resolves the new pin anyway.
+                    let bump = app.handle().clone();
+                    tauri::async_runtime::spawn(async move {
+                        let Some(state) = bump.try_state::<state::app::AppState>() else {
+                            return;
+                        };
+                        let platform = state.platform.as_ref();
+                        let live: Vec<String> = {
+                            let mgr = state.services.lock().await;
+                            bumped.into_iter().filter(|m| mgr.has_php_pool(m)).collect()
+                        };
+                        if !live.is_empty() {
+                            for minor in &live {
+                                let plan = core::downloads::plan_for_php(platform, minor);
+                                if let Err(e) = core::downloads::prefetch(
+                                    platform,
+                                    &format!("Update PHP {minor}"),
+                                    &plan,
+                                )
+                                .await
+                                {
+                                    log::warn!("php: patch-update prefetch failed: {e}");
+                                    return; // old pool keeps serving; retry next launch
+                                }
+                            }
+                            let checks = {
+                                let mut mgr = state.services.lock().await;
+                                match mgr.restart_pools_for(platform, &live).await {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log::warn!("php: patch-update pool restart failed: {e}");
+                                        Vec::new()
+                                    }
+                                }
+                            };
+                            if let Err(e) = core::service_manager::await_ready(checks).await {
+                                log::warn!("php: a patch-updated pool did not become ready: {e}");
+                            }
+                        }
+                        for dir in core::binaries::gc_outdated_php_caches(platform) {
+                            log::info!("php: removed outdated binary cache {dir}");
+                        }
+                    });
                     None
                 }
                 (Err(e), _) => {
