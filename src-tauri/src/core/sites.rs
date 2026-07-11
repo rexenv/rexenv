@@ -119,6 +119,47 @@ pub fn rename(conn: &Connection, id: &str, name: &str) -> Result<Option<Site>> {
     get(conn, id)
 }
 
+/// Preflight for a domain change — every rule that must hold BEFORE the
+/// orchestrator runs any destructive step (backup / search-replace), and again
+/// inside [`set_domain`] as defense-in-depth:
+/// - the new domain must validate (same rules as create) and be unused
+/// - it must differ from the current domain
+/// - multisite is REFUSED: a network stores the domain in wp-config
+///   (`DOMAIN_CURRENT_SITE`) and per-subsite rows (`wp_blogs`/`wp_site`), so a
+///   single-site-style change would half-break it. Honest refusal for v1.
+pub fn check_domain_change(conn: &Connection, site: &Site, new_domain: &str) -> Result<()> {
+    if !matches!(site.multisite, MultisiteMode::None) {
+        return Err(Error::Other(
+            "domain change isn't supported on a multisite network yet — the network stores \
+             the domain in wp-config and per-subsite tables, and changing it here would \
+             break the sub-sites"
+                .into(),
+        ));
+    }
+    if site.domain == new_domain {
+        return Err(Error::Other(format!("site already uses {new_domain}")));
+    }
+    validate_domain(new_domain)?;
+    if store::domain_exists(conn, new_domain)? {
+        return Err(Error::Other(format!("domain already in use: {new_domain}")));
+    }
+    Ok(())
+}
+
+/// Change ONLY the `domain` column (after re-running [`check_domain_change`]).
+/// The docroot folder and `db_name` are deliberately untouched: renaming the
+/// folder risks breaking absolute paths inside the site, and MySQL has no
+/// `RENAME DATABASE` — both stay keyed to the creation-time domain, which is
+/// purely cosmetic. Returns the updated site (`None` if the id doesn't exist).
+/// The caller (the change-domain orchestrator) owns certs, configs/reload, and
+/// the WordPress URL migration.
+pub fn set_domain(conn: &Connection, id: &str, new_domain: &str) -> Result<Option<Site>> {
+    let Some(site) = get(conn, id)? else { return Ok(None) };
+    check_domain_change(conn, &site, new_domain)?;
+    store::set_site_domain(conn, id, new_domain)?;
+    get(conn, id)
+}
+
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
 /// — no docroot/cert/DB rebuild — and return the updated site. Only Nginx and
 /// FrankenPHP have backends in Phase 2 (Apache/OLS are deferred). The caller
@@ -581,6 +622,38 @@ mod tests {
         // stored value, not a fresh derivation from the current domain.
         assert_eq!(created.db_name, "wp_my_shop_test");
         assert_eq!(get(&conn, &created.id).unwrap().unwrap().db_name, "wp_my_shop_test");
+    }
+
+    #[test]
+    fn set_domain_updates_only_the_domain() {
+        let conn = db::open_in_memory().unwrap();
+        let created = create(&conn, sample("Shop", "myapp.test")).unwrap();
+
+        let updated = set_domain(&conn, &created.id, "myshop.test").unwrap().unwrap();
+        assert_eq!(updated.domain, "myshop.test");
+        // The database name and docroot stay keyed to the creation-time domain.
+        assert_eq!(updated.db_name, "wp_myapp_test");
+        assert_eq!(updated.path, created.path);
+        assert_eq!(updated.name, "Shop");
+    }
+
+    #[test]
+    fn set_domain_rejects_invalid_duplicate_same_and_multisite() {
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "a.test")).unwrap();
+        create(&conn, sample("B", "b.test")).unwrap();
+
+        assert!(set_domain(&conn, &a.id, "../evil.test").is_err());
+        assert!(set_domain(&conn, &a.id, "b.test").unwrap_err().to_string().contains("already in use"));
+        assert!(set_domain(&conn, &a.id, "a.test").unwrap_err().to_string().contains("already uses"));
+        assert!(set_domain(&conn, "nope", "c.test").unwrap().is_none());
+
+        store::set_site_multisite(&conn, &a.id, MultisiteMode::Subdomain.as_db()).unwrap();
+        let err = set_domain(&conn, &a.id, "c.test").unwrap_err().to_string();
+        assert!(err.contains("multisite"), "must refuse multisite: {err}");
+
+        // Nothing above changed the row.
+        assert_eq!(get(&conn, &a.id).unwrap().unwrap().domain, "a.test");
     }
 
     #[test]

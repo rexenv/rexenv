@@ -27,6 +27,15 @@ export interface Site {
 /** WordPress multisite mode (mirrors the Rust MultisiteMode). */
 export type MultisiteMode = "none" | "subdomain" | "subdirectory";
 
+/** Result of a domain change (mirrors the Rust DomainChange): the updated site,
+ *  where the pre-change DB backup landed (WordPress only), and how many
+ *  search-replace substitutions ran. */
+export interface DomainChange {
+  site: Site;
+  backupPath: string | null;
+  replacements: number;
+}
+
 /** Read-only identity of a site's HTTPS leaf cert (mirrors the Rust SiteCertInfo).
  *  Dates are RFC 3339 UTC; `daysLeft` goes negative once expired. */
 export interface SiteCertInfo {

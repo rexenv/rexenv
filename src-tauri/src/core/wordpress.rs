@@ -1000,6 +1000,10 @@ pub fn maintenance_mode_set(
 
 /// Run `wp search-replace <from> <to> [--dry-run] --format=count` and return the
 /// number of replacements (a dry-run reports the count WITHOUT changing data).
+/// wp-cli walks serialized PHP data correctly — this is the safe way to rewrite
+/// URLs, never raw SQL. `all_tables` adds `--all-tables` (every table in the
+/// site's database, not just the ones matching the WP prefix) — each site owns
+/// its database, so this is safe and what a domain change needs.
 pub fn search_replace(
     php_bin: &Path,
     wp_phar: &Path,
@@ -1007,8 +1011,12 @@ pub fn search_replace(
     from: &str,
     to: &str,
     dry_run: bool,
+    all_tables: bool,
 ) -> Result<u64> {
     let mut args: Vec<&str> = vec!["search-replace", from, to, "--format=count"];
+    if all_tables {
+        args.push("--all-tables");
+    }
     if dry_run {
         args.push("--dry-run");
     }

@@ -34,7 +34,5 @@ export function adminerUrl(opts: {
   return `https://${ADMINER_HOST}/?${params.toString()}`;
 }
 
-/** A site's MySQL database name (mirrors `core::wordpress::db_name_for`). */
-export function siteDbName(domain: string): string {
-  return "wp_" + domain.replace(/[^a-zA-Z0-9]/g, "_");
-}
+// NOTE: a site's MySQL database name must come from `site.dbName` (stored at
+// creation) — never derive it from the domain, which can change (§1.4).

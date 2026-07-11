@@ -359,6 +359,169 @@ pub async fn set_site_php_version(
     Ok(site)
 }
 
+/// Result of a domain change: the updated site, where the pre-change database
+/// backup landed (WordPress sites only), and how many search-replace
+/// substitutions ran (both passes; 0 for non-WordPress sites).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DomainChange {
+    pub site: Site,
+    pub backup_path: Option<String>,
+    pub replacements: u64,
+}
+
+/// Change a site's domain (e.g. `myapp.test → myshop.test`). DESTRUCTIVE for
+/// WordPress sites — the URL rewrite touches serialized data one-way, so the
+/// database is ALWAYS exported to Downloads first and the whole flow aborts if
+/// that export fails. Refused on multisite (see `core::sites::check_domain_change`).
+///
+/// Ordered so the one non-reversible step (search-replace) runs while everything
+/// around it is still intact or trivially retriable:
+///   preflight → backup → new cert (additive) → search-replace dry-run gate →
+///   real search-replace (`https://old→https://new`, then bare `old→new`,
+///   `--all-tables`) → SQLite domain flip (path + db_name untouched) →
+///   config regen + forced edge reload → old-artifact cleanup (best-effort).
+/// A failure before the SQLite flip leaves the site fully working on the old
+/// domain (the DB restorable from the fresh backup); after the flip the only
+/// remaining step that can fail is the reload, which is retriable.
+///
+/// DNS needs nothing: the embedded resolver wildcards `*.test`. The docroot
+/// folder and database name stay keyed to the old domain on purpose (cosmetic;
+/// renaming either is risk for zero value). Bare-domain pass also rewrites
+/// `…@old.test` email addresses — acceptable for local dev, stated in the UI.
+#[tauri::command]
+pub async fn change_site_domain(
+    state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
+    id: String,
+    domain: String,
+) -> Result<DomainChange> {
+    let domain = domain.trim().to_string();
+    let site = {
+        let conn = lock(&state)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        // Preflight BEFORE any destructive step; re-checked inside set_domain.
+        core::sites::check_domain_change(&conn, &site, &domain)?;
+        site
+    };
+    let old_domain = site.domain.clone();
+    let is_wp = matches!(site.site_type, SiteType::Wordpress);
+
+    let mut backup_path = None;
+    let mut replacements = 0u64;
+    if is_wp {
+        // Fail fast with an actionable message (same guard as export/reset).
+        if !DbEngine::Mysql.running() {
+            return Err(Error::Other(
+                "MySQL isn't running — start it (Services → Start all, or the Databases page), then change the domain again.".into(),
+            ));
+        }
+        let mysql_base =
+            binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION)
+                .await?;
+        let (php, wp) = super::wordpress::wp_tools(&state, &site.php_version).await?;
+        let docroot = std::path::PathBuf::from(&site.path);
+
+        // 1) MANDATORY backup — the search-replace below isn't reversible.
+        let dump = {
+            let (base, old, db) = (mysql_base.clone(), old_domain.clone(), site.db_name.clone());
+            super::wordpress::wp_blocking(move || {
+                core::database::export_to_downloads(&base, DbEngine::Mysql.port(), &old, &db)
+            })
+            .await
+            .map_err(|e| Error::Other(format!("domain unchanged — the safety backup failed: {e}")))?
+        };
+        backup_path = Some(dump.to_string_lossy().into_owned());
+
+        // 2) Cert for the new domain — purely additive; the old cert keeps
+        //    being served until the reload below.
+        core::ssl::ensure_site_cert(
+            state.platform.paths(),
+            state.platform.permissions(),
+            &state.ca,
+            &domain,
+        )?;
+
+        // 3) URL migration. Dry-run first as an environment gate (wp-cli boots,
+        //    DB reachable) — if it fails, nothing has been mutated. Then two
+        //    real passes: full URL, then bare domain (srcset, protocol-relative
+        //    and hardcoded refs). wp-cli handles serialized data; --all-tables
+        //    covers non-prefix tables (each site owns its database).
+        let (from_url, to_url) = (format!("https://{old_domain}"), format!("https://{domain}"));
+        replacements = {
+            let (old, new) = (old_domain.clone(), domain.clone());
+            super::wordpress::wp_blocking(move || {
+                core::wordpress::search_replace(&php, &wp, &docroot, &from_url, &to_url, true, true)?;
+                let mut n =
+                    core::wordpress::search_replace(&php, &wp, &docroot, &from_url, &to_url, false, true)?;
+                n += core::wordpress::search_replace(&php, &wp, &docroot, &old, &new, false, true)?;
+                Ok(n)
+            })
+            .await?
+        };
+    } else {
+        // Non-WordPress sites store no URL — cert + configs are the whole change.
+        core::ssl::ensure_site_cert(
+            state.platform.paths(),
+            state.platform.permissions(),
+            &state.ca,
+            &domain,
+        )?;
+    }
+
+    // 4) Flip the row (domain only) — from here the configs regenerate to the
+    //    new domain.
+    let (updated, sites) = {
+        let conn = lock(&state)?;
+        let updated = core::sites::set_domain(&conn, &id, &domain)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        (updated, core::sites::list(&conn)?)
+    };
+
+    // 5) Regenerate nginx/Caddy from the rows + FORCE-reload the edge (forced:
+    //    if only cert bytes changed Caddy would skip a normal reload). No-op
+    //    when the stack is down — the new configs load at the next start.
+    //    Retriable: the row is already flipped, so a later reload also serves
+    //    the new domain.
+    let reload = async {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, true).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await
+    };
+    reload.await.map_err(|e| {
+        Error::Other(format!(
+            "Domain changed to {domain}, but the edge reload failed — the site may not \
+             be reachable until services reload. Retry from Services → Restart. ({e})"
+        ))
+    })?;
+
+    // 6) Old-domain artifacts (best-effort, non-fatal): a live tunnel proxies a
+    //    vhost that no longer exists; cert dir / FrankenPHP config / logs are
+    //    keyed by the old domain (mirrors teardown).
+    tunnels.stop_for_domain(state.platform.as_ref(), &old_domain);
+    if let Ok(dir) = core::ssl::site_cert_dir(state.platform.paths(), &old_domain) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    if let Ok(conf) = core::frankenphp::config_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(conf);
+    }
+    if let Ok(log) = core::frankenphp::log_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    if let Ok(log) = core::tunnels::log_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(log);
+    }
+
+    Ok(DomainChange { site: updated, backup_path, replacements })
+}
+
 /// Delete a site — complete cleanup: stop its public tunnel, drop its MySQL
 /// database, then tear down the DB row + cert + per-site configs/logs + docroot,
 /// and reload the running stack so it stops being served. Returns whether it

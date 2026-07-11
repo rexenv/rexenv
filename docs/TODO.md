@@ -171,8 +171,19 @@ Each line = one feature, live-verified before its commit.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
-  and the DB name derives from the domain (L).
+- [x] **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
+  and the DB name derives from the domain (L). ✓ **Done** in two commits:
+  `688142a` (prerequisite) stores `db_name` on the site row (v6 migration backfills,
+  every runtime reader switched — user-verified reset + export/import round-trip on a
+  pre-migration site); `change_site_domain` orchestrates preflight (validate +
+  uniqueness + multisite REFUSED honestly) → mandatory Downloads backup (abort on
+  fail) → new-domain cert (additive) → `wp search-replace` dry-run gate then two real
+  passes (`https://old→https://new`, bare `old→new`, `--all-tables`) → SQLite domain
+  flip (docroot + db_name untouched by design) → config regen + forced edge reload →
+  best-effort old-artifact cleanup (cert dir, tunnel, FrankenPHP config/logs). DNS
+  needs nothing (wildcard `*.test`). UI: Settings → Domain card (disabled on
+  multisite), destructive dialog with backup/email-rewrite/reversal notes; frontend
+  `siteDbName()` derivation deleted in favor of stored `site.dbName`.
 - **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
 - **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
   seam (L).

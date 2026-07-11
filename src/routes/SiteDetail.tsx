@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Globe,
   LayoutGrid,
+  Loader2,
   Lock,
   LockOpen,
   Pause,
@@ -32,10 +33,11 @@ import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
-import { adminerUrl, siteDbName } from "@/lib/adminer";
+import { adminerUrl } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import {
+  changeSiteDomain,
   getSitesServing,
   listPhpVersions,
   listSites,
@@ -56,7 +58,7 @@ import {
   wpInfo,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
-import type { Site, WebServer } from "@/types";
+import type { DomainChange, Site, WebServer } from "@/types";
 
 /** One-click "Open admin": open a magic auto-login link for the site's primary
  *  administrator (lands on /wp-admin/). If the link can't be issued — services
@@ -224,7 +226,7 @@ export function SiteDetail() {
                 hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
               />
             ) : (
-              <AdminerFrame src={adminerUrl({ engine: "mysql", db: siteDbName(site.domain) })} />
+              <AdminerFrame src={adminerUrl({ engine: "mysql", db: site.dbName })} />
             ))}
           {active === "logs" && <LogsTab siteId={site.id} isWordpress={isWordpress} />}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}
@@ -507,6 +509,7 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
 function SettingsTab({ site }: { site: Site }) {
   const qc = useQueryClient();
   const [name, setName] = useState(site.name);
+  const [domainOpen, setDomainOpen] = useState(false);
   // Track renames that land from elsewhere (e.g. the Sites-list dialog).
   useEffect(() => setName(site.name), [site.name]);
 
@@ -592,14 +595,38 @@ function SettingsTab({ site }: { site: Site }) {
         </div>
       </SettingsCard>
 
+      <SettingsCard label="Domain">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="font-mono text-[13px] text-rex-text-bright">{site.domain}</div>
+            <div className="mt-1 text-[12px] text-rex-text-dim">
+              {site.multisite !== "none"
+                ? "Domain change isn't supported on a multisite network yet — the network stores the domain in wp-config and per-site tables."
+                : site.type === "wordpress"
+                  ? "Changing the domain rewrites every URL in the database. A backup is exported to Downloads first."
+                  : "Changing the domain re-issues the HTTPS certificate and updates the server config."}
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={site.multisite !== "none"}
+            title={site.multisite !== "none" ? "Not supported on a multisite network yet" : undefined}
+            onClick={() => setDomainOpen(true)}
+          >
+            Change domain…
+          </Button>
+        </div>
+      </SettingsCard>
+      {domainOpen && <ChangeDomainDialog site={site} onClose={() => setDomainOpen(false)} />}
+
       <SettingsCard label="Site info">
         <div className="flex max-w-[560px] flex-col gap-3">
           <InfoRow label="Type">{TYPE_LABELS[site.type] ?? site.type}</InfoRow>
           <InfoRow label="Database name">
             {hasDb ? (
               <span className="inline-flex items-center gap-1.5">
-                <span className="truncate font-mono text-[12.5px]">{siteDbName(site.domain)}</span>
-                <CopyButton value={siteDbName(site.domain)} />
+                <span className="truncate font-mono text-[12.5px]">{site.dbName}</span>
+                <CopyButton value={site.dbName} />
               </span>
             ) : (
               <span className="text-rex-text-dim">— (no database)</span>
@@ -656,6 +683,139 @@ function SettingsTab({ site }: { site: Site }) {
         )}
       </SettingsCard>
     </>
+  );
+}
+
+/** Change-domain dialog — mirrors ResetSiteDialog's overlay + destructive-confirm
+ *  pattern (WordPressManager). The heavy lifting is one backend call that backs
+ *  up the DB first and aborts unchanged if that fails; entering a valid new
+ *  domain is the deliberate confirmation step. */
+function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [input, setInput] = useState("");
+  const [done, setDone] = useState<DomainChange | null>(null);
+  const next = input.trim().toLowerCase();
+  const valid = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.test$/.test(next) && next !== site.domain;
+  const isWp = site.type === "wordpress";
+
+  const change = useMutation({
+    mutationFn: () => changeSiteDomain(site.id, next),
+    onSuccess: (res) => {
+      setDone(res);
+      // Domain touches everything: sites list, cert card, wp-info, serving.
+      qc.invalidateQueries();
+    },
+    onError: (e) => {
+      // A late failure (e.g. edge reload) may land AFTER the row flipped — the
+      // backup/cert may also already exist. Refresh so the UI shows reality.
+      qc.invalidateQueries();
+      toastBackendError(e);
+    },
+  });
+  const busy = change.isPending;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="w-[460px] rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {done ? (
+          <>
+            <div className="text-[15px] font-semibold text-rex-text">Domain changed</div>
+            <div className="mt-2 text-[13px] leading-[1.55] text-rex-text-muted">
+              The site now lives at{" "}
+              <span className="font-mono text-rex-text">https://{done.site.domain}</span>.
+              {isWp && <> {done.replacements} URL references were rewritten in the database.</>}{" "}
+              The site folder and database name keep their old names — that's cosmetic.
+            </div>
+            {done.backupPath && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 py-2.5">
+                <span className="truncate font-mono text-[11.5px] text-rex-text-bright">
+                  {done.backupPath}
+                </span>
+                <Button
+                  variant="secondary"
+                  onClick={() => void revealPath(done.backupPath!).catch(toastBackendError)}
+                >
+                  Show in Finder
+                </Button>
+              </div>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="primary"
+                onClick={() => void openExternal(`https://${done.site.domain}`)}
+              >
+                Open site
+              </Button>
+              <Button variant="secondary" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-[15px] font-semibold text-rex-text">Change domain?</div>
+            <div className="mt-2 flex flex-col gap-2 text-[13px] leading-[1.55] text-rex-text-muted">
+              {isWp ? (
+                <>
+                  <p>
+                    Every URL in the database of{" "}
+                    <span className="font-mono text-rex-text">{site.domain}</span> is rewritten to
+                    the new domain (including serialized data). This is{" "}
+                    <span className="font-medium text-status-error-bright">not reversible</span> —
+                    a database backup is exported to your Downloads folder first, and the change
+                    aborts untouched if that export fails.
+                  </p>
+                  <p>
+                    Email addresses ending in{" "}
+                    <span className="font-mono text-rex-text">@{site.domain}</span> (e.g. the admin
+                    email) are rewritten too. The site folder and database name keep their current
+                    names. To reverse: change the domain back the same way, or import the backup.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Re-issues the HTTPS certificate for the new domain and updates the server config
+                  — this site stores no URLs in a database, so nothing else changes. The site
+                  folder keeps its current name.
+                </p>
+              )}
+            </div>
+            <div className="mt-4 text-[12.5px] text-rex-text-muted">New domain:</div>
+            <input
+              {...TECH_INPUT}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && valid && !busy) change.mutate();
+              }}
+              placeholder="myshop.test"
+              disabled={busy}
+              autoFocus
+              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
+            />
+            <div className="mt-1.5 text-[11.5px] text-rex-text-dim">
+              Lowercase letters, digits and hyphens, ending in{" "}
+              <span className="font-mono">.test</span>.
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="secondary" disabled={busy} onClick={onClose}>
+                Cancel
+              </Button>
+              <Button variant="danger" disabled={!valid || busy} onClick={() => change.mutate()}>
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-rex-spin" />}
+                {busy ? (isWp ? "Backing up & rewriting…" : "Changing…") : "Change domain"}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

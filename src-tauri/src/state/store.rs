@@ -117,6 +117,17 @@ pub fn set_site_php_version(conn: &Connection, id: &str, version: &str) -> Resul
 }
 
 /// Update only a site's `multisite` column; returns whether a row was updated.
+/// Update ONLY the domain column. `path` and `db_name` are intentionally left
+/// untouched — the docroot folder is never renamed and the database name is
+/// stable for the site's lifetime (see `core::sites::set_domain`).
+pub fn set_site_domain(conn: &Connection, id: &str, domain: &str) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE sites SET domain = ?1 WHERE id = ?2",
+        params![domain, id],
+    )?;
+    Ok(n > 0)
+}
+
 pub fn set_site_multisite(conn: &Connection, id: &str, mode: &str) -> Result<bool> {
     let affected = conn.execute(
         "UPDATE sites SET multisite = ?1 WHERE id = ?2",

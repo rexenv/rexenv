@@ -14,7 +14,7 @@ use tauri::State;
 /// boots WordPress (hundreds of ms; installs/updates take seconds), and
 /// `Command::output()` blocks — the WordPress tab fires several of these at
 /// once, which used to tie up tokio worker threads and stall the whole app.
-async fn wp_blocking<T, F>(f: F) -> Result<T>
+pub(crate) async fn wp_blocking<T, F>(f: F) -> Result<T>
 where
     T: Send + 'static,
     F: FnOnce() -> Result<T> + Send + 'static,
@@ -26,7 +26,10 @@ where
 
 /// Resolve (downloading on first use) the bundled PHP CLI for a site's PHP minor
 /// version + the wp-cli `.phar`.
-async fn wp_tools(state: &State<'_, AppState>, php_minor: &str) -> Result<(PathBuf, PathBuf)> {
+pub(crate) async fn wp_tools(
+    state: &State<'_, AppState>,
+    php_minor: &str,
+) -> Result<(PathBuf, PathBuf)> {
     let patch = php::patch_for_minor(php_minor)
         .ok_or_else(|| Error::Other(format!("no pinned PHP build for {php_minor}")))?;
     let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
@@ -353,8 +356,10 @@ pub async fn wp_search_replace(
     dry_run: bool,
 ) -> Result<u64> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
-    wp_blocking(move || core::wordpress::search_replace(&php, &wp, &docroot, &from, &to, dry_run))
-        .await
+    wp_blocking(move || {
+        core::wordpress::search_replace(&php, &wp, &docroot, &from, &to, dry_run, false)
+    })
+    .await
 }
 
 /// The site's current permalink structure (`""` = Plain).

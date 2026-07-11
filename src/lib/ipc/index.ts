@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -97,6 +97,16 @@ export async function sitesResources(): Promise<SiteResources[]> {
 export async function renameSite(id: string, name: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("rename_site", { id, name });
+}
+
+/** Change a site's domain — DESTRUCTIVE for WordPress sites (one-way URL
+ *  search-replace across the whole database, incl. serialized data). The
+ *  backend exports a safety backup to Downloads FIRST and aborts if that
+ *  fails; refused on multisite. Folder and database name stay unchanged.
+ *  Null outside Tauri. */
+export async function changeSiteDomain(id: string, domain: string): Promise<DomainChange | null> {
+  if (!isTauri()) return null;
+  return invoke<DomainChange>("change_site_domain", { id, domain });
 }
 
 /** Read-only info about a site's HTTPS leaf cert (validity, SANs, cert folder).
