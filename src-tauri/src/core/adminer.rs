@@ -1,7 +1,7 @@
 //! core::adminer — serve the bundled Adminer DB browser as an internal vhost (§5.2).
 //!
 //! Adminer is a single `adminer.php` (§5.1). We serve it through the shared stack
-//! on a fixed internal host (`adminer.rexenv.test`) rooted at an isolated docroot,
+//! on a fixed internal host (`adminer.rexenv.rex`) rooted at an isolated docroot,
 //! behind the edge (TLS, local CA). It is deliberately NOT a `Site` in the DB —
 //! so it can never be selected as a public tunnel origin (§9): tunnels are scoped
 //! to a single site's Host, and this internal vhost isn't one.
@@ -11,9 +11,9 @@ use crate::error::Result;
 use crate::platform::traits::Platform;
 use std::path::PathBuf;
 
-/// Internal host Adminer is served on (resolved by the embedded `*.test` DNS).
+/// Internal host Adminer is served on (resolved by the embedded DNS (backbone `.rex` resolver)).
 /// NEVER a public tunnel origin (§9) — it isn't a site.
-pub const ADMINER_HOST: &str = "adminer.rexenv.test";
+pub const ADMINER_HOST: &str = "adminer.rexenv.rex";
 
 /// Query flag a rexenv deep-link sets to request a one-click scoped session (§11.4).
 pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
@@ -32,23 +32,23 @@ pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
 ///     `frame-ancestors` scoped to the rexenv webview origins, so the in-app
 ///     Database Browser `<iframe>` renders while any OTHER site framing this
 ///     passwordless vhost (clickjacking from a page in the user's browser —
-///     `adminer.rexenv.test` resolves locally for them too) stays blocked;
+///     `adminer.rexenv.rex` resolves locally for them too) stays blocked;
 ///   - a `header_register_callback` rewrites every `Set-Cookie` to
 ///     `SameSite=None; Secure; Partitioned`: inside the app the iframe is a
-///     cross-site embed (webview origin ≠ `adminer.rexenv.test`), so Adminer's
+///     cross-site embed (webview origin ≠ `adminer.rexenv.rex`), so Adminer's
 ///     default `SameSite=lax` session/key cookies are withheld from the login
 ///     POST and every login bounces back to the form. `Partitioned` (CHIPS)
 ///     keeps the embedded jar isolated per top-level site, and Adminer's own
 ///     CSRF token still guards every state-changing request.
 ///
-/// SECURITY: Adminer here is an INTERNAL vhost (`adminer.rexenv.test` → 127.0.0.1)
+/// SECURITY: Adminer here is an INTERNAL vhost (`adminer.rexenv.rex` → 127.0.0.1)
 /// behind the local edge and is NEVER a public tunnel origin (§9), so passwordless
 /// loopback access stays confined to the local machine.
 const WRAPPER_INDEX_PHP: &str = r#"<?php
 // rexenv Adminer deep-link wrapper (§11.4) — generated; do not edit by hand.
 
 // The Database Browser embeds this vhost in a cross-site <iframe> (webview
-// origin != adminer.rexenv.test), where SameSite=lax cookies are withheld and
+// origin != adminer.rexenv.rex), where SameSite=lax cookies are withheld and
 // the login POST loses its session. Rewrite every cookie to
 // "SameSite=None; Secure; Partitioned" at flush time (covers the PHP session
 // cookie and Adminer's own key/permanent cookies alike). CSRF stays covered by
@@ -147,10 +147,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn host_is_an_internal_subdomain() {
-        assert!(ADMINER_HOST.ends_with(".rexenv.test"));
+    fn host_is_an_internal_subdomain_on_the_backbone_tld() {
+        // Lives on the backbone TLD (whose resolver onboarding installs), so
+        // Adminer never depends on any other TLD being present.
+        assert!(ADMINER_HOST.ends_with(&format!(".rexenv.{}", crate::core::tld::BACKBONE_TLD)));
         // Not a wildcard / not a user site domain.
-        assert_eq!(ADMINER_HOST, "adminer.rexenv.test");
+        assert_eq!(ADMINER_HOST, "adminer.rexenv.rex");
     }
 
     #[test]

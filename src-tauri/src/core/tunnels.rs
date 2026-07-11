@@ -6,7 +6,7 @@
 //! (`--http-host-header`) — a plain-HTTP origin, so there's no local-CA
 //! origin-trust problem and no `--no-tls-verify`; cloudflared provides the
 //! external TLS. The tunnel is scoped to that single Host: it never points at the
-//! edge wildcard or an internal tooling vhost (`adminer.rexenv.test`, Mailpit…),
+//! edge wildcard or an internal tooling vhost (`adminer.rexenv.rex`, Mailpit…),
 //! so sharing one site can't expose another site or a tool. Platform-agnostic:
 //! spawns via `ProcessSupervisor` only.
 

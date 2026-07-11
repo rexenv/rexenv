@@ -1,6 +1,6 @@
 //! Phase-3 §5.2 check: Adminer served through the stack + connects to MySQL.
 //! Brings up the stack via `ServiceManager` (high ports), then over the edge (TLS,
-//! local CA): (1) `adminer.rexenv.test` returns Adminer with the login form
+//! local CA): (1) `adminer.rexenv.rex` returns Adminer with the login form
 //! PRE-FILLED from the query (server/username/db); (2) a normal `.test` site still
 //! loads (the internal vhost didn't break routing); (3) a server-side probe in the
 //! Adminer docroot runs `SELECT 6*7` against the site's MySQL via the same php-fpm

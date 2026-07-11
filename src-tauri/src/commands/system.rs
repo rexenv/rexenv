@@ -139,7 +139,7 @@ pub struct DnsStatus {
     /// The embedded resolver is bound on its loopback UDP port.
     pub running: bool,
     pub port: u16,
-    /// The OS resolver file (`/etc/resolver/test`) is installed.
+    /// The backbone OS resolver file (`/etc/resolver/rex`) is installed.
     pub resolver_installed: bool,
     pub resolver_path: String,
     /// The local CA is trusted for THIS OS user (macOS: login keychain). Per-user,
@@ -162,7 +162,7 @@ pub fn dns_status(
     // unbound, but the reverse port probe can false-positive on a foreign
     // process). Fall back to the port probe only when we never got a handle.
     let running = dns.running() || core::dns::port_bound(port);
-    // The Settings indicator reports the BACKBONE (.test) resolver file — the
+    // The Settings indicator reports the BACKBONE (.rex) resolver file — the
     // one system setup installs and that always stays active.
     let path = state.platform.dns().resolver_path(core::tld::BACKBONE_TLD);
     DnsStatus {
@@ -174,7 +174,7 @@ pub fn dns_status(
     }
 }
 
-/// Run first-run system setup (§3.4): install the `.test` OS resolver (one admin
+/// Run first-run system setup (§3.4): install the `.rex` backbone OS resolver (one admin
 /// prompt) + trust the local CA (native keychain dialog). Idempotent — safe to
 /// re-run. Backs the Onboarding "Set up domains & SSL" step. `async` so the blocking
 /// privileged prompts run off the UI thread (same handling as `start_services`).
@@ -267,8 +267,9 @@ pub fn set_autostart(state: State<'_, AppState>, enabled: bool) -> Result<()> {
 }
 
 /// Reverse rexenv's system-level changes (Settings → "Remove system changes", §3.1):
-/// stop ALL services (so the edge releases :80/:443), then remove the `.test` DNS
-/// resolver (`/etc/resolver/test`, admin prompt) and untrust the local CA — leaving
+/// stop ALL services (so the edge releases :80/:443), then remove EVERY rexenv
+/// DNS resolver file (`/etc/resolver/<tld>` matching our signature — `.rex` plus
+/// any TLDs added on demand; admin prompt) and untrust the local CA — leaving
 /// the machine as if rexenv's system setup never ran. Site files + databases under
 /// app-data are NOT touched (the user can still delete the app + its support dir).
 #[tauri::command]

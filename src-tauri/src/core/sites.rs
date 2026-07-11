@@ -427,7 +427,7 @@ pub const SITES_DIR_KEY: &str = "sites_dir";
 pub const DEFAULT_TLD_KEY: &str = "default_tld";
 
 /// The default TLD for new sites: the `default_tld` setting if it holds an
-/// allowed TLD, else the `.test` backbone. A stored value that no longer
+/// allowed TLD, else the `.rex` backbone. A stored value that no longer
 /// passes policy (edited DB, tightened blocklist) falls back rather than
 /// resurfacing a blocked TLD in the UI.
 pub fn default_tld(conn: &Connection) -> Result<String> {
@@ -779,24 +779,24 @@ mod tests {
     #[test]
     fn default_tld_setting_round_trips_and_is_policy_gated() {
         let conn = db::open_in_memory().unwrap();
-        // Fresh DB (v8 seed) → test.
-        assert_eq!(default_tld(&conn).unwrap(), "test");
-
-        // Warn-tier value is allowed and persists ('.rex' form is normalized).
-        assert_eq!(set_default_tld(&conn, ".rex").unwrap(), "rex");
+        // Fresh DB (v8 seed + v9 flip) → the .rex backbone.
         assert_eq!(default_tld(&conn).unwrap(), "rex");
+
+        // .test is an ordinary user choice now ('.test' form is normalized).
+        assert_eq!(set_default_tld(&conn, ".test").unwrap(), "test");
+        assert_eq!(default_tld(&conn).unwrap(), "test");
 
         // Blocked TLDs are refused AT THE BACKEND — direct calls included —
         // and the stored value is untouched.
         for t in ["local", "dev", "io", "com"] {
             assert!(set_default_tld(&conn, t).is_err(), "must refuse {t}");
         }
-        assert_eq!(default_tld(&conn).unwrap(), "rex");
+        assert_eq!(default_tld(&conn).unwrap(), "test");
 
         // A blocked value smuggled into the settings table (bypassing the
         // setter) falls back to the backbone instead of surfacing.
         store::set_setting(&conn, DEFAULT_TLD_KEY, "com").unwrap();
-        assert_eq!(default_tld(&conn).unwrap(), "test");
+        assert_eq!(default_tld(&conn).unwrap(), "rex");
     }
 
     #[test]

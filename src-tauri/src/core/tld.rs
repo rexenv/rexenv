@@ -18,11 +18,15 @@
 
 use crate::error::{Error, Result};
 
-/// The backbone TLD. `.test` stays PERMANENTLY active regardless of the
-/// configured default: the internal Adminer vhost (`adminer.rexenv.test`) and
-/// existing sites depend on it, and it's the RFC 6761 TLD reserved for exactly
-/// this. It is always in the safe set and can never be blocked.
-pub const BACKBONE_TLD: &str = "test";
+/// The backbone TLD — rexenv's home TLD. Installed at first-run/onboarding
+/// (its resolver file is the one `run_system_setup` writes), used as the
+/// seeded default for new sites, and hosts the internal Adminer vhost
+/// (`adminer.rexenv.rex`). It is NOT in the RFC safe set (warn tier — the UI
+/// notes possible future ICANN delegation), but it must never be blockable:
+/// the guard test below fails the build if it ever lands on the block list.
+/// `.test` is NOT auto-installed anymore — it's an ordinary safe-set choice
+/// whose resolver installs on demand (first `.test` site / default change).
+pub const BACKBONE_TLD: &str = "rex";
 
 /// TLDs reserved for local/testing use (RFC 2606 / RFC 6761) — the only ones
 /// that can never collide with a real internet TLD, so no shadow warning.
@@ -79,7 +83,7 @@ fn syntax_error(tld: &str) -> Option<String> {
 
 /// The refusal reason for `tld`, or `None` when it's allowed. Checks syntax,
 /// the 2-letter (country-code) rule, and the hard-block list. The safe set is
-/// never blocked — `.test` in particular must always stay usable.
+/// never blocked — the backbone and `.test` must always stay usable.
 pub fn blocked_reason(tld: &str) -> Option<String> {
     if let Some(err) = syntax_error(tld) {
         return Some(err);
@@ -133,13 +137,25 @@ mod tests {
         }
     }
 
-    /// `.test` can never be blocked — the Adminer vhost and existing sites
-    /// depend on it staying active regardless of the configured default.
+    /// The backbone (`.rex`) can never be blocked — onboarding installs its
+    /// resolver and the Adminer vhost lives on it. Warn tier is fine (the UI
+    /// shows the ICANN note); a block would brick first-run setup.
     #[test]
     fn backbone_tld_is_permanently_allowed() {
-        assert_eq!(BACKBONE_TLD, "test");
-        assert!(SAFE_TLDS.contains(&BACKBONE_TLD));
-        assert!(blocked_reason(BACKBONE_TLD).is_none());
+        assert_eq!(BACKBONE_TLD, "rex");
+        assert!(blocked_reason(BACKBONE_TLD).is_none(), "backbone must never be blockable");
+        assert!(!HARD_BLOCKED.iter().any(|(t, _)| *t == BACKBONE_TLD));
+        assert_ne!(BACKBONE_TLD.len(), 2, "the 2-letter rule must not catch the backbone");
+    }
+
+    /// `.test` remains an ordinary allowed choice (safe set, no warning) even
+    /// though it is no longer auto-installed — a user picking it must sail
+    /// through policy so the on-demand resolver install can run.
+    #[test]
+    fn dot_test_stays_choosable() {
+        assert!(SAFE_TLDS.contains(&"test"));
+        let p = classify("test");
+        assert!(p.allowed && !p.warn);
     }
 
     #[test]

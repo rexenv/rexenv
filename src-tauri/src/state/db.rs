@@ -98,6 +98,13 @@ const MIGRATIONS: &[&str] = &[
     // still falls back to 'test' when the row is absent. OR IGNORE keeps any
     // value a user already stored.
     "INSERT OR IGNORE INTO settings (key, value) VALUES ('default_tld', 'test');",
+    // v9 — `.rex` becomes the backbone/default TLD (`.test` is no longer
+    // auto-installed; it stays an ordinary choosable TLD). Flip the v8 seed —
+    // and any db that already ran v8 — from 'test' to 'rex'. Pre-release, no
+    // existing users: an explicit 'test' choice can't exist yet, so the
+    // unconditional flip is safe; a custom value ('banana') is untouched. The
+    // code fallback moves with `tld::BACKBONE_TLD`.
+    "UPDATE settings SET value = 'rex' WHERE key = 'default_tld' AND value = 'test';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -236,28 +243,39 @@ mod tests {
     }
 
     #[test]
-    fn v8_seeds_default_tld_without_clobbering_an_existing_value() {
-        // Fresh DB: the seed row exists.
+    fn v8_v9_seed_and_flip_default_tld_to_rex() {
+        // Fresh DB: v8 seeds 'test', v9 flips it — final state is 'rex'.
         let conn = memory_db();
         let v: String = conn
             .query_row("SELECT value FROM settings WHERE key='default_tld'", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, "test");
+        assert_eq!(v, "rex");
 
-        // Upgrade path: a pre-v8 DB where the user somehow already stored a
-        // value — OR IGNORE must keep it.
+        // A db that already ran v8 (stored 'test') gets flipped by v9…
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..8].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        migrate(&conn).unwrap();
+        let v: String = conn
+            .query_row("SELECT value FROM settings WHERE key='default_tld'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, "rex", "v9 must flip the v8 'test' seed");
+
+        // …while a custom value survives both the v8 OR IGNORE and the v9 flip.
         let conn = Connection::open_in_memory().unwrap();
         for (i, stmt) in MIGRATIONS[..7].iter().enumerate() {
             conn.execute_batch(stmt).unwrap();
             conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
         }
-        conn.execute("INSERT INTO settings (key, value) VALUES ('default_tld', 'rex')", [])
+        conn.execute("INSERT INTO settings (key, value) VALUES ('default_tld', 'banana')", [])
             .unwrap();
         migrate(&conn).unwrap();
         let v: String = conn
             .query_row("SELECT value FROM settings WHERE key='default_tld'", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, "rex", "v8 seed must not overwrite an existing value");
+        assert_eq!(v, "banana", "a custom value must survive v8+v9");
     }
 
     #[test]

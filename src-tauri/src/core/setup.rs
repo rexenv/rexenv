@@ -1,7 +1,7 @@
 //! core::setup — one-time system setup (Phase 1 task 3.4).
 //!
-//! Two privileged-ish OS changes are needed for `.test` HTTPS to work:
-//!  1. install the `/etc/resolver/test` file (root) — via `PrivilegeManager`
+//! Two privileged-ish OS changes are needed for backbone (`.rex`) HTTPS to work:
+//!  1. install the `/etc/resolver/rex` file (root) — via `PrivilegeManager`
 //!     (one admin prompt);
 //!  2. trust the local CA — on macOS this writes the USER login keychain and
 //!     `security` shows its OWN native auth dialog (no root).
@@ -15,19 +15,20 @@ use crate::core::{dns, ssl, tld};
 use crate::error::Result;
 use crate::platform::traits::Platform;
 
-/// The privileged part of setup (the `.test` backbone resolver-file install)
+/// The privileged part of setup (the `.rex` backbone resolver-file install)
 /// as a shell script — run via `PrivilegeManager`. Pure; exposed for
 /// inspection/testing.
 pub fn resolver_install_script(platform: &dyn Platform, dns_port: u16) -> String {
     platform.dns().install_command(tld::BACKBONE_TLD, dns_port)
 }
 
-/// Run system setup: ensure the CA exists, install the `.test` backbone
+/// Run system setup: ensure the CA exists, install the `.rex` backbone
 /// resolver file (admin prompt), then trust the CA (native trust dialog).
-/// Returns the CA. `.test` is ALWAYS installed regardless of the configured
-/// default TLD (Adminer's `adminer.rexenv.test` and the backbone need it);
-/// other TLDs get their own resolver file on first use (site create /
-/// change-domain via `dns::ensure_resolver`).
+/// Returns the CA. ONLY `.rex` is installed here — it's the seeded default
+/// for new sites and hosts the internal Adminer vhost (`adminer.rexenv.rex`).
+/// Every other TLD — `.test` included — gets its resolver file on first use
+/// only (site create / change-domain / default change via
+/// `dns::ensure_resolver`); a fresh install never writes `/etc/resolver/test`.
 ///
 /// The resolver step is skipped when the file already has the expected content
 /// — so on a second macOS account (resolver is system-wide, trust is per-user)
@@ -56,10 +57,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolver_install_script_writes_resolver_for_port() {
+    fn resolver_install_script_writes_backbone_resolver_for_port() {
         let platform = crate::platform::current();
         let script = resolver_install_script(&*platform, 15353);
-        assert!(script.contains("/etc/resolver/test"));
+        // First-run installs ONLY the .rex backbone — never /etc/resolver/test.
+        assert!(script.contains("/etc/resolver/rex"));
+        assert!(!script.contains("/etc/resolver/test"));
         assert!(script.contains(r"printf 'nameserver 127.0.0.1\nport 15353\n'"));
         // DNS cache flush so the resolver file takes effect immediately.
         assert!(script.contains("dscacheutil -flushcache"));
