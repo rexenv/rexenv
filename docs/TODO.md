@@ -188,7 +188,16 @@ Each line = one feature, live-verified before its commit.
   SANs, no redirect to the old domain, serialized/attachment URLs rewritten, old
   domain no longer routes, reset works after the change (db_name consistent),
   multisite card disabled, old cert dir removed, backup in Downloads.
-- **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
+- [x] **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
+  ✓ **Done** `c098077`: `move_site_docroot` — preflight rejections before any file is
+  touched → same-volume rename / cross-volume copy+VERIFY (partial cleaned up) → row
+  flips only after files exist at target → regen+reload → old tree deleted LAST.
+  `sites.path` confirmed the single runtime source (no db_name-style trap). Also fixed
+  a real reconcile bug: running FrankenPHP overrides never restarted on a changed
+  docroot/rewrite — now desired config is diffed against the on-disk file. UI:
+  Settings → Site folder card (picker + confirm with caveats). Live-verified:
+  same-volume + cross-volume (hdiutil image) moves, reset-after-move, rejection
+  errors, FrankenPHP serving from the new root post-move.
 - **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
   seam (L).
 
