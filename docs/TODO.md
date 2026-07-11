@@ -147,14 +147,15 @@ Each line = one feature, live-verified before its commit.
   a >2M wp-admin Media upload through with `client_max_body_size 67108864` in that
   site's nginx block; upload-alone rejected (cross-field); "banana" rejected with no
   restart; cleared field reverts to default. 195 lib tests, clippy clean.
-- [ ] **DEFERRED — More PHP versions (#1):** add 8.0.30 / 8.4.x / 8.5.x pins only
-  (static-php.dev bulk publishes 8.0–8.5; verified live 11 Jul 2026). Mostly mechanical:
-  ~12 checksum consts + `PHP_VERSIONS` entries; registry/ports/pools/UI are already
-  version-driven. Verify each artifact (`php -v`, `php -m | grep mysqli`, Mach-O arch —
-  the `binaries.rs:96` re-pin procedure); smoke-test WP on 8.0. **7.4 is NOT doable now:**
-  static-php never shipped it — needs self-build + self-hosting, same blocked path as the
-  Xdebug debug build. Do AFTER the cold sanity run (touches download infra). Risk:
-  upstream rebuilds artifacts in place → 24 pins to babysit instead of 12.
+- [x] **More PHP versions (#1):** 8.0.30 / 8.4.23 / 8.5.8 pinned — offered set is now
+  8.0–8.5. **7.4 stays absent:** static-php never shipped it — needs self-build +
+  self-hosting, same blocked path as the Xdebug debug build. ✓ **Done** `ac19d31`: all
+  12 artifacts downloaded, hashed, extracted, arch-checked, and RUN (arm64 native +
+  x86_64 Rosetta; `php -v` + mysqli verified on each — no guessed hashes); registry/
+  ports/pools/hub/UI flowed through untouched. Live-verified: 8.0 + 8.4 installed from
+  the UI with real download progress, sites assigned show the right version, WordPress
+  loads on 8.0 (bulk extension set OK on the oldest). Ongoing risk (accepted): upstream
+  rebuilds in place → 24 pins to babysit.
 - [ ] **DEFERRED — PHP patch updates (#2): Option A only** — pins ride app releases
   (maintainer bumps `PHP_VERSIONS`, `seed_registry` already updates `patch` per minor
   preserving `installed`; add pool restart + old cache-dir GC). NO in-app TOFU updater —
