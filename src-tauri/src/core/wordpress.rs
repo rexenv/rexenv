@@ -9,6 +9,7 @@ use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::time::{Duration, Instant};
 
 /// Run `php <wp_phar> <args>` (optionally in `cwd`) and return the raw `Output`.
 pub fn wp_cli(
@@ -27,6 +28,45 @@ pub fn wp_cli(
         cmd.current_dir(dir);
     }
     Ok(cmd.output()?)
+}
+
+/// Run a command with a hard wall-clock cap: poll `try_wait`, SIGKILL on
+/// expiry. For wp-cli subcommands that download from the network — WP's
+/// `download_url` waits up to **300s per attempt**, which offline reads as a
+/// frozen spinner. Output is collected via pipes, so this is for SMALL-output
+/// commands only: a child that fills the ~64KB pipe buffer before exiting
+/// would block writing and read as a timeout (language install prints a few
+/// lines).
+fn run_with_timeout(mut cmd: Command, timeout: Duration, what: &str) -> Result<Output> {
+    use std::process::Stdio;
+    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd.spawn()?;
+    let start = Instant::now();
+    while child.try_wait()?.is_none() {
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait(); // reap — no zombie
+            return Err(Error::Other(format!(
+                "{what} timed out after {}s",
+                timeout.as_secs()
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    Ok(child.wait_with_output()?)
+}
+
+/// [`wp_cli`] with a wall-clock timeout (see [`run_with_timeout`]).
+fn wp_cli_timed(
+    php_bin: &Path,
+    wp_phar: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<Output> {
+    let mut cmd = Command::new(php_bin);
+    cmd.arg("-d").arg("memory_limit=512M").arg(wp_phar).args(args);
+    let what = format!("wp {}", args.first().copied().unwrap_or(""));
+    run_with_timeout(cmd, timeout, &what)
 }
 
 /// Run WP-CLI and return stdout, erroring (with stderr) on a non-zero exit.
@@ -910,6 +950,92 @@ pub fn core_reinstall(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<
     wp_run(php_bin, wp_phar, docroot, &["core", "download", "--force", "--skip-content"])
 }
 
+/// One row of `wp language core list` (mirrors the frontend `WpLanguage`).
+/// `status` is `active` | `installed` | `uninstalled`; `en_US` is always
+/// present (the built-in default — activating it needs no files).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpLanguage {
+    pub language: String,
+    #[serde(default, alias = "english_name")]
+    pub english_name: String,
+    #[serde(default, alias = "native_name")]
+    pub native_name: String,
+    #[serde(default)]
+    pub status: String,
+}
+
+/// Available + installed core languages (`wp language core list`). Hits
+/// api.wordpress.org for the available-translations list (~3s; needs network).
+pub fn language_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<Vec<WpLanguage>> {
+    wp_json(php_bin, wp_phar, docroot, &["language", "core", "list"])
+}
+
+/// Locale shape guard (`fr_FR`, `pt_BR`, `de_DE_formal`, `ceb`): 2–20 chars,
+/// leading lowercase ASCII letter, then letters/digits/underscore only. The UI
+/// is a picker fed by [`language_list`]; this is defense in depth so a locale
+/// string can never look like a wp-cli flag or smuggle anything into argv.
+pub fn valid_locale(locale: &str) -> bool {
+    (2..=20).contains(&locale.len())
+        && locale.starts_with(|c: char| c.is_ascii_lowercase())
+        && locale.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Whether a core language pack is on disk (`wp language core is-installed`
+/// exits 0/1). This is the ONLY trustworthy install signal — see
+/// [`switch_language`].
+fn language_is_installed(php_bin: &Path, wp_phar: &Path, docroot: &Path, locale: &str) -> bool {
+    let path = format!("--path={}", docroot.display());
+    wp_cli(php_bin, wp_phar, &["language", "core", "is-installed", locale, &path], None)
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Switch the site language in one step: install the core pack if missing, then
+/// activate via `wp site switch-language` (`language core activate` is
+/// deprecated in wp-cli 2.12). Reversible — switching to `en_US` restores the
+/// default (empties `WPLANG`).
+///
+/// `language core install` LIES on failure: an unavailable locale or a failed/
+/// offline download still exits **0** ("Installed 0 of 1 languages (1 skipped)")
+/// with only a stderr warning. Success is therefore gated on `is-installed`
+/// AFTER the install — never on install's exit code or output. On a failed
+/// download nothing was activated, so the site language is unchanged.
+/// Cap on the language-pack download. WP's own `download_url` waits up to 300s
+/// per attempt, so offline the install "hangs" for minutes at a spinner. 60s is
+/// generous for a ~4MB pack on a slow line and keeps the failure user-visible.
+const LANG_INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+pub fn switch_language(php_bin: &Path, wp_phar: &Path, docroot: &Path, locale: &str) -> Result<()> {
+    if !valid_locale(locale) {
+        return Err(Error::Other(format!("invalid locale: {locale:?}")));
+    }
+    if !language_is_installed(php_bin, wp_phar, docroot, locale) {
+        let path = format!("--path={}", docroot.display());
+        // Timed AND its result deliberately not trusted: install lies (exit 0
+        // on a failed download) and stalls for minutes offline. Whatever it
+        // claims — success, error, or timeout — `is-installed` below is the
+        // only verdict; the outcome only feeds the error detail.
+        let detail = match wp_cli_timed(
+            php_bin,
+            wp_phar,
+            &["language", "core", "install", locale, &path],
+            LANG_INSTALL_TIMEOUT,
+        ) {
+            Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            Err(e) => e.to_string(),
+        };
+        if !language_is_installed(php_bin, wp_phar, docroot, locale) {
+            return Err(Error::Other(format!(
+                "Couldn't download the {locale} language pack — check your connection.{}",
+                if detail.is_empty() { String::new() } else { format!(" ({detail})") }
+            )));
+        }
+    }
+    wp_run(php_bin, wp_phar, docroot, &["site", "switch-language", locale])?;
+    Ok(())
+}
+
 /// A valid MySQL database name derived from a site domain
 /// (`blog.test` → `wp_blog_test`).
 pub fn db_name_for(domain: &str) -> String {
@@ -1247,6 +1373,75 @@ Error: WordPress installation doesn't verify against checksums.";
         assert_eq!(rows[0].update, "none");
         assert_eq!(rows[1].update, "none");
         assert_eq!(rows[2].update, "available");
+    }
+
+    #[test]
+    fn language_rows_parse_live_wp_cli_output() {
+        // Verbatim rows from `wp language core list --format=json` (wp-cli 2.12,
+        // WP 7.0): snake_case keys, en_US with empty `updated`.
+        let json = r#"[
+            {"language":"en_US","english_name":"English (United States)","native_name":"English (United States)","status":"active","update":"none","updated":""},
+            {"language":"fr_FR","english_name":"French (France)","native_name":"Français","status":"uninstalled","update":"none","updated":"2026-06-17 09:57:00"}
+        ]"#;
+        let rows: Vec<WpLanguage> = serde_json::from_str(json).unwrap();
+        assert_eq!(rows[0].language, "en_US");
+        assert_eq!(rows[0].status, "active");
+        assert_eq!(rows[1].english_name, "French (France)");
+        assert_eq!(rows[1].native_name, "Français");
+        // Serializes camelCase for the frontend.
+        let out = serde_json::to_string(&rows[1]).unwrap();
+        assert!(out.contains("\"englishName\""), "{out}");
+    }
+
+    #[test]
+    fn valid_locale_accepts_real_locales_and_rejects_argv_smuggling() {
+        for ok in ["fr_FR", "de_DE_formal", "pt_BR", "ceb", "zh_CN"] {
+            assert!(valid_locale(ok), "{ok}");
+        }
+        for bad in ["", "e", "--skip-plugins", "-f", "fr_FR; rm -rf /", "fr FR", "FR_fr", "../x", "fr\u{2013}FR"] {
+            assert!(!valid_locale(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn run_with_timeout_kills_a_stalled_child_fast() {
+        // Simulates the offline language download: a child that would sit for
+        // 30s (WP's download_url waits 300s) must be killed at the cap, not
+        // waited out — the UI spinner rides on this returning.
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "sleep 30"]);
+        let start = Instant::now();
+        let e = run_with_timeout(cmd, Duration::from_millis(400), "sleep-test").unwrap_err();
+        assert!(e.to_string().contains("timed out after 0s"), "{e}");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "took {:?} — child not killed at the cap",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn run_with_timeout_returns_output_of_a_fast_child() {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "echo out; echo err 1>&2"]);
+        let out = run_with_timeout(cmd, Duration::from_secs(10), "echo-test").unwrap();
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "out");
+        assert_eq!(String::from_utf8_lossy(&out.stderr).trim(), "err");
+    }
+
+    #[test]
+    fn switch_language_rejects_malformed_locale_before_any_wp_call() {
+        // Nonexistent binaries: reaching wp-cli would error with an io message,
+        // NOT the validation message — proving the guard runs first.
+        let e = switch_language(
+            Path::new("/nonexistent/php"),
+            Path::new("/nonexistent/wp.phar"),
+            Path::new("/nonexistent/docroot"),
+            "--skip-plugins",
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("invalid locale"), "{e}");
     }
 
     #[test]

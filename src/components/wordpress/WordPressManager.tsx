@@ -24,6 +24,7 @@ import {
   wpDebugFlagSet,
   wpDebugGet,
   wpDebugSet,
+  wpLanguages,
   wpMaintenanceGet,
   wpMaintenanceSet,
   wpMultisiteConvert,
@@ -36,6 +37,7 @@ import {
   wpPluginDeactivateNetwork,
   wpRewriteFlush,
   wpSearchReplace,
+  wpSwitchLanguage,
   wpPluginActivate,
   wpPluginDeactivate,
   wpPluginDelete,
@@ -221,7 +223,7 @@ export function WordPressManager({
         ) : (
           <ConvertPanel siteId={siteId} domain={domain} />
         ))}
-      {sub === "tools" && <ToolsPanel siteId={siteId} domain={domain} />}
+      {sub === "tools" && <ToolsPanel siteId={siteId} domain={domain} isNetwork={isNetwork} />}
     </>
   );
 }
@@ -535,7 +537,15 @@ const DEBUG_FLAG_ROWS: { name: WpDebugFlag; hint: string }[] = [
   { name: "SCRIPT_DEBUG", hint: "use unminified core JS/CSS" },
 ];
 
-function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
+function ToolsPanel({
+  siteId,
+  domain,
+  isNetwork,
+}: {
+  siteId: string;
+  domain: string;
+  isNetwork: boolean;
+}) {
   const qc = useQueryClient();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -626,6 +636,33 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
     },
     onError: (e) => toastBackendError(e),
   });
+
+  const { data: langs } = useQuery({
+    queryKey: ["wp-languages", siteId],
+    queryFn: () => wpLanguages(siteId),
+    ...WP_QUERY,
+    // The available-languages list is fetched from api.wordpress.org — keep it
+    // for the session instead of re-paying ~3s on every Tools visit.
+    staleTime: 5 * 60_000,
+  });
+  const activeLocale = langs?.find((l) => l.status === "active")?.language ?? "en_US";
+  const switchLang = useMutation({
+    mutationFn: (locale: string) => wpSwitchLanguage(siteId, locale),
+    onSuccess: (_d, locale) => {
+      qc.invalidateQueries({ queryKey: ["wp-languages", siteId] });
+      const row = langs?.find((l) => l.language === locale);
+      toast.success(`Site language switched to ${row?.englishName ?? locale}.`);
+    },
+    // Failed download → language unchanged (backend gates on is-installed);
+    // the friendly "couldn't download" error comes from the backend.
+    onError: (e) => toastBackendError(e),
+  });
+  // Only an uninstalled pick needs the ~5s download; switching is ~1s.
+  const langBusyLabel =
+    switchLang.isPending &&
+    langs?.find((l) => l.language === switchLang.variables)?.status === "uninstalled"
+      ? "Installing language…"
+      : "Switching…";
 
   const cacheFlush = useMutation({
     mutationFn: () => wpCacheFlush(siteId),
@@ -801,6 +838,53 @@ function ToolsPanel({ siteId, domain }: { siteId: string; domain: string }) {
           <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
             Regenerate permalinks
           </button>
+        </div>
+      </Card>
+
+      {/* Language */}
+      <Card title="Language">
+        <div className="flex flex-col gap-2">
+          <select
+            value={activeLocale}
+            disabled={!langs || switchLang.isPending}
+            onChange={(e) => switchLang.mutate(e.target.value)}
+            className="h-[30px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+          >
+            {!langs ? (
+              <option value={activeLocale}>Loading languages…</option>
+            ) : (
+              <>
+                <optgroup label="Installed">
+                  {langs
+                    .filter((l) => l.status !== "uninstalled")
+                    .map((l) => (
+                      <option key={l.language} value={l.language}>
+                        {l.nativeName} · {l.language}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="Available (downloads on select)">
+                  {langs
+                    .filter((l) => l.status === "uninstalled")
+                    .map((l) => (
+                      <option key={l.language} value={l.language}>
+                        {l.nativeName} · {l.language}
+                      </option>
+                    ))}
+                </optgroup>
+              </>
+            )}
+          </select>
+          {switchLang.isPending && (
+            <span className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {langBusyLabel}
+            </span>
+          )}
+          <div className="text-[11.5px] leading-[1.5] text-rex-text-dim">
+            Core translations only — plugins and themes fetch their own packs.
+            {isNetwork && " On a multisite network this switches the main site; subsites set theirs in their own admin."}
+          </div>
         </div>
       </Card>
 

@@ -164,6 +164,14 @@ export interface WpPlugin {
   update: string; // none | available | …
 }
 
+/** A core language row (mirrors the Rust WpLanguage DTO / `wp language core list`). */
+export interface WpLanguage {
+  language: string; // locale code, e.g. fr_FR
+  englishName: string;
+  nativeName: string;
+  status: string; // active | installed | uninstalled
+}
+
 /** A WordPress theme row (mirrors the Rust WpTheme DTO / `wp theme list`). */
 export interface WpTheme {
   name: string;

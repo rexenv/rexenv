@@ -107,10 +107,16 @@ Each line = one feature, live-verified before its commit.
   `caddy reload` a no-op, so re-issued certs were never served until an edge restart —
   both paths now force-reload; re-issue is atomic (temp-write + rename, never
   delete-first), so a failure leaves the old cert intact and served `57b7281`
+- [x] Site language switch — Tools Language card: picker (Installed/Available) from
+  `wp language core list`, install-if-needed + `wp site switch-language` in one action;
+  success gated on `language core is-installed`, NOT install's exit code (a failed/
+  offline download still exits 0 — same trap class as checksum verify); install capped
+  at 60s wall-clock (WP's download_url waits 300s/attempt — offline that froze the
+  spinner; timed-out child is SIGKILLed, error surfaces, old language kept); core
+  translations only, multisite note (main site only) shown honestly
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- **Site language switch** — needs a language list + download flow (M).
 - **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
   and the DB name derives from the domain (L).
 - **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).

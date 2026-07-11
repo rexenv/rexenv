@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -600,6 +600,25 @@ export async function wpPermalinkGet(id: string): Promise<string> {
 export async function wpPermalinkSet(id: string, structure: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("wp_permalink_set", { id, structure });
+}
+
+/** Available + installed core languages (`wp language core list`) — feeds the
+ *  Language picker. Hits api.wordpress.org (~3s; needs network). */
+export async function wpLanguages(id: string): Promise<WpLanguage[]> {
+  if (!isTauri())
+    return [
+      { language: "en_US", englishName: "English (United States)", nativeName: "English (United States)", status: "active" },
+      { language: "fr_FR", englishName: "French (France)", nativeName: "Français", status: "uninstalled" },
+    ];
+  return invoke<WpLanguage[]>("wp_languages", { id });
+}
+
+/** Switch the site language in one action: install the core pack if missing
+ *  (success gated on `is-installed` — install's exit code lies on a failed
+ *  download), then activate. Core translations only. No-op outside Tauri. */
+export async function wpSwitchLanguage(id: string, locale: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_switch_language", { id, locale });
 }
 
 /** The wp-config debug constants toggleable individually (mirrors the Rust

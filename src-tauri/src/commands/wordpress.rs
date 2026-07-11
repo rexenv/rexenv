@@ -378,6 +378,31 @@ pub async fn wp_permalink_set(
     .await
 }
 
+/// Available + installed core languages (`wp language core list`) — feeds the
+/// Language picker. Hits api.wordpress.org (~3s; needs network).
+#[tauri::command]
+pub async fn wp_languages(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<core::wordpress::WpLanguage>> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::language_list(&php, &wp, &docroot)).await
+}
+
+/// Switch the site language in one action: install the core pack if missing
+/// (success gated on `is-installed`, never on install's lying exit code), then
+/// activate via `wp site switch-language`. Locale comes from the picker and is
+/// shape-validated in core.
+#[tauri::command]
+pub async fn wp_switch_language(
+    state: State<'_, AppState>,
+    id: String,
+    locale: String,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || core::wordpress::switch_language(&php, &wp, &docroot, &locale)).await
+}
+
 /// List the site's scheduled cron events (soonest first).
 #[tauri::command]
 pub async fn wp_cron_events(
