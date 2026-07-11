@@ -129,7 +129,7 @@ Each line = one feature, live-verified before its commit.
   cap, success gated on `wp core version == target` (never the command's claim),
   post-switch db_version probe returns dbUpdateRequired so the panel states the
   "Database Update Required" screen explicitly; honest confirm + Export-DB-first in
-  the flow
+  the flow `0d3a6e5`
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
