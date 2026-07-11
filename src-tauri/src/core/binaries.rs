@@ -151,8 +151,23 @@ const CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256: &str = "d7a66b525fe76820da6e5406611
 
 // FrankenPHP static binary SHA-256 (computed at pin time from the GitHub release).
 // A fully static Mach-O (embeds PHP + Caddy), so no Homebrew relink is needed.
-const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "dd08f3a5ff45780fd0498afae8530bcd548a7e5d4dab7402934aeb622f6faeb8";
-const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "a262f0003447363b91f032706748998f206cd7038f1100f7b0952bdb93d5daf1";
+//
+// NOTE: FrankenPHP REBUILDS the latest release's assets in place on a DAILY cron
+// (static.yaml, `gh release upload --clobber`) to embed new PHP patches — the tag
+// URL is stable but the bytes are not, so these pins go stale whenever upstream
+// rebuilds (same story as static-php; the checksum guard firing is the designed
+// signal to re-verify + re-pin). Re-pin procedure: fetch the GitHub API asset
+// `digest` for the release, confirm the downloaded bytes hash to it, decode the
+// sigstore attestation (`repos/dunglas/frankenphp/attestations/sha256:<hash>` —
+// uploads still target the pre-rename repo) to confirm the subject was built by
+// php/frankenphp's static.yaml, and run the binary (`frankenphp version`).
+//
+// Re-pinned 2026-07-11: upstream's scheduled rebuild bumped the embedded PHP to
+// 8.5.8 (all 9 release assets replaced). Both hashes verified against the GitHub
+// API digest + SLSA attestation (workflow php/frankenphp static.yaml, commit
+// bc9c6db8) and both binaries run: "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4".
+const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "44308eddac92d0207636b054ed66500f57b34b423f6df335073fd59007e78b0d";
+const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "9aa5ea729ec9aee6fda6facfb7f874555cda7c07ac0933d72fb1b7045d7cd363";
 
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
