@@ -183,7 +183,11 @@ Each line = one feature, live-verified before its commit.
   best-effort old-artifact cleanup (cert dir, tunnel, FrankenPHP config/logs). DNS
   needs nothing (wildcard `*.test`). UI: Settings → Domain card (disabled on
   multisite), destructive dialog with backup/email-rewrite/reversal notes; frontend
-  `siteDbName()` derivation deleted in favor of stored `site.dbName`.
+  `siteDbName()` derivation deleted in favor of stored `site.dbName`. Live-verified
+  on a throwaway site (post + image): myapp.test → myshop.test served with valid
+  SANs, no redirect to the old domain, serialized/attachment URLs rewritten, old
+  domain no longer routes, reset works after the change (db_name consistent),
+  multisite card disabled, old cert dir removed, backup in Downloads.
 - **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
 - **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
   seam (L).
