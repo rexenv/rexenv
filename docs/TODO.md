@@ -156,11 +156,18 @@ Each line = one feature, live-verified before its commit.
   the UI with real download progress, sites assigned show the right version, WordPress
   loads on 8.0 (bulk extension set OK on the oldest). Ongoing risk (accepted): upstream
   rebuilds in place → 24 pins to babysit.
-- [ ] **DEFERRED — PHP patch updates (#2): Option A only** — pins ride app releases
-  (maintainer bumps `PHP_VERSIONS`, `seed_registry` already updates `patch` per minor
-  preserving `installed`; add pool restart + old cache-dir GC). NO in-app TOFU updater —
-  static-php publishes no checksums, so runtime update-discovery would move pin trust
-  from the signed app binary to the user's machine; keep the signed-pin security model.
+- [x] **PHP patch updates (#2): Option A only** — pins ride app releases; NO in-app
+  TOFU updater (static-php publishes no checksums — runtime update-discovery would move
+  pin trust from the signed app binary to the user's machine). ✓ **Done** `ef0465d`:
+  `seed_registry` reports stored-patch ≠ build-pin (one-shot, `installed` preserved);
+  startup task prefetches the new patch via the hub BEFORE any lock (offline = old pool
+  keeps serving, retried next launch), restarts bumped minors' live pools through the
+  same `restart_php_pool` path as the settings editor, then GCs `php-<oldpatch>/`
+  caches (narrow name rule — never debug builds/staging/other binaries/unpinned
+  minors). Live-verified via DB simulation: pool restarted on the pin, site kept
+  serving, fake stale cache GC'd + logged, second relaunch a no-op. Maintainer
+  release procedure = bump `PHP_VERSIONS` + re-verify pins (binaries.rs:96) + update
+  `docs/PORTS.md`; everything else is automatic.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
