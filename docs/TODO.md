@@ -13,8 +13,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   uninstall sweeps all rexenv resolver files by content signature; `.test` backbone
   permanent; wp-login mu-plugin allow-list now per-site domain; Settings picker +
   TLD-aware dialogs. ✓ **Done** in 5 commits `bb1ba89`/`509ec95`/`7dad2de`/`dc6cb57`/
-  `b1e103d` — all self-checks green (224 lib tests, clippy, examples, tsc, vite);
-  **awaiting human runtime verification** — checklist in `docs/TLD-FEATURE-REPORT.md`.
+  `b1e103d`. **Corrected 12 Jul** (`e9a87d9`/`9b14cbe` + docs): `.rex` is the backbone —
+  onboarding installs ONLY `/etc/resolver/rex`, v9 migration flips the default,
+  `ADMINER_HOST` → `adminer.rexenv.rex`; `.test` is an ordinary safe-set choice whose
+  resolver installs on demand. All self-checks green (225 lib tests, clippy, examples,
+  tsc, vite); **awaiting human runtime verification** — Done-when checklist in
+  `docs/TLD-FEATURE-REPORT.md`.
 - [x] **Edge "stops by itself" — adopt a live edge, never kill it.** Root cause of the
   `health.log` `edge-down` entries: every edge death was rexenv's own `caddy stop` —
   (a) `prepare_edge` treated a LIVE edge as a stale leftover (`recover_stale_edge`)

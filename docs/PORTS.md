@@ -20,7 +20,7 @@ binary, update THIS file in the same commit.
 | Redis (stub) | **16379** | TCP | `core/db.rs` `REDIS_PORT` |
 | Mailpit SMTP | **11025** | TCP | `core/mail.rs` `MAILPIT_SMTP_PORT` |
 | Mailpit HTTP API | **18025** | TCP | `core/mail.rs` `MAILPIT_HTTP_PORT` |
-| Adminer | no port — internal vhost `adminer.rexenv.test` via shared nginx | — | `core/adminer.rs` |
+| Adminer | no port — internal vhost `adminer.rexenv.rex` via shared nginx | — | `core/adminer.rs` |
 | cloudflared | outbound-only, no inbound port | — | `core/tunnels.rs` |
 
 - Canonical startup-order registry: `core/ports.rs` `default_ports()`.

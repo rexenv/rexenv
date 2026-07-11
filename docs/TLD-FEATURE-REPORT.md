@@ -1,5 +1,10 @@
 # Configurable TLD (v1) — implementation report
 
+> **12 Jul correction applied — `.rex` is now the backbone; `.test` is NOT
+> auto-installed.** See the "Correction" section at the bottom for the
+> blast-radius analysis, the three new commits, and the new Done-when
+> checklist (it supersedes items 1/4/6 of the original checklist below).
+
 Built autonomously on 11 Jul 2026 per the approved scope: **v1 = a stored
 `default_tld` setting; new sites are created under it.** No migrate-all (a
 single site can be re-pointed via the existing Change-domain flow, which now
@@ -192,3 +197,88 @@ domain change; existing guard needles still asserted.
   to execute — not run here.
 - **Not built (out of scope v1)**: migrate-all-sites to a new TLD; per-site
   TLD choice in NewSiteDialog; showing installed-TLD list in Settings.
+
+---
+
+# Correction (12 Jul): `.rex` backbone, `.test` on-demand only
+
+## Blast radius — what depended on `.test` existing, and where each moved
+
+Verified by sweeping the tree for runtime (non-test, non-mock) `.test`
+dependencies before changing anything. Everything funnels through **two
+constants and one DB seed**, which is why the flip is safe:
+
+| Dependency | Was | Now |
+|---|---|---|
+| `core::tld::BACKBONE_TLD` | `"test"` — drives onboarding resolver install (`run_system_setup`), `default_tld()` fallback, the Settings DNS indicator path | `"rex"` — same three places follow the constant; guard tests fail the build if `.rex` ever becomes blockable |
+| `ADMINER_HOST` (backend `core/adminer.rs` + frontend mirror `src/lib/adminer.ts`) | `adminer.rexenv.test` | `adminer.rexenv.rex`. Its nginx vhost, Caddy route, cert issue AND `regenerate_certs` reissue all derive from the constant — nothing else names the host. The two Adminer live-check examples use the constant + reqwest `.resolve()` (no OS DNS), so they follow too. A test now pins the host to the backbone TLD. |
+| Migration v8 seed `default_tld='test'` | fresh DBs defaulted to test | **v9** flips `'test'→'rex'` — covers fresh DBs (v8 then v9) AND this dev machine's already-v8 DB. A custom value is untouched. Pre-release, so no user can have deliberately chosen `'test'` yet. |
+| `installed_tlds` dir probe | uses `resolver_path(BACKBONE_TLD)` | only to find the **parent dir** (`/etc/resolver`) — TLD-agnostic, unaffected |
+| wp-login mu-plugin `.test`/`.localhost` static allows | needed for .test sites | kept (harmless allow-list); the injected per-site domain covers `.rex` and every other TLD |
+| Uninstall | already signature-based (`remove_all_resolvers`) | unchanged — sweeps `.rex` + any on-demand TLDs; copy updated |
+| Onboarding gate (`dnsStatus.resolverInstalled` locks Continue) | checked `/etc/resolver/test` | follows the constant → checks `/etc/resolver/rex`; onboarding's setup button is exactly what installs it (c) |
+| UI copy/mocks (Onboarding subtitle, Settings DNS card, TLD-card note, uninstall dialogs, ipc mocks) | `.test` phrasing | `.rex` phrasing |
+| Docs (`ARCHITECTURE.md` DNS/edge/Adminer claims, `PORTS.md` Adminer row) | `.test`/NXDomain claims | updated to answer-all + per-TLD resolver + `.rex` backbone |
+| Genuinely optional | live-check examples that create `foo.test` sites (resolve via `.resolve()` overrides or an existing dev resolver), multisite example hostnames in docs, mock site data, WP search-replace placeholders | left as-is |
+
+`.test` remains in the policy **safe set** (allowed, no shadow warning) — the
+on-demand path (`create_site`/`change_site_domain` → `dns::ensure_resolver`)
+was already TLD-generic from commit `7dad2de`, so a user-chosen `.test` site
+installs `/etc/resolver/test` with one prompt at that moment (d).
+
+## Correction commits
+
+1. **`e9a87d9`** — backend flip: `BACKBONE_TLD="rex"`, `ADMINER_HOST=
+   adminer.rexenv.rex`, migration v9, comments/tests. New tests: setup script
+   writes `/etc/resolver/rex` and **not** `/etc/resolver/test`; backbone never
+   blockable; `.test` still classifies allowed+no-warn; v9 flip + custom-value
+   survival; fresh-DB default = `rex`; smuggled-blocked-value fallback → `rex`.
+2. **`9b14cbe`** — frontend: Adminer host mirror, Onboarding "anything.rex",
+   Settings DNS card `*.rex`, TLD-card note (".rex is the home TLD, installed
+   at onboarding; every other TLD incl. .test prompts once on first use"),
+   uninstall copy, ipc mocks.
+3. **docs commit** — ARCHITECTURE.md (answer-all DNS, per-TLD resolver files,
+   `.rex` backbone, Adminer host), PORTS.md Adminer row, this report.
+
+Self-checks at HEAD: `cargo test --lib` 225 pass · clippy (only the
+pre-existing warning) · `cargo build --examples` · `tsc --noEmit` ·
+`vite build` — all green.
+
+## Done-when (human runtime verification)
+
+- [ ] **Fresh install sets up `.rex` only**: wipe app data (or fresh account),
+      run Onboarding → "Set up domains & SSL" → one admin prompt →
+      `/etc/resolver/rex` exists, **`/etc/resolver/test` does NOT exist**.
+      (On this dev machine a stale `/etc/resolver/test` from before will still
+      be present — delete it via Settings → Remove system changes + re-setup,
+      or ignore; a truly fresh Mac never gets it.)
+- [ ] **New site defaults to `.rex` and resolves**: New-site dialog shows the
+      `.rex` suffix without touching Settings (v9 flipped the stored default);
+      site is created with NO extra password prompt (backbone already
+      installed) and `https://<name>.rex` loads.
+- [ ] **Adminer loads on `.rex` with no `.test` resolver present**: Databases
+      tab renders the browser at `adminer.rexenv.rex`; deep-link/auto-login
+      still lands in the site DB. (First reload after this build re-issues the
+      Adminer cert for the new host automatically via `rebuild_configs`.)
+- [ ] **Manually adding `.test` still works and installs its resolver then**:
+      set default to `test` in Settings (no warning — safe set) or create a
+      site under `.test` — expect ONE admin prompt at that moment, then
+      `/etc/resolver/test` exists and the site resolves.
+- [ ] **Uninstall sweeps both**: with `rex` + `test` installed, Remove system
+      changes deletes both files (a foreign hand-made `/etc/resolver/foo` with
+      different content survives).
+
+## Flagged (correction-specific)
+
+- **Existing `.test` sites on this dev machine keep working** only because
+  `/etc/resolver/test` already exists there; teardown+re-setup will NOT
+  reinstall it (only `.rex`) — recreate it by making/keeping a `.test` site
+  (ensure runs on create/change-domain, not on app start). If after a full
+  uninstall the old `.test` sites are dead, that's this by design — flag if
+  you want an "ensure resolvers for all existing site TLDs on startup" pass.
+- **`.rex` shows the shadow/ICANN warning in Settings even as the default**
+  (warn tier by design — it is not an RFC-reserved TLD).
+- **CLAUDE.md** still says "`.test` DNS" in the project header — your
+  instruction file, left untouched; update at your leisure.
+- The stale-`.test`-in-`wp_login` static allow is intentional (harmless,
+  covers user-chosen `.test` sites).

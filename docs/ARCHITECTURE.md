@@ -6,8 +6,8 @@ file, verify the line. Ports + pinned versions: `docs/PORTS.md`. Open work: `doc
 
 rexenv = native, no-Docker local dev environment for web/WordPress developers.
 Tauri 2 desktop app: Rust backend + React/TS frontend. Runs the whole stack — edge
-proxy, shared web server, multi-version PHP, databases, one-click WordPress, `.test`
-DNS + auto-HTTPS, mail catching, tunnels — from one UI. macOS complete; Windows/Linux
+proxy, shared web server, multi-version PHP, databases, one-click WordPress, local-TLD
+DNS (`.rex` backbone, configurable) + auto-HTTPS, mail catching, tunnels — from one UI. macOS complete; Windows/Linux
 are `todo!()` stubs.
 
 ## 1. Layering (non-negotiable)
@@ -46,7 +46,7 @@ Default site:
 
 ```
 browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per domain)
-                     │  proxies ALL *.test by Host
+                     │  proxies ALL site hosts (any local TLD) by Host
                      ▼
                 shared Nginx :18088 (ONE process, a server block per site, vhost by server_name)
                      │  fastcgi_pass → the site's PHP version's pool
@@ -62,8 +62,8 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   longer ones even with the CA trusted. Caddy's auto-HTTPS/internal issuer is DISABLED;
   it serves our certs only.
 - CA trust = **login keychain** (user op, `CertTrustManager`) — a detached-root osascript
-  can't write System-keychain trust settings. `/etc/resolver/test` = root op
-  (`PrivilegeManager`). Hence ~2 setup prompts; true single prompt = SMAppService (deferred).
+  can't write System-keychain trust settings. `/etc/resolver/<tld>` files = root op
+  (`PrivilegeManager`; onboarding installs the `.rex` backbone, other TLDs on first use). Hence ~2 setup prompts; true single prompt = SMAppService (deferred).
 - **Per-site server override:** FrankenPHP (single static binary, embeds its own PHP)
   runs as a loopback backend on a per-site port in 8200–8299 (`core/frankenphp.rs`,
   FNV-1a of the domain), `auto_https off` + `admin off` — it must NEVER be the edge,
@@ -122,8 +122,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 4. DNS — always-on, in-process (`core/dns.rs`, `lib.rs`)
 
-- Embedded hickory-dns resolver answering `*.test → 127.0.0.1` (A records, TTL 60;
-  non-`.test` → NXDomain). UDP **15353**.
+- Embedded hickory-dns resolver answering ANY A query with `127.0.0.1` (TTL 60) on
+  UDP **15353**. Deliberately TLD-agnostic: WHICH TLDs reach it is scoped by which
+  `/etc/resolver/<tld>` files exist (one per TLD; no restart to add one). Safe only
+  because it binds loopback and only our resolver files route to it (`core/dns.rs`).
 - **Not a ServiceManager service.** Started once at app launch (`lib.rs` →
   `DnsService::start_default`), held in `DnsState(Mutex<Option<DnsService>>)`; a tokio
   task, aborted on Drop. Launch failure is logged, non-fatal — state stays managed as
@@ -131,8 +133,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - Health watchdog (`lib.rs`): restarts a resolver whose task died, **bounded to 3
   attempts**, emits `service-health` events. A resolver that never started (port conflict
   at launch) is NOT auto-restarted — surfaces in Settings.
-- The OS-side `/etc/resolver/test` file is a separate privileged install/uninstall step
-  (`core/setup.rs` via `DnsManager`), independent of the in-process server.
+- The OS-side `/etc/resolver/<tld>` files are a separate privileged step, independent
+  of the in-process server: onboarding installs the `.rex` backbone (`core/setup.rs`);
+  any other TLD (`.test` included) installs on first use (`dns::ensure_resolver`, one
+  prompt per TLD); uninstall sweeps every file matching our content signature.
 
 ## 5. Service lifecycle & source of truth (`core/service_manager.rs`)
 
@@ -239,8 +243,8 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `127.0.0.1`, so loopback-only enforcement keys off `CF-*` headers + leftmost
   `X-Forwarded-For` + `Host`, never the IP. On tunnel start an auto-managed mu-plugin
   bakes in the public origin (HOST/HTTPS overrides + siteurl/home filters + output-buffer
-  rewrite for plain/JSON-escaped/%-encoded); removed on stop; local `.test` requests untouched.
-- **Adminer** (`core/adminer.rs`): internal vhost `adminer.rexenv.test` on the shared
+  rewrite for plain/JSON-escaped/%-encoded); removed on stop; local requests untouched.
+- **Adminer** (`core/adminer.rs`): internal vhost `adminer.rexenv.rex` on the shared
   stack — never a tunnel origin. Per-site deep link via a generated `index.php` wrapper
   (`adminer_object()` hook): passwordless login for loopback servers only, auto-submits
   Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`.
