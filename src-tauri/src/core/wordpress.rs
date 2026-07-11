@@ -1409,6 +1409,142 @@ pub fn switch_language(php_bin: &Path, wp_phar: &Path, docroot: &Path, locale: &
     Ok(())
 }
 
+/// One WordPress release from the stable-check API (mirrors the frontend
+/// `WpCoreVersion`). `status` ∈ `latest` | `outdated` | `insecure`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpCoreVersion {
+    pub version: String,
+    pub status: String,
+}
+
+/// `"X.Y"` / `"X.Y.Z"` → sortable tuple; `None` for anything else. Doubles as
+/// the argv shape guard: digits and dots only, so a version can never read as
+/// a wp-cli flag.
+fn parse_wp_version(v: &str) -> Option<(u64, u64, u64)> {
+    if v.is_empty() || !v.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    let mut it = v.split('.');
+    let a = it.next()?.parse().ok()?;
+    let b = it.next()?.parse().ok()?;
+    let c = match it.next() {
+        Some(s) => s.parse().ok()?,
+        None => 0,
+    };
+    if it.next().is_some() {
+        return None;
+    }
+    Some((a, b, c))
+}
+
+const STABLE_CHECK_URL: &str = "https://api.wordpress.org/core/stable-check/1.0/";
+
+/// Installable releases, newest first, from wordpress.org's stable-check API
+/// (`version → status`; 800+ entries live). Filtered to ≥ 6.0 — older cores
+/// predate the bundled PHP versions. Needs network; offline surfaces the
+/// download error, and the picker simply doesn't load.
+pub async fn core_versions() -> Result<Vec<WpCoreVersion>> {
+    let body = super::binaries::http_get(STABLE_CHECK_URL).await?;
+    parse_stable_check(&body)
+}
+
+fn parse_stable_check(body: &[u8]) -> Result<Vec<WpCoreVersion>> {
+    let map: std::collections::BTreeMap<String, String> = serde_json::from_slice(body)
+        .map_err(|e| Error::Other(format!("version list: bad JSON: {e}")))?;
+    let mut rows: Vec<((u64, u64, u64), WpCoreVersion)> = map
+        .into_iter()
+        .filter_map(|(version, status)| {
+            parse_wp_version(&version)
+                .filter(|t| t.0 >= 6)
+                .map(|t| (t, WpCoreVersion { version, status }))
+        })
+        .collect();
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(rows.into_iter().map(|(_, v)| v).collect())
+}
+
+/// Result of a core version switch (mirrors the frontend `WpCoreSwitch`).
+/// `db_update_required` tells the panel — explicitly, not guessed — whether
+/// wp-admin will show the "Database Update Required" screen: WP redirects on
+/// ANY `db_version` mismatch (`wp-admin/admin.php`), including DB-newer-than-
+/// code after a downgrade; running it re-stamps the option (`upgrade.php`) —
+/// the schema itself is never downgraded.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpCoreSwitch {
+    pub version: String,
+    pub db_update_required: bool,
+}
+
+/// Cap on the core zip download (~25 MB — needs more headroom than the 60s
+/// language cap; still bounded so offline fails visibly, never a frozen
+/// spinner).
+const CORE_SWITCH_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Switch core to an exact version: `wp core update --version=<v> --force`
+/// (`--force` is the official downgrade path — "update even when installed WP
+/// version is greater than the requested version"). `allowed` is a fresh
+/// stable-check list; the version must be on it (picker-only, defense in
+/// depth). Success is gated on `wp core version` reporting the target
+/// afterward — never on the update command's claim (the language/checksum
+/// exit-code lesson). wp-content and the DB are untouched.
+pub fn core_switch_version(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    version: &str,
+    allowed: &[String],
+) -> Result<WpCoreSwitch> {
+    if parse_wp_version(version).is_none() {
+        return Err(Error::Other(format!("invalid version: {version:?}")));
+    }
+    if !allowed.iter().any(|v| v == version) {
+        return Err(Error::Other(format!("{version} is not a known WordPress release")));
+    }
+
+    let path = format!("--path={}", docroot.display());
+    let varg = format!("--version={version}");
+    let update = wp_cli_timed(
+        php_bin,
+        wp_phar,
+        &["core", "update", &varg, "--force", &path],
+        CORE_SWITCH_TIMEOUT,
+    );
+    // The gate: what does core ACTUALLY report now?
+    let now = wp_run(php_bin, wp_phar, docroot, &["core", "version"])?;
+    if now.trim() != version {
+        let detail = match update {
+            Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            Err(e) => e.to_string(),
+        };
+        return Err(Error::Other(format!(
+            "Couldn't switch to WordPress {version} — core still reports {now}. Check your connection.{}",
+            if detail.is_empty() { String::new() } else { format!(" ({detail})") }
+        )));
+    }
+
+    // Explicit DB answer for the panel: code's $wp_db_version vs the stored option.
+    #[derive(Deserialize)]
+    struct DbProbe {
+        code: i64,
+        db: i64,
+    }
+    let probe = wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &[
+            "eval",
+            "global $wp_db_version; echo json_encode([\"code\"=>(int)$wp_db_version,\"db\"=>(int)get_option(\"db_version\")]);",
+        ],
+    )?;
+    let db: DbProbe = serde_json::from_str(probe.trim())
+        .map_err(|e| Error::Other(format!("db-version probe: bad JSON: {e}")))?;
+
+    Ok(WpCoreSwitch { version: version.into(), db_update_required: db.code != db.db })
+}
+
 /// A valid MySQL database name derived from a site domain
 /// (`blog.test` → `wp_blog_test`).
 pub fn db_name_for(domain: &str) -> String {
@@ -1774,6 +1910,50 @@ Error: WordPress installation doesn't verify against checksums.";
         for bad in ["", "e", "--skip-plugins", "-f", "fr_FR; rm -rf /", "fr FR", "FR_fr", "../x", "fr\u{2013}FR"] {
             assert!(!valid_locale(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn wp_version_shape_accepts_releases_and_rejects_argv_smuggling() {
+        for ok in ["7.0", "7.0.1", "6.8.5"] {
+            assert!(parse_wp_version(ok).is_some(), "{ok}");
+        }
+        for bad in ["", "nightly", "6", "6.8.5.1", "+6.8", "-6.8", "--force", "6..8", "6.8 ", "6.8.5; rm -rf /"] {
+            assert!(parse_wp_version(bad).is_none(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn stable_check_parses_filters_and_sorts_newest_first() {
+        // Shape verbatim from api.wordpress.org/core/stable-check/1.0/.
+        let body = br#"{"1.0.2":"insecure","5.9.3":"insecure","6.5.2":"insecure","6.9.4":"outdated","7.0":"outdated","7.0.1":"latest"}"#;
+        let rows = parse_stable_check(body).unwrap();
+        let versions: Vec<&str> = rows.iter().map(|r| r.version.as_str()).collect();
+        // < 6.0 filtered out; newest first ("7.0" sorts as 7.0.0 below 7.0.1).
+        assert_eq!(versions, ["7.0.1", "7.0", "6.9.4", "6.5.2"]);
+        assert_eq!(rows[0].status, "latest");
+        assert_eq!(rows[3].status, "insecure");
+    }
+
+    #[test]
+    fn core_switch_rejects_bad_versions_before_any_wp_call() {
+        // Nonexistent binaries — reaching wp-cli would yield an io error, not
+        // these messages, proving both guards fire first.
+        let allowed = vec!["7.0.1".to_string(), "6.9.4".to_string()];
+        let run = |v: &str| {
+            core_switch_version(
+                Path::new("/nonexistent/php"),
+                Path::new("/nonexistent/wp.phar"),
+                Path::new("/nonexistent/docroot"),
+                v,
+                &allowed,
+            )
+            .unwrap_err()
+            .to_string()
+        };
+        assert!(run("--force").contains("invalid version"));
+        assert!(run("6.8.5.1").contains("invalid version"));
+        // Well-shaped but not a real release (not in the fresh stable-check list).
+        assert!(run("6.9.9").contains("not a known WordPress release"));
     }
 
     #[test]

@@ -10,7 +10,10 @@ import {
   pickSqlFile,
   revealPath,
   wpCoreReinstall,
+  wpCoreSwitchVersion,
+  wpCoreVersions,
   wpDbExport,
+  wpInfo,
   wpDbImport,
   wpSiteReset,
   wpCacheFlush,
@@ -62,7 +65,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
-import type { MultisiteMode, WpChecksumReport, WpOptionRow, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -959,6 +962,7 @@ function ToolsPanel({
           {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
         </div>
         {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
+        <CoreVersionSwitch siteId={siteId} />
       </Card>
 
       {/* Maintenance */}
@@ -1410,6 +1414,141 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Core version switch (Core card). Picker fed by the stable-check API —
+ *  never free text; the backend re-validates shape + membership on a fresh
+ *  fetch and gates success on `wp core version`. The confirm carries the
+ *  honest DB warning; "Export database first" sits in the same flow. */
+function CoreVersionSwitch({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const { data: info } = useQuery({
+    queryKey: ["wp-info", siteId],
+    queryFn: () => wpInfo(siteId),
+    ...WP_QUERY,
+  });
+  const { data: versions, isError: versionsFailed } = useQuery({
+    queryKey: ["wp-core-versions"],
+    queryFn: wpCoreVersions,
+    ...WP_QUERY,
+    staleTime: 60 * 60_000, // release list barely moves; don't refetch per visit
+  });
+  const [picked, setPicked] = useState("");
+  const [result, setResult] = useState<WpCoreSwitch | null>(null);
+  const current = info?.version ?? null;
+
+  const exportDb = useMutation({
+    mutationFn: () => wpDbExport(siteId),
+    onSuccess: (path) =>
+      toast.success(`Database exported to ${path}`, {
+        label: "Show in Finder",
+        onClick: () => void revealPath(path).catch(toastBackendError),
+      }),
+    onError: (e) => toastBackendError(e),
+  });
+  const switchVersion = useMutation({
+    mutationFn: (version: string) => wpCoreSwitchVersion(siteId, version),
+    onSuccess: (res) => {
+      setResult(res);
+      setPicked("");
+      qc.invalidateQueries({ queryKey: ["wp-info", siteId] });
+      toast.success(`Core switched to ${res.version}.`);
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const askSwitch = async () => {
+    const row = versions?.find((v) => v.version === picked);
+    if (!row) return;
+    if (
+      await confirm({
+        title: `Switch WordPress core from ${current ?? "?"} to ${row.version}?`,
+        message: (
+          <>
+            Downgrading does <b>not</b> downgrade the database. WordPress may show a one-click
+            “Database Update Required” screen — but data written by newer core, or plugins that
+            require {current ?? "the current version"}, can break, and that isn't detectable in
+            advance. Not guaranteed reversible without a backup — use “Export DB first”.
+            {row.status === "insecure" && (
+              <>
+                {" "}
+                <b>{row.version} has known security issues</b> — fine for local testing, don't
+                expose it via a tunnel.
+              </>
+            )}
+          </>
+        ),
+        confirmLabel: "Switch version",
+      })
+    )
+      switchVersion.mutate(row.version);
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-2 border-t border-rex-border-subtle pt-2">
+      <div className="text-[12px] text-rex-text-muted">
+        Core version{current ? <span className="font-mono"> · {current}</span> : null}
+      </div>
+      {versionsFailed ? (
+        <div className="text-[11.5px] text-status-warning-bright">
+          Couldn't fetch the release list — check your connection.
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <select
+            value={picked}
+            disabled={!versions || switchVersion.isPending}
+            onChange={(e) => setPicked(e.target.value)}
+            className={cn(OPTION_SELECT, "min-w-0 flex-1")}
+          >
+            <option value="">{versions ? "Pick a version…" : "Loading releases…"}</option>
+            {versions?.map((v) => (
+              <option key={v.version} value={v.version} disabled={v.version === current}>
+                {v.version}
+                {v.version === current
+                  ? " — current"
+                  : v.status === "latest"
+                    ? " — latest"
+                    : v.status === "insecure"
+                      ? " — insecure"
+                      : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            className={BTN}
+            disabled={exportDb.isPending || switchVersion.isPending}
+            onClick={() => exportDb.mutate()}
+            title="Escape hatch: export the database before switching"
+          >
+            {exportDb.isPending ? "Exporting…" : "Export DB first"}
+          </button>
+          <button
+            className={BTN}
+            disabled={!picked || switchVersion.isPending}
+            onClick={() => void askSwitch()}
+          >
+            {switchVersion.isPending ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Switching…
+              </span>
+            ) : (
+              "Switch version"
+            )}
+          </button>
+        </div>
+      )}
+      {result && (
+        <div className="text-[11.5px] text-rex-text-dim">
+          Now on <span className="font-mono">{result.version}</span>.{" "}
+          {result.dbUpdateRequired
+            ? "WordPress will ask to update the database on the next wp-admin visit (normally one click)."
+            : "No database update needed."}
+        </div>
+      )}
     </div>
   );
 }

@@ -124,6 +124,12 @@ Each line = one feature, live-verified before its commit.
   enum in core enforces name + per-kind value on every write); non-scalar values
   refused at read AND write; typed inputs (timezone/role pickers fed live), confirm
   old → new, form re-reads from the site after save `fe80fb4`
+- [x] Core version switch / downgrade — picker from the stable-check API (831
+  releases, ≥6.0, insecure marked), `wp core update --version --force` under a 300s
+  cap, success gated on `wp core version == target` (never the command's claim),
+  post-switch db_version probe returns dbUpdateRequired so the panel states the
+  "Database Update Required" screen explicitly; honest confirm + Export-DB-first in
+  the flow
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
@@ -132,8 +138,6 @@ Each line = one feature, live-verified before its commit.
 - **Move site / custom docroot** — fixed `sites_dir` scheme + nginx root regen (M/L).
 - **Per-site env vars** — conflicts with per-VERSION shared php-fpm pools; no clean
   seam (L).
-- **Core version pick / downgrade** — needs a version-list source + `--force`
-  semantics (M).
 
 ## Known baselines (not bugs)
 

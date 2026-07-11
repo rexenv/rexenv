@@ -269,6 +269,8 @@ pub fn run() {
             commands::wordpress::wp_checksum_cleanup,
             commands::wordpress::wp_options,
             commands::wordpress::wp_option_update,
+            commands::wordpress::wp_core_versions,
+            commands::wordpress::wp_core_switch_version,
             commands::wordpress::wp_languages,
             commands::wordpress::wp_switch_language,
             commands::wordpress::wp_cache_flush,

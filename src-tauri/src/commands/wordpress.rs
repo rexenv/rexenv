@@ -378,6 +378,32 @@ pub async fn wp_permalink_set(
     .await
 }
 
+/// Installable WordPress releases (newest first) from wordpress.org's
+/// stable-check API — feeds the version picker. Needs network.
+#[tauri::command]
+pub async fn wp_core_versions() -> Result<Vec<core::wordpress::WpCoreVersion>> {
+    core::wordpress::core_versions().await
+}
+
+/// Switch core to an exact version (downgrades use `--force`). The version
+/// must be on a FRESH stable-check list (picker-only, re-fetched here);
+/// success is gated on `wp core version` reporting the target, and the result
+/// says explicitly whether wp-admin will ask for a database update.
+#[tauri::command]
+pub async fn wp_core_switch_version(
+    state: State<'_, AppState>,
+    id: String,
+    version: String,
+) -> Result<core::wordpress::WpCoreSwitch> {
+    let allowed: Vec<String> =
+        core::wordpress::core_versions().await?.into_iter().map(|v| v.version).collect();
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::core_switch_version(&php, &wp, &docroot, &version, &allowed)
+    })
+    .await
+}
+
 /// The whitelisted site-options form (values + timezone/role choice lists).
 /// One `wp eval` + one `wp role list` — never a per-option wp-cli call.
 #[tauri::command]

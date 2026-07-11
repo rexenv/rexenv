@@ -219,6 +219,19 @@ export interface WpChecksumCleanup {
   report: WpChecksumReport;
 }
 
+/** One WordPress release (mirrors the Rust WpCoreVersion / stable-check API). */
+export interface WpCoreVersion {
+  version: string;
+  status: string; // latest | outdated | insecure
+}
+
+/** Result of a core version switch (mirrors the Rust WpCoreSwitch).
+ *  dbUpdateRequired = wp-admin will show "Database Update Required". */
+export interface WpCoreSwitch {
+  version: string;
+  dbUpdateRequired: boolean;
+}
+
 /** One whitelisted, typed site option (mirrors the Rust WpOptionRow). */
 export interface WpOptionRow {
   name: string;
