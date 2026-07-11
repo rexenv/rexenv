@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -556,6 +556,15 @@ export async function wpDebugSet(id: string, on: boolean): Promise<void> {
 export async function wpCoreVerifyChecksums(id: string): Promise<WpChecksumReport> {
   if (!isTauri()) return { ok: true, real: [], benign: [], output: "" };
   return invoke<WpChecksumReport>("wp_core_verify_checksums", { id });
+}
+
+/** Delete the checksum panel's benign macOS-noise files (backend re-validates
+ *  every path — noise basename, inside-docroot, no symlinks — and skips rather
+ *  than aborts), then re-runs verify and returns the fresh report. */
+export async function wpChecksumCleanup(id: string, paths: string[]): Promise<WpChecksumCleanup> {
+  if (!isTauri())
+    return { removed: 0, skipped: [], report: { ok: true, real: [], benign: [], output: "" } };
+  return invoke<WpChecksumCleanup>("wp_checksum_cleanup", { id, paths });
 }
 
 /** The site's scheduled cron events, soonest first. */

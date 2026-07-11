@@ -378,6 +378,30 @@ pub async fn wp_permalink_set(
     .await
 }
 
+/// Delete the checksum panel's benign macOS-noise files, then re-run the
+/// checksum verify so the panel refreshes in one round-trip. The UI's paths
+/// are suggestions only — core re-validates every file (noise basename,
+/// relative/no-`..`, not a symlink, canonicalizes inside the docroot) and
+/// skips (never aborts) on any guard/io failure.
+#[tauri::command]
+pub async fn wp_checksum_cleanup(
+    state: State<'_, AppState>,
+    id: String,
+    paths: Vec<String>,
+) -> Result<core::wordpress::ChecksumCleanup> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        let cleaned = core::wordpress::cleanup_os_noise(&docroot, &paths)?;
+        let report = core::wordpress::core_verify_checksums(&php, &wp, &docroot)?;
+        Ok(core::wordpress::ChecksumCleanup {
+            removed: cleaned.removed,
+            skipped: cleaned.skipped,
+            report,
+        })
+    })
+    .await
+}
+
 /// Available + installed core languages (`wp language core list`) — feeds the
 /// Language picker. Hits api.wordpress.org (~3s; needs network).
 #[tauri::command]

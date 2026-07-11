@@ -205,6 +205,20 @@ export interface WpChecksumReport {
   output: string;
 }
 
+/** One noise file the cleanup refused/failed to delete, with the reason. */
+export interface WpSkippedNoiseFile {
+  path: string;
+  reason: string;
+}
+
+/** Result of the checksum-panel cleanup (mirrors the Rust ChecksumCleanup):
+ *  what was removed/skipped + a fresh post-cleanup verify report. */
+export interface WpChecksumCleanup {
+  removed: number;
+  skipped: WpSkippedNoiseFile[];
+  report: WpChecksumReport;
+}
+
 /** One scheduled cron event (mirrors the Rust WpCronEvent / `wp cron event list`). */
 export interface WpCronEvent {
   hook: string;

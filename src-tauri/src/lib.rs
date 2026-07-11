@@ -266,6 +266,7 @@ pub fn run() {
             commands::wordpress::wp_search_replace,
             commands::wordpress::wp_permalink_get,
             commands::wordpress::wp_permalink_set,
+            commands::wordpress::wp_checksum_cleanup,
             commands::wordpress::wp_languages,
             commands::wordpress::wp_switch_language,
             commands::wordpress::wp_cache_flush,

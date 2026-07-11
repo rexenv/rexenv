@@ -14,6 +14,7 @@ import {
   wpDbImport,
   wpSiteReset,
   wpCacheFlush,
+  wpChecksumCleanup,
   wpContentExport,
   wpCoreUpdate,
   wpCoreVerifyChecksums,
@@ -59,7 +60,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
-import type { MultisiteMode, WpChecksumReport, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -947,7 +948,7 @@ function ToolsPanel({
             <Shield className="h-3.5 w-3.5" />
             {verify.isPending ? "Verifying…" : "Verify core checksums"}
           </button>
-          {verifyOut && <ChecksumResult r={verifyOut} />}
+          {verifyOut && <ChecksumResult r={verifyOut} siteId={siteId} onReport={setVerifyOut} />}
           {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
         </div>
         {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
@@ -1097,10 +1098,46 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
  *  clean pass. NOTE: wp-cli's own exit code is 0 even with "should not exist"
  *  extras — it only fails on modified/missing core files — so `r.ok` alone
  *  must never drive the pass branch. */
-function ChecksumResult({ r }: { r: WpChecksumReport }) {
+function ChecksumResult({
+  r,
+  siteId,
+  onReport,
+}: {
+  r: WpChecksumReport;
+  siteId: string;
+  onReport: (r: WpChecksumReport) => void;
+}) {
   const hasReal = r.real.length > 0;
   const toolFailed = !hasReal && !r.ok;
   const pass = !hasReal && !toolFailed;
+  const [lastSkipped, setLastSkipped] = useState<WpSkippedNoiseFile[]>([]);
+  const cleanup = useMutation({
+    // The backend re-validates every path (noise basename, inside-docroot,
+    // no symlinks) — this list is a suggestion, not an instruction.
+    mutationFn: () => wpChecksumCleanup(siteId, r.benign),
+    onSuccess: (res) => {
+      setLastSkipped(res.skipped);
+      onReport(res.report); // fresh verify — clutter gone → clean pass
+      toast.success(
+        res.skipped.length === 0
+          ? `Removed ${res.removed} system file${res.removed === 1 ? "" : "s"}.`
+          : `Removed ${res.removed}, skipped ${res.skipped.length} — see the panel for reasons.`,
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const askCleanup = async () => {
+    const n = r.benign.length;
+    if (
+      await confirm({
+        title: `Delete ${n} macOS system file${n === 1 ? "" : "s"}?`,
+        message:
+          "Harmless Finder clutter (.DS_Store etc.) inside this site's folder — macOS recreates it as needed. Files are deleted permanently (not moved to Trash), then the checksums are re-verified.",
+        confirmLabel: "Delete & re-verify",
+      })
+    )
+      cleanup.mutate();
+  };
   return (
     <div
       className={cn(
@@ -1139,6 +1176,31 @@ function ChecksumResult({ r }: { r: WpChecksumReport }) {
           {pass
             ? r.benign.join("  ·  ")
             : `+ ${r.benign.length} OS system file(s) (.DS_Store etc.) — harmless.`}
+        </div>
+      )}
+      {r.benign.length > 0 && (
+        <button
+          className={cn(BTN, "flex items-center justify-center gap-1.5 self-start")}
+          disabled={cleanup.isPending}
+          onClick={() => void askCleanup()}
+        >
+          {cleanup.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
+          {cleanup.isPending
+            ? "Cleaning up…"
+            : `Clean up ${r.benign.length} system file${r.benign.length === 1 ? "" : "s"}`}
+        </button>
+      )}
+      {lastSkipped.length > 0 && (
+        <div className="font-mono text-[10.5px] text-status-warning-bright">
+          {lastSkipped.map((s) => (
+            <div key={s.path}>
+              skipped {s.path} — {s.reason}
+            </div>
+          ))}
         </div>
       )}
     </div>

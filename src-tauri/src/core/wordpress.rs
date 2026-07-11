@@ -764,6 +764,94 @@ pub fn core_verify_checksums(
     Ok(WpChecksumReport { ok: out.status.success(), real, benign, output: text })
 }
 
+/// One file [`cleanup_os_noise`] did NOT delete, with the reason.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedNoiseFile {
+    pub path: String,
+    pub reason: String,
+}
+
+/// Result of [`cleanup_os_noise`].
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoiseCleanup {
+    pub removed: u32,
+    pub skipped: Vec<SkippedNoiseFile>,
+}
+
+/// Delete known-noise files (the checksum panel's `benign` list) from a
+/// docroot. The paths come from the UI and are NEVER trusted — every file is
+/// re-validated from scratch by [`noise_delete_one`]'s guards; anything that
+/// fails a guard or errors is SKIPPED with a reason, never aborting the rest.
+/// Deletion is a direct `remove_file` (not Trash): the entire reachable scope
+/// is regenerable Finder metadata.
+pub fn cleanup_os_noise(docroot: &Path, paths: &[String]) -> Result<NoiseCleanup> {
+    let root = docroot
+        .canonicalize()
+        .map_err(|e| Error::Other(format!("site folder {}: {e}", docroot.display())))?;
+    let mut removed = 0u32;
+    let mut skipped = Vec::new();
+    for rel in paths {
+        match noise_delete_one(&root, rel) {
+            Ok(()) => removed += 1,
+            Err(reason) => skipped.push(SkippedNoiseFile { path: rel.clone(), reason }),
+        }
+    }
+    Ok(NoiseCleanup { removed, skipped })
+}
+
+/// [`cleanup_os_noise`] outcome + the fresh post-cleanup verify report, so the
+/// UI panel updates in the same round-trip (mirrors frontend `WpChecksumCleanup`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChecksumCleanup {
+    pub removed: u32,
+    pub skipped: Vec<SkippedNoiseFile>,
+    pub report: WpChecksumReport,
+}
+
+/// The four delete guards, per file (`canon_root` is the canonicalized docroot):
+/// 1. basename passes [`is_os_noise`] — the SAME list classification uses;
+/// 2. lexical: relative with only normal components (no `..`, no absolute);
+/// 3. the entry itself (lstat) is a regular file — this, not canonicalize,
+///    is what stops symlinks: a symlink named `.DS_Store` canonicalizes to its
+///    TARGET, and if that target is a regular file inside the docroot (say
+///    `wp-config.php`) the canonical-path checks all pass — deleting the
+///    target. lstat sees the link itself and refuses anything but a plain file;
+/// 4. the canonicalized path stays under the canonical docroot — catches the
+///    remaining escape: a symlinked intermediate DIRECTORY resolving outside.
+fn noise_delete_one(canon_root: &Path, rel: &str) -> std::result::Result<(), String> {
+    if !is_os_noise(rel) {
+        return Err("not a known macOS system file".into());
+    }
+    let rel_path = Path::new(rel);
+    if rel_path.is_absolute()
+        || !rel_path
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
+    {
+        return Err("path escapes the site folder".into());
+    }
+    let joined = canon_root.join(rel_path);
+    let lmeta = joined
+        .symlink_metadata()
+        .map_err(|e| format!("cannot stat: {e}"))?;
+    if lmeta.file_type().is_symlink() {
+        return Err("symbolic link — not followed".into());
+    }
+    if !lmeta.is_file() {
+        return Err("not a regular file".into());
+    }
+    let canon = joined
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve: {e}"))?;
+    if !canon.starts_with(canon_root) {
+        return Err("resolves outside the site folder".into());
+    }
+    std::fs::remove_file(&canon).map_err(|e| format!("cannot delete: {e}"))
+}
+
 /// Export site content (posts, pages, comments, menus, terms) as WXR XML into
 /// the user's Downloads folder (`wp export --dir=…` — same destination
 /// convention as the DB export). WP-CLI names the files itself
@@ -1401,6 +1489,77 @@ Error: WordPress installation doesn't verify against checksums.";
         for bad in ["", "e", "--skip-plugins", "-f", "fr_FR; rm -rf /", "fr FR", "FR_fr", "../x", "fr\u{2013}FR"] {
             assert!(!valid_locale(bad), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn cleanup_os_noise_deletes_only_validated_noise_files() {
+        let root = std::env::temp_dir().join(format!("rexenv-noise-{}", std::process::id()));
+        let outside = std::env::temp_dir().join(format!("rexenv-noise-out-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+        std::fs::create_dir_all(root.join("wp-admin/css")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+
+        // Legit noise (nested) — deleted.
+        std::fs::write(root.join(".DS_Store"), "x").unwrap();
+        std::fs::write(root.join("wp-admin/css/.DS_Store"), "x").unwrap();
+        std::fs::write(root.join("wp-admin/._resource"), "x").unwrap();
+        // Non-noise basename — refused even though the UI sent it.
+        std::fs::write(root.join("wp-admin/evil.php"), "x").unwrap();
+        // Victims for the symlink cases.
+        std::fs::write(outside.join(".DS_Store"), "outside-victim").unwrap();
+        std::fs::write(root.join("wp-config.php"), "inside-victim").unwrap();
+        // Symlink named like noise → OUTSIDE file: must not be followed.
+        std::os::unix::fs::symlink(outside.join(".DS_Store"), root.join("wp-admin/.DS_Store"))
+            .unwrap();
+        // Symlink named like noise → INSIDE non-noise file: the canonical path
+        // passes the prefix check — only the lstat guard saves wp-config.php.
+        std::os::unix::fs::symlink(root.join("wp-config.php"), root.join("wp-admin/css/._cfg"))
+            .unwrap();
+        // Directory named like noise — files only.
+        std::fs::create_dir(root.join(".Trashes")).unwrap();
+
+        let paths: Vec<String> = [
+            ".DS_Store",
+            "wp-admin/css/.DS_Store",
+            "wp-admin/._resource",
+            "wp-admin/evil.php",             // guard 1: basename
+            "../escape/.DS_Store",           // guard 2: `..`
+            "/tmp/.DS_Store",                // guard 2: absolute
+            "wp-admin/.DS_Store",            // guard 3: symlink → outside
+            "wp-admin/css/._cfg",            // guard 3: symlink → inside victim
+            ".Trashes",                      // guard 3: directory
+            "wp-includes/.DS_Store",         // vanished: skip, not abort
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let res = cleanup_os_noise(&root, &paths).unwrap();
+
+        assert_eq!(res.removed, 3, "skipped: {:?}", res.skipped);
+        assert_eq!(res.skipped.len(), 7);
+        // The real noise is gone…
+        assert!(!root.join(".DS_Store").exists());
+        assert!(!root.join("wp-admin/css/.DS_Store").exists());
+        assert!(!root.join("wp-admin/._resource").exists());
+        // …every victim/refusal survives.
+        assert_eq!(std::fs::read_to_string(outside.join(".DS_Store")).unwrap(), "outside-victim");
+        assert_eq!(std::fs::read_to_string(root.join("wp-config.php")).unwrap(), "inside-victim");
+        assert!(root.join("wp-admin/evil.php").exists());
+        assert!(root.join(".Trashes").is_dir());
+        // Reasons name the guard, not a generic failure.
+        let reason = |p: &str| {
+            res.skipped.iter().find(|s| s.path == p).map(|s| s.reason.clone()).unwrap_or_default()
+        };
+        assert!(reason("wp-admin/evil.php").contains("not a known macOS system file"));
+        assert!(reason("../escape/.DS_Store").contains("escapes"));
+        assert!(reason("/tmp/.DS_Store").contains("escapes"));
+        assert!(reason("wp-admin/.DS_Store").contains("symbolic link"));
+        assert!(reason("wp-admin/css/._cfg").contains("symbolic link"));
+        assert!(reason(".Trashes").contains("not a regular file"));
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[test]

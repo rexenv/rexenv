@@ -114,6 +114,11 @@ Each line = one feature, live-verified before its commit.
   at 60s wall-clock (WP's download_url waits 300s/attempt — offline that froze the
   spinner; timed-out child is SIGKILLed, error surfaces, old language kept); core
   translations only, multisite note (main site only) shown honestly `ed7d74e`
+- [x] Checksum "Clean up macOS system files" — deletes the panel's benign list with
+  four backend guards per file (is_os_noise basename reused, relative/no-`..`, lstat
+  regular-file — the guard that stops a `.DS_Store` symlink from deleting its TARGET —
+  canonicalize+prefix inside docroot); skip-not-abort with reasons; auto re-verify
+  refreshes the panel in the same round-trip
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
@@ -125,8 +130,6 @@ Each line = one feature, live-verified before its commit.
 - **Options editor** (arbitrary `wp option update`) — foot-gun UI (M).
 - **Core version pick / downgrade** — needs a version-list source + `--force`
   semantics (M).
-- **Checksum "clean up macOS system files" action** — safe scoped delete proposed
-  (basename-matched noise only, under the docroot), not confirmed (S).
 
 ## Known baselines (not bugs)
 
