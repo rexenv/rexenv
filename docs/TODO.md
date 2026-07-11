@@ -123,7 +123,7 @@ Each line = one feature, live-verified before its commit.
   home/active_plugins/serialized options unreachable by construction, `OPTION_FIELDS`
   enum in core enforces name + per-kind value on every write); non-scalar values
   refused at read AND write; typed inputs (timezone/role pickers fed live), confirm
-  old → new, form re-reads from the site after save
+  old → new, form re-reads from the site after save `fe80fb4`
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
