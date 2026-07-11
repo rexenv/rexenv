@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
+import type { AppInfo, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, ServiceInfo, Site, SiteServing } from "@/types";
 
 export const mockAppInfo: AppInfo = {
   name: "rexenv",
@@ -74,6 +74,16 @@ export const mockPhpVersions: PhpVersion[] = [
   { minor: "8.1", patch: "8.1.34", fpmPort: 9781, installed: false, isDefault: false },
   { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: true, isDefault: false },
   { minor: "8.3", patch: "8.3.31", fpmPort: 9783, installed: true, isDefault: true },
+];
+
+/** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */
+export const mockPhpSettings: PhpSetting[] = [
+  { key: "memory_limit", value: null, default: "128M" },
+  { key: "upload_max_filesize", value: null, default: "2M" },
+  { key: "post_max_size", value: null, default: "8M" },
+  { key: "max_execution_time", value: null, default: "30" },
+  { key: "max_input_time", value: null, default: "-1" },
+  { key: "max_input_vars", value: null, default: "1000" },
 ];
 
 export const mockDatabases: DbStatus[] = [

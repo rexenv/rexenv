@@ -20,11 +20,15 @@ pub const PHP_FPM_PORT: u16 = 9783;
 /// be added later, each on its own port. When `sendmail_path` is `Some`, the pool
 /// pins `php_admin_value[sendmail_path]` so every site's PHP `mail()` is routed
 /// through that shim (Mailpit, §2.2) — sites can't override it (`_admin_`).
+/// `settings` are the user's whitelisted, pre-validated per-version ini values
+/// (`core::php::SETTINGS`), written as overridable `php_value[key]` lines so
+/// WordPress can still `ini_set()` at runtime.
 pub fn generate_fpm_config(
     port: u16,
     pid_file: &Path,
     log_file: &Path,
     sendmail_path: Option<&str>,
+    settings: &[(String, String)],
 ) -> String {
     // Pool sizing guards the "every site hangs while the UI shows running" spiral:
     // ALL default sites share this one pool, so N wall-clock-stuck workers (heavy
@@ -40,6 +44,19 @@ pub fn generate_fpm_config(
     let sendmail = sendmail_path
         .map(|p| format!("php_admin_value[sendmail_path] = \"{p}\"\n"))
         .unwrap_or_default();
+    let values: String = settings
+        .iter()
+        .map(|(k, v)| format!("php_value[{k}] = {v}\n"))
+        .collect();
+    // The wall-clock recycle must never undercut the user's max_execution_time,
+    // or a legitimately long request (big import) dies at 300s and the setting
+    // silently lies. Floor stays 300s: a max_execution_time of 0 (unlimited CPU
+    // time) still gets the 300s wall-clock guard — surfaced as a cap in the UI.
+    let terminate = settings
+        .iter()
+        .find(|(k, _)| k == "max_execution_time")
+        .and_then(|(_, v)| v.parse::<u64>().ok())
+        .map_or(300, |secs| secs.max(300));
     format!(
         "[global]\n\
          pid = {pid}\n\
@@ -54,9 +71,10 @@ pub fn generate_fpm_config(
          pm.min_spare_servers = 1\n\
          pm.max_spare_servers = 3\n\
          pm.max_requests = 500\n\
-         request_terminate_timeout = 300s\n\
+         request_terminate_timeout = {terminate}s\n\
          catch_workers_output = yes\n\
-         {sendmail}",
+         {sendmail}\
+         {values}",
         pid = pid_file.display(),
         log = log_file.display(),
     )
@@ -70,6 +88,33 @@ pub fn write_fpm_config(
     version: &str,
     port: u16,
     sendmail_path: Option<&str>,
+    settings: &[(String, String)],
+) -> Result<PathBuf> {
+    write_fpm_config_named(platform, version, port, sendmail_path, settings, "conf")
+}
+
+/// Like [`write_fpm_config`] but to a `.conf.candidate` file the running pool
+/// never reads — the `php-fpm -t` gate for a settings change validates THIS file
+/// first, so a value PHP rejects never reaches the real config or a restart.
+pub fn write_fpm_config_candidate(
+    platform: &dyn Platform,
+    version: &str,
+    port: u16,
+    settings: &[(String, String)],
+) -> Result<PathBuf> {
+    // No sendmail line: the shim path lives behind the services lock and the
+    // fixed-format line can't be invalidated by user settings — the gate is
+    // about the user's values.
+    write_fpm_config_named(platform, version, port, None, settings, "conf.candidate")
+}
+
+fn write_fpm_config_named(
+    platform: &dyn Platform,
+    version: &str,
+    port: u16,
+    sendmail_path: Option<&str>,
+    settings: &[(String, String)],
+    ext: &str,
 ) -> Result<PathBuf> {
     let config_dir = platform.paths().config_dir()?;
     let log_dir = platform.paths().log_dir()?;
@@ -78,10 +123,10 @@ pub fn write_fpm_config(
     std::fs::create_dir_all(&log_dir)?;
     std::fs::create_dir_all(&run_dir)?;
 
-    let conf = config_dir.join(format!("php-fpm-{version}.conf"));
+    let conf = config_dir.join(format!("php-fpm-{version}.{ext}"));
     let pid = run_dir.join(format!("php-fpm-{version}.pid"));
     let log = log_dir.join(format!("php-fpm-{version}.log"));
-    std::fs::write(&conf, generate_fpm_config(port, &pid, &log, sendmail_path))?;
+    std::fs::write(&conf, generate_fpm_config(port, &pid, &log, sendmail_path, settings))?;
     Ok(conf)
 }
 
@@ -157,6 +202,11 @@ pub struct NginxSite {
     pub docroot: PathBuf,
     pub php_fpm_port: u16,
     pub rewrite: RewriteMode,
+    /// Per-server `client_max_body_size` in BYTES, mirroring the site's PHP
+    /// version's max(upload_max_filesize, post_max_size) — set together so nginx
+    /// never 413s an upload PHP would accept (the "raised upload_max_filesize
+    /// but uploads still fail" lie). `None` ⇒ the http-level default applies.
+    pub body_limit: Option<u64>,
 }
 
 /// Full shared-nginx configuration.
@@ -233,11 +283,16 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
     // internal loopback port behind the Caddy edge, so an absolute redirect (e.g. the
     // `/wp-admin` → `/wp-admin/` directory redirect) would otherwise leak
     // `http://<host>:18088/…` to the browser and break the request.
+    let body_limit = site
+        .body_limit
+        .map(|b| format!("\t\tclient_max_body_size {b};\n"))
+        .unwrap_or_default();
     format!(
         "\n\tserver {{\n\
          \t\tlisten 127.0.0.1:{port};\n\
          \t\tserver_name {server_name};\n\
          \t\tabsolute_redirect off;\n\
+         {body_limit}\
          \t\troot \"{root}\";\n\
          \t\tindex index.php index.html;\n\
          {rewrite}\
@@ -422,6 +477,7 @@ mod tests {
             Path::new("/run/php-fpm-8.3.pid"),
             Path::new("/logs/php-fpm-8.3.log"),
             None,
+            &[],
         );
         assert!(cfg.contains("[global]"));
         assert!(cfg.contains("daemonize = no"));
@@ -450,12 +506,52 @@ mod tests {
             Path::new("/run/php-fpm-8.3.pid"),
             Path::new("/logs/php-fpm-8.3.log"),
             Some(shim),
+            &[],
         );
         // Routed via php_admin_value (sites can't override it), double-quoted so
         // the ini parser preserves the inner single-quoted binary path.
         assert!(cfg.contains(&format!("php_admin_value[sendmail_path] = \"{shim}\"")));
         // Sits inside the [www] pool, after the pm.* directives.
         assert!(cfg.find("[www]").unwrap() < cfg.find("sendmail_path").unwrap());
+    }
+
+    #[test]
+    fn fpm_config_writes_php_values_and_tracks_terminate_timeout() {
+        let settings = vec![
+            ("memory_limit".to_string(), "512M".to_string()),
+            ("upload_max_filesize".to_string(), "64M".to_string()),
+            ("max_execution_time".to_string(), "600".to_string()),
+        ];
+        let cfg = generate_fpm_config(
+            9783,
+            Path::new("/run/php-fpm-8.3.pid"),
+            Path::new("/logs/php-fpm-8.3.log"),
+            None,
+            &settings,
+        );
+        assert!(cfg.contains("php_value[memory_limit] = 512M"));
+        assert!(cfg.contains("php_value[upload_max_filesize] = 64M"));
+        assert!(cfg.contains("php_value[max_execution_time] = 600"));
+        // The wall-clock recycle rises to the user's max_execution_time so a
+        // long request isn't killed at 300s (the setting must not lie).
+        assert!(cfg.contains("request_terminate_timeout = 600s"), "got: {cfg}");
+    }
+
+    #[test]
+    fn fpm_terminate_timeout_keeps_300s_floor() {
+        // Below the floor, or 0 (unlimited CPU time): the 300s wall-clock stuck-
+        // worker guard stays — surfaced as a documented cap in the UI.
+        for val in ["30", "0"] {
+            let settings = vec![("max_execution_time".to_string(), val.to_string())];
+            let cfg = generate_fpm_config(
+                9783,
+                Path::new("/p.pid"),
+                Path::new("/l.log"),
+                None,
+                &settings,
+            );
+            assert!(cfg.contains("request_terminate_timeout = 300s"), "val {val}: {cfg}");
+        }
     }
 
     #[test]
@@ -476,8 +572,22 @@ mod tests {
                 docroot: PathBuf::from("/Sites/acme/public"),
                 php_fpm_port: 9783,
                 rewrite: mode,
+                body_limit: None,
             }],
         }
+    }
+
+    #[test]
+    fn nginx_body_limit_is_per_server_and_optional() {
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.sites[0].body_limit = Some(64 * 1024 * 1024);
+        let out = generate_nginx_config(&cfg);
+        // Inside the server block, mirroring the site's PHP upload/post sizes…
+        assert!(out.contains("client_max_body_size 67108864;"), "got: {out}");
+        // …while the http-level default stays for sites without settings.
+        assert!(out.contains("client_max_body_size 128m;"));
+        let none = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
+        assert_eq!(none.matches("client_max_body_size").count(), 1);
     }
 
     #[test]
@@ -528,6 +638,7 @@ mod tests {
             docroot: PathBuf::from("/Sites/two"),
             php_fpm_port: 9783,
             rewrite: RewriteMode::Single,
+            body_limit: None,
         });
         let out = generate_nginx_config(&cfg);
         assert!(out.contains("server_name acme.test;"));

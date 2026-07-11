@@ -15,7 +15,7 @@ async fn main() {
     let fpm = binaries::resolve(&*plat, "php-fpm", binaries::PHP_VERSION)
         .await
         .expect("resolve php-fpm");
-    let conf = services::write_fpm_config(&*plat, "8.3", port, None).expect("write fpm config");
+    let conf = services::write_fpm_config(&*plat, "8.3", port, None, &[]).expect("write fpm config");
     println!("FPM_CONFIG={}", conf.display());
 
     services::test_fpm_config(&*plat, &fpm, &conf).expect("php-fpm -t");

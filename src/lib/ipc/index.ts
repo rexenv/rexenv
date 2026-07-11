@@ -6,13 +6,14 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
   mockGlobalStatus,
   mockMailDetail,
   mockMailList,
+  mockPhpSettings,
   mockPhpVersions,
   mockServices,
   mockSites,
@@ -159,6 +160,24 @@ export async function setPhpVersionInstalled(minor: string, installed: boolean):
 export async function setDefaultPhpVersion(minor: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("set_default_php_version", { minor });
+}
+
+/** The whitelisted ini settings for one PHP minor: every editable key with its
+ *  stored value (null = unset, the shown default applies). Mock fallback outside Tauri. */
+export async function getPhpSettings(minor: string): Promise<PhpSetting[]> {
+  if (!isTauri()) return mockPhpSettings;
+  return invoke<PhpSetting[]>("get_php_settings", { minor });
+}
+
+/** Replace one PHP minor's ini settings (omitted keys revert to PHP defaults):
+ *  backend validates, `php-fpm -t`-gates, persists, restarts that pool, and
+ *  reloads nginx so `client_max_body_size` tracks the upload/post sizes. */
+export async function applyPhpSettings(
+  minor: string,
+  settings: { key: string; value: string }[],
+): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("apply_php_settings", { minor, settings });
 }
 
 /** Open a path or URL in the OS default handler (Finder / browser). Falls back

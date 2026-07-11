@@ -239,6 +239,8 @@ pub fn run() {
             commands::php::list_php_versions,
             commands::php::set_php_version_installed,
             commands::php::set_default_php_version,
+            commands::php::get_php_settings,
+            commands::php::apply_php_settings,
             commands::wordpress::wp_info,
             commands::wordpress::wp_plugins,
             commands::wordpress::wp_plugin_install,

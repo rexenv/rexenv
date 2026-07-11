@@ -103,6 +103,14 @@ export interface PhpVersion {
   isDefault: boolean;
 }
 
+/** One editable per-version PHP ini setting (mirrors the Rust PhpSettingView).
+ *  `value` null = unset — PHP's compiled `default` applies (no php.ini is loaded). */
+export interface PhpSetting {
+  key: string;
+  value: string | null;
+  default: string;
+}
+
 export interface AppInfo {
   name: string;
   version: string;

@@ -18,25 +18,29 @@ pub struct ServiceStatus {
     pub ram_mb: u64,
 }
 
-/// Snapshot the site list + installed PHP minors (locking the DB briefly, never
-/// across `.await`).
+/// Per-minor PHP ini settings, as loaded from the `php_settings` table.
+type PhpSettingsMap = std::collections::HashMap<String, Vec<(String, String)>>;
+
+/// Snapshot the site list + installed PHP minors + per-version ini settings
+/// (locking the DB briefly, never across `.await`).
 fn start_inputs(
     state: &State<'_, AppState>,
-) -> Result<(Vec<crate::state::models::Site>, Vec<String>)> {
+) -> Result<(Vec<crate::state::models::Site>, Vec<String>, PhpSettingsMap)> {
     let conn = state
         .db
         .lock()
         .map_err(|_| Error::Other("database lock poisoned".into()))?;
     let sites = core::sites::list(&conn)?;
     let minors = core::php::installed_minors(&conn)?;
-    Ok((sites, minors))
+    let php_settings = crate::state::store::all_php_settings(&conn)?;
+    Ok((sites, minors, php_settings))
 }
 
 /// Start the shared stack (MySQL + a php-fpm pool per installed PHP version +
 /// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
-    let (sites, php_minors) = start_inputs(&state)?;
+    let (sites, php_minors, php_settings) = start_inputs(&state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
     // one through the download hub — real progress events for the UI, EVERY
     // failure surfaced (not just the first), and no download ever streams while
@@ -48,6 +52,8 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     // probes + Caddyfile. Spawning is fast — no waiting happens under the lock.
     let (caddyfile, checks) = {
         let mut mgr = state.services.lock().await;
+        // Per-version ini settings feed the pool configs written by start_core.
+        mgr.set_php_settings(php_settings);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors)
             .await?
     };

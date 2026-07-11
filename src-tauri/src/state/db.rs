@@ -60,6 +60,16 @@ const MIGRATIONS: &[&str] = &[
        '{\"siteType\":\"wordpress\",\"phpVersion\":\"8.3\",\"webServer\":\"nginx\",\"multisite\":\"none\",\"plugins\":[{\"slug\":\"woocommerce\",\"activate\":true}],\"themes\":[],\"wpDebug\":false,\"language\":\"\"}'),
       ('seed-multisite', 'WordPress Multisite (subdirectory)',
        '{\"siteType\":\"wordpress\",\"phpVersion\":\"8.3\",\"webServer\":\"nginx\",\"multisite\":\"subdirectory\",\"plugins\":[],\"themes\":[],\"wpDebug\":true,\"language\":\"\"}');",
+    // v5 — per-version PHP ini settings (memory_limit etc.), written as
+    // `php_value[key]` lines into that minor's php-fpm pool config. One row per
+    // (minor, key); absence = PHP's compiled default (our static builds load no
+    // php.ini). Keys are whitelisted in `core::php::SETTINGS` — never free-form.
+    "CREATE TABLE php_settings (
+        minor  TEXT NOT NULL,
+        key    TEXT NOT NULL,
+        value  TEXT NOT NULL,
+        PRIMARY KEY (minor, key)
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

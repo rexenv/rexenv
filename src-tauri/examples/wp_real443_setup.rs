@@ -61,7 +61,7 @@ async fn main() {
     }).unwrap();
 
     // PHP-FPM (nginx proxies .php here).
-    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None).unwrap();
+    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
     let _fpm = services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap();
 
     // Configs for real :80/:443 (Caddy) + nginx on its internal port.

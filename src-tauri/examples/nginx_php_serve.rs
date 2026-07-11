@@ -38,7 +38,7 @@ async fn main() {
     fs::write(docroot.join("hi.txt"), "rexenv-static-ok\n").unwrap();
 
     // PHP-FPM pool.
-    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None).unwrap();
+    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
     let mut fpm = services::start_fpm(&*plat, &fpm_bin, &fpm_conf).expect("start php-fpm");
 
     // Shared nginx.
@@ -47,6 +47,7 @@ async fn main() {
         docroot: docroot.clone(),
         php_fpm_port: services::PHP_FPM_PORT,
         rewrite: services::RewriteMode::Single,
+        body_limit: None,
     };
     let (conf, prefix) =
         services::write_nginx_config(&*plat, services::NGINX_HTTP_PORT, vec![site]).unwrap();

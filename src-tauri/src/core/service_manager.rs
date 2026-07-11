@@ -116,6 +116,11 @@ pub struct ServiceManager {
     /// status row name). Reset when the service is seen healthy again and on
     /// manual start/stop, so a crash loop can't restart-storm forever.
     restart_attempts: HashMap<String, u32>,
+    /// Per-minor PHP ini settings (whitelisted keys, pre-validated values) from
+    /// the SQLite `php_settings` table — loaded by the start command, updated by
+    /// the settings command. Source for both the pool configs (`php_value` lines)
+    /// and the per-site nginx `client_max_body_size`.
+    php_settings: HashMap<String, Vec<(String, String)>>,
 }
 
 impl ServiceManager {
@@ -132,7 +137,16 @@ impl ServiceManager {
             mailpit: None,
             mailpit_bin: None,
             restart_attempts: HashMap::new(),
+            php_settings: HashMap::new(),
         }
+    }
+
+    /// Load the per-minor PHP ini settings (from SQLite) into the manager + the
+    /// pool writer. Like the site list, the map is handed in so this stays
+    /// DB-agnostic. Applies to pools (re)started afterward.
+    pub fn set_php_settings(&mut self, settings: HashMap<String, Vec<(String, String)>>) {
+        self.php_settings = settings;
+        self.pools.set_settings(self.php_settings.clone());
     }
 
     /// The resolved binary set — a clean error (not a panic) if a caller runs a
@@ -295,6 +309,7 @@ impl ServiceManager {
             self.ports.nginx,
             self.ports.http,
             self.ports.https,
+            &php::nginx_body_limits(&self.php_settings),
         )?;
 
         // Shared Nginx.
@@ -530,10 +545,60 @@ impl ServiceManager {
             self.ports.nginx,
             self.ports.http,
             self.ports.https,
+            &php::nginx_body_limits(&self.php_settings),
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile, force)?;
         Ok(checks)
+    }
+
+    /// Apply a changed per-version PHP settings map: swap in the new map, restart
+    /// the affected minor's pool (new config written by `ensure`), and reload the
+    /// shared nginx so per-site `client_max_body_size` tracks the new upload/post
+    /// sizes. The caller has already VALIDATED the values and `php-fpm -t`-gated a
+    /// candidate config, so this can't brick the pool. No-op beyond storing the
+    /// map when the stack is stopped (the next start uses it). Returns the
+    /// restarted pool's readiness probe to [`await_ready`] after the lock drops.
+    pub async fn apply_php_settings(
+        &mut self,
+        platform: &dyn Platform,
+        ca: &ssl::LocalCa,
+        sites: &[Site],
+        settings: HashMap<String, Vec<(String, String)>>,
+        minor: &str,
+    ) -> Result<Option<ReadyCheck>> {
+        self.set_php_settings(settings);
+        if !self.is_running() {
+            return Ok(None);
+        }
+        // Restart only a pool that was actually running; never start a new pool
+        // as a side effect of a settings edit.
+        let mut check = None;
+        if self.pools.stop_one(platform, minor) {
+            self.pools.ensure(platform, minor).await?;
+            let port = php::fpm_port(minor)
+                .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
+            check = Some(ReadyCheck {
+                service: format!("PHP-FPM {minor}"),
+                log: platform.paths().log_dir()?.join(format!("php-fpm-{minor}.log")),
+                tries: 20,
+                probe: Box::new(move || services::fpm_running(port)),
+            });
+        }
+        // Nginx: regenerate with the new body limits + reload. Caddy routes are
+        // untouched by ini settings — no edge reload needed.
+        let bins = self.bins()?;
+        let cfg = sites::rebuild_configs_for(
+            sites,
+            platform,
+            ca,
+            self.ports.nginx,
+            self.ports.http,
+            self.ports.https,
+            &php::nginx_body_limits(&self.php_settings),
+        )?;
+        services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
+        Ok(check)
     }
 
     /// Stop the whole stack.
@@ -958,6 +1023,7 @@ impl ServiceManager {
                             self.ports.nginx,
                             self.ports.http,
                             self.ports.https,
+                            &php::nginx_body_limits(&self.php_settings),
                         )?;
                         ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
                         self.nginx = Some(

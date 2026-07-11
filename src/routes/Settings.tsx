@@ -8,10 +8,12 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
+  applyPhpSettings,
   autostartStatus,
   deleteBlueprint,
   dnsStatus,
   getAppInfo,
+  getPhpSettings,
   getSetting,
   listBlueprints,
   listPhpVersions,
@@ -28,7 +30,7 @@ import {
   uninstallSystem,
 } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
-import type { Blueprint, MultisiteMode, PhpVersion } from "@/types";
+import type { Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
 
@@ -198,50 +200,128 @@ function GeneralPrefsCard() {
 function PhpVersionRow({
   v,
   busy,
+  expanded,
   onToggle,
   onMakeDefault,
+  onExpand,
 }: {
   v: PhpVersion;
   busy: boolean;
+  expanded: boolean;
   onToggle: (installed: boolean) => void;
   onMakeDefault: () => void;
+  onExpand: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-rex-border-subtle py-2.5 last:border-b-0">
-      <div className="min-w-0 flex-1">
-        <span className="font-mono text-[13px] text-rex-text">PHP {v.minor}</span>
-        <span className="ml-2 font-mono text-[11px] text-rex-text-dim">{v.patch}</span>
-        {v.isDefault && (
-          <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">
-            Default
-          </span>
+    <div className="border-b border-rex-border-subtle last:border-b-0">
+      <div className="flex items-center gap-3 py-2.5">
+        <div className="min-w-0 flex-1">
+          <span className="font-mono text-[13px] text-rex-text">PHP {v.minor}</span>
+          <span className="ml-2 font-mono text-[11px] text-rex-text-dim">{v.patch}</span>
+          {v.isDefault && (
+            <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">
+              Default
+            </span>
+          )}
+        </div>
+        {v.installed ? (
+          <>
+            {/* New sites use the default version; let the user move it (§4.4). */}
+            {!v.isDefault && (
+              <Button variant="ghost" disabled={busy} onClick={onMakeDefault}>
+                {busy ? "…" : "Make default"}
+              </Button>
+            )}
+            <span className="text-[11.5px] text-status-running">Installed</span>
+            <Button variant="ghost" onClick={onExpand}>
+              <ChevronRight
+                className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")}
+              />
+              Settings
+            </Button>
+            {!v.isDefault && (
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={() => onToggle(false)}
+                className="hover:text-status-error"
+              >
+                {busy ? "…" : "Remove"}
+              </Button>
+            )}
+          </>
+        ) : (
+          <Button variant="primary" disabled={busy} onClick={() => onToggle(true)}>
+            {busy ? "…" : "Install"}
+          </Button>
         )}
       </div>
-      {v.installed ? (
-        <>
-          {/* New sites use the default version; let the user move it (§4.4). */}
-          {!v.isDefault && (
-            <Button variant="ghost" disabled={busy} onClick={onMakeDefault}>
-              {busy ? "…" : "Make default"}
-            </Button>
-          )}
-          <span className="text-[11.5px] text-status-running">Installed</span>
-          {!v.isDefault && (
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => onToggle(false)}
-              className="hover:text-status-error"
-            >
-              {busy ? "…" : "Remove"}
-            </Button>
-          )}
-        </>
-      ) : (
-        <Button variant="primary" disabled={busy} onClick={() => onToggle(true)}>
-          {busy ? "…" : "Install"}
+      {expanded && <PhpIniSettingsEditor minor={v.minor} />}
+    </div>
+  );
+}
+
+/** Per-version ini overrides for the shared php-fpm pool (memory_limit etc.).
+ *  Empty field = PHP's compiled default (shown as placeholder — no php.ini is
+ *  loaded). Save validates on the backend, gates the rewritten pool config on
+ *  `php-fpm -t`, restarts the pool, and reloads nginx so its upload body limit
+ *  tracks upload_max_filesize/post_max_size. */
+function PhpIniSettingsEditor({ minor }: { minor: string }) {
+  const qc = useQueryClient();
+  const { data: settings = [], isLoading } = useQuery({
+    queryKey: ["php-settings", minor],
+    queryFn: () => getPhpSettings(minor),
+  });
+  // Draft edits keyed by ini key; a key absent from the draft shows the stored value.
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const current = (s: PhpSetting) => draft[s.key] ?? s.value ?? "";
+  const dirty = settings.some((s) => current(s) !== (s.value ?? ""));
+  const apply = useMutation({
+    mutationFn: () =>
+      applyPhpSettings(
+        minor,
+        settings
+          .map((s) => ({ key: s.key, value: current(s).trim() }))
+          .filter((s) => s.value !== ""),
+      ),
+    onSuccess: () => {
+      toast.success(`PHP ${minor} settings applied — pool restarted`);
+      setDraft({});
+      qc.invalidateQueries({ queryKey: ["php-settings", minor] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  if (isLoading) {
+    return <div className="pb-3 text-[12px] text-rex-text-muted">Loading…</div>;
+  }
+  return (
+    <div className="mb-2.5 rounded-[9px] border border-rex-border-subtle bg-rex-well/50 p-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
+        {settings.map((s) => (
+          <div key={s.key}>
+            <label className="mb-1 block font-mono text-[11px] text-rex-text-muted">
+              {s.key}
+            </label>
+            <input {...TECH_INPUT}
+              value={current(s)}
+              placeholder={s.default}
+              onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
+              className="h-[30px] w-full rounded-[7px] border border-rex-border-strong bg-rex-well px-[9px] font-mono text-[12px] text-rex-text outline-none transition-colors placeholder:text-rex-text-dim focus:border-brand"
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <Button variant="primary" disabled={!dirty || apply.isPending} onClick={() => apply.mutate()}>
+          {apply.isPending ? "Applying…" : "Save & restart pool"}
         </Button>
-      )}
+        <div className="text-[11px] leading-snug text-rex-text-dim">
+          Empty = PHP default (placeholder). Applies to every nginx-served site on PHP {minor};
+          FrankenPHP sites use their own embedded PHP. Requests are still recycled after 5&nbsp;min
+          wall-clock unless max_execution_time is set higher (0 keeps the 5-min cap).
+        </div>
+      </div>
     </div>
   );
 }
@@ -266,6 +346,7 @@ function PhpVersionsSetting() {
   const busyFor = (minor: string) =>
     (toggle.isPending && toggle.variables?.minor === minor) ||
     (makeDefault.isPending && makeDefault.variables === minor);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   if (isLoading) {
     return <div className="text-[12.5px] text-rex-text-muted">Loading…</div>;
@@ -277,8 +358,10 @@ function PhpVersionsSetting() {
           key={v.minor}
           v={v}
           busy={busyFor(v.minor)}
+          expanded={expanded === v.minor}
           onToggle={(installed) => toggle.mutate({ minor: v.minor, installed })}
           onMakeDefault={() => makeDefault.mutate(v.minor)}
+          onExpand={() => setExpanded((e) => (e === v.minor ? null : v.minor))}
         />
       ))}
       <div className="mt-2.5 text-[11px] text-rex-text-dim">

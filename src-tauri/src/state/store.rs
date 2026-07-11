@@ -240,6 +240,55 @@ pub fn set_default_php_version(conn: &Connection, minor: &str) -> Result<bool> {
     Ok(true)
 }
 
+// ── Per-version PHP ini settings ────────────────────────────────────────────────
+
+/// The stored ini settings for one PHP minor, ordered by key. Absent keys mean
+/// PHP's compiled default (our static builds load no php.ini).
+pub fn get_php_settings(conn: &Connection, minor: &str) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT key, value FROM php_settings WHERE minor = ?1 ORDER BY key",
+    )?;
+    let rows = stmt.query_map([minor], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// All stored ini settings, grouped by minor — loaded once at start so the
+/// service manager can write pool configs + nginx body limits without the DB.
+pub fn all_php_settings(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, Vec<(String, String)>>> {
+    let mut stmt =
+        conn.prepare("SELECT minor, key, value FROM php_settings ORDER BY minor, key")?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+    })?;
+    let mut out: std::collections::HashMap<String, Vec<(String, String)>> = Default::default();
+    for row in rows {
+        let (minor, key, value) = row?;
+        out.entry(minor).or_default().push((key, value));
+    }
+    Ok(out)
+}
+
+/// Replace ALL stored ini settings for `minor` with `pairs` (a key absent from
+/// `pairs` reverts to PHP's default). Atomic: delete + insert in one transaction.
+pub fn replace_php_settings(
+    conn: &Connection,
+    minor: &str,
+    pairs: &[(String, String)],
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM php_settings WHERE minor = ?1", [minor])?;
+    for (key, value) in pairs {
+        tx.execute(
+            "INSERT INTO php_settings (minor, key, value) VALUES (?1, ?2, ?3)",
+            params![minor, key, value],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 // ── Site blueprints (Phase 3 §11.3) ────────────────────────────────────────────
 
 fn row_to_blueprint(row: &Row) -> Result<Blueprint> {

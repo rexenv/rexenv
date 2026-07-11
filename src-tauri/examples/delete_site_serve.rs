@@ -53,7 +53,7 @@ async fn main() {
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
 
-    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None).unwrap();
+    let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
     let mut fpm = services::start_fpm(&*plat, &fpm_bin, &fpm_conf).unwrap();
     let mut nginx = services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     let mut caddy = proxy::start(&*plat, &caddy_bin, &cfg.caddyfile).unwrap();

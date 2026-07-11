@@ -155,6 +155,180 @@ pub fn installed_minors(conn: &Connection) -> Result<Vec<String>> {
     Ok(minors)
 }
 
+// ── Per-version PHP ini settings ────────────────────────────────────────────
+//
+// Curated, default-deny whitelist (mirroring the site-options editor): only
+// these keys are ever written into a pool config, so a stored value can never
+// smuggle an arbitrary directive. Values are syntax-validated BEFORE persisting
+// and the rewritten config is gated on `php-fpm -t` before the pool restarts,
+// so a bad value can never brick a pool. Written as `php_value[key]` (not
+// `php_admin_value`) so WordPress can still `ini_set()` at runtime.
+
+/// How a whitelisted ini value is validated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingKind {
+    /// PHP size shorthand: digits + optional K/M/G suffix (e.g. `512M`).
+    Size,
+    /// Like `Size` but also accepts `-1` (unlimited) — memory_limit only.
+    SizeOrUnlimited,
+    /// Plain integer within `[min, max]`.
+    Int { min: i64, max: i64 },
+}
+
+/// One whitelisted setting: key, validation kind, and PHP's compiled default
+/// (what actually applies when unset — our static builds load NO php.ini).
+pub struct SettingSpec {
+    pub key: &'static str,
+    pub kind: SettingKind,
+    pub default: &'static str,
+}
+
+/// The editable per-version ini settings. `max_execution_time` default is the
+/// server-SAPI 30 (CLI's 0 doesn't apply to pools); `max_input_time` -1 means
+/// "use max_execution_time".
+pub const SETTINGS: &[SettingSpec] = &[
+    SettingSpec { key: "memory_limit", kind: SettingKind::SizeOrUnlimited, default: "128M" },
+    SettingSpec { key: "upload_max_filesize", kind: SettingKind::Size, default: "2M" },
+    SettingSpec { key: "post_max_size", kind: SettingKind::Size, default: "8M" },
+    SettingSpec {
+        key: "max_execution_time",
+        kind: SettingKind::Int { min: 0, max: 86_400 },
+        default: "30",
+    },
+    SettingSpec {
+        key: "max_input_time",
+        kind: SettingKind::Int { min: -1, max: 86_400 },
+        default: "-1",
+    },
+    SettingSpec {
+        key: "max_input_vars",
+        kind: SettingKind::Int { min: 1, max: 1_000_000 },
+        default: "1000",
+    },
+];
+
+fn setting_spec(key: &str) -> Option<&'static SettingSpec> {
+    SETTINGS.iter().find(|s| s.key == key)
+}
+
+/// Parse a PHP size-shorthand string (`64M`, `1G`, `524288`) to bytes, or `None`
+/// if malformed. Suffix is case-insensitive; only K/M/G exist in PHP.
+pub fn parse_php_size(v: &str) -> Option<u64> {
+    let v = v.trim();
+    let (digits, mult) = match v.chars().last()? {
+        'k' | 'K' => (&v[..v.len() - 1], 1u64 << 10),
+        'm' | 'M' => (&v[..v.len() - 1], 1u64 << 20),
+        'g' | 'G' => (&v[..v.len() - 1], 1u64 << 30),
+        _ => (v, 1),
+    };
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse::<u64>().ok()?.checked_mul(mult)
+}
+
+fn validate_one(spec: &SettingSpec, value: &str) -> Result<()> {
+    let ok = match spec.kind {
+        SettingKind::Size => parse_php_size(value).is_some(),
+        SettingKind::SizeOrUnlimited => value.trim() == "-1" || parse_php_size(value).is_some(),
+        SettingKind::Int { min, max } => value
+            .trim()
+            .parse::<i64>()
+            .is_ok_and(|n| n >= min && n <= max),
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(Error::Other(match spec.kind {
+            SettingKind::Int { min, max } => {
+                format!("{}: '{value}' is not an integer in {min}..={max}", spec.key)
+            }
+            _ => format!(
+                "{}: '{value}' is not a PHP size (digits + optional K/M/G, e.g. 512M)",
+                spec.key
+            ),
+        }))
+    }
+}
+
+/// Validate a settings set for one minor: every key must be whitelisted, every
+/// value must parse for its kind, keys must be unique, and the cross-field
+/// gotcha is enforced — `upload_max_filesize` must not exceed the EFFECTIVE
+/// `post_max_size` (stored or default 8M), else PHP silently caps uploads at
+/// `post_max_size` and the setting lies. Returns normalized (trimmed) pairs.
+pub fn validate_settings(pairs: &[(String, String)]) -> Result<Vec<(String, String)>> {
+    let mut out: Vec<(String, String)> = Vec::with_capacity(pairs.len());
+    for (key, value) in pairs {
+        let spec = setting_spec(key)
+            .ok_or_else(|| Error::Other(format!("unknown PHP setting: {key}")))?;
+        if out.iter().any(|(k, _)| k == key) {
+            return Err(Error::Other(format!("duplicate PHP setting: {key}")));
+        }
+        let value = value.trim().to_string();
+        validate_one(spec, &value)?;
+        out.push((key.clone(), value));
+    }
+    let effective = |key: &str| -> Option<u64> {
+        let v = out
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+            .unwrap_or(setting_spec(key).expect("whitelisted").default);
+        parse_php_size(v)
+    };
+    if let (Some(upload), Some(post)) = (effective("upload_max_filesize"), effective("post_max_size")) {
+        if upload > post {
+            return Err(Error::Other(format!(
+                "upload_max_filesize ({}) exceeds post_max_size ({}) — PHP caps uploads at \
+                 post_max_size, so raise post_max_size too",
+                display_size(upload),
+                display_size(post),
+            )));
+        }
+    }
+    Ok(out)
+}
+
+fn display_size(bytes: u64) -> String {
+    if bytes >= 1 << 20 && bytes % (1 << 20) == 0 {
+        format!("{}M", bytes >> 20)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
+/// The nginx `client_max_body_size` each minor needs so nginx never 413s a body
+/// PHP would accept: max(effective upload_max_filesize, effective post_max_size),
+/// in bytes, for every minor that stores either key. Minors with neither key set
+/// are absent — the config's global default applies.
+pub fn nginx_body_limits(
+    settings: &std::collections::HashMap<String, Vec<(String, String)>>,
+) -> std::collections::HashMap<String, u64> {
+    let mut out = std::collections::HashMap::new();
+    for (minor, pairs) in settings {
+        let stored = |key: &str| {
+            pairs
+                .iter()
+                .find(|(k, _)| k == key)
+                .and_then(|(_, v)| parse_php_size(v))
+        };
+        let upload = stored("upload_max_filesize");
+        let post = stored("post_max_size");
+        if upload.is_none() && post.is_none() {
+            continue;
+        }
+        let eff = |set: Option<u64>, key: &str| {
+            set.or_else(|| parse_php_size(setting_spec(key).expect("whitelisted").default))
+                .unwrap_or(0)
+        };
+        out.insert(
+            minor.clone(),
+            eff(upload, "upload_max_filesize").max(eff(post, "post_max_size")),
+        );
+    }
+    out
+}
+
 /// A running php-fpm pool's status (for the Services view / metrics).
 #[derive(Debug, Clone)]
 pub struct PoolStatus {
@@ -178,6 +352,10 @@ pub struct PhpFpmPools {
     /// `mail()` is routed to Mailpit (§2.2). Set by `ServiceManager` once Mailpit's
     /// binary is resolved; `None` ⇒ pools use PHP's default sendmail.
     sendmail_path: Option<String>,
+    /// Per-minor ini settings (whitelisted, pre-validated — see [`SETTINGS`])
+    /// written as `php_value[key]` lines into that pool's config. Set by
+    /// `ServiceManager` from the SQLite `php_settings` table.
+    settings: std::collections::HashMap<String, Vec<(String, String)>>,
 }
 
 impl PhpFpmPools {
@@ -185,6 +363,16 @@ impl PhpFpmPools {
     /// pools started afterward (a running pool keeps its config until restarted).
     pub fn set_sendmail_path(&mut self, sendmail_path: Option<String>) {
         self.sendmail_path = sendmail_path;
+    }
+
+    /// Set the per-minor ini settings used when (re)writing pool configs. Like
+    /// the sendmail shim, applies to pools started afterward — the caller
+    /// restarts an affected running pool to make new values live.
+    pub fn set_settings(
+        &mut self,
+        settings: std::collections::HashMap<String, Vec<(String, String)>>,
+    ) {
+        self.settings = settings;
     }
 
     /// Start a pool for `minor` if one isn't already running. Idempotent: resolves
@@ -200,7 +388,14 @@ impl PhpFpmPools {
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
         ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM")?;
         let bin = binaries::resolve(platform, "php-fpm", patch).await?;
-        let conf = services::write_fpm_config(platform, minor, port, self.sendmail_path.as_deref())?;
+        let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
+        let conf = services::write_fpm_config(
+            platform,
+            minor,
+            port,
+            self.sendmail_path.as_deref(),
+            settings,
+        )?;
         let child = services::start_fpm(platform, &bin, &conf)?;
         self.pools.push(Pool {
             minor: minor.to_string(),
@@ -263,6 +458,23 @@ impl PhpFpmPools {
             .collect()
     }
 
+    /// Stop ONE pool (for a settings-change restart), reaping the master and any
+    /// orphaned workers still on the pool port — same sweep as [`Self::reap_dead`],
+    /// so the follow-up `ensure`'s port gate passes. Returns whether a pool for
+    /// `minor` was actually running (false ⇒ nothing to restart).
+    pub fn stop_one(&mut self, platform: &dyn Platform, minor: &str) -> bool {
+        let Some(i) = self.pools.iter().position(|p| p.minor == minor) else {
+            return false;
+        };
+        let mut p = self.pools.remove(i);
+        let _ = services::stop(platform, p.child.id());
+        p.child.wait();
+        for pid in platform.supervisor().owned_listeners(p.port, "php-fpm") {
+            let _ = platform.supervisor().stop(pid);
+        }
+        true
+    }
+
     /// Stop and clear every pool.
     pub fn stop_all(&mut self, platform: &dyn Platform) {
         for mut p in std::mem::take(&mut self.pools) {
@@ -309,6 +521,86 @@ impl Drop for PhpFpmPools {
 mod tests {
     use super::*;
     use crate::state::db;
+
+    fn pairs(kv: &[(&str, &str)]) -> Vec<(String, String)> {
+        kv.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn parse_php_size_handles_shorthand_and_bytes() {
+        assert_eq!(parse_php_size("512M"), Some(512 << 20));
+        assert_eq!(parse_php_size("64m"), Some(64 << 20));
+        assert_eq!(parse_php_size("1G"), Some(1 << 30));
+        assert_eq!(parse_php_size("2048K"), Some(2048 << 10));
+        assert_eq!(parse_php_size("524288"), Some(524_288));
+        for bad in ["banana", "", "M", "12MB", "1.5G", "-1", "12 M"] {
+            assert_eq!(parse_php_size(bad), None, "{bad} should not parse");
+        }
+    }
+
+    #[test]
+    fn validate_settings_accepts_good_values() {
+        let out = validate_settings(&pairs(&[
+            ("memory_limit", "512M"),
+            ("upload_max_filesize", "64M"),
+            ("post_max_size", "64M"),
+            ("max_execution_time", "600"),
+            ("max_input_vars", "5000"),
+        ]))
+        .unwrap();
+        assert_eq!(out.len(), 5);
+        // memory_limit may be unlimited.
+        validate_settings(&pairs(&[("memory_limit", "-1")])).unwrap();
+    }
+
+    #[test]
+    fn validate_settings_rejects_bad_input_before_any_write() {
+        // The "banana" gate: a malformed value errors in validation, long before
+        // any config write or pool restart.
+        assert!(validate_settings(&pairs(&[("memory_limit", "banana")])).is_err());
+        assert!(validate_settings(&pairs(&[("max_execution_time", "-5")])).is_err());
+        assert!(validate_settings(&pairs(&[("upload_max_filesize", "-1")])).is_err());
+        // Default-deny whitelist: unknown keys never reach a pool config.
+        assert!(validate_settings(&pairs(&[("disable_functions", "exec")])).is_err());
+        assert!(validate_settings(&pairs(&[
+            ("memory_limit", "1M"),
+            ("memory_limit", "2M")
+        ]))
+        .is_err());
+    }
+
+    #[test]
+    fn validate_settings_catches_upload_exceeding_post_max_size() {
+        // upload > EFFECTIVE post (default 8M when unset) → PHP would silently cap
+        // uploads at post_max_size, so the pair must be rejected as a set.
+        assert!(validate_settings(&pairs(&[("upload_max_filesize", "64M")])).is_err());
+        assert!(validate_settings(&pairs(&[
+            ("upload_max_filesize", "64M"),
+            ("post_max_size", "32M")
+        ]))
+        .is_err());
+        // Equal or covered by post → fine.
+        validate_settings(&pairs(&[
+            ("upload_max_filesize", "64M"),
+            ("post_max_size", "64M"),
+        ]))
+        .unwrap();
+        validate_settings(&pairs(&[("upload_max_filesize", "8M")])).unwrap();
+    }
+
+    #[test]
+    fn nginx_body_limits_mirror_effective_upload_and_post() {
+        let mut map = std::collections::HashMap::new();
+        map.insert("8.3".to_string(), pairs(&[("upload_max_filesize", "64M"), ("post_max_size", "80M")]));
+        // Only post set: effective upload stays at its 2M default → limit = post.
+        map.insert("8.2".to_string(), pairs(&[("post_max_size", "16M")]));
+        // Neither body key set: no per-server limit (global default applies).
+        map.insert("8.1".to_string(), pairs(&[("memory_limit", "1G")]));
+        let limits = nginx_body_limits(&map);
+        assert_eq!(limits.get("8.3"), Some(&(80u64 << 20)));
+        assert_eq!(limits.get("8.2"), Some(&(16u64 << 20)));
+        assert_eq!(limits.get("8.1"), None);
+    }
 
     #[test]
     fn minor_of_strips_patch() {
