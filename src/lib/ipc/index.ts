@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EnvVar, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -116,6 +116,21 @@ export async function changeSiteDomain(id: string, domain: string): Promise<Doma
 export async function moveSiteDocroot(id: string, destParent: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site>("move_site_docroot", { id, destParent });
+}
+
+/** A site's per-request env vars, name-sorted. Empty outside Tauri. */
+export async function listSiteEnv(id: string): Promise<EnvVar[]> {
+  if (!isTauri()) return [];
+  return invoke<EnvVar[]>("list_site_env", { id });
+}
+
+/** Replace a site's env vars (replace-all). The backend validates names
+ *  (identifier shape, reserved FastCGI/PHP params, HTTP_ prefix) and values
+ *  (no $, {, }, control chars), then regenerates + reloads the server config.
+ *  No-op outside Tauri. */
+export async function setSiteEnv(id: string, vars: EnvVar[]): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_site_env", { id, vars });
 }
 
 /** Read-only info about a site's HTTPS leaf cert (validity, SANs, cert folder).

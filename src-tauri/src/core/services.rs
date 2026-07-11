@@ -207,6 +207,10 @@ pub struct NginxSite {
     /// never 413s an upload PHP would accept (the "raised upload_max_filesize
     /// but uploads still fail" lie). `None` ⇒ the http-level default applies.
     pub body_limit: Option<u64>,
+    /// Per-site user env vars (§1.6), VALIDATED by `site_env::validate` —
+    /// emitted as `fastcgi_param` lines so they ride the request (shared pools
+    /// untouched; getenv() + $_SERVER, not $_ENV).
+    pub env: Vec<(String, String)>,
 }
 
 /// Full shared-nginx configuration.
@@ -248,28 +252,54 @@ fn rewrite_block(mode: RewriteMode) -> String {
     }
 }
 
-/// FastCGI params passed to php-fpm (inlined so we don't depend on an external
-/// `fastcgi_params` file). `HTTPS=on` is set when Caddy forwards an https request.
-fn fcgi_params() -> &'static str {
-    "\t\t\tfastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n\
-     \t\t\tfastcgi_param QUERY_STRING $query_string;\n\
-     \t\t\tfastcgi_param REQUEST_METHOD $request_method;\n\
-     \t\t\tfastcgi_param CONTENT_TYPE $content_type;\n\
-     \t\t\tfastcgi_param CONTENT_LENGTH $content_length;\n\
-     \t\t\tfastcgi_param SCRIPT_NAME $fastcgi_script_name;\n\
-     \t\t\tfastcgi_param REQUEST_URI $request_uri;\n\
-     \t\t\tfastcgi_param DOCUMENT_URI $document_uri;\n\
-     \t\t\tfastcgi_param DOCUMENT_ROOT $document_root;\n\
-     \t\t\tfastcgi_param SERVER_PROTOCOL $server_protocol;\n\
-     \t\t\tfastcgi_param GATEWAY_INTERFACE CGI/1.1;\n\
-     \t\t\tfastcgi_param SERVER_SOFTWARE nginx;\n\
-     \t\t\tfastcgi_param REMOTE_ADDR $remote_addr;\n\
-     \t\t\tfastcgi_param REMOTE_PORT $remote_port;\n\
-     \t\t\tfastcgi_param SERVER_ADDR $server_addr;\n\
-     \t\t\tfastcgi_param SERVER_PORT $server_port;\n\
-     \t\t\tfastcgi_param SERVER_NAME $server_name;\n\
-     \t\t\tfastcgi_param REQUEST_SCHEME $scheme;\n\
-     \t\t\tfastcgi_param HTTPS $rexenv_https if_not_empty;\n"
+/// FastCGI params our nginx template passes to php-fpm (inlined so we don't
+/// depend on an external `fastcgi_params` file). A NAMED list so
+/// `core::site_env::RESERVED` is tested against it — every param emitted here
+/// must be rejected as a user env-var name (duplicate FastCGI params reach PHP
+/// undefined; overriding SCRIPT_FILENAME/DOCUMENT_ROOT = arbitrary file serving).
+pub const TEMPLATE_FCGI_PARAMS: &[(&str, &str)] = &[
+    ("SCRIPT_FILENAME", "$document_root$fastcgi_script_name"),
+    ("QUERY_STRING", "$query_string"),
+    ("REQUEST_METHOD", "$request_method"),
+    ("CONTENT_TYPE", "$content_type"),
+    ("CONTENT_LENGTH", "$content_length"),
+    ("SCRIPT_NAME", "$fastcgi_script_name"),
+    ("REQUEST_URI", "$request_uri"),
+    ("DOCUMENT_URI", "$document_uri"),
+    ("DOCUMENT_ROOT", "$document_root"),
+    ("SERVER_PROTOCOL", "$server_protocol"),
+    ("GATEWAY_INTERFACE", "CGI/1.1"),
+    ("SERVER_SOFTWARE", "nginx"),
+    ("REMOTE_ADDR", "$remote_addr"),
+    ("REMOTE_PORT", "$remote_port"),
+    ("SERVER_ADDR", "$server_addr"),
+    ("SERVER_PORT", "$server_port"),
+    ("SERVER_NAME", "$server_name"),
+    ("REQUEST_SCHEME", "$scheme"),
+    // HTTPS=on is set when Caddy forwards an https request.
+    ("HTTPS", "$rexenv_https if_not_empty"),
+];
+
+fn fcgi_params() -> String {
+    TEMPLATE_FCGI_PARAMS
+        .iter()
+        .map(|(name, value)| format!("\t\t\tfastcgi_param {name} {value};\n"))
+        .collect()
+}
+
+/// Per-site user env vars as `fastcgi_param` lines, AFTER the template params
+/// (deterministic; name collisions are impossible — reserved names rejected).
+/// Values emit double-quoted with `\`/`"` escaped; everything unescapable
+/// (`$`, `{`, `}`, control chars) was rejected at validation.
+fn env_params(env: &[(String, String)]) -> String {
+    env.iter()
+        .map(|(name, value)| {
+            format!(
+                "\t\t\tfastcgi_param {name} \"{}\";\n",
+                crate::core::site_env::escape_value(value)
+            )
+        })
+        .collect()
 }
 
 fn server_block(http_port: u16, site: &NginxSite) -> String {
@@ -300,6 +330,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t\t\tfastcgi_pass 127.0.0.1:{fpm};\n\
          \t\t\tfastcgi_index index.php;\n\
          {params}\
+         {env}\
          \t\t}}\n\
          \t}}\n",
         port = http_port,
@@ -308,6 +339,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
         fpm = site.php_fpm_port,
         rewrite = rewrite_block(site.rewrite),
         params = fcgi_params(),
+        env = env_params(&site.env),
     )
 }
 
@@ -573,6 +605,7 @@ mod tests {
                 php_fpm_port: 9783,
                 rewrite: mode,
                 body_limit: None,
+                env: Vec::new(),
             }],
         }
     }
@@ -608,6 +641,28 @@ mod tests {
     }
 
     #[test]
+    fn site_env_emits_escaped_fastcgi_params_inside_the_php_location() {
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.sites[0].env = vec![
+            ("API_URL".into(), "https://api.example.test/v2".into()),
+            ("MESSAGE".into(), "he said \"hi\" and C:\\path".into()),
+        ];
+        let out = generate_nginx_config(&cfg);
+        assert!(out.contains("fastcgi_param API_URL \"https://api.example.test/v2\";"), "got: {out}");
+        // Quotes/backslashes escaped → the value can't close the string.
+        assert!(
+            out.contains("fastcgi_param MESSAGE \"he said \\\"hi\\\" and C:\\\\path\";"),
+            "got: {out}"
+        );
+        // Emitted AFTER the template params (deterministic order).
+        let std_pos = out.find("fastcgi_param HTTPS").unwrap();
+        assert!(out.find("fastcgi_param API_URL").unwrap() > std_pos);
+        // No env → no extra params, config identical shape to before.
+        let none = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
+        assert!(!none.contains("API_URL"));
+    }
+
+    #[test]
     fn rewrite_slots_differ_by_mode() {
         // Single has no WP network rewrites; subdirectory multisite does.
         assert!(!generate_nginx_config(&nginx_cfg(RewriteMode::Single)).contains("rewrite /wp-admin$"));
@@ -639,6 +694,7 @@ mod tests {
             php_fpm_port: 9783,
             rewrite: RewriteMode::Single,
             body_limit: None,
+            env: Vec::new(),
         });
         let out = generate_nginx_config(&cfg);
         assert!(out.contains("server_name acme.test;"));

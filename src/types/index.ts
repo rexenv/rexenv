@@ -27,6 +27,13 @@ export interface Site {
 /** WordPress multisite mode (mirrors the Rust MultisiteMode). */
 export type MultisiteMode = "none" | "subdomain" | "subdirectory";
 
+/** One per-site environment variable (mirrors the Rust EnvVarInput). PHP sees
+ *  it via getenv(), $_SERVER and $_ENV on both nginx and FrankenPHP sites. */
+export interface EnvVar {
+  name: string;
+  value: string;
+}
+
 /** Result of a domain change (mirrors the Rust DomainChange): the updated site,
  *  where the pre-change DB backup landed (WordPress only), and how many
  *  search-replace substitutions ran. */

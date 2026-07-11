@@ -508,6 +508,7 @@ fn site_upstream(s: &Site, nginx_http_port: u16) -> String {
 fn nginx_site_for(
     s: &Site,
     body_limits: &std::collections::HashMap<String, u64>,
+    site_env: &std::collections::HashMap<String, Vec<(String, String)>>,
 ) -> services::NginxSite {
     services::NginxSite {
         domain: s.domain.clone(),
@@ -515,6 +516,7 @@ fn nginx_site_for(
         php_fpm_port: pool_port_for(&s.php_version),
         rewrite: rewrite_mode_for(s.multisite),
         body_limit: body_limits.get(&php::minor_of(&s.php_version)).copied(),
+        env: site_env.get(&s.id).cloned().unwrap_or_default(),
     }
 }
 
@@ -563,6 +565,7 @@ pub fn rebuild_configs(
 ) -> Result<RebuiltConfigs> {
     let sites = list(conn)?;
     let body_limits = php::nginx_body_limits(&store::all_php_settings(conn)?);
+    let site_env = store::all_site_env(conn)?;
     rebuild_configs_for(
         &sites,
         platform,
@@ -571,12 +574,15 @@ pub fn rebuild_configs(
         caddy_http_port,
         caddy_https_port,
         &body_limits,
+        &site_env,
     )
 }
 
 /// Like [`rebuild_configs`] but from an explicit site list + precomputed nginx
-/// body limits (so callers holding an async lock don't keep the DB connection
-/// borrowed across `.await`). `body_limits` comes from `php::nginx_body_limits`.
+/// body limits and per-site env vars (so callers holding an async lock don't
+/// keep the DB connection borrowed across `.await`). `body_limits` comes from
+/// `php::nginx_body_limits`; `site_env` from `store::all_site_env`, keyed by
+/// site id.
 pub fn rebuild_configs_for(
     sites: &[Site],
     platform: &dyn Platform,
@@ -585,13 +591,14 @@ pub fn rebuild_configs_for(
     caddy_http_port: u16,
     caddy_https_port: u16,
     body_limits: &std::collections::HashMap<String, u64>,
+    site_env: &std::collections::HashMap<String, Vec<(String, String)>>,
 ) -> Result<RebuiltConfigs> {
     // Only nginx-served sites get a server block; override servers (§2/§3) have
     // their own backend process.
     let mut nginx_sites: Vec<services::NginxSite> = sites
         .iter()
         .filter(|s| is_nginx_served(s))
-        .map(|s| nginx_site_for(s, body_limits))
+        .map(|s| nginx_site_for(s, body_limits, site_env))
         .collect();
     // Internal Adminer vhost (§5.2): served by the default php-fpm pool, rooted at
     // its isolated docroot. Not a Site → never a tunnel origin (§9).
@@ -601,6 +608,7 @@ pub fn rebuild_configs_for(
         php_fpm_port: services::PHP_FPM_PORT,
         rewrite: services::RewriteMode::Single,
         body_limit: None,
+        env: Vec::new(),
     });
     let (nginx_conf, nginx_prefix) =
         services::write_nginx_config(platform, nginx_http_port, nginx_sites)?;
@@ -1072,8 +1080,9 @@ mod tests {
         let b = create(&conn, b).unwrap();
 
         let no_limits = std::collections::HashMap::new();
-        let na = nginx_site_for(&a, &no_limits);
-        let nb = nginx_site_for(&b, &no_limits);
+        let no_env = std::collections::HashMap::new();
+        let na = nginx_site_for(&a, &no_limits, &no_env);
+        let nb = nginx_site_for(&b, &no_limits, &no_env);
         // Each site routes to its own version's pool port — not a hardcoded one.
         assert_eq!(na.php_fpm_port, php::fpm_port("8.1").unwrap()); // 9781
         assert_eq!(nb.php_fpm_port, php::fpm_port("8.3").unwrap()); // 9783
@@ -1083,13 +1092,13 @@ mod tests {
         let mut c = sample("C", "c.test");
         c.php_version = "8.2.31".into();
         let c = create(&conn, c).unwrap();
-        assert_eq!(nginx_site_for(&c, &no_limits).php_fpm_port, php::fpm_port("8.2").unwrap());
+        assert_eq!(nginx_site_for(&c, &no_limits, &no_env).php_fpm_port, php::fpm_port("8.2").unwrap());
 
         // An unknown version falls back to the default pool.
         let mut d = sample("D", "d.test");
         d.php_version = "7.4".into();
         let d = create(&conn, d).unwrap();
-        assert_eq!(nginx_site_for(&d, &no_limits).php_fpm_port, services::PHP_FPM_PORT);
+        assert_eq!(nginx_site_for(&d, &no_limits, &no_env).php_fpm_port, services::PHP_FPM_PORT);
     }
 
     #[test]
@@ -1100,17 +1109,18 @@ mod tests {
         let a = create(&conn, a).unwrap();
         let limits: std::collections::HashMap<String, u64> =
             [("8.3".to_string(), 64u64 << 20)].into();
+        let no_env = std::collections::HashMap::new();
         // The site's minor has a limit → per-server client_max_body_size in bytes.
-        assert_eq!(nginx_site_for(&a, &limits).body_limit, Some(64 << 20));
+        assert_eq!(nginx_site_for(&a, &limits, &no_env).body_limit, Some(64 << 20));
         // A patch-form version maps through its minor; an uncovered minor gets none.
         let mut b = sample("B", "b.test");
         b.php_version = "8.3.31".into();
         let b = create(&conn, b).unwrap();
-        assert_eq!(nginx_site_for(&b, &limits).body_limit, Some(64 << 20));
+        assert_eq!(nginx_site_for(&b, &limits, &no_env).body_limit, Some(64 << 20));
         let mut c = sample("C", "c.test");
         c.php_version = "8.1".into();
         let c = create(&conn, c).unwrap();
-        assert_eq!(nginx_site_for(&c, &limits).body_limit, None);
+        assert_eq!(nginx_site_for(&c, &limits, &no_env).body_limit, None);
     }
 
     #[test]

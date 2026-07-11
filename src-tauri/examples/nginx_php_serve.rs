@@ -48,6 +48,7 @@ async fn main() {
         php_fpm_port: services::PHP_FPM_PORT,
         rewrite: services::RewriteMode::Single,
         body_limit: None,
+        env: Vec::new(),
     };
     let (conf, prefix) =
         services::write_nginx_config(&*plat, services::NGINX_HTTP_PORT, vec![site]).unwrap();

@@ -75,6 +75,26 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   to both the Nginx `server_name` and the Caddy host list over the wildcard-SAN cert;
   exact hosts always win, so a wildcard never shadows other `.test` sites.
 - **Quote every path in generated Caddy/Nginx configs** — app-data paths contain spaces.
+- **Per-site env vars (§1.6) never touch the shared pools.** Two delivery paths:
+  Nginx sites get `fastcgi_param` lines in their server block (per-REQUEST);
+  FrankenPHP overrides get config `env` lines **plus real process env at spawn** —
+  per-site by construction, one backend process per site. Live-verified visibility:
+  `getenv()`, `$_SERVER` **and `$_ENV`** all work on both servers — but for two
+  different reasons, each with a footgun:
+  - php-fpm: `$_ENV` only works because our static PHP builds load NO php.ini, so
+    `variables_order` is the compiled default `EGPCS` (E on) and the FPM SAPI imports
+    the FastCGI request params into `$_ENV`. **Shipping a php.ini with the stock
+    `variables_order = "GPCS"` would silently break `$_ENV` here** — don't, or re-add E.
+  - FrankenPHP: its SAPI's `getenv()` reads ONLY the process environ (config `env`
+    lines land in `$_SERVER` alone — verified: config-lines-only gave getenv()=false,
+    $_ENV=null). Hence the spawn-time process env; a respawn (watchdog) must pass it
+    too or vars vanish on a crash-restart.
+  `core::site_env` is the trust boundary: names must be identifiers and non-reserved
+  (every template FastCGI param — test-enforced against `TEMPLATE_FCGI_PARAMS` —
+  + `PHP_VALUE`/`PHP_ADMIN_VALUE` + `PATH` + the `HTTP_` prefix — header forgery);
+  values reject the UNESCAPABLE (`$` — nginx interpolates it in quoted strings;
+  `{`/`}` — Caddy expands placeholders in quoted strings; control chars) and escape
+  `\`/`"`. Plain text in generated configs — not a secrets store.
 
 ## 3. Caddy edge lifecycle (`core/proxy.rs`)
 

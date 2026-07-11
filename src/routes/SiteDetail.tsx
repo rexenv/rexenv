@@ -40,6 +40,7 @@ import {
   changeSiteDomain,
   getSitesServing,
   listPhpVersions,
+  listSiteEnv,
   listSites,
   logTargets,
   moveSiteDocroot,
@@ -47,6 +48,7 @@ import {
   pickFolder,
   regenerateSiteCert,
   renameSite,
+  setSiteEnv,
   revealPath,
   setSitePhpVersion,
   setSiteWebServer,
@@ -60,7 +62,7 @@ import {
   wpInfo,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
-import type { DomainChange, Site, WebServer } from "@/types";
+import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
 
 /** One-click "Open admin": open a magic auto-login link for the site's primary
  *  administrator (lands on /wp-admin/). If the link can't be issued — services
@@ -691,6 +693,8 @@ function SettingsTab({ site }: { site: Site }) {
         </div>
       </SettingsCard>
 
+      <EnvVarsCard siteId={site.id} />
+
       <SettingsCard label="HTTPS certificate">
         {certLoading ? (
           <div className="text-[12.5px] text-rex-text-dim">Reading certificate…</div>
@@ -738,6 +742,129 @@ function SettingsTab({ site }: { site: Site }) {
         )}
       </SettingsCard>
     </>
+  );
+}
+
+/** Client-side mirror of core::site_env validation — INSTANT feedback only;
+ *  the backend is the enforcement. Returns the problem, or null when valid. */
+const ENV_RESERVED = new Set([
+  "SCRIPT_FILENAME", "QUERY_STRING", "REQUEST_METHOD", "CONTENT_TYPE", "CONTENT_LENGTH",
+  "SCRIPT_NAME", "REQUEST_URI", "DOCUMENT_URI", "DOCUMENT_ROOT", "SERVER_PROTOCOL",
+  "GATEWAY_INTERFACE", "SERVER_SOFTWARE", "REMOTE_ADDR", "REMOTE_PORT", "SERVER_ADDR",
+  "SERVER_PORT", "SERVER_NAME", "REQUEST_SCHEME", "HTTPS", "PATH_INFO", "PATH_TRANSLATED",
+  "REDIRECT_STATUS", "AUTH_TYPE", "REMOTE_USER", "FCGI_ROLE", "PHP_VALUE", "PHP_ADMIN_VALUE",
+  "PATH",
+]);
+function envVarProblem(v: EnvVar): string | null {
+  const name = v.name.trim();
+  if (!name) return "name is required";
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return "letters, digits and _ only (not starting with a digit)";
+  if (ENV_RESERVED.has(name.toUpperCase())) return "reserved server parameter";
+  if (name.toUpperCase().startsWith("HTTP_")) return "HTTP_ names would look like request headers";
+  if (/[$]/.test(v.value)) return "value may not contain $";
+  if (/[{}]/.test(v.value)) return "value may not contain { or }";
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(v.value)) return "value may not contain control characters";
+  return null;
+}
+
+/** Per-site environment variables (§1.6): name/value rows, replace-all save.
+ *  Injected per-request into the server config — the shared PHP pools are
+ *  untouched. */
+function EnvVarsCard({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [rows, setRows] = useState<EnvVar[] | null>(null); // null = not edited yet
+  const { data: saved } = useQuery({
+    queryKey: ["site-env", siteId],
+    queryFn: () => listSiteEnv(siteId),
+  });
+  const shown = rows ?? saved ?? [];
+
+  const save = useMutation({
+    mutationFn: (vars: EnvVar[]) => setSiteEnv(siteId, vars),
+    onSuccess: () => {
+      setRows(null);
+      void qc.invalidateQueries({ queryKey: ["site-env", siteId] });
+      toast.success("Environment variables saved — server config reloaded.");
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const problems = shown.map(envVarProblem);
+  const names = shown.map((r) => r.name.trim());
+  const hasDuplicate = new Set(names).size !== names.length;
+  const invalid = problems.some(Boolean) || hasDuplicate;
+  const dirty = rows !== null;
+  const edit = (i: number, patch: Partial<EnvVar>) =>
+    setRows(shown.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  return (
+    <SettingsCard label="Environment variables">
+      <div className="flex flex-col gap-2">
+        {shown.length === 0 && (
+          <div className="text-[12.5px] text-rex-text-dim">
+            No variables set. They're injected per request — the shared PHP pools are untouched.
+          </div>
+        )}
+        {shown.map((r, i) => (
+          <div key={i} className="flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <input
+                {...TECH_INPUT}
+                value={r.name}
+                placeholder="NAME"
+                disabled={save.isPending}
+                onChange={(e) => edit(i, { name: e.target.value })}
+                className="h-8 w-[220px] rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-brand"
+              />
+              <input
+                {...TECH_INPUT}
+                value={r.value}
+                placeholder="value"
+                disabled={save.isPending}
+                onChange={(e) => edit(i, { value: e.target.value })}
+                className="h-8 min-w-0 flex-1 rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-brand"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={save.isPending}
+                title="Remove variable"
+                onClick={() => setRows(shown.filter((_, j) => j !== i))}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {problems[i] && (
+              <div className="font-mono text-[11px] text-status-error-bright">{problems[i]}</div>
+            )}
+          </div>
+        ))}
+        {hasDuplicate && (
+          <div className="font-mono text-[11px] text-status-error-bright">duplicate variable names</div>
+        )}
+        <div className="mt-1 flex items-center justify-between gap-4">
+          <Button
+            variant="secondary"
+            disabled={save.isPending}
+            onClick={() => setRows([...shown, { name: "", value: "" }])}
+          >
+            Add variable
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!dirty || invalid || save.isPending}
+            onClick={() => save.mutate(shown.map((r) => ({ name: r.name.trim(), value: r.value })))}
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+        <div className="mt-1 text-[12px] text-rex-text-dim">
+          Available to PHP via getenv(), $_SERVER and $_ENV. Stored as plain text in the local
+          server config; not for secrets.
+        </div>
+      </div>
+    </SettingsCard>
   );
 }
 

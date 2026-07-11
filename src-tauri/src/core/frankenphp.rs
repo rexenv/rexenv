@@ -36,12 +36,30 @@ pub fn site_port(domain: &str) -> u16 {
     FRANKENPHP_BASE_PORT + (h % 100) as u16
 }
 
+/// The `php_server` directive: bare when the site has no env vars (byte-stable
+/// configs), else a block of `env NAME "value"` lines at `depth` tabs. Values
+/// escaped for the double-quoted Caddyfile string (`site_env::escape_value`);
+/// `{`/`}`/`$`/control chars were rejected at validation.
+fn php_server(depth: usize, env: &[(String, String)]) -> String {
+    let t = "\t".repeat(depth);
+    if env.is_empty() {
+        return format!("{t}php_server\n");
+    }
+    let lines: String = env
+        .iter()
+        .map(|(name, value)| {
+            format!("{t}\tenv {name} \"{}\"\n", crate::core::site_env::escape_value(value))
+        })
+        .collect();
+    format!("{t}php_server {{\n{lines}{t}}}\n")
+}
+
 /// The site block body for a rewrite mode. Single/subdomain use the high-level
 /// `php_server` (its built-in `try_files … /index.php` is the single-site rule);
 /// subdirectory multisite adds WordPress's network path rewrites.
-fn site_body(mode: RewriteMode) -> String {
+fn site_body(mode: RewriteMode, env: &[(String, String)]) -> String {
     match mode {
-        RewriteMode::Single | RewriteMode::SubdomainMultisite => "\tphp_server\n".to_string(),
+        RewriteMode::Single | RewriteMode::SubdomainMultisite => php_server(1, env),
         RewriteMode::SubdirectoryMultisite => {
             // WordPress subdirectory-multisite: faithfully mirror the proven nginx
             // rules (`services::rewrite_block`) as Caddy directives. A `route` block
@@ -53,25 +71,27 @@ fn site_body(mode: RewriteMode) -> String {
             //   3. strip the `/<site>` prefix before `*.php`  (capture group 2)
             // The two rewrites share Caddy's rewrite group, so only the first match
             // fires (like nginx's `last`). Validated with `frankenphp adapt`/`validate`.
-            "\troute {\n\
-             \t\t@wpadmin {\n\
-             \t\t\tnot file\n\
-             \t\t\tpath_regexp ^(/[^/]+)?/wp-admin$\n\
-             \t\t}\n\
-             \t\tredir @wpadmin {path}/ permanent\n\
-             \t\t@wpstrip {\n\
-             \t\t\tnot file\n\
-             \t\t\tpath_regexp wpstrip ^(/[^/]+)?(/wp-.*)$\n\
-             \t\t}\n\
-             \t\trewrite @wpstrip {http.regexp.wpstrip.2}\n\
-             \t\t@phpstrip {\n\
-             \t\t\tnot file\n\
-             \t\t\tpath_regexp phpstrip ^(/[^/]+)?(/.*\\.php)$\n\
-             \t\t}\n\
-             \t\trewrite @phpstrip {http.regexp.phpstrip.2}\n\
-             \t\tphp_server\n\
-             \t}\n"
-                .to_string()
+            format!(
+                "\troute {{\n\
+                 \t\t@wpadmin {{\n\
+                 \t\t\tnot file\n\
+                 \t\t\tpath_regexp ^(/[^/]+)?/wp-admin$\n\
+                 \t\t}}\n\
+                 \t\tredir @wpadmin {{path}}/ permanent\n\
+                 \t\t@wpstrip {{\n\
+                 \t\t\tnot file\n\
+                 \t\t\tpath_regexp wpstrip ^(/[^/]+)?(/wp-.*)$\n\
+                 \t\t}}\n\
+                 \t\trewrite @wpstrip {{http.regexp.wpstrip.2}}\n\
+                 \t\t@phpstrip {{\n\
+                 \t\t\tnot file\n\
+                 \t\t\tpath_regexp phpstrip ^(/[^/]+)?(/.*\\.php)$\n\
+                 \t\t}}\n\
+                 \t\trewrite @phpstrip {{http.regexp.phpstrip.2}}\n\
+                 {php_server}\
+                 \t}}\n",
+                php_server = php_server(2, env),
+            )
         }
     }
 }
@@ -79,7 +99,16 @@ fn site_body(mode: RewriteMode) -> String {
 /// Render a FrankenPHP Caddyfile serving ONE site's docroot via embedded PHP on
 /// an internal loopback HTTP port. Auto-HTTPS + admin are disabled (it's a backend
 /// behind the edge). Matches any Host on the port (the single edge route targets it).
-pub fn generate_config(docroot: &Path, port: u16, mode: RewriteMode) -> String {
+/// `env` (§1.6, validated by `site_env::validate`) becomes `env` lines in the
+/// `php_server` block — per-site is natural here (one backend per site). With no
+/// vars the config is byte-identical to before, so the reconcile's config diff
+/// doesn't restart untouched backends.
+pub fn generate_config(
+    docroot: &Path,
+    port: u16,
+    mode: RewriteMode,
+    env: &[(String, String)],
+) -> String {
     format!(
         "{{\n\
          \tauto_https off\n\
@@ -93,7 +122,7 @@ pub fn generate_config(docroot: &Path, port: u16, mode: RewriteMode) -> String {
          {body}\
          }}\n",
         root = docroot.display(),
-        body = site_body(mode),
+        body = site_body(mode, env),
     )
 }
 
@@ -121,22 +150,29 @@ pub fn write_config(
     docroot: &Path,
     port: u16,
     mode: RewriteMode,
+    env: &[(String, String)],
 ) -> Result<PathBuf> {
     let conf = config_path(platform, domain)?;
     if let Some(dir) = conf.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(&conf, generate_config(docroot, port, mode))?;
+    std::fs::write(&conf, generate_config(docroot, port, mode, env))?;
     Ok(conf)
 }
 
 /// Start a FrankenPHP backend (foreground) with the given config, via
-/// `ProcessSupervisor`. stdout/stderr go to a per-site log.
+/// `ProcessSupervisor`. stdout/stderr go to a per-site log. `env` (§1.6) is set
+/// as REAL process environment — per-site by construction (one process per
+/// site) — because FrankenPHP's SAPI `getenv()` reads only the process environ
+/// (the config `env` lines cover `$_SERVER`; process env covers
+/// `getenv()`/`$_ENV`). Live-verified: with config-lines only, the probe showed
+/// getenv()=false, $_ENV=null.
 pub fn start(
     platform: &dyn Platform,
     frankenphp_bin: &Path,
     domain: &str,
     conf: &Path,
+    env: &[(String, String)],
 ) -> Result<Child> {
     let args = vec![
         "run".to_string(),
@@ -146,7 +182,7 @@ pub fn start(
         "caddyfile".to_string(),
     ];
     let log = log_path(platform, domain)?;
-    platform.supervisor().spawn_logged(frankenphp_bin, &args, &log)
+    platform.supervisor().spawn_logged_env(frankenphp_bin, &args, &log, env)
 }
 
 /// Stop a running FrankenPHP backend by pid.
@@ -169,7 +205,7 @@ mod tests {
 
     #[test]
     fn config_is_a_loopback_backend_with_no_edge_features() {
-        let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, RewriteMode::Single);
+        let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, RewriteMode::Single, &[]);
         // Backend, not edge: no auto-HTTPS, no admin endpoint, loopback only.
         assert!(cfg.contains("auto_https off"));
         assert!(cfg.contains("admin off"));
@@ -184,10 +220,30 @@ mod tests {
     }
 
     #[test]
+    fn env_vars_render_as_a_php_server_block_and_empty_env_is_byte_stable() {
+        let env = vec![("API_URL".into(), "https://x.test".into()), ("Q".into(), "say \"hi\"".into())];
+        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &env);
+        assert!(single.contains("php_server {"), "got: {single}");
+        assert!(single.contains("env API_URL \"https://x.test\""));
+        assert!(single.contains("env Q \"say \\\"hi\\\"\""));
+
+        // Subdirectory multisite keeps its route rules AND gets the env block.
+        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &env);
+        assert!(subdir.contains("rewrite @wpstrip"));
+        assert!(subdir.contains("env API_URL \"https://x.test\""));
+
+        // No env → bare php_server, byte-identical to the pre-§1.6 output, so the
+        // reconcile's config diff never restarts an untouched backend.
+        let bare = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
+        assert!(bare.contains("\tphp_server\n"));
+        assert!(!bare.contains("php_server {"));
+    }
+
+    #[test]
     fn subdirectory_multisite_mirrors_the_nginx_network_rewrites() {
-        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single);
-        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite);
-        let sub = generate_config(Path::new("/d"), 8200, RewriteMode::SubdomainMultisite);
+        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
+        let subdir = generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &[]);
+        let sub = generate_config(Path::new("/d"), 8200, RewriteMode::SubdomainMultisite, &[]);
 
         // Single + subdomain route like a single site: plain php_server, no rewrites.
         for cfg in [&single, &sub] {

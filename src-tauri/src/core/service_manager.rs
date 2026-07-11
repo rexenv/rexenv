@@ -121,6 +121,11 @@ pub struct ServiceManager {
     /// the settings command. Source for both the pool configs (`php_value` lines)
     /// and the per-site nginx `client_max_body_size`.
     php_settings: HashMap<String, Vec<(String, String)>>,
+    /// Per-site env vars (validated pairs) from the SQLite `site_env` table,
+    /// keyed by site id — loaded by the start command, updated by the env
+    /// command (mirrors `php_settings`). Source for the per-site nginx
+    /// `fastcgi_param` lines and FrankenPHP `env` lines.
+    site_env: HashMap<String, Vec<(String, String)>>,
 }
 
 impl ServiceManager {
@@ -138,6 +143,7 @@ impl ServiceManager {
             mailpit_bin: None,
             restart_attempts: HashMap::new(),
             php_settings: HashMap::new(),
+            site_env: HashMap::new(),
         }
     }
 
@@ -147,6 +153,32 @@ impl ServiceManager {
     pub fn set_php_settings(&mut self, settings: HashMap<String, Vec<(String, String)>>) {
         self.php_settings = settings;
         self.pools.set_settings(self.php_settings.clone());
+    }
+
+    /// Load the per-site env vars (from SQLite, keyed by site id) into the
+    /// manager. Like `set_php_settings`, the map is handed in so this stays
+    /// DB-agnostic. Takes effect at the next reload/start.
+    pub fn set_site_env(&mut self, env: HashMap<String, Vec<(String, String)>>) {
+        self.site_env = env;
+    }
+
+    /// Apply a changed per-site env map: swap it in and — when the stack runs —
+    /// regenerate + reload (nginx picks up the new `fastcgi_param` lines; a
+    /// FrankenPHP override whose config changed is restarted by the reconcile's
+    /// config diff). Values were validated by the caller (`site_env::validate`).
+    /// No-op beyond storing the map when stopped (the next start uses it).
+    pub async fn apply_site_env(
+        &mut self,
+        platform: &dyn Platform,
+        ca: &ssl::LocalCa,
+        sites: &[Site],
+        env: HashMap<String, Vec<(String, String)>>,
+    ) -> Result<Vec<ReadyCheck>> {
+        self.set_site_env(env);
+        if !self.is_running() {
+            return Ok(Vec::new());
+        }
+        self.reload(platform, ca, sites, false).await
     }
 
     /// The resolved binary set — a clean error (not a panic) if a caller runs a
@@ -310,6 +342,7 @@ impl ServiceManager {
             self.ports.http,
             self.ports.https,
             &php::nginx_body_limits(&self.php_settings),
+            &self.site_env,
         )?;
 
         // Shared Nginx.
@@ -447,10 +480,12 @@ impl ServiceManager {
         platform: &dyn Platform,
         sites: &[Site],
     ) -> Result<Vec<ReadyCheck>> {
-        // Desired FrankenPHP backends: domain → (docroot, port, rewrite mode). The
-        // rewrite mode is the site's real one (M5): a subdirectory-multisite override
-        // needs WordPress's network rewrites, not the single-site default.
-        let desired: HashMap<String, (PathBuf, u16, services::RewriteMode)> = sites
+        // Desired FrankenPHP backends: domain → (docroot, port, rewrite mode, env).
+        // The rewrite mode is the site's real one (M5): a subdirectory-multisite
+        // override needs WordPress's network rewrites, not the single-site default.
+        // Env vars (§1.6) come from the manager's site-id-keyed map.
+        type Desired = (PathBuf, u16, services::RewriteMode, Vec<(String, String)>);
+        let desired: HashMap<String, Desired> = sites
             .iter()
             .filter(|s| matches!(s.web_server, WebServer::Frankenphp))
             .map(|s| {
@@ -460,6 +495,7 @@ impl ServiceManager {
                         PathBuf::from(&s.path),
                         frankenphp::site_port(&s.domain),
                         sites::rewrite_mode_for(s.multisite),
+                        self.site_env.get(&s.id).cloned().unwrap_or_default(),
                     ),
                 )
             })
@@ -486,9 +522,9 @@ impl ServiceManager {
         // backend never re-reads it, so a mismatch means stop + respawn
         // (spawn_override rewrites the file).
         let mut checks = Vec::new();
-        for (domain, (docroot, port, rewrite)) in &desired {
+        for (domain, (docroot, port, rewrite, env)) in &desired {
             if self.overrides.contains_key(domain) {
-                let wanted = frankenphp::generate_config(docroot, *port, *rewrite);
+                let wanted = frankenphp::generate_config(docroot, *port, *rewrite, env);
                 let current = frankenphp::config_path(platform, domain)
                     .ok()
                     .and_then(|p| std::fs::read_to_string(p).ok())
@@ -501,7 +537,7 @@ impl ServiceManager {
                     child.wait();
                 }
             }
-            checks.push(self.spawn_override(platform, domain, docroot, *port, *rewrite).await?);
+            checks.push(self.spawn_override(platform, domain, docroot, *port, *rewrite, env).await?);
         }
         Ok(checks)
     }
@@ -515,11 +551,12 @@ impl ServiceManager {
         docroot: &Path,
         port: u16,
         rewrite: services::RewriteMode,
+        env: &[(String, String)],
     ) -> Result<ReadyCheck> {
         ports::ensure_free(platform, port, ports::Proto::Tcp, "FrankenPHP")?;
         let bin = self.ensure_frankenphp_bin(platform).await?;
-        let conf = frankenphp::write_config(platform, domain, docroot, port, rewrite)?;
-        let child = frankenphp::start(platform, &bin, domain, &conf)?;
+        let conf = frankenphp::write_config(platform, domain, docroot, port, rewrite, env)?;
+        let child = frankenphp::start(platform, &bin, domain, &conf, env)?;
         self.overrides.insert(domain.to_string(), child.into());
         Ok(ReadyCheck {
             service: format!("FrankenPHP ({domain})"),
@@ -562,6 +599,7 @@ impl ServiceManager {
             self.ports.http,
             self.ports.https,
             &php::nginx_body_limits(&self.php_settings),
+            &self.site_env,
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile, force)?;
@@ -601,6 +639,7 @@ impl ServiceManager {
             self.ports.http,
             self.ports.https,
             &php::nginx_body_limits(&self.php_settings),
+            &self.site_env,
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
         Ok(check)
@@ -995,6 +1034,7 @@ impl ServiceManager {
             if !self.should_restart(&name, &mut events) {
                 continue;
             }
+            let env = self.site_env.get(&site.id).cloned().unwrap_or_default();
             let spawned = self
                 .spawn_override(
                     platform,
@@ -1002,6 +1042,7 @@ impl ServiceManager {
                     &PathBuf::from(&site.path),
                     frankenphp::site_port(&domain),
                     sites::rewrite_mode_for(site.multisite),
+                    &env,
                 )
                 .await;
             match spawned {
@@ -1078,6 +1119,7 @@ impl ServiceManager {
                             self.ports.http,
                             self.ports.https,
                             &php::nginx_body_limits(&self.php_settings),
+                            &self.site_env,
                         )?;
                         ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
                         self.nginx = Some(

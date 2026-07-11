@@ -42,7 +42,7 @@ async fn main() {
 
     // (2) Activity: roll out the rexenv log_format (config regen + reload —
     // exactly what the app does on any site change), then generate traffic.
-    let cfg = sites::rebuild_configs_for(&all, &*plat, &ca, services::NGINX_HTTP_PORT, 80, 443, &Default::default()).unwrap();
+    let cfg = sites::rebuild_configs_for(&all, &*plat, &ca, services::NGINX_HTTP_PORT, 80, 443, &Default::default(), &Default::default()).unwrap();
     let nginx_bin = plat
         .paths()
         .bin_dir()

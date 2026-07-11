@@ -436,6 +436,61 @@ pub async fn move_site_docroot(
     Ok(updated)
 }
 
+/// One env-var row as the UI sends it (name/value strings).
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct EnvVarInput {
+    pub name: String,
+    pub value: String,
+}
+
+/// A site's per-request env vars, name-sorted (Phase 3 §1.6).
+#[tauri::command]
+pub fn list_site_env(state: State<'_, AppState>, id: String) -> Result<Vec<EnvVarInput>> {
+    let conn = lock(&state)?;
+    Ok(crate::state::store::get_site_env(&conn, &id)?
+        .into_iter()
+        .map(|(name, value)| EnvVarInput { name, value })
+        .collect())
+}
+
+/// Replace a site's env vars (replace-all, like the PHP settings editor).
+/// BACKEND validation is the enforcement (`core::site_env::validate_all` —
+/// name shape, reserved names, unescapable characters); the UI mirror is only
+/// for instant feedback. Then persist + swap the manager's map + regen/reload:
+/// nginx picks up the new `fastcgi_param` lines; a FrankenPHP override whose
+/// config changed is restarted by the reconcile diff. Non-destructive and
+/// reversible (config text only); no-op beyond persisting when stopped.
+#[tauri::command]
+pub async fn set_site_env(
+    state: State<'_, AppState>,
+    id: String,
+    vars: Vec<EnvVarInput>,
+) -> Result<()> {
+    let pairs: Vec<(String, String)> =
+        vars.into_iter().map(|v| (v.name.trim().to_string(), v.value)).collect();
+    core::site_env::validate_all(&pairs)?;
+
+    // Persist + snapshot under ONE brief DB lock, dropped before any await
+    // (same shape as apply_php_settings).
+    let (site_exists, sites, all) = {
+        let conn = lock(&state)?;
+        let exists = core::sites::get(&conn, &id)?.is_some();
+        if exists {
+            crate::state::store::replace_site_env(&conn, &id, &pairs)?;
+        }
+        (exists, core::sites::list(&conn)?, crate::state::store::all_site_env(&conn)?)
+    };
+    if !site_exists {
+        return Err(Error::Other(format!("site not found: {id}")));
+    }
+
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        mgr.apply_site_env(state.platform.as_ref(), &state.ca, &sites, all).await?
+    };
+    core::service_manager::await_ready(checks).await
+}
+
 /// Result of a domain change: the updated site, where the pre-change database
 /// backup landed (WordPress sites only), and how many search-replace
 /// substitutions ran (both passes; 0 for non-WordPress sites).

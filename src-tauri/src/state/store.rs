@@ -312,6 +312,54 @@ pub fn replace_php_settings(
     Ok(())
 }
 
+// ── Per-site environment variables (Phase 3 §1.6) ──────────────────────────────
+
+/// One site's env vars, name-sorted (for deterministic config emission).
+pub fn get_site_env(conn: &Connection, site_id: &str) -> Result<Vec<(String, String)>> {
+    let mut stmt =
+        conn.prepare("SELECT name, value FROM site_env WHERE site_id = ?1 ORDER BY name")?;
+    let rows = stmt.query_map([site_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// All env vars grouped by site id — loaded once at start so the service
+/// manager can regenerate configs without the DB (mirrors `all_php_settings`).
+pub fn all_site_env(
+    conn: &Connection,
+) -> Result<std::collections::HashMap<String, Vec<(String, String)>>> {
+    let mut stmt =
+        conn.prepare("SELECT site_id, name, value FROM site_env ORDER BY site_id, name")?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
+    })?;
+    let mut out: std::collections::HashMap<String, Vec<(String, String)>> = Default::default();
+    for row in rows {
+        let (site_id, name, value) = row?;
+        out.entry(site_id).or_default().push((name, value));
+    }
+    Ok(out)
+}
+
+/// Replace ALL env vars for a site with `pairs` (a name absent from `pairs` is
+/// removed). Atomic: delete + insert in one transaction. The caller has already
+/// validated every pair (`core::site_env::validate`).
+pub fn replace_site_env(
+    conn: &Connection,
+    site_id: &str,
+    pairs: &[(String, String)],
+) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM site_env WHERE site_id = ?1", [site_id])?;
+    for (name, value) in pairs {
+        tx.execute(
+            "INSERT INTO site_env (site_id, name, value) VALUES (?1, ?2, ?3)",
+            params![site_id, name, value],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 // ── Site blueprints (Phase 3 §11.3) ────────────────────────────────────────────
 
 fn row_to_blueprint(row: &Row) -> Result<Blueprint> {

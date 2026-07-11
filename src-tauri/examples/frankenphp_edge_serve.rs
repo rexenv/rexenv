@@ -68,8 +68,8 @@ async fn main() {
 
     let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
     let fp_port = frankenphp::site_port(&fp.domain);
-    let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single).unwrap();
-    let mut fp_child = frankenphp::start(&*plat, &fp_bin, &fp.domain, &fp_conf).expect("frankenphp");
+    let fp_conf = frankenphp::write_config(&*plat, &fp.domain, Path::new(&fp.path), fp_port, RewriteMode::Single, &[]).unwrap();
+    let mut fp_child = frankenphp::start(&*plat, &fp_bin, &fp.domain, &fp_conf, &[]).expect("frankenphp");
 
     // Shared nginx (ng.test) + edge Caddy (routes both).
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();

@@ -33,8 +33,8 @@ async fn main() {
     }
 
     let bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION).await.unwrap();
-    let conf = frankenphp::write_config(&*plat, DOMAIN, &docroot, PORT, RewriteMode::Single).unwrap();
-    let mut child = frankenphp::start(&*plat, &bin, DOMAIN, &conf).expect("start frankenphp");
+    let conf = frankenphp::write_config(&*plat, DOMAIN, &docroot, PORT, RewriteMode::Single, &[]).unwrap();
+    let mut child = frankenphp::start(&*plat, &bin, DOMAIN, &conf, &[]).expect("start frankenphp");
     thread::sleep(Duration::from_millis(1500));
 
     let listening = frankenphp::running(PORT);

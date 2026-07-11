@@ -80,6 +80,19 @@ const MIGRATIONS: &[&str] = &[
     // replacing '.' and '-' with '_' covers every non-alphanumeric character.
     "ALTER TABLE sites ADD COLUMN db_name TEXT NOT NULL DEFAULT '';
      UPDATE sites SET db_name = 'wp_' || replace(replace(domain, '.', '_'), '-', '_');",
+    // v7 — per-site environment variables (Phase 3 §1.6). Injected per-request as
+    // `fastcgi_param` lines in the site's nginx server block (FrankenPHP overrides
+    // get config `env` lines + real process env at spawn) — the shared per-version
+    // php-fpm pools are untouched. Visible via getenv(), $_SERVER and $_ENV on
+    // both servers. Names and values are validated/escaped by `core::site_env`
+    // before any config emission. Cascade rides the connection-level
+    // `foreign_keys=ON` pragma.
+    "CREATE TABLE site_env (
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        name    TEXT NOT NULL,
+        value   TEXT NOT NULL,
+        PRIMARY KEY (site_id, name)
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

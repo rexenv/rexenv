@@ -95,6 +95,26 @@ pub trait ProcessSupervisor: Send + Sync {
         args: &[String],
         log_path: &std::path::Path,
     ) -> Result<Child>;
+    /// Like [`Self::spawn_logged`] but with extra process ENVIRONMENT variables
+    /// (inherited env + `env`). Used for per-site FrankenPHP backends (§1.6):
+    /// one process per site, so process env IS per-site env — it's what makes
+    /// `getenv()`/`$_ENV` work there (its SAPI doesn't consult request params
+    /// for `getenv()`). Default: delegates when `env` is empty, ERRORS otherwise
+    /// — a platform without an override must not silently drop env vars.
+    fn spawn_logged_env(
+        &self,
+        program: &std::path::Path,
+        args: &[String],
+        log_path: &std::path::Path,
+        env: &[(String, String)],
+    ) -> Result<Child> {
+        if env.is_empty() {
+            return self.spawn_logged(program, args, log_path);
+        }
+        Err(crate::error::Error::Other(
+            "per-process env vars are not supported on this platform yet".into(),
+        ))
+    }
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
 

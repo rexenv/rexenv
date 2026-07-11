@@ -261,6 +261,15 @@ impl ProcessSupervisor for MacosSupervisor {
         Ok(std::process::Command::new(program).args(args).spawn()?)
     }
     fn spawn_logged(&self, program: &Path, args: &[String], log_path: &Path) -> Result<Child> {
+        self.spawn_logged_env(program, args, log_path, &[])
+    }
+    fn spawn_logged_env(
+        &self,
+        program: &Path,
+        args: &[String],
+        log_path: &Path,
+        env: &[(String, String)],
+    ) -> Result<Child> {
         if let Some(parent) = log_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -271,6 +280,7 @@ impl ProcessSupervisor for MacosSupervisor {
         let err = out.try_clone()?;
         Ok(std::process::Command::new(program)
             .args(args)
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdout(out)
             .stderr(err)
             .spawn()?)

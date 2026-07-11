@@ -16,6 +16,7 @@ fn main() {
         Path::new("/tmp/fptest"),
         8200,
         RewriteMode::SubdirectoryMultisite,
+        &[],
     );
     print!("{cfg}");
 }
