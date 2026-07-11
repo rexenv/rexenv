@@ -946,9 +946,9 @@ export async function sitesFolder(): Promise<string> {
   return invoke<string>("sites_folder");
 }
 
-/** The default TLD new sites are created under (setting, else "test"). */
+/** The default TLD new sites are created under (setting, else "rex"). */
 export async function defaultTld(): Promise<string> {
-  if (!isTauri()) return "test";
+  if (!isTauri()) return "rex";
   return invoke<string>("default_tld");
 }
 
@@ -962,7 +962,9 @@ export async function setDefaultTld(tld: string): Promise<string> {
 
 /** Classify a TLD: blocked (with reason) / warn ("may shadow a real TLD") / safe. */
 export async function tldPolicy(tld: string): Promise<TldPolicy> {
-  if (!isTauri()) return { allowed: true, warn: tld !== "test", reason: "" };
+  // Mock mirrors the backend tiers: RFC-safe TLDs don't warn, everything else does.
+  if (!isTauri())
+    return { allowed: true, warn: !["test", "localhost", "example", "invalid"].includes(tld), reason: "" };
   return invoke<TldPolicy>("tld_policy", { tld });
 }
 
@@ -971,12 +973,12 @@ export async function tldPolicy(tld: string): Promise<TldPolicy> {
 /** Embedded-DNS + OS-resolver health. Mock fallback outside Tauri. */
 export async function dnsStatus(): Promise<DnsStatus> {
   if (!isTauri())
-    return { running: true, port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/test", caTrusted: true };
+    return { running: true, port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/rex", caTrusted: true };
   return invoke<DnsStatus>("dns_status");
 }
 
-/** Run first-run system setup: install the .test resolver (admin prompt) and trust
- *  the local CA (keychain dialog). Idempotent. Desktop-app only. */
+/** Run first-run system setup: install the .rex backbone resolver (admin prompt)
+ *  and trust the local CA (keychain dialog). Idempotent. Desktop-app only. */
 export async function systemSetup(): Promise<void> {
   if (!isTauri()) throw new Error("System setup requires the rexenv desktop app.");
   await invoke("system_setup");
@@ -1006,8 +1008,9 @@ export async function setAutostart(enabled: boolean): Promise<void> {
   await invoke("set_autostart", { enabled });
 }
 
-/** Reverse rexenv's system changes: stop services, remove the .test resolver, and
- *  untrust the local CA (§3.1). Desktop-app only. */
+/** Reverse rexenv's system changes: stop services, remove every rexenv resolver
+ *  file (.rex + any TLDs added on demand), and untrust the local CA (§3.1).
+ *  Desktop-app only. */
 export async function uninstallSystem(): Promise<void> {
   if (!isTauri()) throw new Error("Removing system changes requires the rexenv desktop app.");
   await invoke("uninstall_system");

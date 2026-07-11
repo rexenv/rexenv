@@ -454,7 +454,7 @@ function DnsSslSetting() {
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-rex-text">DNS resolver</div>
               <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
-                *.test → 127.0.0.1 · {dnsActive ? "active" : "inactive"}
+                *.rex → 127.0.0.1 · {dnsActive ? "active" : "inactive"}
               </div>
             </div>
           </div>
@@ -512,7 +512,7 @@ function DnsSslSetting() {
  *  the same `tld_policy` classification, it doesn't enforce anything. */
 function DefaultTldCard() {
   const qc = useQueryClient();
-  const { data: current = "test" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
+  const { data: current = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
   const [input, setInput] = useState<string | null>(null); // null = untouched
   const value = (input ?? current).trim().replace(/^\./, "").toLowerCase();
   const dirty = input !== null && value !== current;
@@ -576,9 +576,10 @@ function DefaultTldCard() {
         </div>
       )}
       <div className="mt-2.5 text-[11.5px] text-rex-text-dim">
-        <span className="font-mono">.test</span> always stays active alongside your choice
-        (rexenv's own tools use it). The first site on a new TLD asks for your password once to
-        register it with macOS.
+        <span className="font-mono">.rex</span> is rexenv's home TLD — its resolver is set up
+        during onboarding and rexenv's own tools use it. Any other TLD (including{" "}
+        <span className="font-mono">.test</span>) asks for your password once, when its first
+        site is created.
       </div>
     </div>
   );
@@ -788,7 +789,7 @@ function UninstallSetting() {
   const run = useMutation({
     mutationFn: uninstallSystem,
     onSuccess: () =>
-      setMsg("System changes removed: services stopped, all rexenv DNS resolver files deleted, local CA untrusted. You can now quit and delete rexenv."),
+      setMsg("System changes removed: services stopped, all rexenv DNS resolvers (.rex and any others) deleted, local CA untrusted. You can now quit and delete rexenv."),
     onError: (e) => toastBackendError(e),
   });
 
@@ -796,7 +797,7 @@ function UninstallSetting() {
     <div className="flex flex-col gap-3">
       <p className="text-[12px] text-rex-text-muted">
         Reverse the system-level changes rexenv made — stop all services, remove every rexenv DNS
-        resolver (<span className="font-mono">.test</span> plus any custom TLDs you added), and
+        resolver (<span className="font-mono">.rex</span> plus any other TLDs you added), and
         untrust the local HTTPS certificate authority. Your site files and databases are{" "}
         <span className="font-medium">not</span> deleted.
       </p>
@@ -811,7 +812,7 @@ function UninstallSetting() {
               await confirm({
                 title: "Remove rexenv's system changes?",
                 message:
-                  "This stops all services, deletes every rexenv file under /etc/resolver (.test and any custom TLDs), and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
+                  "This stops all services, deletes every rexenv file under /etc/resolver (.rex and any other TLDs), and untrusts the local CA (you'll be asked for your password). Your sites and databases are kept.",
                 danger: true,
                 confirmLabel: "Remove",
               })

@@ -3,8 +3,9 @@
  * the backend on a fixed internal host; the UI just builds pre-filled login URLs.
  */
 
-/** Internal host Adminer is served on (mirrors `core::adminer::ADMINER_HOST`). */
-export const ADMINER_HOST = "adminer.rexenv.test";
+/** Internal host Adminer is served on (mirrors `core::adminer::ADMINER_HOST`) —
+ *  on the .rex backbone TLD, whose resolver onboarding installs. */
+export const ADMINER_HOST = "adminer.rexenv.rex";
 
 // Canonical fixed loopback DB ports (see CLAUDE.md / core::db). Not user-configurable.
 const MYSQL_PORT = 13306;

@@ -83,8 +83,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const defaultVersion = installed.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "8.3";
   const { data: blueprints = [] } = useQuery({ queryKey: ["blueprints"], queryFn: listBlueprints });
   const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites });
-  // The default TLD for new sites (Settings → DNS & SSL). ".test" until loaded.
-  const { data: tld = "test" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
+  // The default TLD for new sites (Settings → DNS & SSL). ".rex" until loaded.
+  const { data: tld = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
 
   // When prefilled (Duplicate), the type is known → jump straight to Configure.
   const [step, setStep] = useState<1 | 2>(initial ? 2 : 1);

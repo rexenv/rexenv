@@ -307,8 +307,9 @@ function Domains() {
   const qc = useQueryClient();
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [error, setError] = useState("");
-  // Real privileged setup: install the .test resolver (admin prompt) + trust the
-  // local CA (keychain dialog), via core::setup::run_system_setup.
+  // Real privileged setup: install the .rex backbone resolver (admin prompt) +
+  // trust the local CA (keychain dialog), via core::setup::run_system_setup.
+  // Other TLDs (.test included) install on demand when their first site is made.
   const run = async () => {
     setState("busy");
     setError("");
@@ -346,9 +347,9 @@ function Domains() {
         subtitle={
           <>
             So your sites work at{" "}
-            <span className="font-mono text-brand-tint">https://anything.test</span>, rexenv adds a
+            <span className="font-mono text-brand-tint">https://anything.rex</span>, rexenv adds a
             private certificate authority to your Mac and points{" "}
-            <span className="font-mono text-rex-text-bright">.test</span> domains to your machine.
+            <span className="font-mono text-rex-text-bright">.rex</span> domains to your machine.
             Nothing leaves your computer.
           </>
         }

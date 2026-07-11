@@ -989,15 +989,15 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
               onKeyDown={(e) => {
                 if (e.key === "Enter" && valid && !busy) change.mutate();
               }}
-              placeholder="myshop.test"
+              placeholder="myshop.rex"
               disabled={busy}
               autoFocus
               className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
             />
             <div className="mt-1.5 text-[11.5px] text-rex-text-dim">
               Lowercase letters, digits and hyphens, ending in a development TLD (e.g.{" "}
-              <span className="font-mono">.test</span> or your default). First use of a new TLD
-              asks for your password once to register it with macOS.
+              <span className="font-mono">.rex</span> or <span className="font-mono">.test</span>).
+              First use of a new TLD asks for your password once to register it with macOS.
             </div>
             {policy && !policy.allowed && (
               <div className="mt-1.5 text-[11.5px] text-status-error-bright">{policy.reason}</div>
