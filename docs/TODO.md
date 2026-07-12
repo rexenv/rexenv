@@ -22,7 +22,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   holder) or IN-PROCESS fallback (never regress); watchdog kickstarts a dead agent
   (bounded 3) then one in-process fallback; `dns_status.mode` = agent | in-process |
   down; teardown uninstalls the agent. ✓ 233 lib tests green (plist invariants +
-  `answers_as_ours` live probe), examples build, tsc clean.
+  `answers_as_ours` live probe), examples build, tsc clean. ✓ **Live-verified with the
+  app CLOSED** (Jul 12): OS-chain resolution (dscacheutil → /etc/resolver/rex → agent)
+  answers 127.0.0.1; `https://tr.rex`/`lm.rex` → 200; SIGTERM'd agent relaunched by
+  launchd in ~3s and kept resolving. Follow-up: Settings doesn't RENDER `dns_status.mode`
+  yet (backend field + TS type only).
 - [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
   during the edge-daemon verification): a watchdog tick landed between `start_core`
   spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned
