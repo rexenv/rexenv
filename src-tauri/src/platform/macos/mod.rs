@@ -597,6 +597,11 @@ impl EdgeSupervisor for MacosEdgeDaemon {
     /// the system domain. `staged_*` are the unprivileged files rexenv already wrote.
     /// `&&`-chained so a failed copy aborts before bootstrap; the pre-bootout is
     /// best-effort (`;`) so a first install (nothing to bout) still proceeds.
+    ///
+    /// `enable` MUST precede `bootstrap`: an explicit Stop-all `disable`s the label
+    /// (so it stays down across reboots), and `bootstrap` will NOT run a service that
+    /// launchd has on its disabled list — so a Start-all after a Stop-all would
+    /// reinstall but never actually launch the edge without this re-enable.
     fn install_command(
         &self,
         src_caddy: &Path,
@@ -612,6 +617,7 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              cp {sw} {wrapper} && chown root:wheel {wrapper} && chmod 755 {wrapper} && \
              cp {sp} {plist} && chown root:wheel {plist} && chmod 644 {plist} && \
              {{ launchctl bootout system/{label} 2>/dev/null ; \
+             launchctl enable system/{label} 2>/dev/null ; \
              launchctl bootstrap system {plist} ; }}",
             bindir = sh_quote(&PathBuf::from(EDGE_ROOT_DIR).join("bin")),
             src = sh_quote(src_caddy),
@@ -933,6 +939,14 @@ mod tests {
         // Bootstraps into the SYSTEM (root) domain, replacing any prior job.
         assert!(cmd.contains(&format!("launchctl bootstrap system {}", super::sh_quote(&plist))));
         assert!(cmd.contains(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")));
+        // Re-enables BEFORE bootstrap — an explicit Stop-all disables the label, and
+        // bootstrap won't run a disabled service, so a Start-all after Stop-all needs
+        // this or the edge never launches.
+        assert!(cmd.contains(&format!("launchctl enable system/{EDGE_DAEMON_LABEL}")));
+        assert!(
+            cmd.find("enable").unwrap() < cmd.find("bootstrap").unwrap(),
+            "enable must precede bootstrap: {cmd}"
+        );
     }
 
     #[test]
