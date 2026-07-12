@@ -23,9 +23,52 @@ pub const DEFAULT_HTTPS_PORT: u16 = 443;
 /// [`start_privileged`]). A fixed path so a leftover edge is found deterministically.
 pub const ADMIN_SOCKET_FILE: &str = "caddy-admin.sock";
 
+/// Response header only OUR edge emits (stamped into every generated site
+/// block) — the positive wire-identity marker for [`edge_answers_as_ours`].
+pub const EDGE_MARKER_HEADER: &str = "X-Rexenv-Edge";
+
 /// Path of Caddy's admin unix socket under the platform config dir.
 pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE))
+}
+
+/// Whether OUR edge is what actually ANSWERS loopback `:443` — the DNS
+/// `answers_as_ours` pattern applied to HTTPS. `admin_alive()` proves our caddy
+/// PROCESS runs; it cannot prove the wire is ours: on macOS a foreign proxy that
+/// binds `127.0.0.1:443` SPECIFICALLY coexists with our wildcard `*:443` bind
+/// (both binds succeed — no error anywhere) and the kernel hands loopback
+/// connections to the most-specific listener. Observed live: Herd's nginx
+/// answered every site with its own 404 while our edge sat green.
+///
+/// Probe: request `https://<host>/` pinned to `127.0.0.1:443` (no DNS involved)
+/// and require the [`EDGE_MARKER_HEADER`] our config stamps on every site block
+/// (fallback: a `Server: Caddy` header — a pre-marker rexenv edge — still
+/// distinguishes us from Herd/Valet's nginx). Any HTTP status counts: a 502
+/// from OUR edge still proves the wire is ours. Connection failure or a foreign
+/// server → false.
+pub async fn edge_answers_as_ours(host: &str, https_port: u16) -> bool {
+    let url = format!("https://{host}:{https_port}/");
+    let Ok(client) = reqwest::Client::builder()
+        // Our local-CA leaf won't chain for reqwest's store; identity comes from
+        // the marker header, not the chain.
+        .danger_accept_invalid_certs(true)
+        .resolve(host, std::net::SocketAddr::from(([127, 0, 0, 1], https_port)))
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    else {
+        return false;
+    };
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            resp.headers().contains_key(EDGE_MARKER_HEADER)
+                || resp
+                    .headers()
+                    .get("server")
+                    .and_then(|v| v.to_str().ok())
+                    .is_some_and(|s| s.eq_ignore_ascii_case("caddy"))
+        }
+        Err(_) => false,
+    }
 }
 
 /// Caddy admin address for the CLI `--address` / Caddyfile `admin` directive.
@@ -112,6 +155,12 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
             r.cert_path.display(),
             r.key_path.display()
         ));
+        // Positive wire identity (see `edge_answers_as_ours`): only OUR edge
+        // stamps this response header. Needed because a foreign proxy can bind
+        // 127.0.0.1:443 SPECIFICALLY and shadow our wildcard :443 listener with
+        // no bind error anywhere (observed live with Herd) — process liveness
+        // alone can't detect that the wire belongs to someone else.
+        s.push_str(&format!("\theader {EDGE_MARKER_HEADER} \"1\"\n"));
         s.push_str(&format!("\treverse_proxy {}\n", r.upstream));
         s.push_str("}\n");
     }
@@ -444,6 +493,9 @@ mod tests {
         assert!(f.contains("https://proxytest.test {"));
         assert!(f.contains("tls \"/c/cert.pem\" \"/c/key.pem\""));
         assert!(f.contains("reverse_proxy 127.0.0.1:9999"));
+        // Every site block stamps the wire-identity marker — the ONLY reliable
+        // way to tell our edge from a foreign proxy shadow-binding 127.0.0.1:443.
+        assert!(f.contains("header X-Rexenv-Edge \"1\""));
         // Never falls back to Caddy's internal CA.
         assert!(!f.to_lowercase().contains("internal"));
     }

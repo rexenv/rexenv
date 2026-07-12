@@ -277,6 +277,8 @@ export interface HealthEvent {
     | "gave-up"
     | "edge-down"
     | "edge-restarting"
+    | "edge-blocked"
+    | "edge-unblocked"
     | "adopted";
   detail: string;
 }

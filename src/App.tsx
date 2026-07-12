@@ -34,7 +34,11 @@ function HealthWatch() {
       for (const e of events) {
         if (e.action === "restarted") {
           toast.info(`${e.service} stopped unexpectedly — restarted automatically`);
-        } else if (e.action === "adopted" || e.action === "edge-restarting") {
+        } else if (
+          e.action === "adopted" ||
+          e.action === "edge-restarting" ||
+          e.action === "edge-unblocked"
+        ) {
           // edge-restarting: the KeepAlive daemon is already bringing the edge back —
           // informational, not a failure the user must act on.
           toast.info(`${e.service}: ${e.detail}`);

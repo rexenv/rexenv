@@ -83,7 +83,38 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
             state.services.lock().await.set_edge_child(child);
         }
     }
-    Ok(())
+    // Phase 5 (UNLOCKED): positive WIRE identity. The edge process being up is not
+    // enough — a foreign proxy that binds 127.0.0.1:443 specifically (Herd) shadows
+    // our wildcard listener with no bind error anywhere, and every green check above
+    // passes while all traffic lands on the other tool. Fail Start-all honestly,
+    // naming the interceptor, instead of reporting a stack that can't serve.
+    verify_edge_wire(&state).await
+}
+
+/// Positive wire-identity gate shared by Start-all and login auto-start: OUR edge
+/// must be what answers loopback `:443` (marker-header probe), else error naming
+/// the intercepting process. The watchdog keeps re-checking afterwards and flips
+/// the status truthfully (`edge-blocked` / `edge-unblocked` events).
+async fn verify_edge_wire(state: &State<'_, AppState>) -> Result<()> {
+    if core::proxy::edge_answers_as_ours(
+        core::adminer::ADMINER_HOST,
+        core::proxy::DEFAULT_HTTPS_PORT,
+    )
+    .await
+    {
+        return Ok(());
+    }
+    let holder = state
+        .platform
+        .supervisor()
+        .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false)
+        .holder
+        .unwrap_or_else(|| "another local proxy".into());
+    Err(Error::Other(format!(
+        "services are running, but {holder} answers port 443 in front of rexenv — \
+         sites cannot load until you quit that app (then Start all again, or just \
+         wait: rexenv re-checks automatically)."
+    )))
 }
 
 /// Stop the shared stack.
@@ -174,8 +205,9 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
     };
     match plan {
-        // Edge adopted (the boot daemon already serves it) or reloaded — done.
-        None => Ok(None),
+        // Edge adopted (the boot daemon already serves it) or reloaded — but adopt
+        // proves the PROCESS, not the wire: verify nothing (Herd) intercepts :443.
+        None => verify_edge_wire(state).await.map(|()| None),
         // Guard 2: a privileged edge start would show an auth prompt at login —
         // skip it and say so. (Normally unreachable post-reboot: RunAtLoad has
         // the edge up before login.)

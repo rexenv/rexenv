@@ -9,7 +9,7 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
+use crate::core::{adminer, binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, SiteServing, WebServer};
@@ -128,6 +128,12 @@ pub struct ServiceManager {
     /// status row name). Reset when the service is seen healthy again and on
     /// manual start/stop, so a crash loop can't restart-storm forever.
     restart_attempts: HashMap<String, u32>,
+    /// The edge PROCESS runs but a foreign proxy answers loopback `:443` in front
+    /// of it (a specific `127.0.0.1:443` bind shadows our wildcard bind with no
+    /// error anywhere — observed live with Herd). Set/cleared by the watchdog's
+    /// wire probe (`proxy::edge_answers_as_ours`); while true, `status()` reports
+    /// Caddy NOT running — a green edge that serves nothing is a lie.
+    edge_blocked: bool,
     /// Consecutive watchdog polls that found a `Daemon` edge's admin socket dead.
     /// launchd's KeepAlive normally relaunches within its ~10s throttle, so a few
     /// dead polls are a restart in progress — but a daemon that was booted out /
@@ -161,6 +167,7 @@ impl ServiceManager {
             mailpit: None,
             mailpit_bin: None,
             restart_attempts: HashMap::new(),
+            edge_blocked: false,
             edge_dead_polls: 0,
             php_settings: HashMap::new(),
             site_env: HashMap::new(),
@@ -773,6 +780,7 @@ impl ServiceManager {
         // Manual intervention resets the watchdog's give-up counters.
         self.restart_attempts.clear();
         self.edge_dead_polls = 0;
+        self.edge_blocked = false;
         // A tracked unprivileged child is killed by pid. For a root/privileged edge
         // — or a stray Caddy still on the admin port that we never tracked (common
         // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
@@ -1332,6 +1340,42 @@ impl ServiceManager {
                          (sites were being served the whole time)"
                     .into(),
             });
+        } else if !is_stopped && alive {
+            // Our edge PROCESS is healthy — now verify the WIRE is ours. A foreign
+            // proxy binding 127.0.0.1:443 specifically (Herd) shadows our wildcard
+            // listener with no bind error anywhere: process checks all pass while
+            // every site is answered by someone else. Probe through loopback :443
+            // itself (positive identity via the config's marker header) and flip
+            // `edge_blocked`, which `status()` folds into Caddy's running state.
+            // Events fire on TRANSITIONS only — no per-poll spam.
+            let ours = proxy::edge_answers_as_ours(adminer::ADMINER_HOST, self.ports.https).await;
+            if !ours && !self.edge_blocked {
+                self.edge_blocked = true;
+                let holder = platform
+                    .supervisor()
+                    .port_conflict_help(self.ports.https, false)
+                    .holder
+                    .unwrap_or_else(|| "another local proxy".into());
+                events.push(HealthEvent {
+                    service: "Caddy".into(),
+                    action: "edge-blocked",
+                    detail: format!(
+                        "the edge is running, but {holder} answers port {} in front \
+                         of it — every site is unreachable until you quit that app",
+                        self.ports.https
+                    ),
+                });
+            } else if ours && self.edge_blocked {
+                self.edge_blocked = false;
+                events.push(HealthEvent {
+                    service: "Caddy".into(),
+                    action: "edge-unblocked",
+                    detail: format!(
+                        "port {} is answered by rexenv again — sites are reachable",
+                        self.ports.https
+                    ),
+                });
+            }
         }
 
         (events, checks)
@@ -1405,7 +1449,12 @@ impl ServiceManager {
             // (task 2.2 / H2) — the socket path is ours, so the probe stays
             // ownership-scoped. Without the probe, a crashed root edge kept showing
             // "running" forever while every site was unreachable.
-            running: !matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_alive(platform),
+            // Process liveness AND wire ownership: a foreign 127.0.0.1:443
+            // bind (Herd) shadows our wildcard listener while our process runs
+            // happily — a green row then lies (H2 applied to the wire).
+            running: !matches!(self.caddy, CaddyHandle::Stopped)
+                && proxy::admin_alive(platform)
+                && !self.edge_blocked,
             pid: match &self.caddy {
                 CaddyHandle::Child(c) => Some(c.id()),
                 _ => None,
