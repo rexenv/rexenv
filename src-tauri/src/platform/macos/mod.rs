@@ -465,6 +465,193 @@ impl AutostartManager for MacosAutostart {
     }
 }
 
+/// Root LaunchDaemon that keeps the Caddy edge alive across ANY death — SIGTERM,
+/// crash, sleep/wake, logout, reboot — with `KeepAlive=true` + `RunAtLoad=true`.
+/// launchd (as root) owns the edge, so a stray external SIGTERM (the incident this
+/// replaced) is relaunched in seconds instead of leaving every site unreachable
+/// until a manual Start-all.
+///
+/// Security: a root daemon must NEVER execute a **user-writable** binary — that is a
+/// standing local privilege escalation (any user process overwrites it → runs as
+/// root). So install copies our caddy into a **root-owned** tree
+/// (`/Library/Application Support/dev.rexenv.rexenv/bin/caddy`, `root:wheel 0755`)
+/// and the plist points there, never at the user-writable `bin/` cache. The plist
+/// itself is `root:wheel 0644` (launchd refuses a group/other-writable daemon plist).
+///
+/// Like [`MacosDns`] these are pure BUILDERS (no privilege, no side effects) so the
+/// install/stop/uninstall shell is unit-testable without an auth prompt and batched
+/// into ONE `PrivilegeManager` elevation. The plist + wrapper file CONTENTS are
+/// written unprivileged to a staging dir (plain `fs::write` — no shell-escaping of
+/// multi-line files); the privileged command only `cp`s them into the root tree.
+/// Single-quote a path for a `/bin/sh` command (app-data + `/Library` paths contain
+/// spaces). Mirrors `core::proxy::sh_quote`; kept local so the platform layer has no
+/// core dependency. Paths here are our own fixed locations, never user input.
+fn sh_quote(path: &Path) -> String {
+    format!("'{}'", path.display())
+}
+
+pub struct MacosEdgeDaemon;
+
+/// launchd label for the root edge daemon — distinct from [`AUTOSTART_LABEL`] (the
+/// per-user LaunchAgent that starts the APP). The drift-guard test keeps it a
+/// sub-label of the one canonical identity.
+const EDGE_DAEMON_LABEL: &str = "dev.rexenv.rexenv.edge";
+/// Root-owned support tree for the daemon (parallel to the user app-data dir, but
+/// writable only by root so neither the binary nor the wrapper is a root-exec of a
+/// user-writable file).
+const EDGE_ROOT_DIR: &str = "/Library/Application Support/dev.rexenv.rexenv";
+
+impl MacosEdgeDaemon {
+    /// The root LaunchDaemon plist (system domain → lives under `/Library`).
+    pub fn plist_path() -> PathBuf {
+        PathBuf::from("/Library/LaunchDaemons").join(format!("{EDGE_DAEMON_LABEL}.plist"))
+    }
+
+    /// Root-owned copy of the caddy binary the daemon executes (NOT the user cache).
+    pub fn daemon_binary_path() -> PathBuf {
+        PathBuf::from(EDGE_ROOT_DIR).join("bin/caddy")
+    }
+
+    /// Root-owned launcher the plist runs: it hands the admin socket back to the
+    /// invoking user, then `exec`s caddy (so launchd tracks caddy directly by PID).
+    pub fn wrapper_path() -> PathBuf {
+        PathBuf::from(EDGE_ROOT_DIR).join("edge-launch.sh")
+    }
+
+    /// Whether the daemon is installed (its plist is on disk). Source of truth for
+    /// "is the edge under launchd supervision".
+    pub fn is_installed() -> bool {
+        Self::plist_path().exists()
+    }
+
+    /// The plist. `KeepAlive`+`RunAtLoad` = up now and after every death/boot;
+    /// `ProcessType Background` (a daemon, not the app's `Interactive`). Runs the
+    /// wrapper via `/bin/sh`; the wrapper `exec`s caddy so this label tracks the
+    /// real edge PID. Start diagnostics go to the same log the osascript path used.
+    pub fn plist_contents(wrapper: &Path, start_log: &Path) -> String {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+             \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+             <plist version=\"1.0\">\n\
+             <dict>\n\
+             \t<key>Label</key>\n\
+             \t<string>{EDGE_DAEMON_LABEL}</string>\n\
+             \t<key>ProgramArguments</key>\n\
+             \t<array>\n\
+             \t\t<string>/bin/sh</string>\n\
+             \t\t<string>{wrapper}</string>\n\
+             \t</array>\n\
+             \t<key>KeepAlive</key>\n\
+             \t<true/>\n\
+             \t<key>RunAtLoad</key>\n\
+             \t<true/>\n\
+             \t<key>ProcessType</key>\n\
+             \t<string>Background</string>\n\
+             \t<key>StandardOutPath</key>\n\
+             \t<string>{log}</string>\n\
+             \t<key>StandardErrorPath</key>\n\
+             \t<string>{log}</string>\n\
+             </dict>\n\
+             </plist>\n",
+            wrapper = wrapper.display(),
+            log = start_log.display(),
+        )
+    }
+
+    /// The launcher script. A backgrounded loop chowns the admin socket to the
+    /// invoking user (uid read live from the user app-data dir owner) so rexenv can
+    /// drive reload/stop over it with NO prompt — the same handoff the osascript
+    /// start did. Then `exec` replaces the shell with caddy, keeping the PID launchd
+    /// monitors pointed at the real edge. Every path single-quoted (spaces).
+    pub fn wrapper_contents(
+        caddy_bin: &Path,
+        caddyfile: &Path,
+        admin_sock: &Path,
+        appdata: &Path,
+    ) -> String {
+        format!(
+            "#!/bin/sh\n\
+             # Managed by rexenv — root Caddy edge under launchd KeepAlive. Do not edit.\n\
+             SOCK={sock}\n\
+             ( for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+             [ -S \"$SOCK\" ] && {{ chown \"$(stat -f %u {appdata})\" \"$SOCK\" 2>/dev/null; \
+             chmod 600 \"$SOCK\" 2>/dev/null; break; }}; sleep 0.2; done ) &\n\
+             exec {caddy} run --config {cfg} --adapter caddyfile\n",
+            sock = sh_quote(admin_sock),
+            appdata = sh_quote(appdata),
+            caddy = sh_quote(caddy_bin),
+            cfg = sh_quote(caddyfile),
+        )
+    }
+
+    /// ONE privileged shell (run via `PrivilegeManager`, one prompt) that installs
+    /// the daemon: copy our caddy into the root tree, drop in the staged wrapper +
+    /// plist with `root:wheel` ownership and safe perms, then (re)bootstrap it into
+    /// the system domain. `staged_*` are the unprivileged files rexenv already wrote.
+    /// `&&`-chained so a failed copy aborts before bootstrap; the pre-bootout is
+    /// best-effort (`;`) so a first install (nothing to bout) still proceeds.
+    pub fn install_command(src_caddy: &Path, staged_wrapper: &Path, staged_plist: &Path) -> String {
+        let bin = Self::daemon_binary_path();
+        let wrapper = Self::wrapper_path();
+        let plist = Self::plist_path();
+        format!(
+            "mkdir -p {bindir} && \
+             cp {src} {bin} && chown root:wheel {bin} && chmod 755 {bin} && \
+             cp {sw} {wrapper} && chown root:wheel {wrapper} && chmod 755 {wrapper} && \
+             cp {sp} {plist} && chown root:wheel {plist} && chmod 644 {plist} && \
+             {{ launchctl bootout system/{label} 2>/dev/null ; \
+             launchctl bootstrap system {plist} ; }}",
+            bindir = sh_quote(&PathBuf::from(EDGE_ROOT_DIR).join("bin")),
+            src = sh_quote(src_caddy),
+            bin = sh_quote(&bin),
+            sw = sh_quote(staged_wrapper),
+            wrapper = sh_quote(&wrapper),
+            sp = sh_quote(staged_plist),
+            plist = sh_quote(&plist),
+            label = EDGE_DAEMON_LABEL,
+        )
+    }
+
+    /// Privileged shell to EXPLICITLY stop the edge (Stop-all). With `KeepAlive=true`
+    /// a graceful `caddy stop` is instantly relaunched, so a real stop must bout the
+    /// daemon out of the system domain. `disable` keeps it down across reboots until
+    /// the next Start-all bootstraps it again.
+    pub fn stop_command() -> String {
+        format!(
+            "launchctl disable system/{label} 2>/dev/null ; \
+             launchctl bootout system/{label} 2>/dev/null ; :",
+            label = EDGE_DAEMON_LABEL,
+        )
+    }
+
+    /// Privileged shell to (re)start the edge after an explicit stop: re-enable then
+    /// bootstrap; if it is somehow already loaded, force a fresh start via kickstart.
+    pub fn start_command() -> String {
+        let plist = Self::plist_path();
+        format!(
+            "launchctl enable system/{label} 2>/dev/null ; \
+             launchctl bootstrap system {plist} 2>/dev/null ; \
+             launchctl kickstart -k system/{label}",
+            label = EDGE_DAEMON_LABEL,
+            plist = sh_quote(&plist),
+        )
+    }
+
+    /// Privileged shell to fully remove the daemon (uninstall / reset): bout it out
+    /// and delete the plist, wrapper, and root-owned binary.
+    pub fn uninstall_command() -> String {
+        format!(
+            "launchctl bootout system/{label} 2>/dev/null ; \
+             rm -f {plist} {wrapper} {bin}",
+            label = EDGE_DAEMON_LABEL,
+            plist = sh_quote(&Self::plist_path()),
+            wrapper = sh_quote(&Self::wrapper_path()),
+            bin = sh_quote(&Self::daemon_binary_path()),
+        )
+    }
+}
+
 pub struct MacosPermissions;
 impl PermissionManager for MacosPermissions {
     fn set_executable(&self, path: &Path) -> Result<()> {
@@ -690,6 +877,78 @@ impl Platform for MacosPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edge_daemon_keeps_alive_and_uses_root_owned_binary() {
+        // KeepAlive + RunAtLoad = the whole point: relaunch on ANY death and after boot.
+        let wrapper = MacosEdgeDaemon::wrapper_path();
+        let plist = MacosEdgeDaemon::plist_contents(&wrapper, Path::new("/l/edge.log"));
+        assert!(plist.contains("<key>KeepAlive</key>\n\t<true/>"), "plist:\n{plist}");
+        assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
+        // A daemon, not the app's Interactive LaunchAgent.
+        assert!(plist.contains("<string>Background</string>"));
+        assert!(!plist.contains("Interactive"));
+        // Distinct label from the app's autostart LaunchAgent — never the same job.
+        assert!(plist.contains(&format!("<string>{EDGE_DAEMON_LABEL}</string>")));
+        assert_ne!(EDGE_DAEMON_LABEL, AUTOSTART_LABEL);
+        // The daemon runs the wrapper, which lives in the root tree (not user-writable).
+        assert!(plist.contains(wrapper.to_str().unwrap()));
+        assert!(MacosEdgeDaemon::daemon_binary_path().starts_with(EDGE_ROOT_DIR));
+        assert!(MacosEdgeDaemon::plist_path().starts_with("/Library/LaunchDaemons"));
+    }
+
+    #[test]
+    fn edge_daemon_install_hardens_ownership_and_targets_root_binary() {
+        // The user cache binary is the SOURCE; the daemon must execute the ROOT copy.
+        let src = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/bin/caddy");
+        let cmd = MacosEdgeDaemon::install_command(
+            src,
+            &MacosEdgeDaemon::wrapper_path(),
+            Path::new("/tmp/staged.plist"),
+        );
+        let root_bin = MacosEdgeDaemon::daemon_binary_path();
+        // Copies the user binary INTO the root tree, then locks it root:wheel 0755 —
+        // the LPE guard: launchd never re-execs the user-writable cache binary.
+        assert!(cmd.contains(&format!("cp {}", super::sh_quote(src))));
+        assert!(cmd.contains(&format!("chown root:wheel {}", super::sh_quote(&root_bin))));
+        assert!(cmd.contains(&format!("chmod 755 {}", super::sh_quote(&root_bin))));
+        // The daemon plist must be root:wheel 0644 — launchd rejects a
+        // group/other-writable daemon plist, and a writable one is an LPE.
+        let plist = MacosEdgeDaemon::plist_path();
+        assert!(cmd.contains(&format!("chmod 644 {}", super::sh_quote(&plist))));
+        // Bootstraps into the SYSTEM (root) domain, replacing any prior job.
+        assert!(cmd.contains(&format!("launchctl bootstrap system {}", super::sh_quote(&plist))));
+        assert!(cmd.contains(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")));
+    }
+
+    #[test]
+    fn edge_daemon_stop_boots_out_so_keepalive_cannot_relaunch() {
+        // Explicit stop must remove the job from launchd — otherwise KeepAlive fights
+        // `caddy stop`. disable BEFORE bootout so it stays down across reboots.
+        let cmd = MacosEdgeDaemon::stop_command();
+        assert!(cmd.contains(&format!("launchctl disable system/{EDGE_DAEMON_LABEL}")));
+        assert!(cmd.contains(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")));
+        assert!(
+            cmd.find("disable").unwrap() < cmd.find("bootout").unwrap(),
+            "disable must precede bootout: {cmd}"
+        );
+    }
+
+    #[test]
+    fn edge_daemon_wrapper_chowns_socket_then_execs_caddy() {
+        let w = MacosEdgeDaemon::wrapper_contents(
+            Path::new("/root/bin/caddy"),
+            Path::new("/u/Caddyfile"),
+            Path::new("/u/config/caddy-admin.sock"),
+            Path::new("/u/appdata"),
+        );
+        // Hands the 0600 admin socket to the invoking user (uid from app-data owner)
+        // so rexenv can drive reload/stop with no prompt.
+        assert!(w.contains("chown \"$(stat -f %u '/u/appdata')\" \"$SOCK\""));
+        assert!(w.contains("chmod 600 \"$SOCK\""));
+        // exec (not fork) so launchd's tracked PID is caddy itself.
+        assert!(w.contains("exec '/root/bin/caddy' run --config '/u/Caddyfile'"));
+    }
 
     #[test]
     fn osascript_program_wraps_and_escapes() {
