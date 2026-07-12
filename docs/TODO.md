@@ -48,8 +48,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   Caddy row flips red ≤10s, recovery on Herd quit; holder attribution fixed en route
   (`c6200c7`: master pid not worker, real exe via txt FD not the rewritten ps title,
   `.app`/Application-Support attribution → "quit Herd", honest name+pid+path degrade).
-  **Still awaiting live verify (B):** reboot with both Settings toggles on →
-  `https://tr.rex` 200 untouched.
+  ✓ **Live-verified (B)** (Jul 13): reboot with both
+  toggles on, untouched — edge up 16s after boot (pre-login), DNS agent at login,
+  auto-start spawned MySQL/fpm/nginx promptlessly, `https://tr.rex`/`lm.rex` → 200,
+  wire identity ours (`x-rexenv-edge: 1`). health.log also captured the whole Herd
+  suite firing in production: `edge-blocked` naming "Herd (nginx-arm64, pid …)" +
+  copyable quit command, `edge-unblocked` on Herd quit.
 - [x] **Sites die 1–2h after quitting the app — DNS must survive the app.** Root cause
   (evidence-first diagnosis): the data plane (nginx/fpm/MySQL/edge, all detached or
   launchd-owned) survives a quit indefinitely — but the resolver was an IN-PROCESS tokio
