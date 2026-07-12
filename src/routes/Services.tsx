@@ -121,7 +121,12 @@ function ServiceRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 transition-opacity last:border-b-0",
+        // NO transition-opacity: opacity<1 promotes the row to its own compositing
+        // layer, and WKWebView animating that layer WHILE the pill's label swaps
+        // composites the stale frame over the new text — the overlapping-words
+        // glitch on Running->Idle (idle = the direction that ADDS the layer and
+        // stops all animation, so the ghost lingers). Dim instantly instead.
+        "flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0",
         !running && "opacity-[0.74]",
       )}
     >
@@ -149,7 +154,7 @@ function ServiceRow({
         // WKWebView's slightly wider Inter metrics overflowed the exact-fit pill
         // and wrapped the label inside the fixed-height pill — rendering as two
         // overlapping words during Idle→Running flips (the reported glitch).
-        className="w-[92px]"
+        className="min-w-[92px]"
       />
       <div className="flex w-[124px] flex-none justify-end">
         {kind === "php" && !svc.isDefault && (
@@ -289,7 +294,7 @@ export function Services() {
                     <StatusPill
                       status={dns.running ? "running" : "error"}
                       label={dns.running ? undefined : "Down"}
-                      className="w-[86px]"
+                      className="min-w-[92px]"
                     />
                   </div>
                 </div>

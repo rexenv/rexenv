@@ -252,7 +252,7 @@ function SiteRow({
       </span>
       <Badge>{site.phpVersion}</Badge>
       <Badge className="w-[84px] text-center">{site.webServer}</Badge>
-      <StatusPill status={status} className="w-[92px]" />
+      <StatusPill status={status} className="min-w-[92px]" />
       <div className="flex-none" onClick={(e) => e.stopPropagation()}>
         <Menu
         trigger={
