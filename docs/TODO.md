@@ -16,9 +16,20 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   (cold cache → honest service-health event), never prompts (privileged edge plan →
   skipped + surfaced). Settings UI: old "Start services on login" toggle renamed to
   the truthful "Open rexenv at login" (it only installed the login item); new real
-  toggle added (`3fa1753`). ✓ 234 lib tests, examples, tsc. **Awaiting live verify:**
-  (A) with Herd holding :443, Start all errors naming Herd; (B) reboot with both
-  toggles on → `https://tr.rex` 200 untouched.
+  toggle added (`3fa1753`). ✓ 234 lib tests, examples, tsc. **Live test of (1) found the
+  REAL failure mode** (`d4e5892`): Herd binds `127.0.0.1:443` SPECIFICALLY, coexisting
+  with our wildcard `*:443` bind — NO bind error anywhere (netstat: both listeners;
+  caddy-start.log clean), kernel routes loopback to the most-specific listener = Herd →
+  all-green UI while Herd 404s every site (TLS issuer: Laravel Valet CA). Process
+  identity (admin unix socket) cannot catch this — fixed with positive WIRE identity:
+  every site block stamps `header X-Rexenv-Edge "1"`; `proxy::edge_answers_as_ours`
+  probes 127.0.0.1:443 (DNS-free, marker-checked; `Server: Caddy` fallback); watchdog
+  flips `edge_blocked` on transitions (`edge-blocked`/`edge-unblocked` events naming
+  the holder); `status()` folds it in (Caddy + site dots read NOT running while
+  shadowed); Start-all/auto-start gate on the probe and fail naming the interceptor.
+  **Awaiting live verify:** (A) with Herd running, Start-all errors naming Herd AND
+  Caddy row goes red with the edge-blocked toast ≤10s after Herd starts; (B) reboot
+  with both toggles on → `https://tr.rex` 200 untouched.
 - [x] **Sites die 1–2h after quitting the app — DNS must survive the app.** Root cause
   (evidence-first diagnosis): the data plane (nginx/fpm/MySQL/edge, all detached or
   launchd-owned) survives a quit indefinitely — but the resolver was an IN-PROCESS tokio
