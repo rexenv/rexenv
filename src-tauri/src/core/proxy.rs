@@ -200,11 +200,11 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
 /// dir UNPRIVILEGED (plain writes — no shell-escaping of multi-line files), then the
 /// single [`EdgeSupervisor::install_command`] `cp`s them into the root-owned tree
 /// (binary locked `root:wheel`, never re-exec of the user-writable cache — LPE guard)
-/// and bootstraps launchd. If the daemon is already installed with its root binary
-/// present, a lighter [`EdgeSupervisor::start_command`] (enable + kickstart) just
-/// re-execs caddy — which re-reads the current Caddyfile — so a normal Start-all
-/// after a stop doesn't recopy anything. The wrapper hands the 0600 admin socket back
-/// to the invoking user, so subsequent reload/stop stay promptless.
+/// and bootstraps launchd. This runs on every non-adopted start (idempotent), so it
+/// doubles as recovery: its `bootout` stops any prior/wedged edge — freeing `:443` —
+/// before the fresh `bootstrap` rebinds, and it always deploys the current launcher
+/// (self-healing a stale one). The launcher keeps the 0600 admin socket owned by the
+/// invoking user for caddy's whole life, so reload/stop stay promptless.
 ///
 /// `src_caddy` is our resolved caddy cache path (the install SOURCE). Waits for the
 /// admin socket to answer before returning so the caller can mark the edge live.
@@ -214,26 +214,25 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
     let appdata = platform.paths().app_data_dir()?;
     let start_log = platform.paths().log_dir()?.join("caddy-start.log");
 
-    let cmd = if edge.is_installed() && edge.daemon_binary_path().exists() {
-        // Already installed with its root binary — just (re)start it; the kickstart
-        // re-execs caddy, which re-reads the current Caddyfile (picks up site changes).
-        edge.start_command()
-    } else {
-        // First install (or a missing root binary): stage the launcher + plist
-        // unprivileged, then the privileged cp+bootstrap. The launcher execs the
-        // ROOT binary copy, so build its contents against that path.
-        let staging = platform.paths().config_dir()?.join("edge-daemon");
-        std::fs::create_dir_all(&staging)?;
-        let staged_wrapper = staging.join("edge-launch.sh");
-        let staged_plist = staging.join("edge.plist");
-        std::fs::write(
-            &staged_wrapper,
-            edge.wrapper_contents(&edge.daemon_binary_path(), caddyfile, &sock, &appdata),
-        )?;
-        std::fs::write(&staged_plist, edge.plist_contents(&edge.wrapper_path(), &start_log))?;
-        edge.install_command(src_caddy, &staged_wrapper, &staged_plist)
-    };
-    platform.privileges().run_privileged(&cmd)?;
+    // Always (re)install: stage the launcher + plist unprivileged, then the ONE
+    // privileged cp+bootstrap. This is idempotent AND self-healing — a first install,
+    // a binary refresh after a version bump, and recovery of a WEDGED daemon (e.g. a
+    // stale launcher whose socket rexenv can't reach) all take the same path. The
+    // `install_command`'s `bootout` cleanly stops any prior edge FIRST, which frees
+    // `:443` before the fresh `bootstrap` rebinds it — so a reinstall doubles as the
+    // port-conflict recovery. The launcher execs the ROOT binary copy.
+    let staging = platform.paths().config_dir()?.join("edge-daemon");
+    std::fs::create_dir_all(&staging)?;
+    let staged_wrapper = staging.join("edge-launch.sh");
+    let staged_plist = staging.join("edge.plist");
+    std::fs::write(
+        &staged_wrapper,
+        edge.wrapper_contents(&edge.daemon_binary_path(), caddyfile, &sock, &appdata),
+    )?;
+    std::fs::write(&staged_plist, edge.plist_contents(&edge.wrapper_path(), &start_log))?;
+    platform
+        .privileges()
+        .run_privileged(&edge.install_command(src_caddy, &staged_wrapper, &staged_plist))?;
 
     // Bootstrap/kickstart returns before caddy has bound the socket; wait for it
     // (the wrapper also needs a beat to chown the socket to us) so the edge reads

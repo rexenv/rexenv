@@ -398,7 +398,16 @@ impl ServiceManager {
         // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
         // default :2019 admin is never touched (task 2.4 / M1).
         proxy::recover_stale_edge(platform, &bins.caddy)?;
-        ports::ensure_free(platform, self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
+        // If OUR KeepAlive daemon is installed, it (or a wedged instance of it) is what
+        // holds :443 — and its admin socket may be unreachable (e.g. root-owned again
+        // after a reload) so the adopt-reload above couldn't take it. Do NOT treat :443
+        // as a foreign conflict: return the plan so `start_edge_daemon` REINSTALLS —
+        // its `bootout` stops that edge and frees :443 before the fresh bootstrap
+        // rebinds (and deploys the current launcher, healing the socket handoff). Only
+        // when NO daemon is installed is a :443 holder a genuine foreign conflict.
+        if !platform.edge().is_installed() {
+            ports::ensure_free(platform, self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
+        }
         Ok(Some(EdgePlan {
             privileged: self.ports.https < 1024,
             caddy_bin: bins.caddy.clone(),

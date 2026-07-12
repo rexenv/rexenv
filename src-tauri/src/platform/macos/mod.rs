@@ -559,11 +559,15 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         )
     }
 
-    /// The launcher script. A backgrounded loop chowns the admin socket to the
-    /// invoking user (uid read live from the user app-data dir owner) so rexenv can
-    /// drive reload/stop over it with NO prompt — the same handoff the osascript
-    /// start did. Then `exec` replaces the shell with caddy, keeping the PID launchd
-    /// monitors pointed at the real edge. Every path single-quoted (spaces).
+    /// The launcher script. caddy runs as root and drives its 0600 admin socket;
+    /// rexenv (the user) must own that socket to reload/stop it promptlessly. Because
+    /// caddy **recreates the socket as root on every config reload**, a one-shot chown
+    /// would be lost after the first reload — locking rexenv out (the port-443 wedge).
+    /// So a backgrounded loop keeps the socket owned by the invoking user for caddy's
+    /// whole life, re-chowning within ~1s whenever ownership drifts back to root. Then
+    /// `exec` replaces the shell with caddy so launchd tracks the real edge PID (the
+    /// loop is a separate child; launchd tears it down with the job). Paths quoted
+    /// (spaces); the owner uid is read live from the user app-data dir.
     fn wrapper_contents(
         &self,
         caddy_bin: &Path,
@@ -575,9 +579,10 @@ impl EdgeSupervisor for MacosEdgeDaemon {
             "#!/bin/sh\n\
              # Managed by rexenv — root Caddy edge under launchd KeepAlive. Do not edit.\n\
              SOCK={sock}\n\
-             ( for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
-             [ -S \"$SOCK\" ] && {{ chown \"$(stat -f %u {appdata})\" \"$SOCK\" 2>/dev/null; \
-             chmod 600 \"$SOCK\" 2>/dev/null; break; }}; sleep 0.2; done ) &\n\
+             OWNER=$(stat -f %u {appdata})\n\
+             ( while :; do \
+             [ -S \"$SOCK\" ] && [ \"$(stat -f %u \"$SOCK\" 2>/dev/null)\" != \"$OWNER\" ] \
+             && chown \"$OWNER\" \"$SOCK\" 2>/dev/null; sleep 1; done ) &\n\
              exec {caddy} run --config {cfg} --adapter caddyfile\n",
             sock = sh_quote(admin_sock),
             appdata = sh_quote(appdata),
@@ -951,10 +956,12 @@ mod tests {
             Path::new("/u/config/caddy-admin.sock"),
             Path::new("/u/appdata"),
         );
-        // Hands the 0600 admin socket to the invoking user (uid from app-data owner)
-        // so rexenv can drive reload/stop with no prompt.
-        assert!(w.contains("chown \"$(stat -f %u '/u/appdata')\" \"$SOCK\""));
-        assert!(w.contains("chmod 600 \"$SOCK\""));
+        // Reads the invoking user's uid from the app-data dir owner...
+        assert!(w.contains("OWNER=$(stat -f %u '/u/appdata')"));
+        // ...and PERSISTENTLY re-chowns the socket to that user (caddy recreates it as
+        // root on every reload, so a one-shot chown would be lost — the :443 wedge).
+        assert!(w.contains("chown \"$OWNER\" \"$SOCK\""));
+        assert!(w.contains("while :; do"), "must loop, not run once: {w}");
         // exec (not fork) so launchd's tracked PID is caddy itself.
         assert!(w.contains("exec '/root/bin/caddy' run --config '/u/Caddyfile'"));
     }
