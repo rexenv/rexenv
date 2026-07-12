@@ -89,22 +89,23 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
 /// Stop the shared stack.
 #[tauri::command]
 pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
-    // Phase 1 (locked): stop the whole non-edge stack. `stop_all` deliberately does
-    // NOT admin-stop a KeepAlive daemon edge (launchd would relaunch it); report
-    // whether a privileged bootout is owed BEFORE the handle is cleared.
-    let need_bootout = {
-        let mut mgr = state.services.lock().await;
-        let daemon = mgr.edge_is_daemon();
-        mgr.stop_all(state.platform.as_ref())?;
-        daemon
-    };
-    // Phase 2 (UNLOCKED): explicitly stop the edge daemon — `disable` + `bootout`
-    // is a privileged op (one admin prompt), so it must run with the services lock
-    // free (M4) exactly like the privileged start does.
+    // Phase 1 (locked, brief): is the edge ours-under-launchd?
+    let need_bootout = state.services.lock().await.edge_is_daemon();
+    // Phase 2 (UNLOCKED): boot the daemon out FIRST, before ANY manager state is
+    // touched. The privileged prompt can sit open for a long time; when stop_all
+    // ran first (clearing the handle to Stopped while the edge was still serving),
+    // the watchdog re-adopted the doomed edge during the prompt — the bootout then
+    // landed on a `Daemon`-marked edge, leaving a stale handle that spammed
+    // edge-restarting and made prepare_edge skip every later start. Bootout-first
+    // leaves the handle truthful (Daemon && alive) for the whole prompt, and a
+    // cancelled prompt errors out here with nothing stopped (all-or-nothing).
+    // Runs with the services lock free (M4), like the privileged start.
     if need_bootout {
         core::proxy::stop_edge_daemon(state.platform.as_ref())?;
     }
-    Ok(())
+    // Phase 3 (locked): stop the rest. stop_all sees the Daemon handle and skips
+    // the admin-API edge stop (the daemon edge is already down).
+    state.services.lock().await.stop_all(state.platform.as_ref())
 }
 
 /// The SINGLE monitor source of truth for resource numbers — both the Services

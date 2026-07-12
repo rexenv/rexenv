@@ -126,18 +126,27 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `Privileged`) and the current config is pushed via `caddy reload` — no stop, no
   re-prompt, sites never drop. The health watchdog heals the reverse way too: an edge
   answering while the manager says stopped is re-adopted (`"adopted"` event). A **`Daemon`
-  edge whose socket is momentarily dead is `"edge-restarting"` (info) — NOT `"edge-down"`
-  — because launchd is already relaunching it; the manager does not flip it to Stopped.
-  Only a legacy `Privileged`/`Child` edge that dies still becomes `"edge-down"` (no OS
-  supervisor to bring it back).** This, plus the earlier stale-mark fix (a stale
-  stopped-mark + Start all used to `caddy stop` the healthy edge), closes the "Caddy
-  stops by itself" loop (live check: `examples/edge_adopt_reload_check.rs`).
-- **Explicit stop costs one prompt.** With `KeepAlive` a graceful `caddy stop` is
-  instantly relaunched, so Stop-all boots the daemon OUT of launchd. `stop_all` skips the
-  futile admin-stop for a `Daemon` edge; the `stop_services` command then runs
-  `proxy::stop_edge_daemon` (privileged `disable` + `bootout`) OUTSIDE the services lock
-  (M4), mirroring the privileged start. `disable` keeps it down across reboots until the
-  next Start-all bootstraps it again.
+  edge whose socket goes dead gets a BOUNDED grace window** (`EDGE_SUPERVISOR_GRACE_POLLS`
+  = 3 × 10s; KeepAlive's throttle is ~10s): ONE `"edge-restarting"` info on first
+  detection, silence while waiting, then — if launchd didn't bring it back — a DIAGNOSED
+  `"edge-down"` (daemon uninstalled / label disabled via `EdgeSupervisor::is_enabled` /
+  `:443` blocked or crash loop) with the handle flipped to Stopped. Never an unbounded
+  "restarting" reassurance. A legacy `Privileged`/`Child` edge that dies becomes
+  `"edge-down"` immediately (no OS supervisor). **`prepare_edge` trusts liveness, not the
+  handle (H2):** a non-Stopped handle whose socket is dead is a STALE handle — reset and
+  fall through to a fresh start, never a silent skip (regression-tested:
+  `prepare_edge_restarts_over_a_stale_daemon_handle`,
+  `watchdog_bounds_edge_restarting_and_diagnoses_the_giveup`).
+- **Explicit stop costs one prompt, and boots out FIRST.** With `KeepAlive` a graceful
+  `caddy stop` is instantly relaunched, so Stop-all removes the daemon from launchd:
+  `stop_services` runs `proxy::stop_edge_daemon` (privileged `disable` + `bootout`,
+  OUTSIDE the services lock, M4) BEFORE `stop_all` touches any manager state — while the
+  auth prompt sits open the handle stays truthful (`Daemon` && alive), so the watchdog
+  cannot re-adopt a doomed edge mid-stop (the race that once left a stale `Daemon`
+  handle: edge-restarting spam + Start-all skipping the edge). A cancelled prompt stops
+  nothing (all-or-nothing). `stop_all` then skips the admin-stop for a `Daemon` edge
+  (already down); `disable` keeps it down across reboots until the next Start-all
+  (whose `install_command` re-`enable`s before `bootstrap`).
 - `recover_stale_edge()` (fallback, only when a live edge refuses the reload): probe OUR
   socket; a live leftover rexenv edge gets `caddy stop` over it (no privilege needed),
   polled up to 10×500ms, then a clear error if `:443` still isn't free. Ownership-gated:

@@ -127,6 +127,9 @@ impl EdgeSupervisor for LinuxEdge {
     fn is_installed(&self) -> bool {
         todo!("linux edge supervisor (systemd unit Restart=always)")
     }
+    fn is_enabled(&self) -> bool {
+        todo!("linux edge supervisor")
+    }
     fn plist_path(&self) -> PathBuf {
         todo!("linux edge supervisor")
     }

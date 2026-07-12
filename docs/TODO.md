@@ -51,7 +51,18 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   the next Start-all (first run re-prompts once); supersedes the osascript start path
   (kept only for the `caddy_443`/`service_manager_demo` examples). Partially overlaps the
   deferred **SMAppService** item below (that would fold the remaining setup prompts into
-  one registration).
+  one registration). **Follow-up (live Stop-all exposed 3 state-machine defects, fixed):**
+  (1) Stop-all raced the watchdog — `stop_all` cleared the handle, the watchdog re-adopted
+  the still-serving edge during the auth prompt, the bootout then landed → stale `Daemon`
+  handle (health.log 11:56:08 `adopted` + 11:56:11 SIGTERM) → `stop_services` now boots
+  out BEFORE touching manager state; (2) `edge-restarting` was an unbounded every-10s
+  reassurance even for an edge never coming back → bounded: announce once, 3-poll grace,
+  then DIAGNOSED `edge-down` (uninstalled/disabled via new `EdgeSupervisor::is_enabled`/
+  blocked) + handle→Stopped; (3) `prepare_edge` trusted a stale non-Stopped handle → every
+  Start-all silently skipped the edge — now liveness-checked (H2), stale handle falls
+  through to a fresh start. Also `chown -h` in the launcher loop (root chown on a
+  user-controlled path must not follow symlinks). ✓ 231 lib tests green incl. 2 new
+  state-machine regression tests (mock platform).
 - [ ] **Isolate live-check examples from the real stack.** `examples/*.rs` use
   `platform::current()` → the REAL app-data dir: their `start_all`/`stop_all`/
   `recover_stale_edge` stop the USER'S running edge over the shared admin socket (and

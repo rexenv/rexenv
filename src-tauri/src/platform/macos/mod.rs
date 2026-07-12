@@ -524,6 +524,24 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         self.plist_path().exists()
     }
 
+    /// Whether launchd will run the label. `launchctl print-disabled system` is
+    /// readable WITHOUT privilege; after an explicit Stop-all the label shows
+    /// `"…edge" => disabled` (we `disable` before `bootout` so the edge stays down
+    /// across reboots). Unknown/failed reads count as enabled — a wrong "disabled"
+    /// diagnosis would mislead more than a generic one.
+    fn is_enabled(&self) -> bool {
+        match std::process::Command::new("launchctl").args(["print-disabled", "system"]).output()
+        {
+            Ok(o) if o.status.success() => {
+                let out = String::from_utf8_lossy(&o.stdout);
+                !out.lines().any(|l| {
+                    l.contains(&format!("\"{EDGE_DAEMON_LABEL}\"")) && l.contains("=> disabled")
+                })
+            }
+            _ => true,
+        }
+    }
+
     /// The plist. `KeepAlive`+`RunAtLoad` = up now and after every death/boot;
     /// `ProcessType Background` (a daemon, not the app's `Interactive`). Runs the
     /// wrapper via `/bin/sh`; the wrapper `exec`s caddy so this label tracks the
@@ -582,7 +600,7 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              OWNER=$(stat -f %u {appdata})\n\
              ( while :; do \
              [ -S \"$SOCK\" ] && [ \"$(stat -f %u \"$SOCK\" 2>/dev/null)\" != \"$OWNER\" ] \
-             && chown \"$OWNER\" \"$SOCK\" 2>/dev/null; sleep 1; done ) &\n\
+             && chown -h \"$OWNER\" \"$SOCK\" 2>/dev/null; sleep 1; done ) &\n\
              exec {caddy} run --config {cfg} --adapter caddyfile\n",
             sock = sh_quote(admin_sock),
             appdata = sh_quote(appdata),
@@ -974,7 +992,9 @@ mod tests {
         assert!(w.contains("OWNER=$(stat -f %u '/u/appdata')"));
         // ...and PERSISTENTLY re-chowns the socket to that user (caddy recreates it as
         // root on every reload, so a one-shot chown would be lost — the :443 wedge).
-        assert!(w.contains("chown \"$OWNER\" \"$SOCK\""));
+        // `-h`: never follow a symlink — a root loop chowning a user-controlled path
+        // must not be redirectable onto another daemon's socket (LPE).
+        assert!(w.contains("chown -h \"$OWNER\" \"$SOCK\""));
         assert!(w.contains("while :; do"), "must loop, not run once: {w}");
         // exec (not fork) so launchd's tracked PID is caddy itself.
         assert!(w.contains("exec '/root/bin/caddy' run --config '/u/Caddyfile'"));

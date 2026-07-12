@@ -243,6 +243,12 @@ pub trait EdgeSupervisor: Send + Sync {
     /// Whether the edge daemon is installed (its plist is on disk) — the source of
     /// truth for "is the edge under OS supervision" (vs the legacy osascript spawn).
     fn is_installed(&self) -> bool;
+    /// Whether the supervisor will actually run the daemon (macOS: the label is not
+    /// on launchd's system disabled list — an explicit Stop-all `disable`s it).
+    /// Diagnosis input for the watchdog when a supervised edge stays down; readable
+    /// without privilege. Return `true` when the state can't be determined (avoid a
+    /// false "disabled" diagnosis).
+    fn is_enabled(&self) -> bool;
     /// Path of the OS supervisor definition (macOS: the root LaunchDaemon plist).
     fn plist_path(&self) -> PathBuf;
     /// Path of the root-owned launcher the supervisor runs.

@@ -90,6 +90,12 @@ pub struct DbInfo {
 /// before giving up (a crash loop must surface, not restart-storm).
 pub const MAX_RESTART_ATTEMPTS: u32 = 3;
 
+/// Watchdog polls (10s apart) a dead `Daemon` edge gets before the watchdog stops
+/// trusting launchd to relaunch it. KeepAlive's restart throttle is ~10s, so a real
+/// supervisor restart lands within 1–2 polls; 3 misses (~30s) means it is NOT coming
+/// back (booted out, disabled, uninstalled, or `:443` blocked) → declare edge-down.
+pub const EDGE_SUPERVISOR_GRACE_POLLS: u32 = 3;
+
 /// One health-watchdog observation: a managed service found dead and what was
 /// done about it. Serialized to the frontend (`service-health` event) and
 /// appended to `<log_dir>/health.log` as root-cause evidence.
@@ -122,6 +128,13 @@ pub struct ServiceManager {
     /// status row name). Reset when the service is seen healthy again and on
     /// manual start/stop, so a crash loop can't restart-storm forever.
     restart_attempts: HashMap<String, u32>,
+    /// Consecutive watchdog polls that found a `Daemon` edge's admin socket dead.
+    /// launchd's KeepAlive normally relaunches within its ~10s throttle, so a few
+    /// dead polls are a restart in progress — but a daemon that was booted out /
+    /// disabled / uninstalled outside the app never comes back, and after
+    /// [`EDGE_SUPERVISOR_GRACE_POLLS`] the watchdog must stop reassuring and
+    /// declare the edge down (with a diagnosis) instead of lying every 10s forever.
+    edge_dead_polls: u32,
     /// Per-minor PHP ini settings (whitelisted keys, pre-validated values) from
     /// the SQLite `php_settings` table — loaded by the start command, updated by
     /// the settings command. Source for both the pool configs (`php_value` lines)
@@ -148,6 +161,7 @@ impl ServiceManager {
             mailpit: None,
             mailpit_bin: None,
             restart_attempts: HashMap::new(),
+            edge_dead_polls: 0,
             php_settings: HashMap::new(),
             site_env: HashMap::new(),
         }
@@ -373,17 +387,30 @@ impl ServiceManager {
         platform: &dyn Platform,
         caddyfile: PathBuf,
     ) -> Result<Option<EdgePlan>> {
+        let alive = proxy::admin_alive(platform);
         if !matches!(self.caddy, CaddyHandle::Stopped) {
-            return Ok(None);
+            if alive {
+                return Ok(None);
+            }
+            // The handle says running but the socket is dead — a STALE handle
+            // ("running" = ownership AND liveness, H2; never trust state alone).
+            // Seen live: the watchdog re-adopted a Daemon edge in the window
+            // between Stop-all clearing the handle and the privileged bootout
+            // landing; the old unconditional early-return then made every later
+            // Start-all silently skip the edge forever. Reap a dead child and
+            // fall through to a fresh start instead.
+            if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            self.caddy = CaddyHandle::Stopped;
         }
         let bins = self.bins()?;
         // A live listener on OUR admin socket is rexenv's own edge (private path,
         // 0600) — adopt it and push the current config through its admin API. Only
         // if the reload is refused (wedged edge, or a port set it can't rebind) do
         // we fall through to the stop + fresh-start path.
-        if proxy::admin_alive(platform)
-            && proxy::reload(platform, &bins.caddy, &caddyfile, false).is_ok()
-        {
+        if alive && proxy::reload(platform, &bins.caddy, &caddyfile, false).is_ok() {
             // A live edge backed by the KeepAlive daemon is tracked as `Daemon` so an
             // explicit Stop-all boots it out (an admin `caddy stop` alone would just
             // be relaunched); a live edge with no daemon is the legacy osascript one.
@@ -422,15 +449,24 @@ impl ServiceManager {
         matches!(self.caddy, CaddyHandle::Daemon)
     }
 
+    /// Test hook: wire fake binary paths so edge state-machine tests can run
+    /// `prepare_edge` without resolving (= downloading) real binaries.
+    #[cfg(test)]
+    pub(crate) fn set_bins_for_tests(&mut self, caddy: PathBuf) {
+        self.bins = Some(Bins { nginx: caddy.clone(), caddy });
+    }
+
     /// Record the edge as running under the OS supervisor (LaunchDaemon KeepAlive),
     /// the current privileged-start path (`proxy::start_edge_daemon`).
     pub fn set_edge_daemon(&mut self) {
+        self.edge_dead_polls = 0;
         self.caddy = CaddyHandle::Daemon;
     }
 
     /// Record the edge as a legacy root-privileged Caddy (osascript). Kept for the
     /// adopt path and examples; the app start path uses [`Self::set_edge_daemon`].
     pub fn set_edge_privileged(&mut self) {
+        self.edge_dead_polls = 0;
         self.caddy = CaddyHandle::Privileged;
     }
 
@@ -439,11 +475,13 @@ impl ServiceManager {
     /// `examples/edge_adopt_reload_check.rs`; the app itself only reaches this
     /// state through `reconcile_health`.
     pub fn mark_edge_stopped(&mut self) {
+        self.edge_dead_polls = 0;
         self.caddy = CaddyHandle::Stopped;
     }
 
     /// Record the edge as a child Caddy we own (unprivileged high port).
     pub fn set_edge_child(&mut self, child: std::process::Child) {
+        self.edge_dead_polls = 0;
         self.caddy = CaddyHandle::Child(child);
     }
 
@@ -734,6 +772,7 @@ impl ServiceManager {
     pub fn stop_all(&mut self, platform: &dyn Platform) -> Result<()> {
         // Manual intervention resets the watchdog's give-up counters.
         self.restart_attempts.clear();
+        self.edge_dead_polls = 0;
         // A tracked unprivileged child is killed by pid. For a root/privileged edge
         // — or a stray Caddy still on the admin port that we never tracked (common
         // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
@@ -1204,19 +1243,49 @@ impl ServiceManager {
         let installed = platform.edge().is_installed();
         let is_daemon = matches!(self.caddy, CaddyHandle::Daemon);
         let is_stopped = matches!(self.caddy, CaddyHandle::Stopped);
+        if alive {
+            self.edge_dead_polls = 0;
+        }
         if is_daemon && !alive {
-            // The edge is under launchd KeepAlive: launchd is ALREADY relaunching it,
-            // so this is not a "down until Start all" state — do not flip the handle
-            // to Stopped and do not alarm. Surface a transient info so the user knows
-            // sites may blink. If launchd genuinely can't rebind (e.g. :443 taken by
-            // another process) this repeats each poll and the info persists as the cue.
-            events.push(HealthEvent {
-                service: "Caddy".into(),
-                action: "edge-restarting",
-                detail: "edge is kept alive by the system supervisor and is restarting — \
-                         sites may blink for a moment"
-                    .into(),
-            });
+            // The edge is under launchd KeepAlive, which normally relaunches it
+            // within its ~10s throttle — so briefly this is a restart in progress,
+            // not a "down until Start all" state. Say so ONCE (no 10s toast spam).
+            // But a daemon that was booted out / disabled / uninstalled outside the
+            // app, or that can't rebind :443, is NOT coming back: after the grace
+            // window stop reassuring — diagnose why, flip the handle to Stopped
+            // (truth), and raise a real edge-down. Seen live: an external bootout
+            // left the old unbounded branch claiming "restarting" every 10s forever.
+            self.edge_dead_polls += 1;
+            if self.edge_dead_polls == 1 {
+                events.push(HealthEvent {
+                    service: "Caddy".into(),
+                    action: "edge-restarting",
+                    detail: "edge went down — its system supervisor should relaunch it \
+                             within seconds (sites may blink)"
+                        .into(),
+                });
+            } else if self.edge_dead_polls >= EDGE_SUPERVISOR_GRACE_POLLS {
+                self.edge_dead_polls = 0;
+                self.caddy = CaddyHandle::Stopped;
+                let why = if !installed {
+                    "its KeepAlive daemon is no longer installed (removed outside the app)"
+                } else if !platform.edge().is_enabled() {
+                    "its KeepAlive daemon is disabled — it was explicitly stopped \
+                     outside the app"
+                } else {
+                    "its KeepAlive daemon is not bringing it back — port 443 may be \
+                     blocked, or it is crash-looping (check logs/caddy-start.log)"
+                };
+                events.push(HealthEvent {
+                    service: "Caddy".into(),
+                    action: "edge-down",
+                    detail: format!(
+                        "edge stopped and {why}; every site is unreachable until it is \
+                         started again (Start all)"
+                    ),
+                });
+            }
+            // Polls between first and grace: silent — already announced, still waiting.
         } else if !is_stopped && !alive {
             // A legacy osascript / child edge died — no OS supervisor to restart it,
             // so mark it down and alarm (the pre-daemon behavior).
@@ -1510,6 +1579,166 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::traits::*;
+
+    /// Minimal platform for edge state-machine tests: real paths (a tempdir, so the
+    /// admin socket never exists → `admin_alive()` = false) + a configurable edge
+    /// supervisor. Everything else panics — these tests must never touch it.
+    struct EdgeTestPlatform {
+        paths: TestPaths,
+        edge: TestEdge,
+    }
+    struct TestPaths(PathBuf);
+    impl Paths for TestPaths {
+        fn app_data_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.clone())
+        }
+        fn config_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.join("config"))
+        }
+        fn log_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.join("logs"))
+        }
+        fn bin_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.join("bin"))
+        }
+        fn hosts_file(&self) -> PathBuf {
+            self.0.join("hosts")
+        }
+    }
+    struct TestEdge {
+        installed: bool,
+        enabled: bool,
+    }
+    impl EdgeSupervisor for TestEdge {
+        fn is_installed(&self) -> bool {
+            self.installed
+        }
+        fn is_enabled(&self) -> bool {
+            self.enabled
+        }
+        fn plist_path(&self) -> PathBuf {
+            unimplemented!()
+        }
+        fn wrapper_path(&self) -> PathBuf {
+            unimplemented!()
+        }
+        fn daemon_binary_path(&self) -> PathBuf {
+            unimplemented!()
+        }
+        fn plist_contents(&self, _: &Path, _: &Path) -> String {
+            unimplemented!()
+        }
+        fn wrapper_contents(&self, _: &Path, _: &Path, _: &Path, _: &Path) -> String {
+            unimplemented!()
+        }
+        fn install_command(&self, _: &Path, _: &Path, _: &Path) -> String {
+            unimplemented!()
+        }
+        fn start_command(&self) -> String {
+            unimplemented!()
+        }
+        fn stop_command(&self) -> String {
+            unimplemented!()
+        }
+        fn uninstall_command(&self) -> String {
+            unimplemented!()
+        }
+    }
+    impl Platform for EdgeTestPlatform {
+        fn paths(&self) -> &dyn Paths {
+            &self.paths
+        }
+        fn edge(&self) -> &dyn EdgeSupervisor {
+            &self.edge
+        }
+        fn dns(&self) -> &dyn DnsManager {
+            unimplemented!()
+        }
+        fn cert_trust(&self) -> &dyn CertTrustManager {
+            unimplemented!()
+        }
+        fn privileges(&self) -> &dyn PrivilegeManager {
+            unimplemented!()
+        }
+        fn supervisor(&self) -> &dyn ProcessSupervisor {
+            unimplemented!()
+        }
+        fn autostart(&self) -> &dyn AutostartManager {
+            unimplemented!()
+        }
+        fn permissions(&self) -> &dyn PermissionManager {
+            unimplemented!()
+        }
+        fn shell(&self) -> &dyn ShellRunner {
+            unimplemented!()
+        }
+        fn binaries(&self) -> &dyn BinaryProvider {
+            unimplemented!()
+        }
+    }
+
+    fn edge_test_platform(name: &str, installed: bool, enabled: bool) -> EdgeTestPlatform {
+        let dir = std::env::temp_dir().join(format!("rexenv-edge-sm-{name}"));
+        let _ = std::fs::create_dir_all(&dir);
+        EdgeTestPlatform { paths: TestPaths(dir), edge: TestEdge { installed, enabled } }
+    }
+
+    /// The live incident: a bootout raced the watchdog's re-adopt, leaving a
+    /// `Daemon` handle whose socket is dead — the old unconditional early-return
+    /// then made every Start-all silently skip the edge forever. A stale handle
+    /// must be treated as stopped (H2: running = ownership AND liveness) and
+    /// produce a fresh start plan.
+    #[test]
+    fn prepare_edge_restarts_over_a_stale_daemon_handle() {
+        let platform = edge_test_platform("stale-handle", true, true);
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+        mgr.set_bins_for_tests(PathBuf::from("/nonexistent/caddy"));
+        mgr.set_edge_daemon(); // handle says running; no socket exists → dead
+        let plan = mgr
+            .prepare_edge(&platform, PathBuf::from("/nonexistent/Caddyfile"))
+            .expect("prepare_edge")
+            .expect("a stale daemon handle must yield a fresh start plan, not None");
+        assert!(plan.privileged, ":443 default is a privileged start");
+        assert!(!mgr.edge_is_daemon(), "stale handle must be reset to Stopped");
+    }
+
+    /// A dead supervised edge is announced ONCE as edge-restarting (launchd's
+    /// KeepAlive throttle is ~10s), stays silent while waiting, and after the
+    /// grace window escalates to a DIAGNOSED edge-down (here: label disabled =
+    /// stopped outside the app) with the handle flipped to Stopped — never an
+    /// unbounded "restarting" reassurance for an edge that is not coming back.
+    #[tokio::test]
+    async fn watchdog_bounds_edge_restarting_and_diagnoses_the_giveup() {
+        let platform = edge_test_platform("watchdog-giveup", true, false);
+        let dir = std::env::temp_dir().join("rexenv-edge-sm-watchdog-giveup");
+        let ca = ssl::load_or_create_at(&dir.join("ca.pem"), &dir.join("ca.key")).unwrap();
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+        mgr.set_edge_daemon(); // supervised edge; socket never exists → dead
+
+        let caddy_events = |evts: &[HealthEvent]| {
+            evts.iter().filter(|e| e.service == "Caddy").cloned().collect::<Vec<_>>()
+        };
+
+        let (e1, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        let e1 = caddy_events(&e1);
+        assert_eq!(e1.len(), 1, "first dead poll announces once: {e1:?}");
+        assert_eq!(e1[0].action, "edge-restarting");
+
+        let (e2, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        assert!(caddy_events(&e2).is_empty(), "waiting polls stay silent: {e2:?}");
+
+        let (e3, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        let e3 = caddy_events(&e3);
+        assert_eq!(e3.len(), 1, "grace poll escalates: {e3:?}");
+        assert_eq!(e3[0].action, "edge-down");
+        assert!(e3[0].detail.contains("disabled"), "diagnosis names the cause: {}", e3[0].detail);
+        assert!(!mgr.edge_is_daemon(), "given-up edge must read Stopped");
+
+        // Once stopped (and still dead), the watchdog has nothing more to say.
+        let (e4, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        assert!(caddy_events(&e4).is_empty(), "no spam after give-up: {e4:?}");
+    }
 
     #[test]
     fn default_ports_are_canonical() {

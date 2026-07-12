@@ -124,6 +124,9 @@ impl EdgeSupervisor for WindowsEdge {
     fn is_installed(&self) -> bool {
         todo!("windows edge supervisor (Windows Service KeepAlive)")
     }
+    fn is_enabled(&self) -> bool {
+        todo!("windows edge supervisor")
+    }
     fn plist_path(&self) -> PathBuf {
         todo!("windows edge supervisor")
     }
