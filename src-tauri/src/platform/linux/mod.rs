@@ -122,6 +122,51 @@ impl BinaryProvider for LinuxBinaryProvider {
     }
 }
 
+pub struct LinuxEdge;
+impl EdgeSupervisor for LinuxEdge {
+    fn is_installed(&self) -> bool {
+        todo!("linux edge supervisor (systemd unit Restart=always)")
+    }
+    fn plist_path(&self) -> PathBuf {
+        todo!("linux edge supervisor")
+    }
+    fn wrapper_path(&self) -> PathBuf {
+        todo!("linux edge supervisor")
+    }
+    fn daemon_binary_path(&self) -> PathBuf {
+        todo!("linux edge supervisor")
+    }
+    fn plist_contents(&self, _wrapper: &Path, _start_log: &Path) -> String {
+        todo!("linux edge supervisor")
+    }
+    fn wrapper_contents(
+        &self,
+        _caddy_bin: &Path,
+        _caddyfile: &Path,
+        _admin_sock: &Path,
+        _appdata: &Path,
+    ) -> String {
+        todo!("linux edge supervisor")
+    }
+    fn install_command(
+        &self,
+        _src_caddy: &Path,
+        _staged_wrapper: &Path,
+        _staged_plist: &Path,
+    ) -> String {
+        todo!("linux edge supervisor")
+    }
+    fn start_command(&self) -> String {
+        todo!("linux edge supervisor")
+    }
+    fn stop_command(&self) -> String {
+        todo!("linux edge supervisor")
+    }
+    fn uninstall_command(&self) -> String {
+        todo!("linux edge supervisor")
+    }
+}
+
 pub struct LinuxPlatform {
     paths: LinuxPaths,
     dns: LinuxDns,
@@ -132,6 +177,7 @@ pub struct LinuxPlatform {
     permissions: LinuxPermissions,
     shell: LinuxShell,
     binaries: LinuxBinaryProvider,
+    edge: LinuxEdge,
 }
 
 impl LinuxPlatform {
@@ -146,6 +192,7 @@ impl LinuxPlatform {
             permissions: LinuxPermissions,
             shell: LinuxShell,
             binaries: LinuxBinaryProvider,
+            edge: LinuxEdge,
         }
     }
 }
@@ -183,5 +230,8 @@ impl Platform for LinuxPlatform {
     }
     fn binaries(&self) -> &dyn BinaryProvider {
         &self.binaries
+    }
+    fn edge(&self) -> &dyn EdgeSupervisor {
+        &self.edge
     }
 }

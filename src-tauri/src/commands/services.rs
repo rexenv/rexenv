@@ -73,8 +73,11 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     // prompt — with the services lock free, status polls keep working meanwhile.
     if let Some(plan) = plan {
         if plan.privileged {
-            core::proxy::start_privileged(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
-            state.services.lock().await.set_edge_privileged();
+            // Start the root edge under launchd KeepAlive so it stays up across any
+            // death/sleep/reboot. First run installs the daemon (one admin prompt);
+            // later starts just enable + kickstart. `caddy_bin` is the install SOURCE.
+            core::proxy::start_edge_daemon(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            state.services.lock().await.set_edge_daemon();
         } else {
             let child = core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
             state.services.lock().await.set_edge_child(child);
@@ -86,8 +89,22 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
 /// Stop the shared stack.
 #[tauri::command]
 pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
-    let mut mgr = state.services.lock().await;
-    mgr.stop_all(state.platform.as_ref())
+    // Phase 1 (locked): stop the whole non-edge stack. `stop_all` deliberately does
+    // NOT admin-stop a KeepAlive daemon edge (launchd would relaunch it); report
+    // whether a privileged bootout is owed BEFORE the handle is cleared.
+    let need_bootout = {
+        let mut mgr = state.services.lock().await;
+        let daemon = mgr.edge_is_daemon();
+        mgr.stop_all(state.platform.as_ref())?;
+        daemon
+    };
+    // Phase 2 (UNLOCKED): explicitly stop the edge daemon — `disable` + `bootout`
+    // is a privileged op (one admin prompt), so it must run with the services lock
+    // free (M4) exactly like the privileged start does.
+    if need_bootout {
+        core::proxy::stop_edge_daemon(state.platform.as_ref())?;
+    }
+    Ok(())
 }
 
 /// The SINGLE monitor source of truth for resource numbers — both the Services

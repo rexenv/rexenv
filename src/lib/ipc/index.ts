@@ -271,7 +271,13 @@ export async function onTerminalOutput(
  *  what was done about it). Mirrors the Rust `HealthEvent`. */
 export interface HealthEvent {
   service: string;
-  action: "restarted" | "restart-failed" | "gave-up" | "edge-down" | "adopted";
+  action:
+    | "restarted"
+    | "restart-failed"
+    | "gave-up"
+    | "edge-down"
+    | "edge-restarting"
+    | "adopted";
   detail: string;
 }
 

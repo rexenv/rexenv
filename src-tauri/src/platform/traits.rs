@@ -10,7 +10,7 @@
 //! restructuring `core/`.
 
 use crate::error::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 
 /// OS file-system locations (app data, config, logs, downloaded binaries).
@@ -226,6 +226,57 @@ pub trait BinaryProvider: Send + Sync {
     fn prepare_binary(&self, path: &std::path::Path) -> Result<()>;
 }
 
+/// Keeps the privileged Caddy edge (`:80`/`:443`, root) alive across ANY death —
+/// external SIGTERM, crash, sleep/wake, logout, reboot — via an OS supervisor
+/// (macOS: a root LaunchDaemon with `KeepAlive`). This is what makes the edge
+/// "run continuously unless explicitly stopped": the health watchdog can't restart
+/// it (a privileged start needs an auth prompt), so the OS owns the restart instead.
+///
+/// Like [`DnsManager`] these are pure BUILDERS (no privilege, no side effects) so the
+/// install/stop/start shell is unit-testable and batched into ONE `PrivilegeManager`
+/// elevation. `core::proxy` writes the plist + wrapper CONTENTS to a staging dir
+/// unprivileged (plain file writes — no shell-escaping of multi-line files), then
+/// runs [`install_command`] once to `cp` them into the root-owned tree and bootstrap.
+///
+/// [`install_command`]: EdgeSupervisor::install_command
+pub trait EdgeSupervisor: Send + Sync {
+    /// Whether the edge daemon is installed (its plist is on disk) — the source of
+    /// truth for "is the edge under OS supervision" (vs the legacy osascript spawn).
+    fn is_installed(&self) -> bool;
+    /// Path of the OS supervisor definition (macOS: the root LaunchDaemon plist).
+    fn plist_path(&self) -> PathBuf;
+    /// Path of the root-owned launcher the supervisor runs.
+    fn wrapper_path(&self) -> PathBuf;
+    /// Path of the root-owned caddy binary the supervisor executes — NEVER the
+    /// user-writable download cache (re-execing a user-writable file as root is an
+    /// LPE). Install copies our caddy here and locks it `root:wheel`.
+    fn daemon_binary_path(&self) -> PathBuf;
+    /// Contents of the supervisor definition (macOS plist): keep-alive + start-at-boot,
+    /// running `wrapper`, with start diagnostics to `start_log`.
+    fn plist_contents(&self, wrapper: &Path, start_log: &Path) -> String;
+    /// Contents of the launcher: hand the admin socket to the invoking user, then
+    /// `exec` caddy (so the supervisor tracks caddy's own PID).
+    fn wrapper_contents(
+        &self,
+        caddy_bin: &Path,
+        caddyfile: &Path,
+        admin_sock: &Path,
+        appdata: &Path,
+    ) -> String;
+    /// ONE privileged shell that installs the daemon: copy `src_caddy` into the root
+    /// tree (`root:wheel 0755`), drop in the staged wrapper + plist with safe perms,
+    /// and (re)bootstrap the supervisor. Run via `PrivilegeManager` (one prompt).
+    fn install_command(&self, src_caddy: &Path, staged_wrapper: &Path, staged_plist: &Path)
+        -> String;
+    /// Privileged shell to (re)start after an explicit stop.
+    fn start_command(&self) -> String;
+    /// Privileged shell to EXPLICITLY stop — must remove the job so keep-alive can't
+    /// relaunch it (macOS: `disable` then `bootout`).
+    fn stop_command(&self) -> String;
+    /// Privileged shell to fully remove the daemon (uninstall / reset).
+    fn uninstall_command(&self) -> String;
+}
+
 /// Aggregate of every platform capability. `core/` is handed one of these and
 /// never names a concrete OS type.
 pub trait Platform: Send + Sync {
@@ -238,4 +289,6 @@ pub trait Platform: Send + Sync {
     fn permissions(&self) -> &dyn PermissionManager;
     fn shell(&self) -> &dyn ShellRunner;
     fn binaries(&self) -> &dyn BinaryProvider;
+    /// OS supervisor that keeps the root edge alive (macOS LaunchDaemon KeepAlive).
+    fn edge(&self) -> &dyn EdgeSupervisor;
 }

@@ -48,7 +48,13 @@ struct Bins {
 enum CaddyHandle {
     #[default]
     Stopped,
-    /// Started as root via PrivilegeManager (driven via the admin API).
+    /// Root edge under the OS supervisor (macOS LaunchDaemon `KeepAlive`) — the
+    /// default privileged edge. launchd keeps it alive; an explicit stop must
+    /// `bootout` it (`proxy::stop_edge_daemon`), and the health watchdog does NOT
+    /// mark it down on a transient socket blip (launchd is already relaunching).
+    Daemon,
+    /// Legacy root edge started directly via PrivilegeManager/osascript (driven via
+    /// the admin API). Still adopted if found live, but no longer the start path.
     Privileged,
     /// Supervised child (high, non-privileged port).
     Child(Child),
@@ -275,8 +281,8 @@ impl ServiceManager {
         await_ready(checks).await?;
         if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
             if plan.privileged {
-                proxy::start_privileged(platform, &plan.caddy_bin, &plan.caddyfile)?;
-                self.set_edge_privileged();
+                proxy::start_edge_daemon(platform, &plan.caddy_bin, &plan.caddyfile)?;
+                self.set_edge_daemon();
             } else {
                 let child = proxy::start(platform, &plan.caddy_bin, &plan.caddyfile)?;
                 self.set_edge_child(child);
@@ -378,7 +384,14 @@ impl ServiceManager {
         if proxy::admin_alive(platform)
             && proxy::reload(platform, &bins.caddy, &caddyfile, false).is_ok()
         {
-            self.caddy = CaddyHandle::Privileged;
+            // A live edge backed by the KeepAlive daemon is tracked as `Daemon` so an
+            // explicit Stop-all boots it out (an admin `caddy stop` alone would just
+            // be relaunched); a live edge with no daemon is the legacy osascript one.
+            self.caddy = if platform.edge().is_installed() {
+                CaddyHandle::Daemon
+            } else {
+                CaddyHandle::Privileged
+            };
             return Ok(None);
         }
         // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
@@ -393,7 +406,21 @@ impl ServiceManager {
         }))
     }
 
-    /// Record the edge as a root-privileged Caddy (started via osascript).
+    /// Whether the edge is currently tracked as the KeepAlive daemon — the stop
+    /// command checks this (under the lock) to decide whether it must `bootout` the
+    /// daemon (privileged, OUTSIDE the lock) after `stop_all`.
+    pub fn edge_is_daemon(&self) -> bool {
+        matches!(self.caddy, CaddyHandle::Daemon)
+    }
+
+    /// Record the edge as running under the OS supervisor (LaunchDaemon KeepAlive),
+    /// the current privileged-start path (`proxy::start_edge_daemon`).
+    pub fn set_edge_daemon(&mut self) {
+        self.caddy = CaddyHandle::Daemon;
+    }
+
+    /// Record the edge as a legacy root-privileged Caddy (osascript). Kept for the
+    /// adopt path and examples; the app start path uses [`Self::set_edge_daemon`].
     pub fn set_edge_privileged(&mut self) {
         self.caddy = CaddyHandle::Privileged;
     }
@@ -702,13 +729,19 @@ impl ServiceManager {
         // — or a stray Caddy still on the admin port that we never tracked (common
         // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
         // the port frees. This makes "Stop all" reliably release :443/:80.
+        let prior_was_daemon = matches!(self.caddy, CaddyHandle::Daemon);
         if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
             let _ = proxy::stop(platform, c.id());
             let _ = c.wait();
         }
-        if let Some(bins) = &self.bins {
-            if let Err(e) = proxy::stop_edge(platform, &bins.caddy) {
-                log::warn!("rexenv: stop_all could not stop the Caddy edge: {e}");
+        // The KeepAlive daemon is booted out by the stop COMMAND (privileged, OUTSIDE
+        // the lock) — an admin `caddy stop` here would just be relaunched, so skip it.
+        // Legacy osascript / stray untracked edges still get the admin-stop + reap.
+        if !prior_was_daemon {
+            if let Some(bins) = &self.bins {
+                if let Err(e) = proxy::stop_edge(platform, &bins.caddy) {
+                    log::warn!("rexenv: stop_all could not stop the Caddy edge: {e}");
+                }
             }
         }
         self.stop_mailpit(platform)?;
@@ -858,8 +891,14 @@ impl ServiceManager {
         }
         // Root edge: adopted iff our admin unix socket (0600, under our config
         // dir) accepts a connection — the same channel reload/stop already use.
+        // If the KeepAlive daemon is installed, adopt as `Daemon` (Stop-all boots it
+        // out); otherwise it's a legacy osascript survivor.
         if matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_alive(platform) {
-            self.caddy = CaddyHandle::Privileged;
+            self.caddy = if platform.edge().is_installed() {
+                CaddyHandle::Daemon
+            } else {
+                CaddyHandle::Privileged
+            };
             adopted += 1;
         }
         // Adopted services imply cached binaries — wire up `bins` (stop_all's
@@ -1152,7 +1191,26 @@ impl ServiceManager {
         // launch) is re-adopted — no start, just truth — so a stale edge-down
         // never leaves the UI lying or invites a Start-all that would kill a
         // healthy edge.
-        if !matches!(self.caddy, CaddyHandle::Stopped) && !proxy::admin_alive(platform) {
+        let alive = proxy::admin_alive(platform);
+        let installed = platform.edge().is_installed();
+        let is_daemon = matches!(self.caddy, CaddyHandle::Daemon);
+        let is_stopped = matches!(self.caddy, CaddyHandle::Stopped);
+        if is_daemon && !alive {
+            // The edge is under launchd KeepAlive: launchd is ALREADY relaunching it,
+            // so this is not a "down until Start all" state — do not flip the handle
+            // to Stopped and do not alarm. Surface a transient info so the user knows
+            // sites may blink. If launchd genuinely can't rebind (e.g. :443 taken by
+            // another process) this repeats each poll and the info persists as the cue.
+            events.push(HealthEvent {
+                service: "Caddy".into(),
+                action: "edge-restarting",
+                detail: "edge is kept alive by the system supervisor and is restarting — \
+                         sites may blink for a moment"
+                    .into(),
+            });
+        } else if !is_stopped && !alive {
+            // A legacy osascript / child edge died — no OS supervisor to restart it,
+            // so mark it down and alarm (the pre-daemon behavior).
             if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
                 let _ = c.kill();
                 let _ = c.wait();
@@ -1165,8 +1223,14 @@ impl ServiceManager {
                          unreachable until it is started again (Start all)"
                     .into(),
             });
-        } else if matches!(self.caddy, CaddyHandle::Stopped) && proxy::admin_alive(platform) {
-            self.caddy = CaddyHandle::Privileged;
+        } else if is_stopped && alive {
+            // Edge answering while we thought it stopped: re-adopt (as the KeepAlive
+            // daemon if installed, else a legacy osascript survivor) — truth, no start.
+            self.caddy = if installed {
+                CaddyHandle::Daemon
+            } else {
+                CaddyHandle::Privileged
+            };
             events.push(HealthEvent {
                 service: "Caddy".into(),
                 action: "adopted",

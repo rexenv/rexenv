@@ -119,6 +119,51 @@ impl BinaryProvider for WindowsBinaryProvider {
     }
 }
 
+pub struct WindowsEdge;
+impl EdgeSupervisor for WindowsEdge {
+    fn is_installed(&self) -> bool {
+        todo!("windows edge supervisor (Windows Service KeepAlive)")
+    }
+    fn plist_path(&self) -> PathBuf {
+        todo!("windows edge supervisor")
+    }
+    fn wrapper_path(&self) -> PathBuf {
+        todo!("windows edge supervisor")
+    }
+    fn daemon_binary_path(&self) -> PathBuf {
+        todo!("windows edge supervisor")
+    }
+    fn plist_contents(&self, _wrapper: &Path, _start_log: &Path) -> String {
+        todo!("windows edge supervisor")
+    }
+    fn wrapper_contents(
+        &self,
+        _caddy_bin: &Path,
+        _caddyfile: &Path,
+        _admin_sock: &Path,
+        _appdata: &Path,
+    ) -> String {
+        todo!("windows edge supervisor")
+    }
+    fn install_command(
+        &self,
+        _src_caddy: &Path,
+        _staged_wrapper: &Path,
+        _staged_plist: &Path,
+    ) -> String {
+        todo!("windows edge supervisor")
+    }
+    fn start_command(&self) -> String {
+        todo!("windows edge supervisor")
+    }
+    fn stop_command(&self) -> String {
+        todo!("windows edge supervisor")
+    }
+    fn uninstall_command(&self) -> String {
+        todo!("windows edge supervisor")
+    }
+}
+
 pub struct WindowsPlatform {
     paths: WindowsPaths,
     dns: WindowsDns,
@@ -129,6 +174,7 @@ pub struct WindowsPlatform {
     permissions: WindowsPermissions,
     shell: WindowsShell,
     binaries: WindowsBinaryProvider,
+    edge: WindowsEdge,
 }
 
 impl WindowsPlatform {
@@ -143,6 +189,7 @@ impl WindowsPlatform {
             permissions: WindowsPermissions,
             shell: WindowsShell,
             binaries: WindowsBinaryProvider,
+            edge: WindowsEdge,
         }
     }
 }
@@ -180,5 +227,8 @@ impl Platform for WindowsPlatform {
     }
     fn binaries(&self) -> &dyn BinaryProvider {
         &self.binaries
+    }
+    fn edge(&self) -> &dyn EdgeSupervisor {
+        &self.edge
     }
 }

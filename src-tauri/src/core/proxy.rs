@@ -191,6 +191,83 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
     Ok(())
 }
 
+/// Start the edge under the OS supervisor (macOS: a root LaunchDaemon with
+/// `KeepAlive`) so it stays up across ANY death — external SIGTERM (the incident
+/// this replaced), crash, sleep/wake, logout, reboot — with NO health-watchdog
+/// restart (which can't clear the admin-password prompt a privileged start needs).
+///
+/// One privileged prompt: rexenv writes the plist + launcher CONTENTS to a staging
+/// dir UNPRIVILEGED (plain writes — no shell-escaping of multi-line files), then the
+/// single [`EdgeSupervisor::install_command`] `cp`s them into the root-owned tree
+/// (binary locked `root:wheel`, never re-exec of the user-writable cache — LPE guard)
+/// and bootstraps launchd. If the daemon is already installed with its root binary
+/// present, a lighter [`EdgeSupervisor::start_command`] (enable + kickstart) just
+/// re-execs caddy — which re-reads the current Caddyfile — so a normal Start-all
+/// after a stop doesn't recopy anything. The wrapper hands the 0600 admin socket back
+/// to the invoking user, so subsequent reload/stop stay promptless.
+///
+/// `src_caddy` is our resolved caddy cache path (the install SOURCE). Waits for the
+/// admin socket to answer before returning so the caller can mark the edge live.
+pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &Path) -> Result<()> {
+    let edge = platform.edge();
+    let sock = admin_socket_path(platform)?;
+    let appdata = platform.paths().app_data_dir()?;
+    let start_log = platform.paths().log_dir()?.join("caddy-start.log");
+
+    let cmd = if edge.is_installed() && edge.daemon_binary_path().exists() {
+        // Already installed with its root binary — just (re)start it; the kickstart
+        // re-execs caddy, which re-reads the current Caddyfile (picks up site changes).
+        edge.start_command()
+    } else {
+        // First install (or a missing root binary): stage the launcher + plist
+        // unprivileged, then the privileged cp+bootstrap. The launcher execs the
+        // ROOT binary copy, so build its contents against that path.
+        let staging = platform.paths().config_dir()?.join("edge-daemon");
+        std::fs::create_dir_all(&staging)?;
+        let staged_wrapper = staging.join("edge-launch.sh");
+        let staged_plist = staging.join("edge.plist");
+        std::fs::write(
+            &staged_wrapper,
+            edge.wrapper_contents(&edge.daemon_binary_path(), caddyfile, &sock, &appdata),
+        )?;
+        std::fs::write(&staged_plist, edge.plist_contents(&edge.wrapper_path(), &start_log))?;
+        edge.install_command(src_caddy, &staged_wrapper, &staged_plist)
+    };
+    platform.privileges().run_privileged(&cmd)?;
+
+    // Bootstrap/kickstart returns before caddy has bound the socket; wait for it
+    // (the wrapper also needs a beat to chown the socket to us) so the edge reads
+    // live to the caller — same bounded poll as the old privileged start.
+    for _ in 0..25 {
+        if admin_alive(platform) {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err(crate::error::Error::Other(
+        "the Caddy edge daemon was installed but its admin socket never came up — \
+         check logs/caddy-start.log."
+            .to_string(),
+    ))
+}
+
+/// EXPLICITLY stop the edge daemon (Stop-all). With `KeepAlive` a graceful
+/// `caddy stop` is instantly relaunched, so a real stop must remove the job from
+/// launchd (`disable` + `bootout`) — a privileged op (one prompt). Waits for the
+/// admin socket to go quiet. No-op / best-effort if the daemon isn't installed.
+pub fn stop_edge_daemon(platform: &dyn Platform) -> Result<()> {
+    platform.privileges().run_privileged(&platform.edge().stop_command())?;
+    for _ in 0..20 {
+        if !admin_alive(platform) {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    Err(crate::error::Error::Other(
+        "the Caddy edge daemon was booted out but its admin socket is still answering.".to_string(),
+    ))
+}
+
 /// Reload Caddy's config via its admin API (no privilege needed even though
 /// Caddy may run as root). Run after writing a new Caddyfile (e.g. site added).
 ///
