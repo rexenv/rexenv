@@ -6,6 +6,23 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [x] **Supervisor-aware fix-it commands + status-pill ghost fix** (`2fc0b37`/`d55f3dd`).
+  (1) Port-conflict messages carry a copyable command matched to how the holder is
+  MANAGED (toast CommandBlock): app-supervised → `osascript -e 'quit app "Herd"'`
+  (live-tested: quits Herd, frees 127.0.0.1:443); brew binary → `brew services stop F
+  || sudo …` (Valet's nginx lands here); else `sudo kill <master-pid>`; wired into
+  ensure_free, Start-all wire gate, watchdog edge-blocked, bind-conflict error.
+  (2) Status-badge overlap root-caused in two layers: exact-fit pill widths (86px <
+  natural "Running" 88.3/"Stopped" 89.9 in WebKit metrics — SF Pro, NOT an
+  Inter/WKWebView delta; the font stack puts -apple-system first) AND a WKWebView
+  compositing ghost — `transition-opacity` layerizes the row while the label swaps,
+  and →Idle stops all animation so the stale "Running" snapshot lingers till the next
+  poll (→Running mounts the ping dot, forcing recomposition — hence the asymmetry).
+  Fixed: row dims instantly (no opacity transition), all pills `min-w-[92px]` +
+  nowrap + flex-none markers (incl. the DNS pill still at 86px), so no future label
+  can wrap or clip. ✓ WebKit-measured (8 pills × 92.0px, single line); ✓
+  **live-verified in the packaged app** (Jul 13): Caddy Running↔Idle toggled
+  repeatedly, clean both directions.
 - [x] **Herd/port-conflict honesty + opt-in login-start** (post-reboot 502 report,
   Jul 13). (1) `friendly_holder` attributes app-bundled listeners to the owning app
   ("Herd (nginx, pid 1234)"); `start_edge_daemon` timeout and the watchdog edge-down
