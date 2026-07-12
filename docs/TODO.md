@@ -6,6 +6,16 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
+  during the edge-daemon verification): a watchdog tick landed between `start_core`
+  spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned
+  them mid-start (benign outcome, but a needless kill of a healthy starting child —
+  and a slow-to-boot MySQL could be respawn-looped into `gave-up`). The edge branch is
+  now race-free (bootout-first stop, `aa79c93`); the non-edge branches still trust a
+  bare port probe with no "start in progress" grace. Options: a manager start-epoch/
+  in-flight flag the watchdog checks, or per-service spawn timestamps with a readiness
+  grace window.
+
 - [x] **Configurable TLD (v1: default-TLD-for-new-sites)** — stored `default_tld`
   setting; policy-driven `validate_domain` (hard-block `.local`/gTLDs/2-letter in CORE —
   refused even via direct invoke; warn tier for non-RFC-2606 TLDs); answer-all DNS
@@ -62,7 +72,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   Start-all silently skipped the edge — now liveness-checked (H2), stale handle falls
   through to a fresh start. Also `chown -h` in the launcher loop (root chown on a
   user-controlled path must not follow symlinks). ✓ 231 lib tests green incl. 2 new
-  state-machine regression tests (mock platform).
+  state-machine regression tests (mock platform). ✓ **Live-verified full cycle**
+  (Jul 12): Start-all from a `disabled` label (re-enable+bootstrap) → external
+  `sudo kill` self-healed in ~1s with ZERO health events → Stop-all prompt-first,
+  edge stayed down, zero events across 35s (3+ polls) → Start-all-after-stop restored
+  the edge, sites 200 over `:443` (`lm.rex`/`tr.rex`/`adminer.rexenv.rex`).
 - [ ] **Isolate live-check examples from the real stack.** `examples/*.rs` use
   `platform::current()` → the REAL app-data dir: their `start_all`/`stop_all`/
   `recover_stale_edge` stop the USER'S running edge over the shared admin socket (and
