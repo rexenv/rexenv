@@ -1269,12 +1269,28 @@ impl ServiceManager {
                 self.caddy = CaddyHandle::Stopped;
                 let why = if !installed {
                     "its KeepAlive daemon is no longer installed (removed outside the app)"
+                        .to_string()
                 } else if !platform.edge().is_enabled() {
                     "its KeepAlive daemon is disabled — it was explicitly stopped \
                      outside the app"
+                        .to_string()
+                } else if let Some(holder) = platform
+                    .supervisor()
+                    .port_conflict_help(self.ports.https, false)
+                    .holder
+                {
+                    // The launchd relaunches keep losing the bind race: another
+                    // local proxy (e.g. Herd) holds :443. Name it — Herd users are
+                    // the target audience and a nameless failure reads as OUR bug.
+                    format!(
+                        "port {} is held by {holder} — quit that app (or stop its \
+                         proxy), then Start all",
+                        self.ports.https
+                    )
                 } else {
                     "its KeepAlive daemon is not bringing it back — port 443 may be \
                      blocked, or it is crash-looping (check logs/caddy-start.log)"
+                        .to_string()
                 };
                 events.push(HealthEvent {
                     service: "Caddy".into(),

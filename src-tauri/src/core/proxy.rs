@@ -243,6 +243,19 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
+    // Most common real-world cause: another local proxy (Herd — the target user's
+    // other tool — ships its own nginx/caddy) already holds :443/:80, so our edge
+    // crash-loops under launchd instead of binding. NAME the holder honestly; a
+    // generic "socket never came up" cost a real user a confused debugging session.
+    for port in [DEFAULT_HTTPS_PORT, DEFAULT_HTTP_PORT] {
+        let help = platform.supervisor().port_conflict_help(port, false);
+        if let Some(holder) = help.holder {
+            return Err(crate::error::Error::Other(format!(
+                "the Caddy edge could not start: port {port} is already used by {holder}. \
+                 Quit that app (or stop its proxy), then Start all again."
+            )));
+        }
+    }
     Err(crate::error::Error::Other(
         "the Caddy edge daemon was installed but its admin socket never came up — \
          check logs/caddy-start.log."

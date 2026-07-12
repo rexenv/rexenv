@@ -377,19 +377,35 @@ impl ProcessSupervisor for MacosSupervisor {
             .ok()
             .and_then(|o| {
                 let pid: u32 = String::from_utf8_lossy(&o.stdout).lines().next()?.trim().parse().ok()?;
-                let name = std::process::Command::new("ps")
+                let path = std::process::Command::new("ps")
                     .args(["-p", &pid.to_string(), "-o", "comm="])
                     .output()
                     .ok()
                     .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
                     .filter(|n| !n.is_empty())?;
-                // Just the executable name, not its full path.
-                let name = name.rsplit('/').next().unwrap_or(&name).to_string();
-                Some(format!("{name} (pid {pid})"))
+                Some(friendly_holder(&path, pid))
             });
         let free_command =
             Some(format!("sudo kill $(sudo lsof -t {sel}{})", if udp { "" } else { " -sTCP:LISTEN" }));
         PortConflictHelp { holder, free_command }
+    }
+}
+
+/// Human name for a port holder. A bare executable name misleads for app-bundled
+/// tools — Herd ships its own nginx, so its `:443` listener read as just
+/// "nginx (pid …)" and users (Herd users ARE the target audience) couldn't tell
+/// whose proxy answered. Surface the OWNING APP from the `….app` bundle segment:
+/// `/Applications/Herd.app/…/nginx` → "Herd (nginx, pid 1234)".
+fn friendly_holder(exe_path: &str, pid: u32) -> String {
+    let exe = exe_path.rsplit('/').next().unwrap_or(exe_path);
+    let app = exe_path
+        .split('/')
+        .find(|seg| seg.ends_with(".app"))
+        .map(|seg| seg.trim_end_matches(".app"));
+    match app {
+        // The bundle name IS the executable (plain app process) — one name suffices.
+        Some(app) if app != exe => format!("{app} ({exe}, pid {pid})"),
+        _ => format!("{exe} (pid {pid})"),
     }
 }
 
@@ -1028,6 +1044,23 @@ impl Platform for MacosPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn friendly_holder_names_the_owning_app_bundle() {
+        // Herd's bundled nginx must be attributed to Herd, not read as a bare
+        // "nginx" — that ambiguity fooled a real user into debugging our edge.
+        assert_eq!(
+            friendly_holder("/Applications/Herd.app/Contents/Resources/nginx", 1234),
+            "Herd (nginx, pid 1234)"
+        );
+        // Plain binaries keep the simple form.
+        assert_eq!(friendly_holder("/opt/homebrew/bin/nginx", 7), "nginx (pid 7)");
+        // An app whose process IS the bundle name doesn't repeat itself.
+        assert_eq!(
+            friendly_holder("/Applications/OrbStack.app/Contents/MacOS/OrbStack", 9),
+            "OrbStack (pid 9)"
+        );
+    }
 
     #[test]
     fn dns_agent_plist_keeps_resolver_alive_from_login() {
