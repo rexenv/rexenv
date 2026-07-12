@@ -1676,6 +1676,9 @@ mod tests {
         fn binaries(&self) -> &dyn BinaryProvider {
             unimplemented!()
         }
+        fn dns_agent(&self) -> &dyn DnsAgentManager {
+            unimplemented!()
+        }
     }
 
     fn edge_test_platform(name: &str, installed: bool, enabled: bool) -> EdgeTestPlatform {

@@ -167,6 +167,28 @@ impl EdgeSupervisor for WindowsEdge {
     }
 }
 
+pub struct WindowsDnsAgent;
+impl DnsAgentManager for WindowsDnsAgent {
+    fn is_installed(&self) -> bool {
+        todo!("windows dns agent")
+    }
+    fn plist_path(&self) -> Result<PathBuf> {
+        todo!("windows dns agent")
+    }
+    fn plist_contents(&self, _exe: &Path, _log: &Path) -> String {
+        todo!("windows dns agent")
+    }
+    fn install(&self, _exe: &Path, _log: &Path) -> Result<()> {
+        todo!("windows dns agent")
+    }
+    fn kickstart(&self) -> Result<()> {
+        todo!("windows dns agent")
+    }
+    fn uninstall(&self) -> Result<()> {
+        todo!("windows dns agent")
+    }
+}
+
 pub struct WindowsPlatform {
     paths: WindowsPaths,
     dns: WindowsDns,
@@ -178,6 +200,7 @@ pub struct WindowsPlatform {
     shell: WindowsShell,
     binaries: WindowsBinaryProvider,
     edge: WindowsEdge,
+    dns_agent: WindowsDnsAgent,
 }
 
 impl WindowsPlatform {
@@ -193,6 +216,7 @@ impl WindowsPlatform {
             shell: WindowsShell,
             binaries: WindowsBinaryProvider,
             edge: WindowsEdge,
+            dns_agent: WindowsDnsAgent,
         }
     }
 }
@@ -233,5 +257,8 @@ impl Platform for WindowsPlatform {
     }
     fn edge(&self) -> &dyn EdgeSupervisor {
         &self.edge
+    }
+    fn dns_agent(&self) -> &dyn DnsAgentManager {
+        &self.dns_agent
     }
 }

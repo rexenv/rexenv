@@ -6,6 +6,23 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [x] **Sites die 1–2h after quitting the app — DNS must survive the app.** Root cause
+  (evidence-first diagnosis): the data plane (nginx/fpm/MySQL/edge, all detached or
+  launchd-owned) survives a quit indefinitely — but the resolver was an IN-PROCESS tokio
+  task that died the instant the app quit. Sites coasted ~1h40m on client caches +
+  persistent H2 connections (access log: steady 60s polls 18:37→20:17, flapping
+  revivals, final 58-min outage ending 34s after app relaunch with ZERO server
+  restarts — same pids throughout). Sleep exonerated (`pmset -g log`: awake through all
+  outages); idle timeouts exonerated (fpm/MySQL kill workers/connections, never
+  masters); macOS never reaps orphans. ✓ **Fixed:** DNS now served by a per-user
+  LaunchAgent `dev.rexenv.rexenv.dns` (`<binary> --dns-agent`, KeepAlive + RunAtLoad,
+  all unprivileged — new 11th trait `DnsAgentManager`); app launch = adopt
+  (`answers_as_ours` wire probe, H2) or install/refresh (plist tracks current binary,
+  dev↔installed hand off; busy-port retry every 10s hands off from an old in-process
+  holder) or IN-PROCESS fallback (never regress); watchdog kickstarts a dead agent
+  (bounded 3) then one in-process fallback; `dns_status.mode` = agent | in-process |
+  down; teardown uninstalls the agent. ✓ 233 lib tests green (plist invariants +
+  `answers_as_ours` live probe), examples build, tsc clean.
 - [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
   during the edge-daemon verification): a watchdog tick landed between `start_core`
   spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned

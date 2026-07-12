@@ -465,6 +465,112 @@ impl AutostartManager for MacosAutostart {
     }
 }
 
+/// Per-user LaunchAgent that keeps the loopback DNS resolver alive across app
+/// quits (and from login after a reboot): runs `<app binary> --dns-agent` with
+/// `KeepAlive` + `RunAtLoad`. Everything is unprivileged — the resolver binds a
+/// high loopback UDP port and the plist lives in `~/Library/LaunchAgents` — so
+/// install/kickstart/uninstall are direct ops with NO auth prompt (`launchctl
+/// load/unload -w`, same calls [`MacosAutostart`] already uses).
+pub struct MacosDnsAgent;
+
+/// launchd label for the DNS LaunchAgent — a sub-label of the canonical app
+/// identity, distinct from the app-autostart agent and the root edge daemon.
+const DNS_AGENT_LABEL: &str = "dev.rexenv.rexenv.dns";
+
+impl MacosDnsAgent {
+    fn launchctl(args: &[&str], plist: &Path) -> Result<()> {
+        let st = std::process::Command::new("launchctl").args(args).arg(plist).status()?;
+        if st.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("launchctl {} failed (exit {:?})", args.join(" "), st.code())))
+        }
+    }
+}
+
+impl DnsAgentManager for MacosDnsAgent {
+    fn is_installed(&self) -> bool {
+        self.plist_path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    fn plist_path(&self) -> Result<PathBuf> {
+        let home = std::env::var_os("HOME")
+            .ok_or_else(|| Error::Other("HOME is not set".into()))?;
+        Ok(PathBuf::from(home)
+            .join("Library/LaunchAgents")
+            .join(format!("{DNS_AGENT_LABEL}.plist")))
+    }
+
+    /// `KeepAlive` + `RunAtLoad`: the resolver is up from login and relaunched on
+    /// any death. `Background` (a helper, not an interactive app); agent output
+    /// goes to the shared log dir so a wedged resolver leaves evidence.
+    fn plist_contents(&self, exe: &Path, log: &Path) -> String {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+             \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+             <plist version=\"1.0\">\n\
+             <dict>\n\
+             \t<key>Label</key>\n\
+             \t<string>{DNS_AGENT_LABEL}</string>\n\
+             \t<key>ProgramArguments</key>\n\
+             \t<array>\n\
+             \t\t<string>{exe}</string>\n\
+             \t\t<string>--dns-agent</string>\n\
+             \t</array>\n\
+             \t<key>KeepAlive</key>\n\
+             \t<true/>\n\
+             \t<key>RunAtLoad</key>\n\
+             \t<true/>\n\
+             \t<key>ProcessType</key>\n\
+             \t<string>Background</string>\n\
+             \t<key>StandardOutPath</key>\n\
+             \t<string>{log}</string>\n\
+             \t<key>StandardErrorPath</key>\n\
+             \t<string>{log}</string>\n\
+             </dict>\n\
+             </plist>\n",
+            exe = exe.display(),
+            log = log.display(),
+        )
+    }
+
+    fn install(&self, exe: &Path, log: &Path) -> Result<()> {
+        let plist = self.plist_path()?;
+        if let Some(parent) = plist.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let contents = self.plist_contents(exe, log);
+        // Skip the unload/load churn when nothing changed (every app launch calls
+        // this): a byte-identical plist with a live agent is already correct.
+        let unchanged = std::fs::read_to_string(&plist).map(|c| c == contents).unwrap_or(false);
+        std::fs::write(&plist, &contents)?;
+        if unchanged {
+            return Ok(());
+        }
+        // Exe changed (dev <-> installed build) or first install: reload so launchd
+        // runs the CURRENT binary. Unload is best-effort (nothing loaded on a fresh
+        // install); load must succeed.
+        let _ = Self::launchctl(&["unload", "-w"], &plist);
+        Self::launchctl(&["load", "-w"], &plist)
+    }
+
+    fn kickstart(&self) -> Result<()> {
+        let plist = self.plist_path()?;
+        let _ = Self::launchctl(&["unload", "-w"], &plist);
+        Self::launchctl(&["load", "-w"], &plist)
+    }
+
+    fn uninstall(&self) -> Result<()> {
+        let plist = self.plist_path()?;
+        if plist.exists() {
+            let _ = Self::launchctl(&["unload", "-w"], &plist);
+            std::fs::remove_file(&plist)?;
+        }
+        Ok(())
+    }
+}
+
 /// Root LaunchDaemon that keeps the Caddy edge alive across ANY death — SIGTERM,
 /// crash, sleep/wake, logout, reboot — with `KeepAlive=true` + `RunAtLoad=true`.
 /// launchd (as root) owns the edge, so a stray external SIGTERM (the incident this
@@ -856,6 +962,7 @@ pub struct MacosPlatform {
     shell: MacosShell,
     binaries: MacosBinaryProvider,
     edge: MacosEdgeDaemon,
+    dns_agent: MacosDnsAgent,
 }
 
 impl MacosPlatform {
@@ -871,6 +978,7 @@ impl MacosPlatform {
             shell: MacosShell,
             binaries: MacosBinaryProvider,
             edge: MacosEdgeDaemon,
+            dns_agent: MacosDnsAgent,
         }
     }
 }
@@ -912,11 +1020,37 @@ impl Platform for MacosPlatform {
     fn edge(&self) -> &dyn EdgeSupervisor {
         &self.edge
     }
+    fn dns_agent(&self) -> &dyn DnsAgentManager {
+        &self.dns_agent
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dns_agent_plist_keeps_resolver_alive_from_login() {
+        let agent = MacosDnsAgent;
+        let plist = agent.plist_contents(
+            Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv"),
+            Path::new("/l/dns-agent.log"),
+        );
+        // KeepAlive + RunAtLoad: resolver up from login, relaunched on any death —
+        // this is what makes sites resolve with the app closed and after reboot.
+        assert!(plist.contains("<key>KeepAlive</key>\n\t<true/>"), "plist:\n{plist}");
+        assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
+        // Runs the app binary in headless resolver mode.
+        assert!(plist.contains("<string>/Applications/rexenv.app/Contents/MacOS/rexenv</string>"));
+        assert!(plist.contains("<string>--dns-agent</string>"));
+        // Own label, distinct from the app-autostart agent and the edge daemon.
+        assert!(plist.contains(&format!("<string>{DNS_AGENT_LABEL}</string>")));
+        assert_ne!(DNS_AGENT_LABEL, AUTOSTART_LABEL);
+        assert_ne!(DNS_AGENT_LABEL, EDGE_DAEMON_LABEL);
+        // Unprivileged: a per-user LaunchAgent, never a system daemon.
+        let path = agent.plist_path().unwrap();
+        assert!(path.display().to_string().contains("Library/LaunchAgents"));
+    }
 
     #[test]
     fn edge_daemon_keeps_alive_and_uses_root_owned_binary() {

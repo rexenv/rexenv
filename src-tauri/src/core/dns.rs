@@ -181,6 +181,78 @@ impl Drop for DnsService {
     }
 }
 
+/// Headless resolver — the body of `rexenv --dns-agent`, run by the per-user
+/// LaunchAgent (`DnsAgentManager`) so name resolution survives app quits and is
+/// up from login. No Tauri, no app state, no SQLite: just the same hickory
+/// handler on the fixed loopback port, forever.
+///
+/// Never exits on a busy port: an older app instance's IN-PROCESS resolver may
+/// still hold it, and exiting would make launchd throttle-flap the agent. Instead
+/// retry every 10s — when the old holder quits, the agent takes over seamlessly
+/// (the handoff that motivates the agent in the first place). Output goes to the
+/// agent log via launchd's Standard{Out,Err}Path.
+pub fn run_agent() -> i32 {
+    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("rexenv dns-agent: failed to build runtime: {e}");
+            return 1;
+        }
+    };
+    rt.block_on(async {
+        loop {
+            match serve_udp(SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_DNS_PORT))).await {
+                Ok((addr, mut server)) => {
+                    eprintln!("rexenv dns-agent: listening on {addr} (udp)");
+                    if let Err(e) = server.block_until_done().await {
+                        eprintln!("rexenv dns-agent: server ended: {e}; re-binding in 10s");
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "rexenv dns-agent: cannot bind :{DEFAULT_DNS_PORT} ({e}); retrying in 10s"
+                    );
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    })
+}
+
+/// Whether OUR resolver semantics are live on loopback `port`: send a real A
+/// query for a throwaway name and require the answer `127.0.0.1`. Distinguishes
+/// "our agent (or an old in-process resolver) is serving" from a foreign process
+/// merely holding the port — the ownership-AND-liveness rule (H2) applied to DNS.
+/// Synchronous with a short timeout; callers treat any failure as "not ours".
+pub fn answers_as_ours(port: u16) -> bool {
+    use hickory_proto::op::{Message, Query};
+    use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
+
+    let Ok(name) = Name::from_ascii("liveness-probe.rex.") else { return false };
+    let mut msg = Message::new();
+    msg.set_id(0x7e7e)
+        .set_message_type(MessageType::Query)
+        .set_op_code(OpCode::Query)
+        .set_recursion_desired(true)
+        .add_query(Query::query(name, RecordType::A));
+    let Ok(bytes) = msg.to_bytes() else { return false };
+
+    let probe = || -> std::io::Result<bool> {
+        let sock = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
+        sock.set_read_timeout(Some(std::time::Duration::from_millis(500)))?;
+        sock.send_to(&bytes, (Ipv4Addr::LOCALHOST, port))?;
+        let mut buf = [0u8; 512];
+        let (n, _) = sock.recv_from(&mut buf)?;
+        let Ok(reply) = Message::from_bytes(&buf[..n]) else { return Ok(false) };
+        Ok(reply.id() == 0x7e7e
+            && reply
+                .answers()
+                .iter()
+                .any(|r| matches!(r.data(), Some(RData::A(A(ip))) if *ip == Ipv4Addr::LOCALHOST)))
+    };
+    probe().unwrap_or(false)
+}
+
 /// Install the OS resolver file for `tld` (pointing at our resolver on `port`)
 /// through `PrivilegeManager` — one auth prompt. Standalone helper; the batched
 /// system-setup step (3.4) instead concatenates this with the CA-trust command
@@ -408,5 +480,21 @@ mod tests {
         svc.stop();
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(!svc.is_running(), "service should stop cleanly");
+    }
+
+    /// The agent-adoption probe: true against OUR resolver (any name → 127.0.0.1),
+    /// false against a dead port — the app uses this to decide adopt vs install
+    /// vs in-process fallback, and the watchdog uses it as agent liveness.
+    #[tokio::test]
+    async fn answers_as_ours_detects_our_resolver_and_a_dead_port() {
+        let svc = DnsService::start("127.0.0.1:0".parse().unwrap()).await.unwrap();
+        let port = svc.addr().port();
+        // spawn_blocking: the probe is deliberately sync (used from non-async paths).
+        let ours = tokio::task::spawn_blocking(move || answers_as_ours(port)).await.unwrap();
+        assert!(ours, "must recognize our own resolver");
+        svc.stop();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let dead = tokio::task::spawn_blocking(move || answers_as_ours(port)).await.unwrap();
+        assert!(!dead, "a dead port must not read as ours");
     }
 }

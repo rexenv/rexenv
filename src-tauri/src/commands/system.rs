@@ -136,8 +136,11 @@ pub fn reveal_path(state: State<'_, AppState>, path: String) -> Result<()> {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DnsStatus {
-    /// The embedded resolver is bound on its loopback UDP port.
+    /// A resolver with OUR semantics answers on the loopback UDP port.
     pub running: bool,
+    /// Who serves DNS: "agent" (LaunchAgent — survives app quits), "in-process"
+    /// (legacy fallback — dies with the app), or "down".
+    pub mode: &'static str,
     pub port: u16,
     /// The backbone OS resolver file (`/etc/resolver/rex`) is installed.
     pub resolver_installed: bool,
@@ -148,25 +151,28 @@ pub struct DnsStatus {
     pub ca_trusted: bool,
 }
 
-/// Embedded-DNS + OS-resolver + CA-trust status. `running` probes the loopback
-/// UDP port (the resolver binds UDP, so the TCP `is_listening` check doesn't
-/// apply); a failed bind means something — our in-process resolver — already
-/// holds it.
+/// DNS + OS-resolver + CA-trust status. `running` is a REAL wire probe
+/// (`answers_as_ours`: an A query must come back `127.0.0.1`) — true for both
+/// the agent and the in-process fallback, false for a foreign port-holder; the
+/// in-process task handle is the cheap fast path.
 #[tauri::command]
 pub fn dns_status(
     state: State<'_, AppState>,
     dns: State<'_, crate::state::app::DnsState>,
 ) -> DnsStatus {
     let port = core::dns::DEFAULT_DNS_PORT;
-    // Authoritative: the in-process task handle (a dead task leaves the port
-    // unbound, but the reverse port probe can false-positive on a foreign
-    // process). Fall back to the port probe only when we never got a handle.
-    let running = dns.running() || core::dns::port_bound(port);
+    let running = dns.running() || core::dns::answers_as_ours(port);
+    let mode = match dns.mode() {
+        crate::state::app::DnsMode::Agent => "agent",
+        crate::state::app::DnsMode::InProcess => "in-process",
+        crate::state::app::DnsMode::Down => "down",
+    };
     // The Settings indicator reports the BACKBONE (.rex) resolver file — the
     // one system setup installs and that always stays active.
     let path = state.platform.dns().resolver_path(core::tld::BACKBONE_TLD);
     DnsStatus {
         running,
+        mode,
         port,
         resolver_installed: path.exists(),
         resolver_path: path.display().to_string(),

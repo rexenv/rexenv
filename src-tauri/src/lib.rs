@@ -28,24 +28,71 @@ pub fn run() {
 
             let platform = platform::current();
 
-            // Start the embedded DNS resolver as a managed background task on a
-            // fixed loopback port, gated on ports::ensure_free (a conflict names
-            // the holder + a free-it command). Held in app state so it lives for
-            // the app's lifetime and is aborted cleanly on exit
-            // (DnsService::drop). A failure is logged, not fatal — the app
-            // still runs.
-            let dns = match tauri::async_runtime::block_on(core::dns::DnsService::start_default(
-                platform.as_ref(),
-            )) {
-                Ok(dns) => Some(dns),
-                Err(e) => {
-                    log::error!("dns: failed to start embedded resolver: {e}");
-                    None
+            // DNS: the resolution plane must SURVIVE the app — the data plane
+            // (nginx/fpm/DB/edge) already outlives a quit, but sites are
+            // unreachable without DNS, and the old always-in-process resolver
+            // died with the app (observed live: sites coasted ~1h40m on client
+            // caches after a quit, then went dark until relaunch). Preferred
+            // state: the per-user LaunchAgent (`rexenv --dns-agent`, KeepAlive,
+            // no privilege). The agent plist is refreshed on every launch so it
+            // tracks THIS binary (dev <-> installed hand off); a live old holder
+            // of the port is adopted now and handed off later (the agent retries
+            // its bind every 10s). In-process is the automatic FALLBACK so DNS
+            // never regresses; failure of both is logged, not fatal.
+            let dns_port = core::dns::DEFAULT_DNS_PORT;
+            let agent_log = platform
+                .paths()
+                .log_dir()
+                .map(|d| d.join("dns-agent.log"))
+                .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/rexenv-dns-agent.log"));
+            let agent_up = {
+                let already = core::dns::answers_as_ours(dns_port);
+                // Install/refresh regardless of `already`: the answering process
+                // may be an OLD app instance's in-process resolver with no agent
+                // installed at all.
+                let installed = std::env::current_exe()
+                    .map_err(error::Error::from)
+                    .and_then(|exe| platform.dns_agent().install(&exe, &agent_log));
+                if let Err(e) = &installed {
+                    log::warn!("dns: could not install the resolver agent: {e}");
+                }
+                already
+                    || (installed.is_ok() && {
+                        // Give a fresh agent a moment to bind + answer.
+                        let mut up = false;
+                        for _ in 0..10 {
+                            if core::dns::answers_as_ours(dns_port) {
+                                up = true;
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(200));
+                        }
+                        up
+                    })
+            };
+            let dns_state = if agent_up {
+                log::info!("dns: resolver agent serving on udp {dns_port} (survives app quits)");
+                state::app::DnsState::new(None, state::app::DnsMode::Agent)
+            } else {
+                match tauri::async_runtime::block_on(core::dns::DnsService::start_default(
+                    platform.as_ref(),
+                )) {
+                    Ok(dns) => {
+                        log::warn!(
+                            "dns: resolver agent unavailable — running IN-PROCESS \
+                             (sites will stop resolving shortly after the app quits)"
+                        );
+                        state::app::DnsState::new(Some(dns), state::app::DnsMode::InProcess)
+                    }
+                    Err(e) => {
+                        log::error!("dns: failed to start any resolver: {e}");
+                        state::app::DnsState::new(None, state::app::DnsMode::Down)
+                    }
                 }
             };
-            // ALWAYS managed (even as None) so status + the health watchdog can
-            // read/restart it without a missing-state panic.
-            app.manage(state::app::DnsState(std::sync::Mutex::new(dns)));
+            // ALWAYS managed so status + the health watchdog can read/repair it
+            // without a missing-state panic.
+            app.manage(dns_state);
 
             // Registry of live PTY terminal sessions (§4.1).
             app.manage(commands::terminal::Terminals::default());
@@ -220,40 +267,95 @@ pub fn run() {
                         log::warn!("health: a respawned service did not become ready: {e}");
                     }
 
-                    // The embedded DNS resolver (in-process task, owned here not by
-                    // the manager). Only restart what once ran and died; a resolver
-                    // that never started (port conflict at launch) stays a Settings
-                    // problem. Bounded like the manager's services.
+                    // DNS resolution (owned here, not by the manager). Mode-aware:
+                    // Agent → probe over the wire; a dead agent gets a bounded
+                    // launchctl kickstart, and after 3 failed kicks we fall back
+                    // to an IN-PROCESS resolver so sites keep resolving NOW (the
+                    // degraded mode is surfaced in Settings). InProcess → restart
+                    // the task in place (the old behavior). A resolver that never
+                    // started (Down) stays a Settings problem, not a restart loop.
                     let dns = watchdog.state::<state::app::DnsState>();
-                    let died = dns
-                        .0
-                        .lock()
-                        .map(|g| g.as_ref().is_some_and(|d| !d.is_running()))
-                        .unwrap_or(false);
-                    if died && dns_failures < 3 {
-                        match core::dns::DnsService::start_default(state.platform.as_ref()).await {
-                            Ok(new_dns) => {
-                                if let Ok(mut g) = dns.0.lock() {
-                                    *g = Some(new_dns);
-                                }
+                    match dns.mode() {
+                        state::app::DnsMode::Agent => {
+                            if core::dns::answers_as_ours(core::dns::DEFAULT_DNS_PORT) {
                                 dns_failures = 0;
-                                events.push(core::service_manager::HealthEvent {
-                                    service: "DNS".into(),
-                                    action: "restarted",
-                                    detail: "embedded resolver task had died; restarted".into(),
-                                });
-                            }
-                            Err(e) => {
+                            } else if dns_failures < 3 {
                                 dns_failures += 1;
-                                events.push(core::service_manager::HealthEvent {
-                                    service: "DNS".into(),
-                                    action: "restart-failed",
-                                    detail: e.to_string(),
-                                });
+                                match state.platform.dns_agent().kickstart() {
+                                    Ok(()) => events.push(core::service_manager::HealthEvent {
+                                        service: "DNS".into(),
+                                        action: "restarted",
+                                        detail: "resolver agent was not answering; kicked it \
+                                                 (next poll verifies)"
+                                            .into(),
+                                    }),
+                                    Err(e) => events.push(core::service_manager::HealthEvent {
+                                        service: "DNS".into(),
+                                        action: "restart-failed",
+                                        detail: format!("resolver agent kickstart failed: {e}"),
+                                    }),
+                                }
+                            } else if dns_failures == 3 {
+                                dns_failures += 1; // one-shot fallback, no loop
+                                match core::dns::DnsService::start_default(state.platform.as_ref())
+                                    .await
+                                {
+                                    Ok(new_dns) => {
+                                        dns.set(Some(new_dns), state::app::DnsMode::InProcess);
+                                        events.push(core::service_manager::HealthEvent {
+                                            service: "DNS".into(),
+                                            action: "restarted",
+                                            detail: "resolver agent would not come back — \
+                                                     serving in-process instead (sites resolve, \
+                                                     but not after the app quits)"
+                                                .into(),
+                                        });
+                                    }
+                                    Err(e) => events.push(core::service_manager::HealthEvent {
+                                        service: "DNS".into(),
+                                        action: "gave-up",
+                                        detail: format!(
+                                            "resolver agent dead and in-process fallback \
+                                             failed: {e}"
+                                        ),
+                                    }),
+                                }
                             }
                         }
-                    } else if !died {
-                        dns_failures = 0;
+                        state::app::DnsMode::InProcess => {
+                            let died = dns
+                                .service
+                                .lock()
+                                .map(|g| g.as_ref().is_some_and(|d| !d.is_running()))
+                                .unwrap_or(false);
+                            if died && dns_failures < 3 {
+                                match core::dns::DnsService::start_default(state.platform.as_ref())
+                                    .await
+                                {
+                                    Ok(new_dns) => {
+                                        dns.set(Some(new_dns), state::app::DnsMode::InProcess);
+                                        dns_failures = 0;
+                                        events.push(core::service_manager::HealthEvent {
+                                            service: "DNS".into(),
+                                            action: "restarted",
+                                            detail: "embedded resolver task had died; restarted"
+                                                .into(),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        dns_failures += 1;
+                                        events.push(core::service_manager::HealthEvent {
+                                            service: "DNS".into(),
+                                            action: "restart-failed",
+                                            detail: e.to_string(),
+                                        });
+                                    }
+                                }
+                            } else if !died {
+                                dns_failures = 0;
+                            }
+                        }
+                        state::app::DnsMode::Down => {}
                     }
 
                     if !events.is_empty() {

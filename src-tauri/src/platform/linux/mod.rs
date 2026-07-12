@@ -170,6 +170,28 @@ impl EdgeSupervisor for LinuxEdge {
     }
 }
 
+pub struct LinuxDnsAgent;
+impl DnsAgentManager for LinuxDnsAgent {
+    fn is_installed(&self) -> bool {
+        todo!("linux dns agent")
+    }
+    fn plist_path(&self) -> Result<PathBuf> {
+        todo!("linux dns agent")
+    }
+    fn plist_contents(&self, _exe: &Path, _log: &Path) -> String {
+        todo!("linux dns agent")
+    }
+    fn install(&self, _exe: &Path, _log: &Path) -> Result<()> {
+        todo!("linux dns agent")
+    }
+    fn kickstart(&self) -> Result<()> {
+        todo!("linux dns agent")
+    }
+    fn uninstall(&self) -> Result<()> {
+        todo!("linux dns agent")
+    }
+}
+
 pub struct LinuxPlatform {
     paths: LinuxPaths,
     dns: LinuxDns,
@@ -181,6 +203,7 @@ pub struct LinuxPlatform {
     shell: LinuxShell,
     binaries: LinuxBinaryProvider,
     edge: LinuxEdge,
+    dns_agent: LinuxDnsAgent,
 }
 
 impl LinuxPlatform {
@@ -196,6 +219,7 @@ impl LinuxPlatform {
             shell: LinuxShell,
             binaries: LinuxBinaryProvider,
             edge: LinuxEdge,
+            dns_agent: LinuxDnsAgent,
         }
     }
 }
@@ -236,5 +260,8 @@ impl Platform for LinuxPlatform {
     }
     fn edge(&self) -> &dyn EdgeSupervisor {
         &self.edge
+    }
+    fn dns_agent(&self) -> &dyn DnsAgentManager {
+        &self.dns_agent
     }
 }

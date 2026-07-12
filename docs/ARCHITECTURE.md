@@ -19,13 +19,13 @@ commands/   thin translators only — parse args, call core, map errors
         ↓
 core/       platform-agnostic domain logic ("the what") — no OS-specific code, ever
         ↓
-platform/   ALL OS-specific code, behind 10 traits (platform/traits.rs):
+platform/   ALL OS-specific code, behind 11 traits (platform/traits.rs):
             DnsManager · CertTrustManager · PrivilegeManager · ProcessSupervisor ·
             AutostartManager · PermissionManager · ShellRunner · Paths · BinaryProvider ·
-            EdgeSupervisor
+            EdgeSupervisor · DnsAgentManager
 ```
 
-- `platform/macos/mod.rs` — all 10 traits real. `platform/windows/`, `platform/linux/` —
+- `platform/macos/mod.rs` — all 11 traits real. `platform/windows/`, `platform/linux/` —
   every method `todo!()`. Adding an OS = filling stubs, never restructuring.
 - The only non-platform `todo!`-ish code is a defensive `unreachable!` in
   `core/binaries.rs`. `core/`, `commands/`, `state/` are macOS-complete.
@@ -156,19 +156,32 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   running OUR caddy binary path (`owned_pids(marker)`). A root remnant may survive —
   logged; it holds no ports.
 
-## 4. DNS — always-on, in-process (`core/dns.rs`, `lib.rs`)
+## 4. DNS — survives the app (`core/dns.rs`, `lib.rs`, `DnsAgentManager`)
 
 - Embedded hickory-dns resolver answering ANY A query with `127.0.0.1` (TTL 60) on
   UDP **15353**. Deliberately TLD-agnostic: WHICH TLDs reach it is scoped by which
   `/etc/resolver/<tld>` files exist (one per TLD; no restart to add one). Safe only
   because it binds loopback and only our resolver files route to it (`core/dns.rs`).
-- **Not a ServiceManager service.** Started once at app launch (`lib.rs` →
-  `DnsService::start_default`), held in `DnsState(Mutex<Option<DnsService>>)`; a tokio
-  task, aborted on Drop. Launch failure is logged, non-fatal — state stays managed as
-  `None` so status/watchdog never panic.
-- Health watchdog (`lib.rs`): restarts a resolver whose task died, **bounded to 3
-  attempts**, emits `service-health` events. A resolver that never started (port conflict
-  at launch) is NOT auto-restarted — surfaces in Settings.
+- **The resolver runs OUTSIDE the app** — a per-user LaunchAgent
+  (`dev.rexenv.rexenv.dns`, `KeepAlive` + `RunAtLoad`) running `<app binary>
+  --dns-agent` (headless: no Tauri/SQLite/services; `dns::run_agent`). Rationale
+  (observed live): the data plane outlives a quit, but the OLD in-process resolver died
+  with the app — sites coasted ~1h40m on client caches/persistent connections, then went
+  dark until relaunch. All unprivileged (`~/Library/LaunchAgents`, high loopback port;
+  `launchctl load/unload -w` — no prompt). The agent never exits on a busy port: it
+  retries every 10s, so an old in-process holder hands off seamlessly.
+- **App launch = adopt-or-install-or-fall-back** (`lib.rs`): probe
+  `dns::answers_as_ours` (a REAL A query must return `127.0.0.1` — ownership AND
+  liveness, H2 — never a bare port probe); refresh the plist every launch so it tracks
+  the current binary (dev ↔ installed hand off); if the agent can't come up, fall back
+  to the legacy IN-PROCESS task (`DnsState { service, mode: Agent | InProcess | Down }`)
+  so DNS never regresses — Settings surfaces the degraded mode (`dns_status.mode`).
+- Health watchdog (`lib.rs`), mode-aware and **bounded to 3 attempts**: Agent → wire
+  probe, dead agent gets a `launchctl` kickstart, and after 3 failed kicks ONE in-process
+  fallback (sites resolve now, mode says it won't survive quits); InProcess → restart the
+  task in place. Emits `service-health` events. A resolver that never started (port
+  conflict at launch) is NOT auto-restarted — surfaces in Settings. Teardown
+  (`run_system_teardown`) also uninstalls the agent.
 - The OS-side `/etc/resolver/<tld>` files are a separate privileged step, independent
   of the in-process server: onboarding installs the `.rex` backbone (`core/setup.rs`);
   any other TLD (`.test` included) installs on first use (`dns::ensure_resolver`, one

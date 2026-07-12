@@ -13,7 +13,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 
 - `commands/` are **thin** Tauri IPC handlers — translate calls, invoke `core/`, nothing else.
 - `core/` is **platform-agnostic** ("the what") — never imports OS-specific code.
-- ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 10 Rust traits
+- ALL OS-specific code lives ONLY in `src-tauri/src/platform/`, behind the 11 Rust traits
   in `platform/traits.rs`, impls selected via `#[cfg(target_os)]`. macOS impls are real;
   `windows/`/`linux/` stay `todo!()` — adding an OS = filling stubs, NOT restructuring.
 
@@ -37,8 +37,10 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 - **Locking rule:** never hold the services lock across a wait — spawn under the lock,
   return `ReadyCheck`s, `await_ready` after dropping it. Status polls `try_lock` a
   snapshot; only `ServiceManager` sits behind an async Mutex (AppState = field-level locks).
-- Embedded DNS (hickory) is **always-on, in-process** — `*.test → 127.0.0.1` on UDP
-  15353; not a ServiceManager service; watchdog-restarted (max 3).
+- Embedded DNS (hickory) is **always-on and OUTLIVES the app** — `*.test → 127.0.0.1`
+  on UDP 15353, served by a per-user LaunchAgent (`--dns-agent`, KeepAlive, no
+  privilege); in-process only as automatic fallback; not a ServiceManager service;
+  watchdog kickstarts/restarts (max 3).
 - **System changes only through platform traits.** `/etc/resolver/test` = root op via
   `PrivilegeManager`; CA trust = USER op via `CertTrustManager` (login keychain — System
   keychain is impossible from detached-root osascript). Privileged prompts must run

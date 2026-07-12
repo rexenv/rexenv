@@ -7,21 +7,57 @@ use crate::platform::traits::Platform;
 use rusqlite::Connection;
 use std::sync::Mutex;
 
-/// The embedded DNS resolver task, managed as its OWN Tauri state (separate from
+/// Who serves local-TLD DNS right now. `Agent` is the goal state: resolution
+/// survives app quits (the observed sites-die-after-quit failure was exactly the
+/// old always-in-process resolver dying with the app). `InProcess` is the
+/// automatic fallback when the agent can't come up, so DNS never regresses below
+/// the pre-agent behavior — but it dies with the app, and Settings says so.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DnsMode {
+    /// Served by the per-user LaunchAgent (`rexenv --dns-agent`) — survives quits.
+    Agent,
+    /// Served by the legacy in-process task — dies with the app.
+    InProcess,
+    /// Nothing serving (agent install AND in-process bind both failed).
+    Down,
+}
+
+/// DNS resolution state, managed as its OWN Tauri state (separate from
 /// `AppState` — it starts before, and must survive failure of, the DB/CA init).
-/// ALWAYS managed: `None` when the resolver failed to start or has died, so
-/// status can report the truth and the health watchdog can restart it in place.
-pub struct DnsState(pub Mutex<Option<crate::core::dns::DnsService>>);
+/// ALWAYS managed: `service` is `Some` only in `InProcess` mode; in `Agent` mode
+/// the resolver lives in the LaunchAgent's process and liveness is probed over
+/// the wire (`dns::answers_as_ours`).
+pub struct DnsState {
+    pub service: Mutex<Option<crate::core::dns::DnsService>>,
+    pub mode: Mutex<DnsMode>,
+}
 
 impl DnsState {
-    /// Whether the in-process resolver task is alive (the authoritative check —
-    /// a task that panicked or returned leaves `is_running()` false even though
-    /// nothing external changed).
+    pub fn new(service: Option<crate::core::dns::DnsService>, mode: DnsMode) -> Self {
+        Self { service: Mutex::new(service), mode: Mutex::new(mode) }
+    }
+
+    /// Whether the IN-PROCESS resolver task is alive (authoritative for
+    /// `InProcess` mode only — a panicked/returned task reads false). Agent-mode
+    /// liveness is `dns::answers_as_ours` instead.
     pub fn running(&self) -> bool {
-        self.0
+        self.service
             .lock()
             .map(|g| g.as_ref().is_some_and(|d| d.is_running()))
             .unwrap_or(false)
+    }
+
+    pub fn mode(&self) -> DnsMode {
+        self.mode.lock().map(|g| *g).unwrap_or(DnsMode::Down)
+    }
+
+    pub fn set(&self, service: Option<crate::core::dns::DnsService>, mode: DnsMode) {
+        if let Ok(mut g) = self.service.lock() {
+            *g = service;
+        }
+        if let Ok(mut g) = self.mode.lock() {
+            *g = mode;
+        }
     }
 }
 

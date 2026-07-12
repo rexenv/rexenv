@@ -283,6 +283,39 @@ pub trait EdgeSupervisor: Send + Sync {
     fn uninstall_command(&self) -> String;
 }
 
+/// Keeps the loopback DNS resolver (`*.<tld> → 127.0.0.1`, UDP 15353) alive
+/// INDEPENDENTLY of the app — a user-level supervisor (macOS: a per-user
+/// LaunchAgent with `KeepAlive` running `<app binary> --dns-agent`). This is the
+/// missing half of "services outlive the app": the data plane (nginx/fpm/DB/edge)
+/// already survives a quit, but an in-process resolver dies with the app and takes
+/// name resolution — and therefore every site — down with it after client caches
+/// expire (observed live: sites survived a quit for ~1h40m on connection reuse,
+/// then died; reopening the app fixed them in seconds).
+///
+/// Everything here is UNPRIVILEGED (the resolver binds a high loopback port; the
+/// plist lives in `~/Library/LaunchAgents`), so unlike [`EdgeSupervisor`] these are
+/// direct side-effecting ops (same style as [`AutostartManager`]) — no
+/// `PrivilegeManager`, no prompt. The in-process resolver remains the automatic
+/// fallback when the agent can't come up, so DNS never regresses below the old
+/// behavior.
+pub trait DnsAgentManager: Send + Sync {
+    /// Whether the agent is installed (its plist is on disk).
+    fn is_installed(&self) -> bool;
+    /// Path of the agent's plist (`~/Library/LaunchAgents/<label>.dns.plist`).
+    fn plist_path(&self) -> Result<PathBuf>;
+    /// Plist contents: run `exe --dns-agent` at login, keep it alive, log to `log`.
+    /// Pure builder (unit-testable); [`DnsAgentManager::install`] writes it.
+    fn plist_contents(&self, exe: &Path, log: &Path) -> String;
+    /// Write/refresh the plist for `exe` and (re)load the agent with launchd.
+    /// Idempotent; called on every app launch so the plist always tracks the
+    /// last-launched build (dev ↔ installed hand off automatically).
+    fn install(&self, exe: &Path, log: &Path) -> Result<()>;
+    /// Restart the agent (watchdog recovery for a wedged/dead resolver).
+    fn kickstart(&self) -> Result<()>;
+    /// Unload the agent and remove its plist (app reset / uninstall).
+    fn uninstall(&self) -> Result<()>;
+}
+
 /// Aggregate of every platform capability. `core/` is handed one of these and
 /// never names a concrete OS type.
 pub trait Platform: Send + Sync {
@@ -297,4 +330,7 @@ pub trait Platform: Send + Sync {
     fn binaries(&self) -> &dyn BinaryProvider;
     /// OS supervisor that keeps the root edge alive (macOS LaunchDaemon KeepAlive).
     fn edge(&self) -> &dyn EdgeSupervisor;
+    /// User-level supervisor that keeps the DNS resolver alive across app quits
+    /// (macOS LaunchAgent KeepAlive).
+    fn dns_agent(&self) -> &dyn DnsAgentManager;
 }

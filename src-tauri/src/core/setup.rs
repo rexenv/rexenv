@@ -44,11 +44,14 @@ pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
 
 /// Reverse system setup: remove ALL rexenv-owned resolver files — every
 /// `/etc/resolver/<tld>` whose content matches our loopback+port signature,
-/// whichever TLDs were added over time (one admin prompt) — and untrust the CA.
+/// whichever TLDs were added over time (one admin prompt) — untrust the CA, and
+/// unload + remove the DNS LaunchAgent (unprivileged) so no resolver process is
+/// left behind pointing at nothing.
 pub fn run_system_teardown(platform: &dyn Platform) -> Result<()> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
     dns::remove_all_resolvers(platform, dns::DEFAULT_DNS_PORT)?;
     ssl::untrust_ca(platform, &ca)?;
+    platform.dns_agent().uninstall()?;
     Ok(())
 }
 

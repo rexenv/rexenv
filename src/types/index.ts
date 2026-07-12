@@ -318,7 +318,10 @@ export interface Blueprint {
 
 /** Embedded-DNS + OS-resolver health for Settings (mirrors the Rust DnsStatus DTO). */
 export interface DnsStatus {
-  running: boolean; // the embedded resolver is bound on its loopback port
+  running: boolean; // a resolver with our semantics answers on the loopback port
+  /** Who serves DNS: LaunchAgent (survives app quits), legacy in-process
+   *  fallback (dies with the app), or nothing. */
+  mode: "agent" | "in-process" | "down";
   port: number;
   resolverInstalled: boolean; // /etc/resolver/test present
   resolverPath: string;

@@ -979,7 +979,7 @@ export async function tldPolicy(tld: string): Promise<TldPolicy> {
 /** Embedded-DNS + OS-resolver health. Mock fallback outside Tauri. */
 export async function dnsStatus(): Promise<DnsStatus> {
   if (!isTauri())
-    return { running: true, port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/rex", caTrusted: true };
+    return { running: true, mode: "agent", port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/rex", caTrusted: true };
   return invoke<DnsStatus>("dns_status");
 }
 
