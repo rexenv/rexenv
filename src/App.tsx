@@ -12,7 +12,7 @@ import { Tunnels } from "@/routes/Tunnels";
 import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
 import { dnsStatus, initError, onServiceHealth } from "@/lib/ipc";
-import { toast } from "@/lib/toast";
+import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
 
@@ -43,7 +43,9 @@ function HealthWatch() {
           // informational, not a failure the user must act on.
           toast.info(`${e.service}: ${e.detail}`);
         } else {
-          toast.error(`${e.service}: ${e.detail}`);
+          // Same "\n$ <cmd>" extraction as backend errors: a health event whose
+          // detail ends with a fix-it command gets the copyable command block.
+          toastBackendError(`${e.service}: ${e.detail}`);
         }
       }
       qc.invalidateQueries({ queryKey: ["services"] });

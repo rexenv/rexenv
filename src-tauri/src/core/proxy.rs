@@ -300,9 +300,10 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
         let help = platform.supervisor().port_conflict_help(port, false);
         if let Some(holder) = help.holder {
             let quit = help.app.unwrap_or_else(|| "that app".into());
+            let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
             return Err(crate::error::Error::Other(format!(
                 "the Caddy edge could not start: port {port} is already used by {holder}. \
-                 Quit {quit} (or stop its proxy), then Start all again."
+                 Quit {quit} (or stop its proxy), then Start all again.{fix}"
             )));
         }
     }

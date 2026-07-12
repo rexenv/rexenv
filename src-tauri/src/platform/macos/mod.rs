@@ -384,17 +384,65 @@ impl ProcessSupervisor for MacosSupervisor {
                     .filter_map(|l| l.trim().parse::<u32>().ok())
                     .min()
             });
-        let (holder, app) = match master_pid {
+        let (holder, app, free_command) = match master_pid {
             Some(pid) => {
-                let (h, a) = attribute_holder(&executable_path(pid), pid);
-                (Some(h), a)
+                let exe = executable_path(pid);
+                let (h, a) = attribute_holder(&exe, pid);
+                let cmd = free_port_command(a.as_deref(), &exe, pid);
+                (Some(h), a, Some(cmd))
             }
-            None => (None, None),
+            // Holder invisible to unprivileged lsof (a root listener): the
+            // generic sudo one-liner still finds and stops it when the USER
+            // runs it — sudo's lsof sees everything.
+            None => (
+                None,
+                None,
+                Some(format!(
+                    "sudo kill $(sudo lsof -t {sel}{})",
+                    if udp { "" } else { " -sTCP:LISTEN" }
+                )),
+            ),
         };
-        let free_command =
-            Some(format!("sudo kill $(sudo lsof -t {sel}{})", if udp { "" } else { " -sTCP:LISTEN" }));
         PortConflictHelp { holder, app, free_command }
     }
+}
+
+/// The copy-paste command that ACTUALLY frees the holder's port — matched to how
+/// the holder is MANAGED, because "kill the pid" is often wrong advice:
+///
+/// 1. An app-supervised process (Herd, OrbStack, Docker Desktop, …): killing its
+///    nginx just gets respawned by the app — the right action is to quit the APP.
+///    (`osascript -e 'quit app "Herd"'` live-verified: Herd quits, 127.0.0.1:443
+///    freed, rexenv's edge answers again.) Our own processes are exempt — never
+///    tell the user to quit rexenv.
+/// 2. A Homebrew-installed binary: it's usually a `brew services` daemon that
+///    would ALSO be respawned by a bare kill — stop the service. Tried without
+///    sudo first (user service), then with (root service; e.g. Valet's nginx is
+///    exactly a brew formula under the hood).
+/// 3. Anything else (incl. our own orphans): direct `sudo kill <master-pid>` —
+///    the last resort, aimed at the master we resolved, never a worker.
+fn free_port_command(app: Option<&str>, exe_path: &str, pid: u32) -> String {
+    match app {
+        Some(app) if app != "rexenv" => format!("osascript -e 'quit app \"{app}\"'"),
+        _ => match brew_formula(exe_path) {
+            Some(f) => format!("brew services stop {f} || sudo brew services stop {f}"),
+            None => format!("sudo kill {pid}"),
+        },
+    }
+}
+
+/// Homebrew formula name from an executable path, if it lives in a brew prefix:
+/// `…/Cellar/<formula>/<ver>/…` or `/opt/homebrew/opt/<formula>/…` (also
+/// `/usr/local/opt/<formula>/…` on Intel).
+fn brew_formula(exe_path: &str) -> Option<String> {
+    let segs: Vec<&str> = exe_path.split('/').collect();
+    if let Some(i) = segs.iter().position(|s| *s == "Cellar") {
+        return segs.get(i + 1).map(|s| s.to_string());
+    }
+    segs.windows(2)
+        .position(|w| w[0] == "opt" && w[1] != "homebrew")
+        .filter(|_| exe_path.starts_with("/opt/homebrew/") || exe_path.starts_with("/usr/local/"))
+        .and_then(|i| segs.get(i + 1).map(|s| s.to_string()))
 }
 
 /// The REAL executable path of `pid`. `ps -o comm=` is a trap for daemons that
@@ -1136,6 +1184,40 @@ mod tests {
             attribute_holder("nginx: worker process", 8),
             ("nginx: worker process (pid 8)".into(), None)
         );
+    }
+
+    #[test]
+    fn free_port_command_matches_how_the_holder_is_managed() {
+        // App-supervised (Herd): kill a worker and the app respawns it — the only
+        // command that actually frees the port is quitting the APP. Live-verified:
+        // this exact command quit Herd and freed 127.0.0.1:443.
+        assert_eq!(
+            free_port_command(Some("Herd"), "/Applications/Herd.app/x/nginx", 52766),
+            "osascript -e 'quit app \"Herd\"'"
+        );
+        // Homebrew binary: usually a brew service — a bare kill gets respawned
+        // too. Try the user domain first, then root (e.g. a root brew nginx).
+        assert_eq!(
+            free_port_command(None, "/opt/homebrew/Cellar/nginx/1.27.0/bin/nginx", 7),
+            "brew services stop nginx || sudo brew services stop nginx"
+        );
+        assert_eq!(
+            free_port_command(None, "/usr/local/opt/nginx/sbin/nginx", 7),
+            "brew services stop nginx || sudo brew services stop nginx"
+        );
+        // Our own orphan: never "quit rexenv" — a direct kill of the master.
+        assert_eq!(
+            free_port_command(
+                Some("rexenv"),
+                "/Library/Application Support/dev.rexenv.rexenv/bin/caddy",
+                5
+            ),
+            "sudo kill 5"
+        );
+        // Unknown standalone binary: last resort, aimed at the MASTER pid.
+        assert_eq!(free_port_command(None, "/usr/sbin/httpd", 99), "sudo kill 99");
+        // A non-brew /opt path must not be mistaken for a formula.
+        assert_eq!(free_port_command(None, "/opt/custom/opt/thing/bin/x", 3), "sudo kill 3");
     }
 
     #[test]

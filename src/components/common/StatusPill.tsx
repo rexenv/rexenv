@@ -32,12 +32,12 @@ function StatusMarker({ status }: { status: ServiceStatus }) {
   if (status === "starting") {
     // spinner ring (amber), no dot
     return (
-      <span className="h-[11px] w-[11px] rounded-full border-2 border-status-warning/30 border-t-status-warning animate-rex-spin motion-reduce:animate-none" />
+      <span className="h-[11px] w-[11px] flex-none rounded-full border-2 border-status-warning/30 border-t-status-warning animate-rex-spin motion-reduce:animate-none" />
     );
   }
   if (status === "running") {
     return (
-      <span className="relative inline-flex h-[9px] w-[9px]">
+      <span className="relative inline-flex h-[9px] w-[9px] flex-none">
         <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />
         <span className="relative h-[9px] w-[9px] rounded-full bg-status-running shadow-glow-run" />
       </span>
@@ -45,10 +45,10 @@ function StatusMarker({ status }: { status: ServiceStatus }) {
   }
   if (status === "error") {
     return (
-      <span className="h-[9px] w-[9px] rounded-full bg-status-error shadow-glow-err animate-rex-err motion-reduce:animate-none" />
+      <span className="h-[9px] w-[9px] flex-none rounded-full bg-status-error shadow-glow-err animate-rex-err motion-reduce:animate-none" />
     );
   }
-  return <span className="h-[9px] w-[9px] rounded-full bg-status-stopped" />;
+  return <span className="h-[9px] w-[9px] flex-none rounded-full bg-status-stopped" />;
 }
 
 export function StatusPill({
@@ -71,7 +71,7 @@ export function StatusPill({
       )}
     >
       <StatusMarker status={status} />
-      <span className={cn("text-xs font-medium", meta.text)}>{label ?? meta.label}</span>
+      <span className={cn("whitespace-nowrap text-xs font-medium", meta.text)}>{label ?? meta.label}</span>
     </span>
   );
 }

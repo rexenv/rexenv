@@ -90,8 +90,7 @@ pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &s
     );
     if let Some(cmd) = &help.free_command {
         msg.push_str(&format!(
-            " To free it, run this in a terminal (it stops the process listening \
-             on port {port}), then start services again:\n$ {cmd}"
+            " To free it, run this in a terminal, then start services again:\n$ {cmd}"
         ));
     }
     Err(Error::Other(msg))

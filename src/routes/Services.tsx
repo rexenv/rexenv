@@ -145,7 +145,11 @@ function ServiceRow({
       <StatusPill
         status={running ? "running" : "stopped"}
         label={running ? undefined : "Idle"}
-        className="w-[86px]"
+        // 92px matches Sites.tsx. 86px fit "Running" with ZERO slack in Chrome;
+        // WKWebView's slightly wider Inter metrics overflowed the exact-fit pill
+        // and wrapped the label inside the fixed-height pill — rendering as two
+        // overlapping words during Idle→Running flips (the reported glitch).
+        className="w-[92px]"
       />
       <div className="flex w-[124px] flex-none justify-end">
         {kind === "php" && !svc.isDefault && (

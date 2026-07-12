@@ -1354,14 +1354,18 @@ impl ServiceManager {
                 let help = platform.supervisor().port_conflict_help(self.ports.https, false);
                 let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
                 // Name the APP to quit when identifiable ("quit Herd"), never a
-                // bare process title the user can't act on.
+                // bare process title the user can't act on. The trailing "\n$ <cmd>"
+                // becomes a copyable command block in the toast (supervisor-aware:
+                // quits the managing app, never kills a respawning worker).
                 let quit = help.app.unwrap_or_else(|| "that app".into());
+                let fix =
+                    help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
                 events.push(HealthEvent {
                     service: "Caddy".into(),
                     action: "edge-blocked",
                     detail: format!(
                         "the edge is running, but {holder} answers port {} in front \
-                         of it — every site is unreachable until you quit {quit}",
+                         of it — every site is unreachable until you quit {quit}{fix}",
                         self.ports.https
                     ),
                 });

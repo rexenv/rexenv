@@ -111,10 +111,14 @@ async fn verify_edge_wire(state: &State<'_, AppState>) -> Result<()> {
     let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
     // "quit Herd" beats "quit that app" — name the application when we know it.
     let quit = help.app.map_or("that app".to_string(), |a| a.to_string());
+    // Trailing "\n$ <cmd>" renders as a copyable command block in the UI toast
+    // (lib/toast.ts toastBackendError) — supervisor-aware, so it QUITS a managed
+    // app instead of killing a worker its supervisor would respawn.
+    let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
     Err(Error::Other(format!(
         "services are running, but {holder} answers port 443 in front of rexenv — \
          sites cannot load until you quit {quit} (then Start all again, or just \
-         wait: rexenv re-checks automatically)."
+         wait: rexenv re-checks automatically).{fix}"
     )))
 }
 
