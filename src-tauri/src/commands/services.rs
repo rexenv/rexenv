@@ -108,6 +108,90 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
     state.services.lock().await.stop_all(state.platform.as_ref())
 }
 
+/// Setting key for the opt-in "start services when rexenv opens" behavior
+/// (Settings toggle; combined with "Open rexenv at login" it brings the whole
+/// stack back after a reboot without a click).
+pub const AUTO_START_SETTING: &str = "start_services_on_launch";
+
+/// Opt-in auto-start, run once from app setup when [`AUTO_START_SETTING`] is on.
+/// Same flow as [`start_services`] with two LOGIN-SAFETY guards, because this
+/// runs unattended at login:
+///
+/// 1. **Never download** — a cold binary cache aborts with an honest event
+///    instead of streaming downloads nobody asked for at login.
+/// 2. **Never prompt** — if the edge isn't adoptable (needs the privileged
+///    daemon (re)install, e.g. after an explicit Stop-all), the edge is SKIPPED
+///    and surfaced, not prompted for. The normal post-reboot path is silent:
+///    the boot LaunchDaemon already has the edge up, so `prepare_edge` adopts
+///    it over the admin socket — no prompt, whole stack up in seconds.
+///
+/// Failures surface as `service-health` events (the same toast pipeline the
+/// watchdog uses) + the health log, so a broken login-start is never silent.
+pub async fn auto_start_services(app: tauri::AppHandle) {
+    use tauri::{Emitter, Manager};
+    let state = app.state::<AppState>();
+    let event = match auto_start_inner(&state).await {
+        Ok(Some(detail)) => core::service_manager::HealthEvent {
+            service: "Auto-start".into(),
+            action: "restarted",
+            detail,
+        },
+        Ok(None) => return, // fully up, silently
+        Err(e) => core::service_manager::HealthEvent {
+            service: "Auto-start".into(),
+            action: "restart-failed",
+            detail: e.to_string(),
+        },
+    };
+    core::service_manager::log_health_events(state.platform.as_ref(), std::slice::from_ref(&event));
+    log::warn!("auto-start: [{}] {}", event.action, event.detail);
+    let _ = app.emit("service-health", vec![event]);
+}
+
+/// `Ok(None)` = everything started; `Ok(Some(note))` = started with a caveat
+/// (edge skipped); `Err` = aborted (nothing/partial started, reason inside).
+async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>> {
+    let (sites, php_minors, php_settings, site_env) = start_inputs(state)?;
+    // Guard 1: strictly offline. Every needed binary must already be cached.
+    let plan = core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors);
+    let missing: Vec<&str> =
+        plan.iter().filter(|p| !p.cached).map(|p| p.name.as_str()).collect();
+    if !missing.is_empty() {
+        return Err(Error::Other(format!(
+            "binaries not downloaded yet ({}) — open rexenv and press Start all once",
+            missing.join(", ")
+        )));
+    }
+    let (caddyfile, checks) = {
+        let mut mgr = state.services.lock().await;
+        mgr.set_php_settings(php_settings);
+        mgr.set_site_env(site_env);
+        mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors).await?
+    };
+    core::service_manager::await_ready(checks).await?;
+    let plan = {
+        let mut mgr = state.services.lock().await;
+        mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
+    };
+    match plan {
+        // Edge adopted (the boot daemon already serves it) or reloaded — done.
+        None => Ok(None),
+        // Guard 2: a privileged edge start would show an auth prompt at login —
+        // skip it and say so. (Normally unreachable post-reboot: RunAtLoad has
+        // the edge up before login.)
+        Some(plan) if plan.privileged => Ok(Some(
+            "services are up, but the HTTPS edge needs Start all (one admin prompt)".into(),
+        )),
+        // Unprivileged high-port edge (dev config) — no prompt, just start it.
+        Some(plan) => {
+            let child =
+                core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            state.services.lock().await.set_edge_child(child);
+            Ok(None)
+        }
+    }
+}
+
 /// The SINGLE monitor source of truth for resource numbers — both the Services
 /// rows and the sidebar footer's app-total (which just sums these) read here,
 /// so the two can never diverge. Each row is its FULL process tree (master +

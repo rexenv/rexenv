@@ -36,6 +36,9 @@ import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/them
 import type { Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
+// Mirrors commands::services::AUTO_START_SETTING — the opt-in "run Start all
+// when rexenv opens" behavior (login-start when combined with app autostart).
+const AUTO_START_KEY = "start_services_on_launch";
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -609,7 +612,11 @@ function PrefRow({
   );
 }
 
-/** Services prefs: real autostart toggle + a (UI-only) idle-stop toggle. */
+/** Services prefs: app-autostart + login-start toggles + a (UI-only) idle-stop
+ *  toggle. Copy is deliberately literal about the mechanics: the app OPENS at
+ *  login (a macOS login item — you'll see it launch), and the second toggle
+ *  makes that launch also start the stack. Both on = sites back after a reboot
+ *  without a click. */
 function ServicePrefsCard() {
   const qc = useQueryClient();
   const { data: enabled } = useQuery({ queryKey: ["autostart"], queryFn: autostartStatus });
@@ -618,16 +625,33 @@ function ServicePrefsCard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["autostart"] }),
     onError: (e) => toastBackendError(e),
   });
+  const { data: autoStart } = useQuery({
+    queryKey: ["setting", AUTO_START_KEY],
+    queryFn: () => getSetting(AUTO_START_KEY),
+  });
+  const autoStartOn = autoStart === "true";
+  const toggleAutoStart = useMutation({
+    mutationFn: (on: boolean) => setSetting(AUTO_START_KEY, on ? "true" : "false"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["setting", AUTO_START_KEY] }),
+    onError: (e) => toastBackendError(e),
+  });
   const [stopIdle, setStopIdle] = useState(false);
 
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
       <PrefRow
-        title="Start services on login"
-        desc="Bring your environment up automatically when you sign in to your Mac."
+        title="Open rexenv at login"
+        desc="rexenv launches when you sign in to your Mac (a macOS login item)."
         on={!!enabled}
         onToggle={() => toggle.mutate(!enabled)}
-        label="Start services on login"
+        label="Open rexenv at login"
+      />
+      <PrefRow
+        title="Start services when rexenv opens"
+        desc="Runs Start all automatically on launch — with 'Open rexenv at login' on, your sites come back after a reboot without a click. Never downloads or prompts at login."
+        on={autoStartOn}
+        onToggle={() => toggleAutoStart.mutate(!autoStartOn)}
+        label="Start services when rexenv opens"
       />
       <PrefRow
         title="Stop idle services automatically"

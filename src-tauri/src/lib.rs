@@ -128,6 +128,17 @@ pub fn run() {
                     // manager — status shows them running, Stop all works, Start all
                     // skips them. (Replaces the old stop-orphans-at-boot behavior.)
                     let sites = core::sites::list(&conn).unwrap_or_default();
+                    // Opt-in "start services when rexenv opens" (Settings) — read
+                    // while the connection is still ours; acted on below, after
+                    // AppState is managed and survivors are adopted.
+                    let auto_start = state::store::get_setting(
+                        &conn,
+                        commands::services::AUTO_START_SETTING,
+                    )
+                    .ok()
+                    .flatten()
+                    .as_deref()
+                        == Some("true");
                     // First run: create the sites root (~/rexenv/Sites, or the
                     // user's configured folder). Non-fatal — provision gives
                     // its own clear error if the folder still can't be made.
@@ -194,6 +205,19 @@ pub fn run() {
                             log::info!("php: removed outdated binary cache {dir}");
                         }
                     });
+
+                    // Opt-in login-start: with "Open rexenv at login" + this
+                    // setting, the whole stack returns after a reboot without a
+                    // click. Runs AFTER adoption (already-running services are
+                    // skipped, so a mid-day relaunch is a no-op) and is login-safe
+                    // by construction: never downloads, never prompts (see
+                    // `auto_start_services`).
+                    if auto_start {
+                        let auto = app.handle().clone();
+                        tauri::async_runtime::spawn(async move {
+                            commands::services::auto_start_services(auto).await;
+                        });
+                    }
                     None
                 }
                 (Err(e), _) => {
