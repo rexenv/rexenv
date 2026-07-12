@@ -19,12 +19,13 @@ commands/   thin translators only — parse args, call core, map errors
         ↓
 core/       platform-agnostic domain logic ("the what") — no OS-specific code, ever
         ↓
-platform/   ALL OS-specific code, behind 9 traits (platform/traits.rs):
+platform/   ALL OS-specific code, behind 10 traits (platform/traits.rs):
             DnsManager · CertTrustManager · PrivilegeManager · ProcessSupervisor ·
-            AutostartManager · PermissionManager · ShellRunner · Paths · BinaryProvider
+            AutostartManager · PermissionManager · ShellRunner · Paths · BinaryProvider ·
+            EdgeSupervisor
 ```
 
-- `platform/macos/mod.rs` — all 9 traits real. `platform/windows/`, `platform/linux/` —
+- `platform/macos/mod.rs` — all 10 traits real. `platform/windows/`, `platform/linux/` —
   every method `todo!()`. Adding an OS = filling stubs, never restructuring.
 - The only non-platform `todo!`-ish code is a defensive `unreachable!` in
   `core/binaries.rs`. `core/`, `commands/`, `state/` are macOS-complete.
@@ -98,27 +99,53 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 3. Caddy edge lifecycle (`core/proxy.rs`)
 
-- Edge binds real `:80`/`:443` → needs one privileged spawn (foreground admin prompt —
+- Edge binds real `:80`/`:443` → needs one privileged install (foreground admin prompt —
   a backgrounded osascript can't show the dialog).
+- **The edge runs under an OS supervisor that keeps it alive — `CaddyHandle::Daemon`**
+  (`EdgeSupervisor` trait; macOS = a **root LaunchDaemon**, `dev.rexenv.rexenv.edge`,
+  `KeepAlive=true` + `RunAtLoad=true`). launchd relaunches the edge on ANY death —
+  external SIGTERM, crash, sleep/wake, logout, reboot — so the edge is the one service
+  that recovers WITHOUT the health watchdog (which can't clear a privileged start's
+  prompt). `proxy::start_edge_daemon` stages the plist + launcher-wrapper CONTENTS
+  unprivileged, then runs ONE privileged `install_command` (`cp` into the root tree +
+  `launchctl bootstrap system`); an already-installed daemon takes the lighter
+  `start_command` (enable + `kickstart`, which re-execs caddy so it re-reads the current
+  Caddyfile). **Security: the daemon executes a `root:wheel 0755` COPY of caddy under
+  `/Library/Application Support/dev.rexenv.rexenv/bin/`, never the user-writable download
+  cache** — re-execing a user-writable file as root is an LPE. The plist is `root:wheel
+  0644` (launchd refuses a group/other-writable daemon plist). The wrapper hands the 0600
+  admin socket back to the invoking user, then `exec`s caddy (so launchd tracks the real
+  edge PID), keeping reload/stop promptless.
 - **Admin API = private unix socket, never TCP `:2019`** (finding H5): the Caddyfile
   emits `admin "unix//<config>/caddy-admin.sock|0600"`; the privileged edge chowns the
   socket to the invoking user. A TCP admin on a root Caddy would let any local process
   POST config = arbitrary file read/write as root.
 - `admin_alive()` actually **connects** (the socket file outlives a crash; a stat would lie).
 - **A live edge is adopted, never killed.** `prepare_edge()` first probes OUR socket:
-  if it answers, the edge is adopted (`CaddyHandle::Privileged`) and the current config
-  is pushed via `caddy reload` — no stop, no re-prompt, sites never drop. The health
-  watchdog heals the reverse way too: an edge answering while the manager says stopped
-  is re-adopted (`"adopted"` event) instead of leaving a stale edge-down. This closed
-  the "Caddy stops by itself" loop: a stale stopped-mark + Start all used to
-  `caddy stop` the healthy edge (live check: `examples/edge_adopt_reload_check.rs`).
-- `recover_stale_edge()` (fallback, only when the live edge refuses the reload): probe
-  OUR socket; a live leftover rexenv edge gets `caddy stop` over it (no privilege
-  needed), polled up to 10×500ms, then a clear error if `:443` still isn't free.
-  Ownership-gated: rexenv never binds nor queries TCP `2019`, so a developer's own
-  Caddy (e.g. Herd's) is never touched (M1 invariant, `d35db62`).
-- `stop_edge()`: graceful admin-API stop, then reap processes running OUR caddy binary
-  path (`owned_pids(marker)`). A root remnant may survive — logged; it holds no ports.
+  if it answers, the edge is adopted (`Daemon` if the daemon is installed, else legacy
+  `Privileged`) and the current config is pushed via `caddy reload` — no stop, no
+  re-prompt, sites never drop. The health watchdog heals the reverse way too: an edge
+  answering while the manager says stopped is re-adopted (`"adopted"` event). A **`Daemon`
+  edge whose socket is momentarily dead is `"edge-restarting"` (info) — NOT `"edge-down"`
+  — because launchd is already relaunching it; the manager does not flip it to Stopped.
+  Only a legacy `Privileged`/`Child` edge that dies still becomes `"edge-down"` (no OS
+  supervisor to bring it back).** This, plus the earlier stale-mark fix (a stale
+  stopped-mark + Start all used to `caddy stop` the healthy edge), closes the "Caddy
+  stops by itself" loop (live check: `examples/edge_adopt_reload_check.rs`).
+- **Explicit stop costs one prompt.** With `KeepAlive` a graceful `caddy stop` is
+  instantly relaunched, so Stop-all boots the daemon OUT of launchd. `stop_all` skips the
+  futile admin-stop for a `Daemon` edge; the `stop_services` command then runs
+  `proxy::stop_edge_daemon` (privileged `disable` + `bootout`) OUTSIDE the services lock
+  (M4), mirroring the privileged start. `disable` keeps it down across reboots until the
+  next Start-all bootstraps it again.
+- `recover_stale_edge()` (fallback, only when a live edge refuses the reload): probe OUR
+  socket; a live leftover rexenv edge gets `caddy stop` over it (no privilege needed),
+  polled up to 10×500ms, then a clear error if `:443` still isn't free. Ownership-gated:
+  rexenv never binds nor queries TCP `2019`, so a developer's own Caddy (e.g. Herd's) is
+  never touched (M1 invariant, `d35db62`).
+- `stop_edge()` (legacy/non-daemon path): graceful admin-API stop, then reap processes
+  running OUR caddy binary path (`owned_pids(marker)`). A root remnant may survive —
+  logged; it holds no ports.
 
 ## 4. DNS — always-on, in-process (`core/dns.rs`, `lib.rs`)
 

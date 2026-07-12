@@ -32,6 +32,26 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   edge (`"adopted"` event, surfaced as an info toast); verified live against the running
   root edge — pid unchanged through both flows (`examples/edge_adopt_reload_check.rs`),
   `cargo test --lib` 153 green, site 200 through the edge after.
+- [x] **Edge stays up unless explicitly stopped — root LaunchDaemon KeepAlive.** The
+  remaining "Caddy stopped by itself" case was NOT rexenv: an external OS `SIGTERM` to
+  the root edge (graceful `exit_code 0`, confirmed via `caddy-start.log`; not a crash,
+  not sleep/wake, not a port conflict). The edge was the ONE service the health watchdog
+  never auto-restarts (a privileged `:443` start needs an admin prompt), so any external
+  kill left every site unreachable until a manual Start-all — and the `edge-down` toast
+  only showed if the app window was open. ✓ **Done:** new `EdgeSupervisor` trait (10th
+  platform trait) → macOS root LaunchDaemon `dev.rexenv.rexenv.edge` (`KeepAlive=true` +
+  `RunAtLoad=true`); launchd relaunches the edge on any death/sleep/reboot.
+  `proxy::start_edge_daemon` (stage unprivileged → one privileged `cp`-into-root-tree +
+  `bootstrap`), `stop_edge_daemon` (`disable`+`bootout`, out of lock — Stop-all now costs
+  one prompt), `CaddyHandle::Daemon` across start/adopt/stop/status, watchdog
+  `edge-restarting` (info) instead of `edge-down` for a Daemon edge. **Security:** the
+  daemon execs a `root:wheel 0755` COPY of caddy (never the user-writable cache — LPE
+  guard); plist `root:wheel 0644`. `cargo test --lib` 229 green (+4 edge-daemon tests),
+  examples build, `tsc` clean. Commits `4f45ff7`/`c15680d`. NOTE: the daemon installs on
+  the next Start-all (first run re-prompts once); supersedes the osascript start path
+  (kept only for the `caddy_443`/`service_manager_demo` examples). Partially overlaps the
+  deferred **SMAppService** item below (that would fold the remaining setup prompts into
+  one registration).
 - [ ] **Isolate live-check examples from the real stack.** `examples/*.rs` use
   `platform::current()` → the REAL app-data dir: their `start_all`/`stop_all`/
   `recover_stale_edge` stop the USER'S running edge over the shared admin socket (and
