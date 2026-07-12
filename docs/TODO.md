@@ -27,9 +27,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   flips `edge_blocked` on transitions (`edge-blocked`/`edge-unblocked` events naming
   the holder); `status()` folds it in (Caddy + site dots read NOT running while
   shadowed); Start-all/auto-start gate on the probe and fail naming the interceptor.
-  **Awaiting live verify:** (A) with Herd running, Start-all errors naming Herd AND
-  Caddy row goes red with the edge-blocked toast ≤10s after Herd starts; (B) reboot
-  with both toggles on → `https://tr.rex` 200 untouched.
+  ✓ **Live-verified (A)** (Jul 13): with Herd running — Start-all fails naming Herd,
+  Caddy row flips red ≤10s, recovery on Herd quit; holder attribution fixed en route
+  (`c6200c7`: master pid not worker, real exe via txt FD not the rewritten ps title,
+  `.app`/Application-Support attribution → "quit Herd", honest name+pid+path degrade).
+  **Still awaiting live verify (B):** reboot with both Settings toggles on →
+  `https://tr.rex` 200 untouched.
 - [x] **Sites die 1–2h after quitting the app — DNS must survive the app.** Root cause
   (evidence-first diagnosis): the data plane (nginx/fpm/MySQL/edge, all detached or
   launchd-owned) survives a quit indefinitely — but the resolver was an IN-PROCESS tokio
