@@ -104,15 +104,16 @@ async fn verify_edge_wire(state: &State<'_, AppState>) -> Result<()> {
     {
         return Ok(());
     }
-    let holder = state
+    let help = state
         .platform
         .supervisor()
-        .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false)
-        .holder
-        .unwrap_or_else(|| "another local proxy".into());
+        .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false);
+    let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
+    // "quit Herd" beats "quit that app" — name the application when we know it.
+    let quit = help.app.map_or("that app".to_string(), |a| a.to_string());
     Err(Error::Other(format!(
         "services are running, but {holder} answers port 443 in front of rexenv — \
-         sites cannot load until you quit that app (then Start all again, or just \
+         sites cannot load until you quit {quit} (then Start all again, or just \
          wait: rexenv re-checks automatically)."
     )))
 }

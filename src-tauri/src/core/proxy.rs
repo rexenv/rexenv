@@ -299,9 +299,10 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
     for port in [DEFAULT_HTTPS_PORT, DEFAULT_HTTP_PORT] {
         let help = platform.supervisor().port_conflict_help(port, false);
         if let Some(holder) = help.holder {
+            let quit = help.app.unwrap_or_else(|| "that app".into());
             return Err(crate::error::Error::Other(format!(
                 "the Caddy edge could not start: port {port} is already used by {holder}. \
-                 Quit that app (or stop its proxy), then Start all again."
+                 Quit {quit} (or stop its proxy), then Start all again."
             )));
         }
     }

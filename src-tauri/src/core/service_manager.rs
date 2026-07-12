@@ -1351,17 +1351,17 @@ impl ServiceManager {
             let ours = proxy::edge_answers_as_ours(adminer::ADMINER_HOST, self.ports.https).await;
             if !ours && !self.edge_blocked {
                 self.edge_blocked = true;
-                let holder = platform
-                    .supervisor()
-                    .port_conflict_help(self.ports.https, false)
-                    .holder
-                    .unwrap_or_else(|| "another local proxy".into());
+                let help = platform.supervisor().port_conflict_help(self.ports.https, false);
+                let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
+                // Name the APP to quit when identifiable ("quit Herd"), never a
+                // bare process title the user can't act on.
+                let quit = help.app.unwrap_or_else(|| "that app".into());
                 events.push(HealthEvent {
                     service: "Caddy".into(),
                     action: "edge-blocked",
                     detail: format!(
                         "the edge is running, but {holder} answers port {} in front \
-                         of it — every site is unreachable until you quit that app",
+                         of it — every site is unreachable until you quit {quit}",
                         self.ports.https
                     ),
                 });

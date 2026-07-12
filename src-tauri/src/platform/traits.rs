@@ -161,15 +161,20 @@ pub trait ProcessSupervisor: Send + Sync {
     /// (macOS/Linux: `lsof`+`kill`; Windows: `Get-NetTCPConnection`+`Stop-Process`).
     /// Default: no help — the plain "port in use" error stands on its own.
     fn port_conflict_help(&self, _port: u16, _udp: bool) -> PortConflictHelp {
-        PortConflictHelp { holder: None, free_command: None }
+        PortConflictHelp::default()
     }
 }
 
 /// What [`ProcessSupervisor::port_conflict_help`] discovered about a busy port.
 #[derive(Debug, Clone, Default)]
 pub struct PortConflictHelp {
-    /// The listener, if discoverable without privileges — e.g. `nginx (pid 554)`.
+    /// The listener, human-attributed, if discoverable without privileges —
+    /// e.g. `Herd (nginx, pid 554)` or `nginx (pid 554, /opt/homebrew/bin/nginx)`.
     pub holder: Option<String>,
+    /// The OWNING APPLICATION when one is identifiable (e.g. "Herd") — lets
+    /// messages say "quit Herd" instead of a generic "quit that app". `None`
+    /// for bare binaries (Homebrew nginx) even when `holder` is set.
+    pub app: Option<String>,
     /// A shell one-liner that stops whatever holds the port (run by the user).
     pub free_command: Option<String>,
 }

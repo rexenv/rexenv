@@ -368,44 +368,94 @@ impl ProcessSupervisor for MacosSupervisor {
         };
         // Unprivileged lsof only sees this user's processes — a root-owned
         // listener yields no holder, but the suggested command (run with sudo
-        // by the user) still finds and stops it.
-        let holder = std::process::Command::new("lsof")
+        // by the user) still finds and stops it. lsof lists EVERY process
+        // sharing the listen socket (an nginx master + all its workers); take
+        // the LOWEST pid — masters fork first — so we attribute the master,
+        // not a meaningless "nginx: worker process".
+        let master_pid = std::process::Command::new("lsof")
             .args(["-nP", &sel])
             .args(state)
             .arg("-t")
             .output()
             .ok()
             .and_then(|o| {
-                let pid: u32 = String::from_utf8_lossy(&o.stdout).lines().next()?.trim().parse().ok()?;
-                let path = std::process::Command::new("ps")
-                    .args(["-p", &pid.to_string(), "-o", "comm="])
-                    .output()
-                    .ok()
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                    .filter(|n| !n.is_empty())?;
-                Some(friendly_holder(&path, pid))
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter_map(|l| l.trim().parse::<u32>().ok())
+                    .min()
             });
+        let (holder, app) = match master_pid {
+            Some(pid) => {
+                let (h, a) = attribute_holder(&executable_path(pid), pid);
+                (Some(h), a)
+            }
+            None => (None, None),
+        };
         let free_command =
             Some(format!("sudo kill $(sudo lsof -t {sel}{})", if udp { "" } else { " -sTCP:LISTEN" }));
-        PortConflictHelp { holder, free_command }
+        PortConflictHelp { holder, app, free_command }
     }
 }
 
-/// Human name for a port holder. A bare executable name misleads for app-bundled
-/// tools — Herd ships its own nginx, so its `:443` listener read as just
-/// "nginx (pid …)" and users (Herd users ARE the target audience) couldn't tell
-/// whose proxy answered. Surface the OWNING APP from the `….app` bundle segment:
-/// `/Applications/Herd.app/…/nginx` → "Herd (nginx, pid 1234)".
-fn friendly_holder(exe_path: &str, pid: u32) -> String {
-    let exe = exe_path.rsplit('/').next().unwrap_or(exe_path);
-    let app = exe_path
-        .split('/')
+/// The REAL executable path of `pid`. `ps -o comm=` is a trap for daemons that
+/// rewrite their process title — an nginx worker reports the meaningless
+/// "nginx: worker process" — so read the first `txt` file descriptor (the
+/// binary) via lsof instead, and fall back to `ps` only when that fails.
+fn executable_path(pid: u32) -> String {
+    let via_txt = std::process::Command::new("lsof")
+        .args(["-nP", "-p", &pid.to_string(), "-a", "-d", "txt", "-Fn"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .find(|l| l.starts_with("n/"))
+                .map(|l| l[1..].to_string())
+        });
+    via_txt.unwrap_or_else(|| {
+        std::process::Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "comm="])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default()
+    })
+}
+
+/// Attribute a port holder to its OWNING APPLICATION — the actionable name.
+/// "quit nginx: worker process" tells a user nothing; "quit Herd" is the whole
+/// point of the message (Herd users ARE the target audience). Returns the
+/// display string plus the bare app name (for "quit {app}" phrasing).
+///
+/// Attribution, in order:
+/// 1. a `Foo.app` bundle segment (`/Applications/Herd.app/…/nginx` → Herd);
+/// 2. the directory right after `Application Support` — app-managed helper
+///    binaries live there (`…/Application Support/Herd/bin/nginx-arm` → Herd);
+///    our own reverse-DNS dir maps back to "rexenv";
+/// 3. no app identified: degrade HONESTLY to what we do know — process name,
+///    pid, and the full executable path so an unknown holder stays actionable.
+fn attribute_holder(exe_path: &str, pid: u32) -> (String, Option<String>) {
+    let exe = exe_path.rsplit('/').next().unwrap_or(exe_path).trim();
+    let segs: Vec<&str> = exe_path.split('/').collect();
+    let app = segs
+        .iter()
         .find(|seg| seg.ends_with(".app"))
-        .map(|seg| seg.trim_end_matches(".app"));
+        .map(|seg| seg.trim_end_matches(".app").to_string())
+        .or_else(|| {
+            segs.windows(2)
+                .find(|w| w[0] == "Application Support")
+                .map(|w| w[1].to_string())
+        })
+        .map(|app| if app == APP_IDENTIFIER { "rexenv".to_string() } else { app });
     match app {
-        // The bundle name IS the executable (plain app process) — one name suffices.
-        Some(app) if app != exe => format!("{app} ({exe}, pid {pid})"),
-        _ => format!("{exe} (pid {pid})"),
+        Some(app) if app != exe => (format!("{app} ({exe}, pid {pid})"), Some(app)),
+        // The app name IS the process (plain .app binary) — one name suffices.
+        Some(app) => (format!("{app} (pid {pid})"), Some(app)),
+        // Unknown ownership: name + pid + path beats a bare title.
+        None if exe_path.starts_with('/') => {
+            (format!("{exe} (pid {pid}, {exe_path})"), None)
+        }
+        None => (format!("{exe} (pid {pid})"), None),
     }
 }
 
@@ -1046,19 +1096,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn friendly_holder_names_the_owning_app_bundle() {
-        // Herd's bundled nginx must be attributed to Herd, not read as a bare
-        // "nginx" — that ambiguity fooled a real user into debugging our edge.
+    fn attribute_holder_names_the_owning_app() {
+        // Herd's bundled nginx must be attributed to HERD — "quit nginx: worker
+        // process" tells a user nothing; a real user burned a session on this.
         assert_eq!(
-            friendly_holder("/Applications/Herd.app/Contents/Resources/nginx", 1234),
-            "Herd (nginx, pid 1234)"
+            attribute_holder("/Applications/Herd.app/Contents/Resources/nginx", 1234),
+            ("Herd (nginx, pid 1234)".into(), Some("Herd".into()))
         );
-        // Plain binaries keep the simple form.
-        assert_eq!(friendly_holder("/opt/homebrew/bin/nginx", 7), "nginx (pid 7)");
+        // App-managed helper binaries under Application Support (Herd's actual
+        // layout: no .app segment in the exe path) attribute via rule 2.
+        assert_eq!(
+            attribute_holder(
+                "/Users/x/Library/Application Support/Herd/bin/nginx-arm",
+                52766
+            ),
+            ("Herd (nginx-arm, pid 52766)".into(), Some("Herd".into()))
+        );
+        // Our own reverse-DNS app-data dir reads as rexenv, not dev.rexenv.rexenv.
+        assert_eq!(
+            attribute_holder(
+                "/Library/Application Support/dev.rexenv.rexenv/bin/caddy",
+                5
+            ),
+            ("rexenv (caddy, pid 5)".into(), Some("rexenv".into()))
+        );
         // An app whose process IS the bundle name doesn't repeat itself.
         assert_eq!(
-            friendly_holder("/Applications/OrbStack.app/Contents/MacOS/OrbStack", 9),
-            "OrbStack (pid 9)"
+            attribute_holder("/Applications/OrbStack.app/Contents/MacOS/OrbStack", 9),
+            ("OrbStack (pid 9)".into(), Some("OrbStack".into()))
+        );
+        // Unknown ownership degrades HONESTLY: name + pid + full path (still
+        // actionable), never a bare rewritten process title.
+        assert_eq!(
+            attribute_holder("/opt/homebrew/bin/nginx", 7),
+            ("nginx (pid 7, /opt/homebrew/bin/nginx)".into(), None)
+        );
+        // No path at all (ps fallback returned a title): keep what we have.
+        assert_eq!(
+            attribute_holder("nginx: worker process", 8),
+            ("nginx: worker process (pid 8)".into(), None)
         );
     }
 
