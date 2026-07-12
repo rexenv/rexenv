@@ -6,6 +6,19 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [x] **Herd/port-conflict honesty + opt-in login-start** (post-reboot 502 report,
+  Jul 13). (1) `friendly_holder` attributes app-bundled listeners to the owning app
+  ("Herd (nginx, pid 1234)"); `start_edge_daemon` timeout and the watchdog edge-down
+  give-up now NAME the :443/:80 holder instead of a vague "socket never came up"
+  (`c3c1236`). (2) New default-off setting `start_services_on_launch`: app launch runs
+  Start-all after adoption — with app-autostart on, the stack returns after reboot
+  promptlessly (boot daemon has the edge up → adopted). Login-safe: never downloads
+  (cold cache → honest service-health event), never prompts (privileged edge plan →
+  skipped + surfaced). Settings UI: old "Start services on login" toggle renamed to
+  the truthful "Open rexenv at login" (it only installed the login item); new real
+  toggle added (`3fa1753`). ✓ 234 lib tests, examples, tsc. **Awaiting live verify:**
+  (A) with Herd holding :443, Start all errors naming Herd; (B) reboot with both
+  toggles on → `https://tr.rex` 200 untouched.
 - [x] **Sites die 1–2h after quitting the app — DNS must survive the app.** Root cause
   (evidence-first diagnosis): the data plane (nginx/fpm/MySQL/edge, all detached or
   launchd-owned) survives a quit indefinitely — but the resolver was an IN-PROCESS tokio
