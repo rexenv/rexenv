@@ -482,6 +482,20 @@ pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
     }
 }
 
+/// Path of an ALREADY-CACHED executable — [`resolve`]'s cache-hit fast path
+/// without the download. `None` when absent. For deriving config values that
+/// only need the binary's location (e.g. the Mailpit sendmail shim) in sync
+/// contexts like startup adoption, where triggering a download is wrong.
+pub fn cached_bin(platform: &dyn Platform, name: &str, version: &str) -> Option<PathBuf> {
+    let bin = platform
+        .paths()
+        .bin_dir()
+        .ok()?
+        .join(format!("{name}-{version}"))
+        .join(name);
+    bin.exists().then_some(bin)
+}
+
 /// Whether a binary-cache dir name holds an OUTDATED patch of a pinned PHP
 /// minor — `php-8.3.30/` or `php-fpm-8.3.30/` once the pin moved to 8.3.31.
 /// Pure (name-only) so the GC rule is unit-testable. Deliberately narrow:

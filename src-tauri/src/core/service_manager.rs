@@ -706,6 +706,10 @@ impl ServiceManager {
         if !self.is_running() {
             return Ok(None);
         }
+        // ADOPTED sessions never ran start_all, so nginx/caddy paths aren't
+        // resolved yet and the reload below would fail AFTER the pool restart
+        // (cache hit here — an adopted stack is running from cached binaries).
+        self.ensure_bins(platform).await?;
         // Restart only a pool that was actually running; never start a new pool
         // as a side effect of a settings edit.
         let check = self.restart_php_pool(platform, minor).await?;
@@ -908,6 +912,21 @@ impl ServiceManager {
                 .min() // masters fork first → lowest pid (workers rarely match anyway)
         };
         let mut adopted = 0u32;
+
+        // Mail routing must survive adoption (QA P0-3): pool restarts (a settings
+        // edit, the startup patch bump, a watchdog respawn) rewrite that pool's
+        // fpm config from THIS session's sendmail state — which only the full
+        // start_all path used to set. In an adopted session it was still `None`,
+        // so the restarted pool silently lost `php_admin_value[sendmail_path]`
+        // and that minor's `mail()` bypassed Mailpit. Derive the shim from the
+        // CACHED binary path (sync, no download, no Mailpit process needed —
+        // the shim is a path + fixed SMTP port).
+        if self.mailpit_bin.is_none() {
+            self.mailpit_bin =
+                binaries::cached_bin(platform, "mailpit", binaries::MAILPIT_VERSION);
+        }
+        let sendmail = self.mailpit_bin.as_ref().map(|b| mail::sendmail_path(b));
+        self.pools.set_sendmail_path(sendmail);
 
         if self.nginx.is_none() {
             if let Some(pid) = owned(self.ports.nginx) {
