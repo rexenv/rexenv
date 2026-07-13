@@ -161,6 +161,14 @@ impl CertTrustManager for MacosCertTrust {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+    fn firefox_profiles_root(&self) -> Option<std::path::PathBuf> {
+        // Present only if Firefox has ever run for this user (the dir + a
+        // profiles.ini are created on first launch).
+        let root = directories::BaseDirs::new()?
+            .home_dir()
+            .join("Library/Application Support/Firefox");
+        root.join("profiles.ini").is_file().then_some(root)
+    }
 }
 
 pub struct MacosPrivileges;

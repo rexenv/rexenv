@@ -328,6 +328,16 @@ export interface DnsStatus {
   caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
 }
 
+/** Firefox trust state (mirrors the Rust FirefoxTrustStatus DTO). Firefox keeps
+ *  its OWN trust store: our keychain CA is only honored when its OS-roots
+ *  import pref is on (default since Firefox 120; rexenv forces it per profile). */
+export interface FirefoxTrustStatus {
+  installed: boolean; // a profiles.ini exists for this user
+  profiles: number; // profiles found
+  forced: number; // profiles whose user.js already forces the import pref
+  caPath: string; // CA file for the manual Authorities → Import fallback
+}
+
 /** TLD policy classification (mirrors the Rust core::tld::TldPolicy DTO).
  *  Display metadata only — the backend refuses blocked TLDs either way. */
 export interface TldPolicy {

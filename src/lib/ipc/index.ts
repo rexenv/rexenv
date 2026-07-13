@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EnvVar, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -996,6 +996,19 @@ export async function systemSetup(): Promise<void> {
 export async function trustLocalCa(): Promise<void> {
   if (!isTauri()) throw new Error("Trusting the local CA requires the rexenv desktop app.");
   await invoke("trust_local_ca");
+}
+
+/** Firefox trust state for the Settings SSL card. Mock fallback outside Tauri. */
+export async function firefoxTrustStatus(): Promise<FirefoxTrustStatus> {
+  if (!isTauri()) return { installed: false, profiles: 0, forced: 0, caPath: "" };
+  return invoke<FirefoxTrustStatus>("firefox_trust_status");
+}
+
+/** Force Firefox's OS-roots import pref (`security.enterprise_roots.enabled`)
+ *  in every profile via user.js — takes effect on Firefox restart. */
+export async function trustCaInFirefox(): Promise<FirefoxTrustStatus> {
+  if (!isTauri()) throw new Error("Firefox trust requires the rexenv desktop app.");
+  return invoke<FirefoxTrustStatus>("trust_ca_in_firefox");
 }
 
 /** Regenerate every site's TLS cert (+ Adminer) and reload the edge. Returns the count. */

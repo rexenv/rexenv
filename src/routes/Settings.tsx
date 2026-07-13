@@ -13,6 +13,7 @@ import {
   defaultTld,
   deleteBlueprint,
   dnsStatus,
+  firefoxTrustStatus,
   getAppInfo,
   getPhpSettings,
   getSetting,
@@ -29,6 +30,7 @@ import {
   setSetting,
   sitesFolder,
   tldPolicy,
+  trustCaInFirefox,
   trustLocalCa,
   uninstallSystem,
 } from "@/lib/ipc";
@@ -504,8 +506,69 @@ function DnsSslSetting() {
           }}
         />
       </div>
+      <FirefoxTrustCard />
       {msg && <Notice>{msg}</Notice>}
     </>
+  );
+}
+
+/** Firefox has its OWN certificate store (NSS): the keychain trust Safari and
+ *  Chrome honor is invisible to it unless its OS-roots import pref is on
+ *  (default since Firefox 120). Offers the one-click per-profile pref fix and
+ *  the manual CA import as a fallback. Hidden when Firefox was never run. */
+function FirefoxTrustCard() {
+  const qc = useQueryClient();
+  const { data: ff } = useQuery({ queryKey: ["firefox-trust"], queryFn: firefoxTrustStatus });
+  const [copied, setCopied] = useState(false);
+
+  const force = useMutation({
+    mutationFn: trustCaInFirefox,
+    onSuccess: (s) => {
+      toast.success(
+        `HTTPS trust enabled in ${s.profiles} Firefox profile${s.profiles === 1 ? "" : "s"} — restart Firefox to apply.`,
+      );
+      void qc.invalidateQueries({ queryKey: ["firefox-trust"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  if (!ff?.installed) return null;
+  return (
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+      <ActionRow
+        title="Trust HTTPS in Firefox"
+        desc={
+          ff.forced >= ff.profiles
+            ? `Enabled in all ${ff.profiles} profile${ff.profiles === 1 ? "" : "s"} — restart Firefox if sites still warn.`
+            : "Firefox uses its own certificate store — enable its system-roots import so rexenv HTTPS works there too."
+        }
+        busy={force.isPending}
+        label={ff.forced >= ff.profiles ? "Re-apply" : "Enable"}
+        onClick={() => force.mutate()}
+      />
+      <div className="border-t border-rex-border-subtle py-[13px]">
+        <div className="text-[12px] text-rex-text-muted">
+          Still warning? Import the CA manually: Firefox Settings → Privacy &amp; Security →
+          Certificates → View Certificates → Authorities → Import, pick the file below and check
+          “Trust this CA to identify websites”.
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[11px] text-rex-text">
+            {ff.caPath}
+          </code>
+          <button
+            onClick={() => {
+              void navigator.clipboard?.writeText(ff.caPath);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className="h-8 flex-none rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
+          >
+            {copied ? "Copied" : "Copy path"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

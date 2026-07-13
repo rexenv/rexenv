@@ -11,6 +11,7 @@ pub mod database;
 pub mod db;
 pub mod dns;
 pub mod downloads;
+pub mod firefox;
 pub mod frankenphp;
 pub mod logs;
 pub mod mail;

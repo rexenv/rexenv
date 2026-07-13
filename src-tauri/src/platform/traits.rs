@@ -75,6 +75,14 @@ pub trait CertTrustManager: Send + Sync {
     fn is_trusted(&self, _ca_cert_path: &std::path::Path) -> bool {
         false
     }
+    /// This user's Firefox profiles root (the dir holding `profiles.ini`), or
+    /// `None` when Firefox never ran / isn't supported on this OS yet. Firefox
+    /// keeps its OWN trust store (NSS) — `core::firefox` uses this to force the
+    /// pref that imports OS-trust-store roots (our CA) per profile. Only the
+    /// LOCATION is per-OS; the profile work is platform-agnostic.
+    fn firefox_profiles_root(&self) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 /// Runs privileged shell operations behind a single OS authentication prompt.

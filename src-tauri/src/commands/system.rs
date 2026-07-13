@@ -197,6 +197,46 @@ pub fn trust_local_ca(state: State<'_, AppState>) -> Result<()> {
     core::ssl::trust_ca(state.platform.as_ref(), &state.ca)
 }
 
+/// Firefox trust state for the Settings SSL card, plus the CA file path for the
+/// manual-import fallback (Firefox keeps its OWN trust store — see `core::firefox`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirefoxTrustStatus {
+    #[serde(flatten)]
+    pub trust: core::firefox::FirefoxTrust,
+    /// The CA certificate to import manually (Authorities → Import).
+    pub ca_path: String,
+}
+
+fn firefox_status_for(state: &State<'_, AppState>) -> FirefoxTrustStatus {
+    let root = state.platform.cert_trust().firefox_profiles_root();
+    FirefoxTrustStatus {
+        trust: core::firefox::status(root.as_deref()),
+        ca_path: state.ca.cert_path.display().to_string(),
+    }
+}
+
+/// Firefox detection + per-profile pref state (Settings SSL card).
+#[tauri::command]
+pub fn firefox_trust_status(state: State<'_, AppState>) -> FirefoxTrustStatus {
+    firefox_status_for(&state)
+}
+
+/// Force `security.enterprise_roots.enabled` (import OS trust-store roots — our
+/// CA) in every Firefox profile via `user.js`. Plain file writes, no prompt;
+/// takes effect when Firefox restarts. Returns the refreshed status.
+#[tauri::command]
+pub fn trust_ca_in_firefox(state: State<'_, AppState>) -> Result<FirefoxTrustStatus> {
+    let Some(root) = state.platform.cert_trust().firefox_profiles_root() else {
+        return Err(crate::error::Error::Other(
+            "Firefox was not found for this user (no profiles.ini).".into(),
+        ));
+    };
+    let written = core::firefox::enable_in_profiles(&root)?;
+    log::info!("firefox: forced OS-root import in {written} profile(s)");
+    Ok(firefox_status_for(&state))
+}
+
 /// FORCED edge reload after a cert re-issue, with an honest failure: cert paths
 /// are stable, so re-issuing leaves the Caddyfile byte-identical and a plain
 /// reload is skipped by Caddy (the OLD leaf stays in its in-memory cache until

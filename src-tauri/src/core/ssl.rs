@@ -318,9 +318,19 @@ fn parse_cert_info(cert_pem: &str, dir: &Path) -> Result<SiteCertInfo> {
 }
 
 /// Trust the local CA in the user trust store (macOS: login keychain — shows a
-/// native auth dialog; no root).
+/// native auth dialog; no root). Also best-effort makes Firefox honor that
+/// trust (its own NSS store ignores the keychain unless its OS-roots import
+/// pref is on — see `core::firefox`); Firefox failure never fails the trust.
 pub fn trust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
-    platform.cert_trust().trust_ca(&ca.cert_path)
+    platform.cert_trust().trust_ca(&ca.cert_path)?;
+    if let Some(root) = platform.cert_trust().firefox_profiles_root() {
+        match crate::core::firefox::enable_in_profiles(&root) {
+            Ok(n) if n > 0 => log::info!("ssl: enabled OS-root import in {n} Firefox profile(s)"),
+            Ok(_) => {}
+            Err(e) => log::warn!("ssl: could not update Firefox profiles: {e}"),
+        }
+    }
+    Ok(())
 }
 
 /// Remove the local CA's trust.
