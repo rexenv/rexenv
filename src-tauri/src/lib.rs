@@ -17,6 +17,56 @@ pub fn run() {
     tauri::Builder::default()
         // Native open/save dialogs (Settings → Sites folder picker).
         .plugin(tauri_plugin_dialog::init())
+        // Database Browser: `rexdb://localhost/…` proxies the embedded Adminer
+        // through Rust with a native cookie jar — WebKit withholds third-party
+        // cookies in cross-site iframes (ITP), which silently killed every
+        // Adminer login. See `core::adminer::forward`.
+        .register_asynchronous_uri_scheme_protocol(
+            core::adminer::PROXY_SCHEME,
+            |_ctx, request, responder| {
+                let (parts, body) = request.into_parts();
+                let method = parts.method.as_str().to_string();
+                let path_and_query = parts
+                    .uri
+                    .path_and_query()
+                    .map(|pq| pq.as_str().to_string())
+                    .unwrap_or_else(|| "/".to_string());
+                let content_type = parts
+                    .headers
+                    .get(tauri::http::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string);
+                tauri::async_runtime::spawn(async move {
+                    let result = core::adminer::forward(
+                        &method,
+                        &path_and_query,
+                        content_type.as_deref(),
+                        body,
+                    )
+                    .await;
+                    let response = match result {
+                        Ok(r) => {
+                            let mut builder = tauri::http::Response::builder().status(r.status);
+                            for (name, value) in r.headers {
+                                builder = builder.header(name, value);
+                            }
+                            builder.body(r.body).unwrap_or_else(|e| {
+                                tauri::http::Response::builder()
+                                    .status(500)
+                                    .body(format!("rexenv db proxy: {e}").into_bytes())
+                                    .expect("static 500")
+                            })
+                        }
+                        Err(e) => tauri::http::Response::builder()
+                            .status(502)
+                            .header("content-type", "text/plain; charset=utf-8")
+                            .body(format!("rexenv db proxy: {e}").into_bytes())
+                            .expect("static 502"),
+                    };
+                    responder.respond(response);
+                });
+            },
+        )
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

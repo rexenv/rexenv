@@ -7,9 +7,19 @@
 //! to a single site's Host, and this internal vhost isn't one.
 
 use crate::core::binaries;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::path::PathBuf;
+
+/// Custom webview scheme the in-app Database Browser loads Adminer through
+/// (`rexdb://localhost/…`). The scheme handler proxies to the stack over
+/// loopback with a RUST-SIDE cookie jar ([`forward`]) because WebKit withholds
+/// third-party cookies inside a cross-site `<iframe>` (ITP): the session cookie
+/// never survived the login POST, so every login — auto or manual — bounced
+/// straight back to the form. With the jar in Rust, browser cookie policy is
+/// out of the picture entirely. (Windows webviews expect `http://rexdb.localhost/`
+/// instead — Phase 4.)
+pub const PROXY_SCHEME: &str = "rexdb";
 
 /// Internal host Adminer is served on (resolved by the embedded DNS (backbone `.rex` resolver)).
 /// NEVER a public tunnel origin (§9) — it isn't a site.
@@ -83,11 +93,21 @@ function adminer_object() {
             function loginForm() {
                 parent::loginForm();
                 if (isset($_GET['rexenv_auto'])) {
+                    // Auto-submit once. Guards: never on a page already showing a
+                    // login error (prevents a submit loop when the engine is down),
+                    // and sessionStorage is best-effort — it can throw on the
+                    // app's custom-scheme origin, and a thrown guard must not
+                    // kill the submit.
                     echo "<script" . \Adminer\nonce() . ">"
-                       . "if(!sessionStorage.getItem('rexenv_autologin')){"
-                       . "sessionStorage.setItem('rexenv_autologin','1');"
+                       . "(function(){"
+                       . "if(document.querySelector('.error'))return;"
+                       . "var seen=null;"
+                       . "try{seen=sessionStorage.getItem('rexenv_autologin');}catch(e){}"
+                       . "if(seen)return;"
+                       . "try{sessionStorage.setItem('rexenv_autologin','1');}catch(e){}"
                        . "var f=document.querySelector('[name=\"auth[driver]\"]');"
-                       . "if(f&&f.form){f.form.submit();}}"
+                       . "if(f&&f.form){f.form.submit();}"
+                       . "})();"
                        . "</script>";
                 }
             }
@@ -140,6 +160,102 @@ pub async fn ensure(platform: &dyn Platform) -> Result<PathBuf> {
         std::fs::write(&index, WRAPPER_INDEX_PHP)?;
     }
     Ok(dir)
+}
+
+/// A response ready to hand back to the webview's custom-scheme responder.
+pub struct ProxiedResponse {
+    pub status: u16,
+    /// Pass-through headers (hop-by-hop, cookie and length headers already stripped).
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+/// Shared client for the Database Browser proxy: pinned to the loopback edge
+/// (no DNS), with a persistent RUST-SIDE cookie jar so Adminer's session
+/// survives the login POST no matter what cookie policy the webview applies to
+/// cross-site iframes. Redirects pass through to the webview (Adminer is
+/// strictly POST-redirect-GET); the jar lives for the app run, so the session
+/// persists across iframe remounts.
+fn proxy_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .cookie_store(true)
+            // Loopback-pinned; our local-CA leaf won't chain for reqwest's
+            // store (same trade-off as `proxy::edge_answers_as_ours`).
+            .danger_accept_invalid_certs(true)
+            .resolve(
+                ADMINER_HOST,
+                std::net::SocketAddr::from(([127, 0, 0, 1], crate::core::proxy::DEFAULT_HTTPS_PORT)),
+            )
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .expect("adminer proxy client")
+    })
+}
+
+/// Response headers that must NOT be replayed to the webview: cookies stay in
+/// the Rust jar (the whole point), and framing/length headers are rebuilt by
+/// the responder.
+const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
+    "set-cookie",
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "keep-alive",
+    "alt-svc",
+];
+
+/// Forward one Database Browser request (`rexdb://localhost<path_and_query>`)
+/// to the Adminer vhost through the edge and return the response for the
+/// webview. `content_type` is the request's Content-Type (form POSTs).
+pub async fn forward(
+    method: &str,
+    path_and_query: &str,
+    content_type: Option<&str>,
+    body: Vec<u8>,
+) -> Result<ProxiedResponse> {
+    let url = format!("https://{ADMINER_HOST}{path_and_query}");
+    let method = reqwest::Method::from_bytes(method.as_bytes())
+        .map_err(|e| Error::Other(format!("adminer proxy: bad method: {e}")))?;
+    let mut req = proxy_client().request(method, &url);
+    if let Some(ct) = content_type {
+        req = req.header(reqwest::header::CONTENT_TYPE, ct);
+    }
+    if !body.is_empty() {
+        req = req.body(body);
+    }
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("adminer proxy: {e}")))?;
+
+    let status = resp.status().as_u16();
+    let mut headers = Vec::new();
+    for (name, value) in resp.headers() {
+        let n = name.as_str().to_ascii_lowercase();
+        if STRIPPED_RESPONSE_HEADERS.contains(&n.as_str()) {
+            continue;
+        }
+        let Ok(v) = value.to_str() else { continue };
+        // Absolute self-redirects must stay on the proxy origin; relative ones
+        // (Adminer's norm) already resolve against `rexdb://localhost`.
+        if n == "location" {
+            let v = v
+                .strip_prefix(&format!("https://{ADMINER_HOST}"))
+                .unwrap_or(v);
+            headers.push((n, v.to_string()));
+            continue;
+        }
+        headers.push((n, v.to_string()));
+    }
+    let body = resp
+        .bytes()
+        .await
+        .map_err(|e| Error::Other(format!("adminer proxy: read body: {e}")))?
+        .to_vec();
+    Ok(ProxiedResponse { status, headers, body })
 }
 
 #[cfg(test)]

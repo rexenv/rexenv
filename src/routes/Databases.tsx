@@ -8,7 +8,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { databasesStatus, startDatabase, stopDatabase } from "@/lib/ipc";
-import { adminerUrl } from "@/lib/adminer";
+import { adminerFrameSrc } from "@/lib/adminer";
 import type { DbStatus } from "@/types";
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
@@ -115,7 +115,7 @@ export function Databases() {
           <span className="font-mono text-[12px] text-rex-text-muted">{browse.label} · Adminer</span>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-[18px]">
-          <AdminerFrame src={adminerUrl({ engine })} />
+          <AdminerFrame src={adminerFrameSrc({ engine })} />
         </div>
       </>
     );

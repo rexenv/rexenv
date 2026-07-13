@@ -15,11 +15,13 @@ const POSTGRES_PORT = 15432;
  *  default it requests a one-click scoped session (`rexenv_auto`) so the backend
  *  wrapper auto-logs-in and lands straight in the DB (§11.4); pass
  *  `autoLogin: false` for a plain pre-filled login form. */
-export function adminerUrl(opts: {
+interface AdminerTarget {
   engine: "mysql" | "postgres";
   db?: string;
   autoLogin?: boolean;
-}): string {
+}
+
+function adminerQuery(opts: AdminerTarget): string {
   const params = new URLSearchParams();
   if (opts.engine === "postgres") {
     params.set("pgsql", `127.0.0.1:${POSTGRES_PORT}`);
@@ -32,7 +34,21 @@ export function adminerUrl(opts: {
   // Scoped one-click session by default (the wrapper auto-submits Adminer's own
   // CSRF-tokened form); opt out with autoLogin:false.
   if (opts.autoLogin !== false) params.set("rexenv_auto", "1");
-  return `https://${ADMINER_HOST}/?${params.toString()}`;
+  return params.toString();
+}
+
+/** Adminer deep-link for an EXTERNAL browser (first-party page → cookies work). */
+export function adminerUrl(opts: AdminerTarget): string {
+  return `https://${ADMINER_HOST}/?${adminerQuery(opts)}`;
+}
+
+/** Adminer src for the IN-APP `<iframe>`. Goes through the `rexdb://` custom
+ *  protocol (Rust-side cookie jar) because WebKit withholds third-party cookies
+ *  in cross-site iframes — a direct `https://` src loses the session on the
+ *  login POST and every login bounces back to the form. (Windows webviews use
+ *  `http://rexdb.localhost/` for custom schemes — Phase 4.) */
+export function adminerFrameSrc(opts: AdminerTarget): string {
+  return `rexdb://localhost/?${adminerQuery(opts)}`;
 }
 
 // NOTE: a site's MySQL database name must come from `site.dbName` (stored at
