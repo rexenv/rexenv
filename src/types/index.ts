@@ -12,7 +12,7 @@ export type SiteType = "wordpress" | "laravel" | "php";
 export interface Site {
   id: string;
   name: string;
-  domain: string; // e.g. "mysite.test"
+  domain: string; // e.g. "mysite.rex"
   type: SiteType;
   status: ServiceStatus;
   phpVersion: string; // e.g. "8.3"

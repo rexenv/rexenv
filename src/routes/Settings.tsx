@@ -418,6 +418,8 @@ function ActionRow({
 function DnsSslSetting() {
   const qc = useQueryClient();
   const { data: dns } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
+  // The card copy shows the USER'S configured TLD (changeable below), not a literal.
+  const { data: tld = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
   const [msg, setMsg] = useState<string | null>(null);
 
   const trust = useMutation({
@@ -459,7 +461,7 @@ function DnsSslSetting() {
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-rex-text">DNS resolver</div>
               <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
-                *.rex → 127.0.0.1 · {dnsActive ? "active" : "inactive"}
+                *.{tld} → 127.0.0.1 · {dnsActive ? "active" : "inactive"}
               </div>
             </div>
           </div>

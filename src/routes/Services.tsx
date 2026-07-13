@@ -6,7 +6,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { cn } from "@/lib/utils";
-import { dnsStatus, servicesStatus, setDefaultPhpVersion } from "@/lib/ipc";
+import { defaultTld, dnsStatus, servicesStatus, setDefaultPhpVersion } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
 
 /** Tinted accent per kind (matches the group icon colors). */
@@ -204,6 +204,9 @@ export function Services() {
     queryFn: dnsStatus,
     refetchInterval: 5000,
   });
+  // The user's configured TLD — the DNS card copy must describe THEIR domains,
+  // not a hardcoded one (they can change it in Settings).
+  const { data: tld = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
 
   return (
     <>
@@ -255,9 +258,9 @@ export function Services() {
               );
             })}
 
-            {/* Always-on DNS resolver — in-process, app-lifetime, NOT controlled
-                by Start/Stop all (a dead resolver breaks every .test domain, so
-                it must stay visible; the watchdog restarts it automatically). */}
+            {/* Always-on DNS resolver — app-lifetime, NOT controlled by
+                Start/Stop all (a dead resolver breaks every local site domain,
+                so it must stay visible; the watchdog restarts it automatically). */}
             {dns && (
               <div className="mb-[18px] last:mb-0">
                 <div className="mb-[9px] flex items-center gap-2.5 px-0.5">
@@ -280,7 +283,7 @@ export function Services() {
                           DNS resolver
                         </span>
                         <div className="text-[11px] text-rex-text-dim">
-                          Resolves <span className="font-mono">*.test</span> — restarted
+                          Resolves <span className="font-mono">*.{tld}</span> — restarted
                           automatically if it dies
                         </div>
                       </div>
@@ -289,8 +292,8 @@ export function Services() {
                       :{dns.port}
                     </div>
                     {/* Down = red error, not gray "Idle": always-on means a dead
-                        resolver is a fault (every .test breaks), never a normal
-                        stopped state. */}
+                        resolver is a fault (every local domain breaks), never a
+                        normal stopped state. */}
                     <StatusPill
                       status={dns.running ? "running" : "error"}
                       label={dns.running ? undefined : "Down"}

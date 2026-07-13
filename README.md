@@ -3,7 +3,7 @@
 A native, lightweight, limitless local development environment for web & WordPress developers. **No Docker.** macOS first, then Windows and Linux.
 
 > **Status:** Phase 1 (MVP), Phase 2 core, and Phase 3 are **complete on macOS** — one-click
-> WordPress on real `https://*.test`, multi-PHP, Nginx + per-site FrankenPHP, MySQL +
+> WordPress on real `https://*.rex`, multi-PHP, Nginx + per-site FrankenPHP, MySQL +
 > PostgreSQL, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
 > Cloudflare tunnels, blueprints, autostart. Open work is tracked in `docs/TODO.md`;
 > Windows/Linux ports are `todo!()` stubs by design.
@@ -15,7 +15,7 @@ A native, lightweight, limitless local development environment for web & WordPre
 One app to run your entire local stack — web servers (**Nginx**, per-site **FrankenPHP**;
 Apache/OpenLiteSpeed deferred), multiple PHP versions (8.1/8.2/8.3), databases (**MySQL**,
 **PostgreSQL**; MariaDB/Redis deferred), one-click WordPress with a full plugin/theme/user/
-**multisite** manager, local `.test` domains with auto-HTTPS, mail catching (Mailpit), a DB
+**multisite** manager, local `.rex` domains with auto-HTTPS, mail catching (Mailpit), a DB
 browser (Adminer deep-link), log viewer, per-site terminal, and public sharing (Cloudflare
 quick tunnels) — all native and lightweight, from one UI.
 
@@ -54,7 +54,7 @@ cargo run --example <name>                 # live verification binaries (see src
 ```
 
 First launch routes to Onboarding, which performs system setup (installs the
-`/etc/resolver/test` resolver — one admin prompt — and trusts the local CA in your
+`/etc/resolver/rex` resolver — one admin prompt — and trusts the local CA in your
 login keychain). Service binaries (Caddy, Nginx, PHP, MySQL, …) are downloaded on
 demand, checksum-pinned, and prepared for macOS automatically.
 
@@ -149,7 +149,7 @@ rexenv/
 
 ## Build phases (summary)
 
-1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test`.
+1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test` (now `*.rex`).
 2. **Phase 2 core** — ✅ done. Multi-PHP (8.1/8.2/8.3), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *(Apache/OpenLiteSpeed/MariaDB/Redis deferred — no clean portable macOS binaries; see `docs/TODO.md` "Deferred services".)*
 3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
 4. **Release** — hardening + `.dmg` packaging done except the clean-Mac verification (`docs/TODO.md`); audit history in `docs/archive/`.

@@ -743,14 +743,14 @@ function ToolsPanel({
               <input {...TECH_INPUT}
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                placeholder="old (e.g. old.test)"
+                placeholder="old (e.g. old.rex)"
                 className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
               />
               <span className="text-rex-text-muted">→</span>
               <input {...TECH_INPUT}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                placeholder="new (e.g. new.test)"
+                placeholder="new (e.g. new.rex)"
                 className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
               />
             </div>
@@ -1781,7 +1781,7 @@ function UsersPanel({ siteId }: { siteId: string }) {
         <input {...TECH_INPUT}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@site.test"
+          placeholder="email@site.rex"
           className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
         <select

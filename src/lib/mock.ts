@@ -15,7 +15,7 @@ export const mockSites: Site[] = [
   {
     id: "1",
     name: "Acme Store",
-    domain: "acme.test",
+    domain: "acme.rex",
     type: "wordpress",
     status: "running",
     phpVersion: "8.3",
@@ -29,7 +29,7 @@ export const mockSites: Site[] = [
   {
     id: "2",
     name: "Portfolio",
-    domain: "portfolio.test",
+    domain: "portfolio.rex",
     type: "laravel",
     status: "running",
     phpVersion: "8.2",
@@ -43,7 +43,7 @@ export const mockSites: Site[] = [
   {
     id: "3",
     name: "Blog Network",
-    domain: "network.test",
+    domain: "network.rex",
     type: "wordpress",
     status: "stopped",
     phpVersion: "8.1",
@@ -119,8 +119,8 @@ export const mockMailList: MailList = {
   messages: [
     {
       id: "m1",
-      from: { name: "Acme Store", address: "wordpress@acme.test" },
-      to: [{ name: "", address: "admin@acme.test" }],
+      from: { name: "Acme Store", address: "wordpress@acme.rex" },
+      to: [{ name: "", address: "admin@acme.rex" }],
       subject: "[Acme Store] Password reset request",
       created: "2026-06-28T09:14:00+06:00",
       read: false,
@@ -128,8 +128,8 @@ export const mockMailList: MailList = {
     },
     {
       id: "m2",
-      from: { name: "", address: "noreply@portfolio.test" },
-      to: [{ name: "", address: "hello@portfolio.test" }],
+      from: { name: "", address: "noreply@portfolio.rex" },
+      to: [{ name: "", address: "hello@portfolio.rex" }],
       subject: "New contact form submission",
       created: "2026-06-28T08:02:00+06:00",
       read: false,
@@ -137,8 +137,8 @@ export const mockMailList: MailList = {
     },
     {
       id: "m3",
-      from: { name: "Acme Store", address: "wordpress@acme.test" },
-      to: [{ name: "", address: "customer@example.test" }],
+      from: { name: "Acme Store", address: "wordpress@acme.rex" },
+      to: [{ name: "", address: "customer@example.rex" }],
       subject: "Your order has shipped",
       created: "2026-06-27T17:40:00+06:00",
       read: true,

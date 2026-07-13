@@ -12,7 +12,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources } from "@/lib/ipc";
+import { defaultTld, listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources } from "@/lib/ipc";
 import type { Site, SiteResources } from "@/types";
 
 /** Compact bytes for the per-site DB size. */
@@ -312,6 +312,8 @@ export function Sites() {
     queryKey: ["sites"],
     queryFn: listSites,
   });
+  // Empty-state copy names the USER'S configured TLD, not a hardcoded one.
+  const { data: tld = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
   // A site's displayed status is its live *serving* state, NOT the sites.status
   // column (task 2.1 / H1): serving only when the edge is up AND the site's own
   // upstream (php-fpm pool or FrankenPHP backend) is up, so a partial stack no
@@ -451,7 +453,7 @@ export function Sites() {
               <div className="text-[19px] font-semibold text-rex-text">No sites yet</div>
               <div className="mt-2 max-w-[400px] text-[13.5px] leading-[1.55] text-rex-text-muted">
                 Point rexenv at a folder and it serves your site instantly — with its
-                own .test domain, PHP, and database.
+                own <span className="font-mono">.{tld}</span> domain, PHP, and database.
               </div>
             </div>
             <Button variant="primary" size="lg" onClick={() => setShowNew(true)}>

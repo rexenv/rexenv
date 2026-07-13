@@ -1,7 +1,7 @@
 # Installing rexenv (macOS)
 
 rexenv is a local development environment — it runs your web/WordPress stack
-(web servers, PHP, databases, one-click WordPress, `.test` domains with HTTPS)
+(web servers, PHP, databases, one-click WordPress, `.rex` domains with HTTPS)
 natively on your Mac, no Docker.
 
 This is a **limited build shared directly** (not from the App Store and not yet
@@ -40,10 +40,11 @@ After you do this **once**, rexenv opens normally (double-click) from then on.
 The first time you use rexenv it sets up local networking + HTTPS, so macOS will
 ask for permission a few times. These are expected and all stay on your machine:
 
-1. **Admin password** — to add the `.test` DNS resolver (`/etc/resolver/test`) so
-   `https://yoursite.test` resolves locally.
+1. **Admin password** — to add the `.rex` DNS resolver (`/etc/resolver/rex`) so
+   `https://yoursite.rex` resolves locally. (Other TLDs, `.test` included, install
+   the same way on first use if you pick one in Settings.)
 2. **Keychain prompt** — to **trust rexenv's local Certificate Authority**, so your
-   `.test` sites get a valid green-lock HTTPS cert (it signs only your local sites).
+   local sites get a valid green-lock HTTPS cert (it signs only your local sites).
 3. **Admin password** — to let the built-in edge server use ports **80/443** when
    you start your services.
 
@@ -55,7 +56,7 @@ real HTTPS dev stack.)
 
 1. Open rexenv → **New site** → choose **WordPress** → create.
 2. Start services if prompted, then open the site — it should load at
-   **`https://<name>.test`** with a valid HTTPS lock.
+   **`https://<name>.rex`** with a valid HTTPS lock.
 
 ## Troubleshooting "it won't open"
 

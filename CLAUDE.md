@@ -3,7 +3,7 @@
 rexenv is a native, **no-Docker** local development environment for web & WordPress
 developers: a Tauri 2 desktop app (Rust backend + React/TS frontend) that runs the whole
 local stack — edge proxy with auto-HTTPS, shared web server, multi-version PHP, MySQL/
-PostgreSQL, one-click WordPress, `.test` DNS, mail catching, tunnels — from one UI.
+PostgreSQL, one-click WordPress, `.rex` DNS, mail catching, tunnels — from one UI.
 **macOS is complete** (Phases 1–3 shipped); Windows/Linux are `todo!()` stubs (Phase 4).
 
 This file is a ROUTER. Read only what the task needs (table at the bottom).
@@ -37,11 +37,11 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 - **Locking rule:** never hold the services lock across a wait — spawn under the lock,
   return `ReadyCheck`s, `await_ready` after dropping it. Status polls `try_lock` a
   snapshot; only `ServiceManager` sits behind an async Mutex (AppState = field-level locks).
-- Embedded DNS (hickory) is **always-on and OUTLIVES the app** — `*.test → 127.0.0.1`
+- Embedded DNS (hickory) is **always-on and OUTLIVES the app** — `*.rex → 127.0.0.1` (any configured TLD; `.rex` is the always-installed backbone)
   on UDP 15353, served by a per-user LaunchAgent (`--dns-agent`, KeepAlive, no
   privilege); in-process only as automatic fallback; not a ServiceManager service;
   watchdog kickstarts/restarts (max 3).
-- **System changes only through platform traits.** `/etc/resolver/test` = root op via
+- **System changes only through platform traits.** `/etc/resolver/rex` (+ one per extra TLD) = root op via
   `PrivilegeManager`; CA trust = USER op via `CertTrustManager` (login keychain — System
   keychain is impossible from detached-root osascript). Privileged prompts must run
   foreground. TLS leaves ≤398 days (Safari cap).

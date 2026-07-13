@@ -415,7 +415,7 @@ export async function wpDebugLogClear(siteId: string): Promise<void> {
 
 /** Copy a site's debug.log to Downloads; resolves to the saved path. */
 export async function wpDebugLogDownload(siteId: string): Promise<string> {
-  if (!isTauri()) return "/Users/dev/Downloads/demo.test-debug.log";
+  if (!isTauri()) return "/Users/dev/Downloads/demo.rex-debug.log";
   return invoke<string>("wp_debug_log_download", { siteId });
 }
 
@@ -553,8 +553,8 @@ export async function wpThemeDelete(id: string, names: string[]): Promise<void> 
 // ── WordPress Manager — users (§7.1) ────────────────────────────────────────
 
 const mockWpUsers: WpUser[] = [
-  { id: 1, login: "admin", email: "admin@acme.test", roles: "administrator", name: "Admin" },
-  { id: 2, login: "editor", email: "editor@acme.test", roles: "editor", name: "Ed Itor" },
+  { id: 1, login: "admin", email: "admin@acme.rex", roles: "administrator", name: "Admin" },
+  { id: 2, login: "editor", email: "editor@acme.rex", roles: "editor", name: "Ed Itor" },
 ];
 
 /** List a site's WordPress users (`wp user list`). Mock fallback outside Tauri. */
@@ -777,7 +777,7 @@ export async function wpCoreReinstall(id: string): Promise<string> {
 /** Export the site's database to Downloads (bundled mysqldump). Returns the
  *  written path. */
 export async function wpDbExport(id: string): Promise<string> {
-  if (!isTauri()) return "~/Downloads/mock.test-db.sql (mock)";
+  if (!isTauri()) return "~/Downloads/mock.rex-db.sql (mock)";
   return invoke<string>("wp_db_export", { id });
 }
 
@@ -820,8 +820,8 @@ export async function wpMultisiteConvert(id: string, mode: "subdomain" | "subdir
 // ── WordPress Manager — network / multisite (§10.3) ─────────────────────────
 
 const mockNetworkSites: WpNetworkSite[] = [
-  { id: "1", url: "https://network.test/", registered: "2026-06-01 10:00:00", deleted: false },
-  { id: "2", url: "https://team.network.test/", registered: "2026-06-10 09:30:00", deleted: false },
+  { id: "1", url: "https://network.rex/", registered: "2026-06-01 10:00:00", deleted: false },
+  { id: "2", url: "https://team.network.rex/", registered: "2026-06-10 09:30:00", deleted: false },
 ];
 
 /** List the network's sub-sites (`wp site list`). Mock fallback outside Tauri. */
@@ -931,7 +931,7 @@ export async function stopTunnel(id: string): Promise<void> {
 /** All active public tunnels (domain → URL). Mock fallback outside Tauri. */
 export async function tunnelsStatus(): Promise<TunnelInfo[]> {
   if (!isTauri()) {
-    return [{ domain: "acme.test", url: "https://blue-cat-runs-fast.trycloudflare.com", running: true }];
+    return [{ domain: "acme.rex", url: "https://blue-cat-runs-fast.trycloudflare.com", running: true }];
   }
   return invoke<TunnelInfo[]>("tunnels_status");
 }

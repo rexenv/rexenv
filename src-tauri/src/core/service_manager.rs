@@ -1623,7 +1623,7 @@ async fn wait_until_ready(
 }
 
 /// The `spawn_logged` stdout log path for a service `key` (`<key>-stdout.log` under
-/// `log_dir`, e.g. `mysql`, `mailpit`, `frankenphp-my.test`). Matches `core::logs`.
+/// `log_dir`, e.g. `mysql`, `mailpit`, `frankenphp-my.rex`). Matches `core::logs`.
 fn stdout_log(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
     Ok(platform.paths().log_dir()?.join(format!("{key}-stdout.log")))
 }

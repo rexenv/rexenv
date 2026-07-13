@@ -13,13 +13,13 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 
 ## Cold first run (downloads + system setup) — also exercises §2.4
 - [ ] On first use the app downloads its components (PHP, Nginx, MySQL, Caddy, WP-CLI…) with visible progress.
-- [ ] Admin prompt for the `.test` DNS resolver appears and is accepted.
+- [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.
 
 ## Core: WordPress over HTTPS (the headline flow)
 - [ ] **New site** → WordPress → create; install completes without error.
-- [ ] Site loads at **`https://<name>.test`** with a valid lock (no cert warning).
+- [ ] Site loads at **`https://<name>.rex`** with a valid lock (no cert warning).
 - [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in.
 
 ## Site Settings tab
@@ -61,7 +61,7 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 
 ## Clean uninstall — §3
 - [ ] Settings → Uninstall → **Remove rexenv's system changes**; confirm.
-- [ ] After: `ping foo.test` no longer resolves; the local CA is no longer trusted (no cert warning is moot — it's gone); no rexenv services running.
+- [ ] After: `ping foo.rex` no longer resolves; the local CA is no longer trusted (no cert warning is moot — it's gone); no rexenv services running.
 - [ ] Site files remain under `~/Library/Application Support/dev.rexenv.rexenv/` (not deleted).
 
 ---

@@ -1,6 +1,6 @@
 //! core::proxy — edge router (Caddy) config generation + supervision (task 4.2).
 //!
-//! Caddy terminates TLS for every `*.test` site using the per-site certs issued
+//! Caddy terminates TLS for every local site using the per-site certs issued
 //! by our local CA (3.2) via explicit `tls <cert> <key>` directives. Caddy's
 //! automatic HTTPS (ACME + its own internal CA) is therefore never used — the
 //! chain the browser sees is signed by the CA trusted in 3.4. Caddy proxies to
@@ -88,11 +88,11 @@ pub fn admin_alive(platform: &dyn Platform) -> bool {
 /// One site's TLS termination + upstream.
 #[derive(Debug, Clone)]
 pub struct SiteRoute {
-    /// Host served, e.g. `mysite.test`.
+    /// Host served, e.g. `mysite.rex`.
     pub host: String,
     /// Also match `*.host` (subdomain multisite, §10.2). The wildcard sub-site
     /// hosts share this site's backend + wildcard cert; a more-specific exact
-    /// host (any other site) still wins, so it can't overshadow `other.test`.
+    /// host (any other site) still wins, so it can't overshadow `other.rex`.
     pub wildcard: bool,
     /// Upstream `host:port` Caddy proxies to (the shared Nginx).
     pub upstream: String,
@@ -125,7 +125,7 @@ impl Default for CaddyConfig {
 /// Render the Caddyfile. Explicit per-site `tls` means Caddy never invokes its
 /// internal issuer/ACME (it uses the loaded local-CA certs). Auto-HTTPS is left
 /// on so Caddy also binds `http_port` and 308-redirects HTTP→HTTPS for every
-/// site host — `http://site.test` lands on `https://site.test`.
+/// site host — `http://site.rex` lands on `https://site.rex`.
 pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
     let mut s = String::new();
     s.push_str("{\n");

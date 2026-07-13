@@ -9,7 +9,7 @@
 //! binds 127.0.0.1 and only OS resolver files we install route queries to it;
 //! it must never be bound on a non-loopback interface, where answer-anything
 //! would turn it into an open wildcard resolver. Because every name resolves
-//! to loopback, WordPress subdomain multisite (`*.mysite.test`) works for
+//! to loopback, WordPress subdomain multisite (`*.mysite.rex`) works for
 //! free. Pointing the OS at this server is the per-OS `DnsManager` step.
 
 use crate::error::Result;
@@ -25,7 +25,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::UdpSocket;
 
 /// Default loopback port for the embedded resolver. Not :53 (privileged) — the
-/// OS resolver config (task 2.2) points `.test` lookups here.
+/// OS resolver config (task 2.2) points `.rex` (and any configured TLD) lookups here.
 pub const DEFAULT_DNS_PORT: u16 = 15353;
 
 /// TTL (seconds) on answers. Short, since these are local and may change.

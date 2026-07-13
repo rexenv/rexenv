@@ -31,7 +31,7 @@ fn validate_domain(domain: &str) -> Result<()> {
     let labels: Vec<&str> = domain.split('.').collect();
     // At least one label before the TLD, and a TLD the policy allows.
     if labels.len() < 2 {
-        return Err(reject("must have a label before the TLD (e.g. mysite.test)"));
+        return Err(reject("must have a label before the TLD (e.g. mysite.rex)"));
     }
     tld::ensure_allowed(labels.last().expect("len >= 2"))?;
     for label in &labels {
@@ -594,7 +594,7 @@ pub struct RebuiltConfigs {
 
 /// Regenerate the shared nginx + Caddy configs from ALL sites in the DB. The
 /// configs are derived state: one shared nginx (server block per site, by
-/// `server_name`, FastCGI → php-fpm) and Caddy routes (`*.test` host → nginx,
+/// `server_name`, FastCGI → php-fpm) and Caddy routes (site host → nginx,
 /// TLS with each site's cert). Caller reloads the services afterwards.
 pub fn rebuild_configs(
     conn: &Connection,
@@ -662,7 +662,7 @@ pub fn rebuild_configs_for(
         let cert = ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &s.domain)?;
         routes.push(proxy::SiteRoute {
             host: s.domain.clone(),
-            // Subdomain multisite serves every `*.mysite.test` sub-site from the
+            // Subdomain multisite serves every `*.mysite.rex` sub-site from the
             // one wildcard cert + backend (§10.2); other modes are single-host.
             wildcard: matches!(s.multisite, MultisiteMode::Subdomain),
             upstream: site_upstream(s, nginx_http_port),

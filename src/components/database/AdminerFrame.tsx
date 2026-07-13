@@ -3,7 +3,7 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { isTauri } from "@/lib/ipc";
 
 /** Embeds the stack-served Adminer (framed, dark via Adminer's prefers-color-scheme).
- *  Off-Tauri the internal `*.test` host doesn't resolve, so we show a placeholder. */
+ *  Off-Tauri the `rexdb://` proxy scheme doesn't exist, so we show a placeholder. */
 export function AdminerFrame({ src }: { src: string }) {
   if (!isTauri()) {
     return (

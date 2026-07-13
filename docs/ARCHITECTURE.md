@@ -59,7 +59,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 - **No direct Caddy→php-fpm path for default sites.** Caddy is invisible plumbing.
 - Local CA via `rcgen` (`core/ssl.rs`); per-domain leaf certs, wildcard SAN for
-  multisite (`*.site.test`). **Leaves must stay ≤398 days** — Safari/WebKit rejects
+  multisite (`*.site.rex`). **Leaves must stay ≤398 days** — Safari/WebKit rejects
   longer ones even with the CA trusted. Caddy's auto-HTTPS/internal issuer is DISABLED;
   it serves our certs only.
 - CA trust = **login keychain** (user op, `CertTrustManager`) — a detached-root osascript
@@ -72,9 +72,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   backend; all other sites stay on the shared Nginx. `ServiceManager::reconcile_overrides`
   keeps backends in sync on start/reload.
 - **Multisite** (`sites.multisite`: none/subdomain/subdirectory → `RewriteMode`): the
-  config generator has three rewrite templates. Subdomain adds `mysite.test, *.mysite.test`
+  config generator has three rewrite templates. Subdomain adds `mysite.rex, *.mysite.rex`
   to both the Nginx `server_name` and the Caddy host list over the wildcard-SAN cert;
-  exact hosts always win, so a wildcard never shadows other `.test` sites.
+  exact hosts always win, so a wildcard never shadows other sites.
 - **Quote every path in generated Caddy/Nginx configs** — app-data paths contain spaces.
 - **Per-site env vars (§1.6) never touch the shared pools.** Two delivery paths:
   Nginx sites get `fastcgi_param` lines in their server block (per-REQUEST);

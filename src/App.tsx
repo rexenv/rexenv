@@ -17,7 +17,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
 
 /** First launch: route to onboarding until system setup is complete for THIS
- *  user — the .test resolver (system-wide) AND the local-CA trust (per-user
+ *  user — the .rex resolver (system-wide) AND the local-CA trust (per-user
  *  login keychain). Checking only the resolver skipped the trust step for any
  *  second macOS account (the resolver file already existed), leaving HTTPS
  *  broken there. Reflects real state (dns_status), so it keeps prompting until
