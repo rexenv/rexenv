@@ -8,8 +8,10 @@
 //! modules the same way.
 
 use crate::core::{binaries, database, mariadb, ports, postgres, redis};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
+use crate::state::models::SiteDbEngine;
+use std::path::PathBuf;
 use std::process::Child;
 
 /// Loopback ports for the database services. Each is non-default so it doesn't
@@ -98,6 +100,68 @@ impl DbEngine {
     /// Look up an engine by its `key`, or `None`.
     pub fn from_key(key: &str) -> Option<DbEngine> {
         DbEngine::ALL.into_iter().find(|e| e.key() == key)
+    }
+
+    /// The engine backing a site's database (`sites.db_engine`).
+    pub fn from_site(engine: SiteDbEngine) -> DbEngine {
+        match engine {
+            SiteDbEngine::Mysql => DbEngine::Mysql,
+            SiteDbEngine::Mariadb => DbEngine::Mariadb,
+        }
+    }
+
+    /// Resolve the bundled SQL `(client, dump)` binaries for site DB
+    /// operations (create/drop/import/export/sizes — the bundled-client rule:
+    /// never a PATH client). Only the site-capable engines have them.
+    pub async fn sql_client_bins(&self, platform: &dyn Platform) -> Result<(PathBuf, PathBuf)> {
+        match self {
+            DbEngine::Mysql => {
+                let base =
+                    binaries::resolve_dir(platform, "mysql", binaries::MYSQL_VERSION).await?;
+                Ok((base.join("bin/mysql"), base.join("bin/mysqldump")))
+            }
+            DbEngine::Mariadb => {
+                let base =
+                    binaries::resolve_bundle(platform, "mariadb", binaries::MARIADB_VERSION)
+                        .await?;
+                Ok((mariadb::mariadb_client_bin(&base), mariadb::mariadb_dump_bin(&base)))
+            }
+            other => Err(Error::Other(format!(
+                "{} does not host site databases",
+                other.label()
+            ))),
+        }
+    }
+
+    /// The SQL client from an ALREADY-published cache — strictly offline, for
+    /// status-poll paths (the per-site DB-size query) where triggering a
+    /// download is wrong. `None` when uncached or not a site engine.
+    pub fn cached_sql_client(&self, platform: &dyn Platform) -> Option<PathBuf> {
+        let bin_dir = platform.paths().bin_dir().ok()?;
+        let client = match self {
+            DbEngine::Mysql => bin_dir
+                .join(format!("mysql-{}", binaries::MYSQL_VERSION))
+                .join("bin/mysql"),
+            DbEngine::Mariadb => bin_dir
+                .join(format!("mariadb-{}", binaries::MARIADB_VERSION))
+                .join("bin/mariadb"),
+            _ => return None,
+        };
+        client.is_file().then_some(client)
+    }
+
+    /// Whether this engine's datadir was ever initialized — the delete-site
+    /// guard ("no datadir ⇒ no database can exist ⇒ nothing to drop").
+    pub fn datadir_initialized(&self, platform: &dyn Platform) -> bool {
+        match self {
+            DbEngine::Mysql => database::data_dir(platform)
+                .map(|d| database::is_initialized(&d))
+                .unwrap_or(false),
+            DbEngine::Mariadb => mariadb::data_dir(platform)
+                .map(|d| mariadb::is_initialized(&d))
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// Resolve the binary, initialize its data dir if needed, and start the

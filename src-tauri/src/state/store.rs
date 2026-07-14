@@ -3,14 +3,15 @@
 
 use crate::error::{Error, Result};
 use crate::state::models::{
-    Blueprint, BlueprintSpec, MultisiteMode, PhpVersion, ServiceStatus, Site, SiteType, WebServer,
+    Blueprint, BlueprintSpec, MultisiteMode, PhpVersion, ServiceStatus, Site, SiteDbEngine,
+    SiteType, WebServer,
 };
 use rusqlite::{params, Connection, Row};
 
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
-const SITE_COLUMNS: &str =
-    "id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name";
+const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
+     created_at, multisite, db_name, db_engine";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -18,6 +19,7 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
     let status: String = row.get(4)?;
     let web_server: String = row.get(6)?;
     let multisite: String = row.get(10)?;
+    let db_engine: String = row.get(12)?;
     Ok(Site {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -31,6 +33,7 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         created_at: row.get(9)?,
         multisite: MultisiteMode::parse_db(&multisite).map_err(to_sqlite_err)?,
         db_name: row.get(11)?,
+        db_engine: SiteDbEngine::parse_db(&db_engine).map_err(to_sqlite_err)?,
     })
 }
 
@@ -44,8 +47,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             site.id,
             site.name,
@@ -59,6 +62,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.created_at,
             site.multisite.as_db(),
             site.db_name,
+            site.db_engine.as_db(),
         ],
     )?;
     Ok(())

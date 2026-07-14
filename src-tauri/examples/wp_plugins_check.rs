@@ -49,7 +49,7 @@ async fn main() {
             site_type: SiteType::Wordpress,
             php_version: "8.3".into(),
             web_server: WebServer::Nginx,
-            path: String::new(),
+            path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
         },
     )
     .unwrap();

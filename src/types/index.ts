@@ -21,8 +21,12 @@ export interface Site {
   path: string;
   createdAt: string; // SQLite datetime, mirrors the Rust Site struct
   multisite: MultisiteMode; // WordPress multisite mode (§10.1)
-  dbName: string; // MySQL database name — stored at creation, stable across domain changes
+  dbName: string; // database name — stored at creation, stable across domain changes
+  dbEngine: SiteDbEngine; // SQL engine hosting that database (chosen at create)
 }
+
+/** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */
+export type SiteDbEngine = "mysql" | "mariadb";
 
 /** WordPress multisite mode (mirrors the Rust MultisiteMode). */
 export type MultisiteMode = "none" | "subdomain" | "subdirectory";
@@ -61,6 +65,7 @@ export interface NewSiteInput {
   phpVersion: string;
   webServer: WebServer;
   path: string; // empty → core computes the docroot under the sites dir
+  dbEngine?: SiteDbEngine; // omitted → mysql (serde default)
 }
 
 /** WordPress one-click install fields (type=wordpress). Empty fields default

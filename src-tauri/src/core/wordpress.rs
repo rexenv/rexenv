@@ -1603,8 +1603,9 @@ pub struct WpInstall<'a> {
     pub db_name: &'a str,
     /// `host:port`, e.g. `127.0.0.1:13306`.
     pub db_host: &'a str,
-    /// Extracted MySQL tree (for the bundled `mysql` client that creates the DB).
-    pub mysql_basedir: &'a Path,
+    /// Bundled MySQL-protocol client BINARY that creates the DB (`bin/mysql`
+    /// from the MySQL tree, or `bin/mariadb` from the mariadb bundle).
+    pub db_client: &'a Path,
     /// Full site URL, e.g. `https://mysite.test`.
     pub url: &'a str,
     pub title: &'a str,
@@ -1673,7 +1674,7 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
         .rsplit_once(':')
         .and_then(|(_, p)| p.parse().ok())
         .unwrap_or(super::database::MYSQL_PORT);
-    super::database::create_database(opts.mysql_basedir, port, opts.db_name)?;
+    super::database::create_database(opts.db_client, port, opts.db_name)?;
 
     // 4) Install (single-site) if not already installed.
     let installed = wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
@@ -1702,8 +1703,8 @@ pub fn install_wordpress(php_bin: &Path, wp_phar: &Path, opts: &WpInstall) -> Re
 /// to [`install_wordpress`]. The canonical URL is `https://<domain>`; `db_name`
 /// is the site's STORED database name (`Site::db_name` — derived once at
 /// creation, never from the current domain). `db_host` is `host:port` (e.g.
-/// `127.0.0.1:13306`); `mysql_basedir` is the extracted MySQL tree (bundled
-/// client creates the DB).
+/// `127.0.0.1:13306`); `db_client` is the site engine's bundled client binary
+/// (creates the DB).
 #[allow(clippy::too_many_arguments)] // flat mirror of the New Site dialog inputs
 pub fn install_for_site(
     php_bin: &Path,
@@ -1713,7 +1714,7 @@ pub fn install_for_site(
     name: &str,
     db_name: &str,
     db_host: &str,
-    mysql_basedir: &Path,
+    db_client: &Path,
     opts: &InstallOptions,
 ) -> Result<()> {
     let nonempty = |s: &str| !s.trim().is_empty();
@@ -1739,7 +1740,7 @@ pub fn install_for_site(
             docroot,
             db_name,
             db_host,
-            mysql_basedir,
+            db_client,
             url: &url,
             title: &title,
             admin_user: &admin_user,
@@ -1777,6 +1778,7 @@ pub const DEFAULT_ADMIN: &str = "admin";
 /// disk — core, wp-config (same DB name/salts), plugins, themes, uploads; only
 /// the database is recreated. Re-runnable: each step skips or tolerates
 /// already-done work, so a failure partway is fixed by running it again.
+#[allow(clippy::too_many_arguments)] // flat per-site tool set, mirrors install_for_site
 pub fn reset_site(
     php_bin: &Path,
     wp_phar: &Path,
@@ -1784,10 +1786,11 @@ pub fn reset_site(
     domain: &str,
     site_name: &str,
     db_name: &str,
-    mysql_basedir: &Path,
+    db_client: &Path,
+    db_port: u16,
 ) -> Result<()> {
     // 1) Erase: drop the database with the bundled client (PATH-safe).
-    super::database::drop_database(mysql_basedir, super::database::MYSQL_PORT, db_name)?;
+    super::database::drop_database(db_client, db_port, db_name)?;
 
     // 2) Clear multisite constants — best effort per constant (`wp config
     //    delete` errors on one that isn't defined, which is the common case).
@@ -1799,7 +1802,7 @@ pub fn reset_site(
     // 3) Fresh install via the existing re-runnable flow: core download and
     //    wp-config creation skip (files kept), the DB is recreated, and
     //    `wp core install` runs because `is-installed` is now false.
-    let db_host = format!("127.0.0.1:{}", super::database::MYSQL_PORT);
+    let db_host = format!("127.0.0.1:{db_port}");
     let url = format!("https://{domain}");
     let admin_email = format!("admin@{domain}");
     install_wordpress(
@@ -1809,7 +1812,7 @@ pub fn reset_site(
             docroot,
             db_name,
             db_host: &db_host,
-            mysql_basedir,
+            db_client,
             url: &url,
             title: site_name,
             admin_user: DEFAULT_ADMIN,

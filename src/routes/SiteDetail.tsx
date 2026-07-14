@@ -251,7 +251,7 @@ export function SiteDetail() {
                 hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
               />
             ) : (
-              <AdminerFrame src={adminerFrameSrc({ engine: "mysql", db: site.dbName })} />
+              <AdminerFrame src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })} />
             ))}
           {active === "logs" && <LogsTab siteId={site.id} isWordpress={isWordpress} />}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}
@@ -713,6 +713,16 @@ function SettingsTab({ site }: { site: Site }) {
               <span className="text-rex-text-dim">— (no database)</span>
             )}
           </InfoRow>
+          {hasDb && (
+            <InfoRow label="Database engine">
+              <span className="font-mono text-[12.5px]">
+                {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}
+                <span className="ml-2 text-rex-text-dim">
+                  127.0.0.1:{site.dbEngine === "mariadb" ? 13307 : 13306}
+                </span>
+              </span>
+            </InfoRow>
+          )}
           <InfoRow label="Multisite">{MULTISITE_LABELS[site.multisite] ?? site.multisite}</InfoRow>
         </div>
       </SettingsCard>

@@ -251,6 +251,7 @@ mod tests {
             created_at: String::new(),
             multisite: MultisiteMode::None,
             db_name: "wp_acme_test".into(),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
     }
 

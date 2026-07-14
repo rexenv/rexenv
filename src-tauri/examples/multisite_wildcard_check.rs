@@ -187,7 +187,7 @@ fn new_site(name: &str, domain: &str, t: SiteType) -> NewSite {
         site_type: t,
         php_version: "8.3".into(),
         web_server: WebServer::Nginx,
-        path: String::new(),
+        path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
     }
 }
 

@@ -80,10 +80,12 @@ fn validate_db_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Run one SQL statement via the **bundled** `mysql` client (TCP to the loopback
-/// server, root/no password — the local-dev setup). `what` labels the error.
-fn mysql_exec(basedir: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
-    let out = std::process::Command::new(mysql_client_bin(basedir))
+/// Run one SQL statement via a **bundled** MySQL-protocol client (TCP to the
+/// loopback server, root/no password — the local-dev setup). `client` is the
+/// client BINARY (`bin/mysql` from the MySQL tree, or `bin/mariadb` from the
+/// mariadb bundle — same protocol, same flags); `what` labels the error.
+fn mysql_exec(client: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
+    let out = std::process::Command::new(client)
         .args([
             "--no-defaults",
             "--protocol=TCP",
@@ -108,10 +110,11 @@ fn mysql_exec(basedir: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
 /// Export database `name` into the user's Downloads folder as
 /// `<domain>-db.sql` (numbered on collision — same convention as the
 /// debug-log download), via the bundled `mysqldump` from the extracted MySQL
-/// tree. WP-CLI's `wp db export` shells out to a PATH `mysqldump` — absent in
-/// a Finder-launched app (same rationale as [`create_database`]). Returns the
-/// destination path. Requires the MySQL server to be running.
-pub fn export_to_downloads(basedir: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
+/// tree (or `mariadb-dump` from the bundle). WP-CLI's `wp db export` shells out
+/// to a PATH `mysqldump` — absent in a Finder-launched app (same rationale as
+/// [`create_database`]). Returns the destination path. Requires the server to
+/// be running. `dump` is the dump BINARY.
+pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
     validate_db_name(name)?;
     let downloads = directories::UserDirs::new()
         .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
@@ -124,7 +127,7 @@ pub fn export_to_downloads(basedir: &Path, port: u16, domain: &str, name: &str) 
     }
     // --result-file (not shell redirection): no shell involved, so a Downloads
     // path with spaces can't break, and mysqldump writes the file itself.
-    let out = std::process::Command::new(basedir.join("bin/mysqldump"))
+    let out = std::process::Command::new(dump)
         .args([
             "--no-defaults",
             "--protocol=TCP",
@@ -153,7 +156,7 @@ pub fn export_to_downloads(basedir: &Path, port: u16, domain: &str, name: &str) 
 /// rationale as `--result-file` in [`export_to_downloads`]). DESTRUCTIVE: the
 /// dump executes as-is, so tables it contains overwrite existing ones; the
 /// caller owns the confirm/backup UX. Requires the MySQL server to be running.
-pub fn import_from_file(basedir: &Path, port: u16, name: &str, file: &Path) -> Result<()> {
+pub fn import_from_file(client: &Path, port: u16, name: &str, file: &Path) -> Result<()> {
     validate_db_name(name)?;
     let f = std::fs::File::open(file)
         .map_err(|e| Error::Other(format!("open {}: {e}", file.display())))?;
@@ -163,7 +166,7 @@ pub fn import_from_file(basedir: &Path, port: u16, name: &str, file: &Path) -> R
             file.display()
         )));
     }
-    let out = std::process::Command::new(mysql_client_bin(basedir))
+    let out = std::process::Command::new(client)
         .args([
             "--no-defaults",
             "--protocol=TCP",
@@ -188,10 +191,10 @@ pub fn import_from_file(basedir: &Path, port: u16, name: &str, file: &Path) -> R
 /// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
 /// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
 /// must always use its own client from the extracted MySQL tree.
-pub fn create_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
+pub fn create_database(client: &Path, port: u16, name: &str) -> Result<()> {
     validate_db_name(name)?;
     mysql_exec(
-        basedir,
+        client,
         port,
         &format!("CREATE DATABASE IF NOT EXISTS `{name}`"),
         &format!("creating database `{name}`"),
@@ -201,10 +204,10 @@ pub fn create_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
 /// Drop a site's database if it exists (site teardown). Same strict name rule
 /// as [`create_database`] — the caller passes only a name derived from the
 /// site's validated domain, so an arbitrary/other database can't be named.
-pub fn drop_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
+pub fn drop_database(client: &Path, port: u16, name: &str) -> Result<()> {
     validate_db_name(name)?;
     mysql_exec(
-        basedir,
+        client,
         port,
         &format!("DROP DATABASE IF EXISTS `{name}`"),
         &format!("dropping database `{name}`"),
@@ -215,8 +218,8 @@ pub fn drop_database(basedir: &Path, port: u16, name: &str) -> Result<()> {
 /// `information_schema` query on the bundled client — backs the per-site "DB
 /// size" number on the Sites page (a REAL per-site figure even for sites that
 /// share nginx + a php-fpm pool). Requires the server to be running.
-pub fn db_sizes(basedir: &Path, port: u16) -> Result<Vec<(String, u64)>> {
-    let out = std::process::Command::new(mysql_client_bin(basedir))
+pub fn db_sizes(client: &Path, port: u16) -> Result<Vec<(String, u64)>> {
+    let out = std::process::Command::new(client)
         .args([
             "--no-defaults",
             "--protocol=TCP",

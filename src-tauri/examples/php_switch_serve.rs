@@ -66,7 +66,7 @@ async fn main() {
         &conn, &*plat, &ca,
         NewSite {
             name: "Switch".into(), domain: DOMAIN.into(), site_type: SiteType::Php,
-            php_version: "8.1".into(), web_server: WebServer::Nginx, path: String::new(),
+            php_version: "8.1".into(), web_server: WebServer::Nginx, path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
         },
     ).expect("provision");
 

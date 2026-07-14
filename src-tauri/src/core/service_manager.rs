@@ -339,6 +339,15 @@ impl ServiceManager {
         // MySQL — the site stack needs it (started via the DB engine manager).
         checks.extend(self.spawn_db(platform, DbEngine::Mysql).await?);
 
+        // MariaDB — required exactly when some site's database lives there
+        // (it stays a user-toggled optional engine otherwise).
+        if sites
+            .iter()
+            .any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb))
+        {
+            checks.extend(self.spawn_db(platform, DbEngine::Mariadb).await?);
+        }
+
         // Adminer docroot (§5.2): download + stage `adminer.php` so the internal
         // vhost the configs reference is actually served.
         crate::core::adminer::ensure(platform).await?;
@@ -1886,6 +1895,7 @@ mod tests {
             created_at: "now".into(),
             multisite: MultisiteMode::None,
             db_name: crate::core::wordpress::db_name_for(domain),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
         };
 
         let sites = vec![

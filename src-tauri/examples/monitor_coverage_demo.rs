@@ -30,7 +30,7 @@ async fn main() {
     ] {
         sites::provision(&conn, &*plat, &ca, NewSite {
             name: name.into(), domain: domain.into(), site_type: SiteType::Php,
-            php_version: "8.3".into(), web_server: server, path: String::new(),
+            php_version: "8.3".into(), web_server: server, path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
         }).expect("provision");
     }
 

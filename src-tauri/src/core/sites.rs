@@ -82,6 +82,7 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         created_at: store::db_now(conn)?,
         multisite: MultisiteMode::None,
         db_name,
+        db_engine: new.db_engine,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -713,6 +714,7 @@ mod tests {
             php_version: "8.3".into(),
             web_server: WebServer::Nginx,
             path: format!("~/Sites/{name}"),
+                db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
     }
 
@@ -906,6 +908,7 @@ mod tests {
             created_at: "now".into(),
             multisite: MultisiteMode::None,
             db_name: "wp_acme_test".into(),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
     }
 
@@ -959,6 +962,7 @@ mod tests {
                 php_version: "8.3".into(),
                 web_server: WebServer::Nginx,
                 path: doc.display().to_string(),
+                db_engine: crate::state::models::SiteDbEngine::Mysql,
             },
         )
         .unwrap();

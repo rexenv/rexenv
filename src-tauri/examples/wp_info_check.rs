@@ -64,7 +64,7 @@ async fn main() {
             site_type: SiteType::Wordpress,
             php_version: "8.3".into(),
             web_server: WebServer::Nginx,
-            path: String::new(),
+            path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
         },
     )
     .unwrap();
@@ -76,7 +76,7 @@ async fn main() {
             docroot: &docroot,
             db_name: &wordpress::db_name_for(domain),
             db_host: &format!("127.0.0.1:{}", database::MYSQL_PORT),
-            mysql_basedir: &mysql_base,
+            db_client: &mysql_base.join("bin/mysql"),
             url: &url,
             title: "WP Info Check",
             admin_user: "admin",

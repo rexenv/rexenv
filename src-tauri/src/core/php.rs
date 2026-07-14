@@ -754,6 +754,7 @@ mod tests {
                 php_version: "8.1".into(),
                 web_server: WebServer::Nginx,
                 path: "~/Sites/s".into(),
+                db_engine: crate::state::models::SiteDbEngine::Mysql,
             },
         )
         .unwrap();

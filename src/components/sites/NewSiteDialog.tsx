@@ -6,7 +6,7 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { createSite, defaultTld, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
-import type { MultisiteMode, SiteType, WebServer } from "@/types";
+import type { MultisiteMode, SiteDbEngine, SiteType, WebServer } from "@/types";
 
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
@@ -93,6 +93,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const [siteType, setSiteType] = useState<SiteType>(initial?.siteType ?? "php");
   const [phpVersion, setPhpVersion] = useState(initial?.phpVersion ?? defaultVersion);
   const [webServer, setWebServer] = useState<WebServer>(initial?.webServer ?? "nginx");
+  const [dbEngine, setDbEngine] = useState<SiteDbEngine>("mysql");
   const [domainEdited, setDomainEdited] = useState(false);
   const [blueprintId, setBlueprintId] = useState("");
   const [wpTitle, setWpTitle] = useState("");
@@ -131,7 +132,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const create = useMutation({
     mutationFn: async () => {
       const site = await createSite(
-        { name: name.trim(), domain: effectiveDomain.trim(), type: siteType, phpVersion, webServer, path: "" },
+        { name: name.trim(), domain: effectiveDomain.trim(), type: siteType, phpVersion, webServer, path: "", dbEngine },
         isWordpress
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
           : undefined,
@@ -217,6 +218,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setPhpVersion={setPhpVersion}
               webServer={webServer}
               setWebServer={setWebServer}
+              dbEngine={dbEngine}
+              setDbEngine={setDbEngine}
               needsDb={siteType !== "php"}
               isWordpress={isWordpress}
               wpTitle={wpTitle}
@@ -352,6 +355,8 @@ function Step2(p: {
   setPhpVersion: (v: string) => void;
   webServer: WebServer;
   setWebServer: (v: WebServer) => void;
+  dbEngine: SiteDbEngine;
+  setDbEngine: (v: SiteDbEngine) => void;
   needsDb: boolean;
   isWordpress: boolean;
   wpTitle: string;
@@ -440,13 +445,23 @@ function Step2(p: {
             ))}
           </select>
         </Field>
-        {/* Read-only: engine choice isn't wired yet (deferred per-site engine
-            work) — show what the backend actually provisions instead of a
-            selector whose choice would be silently ignored. */}
+        {/* Engine is chosen at create and immutable after — the database
+            lives in that engine's datadir. */}
         <Field label="Database">
-          <div className={cn(FIELD_INPUT, "flex items-center text-[12.5px] text-rex-text-muted")}>
-            {p.needsDb ? "MySQL" : "None"}
-          </div>
+          {p.needsDb ? (
+            <select
+              value={p.dbEngine}
+              onChange={(e) => p.setDbEngine(e.target.value as SiteDbEngine)}
+              className={FIELD_SELECT}
+            >
+              <option value="mysql">MySQL</option>
+              <option value="mariadb">MariaDB</option>
+            </select>
+          ) : (
+            <div className={cn(FIELD_INPUT, "flex items-center text-[12.5px] text-rex-text-muted")}>
+              None
+            </div>
+          )}
         </Field>
       </div>
 

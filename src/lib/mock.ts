@@ -25,6 +25,7 @@ export const mockSites: Site[] = [
     createdAt: "2026-06-01 10:00:00",
     multisite: "none",
     dbName: "wp_acme_test",
+  dbEngine: "mysql",
   },
   {
     id: "2",
@@ -39,6 +40,7 @@ export const mockSites: Site[] = [
     createdAt: "2026-06-02 11:00:00",
     multisite: "none",
     dbName: "wp_portfolio_test",
+  dbEngine: "mysql",
   },
   {
     id: "3",
@@ -53,6 +55,7 @@ export const mockSites: Site[] = [
     createdAt: "2026-06-03 12:00:00",
     multisite: "subdirectory",
     dbName: "wp_network_test",
+  dbEngine: "mysql",
   },
 ];
 

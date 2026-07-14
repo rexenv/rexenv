@@ -87,23 +87,20 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
     let activity =
         core::site_metrics::activity_by_host(&access_log, time::OffsetDateTime::now_utc());
 
-    // DB sizes: one query — only when MySQL is actually up, and only resolved
-    // from the already-extracted tree (never a download from a status poll).
-    let db_sizes: std::collections::HashMap<String, u64> = if DbEngine::Mysql.running() {
-        state
-            .platform
-            .paths()
-            .bin_dir()
-            .ok()
-            .map(|b| b.join(format!("mysql-{}", binaries::MYSQL_VERSION)))
-            .filter(|base| base.join("bin").is_dir())
-            .and_then(|base| core::database::db_sizes(&base, DbEngine::Mysql.port()).ok())
-            .unwrap_or_default()
+    // DB sizes: one query per RUNNING site engine — resolved strictly from the
+    // already-published cache (never a download from a status poll). Kept as
+    // one map per engine: the same db name could exist in both engines, and a
+    // site must read its own engine's number.
+    let db_sizes: std::collections::HashMap<&'static str, std::collections::HashMap<String, u64>> =
+        [DbEngine::Mysql, DbEngine::Mariadb]
             .into_iter()
-            .collect()
-    } else {
-        Default::default()
-    };
+            .filter(|e| e.running())
+            .filter_map(|e| {
+                let client = e.cached_sql_client(state.platform.as_ref())?;
+                let sizes = core::database::db_sizes(&client, e.port()).ok()?;
+                Some((e.key(), sizes.into_iter().collect()))
+            })
+            .collect();
 
     let mut monitor = state
         .monitor
@@ -122,7 +119,10 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
                 ram_mb: tree.map(|t| t.ram_mb),
                 requests_per_min: act.map(|a| a.requests),
                 bytes_per_min: act.map(|a| a.bytes),
-                db_size_bytes: db_sizes.get(&s.db_name).copied(),
+                db_size_bytes: db_sizes
+                    .get(DbEngine::from_site(s.db_engine).key())
+                    .and_then(|m| m.get(&s.db_name))
+                    .copied(),
                 id: s.id,
                 domain: s.domain,
             }
@@ -218,20 +218,21 @@ pub async fn create_site(
     } else {
         core::downloads::plan_for_pool(state.platform.as_ref(), &minor)
     };
+    let engine = DbEngine::from_site(created.db_engine);
     if matches!(created.site_type, SiteType::Wordpress) {
-        plan.extend(core::downloads::plan_for_engine(state.platform.as_ref(), DbEngine::Mysql));
+        plan.extend(core::downloads::plan_for_engine(state.platform.as_ref(), engine));
         plan.extend(core::downloads::plan_for_wp_tooling(state.platform.as_ref(), &minor));
     }
     core::downloads::prefetch(state.platform.as_ref(), "Create site", &plan).await?;
 
     // WordPress needs a database + a one-click install before it's browsable.
-    // The services lock is held only to SPAWN MySQL; the readiness wait and the
-    // (long) installer run with it released (M4), so other commands and status
-    // stay responsive during a site create.
+    // The services lock is held only to SPAWN the site's engine; the readiness
+    // wait and the (long) installer run with it released (M4), so other
+    // commands and status stay responsive during a site create.
     if matches!(created.site_type, SiteType::Wordpress) {
         let check = {
             let mut mgr = state.services.lock().await;
-            mgr.spawn_db(state.platform.as_ref(), DbEngine::Mysql).await?
+            mgr.spawn_db(state.platform.as_ref(), engine).await?
         };
         core::service_manager::await_ready(check.into_iter().collect()).await?;
         let patch = php::patch_for_minor(&minor)
@@ -240,10 +241,8 @@ pub async fn create_site(
         let wp_phar =
             binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
                 .await?;
-        let db_host = format!("127.0.0.1:{}", DbEngine::Mysql.port());
-        let mysql_base =
-            binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION)
-                .await?;
+        let db_host = format!("127.0.0.1:{}", engine.port());
+        let (db_client, _) = engine.sql_client_bins(state.platform.as_ref()).await?;
         let docroot = Path::new(&created.path);
         core::wordpress::install_for_site(
             &php_bin,
@@ -253,7 +252,7 @@ pub async fn create_site(
             &created.name,
             &created.db_name,
             &db_host,
-            &mysql_base,
+            &db_client,
             &wp.unwrap_or_default(),
         )?;
 
@@ -561,22 +560,22 @@ pub async fn change_site_domain(
     let mut replacements = 0u64;
     if is_wp {
         // Fail fast with an actionable message (same guard as export/reset).
-        if !DbEngine::Mysql.running() {
-            return Err(Error::Other(
-                "MySQL isn't running — start it (Services → Start all, or the Databases page), then change the domain again.".into(),
-            ));
+        let engine = DbEngine::from_site(site.db_engine);
+        if !engine.running() {
+            return Err(Error::Other(format!(
+                "{} isn't running — start it (Services → Start all, or the Databases page), then change the domain again.",
+                engine.label()
+            )));
         }
-        let mysql_base =
-            binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION)
-                .await?;
+        let (_, dump_bin) = engine.sql_client_bins(state.platform.as_ref()).await?;
         let (php, wp) = super::wordpress::wp_tools(&state, &site.php_version).await?;
         let docroot = std::path::PathBuf::from(&site.path);
 
         // 1) MANDATORY backup — the search-replace below isn't reversible.
         let dump = {
-            let (base, old, db) = (mysql_base.clone(), old_domain.clone(), site.db_name.clone());
+            let (old, db) = (old_domain.clone(), site.db_name.clone());
             super::wordpress::wp_blocking(move || {
-                core::database::export_to_downloads(&base, DbEngine::Mysql.port(), &old, &db)
+                core::database::export_to_downloads(&dump_bin, engine.port(), &old, &db)
             })
             .await
             .map_err(|e| Error::Other(format!("domain unchanged — the safety backup failed: {e}")))?
@@ -699,26 +698,21 @@ pub async fn delete_site(
     //    remove (local-dev connects as passwordless root). Skipped entirely when
     //    the MySQL datadir was never initialized (then no database can exist);
     //    otherwise MySQL is brought up first, exactly like site creation does.
-    if matches!(site.site_type, SiteType::Wordpress)
-        && core::database::is_initialized(&core::database::data_dir(state.platform.as_ref())?)
+    let engine = DbEngine::from_site(site.db_engine);
+    if matches!(site.site_type, SiteType::Wordpress) && engine.datadir_initialized(state.platform.as_ref())
     {
-        // MySQL tree cached before the locked spawn below (an initialized datadir
-        // with an evicted binary cache would otherwise download under the lock).
-        let plan = core::downloads::plan_for_engine(state.platform.as_ref(), DbEngine::Mysql);
+        // Engine binaries cached before the locked spawn below (an initialized
+        // datadir with an evicted binary cache would otherwise download under
+        // the lock).
+        let plan = core::downloads::plan_for_engine(state.platform.as_ref(), engine);
         core::downloads::prefetch(state.platform.as_ref(), "Delete site", &plan).await?;
         let check = {
             let mut mgr = state.services.lock().await;
-            mgr.spawn_db(state.platform.as_ref(), DbEngine::Mysql).await?
+            mgr.spawn_db(state.platform.as_ref(), engine).await?
         };
         core::service_manager::await_ready(check.into_iter().collect()).await?;
-        let mysql_base =
-            binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION)
-                .await?;
-        core::database::drop_database(
-            &mysql_base,
-            DbEngine::Mysql.port(),
-            &site.db_name,
-        )?;
+        let (db_client, _) = engine.sql_client_bins(state.platform.as_ref()).await?;
+        core::database::drop_database(&db_client, engine.port(), &site.db_name)?;
     }
 
     // 3) Row + cert + per-site configs/logs + docroot.

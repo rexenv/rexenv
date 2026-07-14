@@ -61,6 +61,16 @@ str_enum!(MultisiteMode {
     Subdirectory => "subdirectory",
 });
 
+str_enum!(
+    /// Which SQL engine backs a site's WordPress database — chosen at create,
+    /// immutable after (the DB lives in that engine's datadir). Both speak the
+    /// MySQL protocol; only the port and bundled client binaries differ.
+    SiteDbEngine {
+        Mysql => "mysql",
+        Mariadb => "mariadb",
+    }
+);
+
 /// A local site as persisted in SQLite and sent to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +92,8 @@ pub struct Site {
     /// (`wordpress::db_name_for`) and stored — never re-derived, so a later
     /// domain change leaves the database untouched.
     pub db_name: String,
+    /// SQL engine hosting that database (v8; default `mysql`).
+    pub db_engine: SiteDbEngine,
 }
 
 /// Live per-site serving status (H1 follow-up). `serving` is true only when the edge
@@ -171,4 +183,12 @@ pub struct NewSite {
     pub php_version: String,
     pub web_server: WebServer,
     pub path: String,
+    /// SQL engine for the site's database. Defaults to MySQL so older
+    /// callers/blueprints keep working unchanged.
+    #[serde(default = "db_engine_mysql")]
+    pub db_engine: SiteDbEngine,
+}
+
+fn db_engine_mysql() -> SiteDbEngine {
+    SiteDbEngine::Mysql
 }

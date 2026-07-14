@@ -613,22 +613,18 @@ pub async fn wp_db_export(state: State<'_, AppState>, id: String) -> Result<Stri
         core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
     };
     // Fail fast with an actionable message — a stopped server would otherwise
-    // surface as mysqldump's opaque "Can't connect" error.
-    if !DbEngine::Mysql.running() {
-        return Err(Error::Other(
-            "MySQL isn't running — start it (Services → Start all, or the Databases page), then export again.".into(),
-        ));
+    // surface as the dump tool's opaque "Can't connect" error.
+    let engine = DbEngine::from_site(site.db_engine);
+    if !engine.running() {
+        return Err(Error::Other(format!(
+            "{} isn't running — start it (Services → Start all, or the Databases page), then export again.",
+            engine.label()
+        )));
     }
-    let mysql_base =
-        binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
+    let (_, dump) = engine.sql_client_bins(state.platform.as_ref()).await?;
     wp_blocking(move || {
-        core::database::export_to_downloads(
-            &mysql_base,
-            DbEngine::Mysql.port(),
-            &site.domain,
-            &site.db_name,
-        )
-        .map(|p| p.to_string_lossy().into_owned())
+        core::database::export_to_downloads(&dump, engine.port(), &site.domain, &site.db_name)
+            .map(|p| p.to_string_lossy().into_owned())
     })
     .await
 }
@@ -664,20 +660,16 @@ pub async fn wp_db_import(state: State<'_, AppState>, id: String, path: String) 
             "{path} is not a .sql file — pick a SQL dump (e.g. one made by Export database)."
         )));
     }
-    if !DbEngine::Mysql.running() {
-        return Err(Error::Other(
-            "MySQL isn't running — start it (Services → Start all, or the Databases page), then import again.".into(),
-        ));
+    let engine = DbEngine::from_site(site.db_engine);
+    if !engine.running() {
+        return Err(Error::Other(format!(
+            "{} isn't running — start it (Services → Start all, or the Databases page), then import again.",
+            engine.label()
+        )));
     }
-    let mysql_base =
-        binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
+    let (client, _) = engine.sql_client_bins(state.platform.as_ref()).await?;
     wp_blocking(move || {
-        core::database::import_from_file(
-            &mysql_base,
-            DbEngine::Mysql.port(),
-            &site.db_name,
-            &file,
-        )
+        core::database::import_from_file(&client, engine.port(), &site.db_name, &file)
     })
     .await
 }
@@ -699,13 +691,14 @@ pub async fn wp_site_reset(state: State<'_, AppState>, id: String) -> Result<()>
         core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?
     };
     // Fail fast with an actionable message (same guard as the DB export).
-    if !DbEngine::Mysql.running() {
-        return Err(Error::Other(
-            "MySQL isn't running — start it (Services → Start all, or the Databases page), then reset again.".into(),
-        ));
+    let engine = DbEngine::from_site(site.db_engine);
+    if !engine.running() {
+        return Err(Error::Other(format!(
+            "{} isn't running — start it (Services → Start all, or the Databases page), then reset again.",
+            engine.label()
+        )));
     }
-    let mysql_base =
-        binaries::resolve_dir(state.platform.as_ref(), "mysql", binaries::MYSQL_VERSION).await?;
+    let (db_client, _) = engine.sql_client_bins(state.platform.as_ref()).await?;
     let (php, wp) = wp_tools(&state, &site.php_version).await?;
     let was_multisite = !matches!(site.multisite, MultisiteMode::None);
     let (docroot, domain, name, db_name) = (
@@ -715,7 +708,9 @@ pub async fn wp_site_reset(state: State<'_, AppState>, id: String) -> Result<()>
         site.db_name.clone(),
     );
     wp_blocking(move || {
-        core::wordpress::reset_site(&php, &wp, &docroot, &domain, &name, &db_name, &mysql_base)
+        core::wordpress::reset_site(
+            &php, &wp, &docroot, &domain, &name, &db_name, &db_client, engine.port(),
+        )
     })
     .await?;
     if was_multisite {

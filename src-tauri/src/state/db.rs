@@ -105,6 +105,9 @@ const MIGRATIONS: &[&str] = &[
     // unconditional flip is safe; a custom value ('banana') is untouched. The
     // code fallback moves with `tld::BACKBONE_TLD`.
     "UPDATE settings SET value = 'rex' WHERE key = 'default_tld' AND value = 'test';",
+    // v10 — per-site SQL engine (MySQL default, MariaDB optional at create).
+    // Existing sites all live in MySQL's datadir, so the backfill is exact.
+    "ALTER TABLE sites ADD COLUMN db_engine TEXT NOT NULL DEFAULT 'mysql';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

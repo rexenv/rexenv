@@ -209,6 +209,9 @@ pub fn plan_for_start(
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Frankenphp)) {
         set.push(("frankenphp", binaries::FRANKENPHP_VERSION));
     }
+    if sites.iter().any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb)) {
+        set.push(("mariadb", binaries::MARIADB_VERSION));
+    }
     set.into_iter()
         .map(|(n, v)| PlannedBinary::new(platform, n, v))
         .collect()
@@ -667,6 +670,7 @@ mod tests {
             created_at: "now".into(),
             multisite: MultisiteMode::None,
             db_name: "wp_s_test".into(),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
     }
 
