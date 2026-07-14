@@ -630,7 +630,12 @@ function SettingsTab({ site }: { site: Site }) {
 
   return (
     <>
-      <SettingsCard label="Site name">
+      {/* Two independent packed columns (items-start) — six stacked full-width
+          cards each used half their width (QA P3-2). Identity & location left;
+          read-only info + certificate right; env vars full-width below. */}
+      <div className="grid grid-cols-2 items-start gap-[14px]">
+        <div className="flex flex-col gap-[14px]">
+          <SettingsCard label="Site name">
         <div className="flex items-center gap-2">
           <input
             {...TECH_INPUT}
@@ -653,8 +658,7 @@ function SettingsTab({ site }: { site: Site }) {
           Display name only — the domain, folder and database are unchanged.
         </div>
       </SettingsCard>
-
-      <SettingsCard label="Domain">
+          <SettingsCard label="Domain">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="font-mono text-[13px] text-rex-text-bright">{site.domain}</div>
@@ -676,9 +680,7 @@ function SettingsTab({ site }: { site: Site }) {
           </Button>
         </div>
       </SettingsCard>
-      {domainOpen && <ChangeDomainDialog site={site} onClose={() => setDomainOpen(false)} />}
-
-      <SettingsCard label="Site folder">
+          <SettingsCard label="Site folder">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="truncate font-mono text-[12.5px] text-rex-text-bright">{site.path}</div>
@@ -696,8 +698,9 @@ function SettingsTab({ site }: { site: Site }) {
           </Button>
         </div>
       </SettingsCard>
-
-      <SettingsCard label="Site info">
+        </div>
+        <div className="flex flex-col gap-[14px]">
+          <SettingsCard label="Site info">
         <div className="flex max-w-[560px] flex-col gap-3">
           <InfoRow label="Type">{TYPE_LABELS[site.type] ?? site.type}</InfoRow>
           <InfoRow label="Database name">
@@ -713,10 +716,7 @@ function SettingsTab({ site }: { site: Site }) {
           <InfoRow label="Multisite">{MULTISITE_LABELS[site.multisite] ?? site.multisite}</InfoRow>
         </div>
       </SettingsCard>
-
-      <EnvVarsCard siteId={site.id} />
-
-      <SettingsCard label="HTTPS certificate">
+          <SettingsCard label="HTTPS certificate">
         {certLoading ? (
           <div className="text-[12.5px] text-rex-text-dim">Reading certificate…</div>
         ) : !cert ? (
@@ -762,6 +762,10 @@ function SettingsTab({ site }: { site: Site }) {
           </div>
         )}
       </SettingsCard>
+        </div>
+      </div>
+      <EnvVarsCard siteId={site.id} />
+      {domainOpen && <ChangeDomainDialog site={site} onClose={() => setDomainOpen(false)} />}
     </>
   );
 }
