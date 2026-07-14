@@ -1004,7 +1004,7 @@ impl MacosShell {
     /// Editors we can detect: (stable id, display name, .app bundle name).
     /// Ordered by rough popularity — the first detected one is the default.
     const EDITORS: &'static [(&'static str, &'static str, &'static str)] = &[
-        ("vscode", "Visual Studio Code", "Visual Studio Code"),
+        ("vscode", "VS Code", "Visual Studio Code"),
         ("cursor", "Cursor", "Cursor"),
         ("phpstorm", "PhpStorm", "PhpStorm"),
         ("windsurf", "Windsurf", "Windsurf"),
