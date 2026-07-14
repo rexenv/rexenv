@@ -346,6 +346,17 @@ export interface WpOrgPlugin {
   shortDescription: string;
 }
 
+/** One WordPress.org theme-directory search hit (mirrors the Rust WpOrgTheme). */
+export interface WpOrgTheme {
+  slug: string;
+  name: string;
+  author: string;
+  rating: number; // 0-100
+  numRatings: number;
+  activeInstalls: number;
+  screenshot: string | null;
+}
+
 /** A detected code editor (mirrors the Rust EditorApp DTO). */
 export interface EditorApp {
   id: string; // stable key stored as the preferred_editor setting

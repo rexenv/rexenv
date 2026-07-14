@@ -94,6 +94,12 @@ pub async fn wp_org_search_plugins(query: String) -> Result<Vec<core::wporg::WpO
     core::wporg::search_plugins(&query).await
 }
 
+/// Live search of the WordPress.org theme directory (Add-theme flow).
+#[tauri::command]
+pub async fn wp_org_search_themes(query: String) -> Result<Vec<core::wporg::WpOrgTheme>> {
+    core::wporg::search_themes(&query).await
+}
+
 /// Install a plugin by slug (optionally activating it).
 #[tauri::command]
 pub async fn wp_plugin_install(

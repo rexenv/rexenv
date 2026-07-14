@@ -98,6 +98,87 @@ fn parse_plugins(body: &serde_json::Value) -> Vec<WpOrgPlugin> {
         .collect()
 }
 
+/// One theme search hit (mirrors the frontend `WpOrgTheme`). Themes have a
+/// SCREENSHOT (4:3 preview) instead of an icon.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpOrgTheme {
+    pub slug: String,
+    pub name: String,
+    pub author: String,
+    /// 0–100 (÷20 for stars).
+    pub rating: f64,
+    pub num_ratings: u64,
+    pub active_installs: u64,
+    pub screenshot: Option<String>,
+}
+
+/// Search the WordPress.org THEME directory (wp-admin "Add Theme" API).
+pub async fn search_themes(query: &str) -> Result<Vec<WpOrgTheme>> {
+    let resp = client()
+        .get("https://api.wordpress.org/themes/info/1.2/")
+        .query(&[
+            ("action", "query_themes"),
+            ("request[search]", query),
+            ("request[per_page]", "10"),
+            ("request[fields][screenshot_url]", "1"),
+            ("request[fields][rating]", "1"),
+            ("request[fields][active_installs]", "1"),
+        ])
+        .send()
+        .await
+        .map_err(friendly)?;
+    let body: serde_json::Value = resp.json().await.map_err(friendly)?;
+    Ok(parse_themes(&body))
+}
+
+/// Pure parser. The themes API returns `author` as either a plain nicename
+/// string or an object with `display_name` — handle both. Protocol-relative
+/// screenshot URLs (`//ts.w.org/…`) are normalized to https.
+fn parse_themes(body: &serde_json::Value) -> Vec<WpOrgTheme> {
+    let Some(items) = body.get("themes").and_then(|t| t.as_array()) else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|t| {
+            let slug = t.get("slug")?.as_str()?.to_string();
+            let author = match t.get("author") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(obj) => obj
+                    .get("display_name")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| obj.get("user_nicename").and_then(|v| v.as_str()))
+                    .unwrap_or("")
+                    .to_string(),
+                None => String::new(),
+            };
+            let screenshot = t
+                .get("screenshot_url")
+                .and_then(|v| v.as_str())
+                .map(|u| {
+                    if let Some(rest) = u.strip_prefix("//") {
+                        format!("https://{rest}")
+                    } else {
+                        u.to_string()
+                    }
+                });
+            Some(WpOrgTheme {
+                slug,
+                name: decode_entities(t.get("name").and_then(|v| v.as_str()).unwrap_or("")),
+                author: decode_entities(&strip_tags(&author)),
+                rating: t.get("rating").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                num_ratings: t.get("num_ratings").and_then(|v| v.as_u64()).unwrap_or(0),
+                active_installs: t
+                    .get("active_installs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                screenshot,
+            })
+        })
+        .collect()
+}
+
 /// Drop `<tag>`s (the author field is an anchor).
 pub(crate) fn strip_tags(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -180,5 +261,32 @@ mod tests {
     fn missing_plugins_key_is_empty_not_error() {
         let body: serde_json::Value = serde_json::from_str(r#"{"error":"down"}"#).unwrap();
         assert!(parse_plugins(&body).is_empty());
+        assert!(parse_themes(&body).is_empty());
+    }
+
+    #[test]
+    fn parses_the_query_themes_shape() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"themes":[
+                {"name":"Astra","slug":"astra",
+                 "author":{"user_nicename":"brainstormforce","display_name":"Brainstorm Force"},
+                 "rating":98,"num_ratings":5000,"active_installs":1000000,
+                 "screenshot_url":"//ts.w.org/wp-content/themes/astra/screenshot.jpg"},
+                {"name":"Old Style","slug":"oldstyle","author":"someone"}
+            ]}"#,
+        )
+        .unwrap();
+        let got = parse_themes(&body);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].slug, "astra");
+        assert_eq!(got[0].author, "Brainstorm Force");
+        // Protocol-relative screenshot normalized to https.
+        assert_eq!(
+            got[0].screenshot.as_deref(),
+            Some("https://ts.w.org/wp-content/themes/astra/screenshot.jpg")
+        );
+        // String-author variant handled too.
+        assert_eq!(got[1].author, "someone");
+        assert!(got[1].screenshot.is_none());
     }
 }

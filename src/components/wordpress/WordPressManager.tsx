@@ -48,6 +48,7 @@ import {
   wpPluginDeactivate,
   wpPluginDelete,
   wpOrgSearchPlugins,
+  wpOrgSearchThemes,
   wpPluginInstall,
   wpPluginUpdate,
   wpPlugins,
@@ -66,7 +67,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
-import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -1915,10 +1916,57 @@ function UserRow({
   );
 }
 
+/** One wp.org theme search hit (Add-theme dropdown row). */
+function WpOrgThemeHit({ t, onPick }: { t: WpOrgTheme; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="flex w-full items-center gap-2.5 border-b border-rex-border-subtle px-2.5 py-2 text-left transition-colors last:border-b-0 hover:bg-rex-surface-2"
+    >
+      {t.screenshot ? (
+        <img src={t.screenshot} alt="" loading="lazy" className="h-9 w-12 flex-none rounded-[5px] border border-rex-border-subtle object-cover" />
+      ) : (
+        <span className="flex h-9 w-12 flex-none items-center justify-center rounded-[5px] border border-rex-border bg-rex-surface-2 text-rex-text-dim">
+          <Palette className="h-4 w-4" strokeWidth={1.5} />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium text-rex-text">{t.name}</span>
+        <span className="block truncate text-[11px] text-rex-text-dim">
+          {t.author && `by ${t.author} · `}
+          <span className="font-mono">{t.slug}</span>
+        </span>
+      </span>
+      <span className="flex flex-none items-center gap-2 font-mono text-[10.5px] text-rex-text-dim">
+        {t.rating > 0 && (
+          <span className="flex items-center gap-0.5">
+            <Star className="h-3 w-3 fill-current text-amber-400" />
+            {(t.rating / 20).toFixed(1)}
+          </span>
+        )}
+        <span>{fmtInstalls(t.activeInstalls)}</span>
+      </span>
+    </button>
+  );
+}
+
 function ThemesPanel({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [slug, setSlug] = useState("");
   const [activateOnAdd, setActivateOnAdd] = useState(false);
+  // wp.org live search — same pattern as PluginsPanel (debounce, fail fast,
+  // manual slug always works).
+  const [picked, setPicked] = useState(false);
+  const debouncedSlug = useDebounced(slug.trim(), 350);
+  const search = useQuery({
+    queryKey: ["wporg-themes", debouncedSlug],
+    queryFn: () => wpOrgSearchThemes(debouncedSlug),
+    enabled: !picked && debouncedSlug.length >= 2,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const showSearch = !picked && slug.trim().length >= 2;
 
   const { themes, isLoading, isError, error, refetch } = useWpThemes(siteId);
 
@@ -1931,13 +1979,46 @@ function ThemesPanel({ siteId }: { siteId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+      <div className="relative flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
         <input {...TECH_INPUT}
           value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          placeholder="Theme slug (e.g. twentytwentyfour)"
+          onChange={(e) => {
+            setSlug(e.target.value);
+            setPicked(false);
+          }}
+          placeholder="Search WordPress.org or enter a slug…"
           className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
+        {showSearch && (
+          <div className="absolute left-2.5 right-2.5 top-[46px] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
+            {search.isLoading ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 text-[12px] text-rex-text-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> Searching WordPress.org…
+              </div>
+            ) : search.isError ? (
+              <div className="px-3 py-2.5 text-[12px] text-status-error-bright">
+                {String(search.error)} — you can still enter the theme slug manually.
+              </div>
+            ) : (search.data ?? []).length === 0 ? (
+              <div className="px-3 py-2.5 text-[12px] text-rex-text-muted">
+                No themes match “{slug.trim()}” — if you know the exact slug, just Add it.
+              </div>
+            ) : (
+              <div className="max-h-[300px] overflow-y-auto">
+                {(search.data ?? []).map((t) => (
+                  <WpOrgThemeHit
+                    key={t.slug}
+                    t={t}
+                    onPick={() => {
+                      setSlug(t.slug);
+                      setPicked(true);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
           <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
           Activate
