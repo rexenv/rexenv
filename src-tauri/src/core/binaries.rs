@@ -40,16 +40,25 @@ pub const PHP_DEBUG_XDEBUG_VERSION: &str = "3.4.5";
 const PHP_DEBUG_BASE_URL: &str = "https://dl.rexenv.dev/php-debug";
 /// Pinned nginx version (jirutka/nginx-binaries static build).
 pub const NGINX_VERSION: &str = "1.30.3";
-/// Pinned MySQL version (official macOS tarball — a full bin/lib/share tree).
+/// Default MySQL version (official macOS tarball — a full bin/lib/share tree).
+/// Must be in [`MYSQL_VERSIONS`].
 pub const MYSQL_VERSION: &str = "8.4.6";
+/// All MySQL versions with pinned tarballs (per-engine version switch — the
+/// Databases page picker). Each SERIES keeps its own datadir; the default
+/// series stays on the legacy `mysql/data` path.
+pub const MYSQL_VERSIONS: &[&str] = &["8.4.6", "8.0.44"];
 /// Pinned WP-CLI version (a .phar run via the bundled PHP; OS-agnostic).
 pub const WP_CLI_VERSION: &str = "2.12.0";
 /// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
 /// per-site override server on an internal loopback port — Phase 2 §2.
 pub const FRANKENPHP_VERSION: &str = "1.12.4";
-/// Pinned PostgreSQL version (theseus-rs portable build — a full bin/lib/share
-/// tree, like MySQL). Phase 2 §5.3.
+/// Default PostgreSQL version (theseus-rs portable build — a full bin/lib/share
+/// tree, like MySQL). Phase 2 §5.3. Must be in [`POSTGRES_VERSIONS`].
 pub const POSTGRES_VERSION: &str = "18.4.0";
+/// All PostgreSQL versions with pinned builds (per-engine version switch).
+/// PG major datadirs are mutually INCOMPATIBLE — per-series datadirs are load-
+/// bearing here, not just tidy.
+pub const POSTGRES_VERSIONS: &[&str] = &["18.4.0", "17.10.0", "16.14.0"];
 /// Pinned Mailpit version (one static Go binary: SMTP sink + web UI/API). Phase 3 §2.1.
 pub const MAILPIT_VERSION: &str = "1.30.3";
 /// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
@@ -62,12 +71,19 @@ pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (TODO
 /// "Deferred services"). Resolved via [`resolve_bundle`].
 pub const REDIS_VERSION: &str = "8.8.0";
+/// Offered Redis versions (single — homebrew-core keeps no versioned redis
+/// formula worth pinning; the picker hides for a one-entry set).
+pub const REDIS_VERSIONS: &[&str] = &["8.8.0"];
 /// Pinned MariaDB version (bottle bundle: server/client/dump + bootstrap SQL/
 /// errmsg/charsets from the mariadb bottle, plus openssl@3 + pcre2 dylibs —
 /// the ONLY libs `mariadbd`/clients actually link. groonga/lz4/lzo/xz/zstd are
 /// PLUGIN-only deps (mroonga/connect); those plugins are excluded, so their
 /// libs aren't bundled).
 pub const MARIADB_VERSION: &str = "12.3.2";
+/// All MariaDB versions with pinned bottle bundles (per-engine version switch).
+/// 11.4 is the long-term-support series many hosts run (versioned formula
+/// `mariadb@11.4` — same bottle layout, same runtime closure, verified).
+pub const MARIADB_VERSIONS: &[&str] = &["12.3.2", "11.4.12"];
 /// openssl@3 version bundled INTO dylib bundles (redis, mariadb).
 /// Not a standalone binary — only ever a [`BundlePart`].
 pub const BUNDLED_OPENSSL_VERSION: &str = "3.6.3";
@@ -201,6 +217,47 @@ const NGINX_1_30_3_MAC_AMD64_SHA256: &str = "fe1df1fdf5de7c5b778a16b1c73aa73d0c2
 // Official MySQL macOS tarball SHA-256 (computed at pin time from dev.mysql.com).
 const MYSQL_8_4_6_MAC_ARM64_SHA256: &str = "56ac9150b9d8fc757a36a2661a1214f5b09e5352d0a220e7a6c302685a5fca10";
 const MYSQL_8_4_6_MAC_AMD64_SHA256: &str = "257d36d7ae26c4d1cc616dacf58cd1498c9b3b6dc592f90a63d7e7ecd83be844";
+// 8.0 LTS series (per-engine version switch) — both arches downloaded + hashed
+// 2026-07-15; arm64 extracted and RUN (`mysqld --version` = 8.0.44, Mach-O arm64).
+const MYSQL_8_0_44_MAC_ARM64_SHA256: &str = "e0a9b7a04051c570706ca4c7b8a8d6749ac984aab9eecfa41c6ca395a75a0c91";
+const MYSQL_8_0_44_MAC_AMD64_SHA256: &str = "71fda78dfb3479a5ab1dc3f1a86fc099b781ed93280435d5683b14e119f24add";
+
+/// Pinned SHA-256 for a MySQL tarball, or `None` for an unpinned version.
+fn mysql_sha256(version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match version {
+        "8.4.6" => (MYSQL_8_4_6_MAC_ARM64_SHA256, MYSQL_8_4_6_MAC_AMD64_SHA256),
+        "8.0.44" => (MYSQL_8_0_44_MAC_ARM64_SHA256, MYSQL_8_0_44_MAC_AMD64_SHA256),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
+}
+
+/// The CDN archive folder for a MySQL version (`mysql-8.0/`, `mysql-8.4/`).
+fn mysql_series(version: &str) -> String {
+    let mut it = version.split('.');
+    format!(
+        "{}.{}",
+        it.next().unwrap_or_default(),
+        it.next().unwrap_or_default()
+    )
+}
+
+/// Pinned SHA-256 for a theseus-rs PostgreSQL build, or `None` if unpinned.
+fn postgres_sha256(version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match version {
+        "18.4.0" => (POSTGRES_18_4_0_MAC_ARM64_SHA256, POSTGRES_18_4_0_MAC_AMD64_SHA256),
+        "17.10.0" => (POSTGRES_17_10_0_MAC_ARM64_SHA256, POSTGRES_17_10_0_MAC_AMD64_SHA256),
+        "16.14.0" => (POSTGRES_16_14_0_MAC_ARM64_SHA256, POSTGRES_16_14_0_MAC_AMD64_SHA256),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
+}
 
 // WP-CLI phar SHA-256 (GitHub release; same artifact on every OS/arch).
 const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c";
@@ -239,6 +296,12 @@ const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "9aa5ea729ec9aee6fda6facfb7f874
 // relocatable bin/lib/share tree (unsigned Mach-O that runs as-is on Apple Silicon).
 const POSTGRES_18_4_0_MAC_ARM64_SHA256: &str = "1b68828f524b638a24918e258b173d0f16773547a0d3b83d9ba74473b61649f2";
 const POSTGRES_18_4_0_MAC_AMD64_SHA256: &str = "cbc38067a795d10bbddc730e61c835df0b351c36a7bd2544d388790fcf50aa4d";
+// 17/16 series (per-engine version switch) — same published-.sha256 source,
+// fetched 2026-07-15.
+const POSTGRES_17_10_0_MAC_ARM64_SHA256: &str = "e15b5d3b86363d51fe06c9f26ee1d35d09b13951be82641b8f4b2d0e06e2c51e";
+const POSTGRES_17_10_0_MAC_AMD64_SHA256: &str = "737c0e14bd2f1546aaf728153851cfee2d93e682520eb87ba0576a08ec6d9789";
+const POSTGRES_16_14_0_MAC_ARM64_SHA256: &str = "a7a4846456df26d27f815267dfe725b4ad4f46312c032e7b5939468250a4891c";
+const POSTGRES_16_14_0_MAC_AMD64_SHA256: &str = "c5ecdea2528e29503140e259c043002f6f8f2e9d1ee2f1decb44e8b394254820";
 
 // Mailpit static binary SHA-256 (computed at pin time — the project publishes no
 // checksums file; each darwin tarball downloaded and hashed). A static Go Mach-O
@@ -259,6 +322,11 @@ const OPENSSL_3_6_3_BOTTLE_ARM64_SHA256: &str = "79774ba3c854f0a9f94d939c628414c
 const OPENSSL_3_6_3_BOTTLE_AMD64_SHA256: &str = "f641a0a3028a7ba2ab247767a6961226ba8c1777dac6e986e6fc62ec09e4a62a";
 const MARIADB_12_3_2_BOTTLE_ARM64_SHA256: &str = "c27bbe91e87906b5f67d8828d061fc898f63ecf3520442bef5c55653c1a07dd2";
 const MARIADB_12_3_2_BOTTLE_AMD64_SHA256: &str = "d25f40713fb7e44f2da1ad4117028cb992167c680fada0da27357cd5ca6d4d4f";
+// mariadb@11.4 (LTS) versioned-formula bottle — identical layout + runtime
+// closure to 12.x (mariadbd links openssl+pcre2 only; same bootstrap SQL
+// names; verified from the downloaded bottle 2026-07-15).
+const MARIADB_11_4_12_BOTTLE_ARM64_SHA256: &str = "4c59779a87d97f762b4a0f2b72f273e77b52461a5797338ecfc2456a962806b8";
+const MARIADB_11_4_12_BOTTLE_AMD64_SHA256: &str = "bb9932c984c75e52372f3e0c15b53b6fa90bfa9d04d5a0b89eb059f8fb0a6327";
 // pcre2 bottle (revision `10.47_1` inside the tarball — irrelevant post-strip).
 const PCRE2_10_47_BOTTLE_ARM64_SHA256: &str = "f6d184fa59de4ca2f3115cb661f113c6c25ced2247b4e169dd99389c0d58be3f";
 const PCRE2_10_47_BOTTLE_AMD64_SHA256: &str = "72691a0ed5b0ec4d21641ee33aa00fad05e6e8ddbfa417fe27f4cd26521ed24a";
@@ -460,31 +528,26 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::Raw,
             member: "nginx",
         }),
-        ("mysql", "macos", "8.4.6") => Some(BinarySpec {
+        // MySQL is version-driven like PHP: any version pinned in `mysql_sha256`
+        // resolves (the CDN URL is templated per series).
+        ("mysql", "macos", v) if mysql_sha256(v, arch).is_some() => Some(BinarySpec {
             // Direct CDN URL (the dev.mysql.com/get redirector 403s non-curl clients).
             url: format!(
-                "https://cdn.mysql.com/archives/mysql-8.4/mysql-{version}-macos15-{}.tar.gz",
-                mysql_arch(arch)
+                "https://cdn.mysql.com/archives/mysql-{series}/mysql-{v}-macos15-{}.tar.gz",
+                mysql_arch(arch),
+                series = mysql_series(v),
             ),
-            checksum: Checksum::Sha256(pick(
-                arch,
-                MYSQL_8_4_6_MAC_ARM64_SHA256,
-                MYSQL_8_4_6_MAC_AMD64_SHA256,
-            )),
+            checksum: Checksum::Sha256(mysql_sha256(v, arch).unwrap().to_string()),
             archive: Archive::TarGzTree,
             member: "bin/mysqld", // primary binary within the extracted tree
         }),
-        ("postgres", "macos", "18.4.0") => Some(BinarySpec {
+        ("postgres", "macos", v) if postgres_sha256(v, arch).is_some() => Some(BinarySpec {
             // theseus-rs portable PostgreSQL — a bin/lib/share tree (one top dir).
             url: format!(
-                "https://github.com/theseus-rs/postgresql-binaries/releases/download/{version}/postgresql-{version}-{}-apple-darwin.tar.gz",
+                "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-{}-apple-darwin.tar.gz",
                 postgres_arch(arch)
             ),
-            checksum: Checksum::Sha256(pick(
-                arch,
-                POSTGRES_18_4_0_MAC_ARM64_SHA256,
-                POSTGRES_18_4_0_MAC_AMD64_SHA256,
-            )),
+            checksum: Checksum::Sha256(postgres_sha256(v, arch).unwrap().to_string()),
             archive: Archive::TarGzTree,
             member: "bin/postgres", // primary binary within the extracted tree
         }),
@@ -641,6 +704,37 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
                     APR_UTIL_1_6_3_BOTTLE_AMD64_SHA256,
                     &["lib/libaprutil-1.0.dylib"],
                 ),
+                bottle_part(
+                    "pcre2",
+                    arch,
+                    PCRE2_10_47_BOTTLE_ARM64_SHA256,
+                    PCRE2_10_47_BOTTLE_AMD64_SHA256,
+                    &["lib/libpcre2-8.0.dylib"],
+                ),
+            ],
+        }),
+        ("mariadb", "macos", "11.4.12") => Some(BundleSpec {
+            member: "bin/mariadbd",
+            parts: vec![
+                bottle_part(
+                    // Versioned LTS formula — ghcr path `mariadb/11.4`.
+                    "mariadb@11.4",
+                    arch,
+                    MARIADB_11_4_12_BOTTLE_ARM64_SHA256,
+                    MARIADB_11_4_12_BOTTLE_AMD64_SHA256,
+                    // Identical layout to 12.x (verified from the bottle).
+                    &[
+                        "bin/mariadbd",
+                        "bin/mariadb",
+                        "bin/mariadb-dump",
+                        "share/mysql/english",
+                        "share/mysql/charsets",
+                        "share/mysql/mariadb_system_tables.sql",
+                        "share/mysql/mariadb_performance_tables.sql",
+                        "share/mysql/mariadb_system_tables_data.sql",
+                    ],
+                ),
+                openssl_part(arch),
                 bottle_part(
                     "pcre2",
                     arch,
@@ -1711,6 +1805,43 @@ mod tests {
         let amd = manifest("nginx", NGINX_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("nginx-1.30.3-x86_64-darwin"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+    }
+
+    #[test]
+    fn every_offered_db_version_is_pinned_and_resolves() {
+        for arch in [Arch::Arm64, Arch::X86_64] {
+            for v in MYSQL_VERSIONS {
+                let m = manifest("mysql", v, "macos", arch).expect(v);
+                assert!(m.url.contains(&format!("mysql-{v}-macos15-")), "{}", m.url);
+                // The CDN archives folder follows the series.
+                assert!(m.url.contains(&format!("archives/mysql-{}/", mysql_series(v))));
+            }
+            for v in POSTGRES_VERSIONS {
+                let m = manifest("postgres", v, "macos", arch).expect(v);
+                assert!(m.url.contains(&format!("postgresql-{v}-")), "{}", m.url);
+            }
+            for v in MARIADB_VERSIONS {
+                assert!(bundle_manifest("mariadb", v, "macos", arch).is_some(), "{v}");
+            }
+            for v in REDIS_VERSIONS {
+                assert!(bundle_manifest("redis", v, "macos", arch).is_some(), "{v}");
+            }
+        }
+        // Defaults are members of their offered sets.
+        assert!(MYSQL_VERSIONS.contains(&MYSQL_VERSION));
+        assert!(POSTGRES_VERSIONS.contains(&POSTGRES_VERSION));
+        assert!(MARIADB_VERSIONS.contains(&MARIADB_VERSION));
+        assert!(REDIS_VERSIONS.contains(&REDIS_VERSION));
+        // The versioned-formula ghcr path maps `@` → `/`.
+        let lts = bundle_manifest("mariadb", "11.4.12", "macos", Arch::Arm64).unwrap();
+        assert!(lts.parts[0].url.contains("homebrew/core/mariadb/11.4/blobs/"), "{}", lts.parts[0].url);
+        // Unpinned versions never resolve.
+        assert!(manifest("mysql", "5.7.44", "macos", Arch::Arm64).is_none());
+        assert!(manifest("postgres", "15.0.0", "macos", Arch::Arm64).is_none());
+        assert!(bundle_manifest("mariadb", "10.11.0", "macos", Arch::Arm64).is_none());
+        // Series helper: CDN folder key.
+        assert_eq!(mysql_series("8.0.44"), "8.0");
+        assert_eq!(mysql_series("8.4.6"), "8.4");
     }
 
     #[test]
