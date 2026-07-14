@@ -453,6 +453,9 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
           ) : (
             plugins.map((p) => {
               const net = p.status === "active-network";
+              // Must-use/drop-in files load everywhere automatically — network
+              // (de)activation doesn't exist for them either.
+              const immutable = p.status === "must-use" || p.status === "dropin";
               return (
                 <div
                   key={p.name}
@@ -464,19 +467,28 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                       Network active
                     </span>
                   )}
-                  <button
-                    className={BTN}
-                    disabled={pluginRun.isPending}
-                    onClick={() =>
-                      pluginRun.mutate(() =>
-                        net
-                          ? wpPluginDeactivateNetwork(siteId, [p.name])
-                          : wpPluginActivateNetwork(siteId, [p.name]),
-                      )
-                    }
-                  >
-                    {net ? "Network deactivate" : "Network activate"}
-                  </button>
+                  {immutable ? (
+                    <span
+                      className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-medium text-emerald-400"
+                      title="Loads automatically on every site (must-use / drop-in) — nothing to toggle."
+                    >
+                      {p.status === "must-use" ? "Must-use" : "Drop-in"}
+                    </span>
+                  ) : (
+                    <button
+                      className={BTN}
+                      disabled={pluginRun.isPending}
+                      onClick={() =>
+                        pluginRun.mutate(() =>
+                          net
+                            ? wpPluginDeactivateNetwork(siteId, [p.name])
+                            : wpPluginActivateNetwork(siteId, [p.name]),
+                        )
+                      }
+                    >
+                      {net ? "Network deactivate" : "Network activate"}
+                    </button>
+                  )}
                 </div>
               );
             })
@@ -2119,7 +2131,12 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
   const { plugins, isLoading, isError, error, refetch } = useWpPlugins(siteId);
 
-  const isActive = (p: WpPlugin) => p.status === "active" || p.status === "active-network";
+  // Must-use plugins / drop-ins are always loaded — they belong under "Active".
+  const isActive = (p: WpPlugin) =>
+    p.status === "active" ||
+    p.status === "active-network" ||
+    p.status === "must-use" ||
+    p.status === "dropin";
   const counts: Record<PluginFilter, number> = {
     all: plugins.length,
     active: plugins.filter(isActive).length,
@@ -2285,9 +2302,23 @@ function PluginRow({
 }) {
   const active = p.status === "active" || p.status === "active-network";
   const updatable = p.update === "available";
+  // Must-use plugins and drop-ins load automatically by their location on disk
+  // — WordPress has no activate/deactivate (or wp-cli delete) for them, so
+  // offering those controls would be a lie. Lock them with an explanation.
+  const immutable = p.status === "must-use" || p.status === "dropin";
+  const immutableWhy =
+    p.status === "must-use"
+      ? "Must-use plugin — loads automatically from wp-content/mu-plugins and is always active. Remove its file to disable it."
+      : "Drop-in — loads automatically from wp-content and can't be toggled here. Remove its file to disable it.";
   return (
     <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2.5 last:border-b-0">
-      <input type="checkbox" checked={selected} onChange={onSelect} />
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onSelect}
+        disabled={immutable}
+        title={immutable ? immutableWhy : undefined}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium text-rex-text">{p.name}</span>
@@ -2307,21 +2338,33 @@ function PluginRow({
       <span
         className={cn(
           "w-[58px] text-right text-[11.5px] font-medium",
-          active ? "text-status-running-bright" : "text-rex-text-muted",
+          active || immutable ? "text-status-running-bright" : "text-rex-text-muted",
         )}
+        title={immutable ? immutableWhy : undefined}
       >
-        {active ? "Active" : "Inactive"}
+        {immutable ? (p.status === "must-use" ? "Must-use" : "Drop-in") : active ? "Active" : "Inactive"}
       </span>
       <StartStopToggle
-        running={active}
+        running={active || immutable}
+        disabled={immutable}
+        title={immutable ? immutableWhy : undefined}
         onToggle={active ? onDeactivate : onActivate}
-        label={`${active ? "Deactivate" : "Activate"} ${p.name}`}
+        label={
+          immutable
+            ? `${p.name} is always active`
+            : `${active ? "Deactivate" : "Activate"} ${p.name}`
+        }
       />
       <button
-        className={BTN + " hover:border-red-500/60 hover:text-red-400"}
-        disabled={busy}
+        className={cn(
+          BTN,
+          immutable
+            ? "cursor-not-allowed opacity-45"
+            : "hover:border-red-500/60 hover:text-red-400",
+        )}
+        disabled={busy || immutable}
         onClick={onDelete}
-        title="Delete"
+        title={immutable ? immutableWhy : "Delete"}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>

@@ -8,12 +8,18 @@ import { cn } from "@/lib/utils";
 export function StartStopToggle({
   running,
   busy,
+  disabled,
+  title,
   onToggle,
   variant = "status",
   label,
 }: {
   running: boolean;
   busy?: boolean;
+  /** Permanently non-interactive (vs `busy` = in-flight). Pair with `title`
+   *  so the tooltip says WHY the control is locked. */
+  disabled?: boolean;
+  title?: string;
   onToggle: () => void;
   variant?: "status" | "setting";
   label?: string;
@@ -28,12 +34,15 @@ export function StartStopToggle({
       role="switch"
       aria-checked={running}
       aria-label={label ?? (running ? "Turn off" : "Turn on")}
-      disabled={busy}
+      aria-disabled={disabled || undefined}
+      title={title}
+      disabled={busy || disabled}
       onClick={onToggle}
       className={cn(
         "relative h-[27px] w-[46px] flex-none rounded-full border transition-[background-color,border-color] duration-200 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--rex-focus-ring)]",
         running ? onTrack : "bg-toggle-off border-toggle-off-border",
         busy && "opacity-40",
+        disabled && "cursor-not-allowed opacity-45",
       )}
     >
       <span
