@@ -374,9 +374,28 @@ Each line = one feature, live-verified before its commit.
   pass; served on :16379; PING→PONG + SET/GET round-trip through the bundled
   redis-cli; clean stop. x86_64 bottle digests are Homebrew-published — re-verify on
   the next Intel smoke run.
-- [ ] MariaDB engine (+ site→engine selection at create) — bottle dep closure is the
-  work now (groonga → mecab …, openssl@3, pcre2, lz4, lzo, xz, zstd), plus
-  `core/mariadb.rs` init/start and the site→engine seam
+- [x] **MariaDB engine + site→engine selection at create** — `62c498a`/`b5861c4`.
+  The feared dep closure collapsed on inspection: `mariadbd`/clients link ONLY
+  openssl@3 + pcre2 (groonga/lz4/lzo/xz/zstd are mroonga/connect PLUGIN deps; plugins
+  excluded ⇒ libs never bundled). Bundle = mariadb bottle (server + `mariadb` +
+  `mariadb-dump` + bootstrap SQL + errmsg/charsets — the 221MB `bin/`, plugins,
+  baked-brew-path scripts all excluded) + openssl@3 + pcre2. `core/mariadb.rs` init =
+  `mariadbd --bootstrap` fed the bundled SQL over stdin (`@auth_root_socket=NULL` →
+  passwordless root, the MySQL model; NO install-db script — it's a shell script full
+  of baked brew paths); explicit `--lc-messages-dir`/`--character-sets-dir` (compiled
+  defaults are placeholders). Site seam: v10 `sites.db_engine` (default mysql),
+  `core/database.rs` fns now take the client/dump BINARY (MariaDB = same protocol),
+  every site DB op dispatches on the site's engine (create/reset/export/import/
+  change-domain backup/delete/sizes-per-engine), Start-all spawns MariaDB exactly when
+  a site lives there, New-Site dialog's Database field is a real MySQL/MariaDB picker,
+  Adminer browses 13307 via the MySQL driver. ✓ **Live-verified**
+  (`examples/mariadb_bundle_check` + `examples/mariadb_site_check`, Jul 15): 3 bottles
+  → merged tree, all 6 Mach-Os loads-clean + strictly signed; fresh bootstrap; served
+  :13307, `SELECT VERSION()` = 12.3.2-MariaDB; then a full WP site: `wp core install`
+  over 13307, siteurl round-trip through php mysqli, `mariadb-dump` export (91KB) +
+  re-import, `reset_site` drop+reinstall — all green. 253 lib tests, clippy, examples,
+  tsc. **Human verify next:** create a MariaDB site from the dialog, site over HTTPS,
+  per-site Adminer Browse.
 - [ ] Apache (httpd) override server — bottle closure (apr, apr-util, openssl@3, pcre2)
 - [ ] OpenLiteSpeed override server
 - [ ] Per-engine DB version switch (multi-version DBs)
