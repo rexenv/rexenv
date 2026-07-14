@@ -27,9 +27,10 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
   );
 }
 
-/** Engines Adminer can browse. Redis has no Adminer driver — its row gets no
- * Browse button (the port + `redis-cli` are the client story, shown inline). */
-const BROWSABLE = new Set(["mysql", "postgres"]);
+/** Engines Adminer can browse (MariaDB via the MySQL-protocol driver). Redis
+ * has no Adminer driver — its row gets no Browse button (the port +
+ * `redis-cli` are the client story, shown inline). */
+const BROWSABLE = new Set(["mysql", "mariadb", "postgres"]);
 
 function DbRow({
   db,
@@ -101,7 +102,10 @@ function DbRow({
 
 export function Databases() {
   const navigate = useNavigate();
-  const [browse, setBrowse] = useState<{ engine: "mysql" | "postgres"; label: string } | null>(null);
+  const [browse, setBrowse] = useState<{
+    engine: "mysql" | "mariadb" | "postgres";
+    label: string;
+  } | null>(null);
   const { data: dbs = [], isLoading } = useQuery({
     queryKey: ["databases"],
     queryFn: databasesStatus,
@@ -154,7 +158,8 @@ export function Databases() {
                 db={db}
                 onBrowse={() =>
                   setBrowse({
-                    engine: db.key === "postgres" ? "postgres" : "mysql",
+                    engine:
+                      db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql",
                     label: db.label,
                   })
                 }

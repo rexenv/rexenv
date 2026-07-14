@@ -15,6 +15,7 @@ pub mod firefox;
 pub mod frankenphp;
 pub mod logs;
 pub mod mail;
+pub mod mariadb;
 pub mod monitor;
 pub mod php;
 pub mod ports;

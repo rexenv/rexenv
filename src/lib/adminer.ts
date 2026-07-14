@@ -9,6 +9,7 @@ export const ADMINER_HOST = "adminer.rexenv.rex";
 
 // Canonical fixed loopback DB ports (see CLAUDE.md / core::db). Not user-configurable.
 const MYSQL_PORT = 13306;
+const MARIADB_PORT = 13307;
 const POSTGRES_PORT = 15432;
 
 /** Build a per-site Adminer deep-link for an engine (+ optional database). By
@@ -16,7 +17,7 @@ const POSTGRES_PORT = 15432;
  *  wrapper auto-logs-in and lands straight in the DB (§11.4); pass
  *  `autoLogin: false` for a plain pre-filled login form. */
 interface AdminerTarget {
-  engine: "mysql" | "postgres";
+  engine: "mysql" | "mariadb" | "postgres";
   db?: string;
   autoLogin?: boolean;
 }
@@ -27,7 +28,9 @@ function adminerQuery(opts: AdminerTarget): string {
     params.set("pgsql", `127.0.0.1:${POSTGRES_PORT}`);
     params.set("username", "postgres");
   } else {
-    params.set("server", `127.0.0.1:${MYSQL_PORT}`);
+    // MariaDB speaks the MySQL protocol — same Adminer driver, its own port.
+    const port = opts.engine === "mariadb" ? MARIADB_PORT : MYSQL_PORT;
+    params.set("server", `127.0.0.1:${port}`);
     params.set("username", "root");
   }
   if (opts.db) params.set("db", opts.db);

@@ -15,7 +15,7 @@ binary, update THIS file in the same commit.
 | php-fpm pools | **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.0–8.5, one pool per installed minor) |
 | FrankenPHP override backends | **8200–8299** (per-site, FNV-1a of domain) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT` |
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |
-| MariaDB (stub) | **13307** | TCP | `core/db.rs` `MARIADB_PORT` |
+| MariaDB | **13307** | TCP | `core/db.rs` `MARIADB_PORT` |
 | PostgreSQL | **15432** | TCP | `core/db.rs` `POSTGRES_PORT` |
 | Redis | **16379** | TCP | `core/db.rs` `REDIS_PORT` |
 | Mailpit SMTP | **11025** | TCP | `core/mail.rs` `MAILPIT_SMTP_PORT` |
@@ -42,6 +42,7 @@ binary, update THIS file in the same commit.
 | FrankenPHP | 1.12.4 | embeds its OWN PHP (not the pools) |
 | PostgreSQL | 18.4.0 | theseus-rs portable, TCP-only |
 | Redis | 8.8.0 | **bottle BUNDLE** (`resolve_bundle`): Homebrew redis + openssl@3 3.6.3 bottles (arm64_sonoma / sonoma), merged + relinked to `@loader_path` + re-signed by `prepare_binary_tree`. ghcr blobs are content-addressed — the URL embeds the pinned digest, so pins can 404 (formula GC) but never drift |
+| MariaDB | 12.3.2 | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
 | Mailpit | 1.30.3 | |
 | Adminer | 5.4.2 | single `.php`, OS-agnostic |
 | cloudflared | 2026.6.1 | |

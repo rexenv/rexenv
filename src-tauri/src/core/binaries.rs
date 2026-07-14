@@ -62,9 +62,17 @@ pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (TODO
 /// "Deferred services"). Resolved via [`resolve_bundle`].
 pub const REDIS_VERSION: &str = "8.8.0";
-/// openssl@3 version bundled INTO dylib bundles (redis today; mariadb later).
+/// Pinned MariaDB version (bottle bundle: server/client/dump + bootstrap SQL/
+/// errmsg/charsets from the mariadb bottle, plus openssl@3 + pcre2 dylibs —
+/// the ONLY libs `mariadbd`/clients actually link. groonga/lz4/lzo/xz/zstd are
+/// PLUGIN-only deps (mroonga/connect); those plugins are excluded, so their
+/// libs aren't bundled).
+pub const MARIADB_VERSION: &str = "12.3.2";
+/// openssl@3 version bundled INTO dylib bundles (redis, mariadb).
 /// Not a standalone binary — only ever a [`BundlePart`].
 pub const BUNDLED_OPENSSL_VERSION: &str = "3.6.3";
+/// pcre2 version bundled into the mariadb bundle (`mariadbd` links libpcre2-8).
+pub const BUNDLED_PCRE2_VERSION: &str = "10.47";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,6 +248,11 @@ const REDIS_8_8_0_BOTTLE_ARM64_SHA256: &str = "b483b7c9b4b107512ecb359d98e494cc2
 const REDIS_8_8_0_BOTTLE_AMD64_SHA256: &str = "07d051d7a255d7d6a535b46387cc8977b4d3bf1798cb67b3a6d078ef5c4c3343";
 const OPENSSL_3_6_3_BOTTLE_ARM64_SHA256: &str = "79774ba3c854f0a9f94d939c628414c9b3dd2ff5eeb1dc61743199c979dd3490";
 const OPENSSL_3_6_3_BOTTLE_AMD64_SHA256: &str = "f641a0a3028a7ba2ab247767a6961226ba8c1777dac6e986e6fc62ec09e4a62a";
+const MARIADB_12_3_2_BOTTLE_ARM64_SHA256: &str = "c27bbe91e87906b5f67d8828d061fc898f63ecf3520442bef5c55653c1a07dd2";
+const MARIADB_12_3_2_BOTTLE_AMD64_SHA256: &str = "d25f40713fb7e44f2da1ad4117028cb992167c680fada0da27357cd5ca6d4d4f";
+// pcre2 bottle (revision `10.47_1` inside the tarball — irrelevant post-strip).
+const PCRE2_10_47_BOTTLE_ARM64_SHA256: &str = "f6d184fa59de4ca2f3115cb661f113c6c25ced2247b4e169dd99389c0d58be3f";
+const PCRE2_10_47_BOTTLE_AMD64_SHA256: &str = "72691a0ed5b0ec4d21641ee33aa00fad05e6e8ddbfa417fe27f4cd26521ed24a";
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
@@ -523,6 +536,35 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
     }
 }
 
+/// Build one [`BundlePart`] from a formula + its per-arch bottle digests.
+fn bottle_part(
+    formula: &'static str,
+    arch: Arch,
+    arm_sha: &'static str,
+    amd_sha: &'static str,
+    include: &'static [&'static str],
+) -> BundlePart {
+    let digest = pick(arch, arm_sha, amd_sha);
+    BundlePart {
+        formula,
+        url: bottle_url(formula, &digest),
+        checksum: Checksum::Sha256(digest),
+        include,
+    }
+}
+
+/// The openssl@3 runtime dylibs part shared by every TLS-linking bundle —
+/// never the static libs, headers, cmake/pkgconfig, or provider modules.
+fn openssl_part(arch: Arch) -> BundlePart {
+    bottle_part(
+        "openssl@3",
+        arch,
+        OPENSSL_3_6_3_BOTTLE_ARM64_SHA256,
+        OPENSSL_3_6_3_BOTTLE_AMD64_SHA256,
+        &["lib/libssl.3.dylib", "lib/libcrypto.3.dylib"],
+    )
+}
+
 /// Look up the BUNDLE spec for `name`@`version` on `os`+`arch` — services with
 /// no portable static build, assembled from Homebrew bottles and relinked into
 /// a self-contained tree (TODO "Deferred services"). Disjoint from
@@ -532,34 +574,49 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
         ("redis", "macos", "8.8.0") => Some(BundleSpec {
             member: "bin/redis-server",
             parts: vec![
-                BundlePart {
-                    formula: "redis",
-                    url: bottle_url(
-                        "redis",
-                        &pick(arch, REDIS_8_8_0_BOTTLE_ARM64_SHA256, REDIS_8_8_0_BOTTLE_AMD64_SHA256),
-                    ),
-                    checksum: Checksum::Sha256(pick(
-                        arch,
-                        REDIS_8_8_0_BOTTLE_ARM64_SHA256,
-                        REDIS_8_8_0_BOTTLE_AMD64_SHA256,
-                    )),
-                    include: &["bin"],
-                },
-                BundlePart {
-                    formula: "openssl@3",
-                    url: bottle_url(
-                        "openssl@3",
-                        &pick(arch, OPENSSL_3_6_3_BOTTLE_ARM64_SHA256, OPENSSL_3_6_3_BOTTLE_AMD64_SHA256),
-                    ),
-                    checksum: Checksum::Sha256(pick(
-                        arch,
-                        OPENSSL_3_6_3_BOTTLE_ARM64_SHA256,
-                        OPENSSL_3_6_3_BOTTLE_AMD64_SHA256,
-                    )),
-                    // Just the two runtime dylibs redis links — never the static
-                    // libs, headers, cmake/pkgconfig, or provider modules.
-                    include: &["lib/libssl.3.dylib", "lib/libcrypto.3.dylib"],
-                },
+                bottle_part(
+                    "redis",
+                    arch,
+                    REDIS_8_8_0_BOTTLE_ARM64_SHA256,
+                    REDIS_8_8_0_BOTTLE_AMD64_SHA256,
+                    &["bin"],
+                ),
+                openssl_part(arch),
+            ],
+        }),
+        ("mariadb", "macos", "12.3.2") => Some(BundleSpec {
+            member: "bin/mariadbd",
+            parts: vec![
+                bottle_part(
+                    "mariadb",
+                    arch,
+                    MARIADB_12_3_2_BOTTLE_ARM64_SHA256,
+                    MARIADB_12_3_2_BOTTLE_AMD64_SHA256,
+                    // Server + the two clients the DB features need (bundled-
+                    // client rule), the bootstrap SQL `core::mariadb::initialize`
+                    // feeds over stdin, and the runtime share data (errmsg.sys,
+                    // charsets). The 221MB bin/ full set, plugins (whose deps
+                    // we don't bundle), scripts (baked brew paths), include/,
+                    // and docs all stay out.
+                    &[
+                        "bin/mariadbd",
+                        "bin/mariadb",
+                        "bin/mariadb-dump",
+                        "share/mysql/english",
+                        "share/mysql/charsets",
+                        "share/mysql/mariadb_system_tables.sql",
+                        "share/mysql/mariadb_performance_tables.sql",
+                        "share/mysql/mariadb_system_tables_data.sql",
+                    ],
+                ),
+                openssl_part(arch),
+                bottle_part(
+                    "pcre2",
+                    arch,
+                    PCRE2_10_47_BOTTLE_ARM64_SHA256,
+                    PCRE2_10_47_BOTTLE_AMD64_SHA256,
+                    &["lib/libpcre2-8.0.dylib"],
+                ),
             ],
         }),
         _ => None,
@@ -1444,6 +1501,40 @@ mod tests {
         assert!(manifest("redis", REDIS_VERSION, "macos", Arch::Arm64).is_none());
         assert!(bundle_manifest("mysql", MYSQL_VERSION, "macos", Arch::Arm64).is_none());
         assert!(bundle_manifest("redis", "0.0.1", "macos", Arch::Arm64).is_none());
+    }
+
+    #[test]
+    fn bundle_manifest_resolves_mariadb_per_arch() {
+        for arch in [Arch::Arm64, Arch::X86_64] {
+            let bundle = bundle_manifest("mariadb", MARIADB_VERSION, "macos", arch).unwrap();
+            assert_eq!(bundle.member, "bin/mariadbd");
+            let formulas: Vec<&str> = bundle.parts.iter().map(|p| p.formula).collect();
+            assert_eq!(formulas, vec!["mariadb", "openssl@3", "pcre2"]);
+            for part in &bundle.parts {
+                let digest = checksum_hex(&part.checksum);
+                assert!(part.url.ends_with(&format!("blobs/sha256:{digest}")), "{}", part.url);
+            }
+            // Server + both bundled clients + the runtime share data.
+            let mdb = bundle.parts[0].include;
+            for needed in [
+                "bin/mariadbd",
+                "bin/mariadb",
+                "bin/mariadb-dump",
+                "share/mysql/english",
+                "share/mysql/charsets",
+            ] {
+                assert!(mdb.contains(&needed), "{needed} missing");
+            }
+            // mariadbd links exactly these two extra formulas' dylibs.
+            assert_eq!(bundle.parts[2].include, &["lib/libpcre2-8.0.dylib"]);
+        }
+        let arm = bundle_manifest("mariadb", MARIADB_VERSION, "macos", Arch::Arm64).unwrap();
+        let amd = bundle_manifest("mariadb", MARIADB_VERSION, "macos", Arch::X86_64).unwrap();
+        assert_ne!(
+            checksum_hex(&arm.parts[0].checksum),
+            checksum_hex(&amd.parts[0].checksum)
+        );
+        assert!(manifest("mariadb", MARIADB_VERSION, "macos", Arch::Arm64).is_none());
     }
 
     #[test]

@@ -149,6 +149,7 @@ pub fn label_for(name: &str, version: &str) -> String {
         "frankenphp" => "FrankenPHP".into(),
         "cloudflared" => "cloudflared (tunnels)".into(),
         "redis" => format!("Redis {}", minor(version)),
+        "mariadb" => format!("MariaDB {}", minor(version)),
         _ => format!("{name} {version}"),
     }
 }
@@ -222,7 +223,9 @@ pub fn plan_for_engine(platform: &dyn Platform, engine: DbEngine) -> Vec<Planned
             vec![PlannedBinary::new(platform, "postgres", binaries::POSTGRES_VERSION)]
         }
         DbEngine::Redis => vec![PlannedBinary::new(platform, "redis", binaries::REDIS_VERSION)],
-        _ => Vec::new(),
+        DbEngine::Mariadb => {
+            vec![PlannedBinary::new(platform, "mariadb", binaries::MARIADB_VERSION)]
+        }
     }
 }
 
@@ -270,7 +273,7 @@ pub fn plan_for_override(platform: &dyn Platform) -> Vec<PlannedBinary> {
 pub async fn resolve_any(platform: &dyn Platform, name: &str, version: &str) -> Result<()> {
     match name {
         "mysql" | "postgres" => binaries::resolve_dir(platform, name, version).await.map(drop),
-        "redis" => binaries::resolve_bundle(platform, name, version).await.map(drop),
+        "redis" | "mariadb" => binaries::resolve_bundle(platform, name, version).await.map(drop),
         "wp-cli" | "adminer" => binaries::resolve_file(platform, name, version).await.map(drop),
         _ => binaries::resolve(platform, name, version).await.map(drop),
     }

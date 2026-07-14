@@ -1979,8 +1979,11 @@ mod tests {
     fn db_status_lists_available_engines_when_stopped() {
         let m = ServiceManager::default();
         let dbs: Vec<_> = m.db_status().iter().map(|d| d.engine).collect();
-        // Only the shipped engines are listed (MariaDB deferred on macOS).
-        assert_eq!(dbs, vec![DbEngine::Mysql, DbEngine::Postgres, DbEngine::Redis]);
+        // Every engine ships on macOS now.
+        assert_eq!(
+            dbs,
+            vec![DbEngine::Mysql, DbEngine::Mariadb, DbEngine::Postgres, DbEngine::Redis]
+        );
         assert!(m.db_status().iter().all(|d| d.pid.is_none()));
         // H2: nothing we started ⇒ nothing running, regardless of a foreign DB.
         assert!(m.db_status().iter().all(|d| !d.running));
@@ -2020,6 +2023,7 @@ mod tests {
             names,
             vec![
                 "MySQL",
+                "MariaDB",
                 "PostgreSQL",
                 "Redis",
                 "PHP-FPM 8.1",
