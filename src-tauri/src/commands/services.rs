@@ -16,6 +16,31 @@ pub struct ServiceStatus {
     pub port: u16,
     pub cpu_percent: f32,
     pub ram_mb: u64,
+    /// Services-page grouping ("php" | "database" | "mail" | "web") — derived
+    /// HERE so the UI never name-sniffs.
+    pub kind: &'static str,
+    /// PHP minor for pool rows (e.g. "8.3"); `None` elsewhere.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// `Some(bool)` ONLY for shared PHP pool rows: is this minor the default for
+    /// new sites? The Set-default control keys off `Some(false)` — FrankenPHP
+    /// per-site rows get `None` so they can never grow that control.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_default: Option<bool>,
+}
+
+/// Group a service row by its canonical name (the manager names them).
+fn kind_of(name: &str) -> &'static str {
+    let n = name.to_ascii_lowercase();
+    if n.starts_with("php-fpm") || n.starts_with("frankenphp") {
+        "php"
+    } else if n.contains("mysql") || n.contains("postgres") || n.contains("maria") || n.contains("redis") {
+        "database"
+    } else if n.contains("mailpit") {
+        "mail"
+    } else {
+        "web"
+    }
 }
 
 /// Per-minor PHP ini settings, as loaded from the `php_settings` table.
@@ -245,6 +270,14 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
 /// Settings).
 pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
     let infos = state.service_infos();
+    // Default PHP minor, for the pool rows' Set-default control (brief DB lock,
+    // released before the monitor lock).
+    let default_minor: Option<String> = state
+        .db
+        .lock()
+        .ok()
+        .and_then(|conn| core::php::list_versions(&conn).ok())
+        .and_then(|v| v.into_iter().find(|v| v.is_default).map(|v| v.minor));
     let mut monitor = state
         .monitor
         .lock()
@@ -279,7 +312,24 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 Some(t) if t.ram_mb > 0 => (t.cpu_percent, t.ram_mb),
                 _ => pid.and_then(|p| sup.resource_usage(p)).unwrap_or((0.0, 0)),
             };
-            ServiceStatus { name: i.name, running: i.running, pid, port: i.port, cpu_percent, ram_mb }
+            let kind = kind_of(&i.name);
+            // "PHP-FPM 8.3" → "8.3" — the shared pool rows; FrankenPHP rows
+            // stay version-less here (their row identity is the site domain).
+            let version = i.name.strip_prefix("PHP-FPM ").map(str::to_string);
+            let is_default = version
+                .as_deref()
+                .map(|minor| Some(minor) == default_minor.as_deref());
+            ServiceStatus {
+                name: i.name,
+                running: i.running,
+                pid,
+                port: i.port,
+                cpu_percent,
+                ram_mb,
+                kind,
+                version,
+                is_default,
+            }
         })
         .collect();
     Ok(out)

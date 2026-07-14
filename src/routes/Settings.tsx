@@ -132,7 +132,11 @@ function GeneralPrefsCard() {
   const currentPhp = versions.find((v) => v.isDefault)?.minor ?? installed[0]?.minor ?? "";
   const setDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
+    onSuccess: () => {
+      // Services' PHP rows show the default too — keep both views in sync.
+      void qc.invalidateQueries({ queryKey: ["php-versions"] });
+      void qc.invalidateQueries({ queryKey: ["services"] });
+    },
     onError: (e) => toastBackendError(e),
   });
 
@@ -348,7 +352,11 @@ function PhpVersionsSetting() {
   });
   const makeDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
+    onSuccess: () => {
+      // Services' PHP rows show the default too — keep both views in sync.
+      void qc.invalidateQueries({ queryKey: ["php-versions"] });
+      void qc.invalidateQueries({ queryKey: ["services"] });
+    },
     onError: (e) => toastBackendError(e),
   });
   const busyFor = (minor: string) =>

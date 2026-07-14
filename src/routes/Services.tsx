@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toastBackendError } from "@/lib/toast";
+import { toast, toastBackendError } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
 import { Code, Database, ExternalLink, Globe, Inbox, Layers, Mail, Server, type LucideIcon } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -157,10 +157,20 @@ function ServiceRow({
         className="min-w-[92px]"
       />
       <div className="flex w-[124px] flex-none justify-end">
-        {kind === "php" && !svc.isDefault && (
+        {/* Only shared POOL rows carry isDefault (backend sends it for those
+            alone) — FrankenPHP per-site rows can never grow this control. */}
+        {svc.isDefault === false && (
           <ActionBtn accent onClick={() => onSetDefault(phpMinor(svc))}>
             Set default
           </ActionBtn>
+        )}
+        {svc.isDefault === true && (
+          <span
+            className="flex h-[29px] items-center rounded-lg border border-rex-border-subtle bg-rex-well px-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-rex-text-muted"
+            title="New sites use this PHP version (change in Settings or here)"
+          >
+            Default
+          </span>
         )}
         {kind === "database" && (
           <ActionBtn icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={onOpenDatabases}>
@@ -188,7 +198,9 @@ export function Services() {
 
   const setDefault = useMutation({
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
-    onSuccess: () => {
+    onSuccess: (_res, minor) => {
+      // Visible feedback + keep Settings' PHP cards in sync (shared query keys).
+      toast.success(`PHP ${minor} is now the default for new sites.`);
       qc.invalidateQueries({ queryKey: ["services"] });
       qc.invalidateQueries({ queryKey: ["php-versions"] });
     },
