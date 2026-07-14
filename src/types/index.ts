@@ -153,6 +153,9 @@ export interface ServiceInfo {
   version?: string;
   isDefault?: boolean;
   isRouter?: boolean;
+  /** Served site for per-site FrankenPHP override rows — rendered as the
+   *  row's sub-line, never inside the version badge. */
+  domain?: string;
 }
 
 /** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */

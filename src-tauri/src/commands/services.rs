@@ -27,6 +27,10 @@ pub struct ServiceStatus {
     /// per-site rows get `None` so they can never grow that control.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_default: Option<bool>,
+    /// The served site for per-site FrankenPHP override rows — the UI renders
+    /// it as the row's sub-line (NOT crammed into the version badge).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 /// Group a service row by its canonical name (the manager names them).
@@ -313,12 +317,19 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 _ => pid.and_then(|p| sup.resource_usage(p)).unwrap_or((0.0, 0)),
             };
             let kind = kind_of(&i.name);
-            // "PHP-FPM 8.3" → "8.3" — the shared pool rows; FrankenPHP rows
-            // stay version-less here (their row identity is the site domain).
+            // "PHP-FPM 8.3" → version "8.3" (the shared pools);
+            // "FrankenPHP my.rex" → the pinned FrankenPHP release + the domain
+            // (it embeds its OWN PHP — not one of the pools).
             let version = i.name.strip_prefix("PHP-FPM ").map(str::to_string);
             let is_default = version
                 .as_deref()
                 .map(|minor| Some(minor) == default_minor.as_deref());
+            let domain = i.name.strip_prefix("FrankenPHP ").map(str::to_string);
+            let version = version.or_else(|| {
+                domain
+                    .is_some()
+                    .then(|| core::binaries::FRANKENPHP_VERSION.to_string())
+            });
             ServiceStatus {
                 name: i.name,
                 running: i.running,
@@ -329,6 +340,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 kind,
                 version,
                 is_default,
+                domain,
             }
         })
         .collect();

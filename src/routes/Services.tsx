@@ -19,6 +19,9 @@ const KIND_ACCENT: Record<ServiceKind, { bg: string; border: string; color: stri
 
 /** A short monogram for the row's accent badge. */
 function serviceBadge(svc: ServiceInfo, kind: ServiceKind): string {
+  // Per-site FrankenPHP rows get the marker, never the (long) name/domain —
+  // the badge is a 30px circle. Shared pools show their minor ("8.3").
+  if (svc.domain) return "Fp";
   if (kind === "php") return phpMinor(svc);
   const n = svc.name;
   if (/mysql/i.test(n)) return "My";
@@ -139,8 +142,16 @@ function ServiceRow({
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[13.5px] font-semibold text-rex-text">{svc.name}</span>
+            <span className="truncate text-[13.5px] font-semibold text-rex-text">
+              {svc.domain ? "FrankenPHP" : svc.name}
+            </span>
+            {svc.domain && svc.version && (
+              <span className="font-mono text-[10.5px] text-rex-text-dim">{svc.version}</span>
+            )}
           </div>
+          {svc.domain && (
+            <div className="truncate font-mono text-[11px] text-rex-text-dim">{svc.domain}</div>
+          )}
         </div>
       </div>
       <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
