@@ -156,6 +156,9 @@ export interface ServiceInfo {
   /** Served site for per-site FrankenPHP override rows — rendered as the
    *  row's sub-line, never inside the version badge. */
   domain?: string;
+  /** True for user-toggled engines Start-all never starts (Postgres) — the
+   *  sidebar footer counts them only while running. */
+  optional?: boolean;
 }
 
 /** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */

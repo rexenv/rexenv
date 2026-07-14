@@ -68,6 +68,10 @@ pub struct ServiceInfo {
     pub running: bool,
     pub pid: Option<u32>,
     pub port: u16,
+    /// True for services Start-all does NOT manage (user-toggled DB engines
+    /// like Postgres): the footer's "All running" counts them only while
+    /// running, so a never-started optional engine can't degrade it forever.
+    pub optional: bool,
 }
 
 /// A prepared Caddy-edge start the caller runs OUTSIDE the services lock (the
@@ -1423,6 +1427,7 @@ impl ServiceManager {
                 running: self.dbs.contains_key(&engine) && engine.running(),
                 pid: self.dbs.get(&engine).map(Proc::id),
                 port: engine.port(),
+                optional: !engine.required(),
             });
         }
 
@@ -1440,6 +1445,7 @@ impl ServiceManager {
                 running: pool.is_some_and(|p| p.running),
                 pid: pool.map(|p| p.pid),
                 port: pool.map(|p| p.port).or_else(|| php::fpm_port(minor)).unwrap_or(0),
+                optional: false,
             });
         }
 
@@ -1453,6 +1459,7 @@ impl ServiceManager {
                 running: frankenphp::running(port),
                 pid: Some(child.id()),
                 port,
+                optional: false,
             });
         }
 
@@ -1462,6 +1469,7 @@ impl ServiceManager {
             running: self.nginx.is_some() && services::nginx_running(self.ports.nginx),
             pid: self.nginx.as_ref().map(Proc::id),
             port: self.ports.nginx,
+            optional: false,
         });
         infos.push(ServiceInfo {
             name: "Caddy".to_string(),
@@ -1483,12 +1491,14 @@ impl ServiceManager {
                 _ => None,
             },
             port: self.ports.https,
+            optional: false,
         });
         infos.push(ServiceInfo {
             name: "Mailpit".to_string(),
             running: self.mailpit.is_some() && mail::running(),
             pid: self.mailpit.as_ref().map(Proc::id),
             port: mail::MAILPIT_HTTP_PORT,
+            optional: false,
         });
         infos
     }
@@ -1861,6 +1871,7 @@ mod tests {
             running,
             pid: None,
             port,
+            optional: false,
         };
         let site = |domain: &str, ver: &str, ws: WebServer| Site {
             id: domain.into(),

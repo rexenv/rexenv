@@ -82,6 +82,15 @@ impl DbEngine {
         matches!(self, DbEngine::Mysql | DbEngine::Postgres)
     }
 
+    /// Whether the site stack REQUIRES this engine — required engines are
+    /// started by Start-all and count toward the footer's "All running";
+    /// optional ones (Postgres, …) are user-toggled on the Databases page and
+    /// only count while running, so an engine the user never opted into can't
+    /// pin the footer at "Partial" forever.
+    pub fn required(&self) -> bool {
+        matches!(self, DbEngine::Mysql)
+    }
+
     /// Look up an engine by its `key`, or `None`.
     pub fn from_key(key: &str) -> Option<DbEngine> {
         DbEngine::ALL.into_iter().find(|e| e.key() == key)

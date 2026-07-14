@@ -87,7 +87,8 @@ pub struct GlobalStatus {
 #[tauri::command]
 pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
     let rows = crate::commands::services::enriched_status(&state)?;
-    let (running, total, summary) = summarize(&rows.iter().map(|r| r.running).collect::<Vec<_>>());
+    let (running, total, summary) =
+        summarize(&rows.iter().map(|r| (r.running, r.optional)).collect::<Vec<_>>());
     let cpu_percent = rows.iter().map(|r| r.cpu_percent).sum();
     let ram_mb = rows.iter().map(|r| r.ram_mb).sum();
     let (cpu_cores, ram_total_mb) = {
@@ -100,12 +101,20 @@ pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
     Ok(GlobalStatus { summary, running, total, cpu_percent, cpu_cores, ram_mb, ram_total_mb })
 }
 
-/// Reduce live per-service running flags to the footer's running/total/summary.
-/// Pure (no locks/DB) so it is unit-testable and pins the invariant: "running"
-/// counts RUNNING SERVICES, never site DB rows.
-fn summarize(running_flags: &[bool]) -> (u32, u32, &'static str) {
-    let total = running_flags.len() as u32;
-    let running = running_flags.iter().filter(|r| **r).count() as u32;
+/// Reduce live per-service `(running, optional)` flags to the footer's
+/// running/total/summary. Pure (no locks/DB) so it is unit-testable. Pins two
+/// invariants: "running" counts RUNNING SERVICES, never site DB rows; and an
+/// OPTIONAL service (a user-toggled engine like Postgres, which Start-all
+/// never starts) counts only WHILE RUNNING — otherwise a never-used engine
+/// pins the footer at "Partial" forever.
+fn summarize(flags: &[(bool, bool)]) -> (u32, u32, &'static str) {
+    let counted: Vec<bool> = flags
+        .iter()
+        .filter(|(running, optional)| *running || !*optional)
+        .map(|(running, _)| *running)
+        .collect();
+    let total = counted.len() as u32;
+    let running = counted.iter().filter(|r| **r).count() as u32;
     let summary = if running == 0 {
         "stopped"
     } else if running == total {
@@ -338,15 +347,32 @@ mod tests {
     /// Services tab (services_status) can't drift apart.
     #[test]
     fn summarize_reflects_running_services_not_sites() {
+        let req = |r: bool| (r, false); // required service
         // Nothing listed → stopped.
         assert_eq!(summarize(&[]), (0, 0, "stopped"));
         // Services present but none running → stopped. (Even if a site row were
         // marked Running elsewhere, summarize never sees sites — that's the point.)
-        assert_eq!(summarize(&[false, false]), (0, 2, "stopped"));
+        assert_eq!(summarize(&[req(false), req(false)]), (0, 2, "stopped"));
         // Some running → partial — the exact case the footer used to get wrong
         // (stack up, zero sites DB-marked Running ⇒ must still be "running").
-        assert_eq!(summarize(&[true, false]), (1, 2, "partial"));
+        assert_eq!(summarize(&[req(true), req(false)]), (1, 2, "partial"));
         // All running → all.
-        assert_eq!(summarize(&[true, true]), (2, 2, "all"));
+        assert_eq!(summarize(&[req(true), req(true)]), (2, 2, "all"));
+    }
+
+    /// Pins the P1-4 fix: an optional engine (Postgres — Start-all never starts
+    /// it) counts only while running, so it can't hold the footer at "Partial".
+    #[test]
+    fn summarize_counts_optional_services_only_while_running() {
+        let opt = |r: bool| (r, true);
+        let req = |r: bool| (r, false);
+        // Full stack up, Postgres never started → ALL, not partial.
+        assert_eq!(summarize(&[req(true), req(true), opt(false)]), (2, 2, "all"));
+        // User started Postgres → it joins both counts.
+        assert_eq!(summarize(&[req(true), req(true), opt(true)]), (3, 3, "all"));
+        // Postgres running but a required service died → partial, as before.
+        assert_eq!(summarize(&[req(false), req(true), opt(true)]), (2, 3, "partial"));
+        // Only an idle optional engine listed → stopped (not divide-by-zero "all").
+        assert_eq!(summarize(&[opt(false)]), (0, 0, "stopped"));
     }
 }

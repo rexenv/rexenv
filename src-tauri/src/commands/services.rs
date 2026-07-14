@@ -31,6 +31,9 @@ pub struct ServiceStatus {
     /// it as the row's sub-line (NOT crammed into the version badge).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// True for services Start-all does NOT manage (user-toggled engines like
+    /// Postgres) — the footer counts them only while running.
+    pub optional: bool,
 }
 
 /// Group a service row by its canonical name (the manager names them).
@@ -325,6 +328,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 .as_deref()
                 .map(|minor| Some(minor) == default_minor.as_deref());
             let domain = i.name.strip_prefix("FrankenPHP ").map(str::to_string);
+            let optional = i.optional;
             let version = version.or_else(|| {
                 domain
                     .is_some()
@@ -341,6 +345,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 version,
                 is_default,
                 domain,
+                optional,
             }
         })
         .collect();
