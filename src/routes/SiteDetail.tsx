@@ -212,8 +212,28 @@ export function SiteDetail() {
               options={options}
               switchPhpPending={switchPhp.isPending}
               switchServerPending={switchServer.isPending}
-              onPhp={(v) => switchPhp.mutate(v)}
-              onServer={(s) => switchServer.mutate(s)}
+              onPhp={async (v) => {
+                // A select mis-click shouldn't silently restart the site —
+                // confirm, naming exactly what changes (P2-6).
+                if (v === site.phpVersion) return;
+                const ok = await confirm({
+                  title: `Switch ${site.domain} to PHP ${v}?`,
+                  message: `Currently on PHP ${site.phpVersion}. The site restarts briefly while its config reloads.`,
+                  confirmLabel: "Switch",
+                });
+                if (ok) switchPhp.mutate(v);
+              }}
+              onServer={async (srv) => {
+                if (srv === site.webServer) return;
+                const label = (x: string) =>
+                  SERVERS.find((o) => o.value === x)?.label ?? x;
+                const ok = await confirm({
+                  title: `Switch ${site.domain} from ${label(site.webServer)} to ${label(srv)}?`,
+                  message: "The site restarts briefly while it moves to the other server.",
+                  confirmLabel: "Switch",
+                });
+                if (ok) switchServer.mutate(srv);
+              }}
               onDatabase={() => navigate("/databases")}
               onTerminal={() => navigate(`/sites/${site.id}/terminal`)}
               onViewLogs={() => navigate(`/sites/${site.id}/logs`)}
