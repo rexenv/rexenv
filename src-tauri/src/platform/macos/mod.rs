@@ -969,6 +969,63 @@ impl ShellRunner for MacosShell {
             Err(Error::Other(format!("`open -R {path}` failed: {status}")))
         }
     }
+
+    fn detect_editors(&self) -> Vec<crate::platform::traits::EditorApp> {
+        MacosShell::EDITORS
+            .iter()
+            .filter(|(_, _, app)| Self::app_installed(app))
+            .map(|(id, name, _)| crate::platform::traits::EditorApp {
+                id: (*id).to_string(),
+                name: (*name).to_string(),
+            })
+            .collect()
+    }
+
+    fn open_in_editor(&self, editor_id: &str, path: &str) -> Result<()> {
+        let (_, name, app) = MacosShell::EDITORS
+            .iter()
+            .find(|(id, _, _)| *id == editor_id)
+            .ok_or_else(|| Error::Other(format!("unknown editor: {editor_id}")))?;
+        if !Self::app_installed(app) {
+            return Err(Error::Other(format!("{name} is not installed anymore")));
+        }
+        // `open -a <App> <folder>` opens the folder as a project/workspace in
+        // every editor on the list (VS Code window, PhpStorm project, …).
+        let status = std::process::Command::new("open").args(["-a", app, path]).status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("`open -a {app}` failed: {status}")))
+        }
+    }
+}
+
+impl MacosShell {
+    /// Editors we can detect: (stable id, display name, .app bundle name).
+    /// Ordered by rough popularity — the first detected one is the default.
+    const EDITORS: &'static [(&'static str, &'static str, &'static str)] = &[
+        ("vscode", "Visual Studio Code", "Visual Studio Code"),
+        ("cursor", "Cursor", "Cursor"),
+        ("phpstorm", "PhpStorm", "PhpStorm"),
+        ("windsurf", "Windsurf", "Windsurf"),
+        ("zed", "Zed", "Zed"),
+        ("sublime", "Sublime Text", "Sublime Text"),
+        ("webstorm", "WebStorm", "WebStorm"),
+        ("vscodium", "VSCodium", "VSCodium"),
+        ("nova", "Nova", "Nova"),
+        ("textmate", "TextMate", "TextMate"),
+    ];
+
+    /// An app bundle exists in /Applications or ~/Applications.
+    fn app_installed(app: &str) -> bool {
+        let bundle = format!("{app}.app");
+        if Path::new("/Applications").join(&bundle).exists() {
+            return true;
+        }
+        directories::BaseDirs::new()
+            .map(|b| b.home_dir().join("Applications").join(&bundle).exists())
+            .unwrap_or(false)
+    }
 }
 
 pub struct MacosBinaryProvider;

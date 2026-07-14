@@ -139,6 +139,21 @@ pub fn reveal_path(state: State<'_, AppState>, path: String) -> Result<()> {
     state.platform.shell().reveal(&path)
 }
 
+/// Code editors installed on this machine, detection-ordered (first = default
+/// when no `preferred_editor` setting is stored). Empty = none found.
+#[tauri::command]
+pub fn list_editors(state: State<'_, AppState>) -> Vec<crate::platform::traits::EditorApp> {
+    state.platform.shell().detect_editors()
+}
+
+/// Open a site's folder as a PROJECT in the given detected editor ("Open in
+/// editor", Sites row menu). The honest no-editor fallback lives in the UI —
+/// this command errors rather than silently opening Finder.
+#[tauri::command]
+pub fn open_in_editor(state: State<'_, AppState>, editor_id: String, path: String) -> Result<()> {
+    state.platform.shell().open_in_editor(&editor_id, &path)
+}
+
 // ── DNS & SSL + autostart (Settings, §11.1) ──────────────────────────────────
 
 /// DNS resolver health for the Settings indicator (mirrors the frontend `DnsStatus`).

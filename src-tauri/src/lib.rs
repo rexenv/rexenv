@@ -449,6 +449,8 @@ pub fn run() {
             commands::system::global_status,
             commands::system::open_external,
             commands::system::reveal_path,
+            commands::system::list_editors,
+            commands::system::open_in_editor,
             commands::system::dns_status,
             commands::system::system_setup,
             commands::system::trust_local_ca,

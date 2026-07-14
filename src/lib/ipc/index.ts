@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -212,6 +212,20 @@ export async function applyPhpSettings(
 ): Promise<void> {
   if (!isTauri()) return;
   await invoke("apply_php_settings", { minor, settings });
+}
+
+/** Code editors installed on this machine, detection-ordered (first = default
+ *  when no preferred_editor setting is stored). Empty outside Tauri. */
+export async function listEditors(): Promise<EditorApp[]> {
+  if (!isTauri()) return [];
+  return invoke<EditorApp[]>("list_editors");
+}
+
+/** Open a folder as a PROJECT in a detected editor. Errors when the editor is
+ *  gone — the honest no-editor fallback is the caller's job. */
+export async function openInEditor(editorId: string, path: string): Promise<void> {
+  if (!isTauri()) throw new Error("Opening an editor requires the rexenv desktop app.");
+  await invoke("open_in_editor", { editorId, path });
 }
 
 /** Open a path or URL in the OS default handler (Finder / browser). Falls back

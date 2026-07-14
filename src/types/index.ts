@@ -334,6 +334,12 @@ export interface DnsStatus {
   caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
 }
 
+/** A detected code editor (mirrors the Rust EditorApp DTO). */
+export interface EditorApp {
+  id: string; // stable key stored as the preferred_editor setting
+  name: string; // display name, e.g. "Visual Studio Code"
+}
+
 /** Firefox trust state (mirrors the Rust FirefoxTrustStatus DTO). Firefox keeps
  *  its OWN trust store: our keychain CA is only honored when its OS-roots
  *  import pref is on (default since Firefox 120; rexenv forces it per profile). */

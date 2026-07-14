@@ -218,6 +218,29 @@ pub trait ShellRunner: Send + Sync {
     /// Reveal a file in the OS file manager with the file selected (not opened).
     /// macOS: `open -R <path>`.
     fn reveal(&self, path: &str) -> Result<()>;
+
+    /// Code editors installed on this machine ("Open in editor", §1.3).
+    /// Default: none — Windows/Linux fill this in Phase 4.
+    fn detect_editors(&self) -> Vec<EditorApp> {
+        Vec::new()
+    }
+
+    /// Open `path` as a PROJECT in the editor with [`EditorApp::id`] (macOS:
+    /// `open -a <app> <path>` — every mainstream editor treats a folder argument
+    /// as a project/workspace). Errors if the editor is not installed.
+    fn open_in_editor(&self, _editor_id: &str, _path: &str) -> Result<()> {
+        Err(crate::error::Error::Unsupported("open_in_editor"))
+    }
+}
+
+/// A detected code editor (`ShellRunner::detect_editors`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorApp {
+    /// Stable key stored as the `preferred_editor` setting (e.g. "vscode").
+    pub id: String,
+    /// Display name (e.g. "Visual Studio Code").
+    pub name: String,
 }
 
 /// Target architecture, used by `BinaryProvider` to pick the right artifact.

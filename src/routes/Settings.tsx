@@ -18,6 +18,7 @@ import {
   getPhpSettings,
   getSetting,
   listBlueprints,
+  listEditors,
   listPhpVersions,
   openExternal,
   pickFolder,
@@ -140,6 +141,20 @@ function GeneralPrefsCard() {
     onError: (e) => toastBackendError(e),
   });
 
+  // "Open in editor" target (Sites row menu). Auto = first detected editor.
+  const { data: editors = [] } = useQuery({ queryKey: ["editors"], queryFn: listEditors });
+  const { data: preferredEditor } = useQuery({
+    queryKey: ["setting", "preferred_editor"],
+    queryFn: () => getSetting("preferred_editor"),
+  });
+  const currentEditor =
+    editors.find((e) => e.id === preferredEditor)?.id ?? editors[0]?.id ?? "";
+  const saveEditor = useMutation({
+    mutationFn: (id: string) => setSetting("preferred_editor", id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["setting", "preferred_editor"] }),
+    onError: (e) => toastBackendError(e),
+  });
+
   const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
   // The RAW setting (null/blank = using the computed default) — drives the
   // "Reset to default" affordance, which is only shown for a custom folder.
@@ -176,6 +191,34 @@ function GeneralPrefsCard() {
             </option>
           ))}
         </select>
+      </div>
+      <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">
+        <div className="flex-1">
+          <div className="text-[13.5px] font-medium text-rex-text">Code editor</div>
+          <div className="mt-0.5 text-[12px] text-rex-text-muted">
+            "Open in editor" opens a site's folder as a project here.
+          </div>
+        </div>
+        {editors.length === 0 ? (
+          <span
+            className="font-mono text-[11.5px] text-rex-text-muted"
+            title="Looked in /Applications and ~/Applications for VS Code, Cursor, PhpStorm, Windsurf, Zed, Sublime Text, WebStorm, VSCodium, Nova and TextMate."
+          >
+            No code editor detected
+          </span>
+        ) : (
+          <select
+            value={currentEditor}
+            onChange={(e) => saveEditor.mutate(e.target.value)}
+            className="h-[34px] max-w-[220px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
+          >
+            {editors.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="flex items-center gap-[14px] py-[15px]">
         <div className="min-w-0 flex-1">

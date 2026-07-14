@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { toastBackendError } from "@/lib/toast";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, LayoutDashboard, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
+import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
+import { WordPressIcon } from "@/components/common/WordPressIcon";
+import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
@@ -12,7 +13,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources } from "@/lib/ipc";
+import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources } from "@/lib/ipc";
 import type { Site, SiteResources } from "@/types";
 
 /** Compact bytes for the per-site DB size. */
@@ -142,6 +143,21 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
   );
 }
 
+/** The editor "Open in editor" targets: the preferred_editor setting when it is
+ *  still installed, else the first detected editor, else null (no editor). */
+function usePreferredEditor() {
+  const { data: editors = [] } = useQuery({
+    queryKey: ["editors"],
+    queryFn: listEditors,
+    staleTime: 60_000,
+  });
+  const { data: preferred } = useQuery({
+    queryKey: ["setting", "preferred_editor"],
+    queryFn: () => getSetting("preferred_editor"),
+  });
+  return editors.find((e) => e.id === preferred) ?? editors[0] ?? null;
+}
+
 function SiteRow({
   site,
   status,
@@ -165,6 +181,7 @@ function SiteRow({
 }) {
   const t = siteTypeMeta(site.type);
   const [copied, setCopied] = useState(false);
+  const editor = usePreferredEditor();
   return (
     <div
       role="button"
@@ -233,7 +250,7 @@ function SiteRow({
             title="Manage WordPress"
             onClick={onOpenWordpress}
           >
-            <LayoutDashboard className="h-4 w-4" />
+            <WordPressIcon className="h-4 w-4" />
           </Button>
         )}
       </div>
@@ -273,9 +290,21 @@ function SiteRow({
         </MenuItem>
         <MenuItem
           icon={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-          onSelect={() => openExternal(site.path)}
+          onSelect={() => {
+            // Open the whole site folder as a PROJECT in the user's editor
+            // (preferred_editor setting, else first detected). No editor →
+            // say so honestly and reveal the folder instead.
+            if (editor) {
+              openInEditor(editor.id, site.path).catch(toastBackendError);
+            } else {
+              toast.info(
+                "No code editor found (VS Code, Cursor, PhpStorm, Zed, Sublime…) — opening the folder in Finder instead.",
+              );
+              void openExternal(site.path);
+            }
+          }}
         >
-          Open in editor
+          {editor ? `Open in ${editor.name}` : "Open in editor"}
         </MenuItem>
         <MenuItem
           icon={<Link className="h-[15px] w-[15px]" strokeWidth={1.7} />}
