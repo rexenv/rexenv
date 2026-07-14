@@ -112,7 +112,10 @@ async fn main() {
     }
     let fresh = !mariadb::is_initialized(&mariadb::data_dir(&*plat).unwrap());
     println!("  datadir fresh (bootstrap will run) = {fresh}");
-    let mut child = DbEngine::Mariadb.start(&*plat).await.expect("start mariadb");
+    let mut child = DbEngine::Mariadb
+        .start(&*plat, DbEngine::Mariadb.default_version())
+        .await
+        .expect("start mariadb");
     let pid = child.id();
     let mut up = false;
     for _ in 0..60 {

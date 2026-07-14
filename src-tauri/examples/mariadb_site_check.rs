@@ -50,14 +50,14 @@ async fn main() {
         .await
         .expect("wp-cli");
     let engine = DbEngine::Mariadb;
-    let (client, dump_bin) = engine.sql_client_bins(&*plat).await.expect("mariadb bins");
+    let (client, dump_bin) = engine.sql_client_bins(&*plat, engine.default_version()).await.expect("mariadb bins");
 
     println!("=== engine up (bootstrap on first run) ===");
     if let Err(e) = ports::ensure_free(&*plat, engine.port(), ports::Proto::Tcp, "MariaDB") {
         eprintln!("  port {} busy — {e}", engine.port());
         std::process::exit(1);
     }
-    let mut child = engine.start(&*plat).await.expect("start mariadb");
+    let mut child = engine.start(&*plat, engine.default_version()).await.expect("start mariadb");
     let pid = child.id();
     for _ in 0..60 {
         if engine.running() {

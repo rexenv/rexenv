@@ -62,9 +62,16 @@ type PhpSettingsMap = std::collections::HashMap<String, Vec<(String, String)>>;
 
 /// Snapshot the site list + installed PHP minors + per-version ini settings +
 /// per-site env vars (locking the DB briefly, never across `.await`).
+#[allow(clippy::type_complexity)] // one snapshot tuple, unpacked immediately
 fn start_inputs(
     state: &State<'_, AppState>,
-) -> Result<(Vec<crate::state::models::Site>, Vec<String>, PhpSettingsMap, PhpSettingsMap)> {
+) -> Result<(
+    Vec<crate::state::models::Site>,
+    Vec<String>,
+    PhpSettingsMap,
+    PhpSettingsMap,
+    std::collections::HashMap<crate::core::db::DbEngine, String>,
+)> {
     let conn = state
         .db
         .lock()
@@ -73,20 +80,26 @@ fn start_inputs(
     let minors = core::php::installed_minors(&conn)?;
     let php_settings = crate::state::store::all_php_settings(&conn)?;
     let site_env = crate::state::store::all_site_env(&conn)?;
-    Ok((sites, minors, php_settings, site_env))
+    let db_versions = crate::core::db::DbEngine::ALL
+        .into_iter()
+        .filter(|e| e.available())
+        .map(|e| (e, e.effective_version(&conn)))
+        .collect::<std::collections::HashMap<_, _>>();
+    Ok((sites, minors, php_settings, site_env, db_versions))
 }
 
 /// Start the shared stack (MySQL + a php-fpm pool per installed PHP version +
 /// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
 pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
-    let (sites, php_minors, php_settings, site_env) = start_inputs(&state)?;
+    let (sites, php_minors, php_settings, site_env, db_versions) = start_inputs(&state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
     // one through the download hub — real progress events for the UI, EVERY
     // failure surfaced (not just the first), and no download ever streams while
     // the services lock is held (status polls stay live on a cold first run).
     // After this, the resolves inside start_core are cache hits.
-    let plan = core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors);
+    let plan =
+        core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors, &db_versions);
     core::downloads::prefetch(state.platform.as_ref(), "Start all", &plan).await?;
     // Phase 1 (locked): spawn everything except the edge; collect the readiness
     // probes + Caddyfile. Spawning is fast — no waiting happens under the lock.
@@ -96,6 +109,7 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
         // per-site env vars feed the nginx/FrankenPHP configs (§1.6).
         mgr.set_php_settings(php_settings);
         mgr.set_site_env(site_env);
+        mgr.set_db_versions(db_versions);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors)
             .await?
     };
@@ -226,9 +240,10 @@ pub async fn auto_start_services(app: tauri::AppHandle) {
 /// `Ok(None)` = everything started; `Ok(Some(note))` = started with a caveat
 /// (edge skipped); `Err` = aborted (nothing/partial started, reason inside).
 async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>> {
-    let (sites, php_minors, php_settings, site_env) = start_inputs(state)?;
+    let (sites, php_minors, php_settings, site_env, db_versions) = start_inputs(state)?;
     // Guard 1: strictly offline. Every needed binary must already be cached.
-    let plan = core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors);
+    let plan =
+        core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors, &db_versions);
     let missing: Vec<&str> =
         plan.iter().filter(|p| !p.cached).map(|p| p.name.as_str()).collect();
     if !missing.is_empty() {
@@ -241,6 +256,7 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         let mut mgr = state.services.lock().await;
         mgr.set_php_settings(php_settings);
         mgr.set_site_env(site_env);
+        mgr.set_db_versions(db_versions);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors).await?
     };
     core::service_manager::await_ready(checks).await?;

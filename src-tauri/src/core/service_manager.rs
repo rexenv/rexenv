@@ -86,6 +86,8 @@ pub struct EdgePlan {
 #[derive(Debug, Clone)]
 pub struct DbInfo {
     pub engine: DbEngine,
+    /// The version `spawn_db` runs / would run (the selected one).
+    pub version: String,
     pub running: bool,
     pub pid: Option<u32>,
 }
@@ -157,6 +159,10 @@ pub struct ServiceManager {
     /// command (mirrors `php_settings`). Source for the per-site nginx
     /// `fastcgi_param` lines and FrankenPHP `env` lines.
     site_env: HashMap<String, Vec<(String, String)>>,
+    /// Selected version per DB engine (per-engine version switch) — a mirror
+    /// of the `db_version_<engine>` settings, refreshed by commands like
+    /// `site_env`. Absent entry = the engine's default pin.
+    db_versions: HashMap<DbEngine, String>,
 }
 
 /// Which override server a site runs (`None` for shared-nginx sites).
@@ -214,6 +220,7 @@ impl ServiceManager {
             edge_dead_polls: 0,
             php_settings: HashMap::new(),
             site_env: HashMap::new(),
+            db_versions: HashMap::new(),
         }
     }
 
@@ -228,6 +235,27 @@ impl ServiceManager {
     /// Load the per-site env vars (from SQLite, keyed by site id) into the
     /// manager. Like `set_php_settings`, the map is handed in so this stays
     /// DB-agnostic. Takes effect at the next reload/start.
+    /// Replace the selected-DB-version mirror (from settings, at start/adopt/
+    /// switch time). The watchdog's respawn reads it, so a crashed engine
+    /// comes back on the SELECTED version.
+    pub fn set_db_versions(&mut self, versions: HashMap<DbEngine, String>) {
+        self.db_versions = versions;
+    }
+
+    /// Update ONE engine's mirrored selection (start/switch commands).
+    pub fn set_db_version(&mut self, engine: DbEngine, version: &str) {
+        self.db_versions.insert(engine, version.to_string());
+    }
+
+    /// The version `spawn_db` will run for an engine: the mirrored selection,
+    /// else the default pin.
+    pub fn db_version(&self, engine: DbEngine) -> String {
+        self.db_versions
+            .get(&engine)
+            .cloned()
+            .unwrap_or_else(|| engine.default_version().to_string())
+    }
+
     pub fn set_site_env(&mut self, env: HashMap<String, Vec<(String, String)>>) {
         self.site_env = env;
     }
@@ -271,7 +299,7 @@ impl ServiceManager {
             return Ok(None);
         }
         ports::ensure_free(platform, engine.port(), ports::Proto::Tcp, engine.label())?;
-        let child = engine.start(platform).await?;
+        let child = engine.start(platform, &self.db_version(engine)).await?;
         self.dbs.insert(engine, child.into());
         Ok(Some(ReadyCheck {
             service: engine.label().to_string(),
@@ -307,6 +335,7 @@ impl ServiceManager {
             .filter(|e| e.available())
             .map(|engine| DbInfo {
                 engine,
+                version: self.db_version(engine),
                 // "running" means an engine WE started this session is alive — not a
                 // bare port-listen (a foreign/system DB on the port doesn't count),
                 // so status is honest and Stop acts only on ours (task 2.2 / H2).

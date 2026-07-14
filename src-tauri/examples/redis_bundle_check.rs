@@ -85,7 +85,10 @@ async fn main() {
         eprintln!("  port {port} busy — {e}");
         std::process::exit(1);
     }
-    let mut child = DbEngine::Redis.start(&*plat).await.expect("start redis");
+    let mut child = DbEngine::Redis
+        .start(&*plat, DbEngine::Redis.default_version())
+        .await
+        .expect("start redis");
     let pid = child.id();
     let mut up = false;
     for _ in 0..40 {

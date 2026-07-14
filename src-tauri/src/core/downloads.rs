@@ -189,14 +189,23 @@ pub fn plan_for_start(
     platform: &dyn Platform,
     sites: &[Site],
     php_minors: &[String],
+    db_versions: &std::collections::HashMap<DbEngine, String>,
 ) -> Vec<PlannedBinary> {
+    let db_ver = |e: DbEngine| -> String {
+        db_versions
+            .get(&e)
+            .cloned()
+            .unwrap_or_else(|| e.default_version().to_string())
+    };
+    let mysql_version = db_ver(DbEngine::Mysql);
     let mut set: Vec<(&str, &str)> = vec![
         ("caddy", binaries::CADDY_VERSION),
         ("nginx", binaries::NGINX_VERSION),
-        ("mysql", binaries::MYSQL_VERSION),
+        ("mysql", &mysql_version),
         ("mailpit", binaries::MAILPIT_VERSION),
         ("adminer", binaries::ADMINER_VERSION),
     ];
+    let mariadb_version = db_ver(DbEngine::Mariadb);
     let mut minors = php_minors.to_vec();
     let default_minor = php::minor_of(binaries::PHP_VERSION);
     if !minors.contains(&default_minor) {
@@ -214,7 +223,7 @@ pub fn plan_for_start(
         set.push(("httpd", binaries::HTTPD_VERSION));
     }
     if sites.iter().any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb)) {
-        set.push(("mariadb", binaries::MARIADB_VERSION));
+        set.push(("mariadb", &mariadb_version));
     }
     set.into_iter()
         .map(|(n, v)| PlannedBinary::new(platform, n, v))
@@ -223,17 +232,12 @@ pub fn plan_for_start(
 
 /// The binary set for starting one DB engine on demand. Empty for engines
 /// without a pinned portable build (their spawn errors with the real message).
-pub fn plan_for_engine(platform: &dyn Platform, engine: DbEngine) -> Vec<PlannedBinary> {
-    match engine {
-        DbEngine::Mysql => vec![PlannedBinary::new(platform, "mysql", binaries::MYSQL_VERSION)],
-        DbEngine::Postgres => {
-            vec![PlannedBinary::new(platform, "postgres", binaries::POSTGRES_VERSION)]
-        }
-        DbEngine::Redis => vec![PlannedBinary::new(platform, "redis", binaries::REDIS_VERSION)],
-        DbEngine::Mariadb => {
-            vec![PlannedBinary::new(platform, "mariadb", binaries::MARIADB_VERSION)]
-        }
-    }
+pub fn plan_for_engine(
+    platform: &dyn Platform,
+    engine: DbEngine,
+    version: &str,
+) -> Vec<PlannedBinary> {
+    vec![PlannedBinary::new(platform, engine.key(), version)]
 }
 
 /// The binary set for installing a PHP version: its FPM build (the pool) plus
@@ -689,7 +693,8 @@ mod tests {
     #[test]
     fn plan_for_start_covers_stack_pools_and_conditional_frankenphp() {
         let plat = crate::platform::current();
-        let plan = plan_for_start(&*plat, &[site(WebServer::Nginx)], &["8.1".into()]);
+        let plan =
+            plan_for_start(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default());
         let names: Vec<(&str, &str)> = plan
             .iter()
             .map(|p| (p.name.as_str(), p.version.as_str()))
@@ -712,7 +717,8 @@ mod tests {
         // No FrankenPHP: no site overrides to it.
         assert!(!names.iter().any(|(n, _)| *n == "frankenphp"));
 
-        let plan = plan_for_start(&*plat, &[site(WebServer::Frankenphp)], &[]);
+        let plan =
+            plan_for_start(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default());
         assert!(plan.iter().any(|p| p.name == "frankenphp"));
     }
 

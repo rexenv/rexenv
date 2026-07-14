@@ -34,7 +34,7 @@ impl From<&PlannedBinary> for PlannedInfo {
 /// The Start-all binary plan (brief DB lock for sites + installed PHP minors,
 /// never held across an await).
 fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
-    let (sites, minors) = {
+    let (sites, minors, db_versions) = {
         let conn = state
             .db
             .lock()
@@ -42,9 +42,14 @@ fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
         (
             crate::core::sites::list(&conn)?,
             crate::core::php::installed_minors(&conn)?,
+            crate::core::db::DbEngine::ALL
+                .into_iter()
+                .filter(|e| e.available())
+                .map(|e| (e, e.effective_version(&conn)))
+                .collect::<std::collections::HashMap<_, _>>(),
         )
     };
-    Ok(downloads::plan_for_start(state.platform.as_ref(), &sites, &minors))
+    Ok(downloads::plan_for_start(state.platform.as_ref(), &sites, &minors, &db_versions))
 }
 
 /// The core binary set (the Start-all plan) with cached flags — the onboarding

@@ -96,7 +96,8 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
             .into_iter()
             .filter(|e| e.running())
             .filter_map(|e| {
-                let client = e.cached_sql_client(state.platform.as_ref())?;
+                let version = super::database::effective_db_version(&state, e).ok()?;
+                let client = e.cached_sql_client(state.platform.as_ref(), &version)?;
                 let sizes = core::database::db_sizes(&client, e.port()).ok()?;
                 Some((e.key(), sizes.into_iter().collect()))
             })
@@ -224,8 +225,13 @@ pub async fn create_site(
         plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), created.web_server));
     }
     let engine = DbEngine::from_site(created.db_engine);
+    let engine_version = super::database::effective_db_version(&state, engine)?;
     if matches!(created.site_type, SiteType::Wordpress) {
-        plan.extend(core::downloads::plan_for_engine(state.platform.as_ref(), engine));
+        plan.extend(core::downloads::plan_for_engine(
+            state.platform.as_ref(),
+            engine,
+            &engine_version,
+        ));
         plan.extend(core::downloads::plan_for_wp_tooling(state.platform.as_ref(), &minor));
     }
     core::downloads::prefetch(state.platform.as_ref(), "Create site", &plan).await?;
@@ -247,7 +253,8 @@ pub async fn create_site(
             binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
                 .await?;
         let db_host = format!("127.0.0.1:{}", engine.port());
-        let (db_client, _) = engine.sql_client_bins(state.platform.as_ref()).await?;
+        let (db_client, _) =
+            engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
         let docroot = Path::new(&created.path);
         core::wordpress::install_for_site(
             &php_bin,
@@ -575,7 +582,9 @@ pub async fn change_site_domain(
                 engine.label()
             )));
         }
-        let (_, dump_bin) = engine.sql_client_bins(state.platform.as_ref()).await?;
+        let engine_version = super::database::effective_db_version(&state, engine)?;
+        let (_, dump_bin) =
+            engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
         let (php, wp) = super::wordpress::wp_tools(&state, &site.php_version).await?;
         let docroot = std::path::PathBuf::from(&site.path);
 
@@ -707,19 +716,24 @@ pub async fn delete_site(
     //    the MySQL datadir was never initialized (then no database can exist);
     //    otherwise MySQL is brought up first, exactly like site creation does.
     let engine = DbEngine::from_site(site.db_engine);
-    if matches!(site.site_type, SiteType::Wordpress) && engine.datadir_initialized(state.platform.as_ref())
+    let engine_version = super::database::effective_db_version(&state, engine)?;
+    if matches!(site.site_type, SiteType::Wordpress)
+        && engine.datadir_initialized(state.platform.as_ref(), &engine_version)
     {
         // Engine binaries cached before the locked spawn below (an initialized
         // datadir with an evicted binary cache would otherwise download under
         // the lock).
-        let plan = core::downloads::plan_for_engine(state.platform.as_ref(), engine);
+        let plan =
+            core::downloads::plan_for_engine(state.platform.as_ref(), engine, &engine_version);
         core::downloads::prefetch(state.platform.as_ref(), "Delete site", &plan).await?;
         let check = {
             let mut mgr = state.services.lock().await;
+            mgr.set_db_version(engine, &engine_version);
             mgr.spawn_db(state.platform.as_ref(), engine).await?
         };
         core::service_manager::await_ready(check.into_iter().collect()).await?;
-        let (db_client, _) = engine.sql_client_bins(state.platform.as_ref()).await?;
+        let (db_client, _) =
+            engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
         core::database::drop_database(&db_client, engine.port(), &site.db_name)?;
     }
 

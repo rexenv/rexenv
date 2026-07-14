@@ -23,7 +23,7 @@ async fn bring_up(
         eprintln!("{} port busy: {e}", engine.label());
         return None;
     }
-    let child = engine.start(plat).await.expect("start via DbEngine");
+    let child = engine.start(plat, engine.default_version()).await.expect("start via DbEngine");
     let pid = child.id();
     for _ in 0..40 {
         if engine.running() {
@@ -82,7 +82,7 @@ async fn main() {
     // Deferred engines share the shape; not implemented on macOS.
     println!("\n=== deferred engines (uniform shape) ===");
     for e in [DbEngine::Mariadb] {
-        match e.start(&*plat).await {
+        match e.start(&*plat, e.default_version()).await {
             Ok(mut c) => { let _ = e.stop(&*plat, c.id()); let _ = c.wait(); println!("  {} started (unexpected)", e.label()); }
             Err(err) => println!("  {:<8} → {err}", e.label()),
         }

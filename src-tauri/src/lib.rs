@@ -570,6 +570,8 @@ pub fn run() {
             commands::database::databases_status,
             commands::database::start_database,
             commands::database::stop_database,
+            commands::database::db_engine_versions,
+            commands::database::set_db_engine_version,
             commands::settings::get_setting,
             commands::settings::set_setting,
             commands::settings::sites_folder,

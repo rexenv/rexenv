@@ -11,6 +11,7 @@ use crate::core::{binaries, database, mariadb, ports, postgres, redis};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::SiteDbEngine;
+use rusqlite::Connection;
 use std::path::PathBuf;
 use std::process::Child;
 
@@ -68,13 +69,87 @@ impl DbEngine {
         }
     }
 
-    /// The pinned version of the engine.
-    pub fn version(&self) -> &'static str {
+    /// The DEFAULT pinned version of the engine (what a fresh install runs).
+    pub fn default_version(&self) -> &'static str {
         match self {
             DbEngine::Mysql => binaries::MYSQL_VERSION,
             DbEngine::Mariadb => binaries::MARIADB_VERSION,
             DbEngine::Postgres => binaries::POSTGRES_VERSION,
             DbEngine::Redis => binaries::REDIS_VERSION,
+        }
+    }
+
+    /// All versions the engine can run (per-engine version switch), default
+    /// first. A one-entry set means the UI hides the picker.
+    pub fn versions(&self) -> &'static [&'static str] {
+        match self {
+            DbEngine::Mysql => binaries::MYSQL_VERSIONS,
+            DbEngine::Mariadb => binaries::MARIADB_VERSIONS,
+            DbEngine::Postgres => binaries::POSTGRES_VERSIONS,
+            DbEngine::Redis => binaries::REDIS_VERSIONS,
+        }
+    }
+
+    /// The settings key persisting the engine's selected version.
+    fn version_setting_key(&self) -> String {
+        format!("db_version_{}", self.key())
+    }
+
+    /// The engine's EFFECTIVE version: the stored selection when it's still an
+    /// offered pin, else the default (a selection orphaned by a pin bump falls
+    /// back safely — its per-series datadir stays on disk, never deleted).
+    pub fn effective_version(&self, conn: &Connection) -> String {
+        crate::state::store::get_setting(conn, &self.version_setting_key())
+            .ok()
+            .flatten()
+            .filter(|v| self.versions().contains(&v.as_str()))
+            .unwrap_or_else(|| self.default_version().to_string())
+    }
+
+    /// Persist the engine's selected version (validated against the offered set).
+    pub fn set_version(&self, conn: &Connection, version: &str) -> Result<()> {
+        if !self.versions().contains(&version) {
+            return Err(Error::Other(format!(
+                "{} {version} is not an offered version",
+                self.label()
+            )));
+        }
+        crate::state::store::set_setting(conn, &self.version_setting_key(), version)
+    }
+
+    /// The datadir SERIES a version belongs to — each series keeps its OWN
+    /// datadir (never an in-place upgrade/downgrade: PG major datadirs are
+    /// mutually incompatible, MySQL/MariaDB downgrades unsupported). MySQL/
+    /// MariaDB/Redis key on major.minor; PostgreSQL on the major.
+    pub fn series_of(&self, version: &str) -> String {
+        let mut it = version.split('.');
+        let major = it.next().unwrap_or_default();
+        match self {
+            DbEngine::Postgres => major.to_string(),
+            _ => format!("{major}.{}", it.next().unwrap_or_default()),
+        }
+    }
+
+    /// The datadir for a VERSION: the default pin's series keeps the legacy
+    /// path (`<engine>/data` — existing installs are never moved), other
+    /// series live under `<engine>/<series>/data`.
+    pub fn data_dir(&self, platform: &dyn Platform, version: &str) -> Result<PathBuf> {
+        let legacy = match self {
+            DbEngine::Mysql => database::data_dir(platform)?,
+            DbEngine::Mariadb => mariadb::data_dir(platform)?,
+            DbEngine::Postgres => postgres::data_dir(platform)?,
+            DbEngine::Redis => redis::data_dir(platform)?,
+        };
+        let series = self.series_of(version);
+        if series == self.series_of(self.default_version()) {
+            Ok(legacy)
+        } else {
+            Ok(platform
+                .paths()
+                .app_data_dir()?
+                .join(self.key())
+                .join(series)
+                .join("data"))
         }
     }
 
@@ -112,18 +187,20 @@ impl DbEngine {
 
     /// Resolve the bundled SQL `(client, dump)` binaries for site DB
     /// operations (create/drop/import/export/sizes — the bundled-client rule:
-    /// never a PATH client). Only the site-capable engines have them.
-    pub async fn sql_client_bins(&self, platform: &dyn Platform) -> Result<(PathBuf, PathBuf)> {
+    /// never a PATH client), from the engine's SELECTED version's tree so the
+    /// client always matches the running server. Site-capable engines only.
+    pub async fn sql_client_bins(
+        &self,
+        platform: &dyn Platform,
+        version: &str,
+    ) -> Result<(PathBuf, PathBuf)> {
         match self {
             DbEngine::Mysql => {
-                let base =
-                    binaries::resolve_dir(platform, "mysql", binaries::MYSQL_VERSION).await?;
+                let base = binaries::resolve_dir(platform, "mysql", version).await?;
                 Ok((base.join("bin/mysql"), base.join("bin/mysqldump")))
             }
             DbEngine::Mariadb => {
-                let base =
-                    binaries::resolve_bundle(platform, "mariadb", binaries::MARIADB_VERSION)
-                        .await?;
+                let base = binaries::resolve_bundle(platform, "mariadb", version).await?;
                 Ok((mariadb::mariadb_client_bin(&base), mariadb::mariadb_dump_bin(&base)))
             }
             other => Err(Error::Other(format!(
@@ -136,43 +213,40 @@ impl DbEngine {
     /// The SQL client from an ALREADY-published cache — strictly offline, for
     /// status-poll paths (the per-site DB-size query) where triggering a
     /// download is wrong. `None` when uncached or not a site engine.
-    pub fn cached_sql_client(&self, platform: &dyn Platform) -> Option<PathBuf> {
+    pub fn cached_sql_client(&self, platform: &dyn Platform, version: &str) -> Option<PathBuf> {
         let bin_dir = platform.paths().bin_dir().ok()?;
         let client = match self {
-            DbEngine::Mysql => bin_dir
-                .join(format!("mysql-{}", binaries::MYSQL_VERSION))
-                .join("bin/mysql"),
-            DbEngine::Mariadb => bin_dir
-                .join(format!("mariadb-{}", binaries::MARIADB_VERSION))
-                .join("bin/mariadb"),
+            DbEngine::Mysql => bin_dir.join(format!("mysql-{version}")).join("bin/mysql"),
+            DbEngine::Mariadb => {
+                bin_dir.join(format!("mariadb-{version}")).join("bin/mariadb")
+            }
             _ => return None,
         };
         client.is_file().then_some(client)
     }
 
-    /// Whether this engine's datadir was ever initialized — the delete-site
-    /// guard ("no datadir ⇒ no database can exist ⇒ nothing to drop").
-    pub fn datadir_initialized(&self, platform: &dyn Platform) -> bool {
+    /// Whether the engine's datadir FOR A VERSION was ever initialized — the
+    /// delete-site guard ("no datadir ⇒ no database can exist ⇒ nothing to
+    /// drop").
+    pub fn datadir_initialized(&self, platform: &dyn Platform, version: &str) -> bool {
+        let Ok(datadir) = self.data_dir(platform, version) else {
+            return false;
+        };
         match self {
-            DbEngine::Mysql => database::data_dir(platform)
-                .map(|d| database::is_initialized(&d))
-                .unwrap_or(false),
-            DbEngine::Mariadb => mariadb::data_dir(platform)
-                .map(|d| mariadb::is_initialized(&d))
-                .unwrap_or(false),
+            DbEngine::Mysql => database::is_initialized(&datadir),
+            DbEngine::Mariadb => mariadb::is_initialized(&datadir),
             _ => false,
         }
     }
 
-    /// Resolve the binary, initialize its data dir if needed, and start the
-    /// server (foreground, supervised) on its port. Returns the child handle.
-    /// MySQL delegates to `core::database`; the others land in §5.2–§5.4.
-    pub async fn start(&self, platform: &dyn Platform) -> Result<Child> {
+    /// Resolve the binary for `version`, initialize that version-series'
+    /// datadir if needed, and start the server (foreground, supervised) on the
+    /// engine's port. Returns the child handle.
+    pub async fn start(&self, platform: &dyn Platform, version: &str) -> Result<Child> {
+        let datadir = self.data_dir(platform, version)?;
         match self {
             DbEngine::Mysql => {
-                let basedir =
-                    binaries::resolve_dir(platform, "mysql", binaries::MYSQL_VERSION).await?;
-                let datadir = database::data_dir(platform)?;
+                let basedir = binaries::resolve_dir(platform, "mysql", version).await?;
                 let socket = database::socket_path(platform)?;
                 if let Some(parent) = socket.parent() {
                     std::fs::create_dir_all(parent)?;
@@ -181,25 +255,18 @@ impl DbEngine {
                 database::start(platform, &basedir, &datadir, self.port(), &socket)
             }
             DbEngine::Postgres => {
-                let basedir =
-                    binaries::resolve_dir(platform, "postgres", binaries::POSTGRES_VERSION).await?;
-                let datadir = postgres::data_dir(platform)?;
+                let basedir = binaries::resolve_dir(platform, "postgres", version).await?;
                 postgres::initialize(platform, &basedir, &datadir)?;
                 postgres::start(platform, &basedir, &datadir, self.port())
             }
             DbEngine::Mariadb => {
-                let basedir =
-                    binaries::resolve_bundle(platform, "mariadb", binaries::MARIADB_VERSION)
-                        .await?;
-                let datadir = mariadb::data_dir(platform)?;
+                let basedir = binaries::resolve_bundle(platform, "mariadb", version).await?;
                 let socket = mariadb::socket_path(platform)?;
                 mariadb::initialize(platform, &basedir, &datadir)?;
                 mariadb::start(platform, &basedir, &datadir, self.port(), &socket)
             }
             DbEngine::Redis => {
-                let basedir =
-                    binaries::resolve_bundle(platform, "redis", binaries::REDIS_VERSION).await?;
-                let datadir = redis::data_dir(platform)?;
+                let basedir = binaries::resolve_bundle(platform, "redis", version).await?;
                 redis::start(platform, &basedir, &datadir, self.port())
             }
         }
@@ -239,6 +306,52 @@ mod tests {
     }
 
     #[test]
+    fn version_series_and_datadirs_are_per_series() {
+        // Series keys: PG by major (its datadirs are major-incompatible),
+        // the MySQL-protocol engines by major.minor.
+        assert_eq!(DbEngine::Postgres.series_of("18.4.0"), "18");
+        assert_eq!(DbEngine::Postgres.series_of("17.10.0"), "17");
+        assert_eq!(DbEngine::Mysql.series_of("8.0.44"), "8.0");
+        assert_eq!(DbEngine::Mysql.series_of("8.4.6"), "8.4");
+        assert_eq!(DbEngine::Mariadb.series_of("11.4.12"), "11.4");
+
+        let plat = crate::platform::current();
+        // The default series keeps the LEGACY path — existing data never moves.
+        let default_dir = DbEngine::Mysql
+            .data_dir(&*plat, DbEngine::Mysql.default_version())
+            .unwrap();
+        assert!(default_dir.ends_with("mysql/data"), "{}", default_dir.display());
+        // A non-default series gets its own dir under <engine>/<series>/data.
+        let lts = DbEngine::Mysql.data_dir(&*plat, "8.0.44").unwrap();
+        assert!(lts.ends_with("mysql/8.0/data"), "{}", lts.display());
+        assert_ne!(default_dir, lts);
+        let pg17 = DbEngine::Postgres.data_dir(&*plat, "17.10.0").unwrap();
+        assert!(pg17.ends_with("postgres/17/data"), "{}", pg17.display());
+    }
+
+    #[test]
+    fn effective_version_persists_validates_and_falls_back() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        // Unset → the default pin.
+        assert_eq!(
+            DbEngine::Postgres.effective_version(&conn),
+            DbEngine::Postgres.default_version()
+        );
+        // Stored + offered → the selection.
+        DbEngine::Postgres.set_version(&conn, "17.10.0").unwrap();
+        assert_eq!(DbEngine::Postgres.effective_version(&conn), "17.10.0");
+        // Not offered → refused at write.
+        assert!(DbEngine::Postgres.set_version(&conn, "15.0.0").is_err());
+        // A selection orphaned by a future pin bump falls back to the default
+        // (simulated by writing the raw setting directly).
+        crate::state::store::set_setting(&conn, "db_version_postgres", "9.9.9").unwrap();
+        assert_eq!(
+            DbEngine::Postgres.effective_version(&conn),
+            DbEngine::Postgres.default_version()
+        );
+    }
+
+    #[test]
     fn running_false_on_closed_port() {
         // Nothing should be listening on a DB port during a unit test run.
         assert!(!DbEngine::Postgres.running());
@@ -247,10 +360,11 @@ mod tests {
     #[test]
     fn availability_versions_and_key_lookup() {
         // Implemented engines are available + carry a pinned version.
-        assert!(DbEngine::Mysql.available() && !DbEngine::Mysql.version().is_empty());
-        assert!(DbEngine::Postgres.available() && !DbEngine::Postgres.version().is_empty());
-        assert!(DbEngine::Redis.available() && !DbEngine::Redis.version().is_empty());
-        assert!(DbEngine::Mariadb.available() && !DbEngine::Mariadb.version().is_empty());
+        for e in DbEngine::ALL {
+            assert!(e.available() && !e.default_version().is_empty());
+            // The default is offered, first in the set.
+            assert_eq!(e.versions().first(), Some(&e.default_version()));
+        }
         // Key round-trips.
         assert_eq!(DbEngine::from_key("postgres"), Some(DbEngine::Postgres));
         assert_eq!(DbEngine::from_key("nope"), None);
