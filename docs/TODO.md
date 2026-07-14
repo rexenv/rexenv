@@ -434,7 +434,25 @@ Each line = one feature, live-verified before its commit.
   from the bundled map ✓, `.htaccess` RewriteRule 302 ✓. 258 lib tests, clippy,
   examples, tsc. **Human verify next:** create/switch a site to Apache in-app,
   site over HTTPS, plugin `.htaccess` rules.
-- [ ] Per-engine DB version switch (multi-version DBs)
+- [x] **Per-engine DB version switch** — the family's last item. Offered sets:
+  MySQL 8.4.6/8.0.44 · PostgreSQL 18.4.0/17.10.0/16.14.0 · MariaDB 12.3.2/11.4.12 LTS
+  (Redis single — picker hides). **Per-SERIES datadirs** are the core design: never
+  an in-place upgrade/downgrade (PG major datadirs are mutually incompatible;
+  MySQL/MariaDB downgrades unsupported) — the default series keeps the legacy
+  `<engine>/data` path (existing data never moves), other series live under
+  `<engine>/<series>/data`; a selection orphaned by a pin bump falls back to the
+  default, its datadir left intact. Selection = `db_version_<engine>` settings KV
+  (validated in core, no migration); manager mirrors it (watchdog respawns on the
+  SELECTED version); every site DB op resolves the effective version's client bins;
+  Start-all prefetches the selected versions. Databases-row picker with an honest
+  confirm (per-version data dirs named; running engine restarts). ✓ 261 lib tests
+  (+ series/datadir/effective-version), clippy, examples, tsc. ✓ **Live-verified**
+  (`examples/db_version_switch_check`, Jul 15): PG 17 → fresh `postgres/17/data`,
+  marker DB created → switch to 16 → own fresh datadir, marker NOT visible
+  (isolation) → back to 17 → marker still there (data survives the round-trip);
+  MariaDB 11.4.12 + MySQL 8.0.44 resolved into the real cache and RUN (`--version`;
+  their ports were serving the live stack). **Human verify:** switch a version from
+  the Databases row in-app.
 
 FrankenPHP + PostgreSQL prove the override/engine patterns; Redis proves the BUNDLE
 pattern. **Adding a bundled DB engine:** mirror `core/redis.rs` (or `core/postgres.rs`

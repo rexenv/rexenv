@@ -943,6 +943,19 @@ export async function stopMail(): Promise<void> {
 }
 
 /** Start a database engine by key (e.g. "postgres"). No-op outside Tauri. */
+/** Offered versions per engine key (default first) for the Databases picker. */
+export async function dbEngineVersions(): Promise<Record<string, string[]>> {
+  if (!isTauri()) return { mysql: ["8.4.6"], mariadb: ["12.3.2"], postgres: ["18.4.0"], redis: ["8.8.0"] };
+  return invoke<Record<string, string[]>>("db_engine_versions");
+}
+
+/** Switch an engine to another offered version (per-series data dirs — the
+ *  backend restarts a running engine on the new version). */
+export async function setDbEngineVersion(key: string, version: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("set_db_engine_version", { key, version });
+}
+
 export async function startDatabase(key: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("start_database", { key });

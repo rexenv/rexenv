@@ -38,12 +38,12 @@ binary, update THIS file in the same commit.
 | PHP | 8.0.30 / 8.1.34 / 8.2.31 / 8.3.31 / 8.4.23 / 8.5.8 | static-php **"bulk"** build ("common" lacks `mysqli`). 8.0 = upstream-EOL, frozen at .30. NO 7.4 (never published — needs self-hosting, like the Xdebug build) |
 | PHP debug (Xdebug 3.4.5) | 8.3.31 | wired but **unresolvable** — checksums empty until hosted (see `docs/xdebug-debug-build.md`) |
 | Nginx | 1.30.3 | jirutka static; Homebrew `libpcre2` relinked to `/usr/lib` |
-| MySQL | 8.4.6 | dir tree, Oracle-signed (no re-sign), CDN URL + browser UA |
+| MySQL | 8.4.6 (default) / 8.0.44 | dir tree, Oracle-signed (no re-sign), CDN URL + browser UA. **Per-engine version switch**: each SERIES keeps its own datadir (default series on the legacy `mysql/data`; others under `mysql/<series>/data`) — never an in-place up/downgrade. 8.0.44 hashed from real downloads (both arches), arm64 run-verified |
 | WP-CLI | 2.12.0 | `.phar`, `resolve_file`, no chmod/codesign |
 | FrankenPHP | 1.12.4 | embeds its OWN PHP (not the pools) |
-| PostgreSQL | 18.4.0 | theseus-rs portable, TCP-only |
+| PostgreSQL | 18.4.0 (default) / 17.10.0 / 16.14.0 | theseus-rs portable, TCP-only; project-published `.sha256` pins. PG major datadirs are mutually incompatible — the per-series datadir rule is load-bearing (`postgres/<major>/data`) |
 | Redis | 8.8.0 | **bottle BUNDLE** (`resolve_bundle`): Homebrew redis + openssl@3 3.6.3 bottles (arm64_sonoma / sonoma), merged + relinked to `@loader_path` + re-signed by `prepare_binary_tree`. ghcr blobs are content-addressed — the URL embeds the pinned digest, so pins can 404 (formula GC) but never drift |
-| MariaDB | 12.3.2 | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
+| MariaDB | 12.3.2 (default) / 11.4.12 LTS (`mariadb@11.4` bottle, identical layout+closure) | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
 | Apache httpd | 2.4.68 | bottle BUNDLE: httpd (`bin/httpd` + ONLY the 10 modules the generated conf loads + `.bottle/etc/httpd/mime.types`) + apr 1.7.6 + apr-util 1.6.3 + pcre2 10.47. mod_ssl/mod_http2/mod_brotli excluded ⇒ openssl/nghttp2/brotli never bundled. Per-site loopback override backend; `.php` → the site's shared php-fpm pool via mod_proxy_fcgi (`core/apache.rs`) |
 | Mailpit | 1.30.3 | |
 | Adminer | 5.4.2 | single `.php`, OS-agnostic |

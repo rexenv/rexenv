@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, Database, TableProperties } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
-import { databasesStatus } from "@/lib/ipc";
+import { confirm } from "@/components/ui/dialog";
+import { databasesStatus, dbEngineVersions, setDbEngineVersion } from "@/lib/ipc";
 import { adminerFrameSrc } from "@/lib/adminer";
 import type { DbStatus } from "@/types";
 
@@ -34,10 +35,15 @@ const BROWSABLE = new Set(["mysql", "mariadb", "postgres"]);
 
 function DbRow({
   db,
+  versions,
+  onSwitchVersion,
   onBrowse,
   onGoServices,
 }: {
   db: DbStatus;
+  /** Offered versions for this engine (default first); a one-entry set hides the picker. */
+  versions: string[];
+  onSwitchVersion: (v: string) => void;
   onBrowse: () => void;
   /** Engine lifecycle lives on the Services page (P2-7) — link, never a dead button. */
   onGoServices: () => void;
@@ -48,10 +54,25 @@ function DbRow({
         <Database className="h-4 w-4" strokeWidth={1.7} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-semibold text-rex-text">
+        <div className="flex items-center text-[13.5px] font-semibold text-rex-text">
           {db.label}
-          {db.version && (
-            <span className="ml-2 font-mono text-[10.5px] text-rex-text-dim">{db.version}</span>
+          {versions.length > 1 ? (
+            <select
+              value={db.version}
+              onChange={(e) => onSwitchVersion(e.target.value)}
+              title="Switch the engine version (each version keeps its own data directory)"
+              className="ml-2 h-[22px] rounded border border-rex-border bg-rex-surface-2 px-1 font-mono text-[10.5px] text-rex-text-muted outline-none transition-colors hover:border-brand focus:border-brand"
+            >
+              {versions.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          ) : (
+            db.version && (
+              <span className="ml-2 font-mono text-[10.5px] text-rex-text-dim">{db.version}</span>
+            )
           )}
         </div>
         <div className="font-mono text-[11px] text-rex-text-dim">
@@ -111,6 +132,17 @@ export function Databases() {
     queryFn: databasesStatus,
     refetchInterval: browse ? false : 2000,
   });
+  const { data: versions = {} } = useQuery({
+    queryKey: ["db-engine-versions"],
+    queryFn: dbEngineVersions,
+    staleTime: Infinity, // pinned sets only change with an app release
+  });
+  const queryClient = useQueryClient();
+  const switchVersion = useMutation({
+    mutationFn: ({ key, version }: { key: string; version: string }) =>
+      setDbEngineVersion(key, version),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["databases"] }),
+  });
 
   const running = dbs.filter((d) => d.running).length;
 
@@ -156,6 +188,24 @@ export function Databases() {
               <DbRow
                 key={db.key}
                 db={db}
+                versions={versions[db.key] ?? []}
+                onSwitchVersion={async (v) => {
+                  if (v === db.version || switchVersion.isPending) return;
+                  // A select mis-click must not restart a database server —
+                  // confirm, and be honest about per-version data dirs.
+                  const ok = await confirm({
+                    title: `Switch ${db.label} to ${v}?`,
+                    message:
+                      `Each version keeps its own data directory: databases created on ` +
+                      `${db.version} stay with ${db.version} and won't be visible on ${v} ` +
+                      `(export first to move data). ` +
+                      (db.running
+                        ? `${db.label} restarts on ${v} now.`
+                        : `${db.label} will use ${v} on its next start.`),
+                    confirmLabel: "Switch",
+                  });
+                  if (ok) switchVersion.mutate({ key: db.key, version: v });
+                }}
                 onBrowse={() =>
                   setBrowse({
                     engine:
