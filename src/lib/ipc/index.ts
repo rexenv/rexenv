@@ -590,10 +590,23 @@ export async function wpUsers(id: string): Promise<WpUser[]> {
   return invoke<WpUser[]>("wp_users", { id });
 }
 
-/** Create a WordPress user (`wp user create`). No-op outside Tauri. */
-export async function wpUserCreate(id: string, login: string, email: string, role: string): Promise<void> {
+/** Create a WordPress user (`wp user create`) with an explicit password.
+ *  No-op outside Tauri. */
+export async function wpUserCreate(
+  id: string,
+  login: string,
+  email: string,
+  role: string,
+  password: string,
+): Promise<void> {
   if (!isTauri()) return;
-  await invoke("wp_user_create", { id, login, email, role });
+  await invoke("wp_user_create", { id, login, email, role, password });
+}
+
+/** Change an existing user's password (`wp user update --user_pass`). */
+export async function wpUserSetPassword(id: string, userId: number, password: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("wp_user_set_password", { id, userId, password });
 }
 
 /** Change a user's role (stock roles only; the primary administrator is

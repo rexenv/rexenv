@@ -420,9 +420,40 @@ pub fn user_create(
     login: &str,
     email: &str,
     role: &str,
+    password: &str,
 ) -> Result<String> {
     let role_arg = format!("--role={role}");
-    wp_run(php_bin, wp_phar, docroot, &["user", "create", login, email, &role_arg, "--porcelain"])
+    // Explicit password (local dev default: a known throwaway) instead of
+    // wp-cli's generated one that nobody ever sees. Passed as a single argv
+    // element — no shell, no interpolation.
+    let pass_arg = format!("--user_pass={password}");
+    wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["user", "create", login, email, &role_arg, &pass_arg, "--porcelain"],
+    )
+}
+
+/// Set an existing user's password (`wp user update --user_pass`). wp-cli
+/// does not email the user; sessions stay valid per WordPress semantics.
+pub fn user_set_password(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    user_id: u64,
+    password: &str,
+) -> Result<String> {
+    if password.is_empty() {
+        return Err(Error::Other("password must not be empty".into()));
+    }
+    let pass_arg = format!("--user_pass={password}");
+    wp_run(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["user", "update", &user_id.to_string(), &pass_arg],
+    )
 }
 
 /// Stock roles assignable from the UI. Whitelisted like [`DEBUG_FLAGS`]: the

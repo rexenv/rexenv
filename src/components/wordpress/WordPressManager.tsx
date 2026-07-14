@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
-import { confirm } from "@/components/ui/dialog";
+import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Star, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, Trash2, UserPlus } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -62,6 +62,7 @@ import {
   wpThemes,
   wpTransientDeleteAll,
   wpUserCreate,
+  wpUserSetPassword,
   wpUserLoginUrl,
   wpUserSetRole,
   wpUsers,
@@ -224,7 +225,7 @@ export function WordPressManager({
 
       {sub === "plugins" && <PluginsPanel siteId={siteId} />}
       {sub === "themes" && <ThemesPanel siteId={siteId} />}
-      {sub === "users" && <UsersPanel siteId={siteId} />}
+      {sub === "users" && <UsersPanel siteId={siteId} domain={domain} />}
       {sub === "network" &&
         (isNetwork ? (
           <NetworkPanel siteId={siteId} mode={multisite} domain={domain} />
@@ -1742,21 +1743,37 @@ function IconBtn({ title, onClick, children }: { title: string; onClick: () => v
   );
 }
 
-function UsersPanel({ siteId }: { siteId: string }) {
+function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const qc = useQueryClient();
   const [login, setLogin] = useState("");
   const [email, setEmail] = useState("");
+  // Email auto-follows the username (<login>@<domain>) until the user edits it.
+  const [emailTouched, setEmailTouched] = useState(false);
+  // Local-dev default password, VISIBLE by default — it's a throwaway on a
+  // local site, and seeing it beats a mystery masked value.
+  const [password, setPassword] = useState("123456");
+  const [showPw, setShowPw] = useState(true);
   const [role, setRole] = useState("subscriber");
+  const [pwFor, setPwFor] = useState<WpUser | null>(null);
 
   const { data: users = [], isLoading, isError, error, refetch } = useWpUsers(siteId);
 
   const create = useMutation({
-    mutationFn: () => wpUserCreate(siteId, login.trim(), email.trim(), role),
+    mutationFn: () => wpUserCreate(siteId, login.trim(), email.trim(), role, password),
     onSuccess: () => {
       setLogin("");
       setEmail("");
+      setEmailTouched(false);
+      setPassword("123456");
       qc.invalidateQueries({ queryKey: ["wp-users", siteId] });
     },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const setUserPassword = useMutation({
+    mutationFn: ({ userId, pw }: { userId: number; pw: string }) =>
+      wpUserSetPassword(siteId, userId, pw),
+    onSuccess: () => toast.success("Password changed."),
     onError: (e) => toastBackendError(e),
   });
 
@@ -1788,16 +1805,42 @@ function UsersPanel({ siteId }: { siteId: string }) {
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
         <input {...TECH_INPUT}
           value={login}
-          onChange={(e) => setLogin(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setLogin(v);
+            // Follow the username until the email is hand-edited.
+            if (!emailTouched) setEmail(v.trim() ? `${v.trim()}@${domain}` : "");
+          }}
           placeholder="username"
           className="h-[30px] w-32 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
         <input {...TECH_INPUT}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@site.rex"
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setEmailTouched(true);
+          }}
+          placeholder={`email@${domain}`}
           className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
+        <span className="relative">
+          <input {...TECH_INPUT}
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="password"
+            title="Password for the new user (local default: 123456)"
+            className="h-[30px] w-[110px] rounded border border-rex-border bg-rex-surface-2 py-0 pl-2 pr-7 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPw((v) => !v)}
+            title={showPw ? "Hide password" : "Show password"}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rex-text-muted transition-colors hover:text-rex-text-bright"
+          >
+            {showPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        </span>
         <select
           value={role}
           onChange={(e) => setRole(e.target.value)}
@@ -1811,7 +1854,7 @@ function UsersPanel({ siteId }: { siteId: string }) {
         </select>
         <button
           className={BTN + " flex items-center gap-1.5"}
-          disabled={create.isPending || !login.trim() || !email.trim()}
+          disabled={create.isPending || !login.trim() || !email.trim() || !password}
           onClick={() => create.mutate()}
         >
           <UserPlus className="h-3.5 w-3.5" />
@@ -1842,11 +1885,26 @@ function UsersPanel({ siteId }: { siteId: string }) {
                 primary={u.id === primaryAdmin}
                 roleBusy={changeRole.isPending}
                 onSetRole={(r) => changeRole.mutate({ userId: u.id, role: r })}
+                onChangePassword={() => setPwFor(u)}
               />
             ))}
           </>
         )}
       </div>
+      {pwFor && (
+        <PromptDialog
+          title={`Change password — ${pwFor.login}`}
+          label="New password"
+          initialValue="123456"
+          mono
+          submitLabel="Change password"
+          onSubmit={(v) => {
+            setUserPassword.mutate({ userId: pwFor.id, pw: v });
+            setPwFor(null);
+          }}
+          onCancel={() => setPwFor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1858,6 +1916,7 @@ function UserRow({
   primary,
   roleBusy,
   onSetRole,
+  onChangePassword,
 }: {
   u: WpUser;
   busy: boolean;
@@ -1866,6 +1925,7 @@ function UserRow({
   primary: boolean;
   roleBusy: boolean;
   onSetRole: (role: string) => void;
+  onChangePassword: () => void;
 }) {
   const role = u.roles.split(",")[0]?.trim() || "";
   const rm = roleMeta(role);
@@ -1908,6 +1968,13 @@ function UserRow({
           </select>
         )}
       </span>
+      <button
+        className={BTN}
+        title={`Change ${u.login}'s password`}
+        onClick={onChangePassword}
+      >
+        <KeyRound className="h-3.5 w-3.5" />
+      </button>
       <button className={BTN + " flex w-[84px] items-center justify-center gap-1.5"} disabled={busy} onClick={onLoginAs}>
         <LogIn className="h-3.5 w-3.5" />
         Log in

@@ -201,7 +201,7 @@ pub async fn wp_users(state: State<'_, AppState>, id: String) -> Result<Vec<WpUs
     wp_blocking(move || core::wordpress::user_list(&php, &wp, &docroot)).await
 }
 
-/// Create a WordPress user (`wp user create`); WP-CLI generates the password.
+/// Create a WordPress user (`wp user create`) with an explicit password.
 #[tauri::command]
 pub async fn wp_user_create(
     state: State<'_, AppState>,
@@ -209,10 +209,27 @@ pub async fn wp_user_create(
     login: String,
     email: String,
     role: String,
+    password: String,
 ) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     wp_blocking(move || {
-        core::wordpress::user_create(&php, &wp, &docroot, &login, &email, &role).map(|_| ())
+        core::wordpress::user_create(&php, &wp, &docroot, &login, &email, &role, &password)
+            .map(|_| ())
+    })
+    .await
+}
+
+/// Change an existing user's password (`wp user update --user_pass`).
+#[tauri::command]
+pub async fn wp_user_set_password(
+    state: State<'_, AppState>,
+    id: String,
+    user_id: u64,
+    password: String,
+) -> Result<()> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    wp_blocking(move || {
+        core::wordpress::user_set_password(&php, &wp, &docroot, user_id, &password).map(|_| ())
     })
     .await
 }

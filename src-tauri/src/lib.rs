@@ -498,6 +498,7 @@ pub fn run() {
             commands::wordpress::wp_theme_delete,
             commands::wordpress::wp_users,
             commands::wordpress::wp_user_create,
+            commands::wordpress::wp_user_set_password,
             commands::wordpress::wp_user_set_role,
             commands::wordpress::wp_primary_admin,
             commands::wordpress::wp_user_login_url,
