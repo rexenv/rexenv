@@ -56,10 +56,27 @@ fn validate_domain(domain: &str) -> Result<()> {
     Ok(())
 }
 
+/// Servers with a real backend on this platform. OpenLiteSpeed is BLOCKED on
+/// external work (no upstream macOS binary, no homebrew-core bottle; a
+/// maintainer self-build + self-host is the only path — see docs/TODO.md) —
+/// refused here in CORE, so no IPC path can create a site the stack would
+/// silently serve through nginx while claiming another server (M7).
+fn ensure_server_available(server: WebServer) -> Result<()> {
+    if matches!(server, WebServer::Nginx | WebServer::Frankenphp | WebServer::Apache) {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "web server {} is not available on this platform yet",
+            server.as_db()
+        )))
+    }
+}
+
 /// Create a site: assign an id, default to stopped + SSL on, persist, return it.
 /// Fails if the domain is invalid or already in use.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
     validate_domain(&new.domain)?;
+    ensure_server_available(new.web_server)?;
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "domain already in use: {}",
@@ -280,12 +297,7 @@ pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>
 /// and Apache have backends (OLS is still deferred). The caller brings the new
 /// backend up / old down and reloads the edge.
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
-    if !matches!(server, WebServer::Nginx | WebServer::Frankenphp | WebServer::Apache) {
-        return Err(Error::Other(format!(
-            "web server {} is not available on this platform yet",
-            server.as_db()
-        )));
-    }
+    ensure_server_available(server)?;
     if !store::set_site_web_server(conn, id, server.as_db())? {
         return Ok(None);
     }
@@ -1247,8 +1259,14 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
         let mut new = sample("LO", "lo.test");
         new.site_type = SiteType::Php;
-        new.web_server = WebServer::Openlitespeed;
+        new.web_server = WebServer::Apache;
         create(&conn, new).unwrap();
+
+        // An unavailable server is refused at CREATE too (core guard, M7) —
+        // not just at switch time.
+        let mut ols = sample("OLS", "ols.test");
+        ols.web_server = WebServer::Openlitespeed;
+        assert!(create(&conn, ols).is_err());
 
         // Read the raw TEXT to confirm DB storage matches the wire format.
         let (t, ws): (String, String) = conn
@@ -1259,6 +1277,6 @@ mod tests {
             )
             .unwrap();
         assert_eq!(t, "php");
-        assert_eq!(ws, "openlitespeed");
+        assert_eq!(ws, "apache");
     }
 }

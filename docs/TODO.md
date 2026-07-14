@@ -352,6 +352,23 @@ Each line = one feature, live-verified before its commit.
 - [ ] **SMAppService privileged helper** (Phase 1 §10.4) — single-prompt system setup.
   Needs a signed + notarized bundle → packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** (Release 1.6) — needs paid Apple account.
+- [ ] **OpenLiteSpeed override server** (researched 15 Jul 2026 — moved here from
+  "Deferred services": this is NOT a bundling problem, there is no macOS binary to
+  bundle). Evidence: upstream releases ship Linux tarballs only
+  (`openlitespeed-1.9.1-{aarch64,x86_64}-linux.tgz`); homebrew-core has NO formula
+  (nothing content-addressed to pin); the only community path is a third-party
+  source-build tap (`puleeno/homebrew-openlitespeed`) frozen at EOL 1.4.51 — fails
+  the trust model (unpinned third party, on-machine compilation) AND version quality.
+  Modern source (1.9.1) DOES carry Darwin branches in `build.sh` (brew/port dep
+  detection, mod_security forced OFF, CMakeLists sed-patched at build time, clones
+  `litespeedtech/third-party` for vendored deps) — so a MAINTAINER self-build +
+  self-host is plausible but unproven; it needs the same missing infra as the Xdebug
+  debug build (artifact hosting + checksum pin, ideally after Developer ID signing).
+  Code is ready and honest today: `ensure_server_available` in CORE refuses OLS at
+  create AND switch (no IPC path can make a phantom OLS site), UI never offers it,
+  and the manager's `OverrideKind` seam means enabling it later = one new arm +
+  config template, not a restructure. NOTE for Phase 4: on Linux this is CHEAP —
+  official upstream tarballs exist.
 
 ## Deferred services (the dylib-tree-bundling step now EXISTS — Redis proved it)
 
@@ -417,7 +434,6 @@ Each line = one feature, live-verified before its commit.
   from the bundled map ✓, `.htaccess` RewriteRule 302 ✓. 258 lib tests, clippy,
   examples, tsc. **Human verify next:** create/switch a site to Apache in-app,
   site over HTTPS, plugin `.htaccess` rules.
-- [ ] OpenLiteSpeed override server
 - [ ] Per-engine DB version switch (multi-version DBs)
 
 FrankenPHP + PostgreSQL prove the override/engine patterns; Redis proves the BUNDLE
