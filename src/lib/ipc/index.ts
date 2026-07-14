@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -493,6 +493,13 @@ const mockWpPlugins: WpPlugin[] = [
 export async function wpPlugins(id: string, checkUpdates = false): Promise<WpPlugin[]> {
   if (!isTauri()) return mockWpPlugins;
   return invoke<WpPlugin[]>("wp_plugins", { id, checkUpdates });
+}
+
+/** Live WordPress.org plugin-directory search (Add-plugin flow). Hard 10s
+ *  backend timeout; errors surface honestly (the manual slug field still works). */
+export async function wpOrgSearchPlugins(query: string): Promise<WpOrgPlugin[]> {
+  if (!isTauri()) return [];
+  return invoke<WpOrgPlugin[]>("wp_org_search_plugins", { query });
 }
 
 /** Install a plugin by slug (optionally activate). No-op outside Tauri. */

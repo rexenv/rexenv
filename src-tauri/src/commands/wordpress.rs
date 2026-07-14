@@ -87,6 +87,13 @@ pub async fn wp_plugins(
     .await
 }
 
+/// Live search of the WordPress.org plugin directory (Add-plugin flow) —
+/// stateless, hard 10s timeout, honest error offline.
+#[tauri::command]
+pub async fn wp_org_search_plugins(query: String) -> Result<Vec<core::wporg::WpOrgPlugin>> {
+    core::wporg::search_plugins(&query).await
+}
+
 /// Install a plugin by slug (optionally activating it).
 #[tauri::command]
 pub async fn wp_plugin_install(

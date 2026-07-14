@@ -33,7 +33,7 @@ hickory-server = "0.24"
 hickory-proto = "0.24"
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem", "x509-parser"] }
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "parsing", "macros"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "cookies"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "cookies", "json"] }
 sha2 = "0.10"
 tar = "0.4"
 flate2 = "1"

@@ -334,6 +334,18 @@ export interface DnsStatus {
   caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
 }
 
+/** One WordPress.org plugin-directory search hit (mirrors the Rust WpOrgPlugin). */
+export interface WpOrgPlugin {
+  slug: string;
+  name: string;
+  author: string; // plain text
+  rating: number; // 0-100 (divide by 20 for stars)
+  numRatings: number;
+  activeInstalls: number;
+  icon: string | null;
+  shortDescription: string;
+}
+
 /** A detected code editor (mirrors the Rust EditorApp DTO). */
 export interface EditorApp {
   id: string; // stable key stored as the preferred_editor setting

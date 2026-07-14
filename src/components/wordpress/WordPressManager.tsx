@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Search, Shield, Star, Trash2, UserPlus } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -47,6 +47,7 @@ import {
   wpPluginActivate,
   wpPluginDeactivate,
   wpPluginDelete,
+  wpOrgSearchPlugins,
   wpPluginInstall,
   wpPluginUpdate,
   wpPlugins,
@@ -65,7 +66,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
-import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -2121,6 +2122,58 @@ function PluginFilterTabs({
   );
 }
 
+/** Debounce a fast-changing value (live directory search). */
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+/** "5M+" / "300K+" active-install shorthand (wp.org rounds these anyway). */
+function fmtInstalls(n: number): string {
+  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M+`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K+`;
+  return `${n}`;
+}
+
+/** One wp.org search hit (Add-plugin dropdown row). */
+function WpOrgHit({ p, onPick }: { p: WpOrgPlugin; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="flex w-full items-center gap-2.5 border-b border-rex-border-subtle px-2.5 py-2 text-left transition-colors last:border-b-0 hover:bg-rex-surface-2"
+    >
+      {p.icon ? (
+        <img src={p.icon} alt="" className="h-7 w-7 flex-none rounded-[6px] object-cover" />
+      ) : (
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[6px] border border-rex-border bg-rex-surface-2 font-mono text-[11px] font-bold text-rex-text-muted">
+          {p.name.slice(0, 1).toUpperCase() || "?"}
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium text-rex-text">{p.name}</span>
+        <span className="block truncate text-[11px] text-rex-text-dim">
+          {p.author && `by ${p.author} · `}
+          <span className="font-mono">{p.slug}</span>
+        </span>
+      </span>
+      <span className="flex flex-none items-center gap-2 font-mono text-[10.5px] text-rex-text-dim">
+        {p.rating > 0 && (
+          <span className="flex items-center gap-0.5">
+            <Star className="h-3 w-3 fill-current text-amber-400" />
+            {(p.rating / 20).toFixed(1)}
+          </span>
+        )}
+        <span>{fmtInstalls(p.activeInstalls)}</span>
+      </span>
+    </button>
+  );
+}
+
 function PluginsPanel({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -2128,6 +2181,18 @@ function PluginsPanel({ siteId }: { siteId: string }) {
   const [activateOnAdd, setActivateOnAdd] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PluginFilter>("all");
+  // wp.org live search: the slug input doubles as the search box (wp-admin
+  // style). Picking a hit fills the slug; typing manually still works as-is.
+  const [picked, setPicked] = useState(false);
+  const debouncedSlug = useDebounced(slug.trim(), 350);
+  const search = useQuery({
+    queryKey: ["wporg-plugins", debouncedSlug],
+    queryFn: () => wpOrgSearchPlugins(debouncedSlug),
+    enabled: !picked && debouncedSlug.length >= 2,
+    staleTime: 60_000,
+    retry: false, // offline → fail fast + honest message, no retry spinner
+  });
+  const showSearch = !picked && slug.trim().length >= 2;
 
   const { plugins, isLoading, isError, error, refetch } = useWpPlugins(siteId);
 
@@ -2170,14 +2235,47 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Add by slug */}
-      <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+      {/* Add: live wp.org search that fills the slug (manual slug still works) */}
+      <div className="relative flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
         <input {...TECH_INPUT}
           value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          placeholder="Plugin slug (e.g. hello-dolly)"
+          onChange={(e) => {
+            setSlug(e.target.value);
+            setPicked(false);
+          }}
+          placeholder="Search WordPress.org or enter a slug…"
           className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
         />
+        {showSearch && (
+          <div className="absolute left-2.5 right-2.5 top-[46px] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
+            {search.isLoading ? (
+              <div className="flex items-center gap-2 px-3 py-2.5 text-[12px] text-rex-text-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> Searching WordPress.org…
+              </div>
+            ) : search.isError ? (
+              <div className="px-3 py-2.5 text-[12px] text-status-error-bright">
+                {String(search.error)} — you can still enter the plugin slug manually.
+              </div>
+            ) : (search.data ?? []).length === 0 ? (
+              <div className="px-3 py-2.5 text-[12px] text-rex-text-muted">
+                No plugins match “{slug.trim()}” — if you know the exact slug, just Add it.
+              </div>
+            ) : (
+              <div className="max-h-[300px] overflow-y-auto">
+                {(search.data ?? []).map((p) => (
+                  <WpOrgHit
+                    key={p.slug}
+                    p={p}
+                    onPick={() => {
+                      setSlug(p.slug);
+                      setPicked(true);
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
           <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
           Activate

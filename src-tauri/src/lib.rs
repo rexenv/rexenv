@@ -484,6 +484,7 @@ pub fn run() {
             commands::php::apply_php_settings,
             commands::wordpress::wp_info,
             commands::wordpress::wp_plugins,
+            commands::wordpress::wp_org_search_plugins,
             commands::wordpress::wp_plugin_install,
             commands::wordpress::wp_plugin_activate,
             commands::wordpress::wp_plugin_deactivate,

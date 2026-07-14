@@ -1,0 +1,184 @@
+//! core::wporg — WordPress.org directory search for the Add-plugin/theme flows
+//! (P2-2/P2-3): users don't know slugs, so the UI offers wp-admin-style live
+//! search and fills the slug from the picked result. Plain HTTPS GETs against
+//! `api.wordpress.org` with a hard client timeout (never a forever spinner);
+//! offline/API failure surfaces an honest error and the manual slug field
+//! keeps working.
+
+use crate::error::{Error, Result};
+
+/// One plugin search hit (mirrors the frontend `WpOrgPlugin`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpOrgPlugin {
+    pub slug: String,
+    pub name: String,
+    /// Plain text (the API returns HTML like `<a href=…>Author</a>`).
+    pub author: String,
+    /// 0–100 (WordPress.org scale; ÷20 for stars).
+    pub rating: f64,
+    pub num_ratings: u64,
+    pub active_installs: u64,
+    /// Best available icon URL (svg → 2x → 1x → default), if any.
+    pub icon: Option<String>,
+    pub short_description: String,
+}
+
+/// Shared client: hard 10s timeout so a dead network can't hang the UI.
+fn client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("wporg client")
+    })
+}
+
+fn friendly(e: reqwest::Error) -> Error {
+    if e.is_timeout() {
+        Error::Other("WordPress.org didn't answer within 10s — check your connection.".into())
+    } else {
+        Error::Other(format!("WordPress.org search failed: {e}"))
+    }
+}
+
+/// Search the WordPress.org PLUGIN directory (the same API wp-admin's
+/// "Add Plugin" screen uses). Returns up to 10 hits, relevance-ordered.
+pub async fn search_plugins(query: &str) -> Result<Vec<WpOrgPlugin>> {
+    let resp = client()
+        .get("https://api.wordpress.org/plugins/info/1.2/")
+        .query(&[
+            ("action", "query_plugins"),
+            ("request[search]", query),
+            ("request[per_page]", "10"),
+            ("request[fields][icons]", "1"),
+            ("request[fields][short_description]", "1"),
+            ("request[fields][active_installs]", "1"),
+        ])
+        .send()
+        .await
+        .map_err(friendly)?;
+    let body: serde_json::Value = resp.json().await.map_err(friendly)?;
+    Ok(parse_plugins(&body))
+}
+
+/// Pure parser (unit-tested against a captured API shape). Skips malformed
+/// entries instead of failing the whole search.
+fn parse_plugins(body: &serde_json::Value) -> Vec<WpOrgPlugin> {
+    let Some(items) = body.get("plugins").and_then(|p| p.as_array()) else {
+        return Vec::new();
+    };
+    items
+        .iter()
+        .filter_map(|p| {
+            let slug = p.get("slug")?.as_str()?.to_string();
+            let icons = p.get("icons");
+            let icon = ["svg", "2x", "1x", "default"]
+                .iter()
+                .find_map(|k| icons?.get(k)?.as_str().map(str::to_string));
+            Some(WpOrgPlugin {
+                slug,
+                name: decode_entities(p.get("name").and_then(|v| v.as_str()).unwrap_or("")),
+                author: decode_entities(&strip_tags(
+                    p.get("author").and_then(|v| v.as_str()).unwrap_or(""),
+                )),
+                rating: p.get("rating").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                num_ratings: p.get("num_ratings").and_then(|v| v.as_u64()).unwrap_or(0),
+                active_installs: p
+                    .get("active_installs")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0),
+                icon,
+                short_description: decode_entities(
+                    p.get("short_description").and_then(|v| v.as_str()).unwrap_or(""),
+                ),
+            })
+        })
+        .collect()
+}
+
+/// Drop `<tag>`s (the author field is an anchor).
+pub(crate) fn strip_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Decode the handful of HTML entities the directory actually emits in
+/// names/descriptions — display text only, not an HTML parser.
+pub(crate) fn decode_entities(s: &str) -> String {
+    let mut out = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&#8211;", "–")
+        .replace("&#8212;", "—")
+        .replace("&#8216;", "'")
+        .replace("&#8217;", "'")
+        .replace("&#8220;", "\u{201C}")
+        .replace("&#8221;", "\u{201D}");
+    if out.contains("&nbsp;") {
+        out = out.replace("&nbsp;", " ");
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_tags_and_decodes_entities() {
+        assert_eq!(
+            strip_tags("<a href=\"https://x\">Jane &amp; Co</a>"),
+            "Jane &amp; Co"
+        );
+        assert_eq!(decode_entities("Jane &amp; Co &#8211; SEO"), "Jane & Co – SEO");
+    }
+
+    #[test]
+    fn parses_the_query_plugins_shape() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"info":{"page":1},"plugins":[
+                {"name":"Yoast SEO &#8211; fast","slug":"wordpress-seo",
+                 "author":"<a href=\"https://yoa.st\">Team Yoast</a>",
+                 "rating":92,"num_ratings":27000,"active_installs":10000000,
+                 "short_description":"SEO plugin.",
+                 "icons":{"1x":"https://ps.w.org/x/icon-128.png","2x":"https://ps.w.org/x/icon-256.png"}},
+                {"slug":"minimal"},
+                {"name":"no slug — skipped"}
+            ]}"#,
+        )
+        .unwrap();
+        let got = parse_plugins(&body);
+        assert_eq!(got.len(), 2, "malformed entry skipped, minimal kept");
+        let y = &got[0];
+        assert_eq!(y.slug, "wordpress-seo");
+        assert_eq!(y.name, "Yoast SEO – fast");
+        assert_eq!(y.author, "Team Yoast");
+        assert_eq!(y.rating, 92.0);
+        assert_eq!(y.active_installs, 10_000_000);
+        // svg absent → 2x preferred over 1x.
+        assert_eq!(y.icon.as_deref(), Some("https://ps.w.org/x/icon-256.png"));
+        // Minimal entry: defaults, no icon.
+        assert_eq!(got[1].slug, "minimal");
+        assert!(got[1].icon.is_none() && got[1].rating == 0.0);
+    }
+
+    #[test]
+    fn missing_plugins_key_is_empty_not_error() {
+        let body: serde_json::Value = serde_json::from_str(r#"{"error":"down"}"#).unwrap();
+        assert!(parse_plugins(&body).is_empty());
+    }
+}
