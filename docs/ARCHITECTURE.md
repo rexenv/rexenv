@@ -31,10 +31,11 @@ platform/   ALL OS-specific code, behind 11 traits (platform/traits.rs):
   `core/binaries.rs`. `core/`, `commands/`, `state/` are macOS-complete.
 
 **Module map** (file names; see README "Project structure" for the annotated tree):
-- `core/`: adminer · binaries · blueprints · database (MySQL) · db (`DbEngine`
-  abstraction) · dns · frankenphp · logs · mail · monitor · php · ports · postgres ·
-  proc · proxy · service_manager · services · setup · site_metrics · sites · ssl ·
-  terminal · tunnels · wordpress · wp_login · wp_tunnel
+- `core/`: adminer · apache (per-site override server) · binaries · blueprints ·
+  database (MySQL) · db (`DbEngine` abstraction) · dns · frankenphp · logs · mail ·
+  mariadb · monitor · php · ports · postgres · proc · proxy · redis ·
+  service_manager · services · setup · site_metrics · sites · ssl · terminal ·
+  tunnels · wordpress · wp_login · wp_tunnel
 - `commands/`: blueprints · database · logs · mail · php · services · settings · sites ·
   system · terminal · tunnels · wordpress
 - `state/`: app (AppState) · db (migrations) · models · store (repo)
@@ -54,7 +55,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
                      ▼
                 php-fpm pool 978x (ONE pool per PHP minor, not per site)
                      ▼
-                WordPress → MySQL :13306 (or PostgreSQL :15432)
+                WordPress → the site's DB ENGINE: MySQL :13306 or MariaDB :13307
+                (per-site `sites.db_engine`, chosen at create, immutable after —
+                the DB lives in that engine's datadir). PostgreSQL :15432 and
+                Redis :16379 are optional engines on the Databases page.
 ```
 
 - **No direct Caddy→php-fpm path for default sites.** Caddy is invisible plumbing.
@@ -65,23 +69,42 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - CA trust = **login keychain** (user op, `CertTrustManager`) — a detached-root osascript
   can't write System-keychain trust settings. `/etc/resolver/<tld>` files = root op
   (`PrivilegeManager`; onboarding installs the `.rex` backbone, other TLDs on first use). Hence ~2 setup prompts; true single prompt = SMAppService (deferred).
-- **Per-site server override:** FrankenPHP (single static binary, embeds its own PHP)
-  runs as a loopback backend on a per-site port in 8200–8299 (`core/frankenphp.rs`,
-  FNV-1a of the domain), `auto_https off` + `admin off` — it must NEVER be the edge,
-  bind `:443`, or expose an admin endpoint. The edge routes that site's Host to its
-  backend; all other sites stay on the shared Nginx. `ServiceManager::reconcile_overrides`
-  keeps backends in sync on start/reload.
+- **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
+  today, OLS drops in later if a macOS artifact ever exists):
+  - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a
+    per-site port in 8200–8299 (`core/frankenphp.rs`, FNV-1a of the domain),
+    `auto_https off` + `admin off`.
+  - **Apache httpd** (`core/apache.rs`, bottle bundle): loopback backend on
+    8300–8399 (same FNV hash, distinct base — a FrankenPHP↔Apache switch on one site
+    can never collide with itself). NO embedded PHP: `.php` goes to the site's SHARED
+    php-fpm pool via `mod_proxy_fcgi`, so per-version PHP settings apply identically.
+    `AllowOverride All` — `.htaccess` works (the point of Apache); subdirectory
+    multisite mirrors WP's canonical network rules in server context
+    (`%{DOCUMENT_ROOT}%{REQUEST_URI}` existence checks — `REQUEST_FILENAME` isn't
+    mapped yet in the vhost rewrite phase). Only the 10 conf-loaded modules are
+    bundled; the bottle's compiled-in default paths are `@@HOMEBREW_PREFIX@@`
+    placeholders and are never trusted — every path (pidfile, runtime dir, logs,
+    mime map) is explicit + quoted.
+  Neither may EVER be the edge, bind `:443`, or expose an admin endpoint. The edge
+  routes an override site's Host to its backend; all other sites stay on the shared
+  Nginx. `ServiceManager::reconcile_overrides` keeps backends in sync on start/reload
+  (config-diff restart on docroot/rewrite/env/pool change; a KIND change stops the old
+  backend — different port + binary). OpenLiteSpeed is refused in CORE at create AND
+  switch (`ensure_server_available`) — no macOS binary exists (see TODO "Blocked").
 - **Multisite** (`sites.multisite`: none/subdomain/subdirectory → `RewriteMode`): the
   config generator has three rewrite templates. Subdomain adds `mysite.rex, *.mysite.rex`
   to both the Nginx `server_name` and the Caddy host list over the wildcard-SAN cert;
   exact hosts always win, so a wildcard never shadows other sites.
 - **Quote every path in generated Caddy/Nginx configs** — app-data paths contain spaces.
-- **Per-site env vars (§1.6) never touch the shared pools.** Two delivery paths:
-  Nginx sites get `fastcgi_param` lines in their server block (per-REQUEST);
-  FrankenPHP overrides get config `env` lines **plus real process env at spawn** —
-  per-site by construction, one backend process per site. Live-verified visibility:
-  `getenv()`, `$_SERVER` **and `$_ENV`** all work on both servers — but for two
-  different reasons, each with a footgun:
+- **Per-site env vars (§1.6) never touch the shared pools.** Three delivery paths:
+  Nginx sites get `fastcgi_param` lines in their server block (per-REQUEST); Apache
+  sites get `SetEnv` lines (mod_env → subprocess env → mod_proxy_fcgi forwards them
+  as FCGI params — the same per-request class as nginx); FrankenPHP overrides get
+  config `env` lines **plus real process env at spawn** — per-site by construction,
+  one backend process per site. Live-verified visibility: `getenv()`, `$_SERVER`
+  **and `$_ENV`** all work — nginx and Apache both ride the php-fpm path (Apache's
+  `SetEnv` verified in `$_SERVER` via `apache_site_check`); FrankenPHP differs — two
+  mechanisms, each with a footgun:
   - php-fpm: `$_ENV` only works because our static PHP builds load NO php.ini, so
     `variables_order` is the compiled default `EGPCS` (E on) and the FPM SAPI imports
     the FastCGI request params into `$_ENV`. **Shipping a php.ini with the stock
@@ -189,8 +212,13 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 5. Service lifecycle & source of truth (`core/service_manager.rs`)
 
-- `ServiceManager` owns the whole stack: DB engines, php-fpm pools, shared Nginx,
-  per-site FrankenPHP backends, Mailpit, Adminer, edge.
+- `ServiceManager` owns the whole stack: DB engines (MySQL/MariaDB/PostgreSQL/Redis),
+  php-fpm pools, shared Nginx, per-site override backends (FrankenPHP/Apache —
+  `OverrideKind` dispatch across reconcile/spawn/watchdog/adopt/status/ports/serving),
+  Mailpit, Adminer, edge. Commands mirror DB state into it before starts (same pattern
+  for all three): `set_php_settings`, `set_site_env`, and `set_db_versions` (the
+  per-engine SELECTED version — so the watchdog respawns a crashed engine on the
+  selected version, not the default pin).
 - **Services OUTLIVE the app.** Closing rexenv stops nothing. On launch,
   `adopt_startup()` ADOPTS rexenv-owned survivors as pid-based `Proc::Adopted` handles —
   status/Start all/Stop all treat them like spawned children. Ownership gate = process
@@ -216,7 +244,8 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   whose resolves are then cache hits). Downloading under the lock blocks all status reads
   on a cold cache — the silent-hang bug. Current prefetch sites: `start_services`,
   `start_database`, `set_php_version_installed`, `create_site`, `set_site_web_server`,
-  `set_site_php_version`, `delete_site`. Add new binary-resolving commands to this list.
+  `set_site_php_version`, `delete_site`, `set_db_engine_version`. Add new
+  binary-resolving commands to this list.
 - Long-running children spawn via `ProcessSupervisor::spawn_logged` →
   `<log_dir>/<svc>-stdout.log`. `stop` escalates to SIGKILL after a grace window (L3).
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can
@@ -244,7 +273,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   to `/usr/lib` → ad-hoc codesign LAST.**
 - Shapes: single Mach-O (`resolve`) · plain file like WP-CLI `.phar` (`resolve_file`, no
   chmod/codesign) · dir tree like MySQL/PostgreSQL (`Archive::TarGzTree` + `resolve_dir`;
-  extraction guards against path/symlink escapes, L2) · **bottle BUNDLE** like Redis
+  extraction guards against path/symlink escapes, L2) · **bottle BUNDLE** — Redis
+  (+ openssl@3), MariaDB (server/clients/bootstrap-SQL/errmsg/charsets + openssl@3 +
+  pcre2; plugins excluded so groonga/lz4/lzo/xz/zstd never enter the closure), Apache
+  httpd (server + the 10 conf-loaded modules + mime.types + apr + apr-util + pcre2;
+  mod_ssl/mod_http2/mod_brotli excluded so openssl/nghttp2/brotli stay out)
   (`bundle_manifest` + `resolve_bundle`): services with no portable static build are
   assembled from Homebrew-bottle ghcr blobs (content-addressed — the URL embeds the
   pinned digest, so bytes can never drift under a URL; anonymous bearer auth), an
@@ -254,14 +287,36 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `lib/`, errors loudly on any dep NOT bundled, and ad-hoc re-signs each Mach-O LAST.
   Resolves stage + atomically publish so a failed prepare can't poison the cache (H4).
 - MySQL is Oracle-signed (never re-sign) and needs a direct CDN URL + browser UA.
+- **Multi-version engines (per-engine DB version switch):** `MYSQL/POSTGRES/MARIADB/
+  REDIS_VERSIONS` are the offered sets (default first); the mysql/postgres manifests
+  are version-templated like PHP's, mariadb pins a second bottle bundle
+  (`mariadb@11.4` — ghcr maps `@` → `/`). The selection lives in the
+  `db_version_<engine>` settings KV (validated in core; an orphaned selection falls
+  back to the default pin). **Each version SERIES keeps its OWN datadir** — never an
+  in-place upgrade/downgrade (PG major datadirs are mutually incompatible;
+  MySQL/MariaDB downgrades unsupported): the default pin's series keeps the legacy
+  `<engine>/data` path (existing data never moves), other series live under
+  `<engine>/<series>/data` (`DbEngine::series_of`/`data_dir`). One server per engine
+  at a time, always on the engine's fixed port — adoption/status stay version-agnostic.
+- **MariaDB has no `--initialize-insecure`** and its `mariadb-install-db` is a shell
+  script full of baked brew paths — `core/mariadb.rs::initialize` drives
+  `mariadbd --bootstrap` DIRECTLY, feeding the bundled SQL over stdin with
+  `@auth_root_socket=NULL` (passwordless root@localhost + root@127.0.0.1, the MySQL
+  model); share data via EXPLICIT `--lc-messages-dir`/`--character-sets-dir` (the
+  compiled-in defaults are placeholders). A failed bootstrap removes the half-written
+  datadir so the `mysql/`-dir marker can't lie.
 - The `php-debug` (Xdebug) variant is fully wired but returns `None` from `manifest()`
   until its checksums are pinned — see `docs/xdebug-debug-build.md`.
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 4:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 10:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
-  v4 `blueprints` (JSON `spec`).
+  v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
+  re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
+  v10 `sites.db_engine` (TEXT, default `mysql` — exact backfill, every pre-v10 site
+  lives in MySQL's datadir). Per-engine DB versions are settings-KV rows
+  (`db_version_<engine>`), not a migration.
 - `AppState` (`state/app.rs`) = db + platform + monitor + CA + ServiceManager + Terminals/
   Tunnels registries, **field-level locks** (see §5 locking rule).
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding
@@ -282,9 +337,17 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `user_set_role` itself, so no IPC path can demote it.
 - **Bundled-client rule (recurring trap):** `wp db create/export/import` shell out to a
   PATH `mysql`/`mysqldump` that a Finder-launched app doesn't have (bare launchd PATH).
-  Any DB feature must use the bundled clients from the extracted MySQL tree with
-  shell-free I/O — `--result-file` for output, stdin for input — never `wp db …`,
-  never shell redirection (app-data paths contain spaces).
+  Any DB feature must use the bundled clients with shell-free I/O — `--result-file`
+  for output, stdin for input — never `wp db …`, never shell redirection (app-data
+  paths contain spaces). **Engine- and version-aware since the per-site engine work:**
+  `core/database.rs` fns take the client/dump BINARY (not a tree) — MariaDB speaks the
+  same protocol, only the binaries and port differ — and every site DB op resolves
+  them via `DbEngine::sql_client_bins(platform, effective_version)` from the site's
+  `db_engine` + the engine's selected version, so the client always matches the
+  running server. Status polls use `cached_sql_client` (strictly offline — never a
+  download from a poll). Start-all spawns MariaDB exactly when some site's database
+  lives there; per-site Adminer deep links carry the site's engine (the wrapper's
+  loopback gate covers both ports).
 - **Tool results ≠ app errors:** `wp core verify-checksums` exits 0 even with
   "should not exist" extras (verified live) — verdicts derive from PARSED findings,
   never exit codes alone; extras triage as benign only when the basename is known OS
@@ -312,7 +375,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 10. Verification pattern
 
-- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (~172 and growing).
+- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (~261 and growing).
 - Live checks = standalone `src-tauri/examples/*.rs` binaries (spawn real services,
   probe real ports) — the repo's convention instead of mocked integration tests.
 - Manual release gate: `docs/SMOKE-TEST.md` on a clean Mac.
