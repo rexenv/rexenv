@@ -7,7 +7,7 @@
 //! its behavior is unchanged. MariaDB / PostgreSQL / Redis fill the stubbed arms
 //! in §5.2–§5.4.
 
-use crate::core::{binaries, database, ports, postgres};
+use crate::core::{binaries, database, ports, postgres, redis};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::process::Child;
@@ -67,19 +67,21 @@ impl DbEngine {
     }
 
     /// The pinned version of the engine, or `""` for engines not yet shipped on
-    /// this platform (MariaDB/Redis — deferred to §7).
+    /// this platform (MariaDB — deferred).
     pub fn version(&self) -> &'static str {
         match self {
             DbEngine::Mysql => binaries::MYSQL_VERSION,
             DbEngine::Postgres => binaries::POSTGRES_VERSION,
-            DbEngine::Mariadb | DbEngine::Redis => "",
+            DbEngine::Redis => binaries::REDIS_VERSION,
+            DbEngine::Mariadb => "",
         }
     }
 
     /// Whether this engine has a working macOS binary + lifecycle (so it can be
-    /// listed/started). MariaDB/Redis are deferred (§7.5/§7.6) on macOS.
+    /// listed/started). MariaDB is still deferred on macOS (needs its bottle
+    /// dep closure on the bundle infra Redis proved).
     pub fn available(&self) -> bool {
-        matches!(self, DbEngine::Mysql | DbEngine::Postgres)
+        matches!(self, DbEngine::Mysql | DbEngine::Postgres | DbEngine::Redis)
     }
 
     /// Whether the site stack REQUIRES this engine — required engines are
@@ -119,8 +121,14 @@ impl DbEngine {
                 postgres::initialize(platform, &basedir, &datadir)?;
                 postgres::start(platform, &basedir, &datadir, self.port())
             }
+            DbEngine::Redis => {
+                let basedir =
+                    binaries::resolve_bundle(platform, "redis", binaries::REDIS_VERSION).await?;
+                let datadir = redis::data_dir(platform)?;
+                redis::start(platform, &basedir, &datadir, self.port())
+            }
             other => Err(Error::Other(format!(
-                "{} is not implemented yet (deferred — see TASKS-PHASE2 §7)",
+                "{} is not implemented yet (deferred — see docs/TODO.md)",
                 other.label()
             ))),
         }
@@ -170,9 +178,9 @@ mod tests {
         // Implemented engines are available + carry a pinned version.
         assert!(DbEngine::Mysql.available() && !DbEngine::Mysql.version().is_empty());
         assert!(DbEngine::Postgres.available() && !DbEngine::Postgres.version().is_empty());
+        assert!(DbEngine::Redis.available() && !DbEngine::Redis.version().is_empty());
         // Deferred engines are not available (no macOS binary yet).
         assert!(!DbEngine::Mariadb.available());
-        assert!(!DbEngine::Redis.available());
         // Key round-trips.
         assert_eq!(DbEngine::from_key("postgres"), Some(DbEngine::Postgres));
         assert_eq!(DbEngine::from_key("nope"), None);

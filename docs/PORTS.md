@@ -17,7 +17,7 @@ binary, update THIS file in the same commit.
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |
 | MariaDB (stub) | **13307** | TCP | `core/db.rs` `MARIADB_PORT` |
 | PostgreSQL | **15432** | TCP | `core/db.rs` `POSTGRES_PORT` |
-| Redis (stub) | **16379** | TCP | `core/db.rs` `REDIS_PORT` |
+| Redis | **16379** | TCP | `core/db.rs` `REDIS_PORT` |
 | Mailpit SMTP | **11025** | TCP | `core/mail.rs` `MAILPIT_SMTP_PORT` |
 | Mailpit HTTP API | **18025** | TCP | `core/mail.rs` `MAILPIT_HTTP_PORT` |
 | Adminer | no port — internal vhost `adminer.rexenv.rex` via shared nginx | — | `core/adminer.rs` |
@@ -41,6 +41,7 @@ binary, update THIS file in the same commit.
 | WP-CLI | 2.12.0 | `.phar`, `resolve_file`, no chmod/codesign |
 | FrankenPHP | 1.12.4 | embeds its OWN PHP (not the pools) |
 | PostgreSQL | 18.4.0 | theseus-rs portable, TCP-only |
+| Redis | 8.8.0 | **bottle BUNDLE** (`resolve_bundle`): Homebrew redis + openssl@3 3.6.3 bottles (arm64_sonoma / sonoma), merged + relinked to `@loader_path` + re-signed by `prepare_binary_tree`. ghcr blobs are content-addressed — the URL embeds the pinned digest, so pins can 404 (formula GC) but never drift |
 | Mailpit | 1.30.3 | |
 | Adminer | 5.4.2 | single `.php`, OS-agnostic |
 | cloudflared | 2026.6.1 | |

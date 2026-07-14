@@ -1979,8 +1979,8 @@ mod tests {
     fn db_status_lists_available_engines_when_stopped() {
         let m = ServiceManager::default();
         let dbs: Vec<_> = m.db_status().iter().map(|d| d.engine).collect();
-        // Only the shipped engines are listed (MariaDB/Redis deferred on macOS).
-        assert_eq!(dbs, vec![DbEngine::Mysql, DbEngine::Postgres]);
+        // Only the shipped engines are listed (MariaDB deferred on macOS).
+        assert_eq!(dbs, vec![DbEngine::Mysql, DbEngine::Postgres, DbEngine::Redis]);
         assert!(m.db_status().iter().all(|d| d.pid.is_none()));
         // H2: nothing we started ⇒ nothing running, regardless of a foreign DB.
         assert!(m.db_status().iter().all(|d| !d.running));
@@ -2018,7 +2018,16 @@ mod tests {
         // Mailpit. FrankenPHP overrides appear only when running.
         assert_eq!(
             names,
-            vec!["MySQL", "PostgreSQL", "PHP-FPM 8.1", "PHP-FPM 8.3", "Nginx", "Caddy", "Mailpit"]
+            vec![
+                "MySQL",
+                "PostgreSQL",
+                "Redis",
+                "PHP-FPM 8.1",
+                "PHP-FPM 8.3",
+                "Nginx",
+                "Caddy",
+                "Mailpit"
+            ]
         );
         assert!(s.iter().all(|i| i.pid.is_none()));
         // An idle pool row still shows its (deterministic) pool port.

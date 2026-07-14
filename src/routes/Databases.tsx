@@ -27,6 +27,10 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
   );
 }
 
+/** Engines Adminer can browse. Redis has no Adminer driver — its row gets no
+ * Browse button (the port + `redis-cli` are the client story, shown inline). */
+const BROWSABLE = new Set(["mysql", "postgres"]);
+
 function DbRow({
   db,
   onBrowse,
@@ -56,14 +60,23 @@ function DbRow({
       </div>
       <StatusPill status={db.running ? "running" : "stopped"} />
       {db.running ? (
-        <button
-          onClick={onBrowse}
-          title="Open in database browser"
-          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
-        >
-          <TableProperties className="h-3.5 w-3.5" />
-          Browse
-        </button>
+        BROWSABLE.has(db.key) ? (
+          <button
+            onClick={onBrowse}
+            title="Open in database browser"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+          >
+            <TableProperties className="h-3.5 w-3.5" />
+            Browse
+          </button>
+        ) : (
+          <span
+            title={`No browser for ${db.label} — connect with redis-cli -p ${db.port}`}
+            className="font-mono text-[11px] text-rex-text-dim"
+          >
+            redis-cli -p {db.port}
+          </span>
+        )
       ) : (
         // Never a dead button: the engine is stopped and its lifecycle lives
         // on the Services page — take the user there.
