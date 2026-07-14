@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toastBackendError } from "@/lib/toast";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Check, ChevronRight, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
@@ -28,6 +28,24 @@ export function Tunnels() {
     refetchInterval: 5000,
   });
   const byDomain = new Map(tunnels.map((t) => [t.domain, t]));
+
+  // Default-credentials state per WP site, lifted HERE so the page can warn
+  // proportionately: a loud per-card warning ONLY where it matters (a live
+  // public URL), one quiet collapsible summary for everyone else. One cached
+  // wp-cli check per site; any failure reads as "no warning".
+  const wpSites = sites.filter((s) => s.type === "wordpress");
+  const credQueries = useQueries({
+    queries: wpSites.map((s) => ({
+      queryKey: ["wp-default-creds", s.id],
+      queryFn: () => wpDefaultCreds(s.id),
+      staleTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 0,
+    })),
+  });
+  const defaultCredIds = new Set(
+    wpSites.filter((_, i) => credQueries[i].data === true).map((s) => s.id),
+  );
 
   const share = useMutation({
     mutationFn: async ({ id, on }: { id: string; on: boolean }) => {
@@ -97,6 +115,11 @@ export function Tunnels() {
                 via cloudflared
               </span>
             </div>
+            <DefaultCredsSummary
+              sites={sites.filter(
+                (s) => defaultCredIds.has(s.id) && !byDomain.get(s.domain)?.running,
+              )}
+            />
             {(() => {
               const shared = sites.filter((s) => byDomain.get(s.domain)?.running);
               const shareable = sites.filter((s) => !byDomain.get(s.domain)?.running);
@@ -106,6 +129,7 @@ export function Tunnels() {
                   site={s}
                   tunnel={byDomain.get(s.domain)}
                   busy={share.isPending && share.variables?.id === s.id}
+                  defaultCreds={defaultCredIds.has(s.id)}
                   onToggle={(on) => share.mutate({ id: s.id, on })}
                 />
               );
@@ -129,32 +153,71 @@ export function Tunnels() {
   );
 }
 
+/** One quiet, collapsible line for NOT-shared sites that still accept
+ *  admin/admin — local-only means no real exposure, so this is informational,
+ *  not a wall of per-row warnings. Live-shared sites get the loud per-card
+ *  warning instead and are excluded here. */
+function DefaultCredsSummary({ sites }: { sites: Site[] }) {
+  const [open, setOpen] = useState(false);
+  if (sites.length === 0) return null;
+  const n = sites.length;
+  return (
+    <div className="mb-[18px] rounded-xl border border-rex-border-subtle bg-rex-surface-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-[9px] px-[15px] py-[11px] text-left"
+        aria-expanded={open}
+      >
+        <ChevronRight
+          className={cn("h-3.5 w-3.5 flex-none text-rex-text-muted transition-transform", open && "rotate-90")}
+          strokeWidth={2}
+        />
+        <span className="flex-1 text-[12.5px] text-rex-text-muted">
+          {n === 1 ? "1 site accepts" : `${n} sites accept`} the default{" "}
+          <span className="font-mono text-rex-text-bright">admin/admin</span> login — fine locally;
+          it only matters while a tunnel is active (you'll be warned on the card).
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-rex-border-subtle px-[15px] py-[10px]">
+          <div className="flex flex-wrap gap-1.5">
+            {sites.map((s) => (
+              <span
+                key={s.id}
+                className="rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[11px] text-rex-text-muted"
+              >
+                {s.domain}
+              </span>
+            ))}
+          </div>
+          <div className="mt-2 text-[11.5px] text-rex-text-dim">
+            To change one: Site → WordPress → Users → key icon on the admin user.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type CardState = "idle" | "starting" | "live" | "stopping";
 
 function TunnelCard({
   site,
   tunnel,
   busy,
+  defaultCreds,
   onToggle,
 }: {
   site: Site;
   tunnel?: TunnelInfo;
   busy: boolean;
+  /** Site still accepts admin/admin (checked by the page, passed down). */
+  defaultCreds: boolean;
   onToggle: (on: boolean) => void;
 }) {
   const on = !!tunnel?.running;
   const state: CardState = busy ? (on ? "stopping" : "starting") : on ? "live" : "idle";
-  // Default-credentials heads-up (WP sites only): admin/admin is a local-dev
-  // convenience, but behind a public tunnel URL it's an open wp-admin. One
-  // wp-cli check per card, cached; any failure reads as "no warning".
-  const { data: defaultCreds = false } = useQuery({
-    queryKey: ["wp-default-creds", site.id],
-    queryFn: () => wpDefaultCreds(site.id),
-    enabled: site.type === "wordpress",
-    staleTime: 5 * 60_000,
-    refetchOnWindowFocus: false,
-    retry: 0,
-  });
   const border = {
     live: "border-status-running-border shadow-[0_0_0_1px_var(--rex-running-bg)]",
     stopping: "border-status-running-border",
@@ -195,12 +258,15 @@ function TunnelCard({
         />
       </div>
 
-      {defaultCreds && (
+      {/* Loud only where it MATTERS: a live public URL + default credentials.
+          Idle sites are covered by the page-level summary instead. */}
+      {on && defaultCreds && (
         <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[12px] leading-[1.5] text-status-warning-bright">
           <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />
           <span>
-            This site uses the default <span className="font-mono">admin/admin</span> credentials — anyone with
-            the public URL could log into wp-admin.
+            This site is PUBLIC and still accepts the default{" "}
+            <span className="font-mono">admin/admin</span> login — anyone with the URL can enter
+            wp-admin. Change the password (Site → WordPress → Users) or stop sharing.
           </span>
         </div>
       )}
