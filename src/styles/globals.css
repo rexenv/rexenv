@@ -44,6 +44,37 @@
   ::placeholder {
     color: var(--rex-text-faint);
   }
+
+  /* Form controls: opt OUT of native rendering (QA P3-3). Native select /
+     checkbox / spinner chrome differs per macOS version in WKWebView — macOS
+     15 (Sequoia) draws its new control style over our background/border — so
+     we draw our own everywhere: same pixels in dev, packaged, and any OS.
+     The chevron is theme-pinned in tokens.css; padding-right needs !important
+     to beat per-element px-* utilities (classes outrank element selectors). */
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: var(--rex-select-chevron);
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 13px 13px;
+    padding-right: 28px !important;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--rex-brand);
+  }
+  /* Number inputs: kill the native spin buttons (tiny + theme-dependent);
+     values are typed, and every numeric field here has its own Save flow. */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
 }
 
 @layer utilities {

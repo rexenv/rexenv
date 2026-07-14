@@ -16,6 +16,11 @@
   --rex-well: #0e1015; /* recessed track (meter background) */
   --rex-well-deep: #0b0c10; /* code/URL wells + meter tracks (deepest recess) */
 
+  /* Select chevron (drawn by us — native select chrome is disabled globally;
+     it varies by macOS version in WKWebView). Data-URIs can't reference CSS
+     vars, so each theme pins its own stroke = that theme's --rex-text-muted. */
+  --rex-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a90a0' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
   /* ── Borders ── */
   --rex-border: #262a33;
   --rex-border-subtle: #20242c; /* sidebar / header dividers */
@@ -186,6 +191,7 @@
  * tokens (never hardcoded hex), this re-skins the whole app.
  */
 [data-theme="light"] {
+  --rex-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6170' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   color-scheme: light;
 
   /* ── Surfaces ── */
