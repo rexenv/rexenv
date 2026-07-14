@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { toastBackendError } from "@/lib/toast";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Database, TableProperties } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, ArrowUpRight, Database, TableProperties } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
-import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
-import { databasesStatus, startDatabase, stopDatabase } from "@/lib/ipc";
+import { databasesStatus } from "@/lib/ipc";
 import { adminerFrameSrc } from "@/lib/adminer";
 import type { DbStatus } from "@/types";
 
@@ -30,14 +29,13 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
 
 function DbRow({
   db,
-  busy,
-  onToggle,
   onBrowse,
+  onGoServices,
 }: {
   db: DbStatus;
-  busy: boolean;
-  onToggle: () => void;
   onBrowse: () => void;
+  /** Engine lifecycle lives on the Services page (P2-7) — link, never a dead button. */
+  onGoServices: () => void;
 }) {
   return (
     <div className="flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0">
@@ -57,44 +55,44 @@ function DbRow({
         </div>
       </div>
       <StatusPill status={db.running ? "running" : "stopped"} />
-      <button
-        onClick={onBrowse}
-        disabled={!db.running}
-        title={db.running ? "Open in database browser" : "Start the engine first"}
-        className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border"
-      >
-        <TableProperties className="h-3.5 w-3.5" />
-        Browse
-      </button>
+      {db.running ? (
+        <button
+          onClick={onBrowse}
+          title="Open in database browser"
+          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+        >
+          <TableProperties className="h-3.5 w-3.5" />
+          Browse
+        </button>
+      ) : (
+        // Never a dead button: the engine is stopped and its lifecycle lives
+        // on the Services page — take the user there.
+        <button
+          onClick={onGoServices}
+          title={`${db.label} is stopped — start it from the Services page`}
+          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text-muted transition-colors hover:border-brand hover:text-rex-text"
+        >
+          <ArrowUpRight className="h-3.5 w-3.5" />
+          Start {db.label} from Services
+        </button>
+      )}
       <Meter label="CPU" value={`${db.cpuPercent.toFixed(1)}%`} pct={db.cpuPercent} />
       <Meter
         label="RAM"
         value={db.ramMb >= 1024 ? `${(db.ramMb / 1024).toFixed(1)} GB` : `${db.ramMb} MB`}
         pct={(db.ramMb / 1024) * 100}
       />
-      <StartStopToggle
-        running={db.running}
-        busy={busy}
-        onToggle={onToggle}
-        label={`${db.running ? "Stop" : "Start"} ${db.label}`}
-      />
     </div>
   );
 }
 
 export function Databases() {
-  const qc = useQueryClient();
+  const navigate = useNavigate();
   const [browse, setBrowse] = useState<{ engine: "mysql" | "postgres"; label: string } | null>(null);
   const { data: dbs = [], isLoading } = useQuery({
     queryKey: ["databases"],
     queryFn: databasesStatus,
     refetchInterval: browse ? false : 2000,
-  });
-
-  const toggle = useMutation({
-    mutationFn: (db: DbStatus) => (db.running ? stopDatabase(db.key) : startDatabase(db.key)),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["databases"] }),
-    onError: (e) => toastBackendError(e),
   });
 
   const running = dbs.filter((d) => d.running).length;
@@ -141,14 +139,13 @@ export function Databases() {
               <DbRow
                 key={db.key}
                 db={db}
-                busy={toggle.isPending && toggle.variables?.key === db.key}
-                onToggle={() => toggle.mutate(db)}
                 onBrowse={() =>
                   setBrowse({
                     engine: db.key === "postgres" ? "postgres" : "mysql",
                     label: db.label,
                   })
                 }
+                onGoServices={() => navigate("/services")}
               />
             ))}
           </div>

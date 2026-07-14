@@ -159,6 +159,10 @@ export interface ServiceInfo {
   /** True for user-toggled engines Start-all never starts (Postgres) — the
    *  sidebar footer counts them only while running. */
   optional?: boolean;
+  /** Set only for independently-toggleable services (db engine key or
+   *  "mailpit") — drives the per-row Start/Stop toggle. Serving-core rows
+   *  (edge/nginx/pools/FrankenPHP) omit it: group-managed by design. */
+  serviceKey?: string;
 }
 
 /** One database engine's status + live metrics (mirrors the Rust DbStatus DTO). */

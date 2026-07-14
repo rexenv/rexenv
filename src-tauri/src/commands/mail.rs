@@ -27,6 +27,28 @@ pub async fn mailpit_status(_state: State<'_, AppState>) -> Result<MailpitStatus
     })
 }
 
+/// Start Mailpit alone (Services-row toggle). Independent of the serving core:
+/// pools route mail to its FIXED SMTP port via the sendmail shim, so it can
+/// come and go without touching them. Spawn under the lock, await readiness
+/// with it released (M4); binary prefetch happens inside spawn (cache hit
+/// after first run).
+#[tauri::command]
+pub async fn start_mail(state: State<'_, AppState>) -> Result<()> {
+    let check = {
+        let mut mgr = state.services.lock().await;
+        mgr.spawn_mailpit(state.platform.as_ref()).await?
+    };
+    crate::core::service_manager::await_ready(check.into_iter().collect()).await
+}
+
+/// Stop Mailpit alone. Mail sent while it's down is dropped by the shim —
+/// that's the same failure mode as any stopped mail catcher.
+#[tauri::command]
+pub async fn stop_mail(state: State<'_, AppState>) -> Result<()> {
+    let mut mgr = state.services.lock().await;
+    mgr.stop_mailpit(state.platform.as_ref())
+}
+
 /// Inbox listing, optionally filtered by a Mailpit search query (§2.3).
 #[tauri::command]
 pub async fn mailpit_messages(

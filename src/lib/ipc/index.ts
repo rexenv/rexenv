@@ -930,6 +930,18 @@ export async function databasesStatus(): Promise<DbStatus[]> {
   return invoke<DbStatus[]>("databases_status");
 }
 
+/** Start Mailpit alone (Services-row toggle). No-op outside Tauri. */
+export async function startMail(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("start_mail");
+}
+
+/** Stop Mailpit alone. No-op outside Tauri. */
+export async function stopMail(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("stop_mail");
+}
+
 /** Start a database engine by key (e.g. "postgres"). No-op outside Tauri. */
 export async function startDatabase(key: string): Promise<void> {
   if (!isTauri()) return;

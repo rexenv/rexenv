@@ -5,8 +5,9 @@ import { Code, Database, ExternalLink, Globe, Inbox, Layers, Mail, Server, type 
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
-import { defaultTld, dnsStatus, servicesStatus, setDefaultPhpVersion } from "@/lib/ipc";
+import { defaultTld, dnsStatus, servicesStatus, setDefaultPhpVersion, startDatabase, startMail, stopDatabase, stopMail } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
 
 /** Tinted accent per kind (matches the group icon colors). */
@@ -112,11 +113,16 @@ function ServiceRow({
   onSetDefault,
   onOpenDatabases,
   onOpenMail,
+  toggleBusy,
+  onToggle,
 }: {
   svc: ServiceInfo;
   onSetDefault: (minor: string) => void;
   onOpenDatabases: () => void;
   onOpenMail: () => void;
+  /** In-flight state for THIS row's start/stop (independent services only). */
+  toggleBusy: boolean;
+  onToggle: (key: string, start: boolean) => void;
 }) {
   const kind = serviceKind(svc);
   const accent = KIND_ACCENT[kind];
@@ -194,6 +200,26 @@ function ServiceRow({
           </ActionBtn>
         )}
       </div>
+      <div className="flex w-[118px] flex-none items-center justify-end">
+        {svc.serviceKey ? (
+          // Independent service (DB engine / Mailpit): safe to toggle alone.
+          <StartStopToggle
+            running={running}
+            busy={toggleBusy}
+            onToggle={() => onToggle(svc.serviceKey!, !running)}
+            label={`${running ? "Stop" : "Start"} ${svc.name}`}
+          />
+        ) : (
+          // Serving core (edge → web server → PHP): ONE organism — stopping a
+          // single piece would 502 every site, so no per-row toggle by design.
+          <span
+            className="cursor-help rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[9.5px] uppercase tracking-[0.07em] text-rex-text-dim"
+            title="Part of the serving stack (edge → web server → PHP). These start and stop together — use Start all / Stop all / Restart in the sidebar. Stopping one alone would break every site."
+          >
+            via Start/Stop all
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -205,6 +231,20 @@ export function Services() {
     queryKey: ["services"],
     queryFn: servicesStatus,
     refetchInterval: 2000,
+  });
+
+  // Per-row start/stop for the INDEPENDENT services (DB engines, Mailpit).
+  const toggleService = useMutation({
+    mutationFn: ({ key, start }: { key: string; start: boolean }) => {
+      if (key === "mailpit") return start ? startMail() : stopMail();
+      return start ? startDatabase(key) : stopDatabase(key);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["services"] });
+      qc.invalidateQueries({ queryKey: ["global-status"] });
+      qc.invalidateQueries({ queryKey: ["databases"] });
+    },
+    onError: (e) => toastBackendError(e),
   });
 
   const setDefault = useMutation({
@@ -274,6 +314,11 @@ export function Services() {
                         onSetDefault={(minor) => setDefault.mutate(minor)}
                         onOpenDatabases={() => navigate("/databases")}
                         onOpenMail={() => navigate("/mail")}
+                        toggleBusy={
+                          toggleService.isPending &&
+                          toggleService.variables?.key === svc.serviceKey
+                        }
+                        onToggle={(key, start) => toggleService.mutate({ key, start })}
                       />
                     ))}
                   </div>

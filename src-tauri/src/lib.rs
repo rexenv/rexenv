@@ -561,6 +561,8 @@ pub fn run() {
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,
             commands::mail::mailpit_status,
+            commands::mail::start_mail,
+            commands::mail::stop_mail,
             commands::mail::mailpit_messages,
             commands::mail::mailpit_message,
             commands::mail::mailpit_message_raw,

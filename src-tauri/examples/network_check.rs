@@ -131,7 +131,7 @@ async fn main() {
     println!("✓ plugin network-activated → `active-network` (Network-active badge)");
 
     // 4) Super-admins: create a user, grant super-admin, list includes it.
-    let _ = wordpress::user_create(&php, &wp, &docroot, "boss", "boss@mysite.test", "administrator");
+    let _ = wordpress::user_create(&php, &wp, &docroot, "boss", "boss@mysite.test", "administrator", "123456");
     wordpress::super_admin_add(&php, &wp, &docroot, "boss").expect("super-admin add");
     let supers = wordpress::super_admin_list(&php, &wp, &docroot).expect("super-admin list");
     println!("super_admin_list → {supers:?}");

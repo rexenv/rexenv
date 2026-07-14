@@ -34,6 +34,13 @@ pub struct ServiceStatus {
     /// True for services Start-all does NOT manage (user-toggled engines like
     /// Postgres) — the footer counts them only while running.
     pub optional: bool,
+    /// Set ONLY for independently-toggleable services (DB engines → their
+    /// `start_database` key, Mailpit → "mailpit"): the Services row renders a
+    /// per-row Start/Stop toggle for these. The serving core (edge, nginx,
+    /// pools, FrankenPHP) is one organism — half-states are broken by design —
+    /// so its rows get `None` and the group-managed hint instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_key: Option<String>,
 }
 
 /// Group a service row by its canonical name (the manager names them).
@@ -329,6 +336,11 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 .map(|minor| Some(minor) == default_minor.as_deref());
             let domain = i.name.strip_prefix("FrankenPHP ").map(str::to_string);
             let optional = i.optional;
+            let service_key = core::db::DbEngine::ALL
+                .into_iter()
+                .find(|e| e.label() == i.name)
+                .map(|e| e.key().to_string())
+                .or_else(|| (i.name == "Mailpit").then(|| "mailpit".to_string()));
             let version = version.or_else(|| {
                 domain
                     .is_some()
@@ -346,6 +358,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
                 is_default,
                 domain,
                 optional,
+                service_key,
             }
         })
         .collect();
