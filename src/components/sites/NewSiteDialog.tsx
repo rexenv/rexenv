@@ -19,6 +19,7 @@ function generatePassword(): string {
 const SERVERS: { value: WebServer; label: string }[] = [
   { value: "nginx", label: "Nginx" },
   { value: "frankenphp", label: "FrankenPHP" },
+  { value: "apache", label: "Apache (.htaccess)" },
 ];
 
 /** WordPress locales offered in the dialog ("" → default en_US). */

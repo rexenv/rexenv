@@ -150,6 +150,7 @@ pub fn label_for(name: &str, version: &str) -> String {
         "cloudflared" => "cloudflared (tunnels)".into(),
         "redis" => format!("Redis {}", minor(version)),
         "mariadb" => format!("MariaDB {}", minor(version)),
+        "httpd" => "Apache (httpd)".into(),
         _ => format!("{name} {version}"),
     }
 }
@@ -209,6 +210,9 @@ pub fn plan_for_start(
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Frankenphp)) {
         set.push(("frankenphp", binaries::FRANKENPHP_VERSION));
     }
+    if sites.iter().any(|s| matches!(s.web_server, WebServer::Apache)) {
+        set.push(("httpd", binaries::HTTPD_VERSION));
+    }
     if sites.iter().any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb)) {
         set.push(("mariadb", binaries::MARIADB_VERSION));
     }
@@ -266,8 +270,14 @@ pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedB
 
 /// The FrankenPHP override backend — for site create/switch onto FrankenPHP,
 /// whose `reconcile_overrides` (inside the locked reload) must hit cache.
-pub fn plan_for_override(platform: &dyn Platform) -> Vec<PlannedBinary> {
-    vec![PlannedBinary::new(platform, "frankenphp", binaries::FRANKENPHP_VERSION)]
+pub fn plan_for_override(platform: &dyn Platform, server: WebServer) -> Vec<PlannedBinary> {
+    match server {
+        WebServer::Frankenphp => {
+            vec![PlannedBinary::new(platform, "frankenphp", binaries::FRANKENPHP_VERSION)]
+        }
+        WebServer::Apache => vec![PlannedBinary::new(platform, "httpd", binaries::HTTPD_VERSION)],
+        _ => Vec::new(),
+    }
 }
 
 /// Resolve one binary through whichever resolver its distribution shape needs.
@@ -276,7 +286,9 @@ pub fn plan_for_override(platform: &dyn Platform) -> Vec<PlannedBinary> {
 pub async fn resolve_any(platform: &dyn Platform, name: &str, version: &str) -> Result<()> {
     match name {
         "mysql" | "postgres" => binaries::resolve_dir(platform, name, version).await.map(drop),
-        "redis" | "mariadb" => binaries::resolve_bundle(platform, name, version).await.map(drop),
+        "redis" | "mariadb" | "httpd" => {
+            binaries::resolve_bundle(platform, name, version).await.map(drop)
+        }
         "wp-cli" | "adminer" => binaries::resolve_file(platform, name, version).await.map(drop),
         _ => binaries::resolve(platform, name, version).await.map(drop),
     }

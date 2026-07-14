@@ -396,7 +396,27 @@ Each line = one feature, live-verified before its commit.
   re-import, `reset_site` drop+reinstall — all green. 253 lib tests, clippy, examples,
   tsc. **Human verify next:** create a MariaDB site from the dialog, site over HTTPS,
   per-site Adminer Browse.
-- [ ] Apache (httpd) override server — bottle closure (apr, apr-util, openssl@3, pcre2)
+- [x] **Apache (httpd) override server** — the closure shrank on inspection again:
+  `bin/httpd` links ONLY apr + apr-util + pcre2 (+ system expat/iconv); openssl/
+  brotli/nghttp2 belong to mod_ssl/mod_brotli/mod_http2, which are excluded (TLS/H2
+  are the edge's job) — bundle = httpd (server + ONLY the 10 conf-loaded modules +
+  the real `mime.types` from the bottle's staged etc/) + apr + apr-util + pcre2.
+  `core/apache.rs` mirrors frankenphp.rs: loopback backend on 8300–8399 (same FNV,
+  own base — a server switch can't collide with itself), NEVER the edge; `.php` →
+  the site's SHARED php-fpm pool via mod_proxy_fcgi (per-version PHP settings apply
+  identically; env vars ride the request as `SetEnv`, same delivery class as nginx's
+  `fastcgi_param`); `AllowOverride All` — `.htaccess` works, the point of Apache;
+  subdirectory-multisite mirrors WP's canonical network rules in server context.
+  Manager's override machinery generalized to KINDS (`OverrideKind`: reconcile with
+  kind-change stop, config-diff, spawn, watchdog respawn, adoption, status rows,
+  ports, serving probe — one seam, OLS drops in later). UI pickers offer
+  "Apache (.htaccess)". ✓ **Live-verified** (`examples/apache_site_check`, Jul 15):
+  4 bottles → merged tree, httpd + dylibs + modules loads-clean; `httpd -t` Syntax
+  OK; served a probe site on :8329 against a throwaway fpm pool — PHP-via-fpm ✓,
+  SetEnv env var per-request ✓, pretty-URL front-controller fallback ✓, css mime
+  from the bundled map ✓, `.htaccess` RewriteRule 302 ✓. 258 lib tests, clippy,
+  examples, tsc. **Human verify next:** create/switch a site to Apache in-app,
+  site over HTTPS, plugin `.htaccess` rules.
 - [ ] OpenLiteSpeed override server
 - [ ] Per-engine DB version switch (multi-version DBs)
 

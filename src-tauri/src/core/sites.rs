@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tld, tunnels};
+use crate::core::{adminer, apache, frankenphp, php, proxy, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{MultisiteMode, NewSite, ServiceStatus, Site, SiteType, WebServer};
@@ -276,11 +276,11 @@ pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>
 }
 
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
-/// — no docroot/cert/DB rebuild — and return the updated site. Only Nginx and
-/// FrankenPHP have backends in Phase 2 (Apache/OLS are deferred). The caller
-/// brings the new backend up / old down and reloads the edge.
+/// — no docroot/cert/DB rebuild — and return the updated site. Nginx, FrankenPHP
+/// and Apache have backends (OLS is still deferred). The caller brings the new
+/// backend up / old down and reloads the edge.
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
-    if !matches!(server, WebServer::Nginx | WebServer::Frankenphp) {
+    if !matches!(server, WebServer::Nginx | WebServer::Frankenphp | WebServer::Apache) {
         return Err(Error::Other(format!(
             "web server {} is not available on this platform yet",
             server.as_db()
@@ -527,17 +527,18 @@ pub fn provision(
     create(conn, new)
 }
 
-/// Whether a site is served by the shared nginx. Override servers (FrankenPHP —
-/// §2; Apache — §3) run their own backend process and are excluded.
+/// Whether a site is served by the shared nginx. Override servers (FrankenPHP,
+/// Apache) run their own backend process and are excluded.
 fn is_nginx_served(s: &Site) -> bool {
-    !matches!(s.web_server, WebServer::Frankenphp)
+    !matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache)
 }
 
-/// The edge (Caddy) upstream for a site: a FrankenPHP-override site points at its
-/// own backend port; every other site goes to the shared nginx port.
+/// The edge (Caddy) upstream for a site: an override site (FrankenPHP/Apache)
+/// points at its own backend port; every other site goes to the shared nginx.
 fn site_upstream(s: &Site, nginx_http_port: u16) -> String {
     match s.web_server {
         WebServer::Frankenphp => format!("127.0.0.1:{}", frankenphp::site_port(&s.domain)),
+        WebServer::Apache => format!("127.0.0.1:{}", apache::site_port(&s.domain)),
         _ => format!("127.0.0.1:{nginx_http_port}"),
     }
 }
@@ -1170,8 +1171,11 @@ mod tests {
         let back = set_web_server(&conn, &site.id, WebServer::Nginx).unwrap().unwrap();
         assert!(matches!(back.web_server, WebServer::Nginx));
 
-        // Deferred servers are rejected; unknown id is a no-op (None).
-        assert!(set_web_server(&conn, &site.id, WebServer::Apache).is_err());
+        // Apache is a real backend now; OLS stays deferred; unknown id → None.
+        let ap = set_web_server(&conn, &site.id, WebServer::Apache).unwrap().expect("exists");
+        assert!(matches!(ap.web_server, WebServer::Apache));
+        set_web_server(&conn, &site.id, WebServer::Nginx).unwrap();
+        assert!(set_web_server(&conn, &site.id, WebServer::Openlitespeed).is_err());
         assert!(set_web_server(&conn, "nope", WebServer::Nginx).unwrap().is_none());
     }
 

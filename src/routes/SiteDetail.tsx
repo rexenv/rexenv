@@ -78,10 +78,11 @@ async function openWpAdmin(site: Pick<Site, "id" | "domain">) {
   }
 }
 
-/** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
+/** Web servers with real backends (OpenLiteSpeed is still deferred). */
 const SERVERS: { value: WebServer; label: string }[] = [
   { value: "nginx", label: "Nginx" },
   { value: "frankenphp", label: "FrankenPHP" },
+  { value: "apache", label: "Apache (.htaccess)" },
 ];
 
 const SELECT_CLS =

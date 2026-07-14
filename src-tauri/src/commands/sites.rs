@@ -114,7 +114,7 @@ pub async fn sites_resources(state: State<'_, AppState>) -> Result<Vec<SiteResou
             let tree = override_pids.get(&s.domain).and_then(|pid| monitor.tree(*pid));
             let act = activity.get(&s.domain);
             SiteResources {
-                dedicated: matches!(s.web_server, WebServer::Frankenphp),
+                dedicated: matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache),
                 cpu_percent: tree.map(|t| t.cpu_percent),
                 ram_mb: tree.map(|t| t.ram_mb),
                 requests_per_min: act.map(|a| a.requests),
@@ -213,11 +213,16 @@ pub async fn create_site(
     // below — `spawn_db` / `ensure_php_pool` / the reload's override reconcile
     // all run under the lock and must hit cache, or a cold cache would stream
     // downloads while holding it. No-op (no batch) when everything's cached.
+    // FrankenPHP embeds its PHP; nginx/Apache sites ride a shared pool — and
+    // Apache additionally needs its own httpd bundle.
     let mut plan = if matches!(created.web_server, WebServer::Frankenphp) {
-        core::downloads::plan_for_override(state.platform.as_ref())
+        core::downloads::plan_for_override(state.platform.as_ref(), created.web_server)
     } else {
         core::downloads::plan_for_pool(state.platform.as_ref(), &minor)
     };
+    if matches!(created.web_server, WebServer::Apache) {
+        plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), created.web_server));
+    }
     let engine = DbEngine::from_site(created.db_engine);
     if matches!(created.site_type, SiteType::Wordpress) {
         plan.extend(core::downloads::plan_for_engine(state.platform.as_ref(), engine));
@@ -303,14 +308,17 @@ pub async fn set_site_web_server(
     if let Some(ref s) = site {
         // The new backend's binary must be cached BEFORE the locked scope below
         // (pool ensure / override reconcile download otherwise). No-op when warm.
-        let plan = if matches!(s.web_server, WebServer::Frankenphp) {
-            core::downloads::plan_for_override(state.platform.as_ref())
+        let mut plan = if matches!(s.web_server, WebServer::Frankenphp) {
+            core::downloads::plan_for_override(state.platform.as_ref(), s.web_server)
         } else {
             core::downloads::plan_for_pool(
                 state.platform.as_ref(),
                 &core::php::minor_of(&s.php_version),
             )
         };
+        if matches!(s.web_server, WebServer::Apache) {
+            plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), s.web_server));
+        }
         core::downloads::prefetch(state.platform.as_ref(), "Switch web server", &plan).await?;
         // Readiness of a newly spawned FrankenPHP backend is awaited with the
         // services lock released (M4).

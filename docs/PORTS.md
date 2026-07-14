@@ -14,6 +14,7 @@ binary, update THIS file in the same commit.
 | Shared Nginx | **18088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` |
 | php-fpm pools | **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.0–8.5, one pool per installed minor) |
 | FrankenPHP override backends | **8200–8299** (per-site, FNV-1a of domain) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT` |
+| Apache override backends | **8300–8399** (per-site, same FNV-1a) | TCP | `core/apache.rs` `APACHE_BASE_PORT` |
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |
 | MariaDB | **13307** | TCP | `core/db.rs` `MARIADB_PORT` |
 | PostgreSQL | **15432** | TCP | `core/db.rs` `POSTGRES_PORT` |
@@ -43,6 +44,7 @@ binary, update THIS file in the same commit.
 | PostgreSQL | 18.4.0 | theseus-rs portable, TCP-only |
 | Redis | 8.8.0 | **bottle BUNDLE** (`resolve_bundle`): Homebrew redis + openssl@3 3.6.3 bottles (arm64_sonoma / sonoma), merged + relinked to `@loader_path` + re-signed by `prepare_binary_tree`. ghcr blobs are content-addressed — the URL embeds the pinned digest, so pins can 404 (formula GC) but never drift |
 | MariaDB | 12.3.2 | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
+| Apache httpd | 2.4.68 | bottle BUNDLE: httpd (`bin/httpd` + ONLY the 10 modules the generated conf loads + `.bottle/etc/httpd/mime.types`) + apr 1.7.6 + apr-util 1.6.3 + pcre2 10.47. mod_ssl/mod_http2/mod_brotli excluded ⇒ openssl/nghttp2/brotli never bundled. Per-site loopback override backend; `.php` → the site's shared php-fpm pool via mod_proxy_fcgi (`core/apache.rs`) |
 | Mailpit | 1.30.3 | |
 | Adminer | 5.4.2 | single `.php`, OS-agnostic |
 | cloudflared | 2026.6.1 | |

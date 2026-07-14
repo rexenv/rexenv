@@ -71,8 +71,17 @@ pub const MARIADB_VERSION: &str = "12.3.2";
 /// openssl@3 version bundled INTO dylib bundles (redis, mariadb).
 /// Not a standalone binary — only ever a [`BundlePart`].
 pub const BUNDLED_OPENSSL_VERSION: &str = "3.6.3";
-/// pcre2 version bundled into the mariadb bundle (`mariadbd` links libpcre2-8).
+/// pcre2 version bundled into the mariadb + httpd bundles (both link libpcre2-8).
 pub const BUNDLED_PCRE2_VERSION: &str = "10.47";
+/// Pinned Apache httpd version (bottle bundle: httpd + apr + apr-util + pcre2).
+/// The `bin/httpd` core links ONLY apr/apr-util/pcre2 (+ system expat/iconv);
+/// openssl/brotli/nghttp2 are deps of mod_ssl/mod_brotli/mod_http2 — those
+/// modules are excluded (TLS/H2 are the edge's job), so their libs never enter
+/// the bundle. Runs per-site as a loopback OVERRIDE backend (`core/apache.rs`).
+pub const HTTPD_VERSION: &str = "2.4.68";
+/// apr / apr-util versions bundled into the httpd bundle.
+pub const BUNDLED_APR_VERSION: &str = "1.7.6";
+pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,6 +262,13 @@ const MARIADB_12_3_2_BOTTLE_AMD64_SHA256: &str = "d25f40713fb7e44f2da1ad4117028c
 // pcre2 bottle (revision `10.47_1` inside the tarball — irrelevant post-strip).
 const PCRE2_10_47_BOTTLE_ARM64_SHA256: &str = "f6d184fa59de4ca2f3115cb661f113c6c25ced2247b4e169dd99389c0d58be3f";
 const PCRE2_10_47_BOTTLE_AMD64_SHA256: &str = "72691a0ed5b0ec4d21641ee33aa00fad05e6e8ddbfa417fe27f4cd26521ed24a";
+const HTTPD_2_4_68_BOTTLE_ARM64_SHA256: &str = "5835c1181a511b8c0eb5729dc27734669387a1c2d0dd95322ec6ae6b2a3f0bfc";
+const HTTPD_2_4_68_BOTTLE_AMD64_SHA256: &str = "50b619ada5467134fbd92ee54c1fed89f4f8c3b4598ae6c9c197993e40e447aa";
+const APR_1_7_6_BOTTLE_ARM64_SHA256: &str = "d89324cbc51a250e109e00dc2e90ce77611058027060c39c83bb771118502332";
+const APR_1_7_6_BOTTLE_AMD64_SHA256: &str = "fdf0f628598225db7ea43128abaf944011df61e2469811709c250607745b8570";
+// apr-util bottle (revision `1.6.3_1` inside the tarball — irrelevant post-strip).
+const APR_UTIL_1_6_3_BOTTLE_ARM64_SHA256: &str = "e21a775a4cd6e721ad4f09cd7ed0355b5a1181ca8ad6834911a045c8f076eb01";
+const APR_UTIL_1_6_3_BOTTLE_AMD64_SHA256: &str = "a59301c0e98b321c57fc3c8fac679a1e1bcdd5bce470fef60adc240f9c575674";
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
@@ -582,6 +598,56 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
                     &["bin"],
                 ),
                 openssl_part(arch),
+            ],
+        }),
+        ("httpd", "macos", "2.4.68") => Some(BundleSpec {
+            member: "bin/httpd",
+            parts: vec![
+                bottle_part(
+                    "httpd",
+                    arch,
+                    HTTPD_2_4_68_BOTTLE_ARM64_SHA256,
+                    HTTPD_2_4_68_BOTTLE_AMD64_SHA256,
+                    // The server binary, ONLY the modules our generated conf
+                    // loads (mod_ssl/mod_http2/mod_brotli would drag openssl/
+                    // nghttp2/brotli into the closure), and the real mime map
+                    // (bottles stage etc/ under `.bottle/`).
+                    &[
+                        "bin/httpd",
+                        "lib/httpd/modules/mod_mpm_event.so",
+                        "lib/httpd/modules/mod_unixd.so",
+                        "lib/httpd/modules/mod_authz_core.so",
+                        "lib/httpd/modules/mod_dir.so",
+                        "lib/httpd/modules/mod_mime.so",
+                        "lib/httpd/modules/mod_env.so",
+                        "lib/httpd/modules/mod_rewrite.so",
+                        "lib/httpd/modules/mod_proxy.so",
+                        "lib/httpd/modules/mod_proxy_fcgi.so",
+                        "lib/httpd/modules/mod_log_config.so",
+                        ".bottle/etc/httpd/mime.types",
+                    ],
+                ),
+                bottle_part(
+                    "apr",
+                    arch,
+                    APR_1_7_6_BOTTLE_ARM64_SHA256,
+                    APR_1_7_6_BOTTLE_AMD64_SHA256,
+                    &["lib/libapr-1.0.dylib"],
+                ),
+                bottle_part(
+                    "apr-util",
+                    arch,
+                    APR_UTIL_1_6_3_BOTTLE_ARM64_SHA256,
+                    APR_UTIL_1_6_3_BOTTLE_AMD64_SHA256,
+                    &["lib/libaprutil-1.0.dylib"],
+                ),
+                bottle_part(
+                    "pcre2",
+                    arch,
+                    PCRE2_10_47_BOTTLE_ARM64_SHA256,
+                    PCRE2_10_47_BOTTLE_AMD64_SHA256,
+                    &["lib/libpcre2-8.0.dylib"],
+                ),
             ],
         }),
         ("mariadb", "macos", "12.3.2") => Some(BundleSpec {

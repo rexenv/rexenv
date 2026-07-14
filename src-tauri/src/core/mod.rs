@@ -5,6 +5,7 @@
 //! Submodules start as files and grow into folders as each Phase 1 task lands.
 
 pub mod adminer;
+pub mod apache;
 pub mod binaries;
 pub mod blueprints;
 pub mod database;

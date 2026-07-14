@@ -9,7 +9,7 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{adminer, binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
+use crate::core::{adminer, apache, binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, SiteServing, WebServer};
@@ -118,11 +118,13 @@ pub struct ServiceManager {
     ports: Ports,
     dbs: HashMap<DbEngine, Proc>,
     pools: php::PhpFpmPools,
-    /// Per-site override backends (FrankenPHP), keyed by domain (§4.1).
-    overrides: HashMap<String, Proc>,
+    /// Per-site override backends (FrankenPHP / Apache), keyed by domain (§4.1).
+    overrides: HashMap<String, OverrideBackend>,
     /// FrankenPHP binary, resolved lazily on first override (avoids a download
     /// when no site uses it).
     frankenphp_bin: Option<PathBuf>,
+    /// Apache httpd bundle dir, resolved lazily on first Apache override.
+    httpd_dir: Option<PathBuf>,
     nginx: Option<Proc>,
     caddy: CaddyHandle,
     /// Mailpit mail-catcher (§2.1), resolved + started lazily.
@@ -157,6 +159,42 @@ pub struct ServiceManager {
     site_env: HashMap<String, Vec<(String, String)>>,
 }
 
+/// Which override server a site runs (`None` for shared-nginx sites).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OverrideKind {
+    Frankenphp,
+    Apache,
+}
+
+impl OverrideKind {
+    fn of(server: WebServer) -> Option<OverrideKind> {
+        match server {
+            WebServer::Frankenphp => Some(OverrideKind::Frankenphp),
+            WebServer::Apache => Some(OverrideKind::Apache),
+            _ => None,
+        }
+    }
+    fn port(&self, domain: &str) -> u16 {
+        match self {
+            OverrideKind::Frankenphp => frankenphp::site_port(domain),
+            OverrideKind::Apache => apache::site_port(domain),
+        }
+    }
+    fn label(&self) -> &'static str {
+        match self {
+            OverrideKind::Frankenphp => "FrankenPHP",
+            OverrideKind::Apache => "Apache",
+        }
+    }
+}
+
+/// One tracked per-site override backend process.
+struct OverrideBackend {
+    kind: OverrideKind,
+    port: u16,
+    child: Proc,
+}
+
 impl ServiceManager {
     pub fn with_ports(ports: Ports) -> Self {
         Self {
@@ -166,6 +204,7 @@ impl ServiceManager {
             pools: php::PhpFpmPools::default(),
             overrides: HashMap::new(),
             frankenphp_bin: None,
+            httpd_dir: None,
             nginx: None,
             caddy: CaddyHandle::Stopped,
             mailpit: None,
@@ -563,98 +602,184 @@ impl ServiceManager {
         Ok(p)
     }
 
-    /// Bring the running per-site override backends (FrankenPHP) in line with the
-    /// site set: start one for each FrankenPHP site that isn't up, stop any whose
-    /// site was deleted or switched away. Each backend listens on the site's
-    /// deterministic override port (`frankenphp::site_port`). Returns one
-    /// readiness probe per newly spawned backend — the caller [`await_ready`]s
-    /// them (concurrently) after dropping the services lock (M4).
+    /// Bring the running per-site override backends (FrankenPHP / Apache) in
+    /// line with the site set: start one for each override site that isn't up,
+    /// stop any whose site was deleted or switched away. Each backend listens
+    /// on its kind's deterministic override port. Returns one readiness probe
+    /// per newly spawned backend — the caller [`await_ready`]s them
+    /// (concurrently) after dropping the services lock (M4).
     async fn reconcile_overrides(
         &mut self,
         platform: &dyn Platform,
         sites: &[Site],
     ) -> Result<Vec<ReadyCheck>> {
-        // Desired FrankenPHP backends: domain → (docroot, port, rewrite mode, env).
-        // The rewrite mode is the site's real one (M5): a subdirectory-multisite
-        // override needs WordPress's network rewrites, not the single-site default.
-        // Env vars (§1.6) come from the manager's site-id-keyed map.
-        type Desired = (PathBuf, u16, services::RewriteMode, Vec<(String, String)>);
+        // Desired override backends: domain → the full spawn recipe. The
+        // rewrite mode is the site's real one (M5); env vars (§1.6) come from
+        // the manager's site-id-keyed map; Apache additionally needs the
+        // site's php-fpm pool port (no embedded PHP).
+        struct Desired {
+            kind: OverrideKind,
+            docroot: PathBuf,
+            port: u16,
+            fpm_port: u16,
+            rewrite: services::RewriteMode,
+            env: Vec<(String, String)>,
+        }
         let desired: HashMap<String, Desired> = sites
             .iter()
-            .filter(|s| matches!(s.web_server, WebServer::Frankenphp))
-            .map(|s| {
-                (
+            .filter_map(|s| {
+                let kind = OverrideKind::of(s.web_server)?;
+                Some((
                     s.domain.clone(),
-                    (
-                        PathBuf::from(&s.path),
-                        frankenphp::site_port(&s.domain),
-                        sites::rewrite_mode_for(s.multisite),
-                        self.site_env.get(&s.id).cloned().unwrap_or_default(),
-                    ),
-                )
+                    Desired {
+                        kind,
+                        docroot: PathBuf::from(&s.path),
+                        port: kind.port(&s.domain),
+                        fpm_port: sites::pool_port_for(&s.php_version),
+                        rewrite: sites::rewrite_mode_for(s.multisite),
+                        env: self.site_env.get(&s.id).cloned().unwrap_or_default(),
+                    },
+                ))
             })
             .collect();
 
-        // Stop backends that are no longer wanted.
+        // Stop backends that are no longer wanted — including a domain whose
+        // KIND changed (FrankenPHP ↔ Apache switch = different port + binary).
         let stale: Vec<String> = self
             .overrides
-            .keys()
-            .filter(|d| !desired.contains_key(*d))
-            .cloned()
+            .iter()
+            .filter(|(d, b)| desired.get(*d).map(|w| w.kind) != Some(b.kind))
+            .map(|(d, _)| d.clone())
             .collect();
         for domain in stale {
-            if let Some(mut child) = self.overrides.remove(&domain) {
-                let _ = frankenphp::stop(platform, child.id());
-                child.wait();
+            if let Some(mut backend) = self.overrides.remove(&domain) {
+                let _ = platform.supervisor().stop(backend.child.id());
+                backend.child.wait();
             }
         }
 
         // Start backends that are wanted but not yet running — and RESTART any
         // whose desired config no longer matches the one the running backend
-        // loaded (docroot moved, multisite rewrite changed). The on-disk config
-        // file is the record of what the backend was started with; a running
-        // backend never re-reads it, so a mismatch means stop + respawn
-        // (spawn_override rewrites the file).
+        // loaded (docroot moved, multisite rewrite changed, PHP pool switched).
+        // The on-disk config file is the record of what the backend was started
+        // with; a running backend never re-reads it, so a mismatch means stop +
+        // respawn (spawn_override rewrites the file).
         let mut checks = Vec::new();
-        for (domain, (docroot, port, rewrite, env)) in &desired {
+        for (domain, want) in &desired {
             if self.overrides.contains_key(domain) {
-                let wanted = frankenphp::generate_config(docroot, *port, *rewrite, env);
-                let current = frankenphp::config_path(platform, domain)
-                    .ok()
-                    .and_then(|p| std::fs::read_to_string(p).ok())
-                    .unwrap_or_default();
-                if wanted == current {
+                let wanted = self.desired_override_config(platform, domain, want.kind, &want.docroot, want.port, want.fpm_port, want.rewrite, &want.env);
+                let current = self
+                    .override_config_path(platform, domain, want.kind)
+                    .and_then(|p| std::fs::read_to_string(p).ok());
+                if wanted.is_some() && wanted == current {
                     continue;
                 }
-                if let Some(mut child) = self.overrides.remove(domain) {
-                    let _ = frankenphp::stop(platform, child.id());
-                    child.wait();
+                if let Some(mut backend) = self.overrides.remove(domain) {
+                    let _ = platform.supervisor().stop(backend.child.id());
+                    backend.child.wait();
                 }
             }
-            checks.push(self.spawn_override(platform, domain, docroot, *port, *rewrite, env).await?);
+            checks.push(
+                self.spawn_override(platform, want.kind, domain, &want.docroot, want.port, want.fpm_port, want.rewrite, &want.env)
+                    .await?,
+            );
         }
         Ok(checks)
     }
 
-    /// Spawn one per-site FrankenPHP backend (port-gated) and track its handle.
+    /// The config a backend SHOULD be running with (the reconcile diff input).
+    /// Pure string render — nothing is resolved or written.
+    #[allow(clippy::too_many_arguments)]
+    fn desired_override_config(
+        &self,
+        platform: &dyn Platform,
+        domain: &str,
+        kind: OverrideKind,
+        docroot: &Path,
+        port: u16,
+        fpm_port: u16,
+        rewrite: services::RewriteMode,
+        env: &[(String, String)],
+    ) -> Option<String> {
+        match kind {
+            OverrideKind::Frankenphp => {
+                Some(frankenphp::generate_config(docroot, port, rewrite, env))
+            }
+            OverrideKind::Apache => {
+                // Deterministic bundle dir — the diff must not trigger a resolve.
+                let basedir = platform
+                    .paths()
+                    .bin_dir()
+                    .ok()?
+                    .join(format!("httpd-{}", binaries::HTTPD_VERSION));
+                apache::desired_config(
+                    platform, &basedir, docroot, domain, port, fpm_port, rewrite, env,
+                )
+                .ok()
+            }
+        }
+    }
+
+    fn override_config_path(
+        &self,
+        platform: &dyn Platform,
+        domain: &str,
+        kind: OverrideKind,
+    ) -> Option<PathBuf> {
+        match kind {
+            OverrideKind::Frankenphp => frankenphp::config_path(platform, domain).ok(),
+            OverrideKind::Apache => apache::config_path(platform, domain).ok(),
+        }
+    }
+
+    /// Resolve the Apache bundle dir once (mirrors `ensure_frankenphp_bin`).
+    async fn ensure_httpd_dir(&mut self, platform: &dyn Platform) -> Result<PathBuf> {
+        if let Some(p) = &self.httpd_dir {
+            return Ok(p.clone());
+        }
+        let p = binaries::resolve_bundle(platform, "httpd", binaries::HTTPD_VERSION).await?;
+        self.httpd_dir = Some(p.clone());
+        Ok(p)
+    }
+
+    /// Spawn one per-site override backend (port-gated) and track its handle.
     /// Shared by [`Self::reconcile_overrides`] and the health watchdog's respawn.
+    #[allow(clippy::too_many_arguments)]
     async fn spawn_override(
         &mut self,
         platform: &dyn Platform,
+        kind: OverrideKind,
         domain: &str,
         docroot: &Path,
         port: u16,
+        fpm_port: u16,
         rewrite: services::RewriteMode,
         env: &[(String, String)],
     ) -> Result<ReadyCheck> {
-        ports::ensure_free(platform, port, ports::Proto::Tcp, "FrankenPHP")?;
-        let bin = self.ensure_frankenphp_bin(platform).await?;
-        let conf = frankenphp::write_config(platform, domain, docroot, port, rewrite, env)?;
-        let child = frankenphp::start(platform, &bin, domain, &conf, env)?;
-        self.overrides.insert(domain.to_string(), child.into());
+        ports::ensure_free(platform, port, ports::Proto::Tcp, kind.label())?;
+        let child = match kind {
+            OverrideKind::Frankenphp => {
+                let bin = self.ensure_frankenphp_bin(platform).await?;
+                let conf = frankenphp::write_config(platform, domain, docroot, port, rewrite, env)?;
+                frankenphp::start(platform, &bin, domain, &conf, env)?
+            }
+            OverrideKind::Apache => {
+                let basedir = self.ensure_httpd_dir(platform).await?;
+                let conf = apache::write_config(
+                    platform, &basedir, domain, docroot, port, fpm_port, rewrite, env,
+                )?;
+                apache::start(platform, &basedir, domain, &conf)?
+            }
+        };
+        self.overrides
+            .insert(domain.to_string(), OverrideBackend { kind, port, child: child.into() });
+        let log_key = match kind {
+            OverrideKind::Frankenphp => format!("frankenphp-{domain}"),
+            OverrideKind::Apache => format!("apache-{domain}"),
+        };
         Ok(ReadyCheck {
-            service: format!("FrankenPHP ({domain})"),
-            log: stdout_log(platform, &format!("frankenphp-{domain}"))?,
+            service: format!("{} ({domain})", kind.label()),
+            log: stdout_log(platform, &log_key)?,
             tries: 20,
             probe: Box::new(move || frankenphp::running(port)),
         })
@@ -819,9 +944,9 @@ impl ServiceManager {
         }
         self.stop_mailpit(platform)?;
         self.pools.stop_all(platform);
-        for (_domain, mut child) in std::mem::take(&mut self.overrides) {
-            let _ = frankenphp::stop(platform, child.id());
-            child.wait();
+        for (_domain, mut backend) in std::mem::take(&mut self.overrides) {
+            let _ = platform.supervisor().stop(backend.child.id());
+            backend.child.wait();
         }
         for (engine, mut child) in std::mem::take(&mut self.dbs) {
             let _ = engine.stop(platform, child.id());
@@ -858,8 +983,8 @@ impl ServiceManager {
         }
         ports.push(mail::MAILPIT_SMTP_PORT);
         ports.push(mail::MAILPIT_HTTP_PORT);
-        for domain in self.overrides.keys() {
-            ports.push(frankenphp::site_port(domain));
+        for backend in self.overrides.values() {
+            ports.push(backend.port);
         }
         ports
     }
@@ -969,10 +1094,17 @@ impl ServiceManager {
                 adopted += 1;
             }
         }
-        for site in sites.iter().filter(|s| matches!(s.web_server, WebServer::Frankenphp)) {
+        for (site, kind) in sites
+            .iter()
+            .filter_map(|s| OverrideKind::of(s.web_server).map(|k| (s, k)))
+        {
             if !self.overrides.contains_key(&site.domain) {
-                if let Some(pid) = owned(frankenphp::site_port(&site.domain)) {
-                    self.overrides.insert(site.domain.clone(), Proc::Adopted(pid));
+                let port = kind.port(&site.domain);
+                if let Some(pid) = owned(port) {
+                    self.overrides.insert(
+                        site.domain.clone(),
+                        OverrideBackend { kind, port, child: Proc::Adopted(pid) },
+                    );
                     adopted += 1;
                 }
             }
@@ -1133,28 +1265,30 @@ impl ServiceManager {
             }
         }
 
-        // Per-site FrankenPHP override backends. Respawn ONLY sites still on the
-        // override server — a switched/deleted site's dead handle is just dropped.
-        let dead_overrides: Vec<String> = self
+        // Per-site override backends (FrankenPHP / Apache). Respawn ONLY sites
+        // still on that override server — a switched/deleted site's dead
+        // handle is just dropped.
+        let dead_overrides: Vec<(String, OverrideKind)> = self
             .overrides
             .iter()
-            .filter(|(d, _)| !frankenphp::running(frankenphp::site_port(d)))
-            .map(|(d, _)| d.clone())
+            .filter(|(_, b)| !frankenphp::running(b.port))
+            .map(|(d, b)| (d.clone(), b.kind))
             .collect();
-        for (domain, _) in self.overrides.iter() {
-            if !dead_overrides.contains(domain) {
-                self.restart_attempts.remove(&format!("FrankenPHP {domain}"));
+        for (domain, backend) in self.overrides.iter() {
+            if !dead_overrides.iter().any(|(d, _)| d == domain) {
+                self.restart_attempts
+                    .remove(&format!("{} {domain}", backend.kind.label()));
             }
         }
-        for domain in dead_overrides {
-            let name = format!("FrankenPHP {domain}");
-            if let Some(mut child) = self.overrides.remove(&domain) {
-                child.kill();
-                child.wait();
+        for (domain, kind) in dead_overrides {
+            let name = format!("{} {domain}", kind.label());
+            if let Some(mut backend) = self.overrides.remove(&domain) {
+                backend.child.kill();
+                backend.child.wait();
             }
             let Some(site) = sites
                 .iter()
-                .find(|s| s.domain == domain && matches!(s.web_server, WebServer::Frankenphp))
+                .find(|s| s.domain == domain && OverrideKind::of(s.web_server) == Some(kind))
             else {
                 continue;
             };
@@ -1165,9 +1299,11 @@ impl ServiceManager {
             let spawned = self
                 .spawn_override(
                     platform,
+                    kind,
                     &domain,
                     &PathBuf::from(&site.path),
-                    frankenphp::site_port(&domain),
+                    kind.port(&domain),
+                    sites::pool_port_for(&site.php_version),
                     sites::rewrite_mode_for(site.multisite),
                     &env,
                 )
@@ -1422,7 +1558,7 @@ impl ServiceManager {
     /// per-site CPU/RAM on the Sites page (shared-pool sites get activity
     /// metrics instead — see `core::site_metrics`).
     pub fn override_pids(&self) -> Vec<(String, u32)> {
-        self.overrides.iter().map(|(d, p)| (d.clone(), p.id())).collect()
+        self.overrides.iter().map(|(d, b)| (d.clone(), b.child.id())).collect()
     }
 
     pub fn status(&self, platform: &dyn Platform, installed_php: &[String]) -> Vec<ServiceInfo> {
@@ -1458,16 +1594,15 @@ impl ServiceManager {
             });
         }
 
-        // One row per per-site FrankenPHP override backend (sorted for stable display).
-        let mut overrides: Vec<(&String, &Proc)> = self.overrides.iter().collect();
+        // One row per per-site override backend (sorted for stable display).
+        let mut overrides: Vec<(&String, &OverrideBackend)> = self.overrides.iter().collect();
         overrides.sort_by(|a, b| a.0.cmp(b.0));
-        for (domain, child) in overrides {
-            let port = frankenphp::site_port(domain);
+        for (domain, backend) in overrides {
             infos.push(ServiceInfo {
-                name: format!("FrankenPHP {domain}"),
-                running: frankenphp::running(port),
-                pid: Some(child.id()),
-                port,
+                name: format!("{} {domain}", backend.kind.label()),
+                running: frankenphp::running(backend.port),
+                pid: Some(backend.child.id()),
+                port: backend.port,
                 optional: false,
             });
         }
@@ -1524,8 +1659,8 @@ impl Drop for ServiceManager {
         for child in self.dbs.values_mut() {
             child.terminate();
         }
-        for child in self.overrides.values_mut() {
-            child.terminate();
+        for backend in self.overrides.values_mut() {
+            backend.child.terminate();
         }
         if let Some(c) = &mut self.mailpit {
             c.terminate();
@@ -1673,6 +1808,11 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
         .map(|s| {
             let upstream_up = match s.web_server {
                 WebServer::Frankenphp => port_up(frankenphp::site_port(&s.domain)),
+                // Apache serves through the shared pool too — both must be up.
+                WebServer::Apache => {
+                    port_up(apache::site_port(&s.domain))
+                        && port_up(sites::pool_port_for(&s.php_version))
+                }
                 _ => nginx_up && port_up(sites::pool_port_for(&s.php_version)),
             };
             SiteServing {
