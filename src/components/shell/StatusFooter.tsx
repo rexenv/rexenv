@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toastBackendError } from "@/lib/toast";
-import { ArrowDownToLine, Play, Square } from "lucide-react";
+import { ArrowDownToLine, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startServices, stopServices } from "@/lib/ipc";
 import { useDownloads } from "@/lib/useDownloads";
@@ -79,16 +79,32 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
     downloads.items.find((i) => i.phase === "preparing");
 
   const qc = useQueryClient();
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["services"] });
+    qc.invalidateQueries({ queryKey: ["global-status"] });
+  };
   const toggleAll = useMutation({
     mutationFn: () => (isStart ? startServices() : stopServices()),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["services"] });
-      qc.invalidateQueries({ queryKey: ["global-status"] });
-    },
+    onSuccess: refresh,
     // Surface a busy-port / cancelled-prompt / download failure instead of
     // silently doing nothing (§2 robustness).
     onError: (e) => toastBackendError(e),
   });
+  // Stop-then-start through the SAME IPC paths as the individual buttons — so a
+  // failed stop aborts (no half-restart), and start's edge wire-identity probe
+  // still applies: a restart can't claim success while e.g. Herd shadows :443.
+  const restartAll = useMutation({
+    mutationFn: async () => {
+      await stopServices();
+      await startServices();
+    },
+    onSuccess: refresh,
+    onError: (e) => {
+      refresh(); // a failed start may have left a partial stack — show it honestly
+      toastBackendError(e);
+    },
+  });
+  const busy = toggleAll.isPending || restartAll.isPending;
 
   return (
     <div className="relative flex-none p-2.5 pb-3">
@@ -185,26 +201,44 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
             </button>
           )}
 
-          <button
-            onClick={() => toggleAll.mutate()}
-            disabled={toggleAll.isPending}
-            className={cn(
-              "flex h-[34px] w-full items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
-              isStart
-                ? "bg-primary text-white shadow-glow-primary"
-                : "border border-rex-border-strong bg-rex-surface-2 text-rex-text-bright",
+          <div className="flex gap-2">
+            <button
+              onClick={() => toggleAll.mutate()}
+              disabled={busy}
+              className={cn(
+                "flex h-[34px] flex-1 items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
+                isStart
+                  ? "bg-primary text-white shadow-glow-primary"
+                  : "border border-rex-border-strong bg-rex-surface-2 text-rex-text-bright",
+              )}
+            >
+              {isStart ? (
+                <>
+                  <Play className="h-3 w-3 fill-current" /> Start all
+                </>
+              ) : (
+                <>
+                  <Square className="h-3 w-3 fill-current" /> Stop all
+                </>
+              )}
+            </button>
+            {/* Restart only makes sense while something runs — one click for the
+                old "Stop all, then Start all" dance (e.g. a dead Caddy/MySQL). */}
+            {!isStart && (
+              <button
+                onClick={() => restartAll.mutate()}
+                disabled={busy}
+                title="Stop everything, then start everything"
+                className="flex h-[34px] flex-none items-center justify-center gap-1.5 rounded border border-rex-border-strong bg-rex-surface-2 px-3 text-[12.5px] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
+              >
+                <RotateCcw
+                  className={cn("h-3 w-3", restartAll.isPending && "animate-rex-spin motion-reduce:animate-none")}
+                  strokeWidth={2.2}
+                />
+                Restart
+              </button>
             )}
-          >
-            {isStart ? (
-              <>
-                <Play className="h-3 w-3 fill-current" /> Start all
-              </>
-            ) : (
-              <>
-                <Square className="h-3 w-3 fill-current" /> Stop all
-              </>
-            )}
-          </button>
+          </div>
         </div>
       </div>
     </div>
