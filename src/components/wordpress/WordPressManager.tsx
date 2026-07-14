@@ -749,9 +749,8 @@ function ToolsPanel({
   const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {/* Search & replace — spans the row */}
-      <div className="col-span-2">
+    <div className="flex flex-col gap-3">
+      {/* Wide tools first: Search & replace needs the full row for its inputs. */}
         <Card title="Search & replace">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -794,9 +793,12 @@ function ToolsPanel({
             )}
           </div>
         </Card>
-      </div>
 
-      {/* Debugging */}
+            {/* Six half-width cards in TWO INDEPENDENT COLUMNS (items-start, each
+          column packs its own heights) — no grid rows to leave half-empty
+          slots when a tall card meets a short one. */}
+      <div className="grid grid-cols-2 items-start gap-3">
+        <div className="flex flex-col gap-3">
       <Card title="Debugging">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
@@ -834,7 +836,57 @@ function ToolsPanel({
         </div>
       </Card>
 
-      {/* Permalinks */}
+            <Card title="Maintenance">
+        <div className="flex flex-col gap-2">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[12.5px] text-rex-text-muted">
+              Maintenance mode — visitors see &ldquo;briefly unavailable&rdquo;.
+            </span>
+            <StartStopToggle
+              running={!!maint}
+              variant="setting"
+              onToggle={() => toggleMaint.mutate(!maint)}
+              label="Toggle maintenance mode"
+            />
+          </div>
+          <button className={maintBtn} disabled={cacheFlush.isPending} onClick={() => cacheFlush.mutate()}>
+            {cacheFlush.isPending ? "Flushing…" : "Flush object cache"}
+          </button>
+          <button className={maintBtn} disabled={transients.isPending} onClick={() => transients.mutate()}>
+            {transients.isPending ? "Deleting…" : "Delete all transients"}
+          </button>
+          <button
+            className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
+            onClick={() => setResetOpen(true)}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Erase database &amp; reset site
+          </button>
+        </div>
+      </Card>
+            <Card title="Backup & restore">
+        <div className="flex flex-col gap-2">
+          <button className={maintBtn} disabled={dbExport.isPending} onClick={() => dbExport.mutate()}>
+            <Download className="h-3.5 w-3.5" />
+            {dbExport.isPending ? "Exporting…" : "Export database"}
+          </button>
+          <button className={maintBtn} onClick={() => setImportOpen(true)}>
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+            Import database…
+          </button>
+          <button
+            className={maintBtn}
+            disabled={contentExport.isPending}
+            onClick={() => contentExport.mutate()}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {contentExport.isPending ? "Exporting…" : "Export content (WXR)"}
+          </button>
+        </div>
+      </Card>
+
+              </div>
+        <div className="flex flex-col gap-3">
       <Card title="Permalinks">
         <div className="flex flex-col gap-2">
           <select
@@ -862,8 +914,7 @@ function ToolsPanel({
         </div>
       </Card>
 
-      {/* Language */}
-      <Card title="Language">
+            <Card title="Language">
         <div className="flex flex-col gap-2">
           <select
             value={activeLocale}
@@ -909,35 +960,7 @@ function ToolsPanel({
         </div>
       </Card>
 
-      {/* Site options — spans the row */}
-      <div className="col-span-2">
-        <OptionsCard siteId={siteId} />
-      </div>
-
-      {/* Backup & restore */}
-      <Card title="Backup & restore">
-        <div className="flex flex-col gap-2">
-          <button className={maintBtn} disabled={dbExport.isPending} onClick={() => dbExport.mutate()}>
-            <Download className="h-3.5 w-3.5" />
-            {dbExport.isPending ? "Exporting…" : "Export database"}
-          </button>
-          <button className={maintBtn} onClick={() => setImportOpen(true)}>
-            <ArrowUpCircle className="h-3.5 w-3.5" />
-            Import database…
-          </button>
-          <button
-            className={maintBtn}
-            disabled={contentExport.isPending}
-            onClick={() => contentExport.mutate()}
-          >
-            <Download className="h-3.5 w-3.5" />
-            {contentExport.isPending ? "Exporting…" : "Export content (WXR)"}
-          </button>
-        </div>
-      </Card>
-
-      {/* Core */}
-      <Card title="Core">
+            <Card title="Core">
         <div className="flex flex-col gap-2">
           <button
             className={maintBtn}
@@ -980,39 +1003,12 @@ function ToolsPanel({
         <CoreVersionSwitch siteId={siteId} />
       </Card>
 
-      {/* Maintenance */}
-      <Card title="Maintenance">
-        <div className="flex flex-col gap-2">
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <span className="text-[12.5px] text-rex-text-muted">
-              Maintenance mode — visitors see &ldquo;briefly unavailable&rdquo;.
-            </span>
-            <StartStopToggle
-              running={!!maint}
-              variant="setting"
-              onToggle={() => toggleMaint.mutate(!maint)}
-              label="Toggle maintenance mode"
-            />
-          </div>
-          <button className={maintBtn} disabled={cacheFlush.isPending} onClick={() => cacheFlush.mutate()}>
-            {cacheFlush.isPending ? "Flushing…" : "Flush object cache"}
-          </button>
-          <button className={maintBtn} disabled={transients.isPending} onClick={() => transients.mutate()}>
-            {transients.isPending ? "Deleting…" : "Delete all transients"}
-          </button>
-          <button
-            className={BTN + " flex w-full items-center justify-center gap-1.5 border-status-error-border text-status-error-bright hover:bg-status-error-bg"}
-            onClick={() => setResetOpen(true)}
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Erase database &amp; reset site
-          </button>
-        </div>
-      </Card>
-      {/* Cron — spans the row */}
-      <div className="col-span-2">
-        <CronCard siteId={siteId} />
+              </div>
       </div>
+      {/* Wide tables last: Site options (two-column rows) and Cron. */}
+        <OptionsCard siteId={siteId} />
+
+              <CronCard siteId={siteId} />
       {resetOpen && <ResetSiteDialog siteId={siteId} domain={domain} onClose={() => setResetOpen(false)} />}
       {importOpen && <ImportDbDialog siteId={siteId} domain={domain} onClose={() => setImportOpen(false)} />}
     </div>
@@ -1635,7 +1631,9 @@ function OptionsCard({ siteId }: { siteId: string }) {
           Could not read options: {String(error)}
         </div>
       ) : !data ? null : (
-        <div className="flex flex-col gap-2">
+        // Two columns of label+control rows — a single ~400px-wide column in a
+        // full-width card left the whole right half empty (QA P3-1).
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2">
           {data.fields.map((row) => {
             const draft = drafts[row.name] ?? row.value;
             const dirty = draft !== row.value;
@@ -1643,8 +1641,8 @@ function OptionsCard({ siteId }: { siteId: string }) {
             const setDraft = (v: string) => setDrafts((d) => ({ ...d, [row.name]: v }));
             const disabled = !row.editable || save.isPending;
             return (
-              <div key={row.name} className="flex items-center gap-2">
-                <div className="w-[170px] flex-none text-[12px] text-rex-text-muted">
+              <div key={row.name} className="flex min-w-0 items-center gap-2">
+                <div className="w-[150px] flex-none text-[12px] text-rex-text-muted">
                   {row.label}
                 </div>
                 {row.kind === "bool" ? (
@@ -1683,10 +1681,14 @@ function OptionsCard({ siteId }: { siteId: string }) {
                   />
                 )}
                 {!row.editable && row.note && (
-                  <span className="text-[11.5px] text-rex-text-dim">{row.note}</span>
+                  <span className="min-w-0 truncate text-[11.5px] text-rex-text-dim" title={row.note}>
+                    {row.note}
+                  </span>
                 )}
                 {dirty && problem && (
-                  <span className="text-[11.5px] text-status-warning-bright">{problem}</span>
+                  <span className="min-w-0 truncate text-[11.5px] text-status-warning-bright" title={problem}>
+                    {problem}
+                  </span>
                 )}
                 {dirty && !problem && (
                   <button
