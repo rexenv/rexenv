@@ -4,8 +4,8 @@
 //! Proves every built-in DB engine is modeled behind one shape (key · port ·
 //! start · running · stop). MySQL and PostgreSQL are started THROUGH `DbEngine`
 //! (delegating to `core::database` / `core::postgres`): start → port listening →
-//! (Postgres) `psql 'SELECT version();'` → stop. MariaDB/Redis are deferred (§7)
-//! and return the same-shaped error.
+//! (Postgres) `psql 'SELECT version();'` → stop. MariaDB is deferred and returns
+//! the same-shaped error; Redis has its own check (`redis_bundle_check`).
 
 use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::{binaries, ports, postgres};
@@ -79,9 +79,9 @@ async fn main() {
         ok = false;
     }
 
-    // Deferred engines share the shape; not implemented on macOS (§7.5/§7.6).
+    // Deferred engines share the shape; not implemented on macOS.
     println!("\n=== deferred engines (uniform shape) ===");
-    for e in [DbEngine::Mariadb, DbEngine::Redis] {
+    for e in [DbEngine::Mariadb] {
         match e.start(&*plat).await {
             Ok(mut c) => { let _ = e.stop(&*plat, c.id()); let _ = c.wait(); println!("  {} started (unexpected)", e.label()); }
             Err(err) => println!("  {:<8} → {err}", e.label()),

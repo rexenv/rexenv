@@ -353,21 +353,40 @@ Each line = one feature, live-verified before its commit.
   Needs a signed + notarized bundle → packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** (Release 1.6) — needs paid Apple account.
 
-## Deferred services (need a macOS dylib-tree-bundling step; none has a clean portable binary)
+## Deferred services (the dylib-tree-bundling step now EXISTS — Redis proved it)
 
-- [ ] Apache (httpd) override server — links non-system dylibs (apr, openssl@3)
+- [x] **macOS dylib-tree bundling** (the family's shared blocker) — `4392a57`:
+  `core/binaries.rs` `bundle_manifest`/`resolve_bundle` assemble Homebrew-bottle ghcr
+  blobs (content-addressed: the URL embeds the pinned digest — pins can 404 but never
+  drift, unlike static-php/FrankenPHP rebuilds; anonymous bearer) into ONE cached tree
+  (include-filtered strip-2 extract; same staging→prepare→atomic-publish as
+  `resolve_dir`), and the new `BinaryProvider::prepare_binary_tree` (macOS) rewrites
+  every Mach-O's non-system load command (`@@HOMEBREW_*@@`) to `@loader_path`-relative
+  paths into `lib/`, errors loudly on an unbundled dep, verifies post-relink, ad-hoc
+  re-signs LAST. ✓ 248 lib tests (+7), clippy, tsc.
+- [x] **Redis engine** — `cb1e9ac`: `core/redis.rs` (argv-only config, data under
+  app-data — the `--dir` path doubles as the adoption marker), `DbEngine::Redis`
+  available on macOS (Services row, watchdog, adoption, ports all via existing
+  `available()` plumbing), Databases row shows a `redis-cli -p 16379` hint instead of a
+  dead Browse (no Adminer driver). ✓ **Live-verified** (`examples/redis_bundle_check`,
+  Jul 14): both bottles downloaded + published to the real cache; all 4 Mach-Os
+  loads-clean (`otool -L` = system/@loader_path only) + `codesign --verify --strict`
+  pass; served on :16379; PING→PONG + SET/GET round-trip through the bundled
+  redis-cli; clean stop. x86_64 bottle digests are Homebrew-published — re-verify on
+  the next Intel smoke run.
+- [ ] MariaDB engine (+ site→engine selection at create) — bottle dep closure is the
+  work now (groonga → mecab …, openssl@3, pcre2, lz4, lzo, xz, zstd), plus
+  `core/mariadb.rs` init/start and the site→engine seam
+- [ ] Apache (httpd) override server — bottle closure (apr, apr-util, openssl@3, pcre2)
 - [ ] OpenLiteSpeed override server
-- [ ] MariaDB engine (+ site→engine selection at create) — ships no portable macOS binary
-- [ ] Redis engine — needs dylib bundle
 - [ ] Per-engine DB version switch (multi-version DBs)
 
-FrankenPHP + PostgreSQL prove the override/engine patterns.
-**Adding a DB engine** (once a portable binary exists): mirror `core/postgres.rs`
-(the template — `TarGzTree` dir binary, TCP-only on its `core/db.rs` port, init/start/
-stop/running), fill that engine's stubbed arm in `core/db.rs`, pin the binary in
-`core/binaries.rs`, register the port in `core/ports.rs` `default_ports()`, and update
-`docs/PORTS.md`. **Adding an override server:** mirror `core/frankenphp.rs` (loopback
-backend, never the edge).
+FrankenPHP + PostgreSQL prove the override/engine patterns; Redis proves the BUNDLE
+pattern. **Adding a bundled DB engine:** mirror `core/redis.rs` (or `core/postgres.rs`
+for init-style engines) — pin the bottles in `bundle_manifest` (`core/binaries.rs`),
+fill the engine's arm in `core/db.rs`, wire `plan_for_engine`/`resolve_any`
+(`core/downloads.rs`), update `docs/PORTS.md`. **Adding an override server:** mirror
+`core/frankenphp.rs` (loopback backend, never the edge).
 
 ## Phase 4+ (next era)
 

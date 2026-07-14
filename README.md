@@ -117,7 +117,7 @@ rexenv/
         │   ├── php.rs          # multi-version pool registry (8.1/8.2/8.3)
         │   ├── frankenphp.rs   # per-site override backend (loopback, admin off)
         │   ├── proxy.rs        # Caddy edge (unix-socket admin, stale-edge recovery)
-        │   ├── database.rs · postgres.rs · db.rs   # MySQL, PostgreSQL, DbEngine
+        │   ├── database.rs · postgres.rs · redis.rs · db.rs   # MySQL, PostgreSQL, Redis, DbEngine
         │   ├── wordpress.rs · wp_login.rs          # WP-CLI ops, magic login link
         │   ├── dns.rs · ssl.rs                     # hickory-dns resolver, rcgen CA
         │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · tunnels.rs

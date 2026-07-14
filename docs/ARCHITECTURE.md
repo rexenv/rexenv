@@ -244,8 +244,15 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   to `/usr/lib` → ad-hoc codesign LAST.**
 - Shapes: single Mach-O (`resolve`) · plain file like WP-CLI `.phar` (`resolve_file`, no
   chmod/codesign) · dir tree like MySQL/PostgreSQL (`Archive::TarGzTree` + `resolve_dir`;
-  extraction guards against path/symlink escapes, L2). Resolves stage + atomically
-  publish so a failed prepare can't poison the cache (H4).
+  extraction guards against path/symlink escapes, L2) · **bottle BUNDLE** like Redis
+  (`bundle_manifest` + `resolve_bundle`): services with no portable static build are
+  assembled from Homebrew-bottle ghcr blobs (content-addressed — the URL embeds the
+  pinned digest, so bytes can never drift under a URL; anonymous bearer auth), an
+  include-filtered strip-2 extract merges them into one tree, then
+  `BinaryProvider::prepare_binary_tree` rewrites every Mach-O's non-system load command
+  (`@@HOMEBREW_*@@` placeholders) to `@loader_path`-relative paths into the bundle's
+  `lib/`, errors loudly on any dep NOT bundled, and ad-hoc re-signs each Mach-O LAST.
+  Resolves stage + atomically publish so a failed prepare can't poison the cache (H4).
 - MySQL is Oracle-signed (never re-sign) and needs a direct CDN URL + browser UA.
 - The `php-debug` (Xdebug) variant is fully wired but returns `None` from `manifest()`
   until its checksums are pinned — see `docs/xdebug-debug-build.md`.
