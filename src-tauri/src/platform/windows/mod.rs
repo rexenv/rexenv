@@ -117,6 +117,9 @@ impl BinaryProvider for WindowsBinaryProvider {
     fn prepare_binary(&self, _path: &Path) -> Result<()> {
         todo!("windows binary prepare (no codesign needed)")
     }
+    fn prepare_binary_tree(&self, _root: &Path) -> Result<()> {
+        todo!("windows bundle-tree prepare (DLLs load from the exe dir — likely a no-op)")
+    }
 }
 
 pub struct WindowsEdge;

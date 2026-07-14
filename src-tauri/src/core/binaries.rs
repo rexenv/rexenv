@@ -57,6 +57,14 @@ pub const MAILPIT_VERSION: &str = "1.30.3";
 pub const ADMINER_VERSION: &str = "5.4.2";
 /// Pinned cloudflared version (one static Go binary; quick-tunnel public sharing). Phase 3 §9.1.
 pub const CLOUDFLARED_VERSION: &str = "2026.6.1";
+/// Pinned Redis version — the FIRST Homebrew-bottle BUNDLE (no portable static
+/// build exists): the redis bottle's `bin/` merged with the openssl@3 bottle's
+/// two dylibs, relinked to `@loader_path` by `prepare_binary_tree` (TODO
+/// "Deferred services"). Resolved via [`resolve_bundle`].
+pub const REDIS_VERSION: &str = "8.8.0";
+/// openssl@3 version bundled INTO dylib bundles (redis today; mariadb later).
+/// Not a standalone binary — only ever a [`BundlePart`].
+pub const BUNDLED_OPENSSL_VERSION: &str = "3.6.3";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +95,46 @@ pub struct BinarySpec {
     /// File name to extract from a `TarGz` archive (ignored for `Raw`).
     pub member: &'static str,
 }
+
+/// One Homebrew bottle contributing files to a dylib bundle. Bottles are OCI
+/// blobs on ghcr.io — content-addressed (the URL embeds the SHA-256 we also pin
+/// independently), so the bytes can never change under a URL, unlike the
+/// rebuild-in-place sources (static-php/FrankenPHP). Entries are laid out
+/// `<formula>/<version>/…` inside the tarball (TWO components stripped).
+#[derive(Debug, Clone)]
+pub struct BundlePart {
+    /// Formula name, for logs/errors (e.g. `openssl@3`).
+    pub formula: &'static str,
+    pub url: String,
+    pub checksum: Checksum,
+    /// Post-strip tree paths to keep (component-wise prefix match — `"bin"`
+    /// keeps the whole dir, `"lib/libssl.3.dylib"` exactly that file). Bottles
+    /// carry docs/static-libs/receipts we never want in the cache.
+    pub include: &'static [&'static str],
+}
+
+/// A multi-bottle dylib bundle: parts merged into ONE cached tree, then
+/// relinked + re-signed by `BinaryProvider::prepare_binary_tree`.
+#[derive(Debug, Clone)]
+pub struct BundleSpec {
+    pub parts: Vec<BundlePart>,
+    /// Primary binary within the merged tree (the cache marker, like
+    /// `BinarySpec::member` for `TarGzTree`).
+    pub member: &'static str,
+}
+
+/// ghcr.io blob URL for a Homebrew-core bottle. The registry path maps a
+/// versioned formula's `@` to `/` (`openssl@3` → `homebrew/core/openssl/3`).
+fn bottle_url(formula: &str, digest: &str) -> String {
+    format!(
+        "https://ghcr.io/v2/homebrew/core/{}/blobs/sha256:{digest}",
+        formula.replace('@', "/")
+    )
+}
+
+/// ghcr.io requires a bearer token even for public blobs; `QQ==` (base64 of the
+/// empty string) is the documented anonymous token Homebrew itself uses.
+const GHCR_ANON_AUTH: &[(&str, &str)] = &[("Authorization", "Bearer QQ==")];
 
 // Official Caddy SHA-512 checksums (from caddy_<ver>_checksums.txt).
 const CADDY_2_11_4_MAC_ARM64_SHA512: &str = "3190ae0df98b59ab4b6021556fa35adc3c526a4f3e138776b0eaec8a037cc26121cbbb1ad53453f565551b47d37d5ba4755e2c2c3652256737fe2ce9e53c8ec0";
@@ -180,6 +228,18 @@ const POSTGRES_18_4_0_MAC_AMD64_SHA256: &str = "cbc38067a795d10bbddc730e61c835df
 // (no Homebrew deps to relink), de-quarantined + ad-hoc signed by prepare_binary.
 const MAILPIT_1_30_3_MAC_ARM64_SHA256: &str = "46b68e5701c32f2137e97d325605f7e8f0fbb6518e567b7589147c3534bd943e";
 const MAILPIT_1_30_3_MAC_AMD64_SHA256: &str = "ea8c2f5ac717ece100b453de282474b46e8f4c327d3e61bee6348f60989eade3";
+
+// Homebrew bottle digests (from formulae.brew.sh, pinned 2026-07-14; the ghcr
+// blob URL embeds the same digest, so the pin is self-consistent — a changed
+// upstream can only 404, never swap bytes silently). arm64 = the arm64_sonoma
+// bottle, x86_64 = the sonoma bottle: oldest supported build of each arch runs
+// on every newer macOS. arm64 bottles downloaded + hashed + relinked + RUN at
+// pin time; x86_64 digests are Homebrew-published (verify live on the next
+// Intel smoke run).
+const REDIS_8_8_0_BOTTLE_ARM64_SHA256: &str = "b483b7c9b4b107512ecb359d98e494cc224c0a14318a04ba97ce9223335e39a0";
+const REDIS_8_8_0_BOTTLE_AMD64_SHA256: &str = "07d051d7a255d7d6a535b46387cc8977b4d3bf1798cb67b3a6d078ef5c4c3343";
+const OPENSSL_3_6_3_BOTTLE_ARM64_SHA256: &str = "79774ba3c854f0a9f94d939c628414c9b3dd2ff5eeb1dc61743199c979dd3490";
+const OPENSSL_3_6_3_BOTTLE_AMD64_SHA256: &str = "f641a0a3028a7ba2ab247767a6961226ba8c1777dac6e986e6fc62ec09e4a62a";
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
@@ -463,6 +523,109 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
     }
 }
 
+/// Look up the BUNDLE spec for `name`@`version` on `os`+`arch` — services with
+/// no portable static build, assembled from Homebrew bottles and relinked into
+/// a self-contained tree (TODO "Deferred services"). Disjoint from
+/// [`manifest`]: a name resolves through exactly one of the two.
+pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<BundleSpec> {
+    match (name, os, version) {
+        ("redis", "macos", "8.8.0") => Some(BundleSpec {
+            member: "bin/redis-server",
+            parts: vec![
+                BundlePart {
+                    formula: "redis",
+                    url: bottle_url(
+                        "redis",
+                        &pick(arch, REDIS_8_8_0_BOTTLE_ARM64_SHA256, REDIS_8_8_0_BOTTLE_AMD64_SHA256),
+                    ),
+                    checksum: Checksum::Sha256(pick(
+                        arch,
+                        REDIS_8_8_0_BOTTLE_ARM64_SHA256,
+                        REDIS_8_8_0_BOTTLE_AMD64_SHA256,
+                    )),
+                    include: &["bin"],
+                },
+                BundlePart {
+                    formula: "openssl@3",
+                    url: bottle_url(
+                        "openssl@3",
+                        &pick(arch, OPENSSL_3_6_3_BOTTLE_ARM64_SHA256, OPENSSL_3_6_3_BOTTLE_AMD64_SHA256),
+                    ),
+                    checksum: Checksum::Sha256(pick(
+                        arch,
+                        OPENSSL_3_6_3_BOTTLE_ARM64_SHA256,
+                        OPENSSL_3_6_3_BOTTLE_AMD64_SHA256,
+                    )),
+                    // Just the two runtime dylibs redis links — never the static
+                    // libs, headers, cmake/pkgconfig, or provider modules.
+                    include: &["lib/libssl.3.dylib", "lib/libcrypto.3.dylib"],
+                },
+            ],
+        }),
+        _ => None,
+    }
+}
+
+/// Resolve a multi-bottle dylib BUNDLE (see [`bundle_manifest`]) to its merged,
+/// relinked, re-signed tree — the bundle counterpart of [`resolve_dir`], same
+/// staging → prepare → atomic-publish shape (H4). Idempotent via the `member`
+/// marker.
+pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    let _flight = in_flight(name, version).await;
+    let arch = platform.binaries().arch();
+    let os = std::env::consts::OS;
+
+    let spec = bundle_manifest(name, version, os, arch)
+        .ok_or_else(|| Error::Other(format!("no bundle manifest for {name} {version} on {os}")))?;
+
+    let bin_dir = platform.paths().bin_dir()?;
+    let dir = bin_dir.join(format!("{name}-{version}"));
+    if dir.join(spec.member).exists() {
+        return Ok(dir);
+    }
+
+    let id = downloads::item_id(name, version);
+    downloads::hub().item_started(name, version);
+    let staging = staging_path(&bin_dir, name, version);
+    let staged: Result<()> = async {
+        std::fs::create_dir_all(&staging)?;
+        // Parts download sequentially under the one hub item (the bar restarts
+        // per bottle — honest enough for a two-part bundle).
+        for part in &spec.parts {
+            let archive = staging.join(".bottle.tar.gz");
+            download_with_headers(
+                &part.url,
+                &archive,
+                Some(&part.checksum),
+                Some(&id),
+                GHCR_ANON_AUTH,
+            )
+            .await?;
+            downloads::hub().item_preparing(&id);
+            // Bottle layout is `<formula>/<version>/…` — strip both.
+            extract_tar_gz_tree_filtered(
+                open_buffered(&archive)?,
+                &staging,
+                2,
+                Some(part.include),
+            )
+            .map_err(|e| Error::Other(format!("extract {} bottle: {e}", part.formula)))?;
+            std::fs::remove_file(&archive)?;
+        }
+        // Relink every Mach-O to @loader_path + ad-hoc re-sign (LAST), so the
+        // published tree is self-contained — no Homebrew install needed.
+        platform.binaries().prepare_binary_tree(&staging)?;
+        publish(&staging, &dir, spec.member)
+    }
+    .await;
+    if staged.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    finish_item(&id, &staged);
+    staged?;
+    Ok(dir)
+}
+
 /// Whether `name`@`version` is already fully published in the binary cache —
 /// the same marker files the resolves' early-return checks use (a partially
 /// published dir never has its marker: the staging→rename publish is atomic,
@@ -478,7 +641,11 @@ pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
         // `member` is the marker for file/tree distributions; executables are
         // published at `dir/<name>` (for those, member == name anyway).
         Some(spec) => dir.join(spec.member).exists() || dir.join(name).exists(),
-        None => false,
+        // Bottle bundles (redis) publish their own `member` marker.
+        None => match bundle_manifest(name, version, std::env::consts::OS, arch) {
+            Some(bundle) => dir.join(bundle.member).exists(),
+            None => false,
+        },
     }
 }
 
@@ -820,10 +987,22 @@ async fn download(
     checksum: Option<&Checksum>,
     item: Option<&str>,
 ) -> Result<()> {
+    download_with_headers(url, dest, checksum, item, &[]).await
+}
+
+/// [`download`] with extra request headers — for registries that demand them
+/// (ghcr.io bottle blobs need the anonymous bearer token).
+async fn download_with_headers(
+    url: &str,
+    dest: &Path,
+    checksum: Option<&Checksum>,
+    item: Option<&str>,
+    headers: &[(&str, &str)],
+) -> Result<()> {
     let client = http_client()?;
     let mut last_err = String::new();
     for attempt in 1..=DOWNLOAD_ATTEMPTS {
-        match fetch_to_file(&client, url, dest, checksum, item).await {
+        match fetch_to_file(&client, url, dest, checksum, item, headers).await {
             Ok(()) => return Ok(()),
             // A permanent failure (4xx / checksum mismatch / local write error)
             // won't get better on retry — surface it immediately.
@@ -860,8 +1039,13 @@ async fn fetch_to_file(
     dest: &Path,
     checksum: Option<&Checksum>,
     item: Option<&str>,
+    headers: &[(&str, &str)],
 ) -> std::result::Result<(), FetchError> {
-    let resp = match client.get(url).send().await {
+    let mut req = client.get(url);
+    for (name, value) in headers {
+        req = req.header(*name, *value);
+    }
+    let resp = match req.send().await {
         Ok(r) => r,
         // Connect/timeout/transport problems are transient (retry); they're also
         // what "no internet" looks like, so use the connectivity-aware message.
@@ -1013,6 +1197,19 @@ fn extract_tar_gz_member(reader: impl std::io::Read, member: &str, dest: &Path) 
 /// archives are already checksum-pinned): every entry must resolve inside `dest`,
 /// both by path (no `..`/absolute components) and, for links, by target.
 fn extract_tar_gz_tree(reader: impl std::io::Read, dest: &Path) -> Result<()> {
+    extract_tar_gz_tree_filtered(reader, dest, 1, None)
+}
+
+/// [`extract_tar_gz_tree`] with a configurable strip depth and an optional
+/// include filter (component-wise prefix match on the post-strip path).
+/// Homebrew bottles nest `<formula>/<version>/…` (strip 2) and carry receipts/
+/// docs/static-libs a bundle must not cache.
+fn extract_tar_gz_tree_filtered(
+    reader: impl std::io::Read,
+    dest: &Path,
+    strip: usize,
+    include: Option<&[&str]>,
+) -> Result<()> {
     use flate2::read::GzDecoder;
     use std::path::PathBuf;
     use tar::Archive as TarArchive;
@@ -1020,10 +1217,17 @@ fn extract_tar_gz_tree(reader: impl std::io::Read, dest: &Path) -> Result<()> {
     let mut archive = TarArchive::new(GzDecoder::new(reader));
     for entry in archive.entries()? {
         let mut entry = entry?;
-        // Drop the leading top-level component.
-        let rel: PathBuf = entry.path()?.components().skip(1).collect();
+        // Drop the leading stripped components.
+        let rel: PathBuf = entry.path()?.components().skip(strip).collect();
         if rel.as_os_str().is_empty() {
             continue;
+        }
+        // Keep only included subtrees. A kept FILE's parent dirs are created on
+        // unpack, so skipped standalone dir entries cost nothing.
+        if let Some(prefixes) = include {
+            if !prefixes.iter().any(|p| rel.starts_with(p)) {
+                continue;
+            }
         }
         // Reject an entry path that would escape `dest` (`..`/absolute/prefix).
         let out = safe_join(dest, &rel)?;
@@ -1203,6 +1407,75 @@ mod tests {
         let fpm = php_debug_spec("fpm", Arch::X86_64);
         assert!(fpm.url.ends_with("php-8.3.31-fpm-xdebug-macos-x86_64.tar.gz"), "{}", fpm.url);
         assert_eq!(fpm.member, "php-fpm");
+    }
+
+    #[test]
+    fn bundle_manifest_resolves_redis_per_arch() {
+        for arch in [Arch::Arm64, Arch::X86_64] {
+            let bundle = bundle_manifest("redis", REDIS_VERSION, "macos", arch).unwrap();
+            assert_eq!(bundle.member, "bin/redis-server");
+            assert_eq!(bundle.parts.len(), 2);
+            let formulas: Vec<&str> = bundle.parts.iter().map(|p| p.formula).collect();
+            assert_eq!(formulas, vec!["redis", "openssl@3"]);
+            for part in &bundle.parts {
+                // ghcr blobs are content-addressed: the URL must embed the
+                // exact digest we pin, so bytes can never drift under a URL.
+                let digest = checksum_hex(&part.checksum);
+                assert_eq!(digest.len(), 64);
+                assert!(part.url.ends_with(&format!("blobs/sha256:{digest}")), "{}", part.url);
+                assert!(!part.include.is_empty());
+            }
+            // The versioned-formula path maps `@` to `/` on ghcr.
+            assert!(bundle.parts[1].url.contains("homebrew/core/openssl/3/blobs/"));
+            // Only runtime dylibs from openssl — never headers/static libs.
+            assert_eq!(
+                bundle.parts[1].include,
+                &["lib/libssl.3.dylib", "lib/libcrypto.3.dylib"]
+            );
+        }
+        // Arches pin distinct bottles.
+        let arm = bundle_manifest("redis", REDIS_VERSION, "macos", Arch::Arm64).unwrap();
+        let amd = bundle_manifest("redis", REDIS_VERSION, "macos", Arch::X86_64).unwrap();
+        assert_ne!(
+            checksum_hex(&arm.parts[0].checksum),
+            checksum_hex(&amd.parts[0].checksum)
+        );
+        // Bundles and plain manifests are disjoint namespaces.
+        assert!(manifest("redis", REDIS_VERSION, "macos", Arch::Arm64).is_none());
+        assert!(bundle_manifest("mysql", MYSQL_VERSION, "macos", Arch::Arm64).is_none());
+        assert!(bundle_manifest("redis", "0.0.1", "macos", Arch::Arm64).is_none());
+    }
+
+    #[test]
+    fn filtered_tree_extract_strips_and_includes() {
+        // Build a bottle-shaped tar.gz in memory: `<formula>/<version>/…`.
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+        for (path, data) in [
+            ("redis/8.8.0/bin/redis-server", "elf"),
+            ("redis/8.8.0/.brew/redis.rb", "receipt"),
+            ("redis/8.8.0/README.md", "docs"),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(data.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            builder.append_data(&mut header, path, data.as_bytes()).unwrap();
+        }
+        let gz = builder.into_inner().unwrap().finish().unwrap();
+
+        let dest = std::env::temp_dir().join("rexenv-bottle-extract-test");
+        let _ = std::fs::remove_dir_all(&dest);
+        std::fs::create_dir_all(&dest).unwrap();
+        extract_tar_gz_tree_filtered(&gz[..], &dest, 2, Some(&["bin"])).unwrap();
+        // The included subtree landed post-strip; everything else was skipped.
+        assert!(dest.join("bin/redis-server").is_file());
+        assert!(!dest.join(".brew").exists());
+        assert!(!dest.join("README.md").exists());
+        assert!(!dest.join("redis").exists(), "strip must drop formula/version dirs");
+        let _ = std::fs::remove_dir_all(&dest);
     }
 
     #[test]

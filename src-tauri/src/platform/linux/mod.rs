@@ -120,6 +120,9 @@ impl BinaryProvider for LinuxBinaryProvider {
     fn prepare_binary(&self, _path: &Path) -> Result<()> {
         todo!("linux binary prepare (chmod handled via PermissionManager)")
     }
+    fn prepare_binary_tree(&self, _root: &Path) -> Result<()> {
+        todo!("linux bundle-tree prepare (patchelf RUNPATH $ORIGIN relink)")
+    }
 }
 
 pub struct LinuxEdge;

@@ -260,6 +260,13 @@ pub trait BinaryProvider: Send + Sync {
     /// code-sign (`codesign --force --sign -`) + de-quarantine
     /// (`xattr -d com.apple.quarantine`), else Apple Silicon kills it.
     fn prepare_binary(&self, path: &std::path::Path) -> Result<()>;
+    /// Prepare a freshly extracted multi-dylib TREE (a Homebrew-bottle bundle,
+    /// `core::binaries::resolve_bundle`) for execution. macOS: relink every
+    /// Mach-O's non-system dylib deps (`@@HOMEBREW_*@@` placeholders) to
+    /// `@loader_path`-relative paths into the tree's `lib/`, then ad-hoc re-sign
+    /// each Mach-O LAST (relinking invalidates signatures). Must error loudly if
+    /// a dependency is NOT bundled — never publish a tree that can't load.
+    fn prepare_binary_tree(&self, root: &std::path::Path) -> Result<()>;
 }
 
 /// Keeps the privileged Caddy edge (`:80`/`:443`, root) alive across ANY death —

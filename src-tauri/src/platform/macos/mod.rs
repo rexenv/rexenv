@@ -1050,6 +1050,27 @@ impl MacosBinaryProvider {
             .map(|(_, target)| target.to_string())
     }
 
+    /// Ad-hoc code-sign a Mach-O in place. Must run LAST in any prepare step —
+    /// `install_name_tool` invalidates signatures and Apple Silicon SIGKILLs
+    /// unsigned binaries.
+    fn ad_hoc_sign(path: &Path) -> Result<()> {
+        let out = std::process::Command::new("codesign")
+            .arg("--force")
+            .arg("--sign")
+            .arg("-")
+            .arg(path)
+            .output()?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "codesign {} failed: {}",
+                path.display(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            )))
+        }
+    }
+
     /// Rewrite any non-system (e.g. Homebrew) dylib dependencies to macOS system
     /// libs so the binary runs without Homebrew. Errors if a dep has no system
     /// equivalent (so we never ship a binary that will fail to load).
@@ -1091,6 +1112,174 @@ impl MacosBinaryProvider {
         }
         Ok(())
     }
+
+    /// Whether a load-command path must be rewritten to point inside the bundle
+    /// tree. System libs and already-relative entries are fine; everything else
+    /// (Homebrew `@@HOMEBREW_PREFIX@@`/`@@HOMEBREW_CELLAR@@` placeholders, real
+    /// `/opt/homebrew`//`/usr/local` paths, `@rpath` we don't manage) is not.
+    fn needs_tree_relink(dep: &str) -> bool {
+        !(dep.starts_with("/usr/lib/")
+            || dep.starts_with("/System/")
+            || dep.starts_with("@loader_path/")
+            || dep.starts_with("@executable_path/"))
+    }
+
+    /// The `@loader_path`-relative path from `macho` to the bundle's
+    /// `lib/<base>`: one `../` per directory level below `root`. Pure.
+    fn loader_path_dep(root: &Path, macho: &Path, base: &str) -> Result<String> {
+        let parent = macho
+            .parent()
+            .ok_or_else(|| Error::Other(format!("{} has no parent dir", macho.display())))?;
+        let rel = parent.strip_prefix(root).map_err(|_| {
+            Error::Other(format!(
+                "{} is not under bundle root {}",
+                macho.display(),
+                root.display()
+            ))
+        })?;
+        let ups = "../".repeat(rel.components().count());
+        Ok(format!("@loader_path/{ups}lib/{base}"))
+    }
+
+    /// First four bytes match a Mach-O (thin or fat, either endianness).
+    fn is_mach_o(path: &Path) -> bool {
+        use std::io::Read;
+        let Ok(mut f) = std::fs::File::open(path) else {
+            return false;
+        };
+        let mut magic = [0u8; 4];
+        if f.read_exact(&mut magic).is_err() {
+            return false;
+        }
+        matches!(
+            magic,
+            [0xfe, 0xed, 0xfa, 0xce]
+                | [0xfe, 0xed, 0xfa, 0xcf]
+                | [0xce, 0xfa, 0xed, 0xfe]
+                | [0xcf, 0xfa, 0xed, 0xfe]
+                | [0xca, 0xfe, 0xba, 0xbe]
+                | [0xca, 0xfe, 0xba, 0xbf]
+        )
+    }
+
+    /// All Mach-O regular files under `root` (recursive; symlinks skipped —
+    /// their targets are visited as real files).
+    fn mach_o_files(root: &Path) -> Result<Vec<PathBuf>> {
+        let mut found = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                let meta = std::fs::symlink_metadata(&path)?;
+                if meta.file_type().is_symlink() {
+                    continue;
+                }
+                if meta.is_dir() {
+                    stack.push(path);
+                } else if meta.is_file() && Self::is_mach_o(&path) {
+                    found.push(path);
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    /// The dependency paths from `otool -L` (skips the header line). For a
+    /// dylib this INCLUDES its own install name (ID) as the first entry.
+    fn load_command_deps(path: &Path) -> Result<Vec<String>> {
+        let out = std::process::Command::new("otool").arg("-L").arg(path).output()?;
+        if !out.status.success() {
+            return Err(Error::Other(format!(
+                "otool -L {} failed: {}",
+                path.display(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            )));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .skip(1)
+            .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+            .collect())
+    }
+
+    /// A dylib's install name (`otool -D`), or `None` for executables.
+    fn dylib_id(path: &Path) -> Result<Option<String>> {
+        let out = std::process::Command::new("otool").arg("-D").arg(path).output()?;
+        if !out.status.success() {
+            return Err(Error::Other(format!(
+                "otool -D {} failed: {}",
+                path.display(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            )));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .nth(1)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string))
+    }
+
+    fn install_name_tool(args: &[&str], path: &Path) -> Result<()> {
+        let st = std::process::Command::new("install_name_tool")
+            .args(args)
+            .arg(path)
+            .output()?;
+        if st.status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "install_name_tool {} {} failed: {}",
+                args.join(" "),
+                path.display(),
+                String::from_utf8_lossy(&st.stderr).trim()
+            )))
+        }
+    }
+
+    /// Rewrite one Mach-O so every non-system load command points inside the
+    /// bundle tree via `@loader_path`, then VERIFY nothing unresolvable remains.
+    /// A dep whose dylib is not bundled under `<root>/lib/` is a loud error —
+    /// never publish a tree that can't load.
+    fn relink_into_tree(root: &Path, macho: &Path) -> Result<()> {
+        let id = Self::dylib_id(macho)?;
+        if let Some(old) = id.as_deref().filter(|d| Self::needs_tree_relink(d)) {
+            let base = Path::new(old)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| Error::Other(format!("unparseable install name {old}")))?;
+            Self::install_name_tool(&["-id", &Self::loader_path_dep(root, macho, base)?], macho)?;
+        }
+        for dep in Self::load_command_deps(macho)? {
+            // A dylib's own ID shows up in -L output — handled above, skip here.
+            if id.as_deref() == Some(dep.as_str()) || !Self::needs_tree_relink(&dep) {
+                continue;
+            }
+            let base = Path::new(&dep)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| Error::Other(format!("unparseable dylib dep {dep}")))?;
+            if !root.join("lib").join(base).exists() {
+                return Err(Error::Other(format!(
+                    "{} depends on {dep}, but lib/{base} is not in the bundle",
+                    macho.display()
+                )));
+            }
+            let target = Self::loader_path_dep(root, macho, base)?;
+            Self::install_name_tool(&["-change", &dep, &target], macho)?;
+        }
+        // Verify: every load command must now be system or in-tree relative.
+        for dep in Self::load_command_deps(macho)? {
+            if Self::needs_tree_relink(&dep) {
+                return Err(Error::Other(format!(
+                    "{} still references {dep} after relinking",
+                    macho.display()
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl BinaryProvider for MacosBinaryProvider {
@@ -1112,20 +1301,26 @@ impl BinaryProvider for MacosBinaryProvider {
         Self::relink_to_system_libs(path)?;
         // Ad-hoc code-sign LAST — install_name_tool invalidates any signature,
         // and Apple Silicon needs a valid signature to exec the binary.
-        let out = std::process::Command::new("codesign")
-            .arg("--force")
-            .arg("--sign")
-            .arg("-")
-            .arg(path)
-            .output()?;
-        if out.status.success() {
-            Ok(())
-        } else {
-            Err(Error::Other(format!(
-                "codesign failed: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            )))
+        Self::ad_hoc_sign(path)
+    }
+    fn prepare_binary_tree(&self, root: &Path) -> Result<()> {
+        let machos = Self::mach_o_files(root)?;
+        if machos.is_empty() {
+            return Err(Error::Other(format!(
+                "no Mach-O files under {} — not a binary bundle",
+                root.display()
+            )));
         }
+        // Relink every Mach-O first, then sign — each file is rewritten at most
+        // once, and signing LAST means no signature is ever invalidated after
+        // it's laid down (same order rule as prepare_binary).
+        for m in &machos {
+            Self::relink_into_tree(root, m)?;
+        }
+        for m in &machos {
+            Self::ad_hoc_sign(m)?;
+        }
+        Ok(())
     }
 }
 
@@ -1535,6 +1730,79 @@ mod tests {
         assert_eq!(mapped.as_deref(), Some("/usr/lib/libpcre2-8.dylib"));
         // Nonexistent lib → no mapping.
         assert!(MacosBinaryProvider::system_lib_for("/opt/homebrew/lib/libnope-9.dylib").is_none());
+    }
+
+    #[test]
+    fn loader_path_dep_climbs_to_the_bundle_lib() {
+        let root = Path::new("/cache/redis-8.8.0");
+        // Executable in bin/ → one level up, into lib/.
+        let bin = MacosBinaryProvider::loader_path_dep(
+            root,
+            Path::new("/cache/redis-8.8.0/bin/redis-server"),
+            "libssl.3.dylib",
+        )
+        .unwrap();
+        assert_eq!(bin, "@loader_path/../lib/libssl.3.dylib");
+        // Dylib in lib/ → also one level up (lib/../lib resolves to lib).
+        let lib = MacosBinaryProvider::loader_path_dep(
+            root,
+            Path::new("/cache/redis-8.8.0/lib/libssl.3.dylib"),
+            "libcrypto.3.dylib",
+        )
+        .unwrap();
+        assert_eq!(lib, "@loader_path/../lib/libcrypto.3.dylib");
+        // Nested (e.g. lib/ossl-modules/) → two levels up.
+        let nested = MacosBinaryProvider::loader_path_dep(
+            root,
+            Path::new("/cache/redis-8.8.0/lib/ossl-modules/legacy.dylib"),
+            "libcrypto.3.dylib",
+        )
+        .unwrap();
+        assert_eq!(nested, "@loader_path/../../lib/libcrypto.3.dylib");
+        // A Mach-O outside the root is a hard error, never a bogus path.
+        assert!(MacosBinaryProvider::loader_path_dep(
+            root,
+            Path::new("/elsewhere/bin/redis-server"),
+            "libssl.3.dylib"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn needs_tree_relink_flags_only_unresolvable_deps() {
+        // Bottle placeholders and real Homebrew prefixes must be rewritten.
+        assert!(MacosBinaryProvider::needs_tree_relink(
+            "@@HOMEBREW_PREFIX@@/opt/openssl@3/lib/libssl.3.dylib"
+        ));
+        assert!(MacosBinaryProvider::needs_tree_relink(
+            "@@HOMEBREW_CELLAR@@/openssl@3/3.6.3/lib/libcrypto.3.dylib"
+        ));
+        assert!(MacosBinaryProvider::needs_tree_relink(
+            "/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib"
+        ));
+        // @rpath is unmanaged in bundles — rewrite it into the tree too.
+        assert!(MacosBinaryProvider::needs_tree_relink("@rpath/libfoo.dylib"));
+        // System and already-relative entries stay untouched.
+        assert!(!MacosBinaryProvider::needs_tree_relink("/usr/lib/libSystem.B.dylib"));
+        assert!(!MacosBinaryProvider::needs_tree_relink(
+            "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"
+        ));
+        assert!(!MacosBinaryProvider::needs_tree_relink("@loader_path/../lib/libssl.3.dylib"));
+    }
+
+    #[test]
+    fn is_mach_o_detects_magic_not_extension() {
+        let dir = std::env::temp_dir().join("rexenv-macho-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // 64-bit little-endian Mach-O magic as written on disk.
+        std::fs::write(dir.join("real"), [0xcf, 0xfa, 0xed, 0xfe, 0, 0]).unwrap();
+        assert!(MacosBinaryProvider::is_mach_o(&dir.join("real")));
+        std::fs::write(dir.join("fake.dylib"), b"#!/bin/sh\n").unwrap();
+        assert!(!MacosBinaryProvider::is_mach_o(&dir.join("fake.dylib")));
+        std::fs::write(dir.join("tiny"), [0xcf]).unwrap();
+        assert!(!MacosBinaryProvider::is_mach_o(&dir.join("tiny")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
