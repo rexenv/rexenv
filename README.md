@@ -2,9 +2,10 @@
 
 A native, lightweight, limitless local development environment for web & WordPress developers. **No Docker.** macOS first, then Windows and Linux.
 
-> **Status:** Phase 1 (MVP), Phase 2 core, and Phase 3 are **complete on macOS** — one-click
-> WordPress on real `https://*.rex`, multi-PHP, Nginx + per-site FrankenPHP, MySQL +
-> PostgreSQL, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
+> **Status:** Phases 1–3 and the deferred-services family are **complete on macOS** —
+> one-click WordPress on real `https://*.rex`, multi-PHP (8.0–8.5), Nginx + per-site
+> FrankenPHP/Apache, MySQL/MariaDB per site + PostgreSQL/Redis, per-engine DB version
+> switching, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
 > Cloudflare tunnels, blueprints, autostart. Open work is tracked in `docs/TODO.md`;
 > Windows/Linux ports are `todo!()` stubs by design.
 
@@ -12,9 +13,11 @@ A native, lightweight, limitless local development environment for web & WordPre
 
 ## What it is
 
-One app to run your entire local stack — web servers (**Nginx**, per-site **FrankenPHP**;
-Apache/OpenLiteSpeed deferred), multiple PHP versions (8.1/8.2/8.3), databases (**MySQL**,
-**PostgreSQL**; MariaDB/Redis deferred), one-click WordPress with a full plugin/theme/user/
+One app to run your entire local stack — web servers (**Nginx**, per-site **FrankenPHP**
+or **Apache** with `.htaccess`; OpenLiteSpeed blocked upstream — no macOS binary exists),
+multiple PHP versions (8.0–8.5), databases (**MySQL** or **MariaDB** per site,
+**PostgreSQL**, **Redis** — each engine switchable between pinned versions with
+per-version data dirs), one-click WordPress with a full plugin/theme/user/
 **multisite** manager, local `.rex` domains with auto-HTTPS, mail catching (Mailpit), a DB
 browser (Adminer deep-link), log viewer, per-site terminal, and public sharing (Cloudflare
 quick tunnels) — all native and lightweight, from one UI.
@@ -49,7 +52,7 @@ pnpm tauri dev
 
 # checks
 pnpm build                                 # strict tsc + vite build
-cargo test --lib   # in src-tauri/        # 153 unit tests
+cargo test --lib   # in src-tauri/        # ~261 unit tests
 cargo run --example <name>                 # live verification binaries (see src-tauri/examples/)
 ```
 
@@ -114,10 +117,10 @@ rexenv/
         │   ├── service_manager.rs  # owns the stack: dbs, pools, overrides, mail, edge
         │   ├── sites.rs        # provision / rebuild configs / switches / teardown
         │   ├── services.rs     # nginx + php-fpm config gen & control
-        │   ├── php.rs          # multi-version pool registry (8.1/8.2/8.3)
-        │   ├── frankenphp.rs   # per-site override backend (loopback, admin off)
+        │   ├── php.rs          # multi-version pool registry (8.0–8.5)
+        │   ├── frankenphp.rs · apache.rs   # per-site override backends (loopback, never the edge)
         │   ├── proxy.rs        # Caddy edge (unix-socket admin, stale-edge recovery)
-        │   ├── database.rs · postgres.rs · redis.rs · db.rs   # MySQL, PostgreSQL, Redis, DbEngine
+        │   ├── database.rs · mariadb.rs · postgres.rs · redis.rs · db.rs   # engines + DbEngine
         │   ├── wordpress.rs · wp_login.rs          # WP-CLI ops, magic login link
         │   ├── dns.rs · ssl.rs                     # hickory-dns resolver, rcgen CA
         │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · tunnels.rs
@@ -126,13 +129,14 @@ rexenv/
         │
         ├── platform/           # OS-SPECIFIC impls behind traits (CRITICAL)
         │   ├── traits.rs       # DnsManager, CertTrustManager, PrivilegeManager,
-        │   │                   #   ProcessSupervisor, AutostartManager,
-        │   │                   #   PermissionManager, ShellRunner, Paths, BinaryProvider
-        │   ├── macos/          # all 9 impls real
+        │   │                   #   ProcessSupervisor, AutostartManager, PermissionManager,
+        │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
+        │   │                   #   DnsAgentManager
+        │   ├── macos/          # all 11 impls real
         │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
         │
         ├── state/              # app state
-        │   ├── db.rs           # SQLite + migrations (v1–v4)
+        │   ├── db.rs           # SQLite + migrations (v1–v10)
         │   ├── models.rs · store.rs
         │   └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
         │
@@ -150,7 +154,7 @@ rexenv/
 ## Build phases (summary)
 
 1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test` (now `*.rex`).
-2. **Phase 2 core** — ✅ done. Multi-PHP (8.1/8.2/8.3), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *(Apache/OpenLiteSpeed/MariaDB/Redis deferred — no clean portable macOS binaries; see `docs/TODO.md` "Deferred services".)*
+2. **Phase 2 core** — ✅ done. Multi-PHP (8.0–8.5), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *The once-deferred services shipped later via Homebrew-bottle **bundles** (`resolve_bundle` + `prepare_binary_tree` dylib relinking): **Redis**, **MariaDB** (+ per-site MySQL/MariaDB choice at create), **Apache** override, and per-engine DB **version switching** (per-series data dirs). OpenLiteSpeed stays blocked upstream — no macOS binary exists (`docs/TODO.md` "Blocked").*
 3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
 4. **Release** — hardening + `.dmg` packaging done except the clean-Mac verification (`docs/TODO.md`); audit history in `docs/archive/`.
 5. **Phase 4/5** — Windows, then Linux ports (fill the `platform/` stubs).

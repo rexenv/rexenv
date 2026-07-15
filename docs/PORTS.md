@@ -51,4 +51,11 @@ binary, update THIS file in the same commit.
 
 All checksum-locked (SHA-256/512 by source). macOS `prepare_binary` order is non-negotiable:
 **de-quarantine → relink Homebrew dylibs → codesign LAST** (relinking invalidates the
-signature; Apple Silicon kills unsigned binaries).
+signature; Apple Silicon kills unsigned binaries). The bundle counterpart
+(`prepare_binary_tree`, for the bottle bundles) follows the same rule per tree:
+**relink every Mach-O's non-system load command to `@loader_path` (erroring on any
+dep not bundled), verify, then ad-hoc sign each Mach-O LAST.**
+
+Standing caveat: the bottle bundles' x86_64 digests are Homebrew-published and MySQL
+8.0.44's x86_64 tarball was downloaded + hashed but not run — run-verify all of them
+on the next Intel smoke pass (arm64 artifacts were all extracted and RUN at pin time).
