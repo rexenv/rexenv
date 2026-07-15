@@ -69,14 +69,15 @@ const MODULES: &[(&str, &str)] = &[
 /// server context (leading slashes; existence checks via DOCUMENT_ROOT —
 /// `%{REQUEST_FILENAME}` isn't mapped yet at this phase). A site's own
 /// `.htaccess` (AllowOverride All) still applies per-directory afterwards.
+/// `RewriteEngine On` is emitted unconditionally by [`generate_config`] (the
+/// HTTPS map needs it), so the modes only add their rules.
 fn routing(mode: RewriteMode) -> &'static str {
     match mode {
         RewriteMode::Single | RewriteMode::SubdomainMultisite => {
             "FallbackResource /index.php\n"
         }
         RewriteMode::SubdirectoryMultisite => {
-            "RewriteEngine On\n\
-             RewriteRule ^/index\\.php$ - [L]\n\
+            "RewriteRule ^/index\\.php$ - [L]\n\
              RewriteRule ^/([_0-9a-zA-Z-]+/)?wp-admin$ /$1wp-admin/ [R=301,L]\n\
              RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -f [OR]\n\
              RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -d\n\
@@ -90,7 +91,12 @@ fn routing(mode: RewriteMode) -> &'static str {
 
 /// Render the per-site httpd.conf: loopback listener, the site's docroot with
 /// `.htaccess` enabled, `.php` → the site's php-fpm pool over FastCGI, and the
-/// WP routing for its multisite mode. `env` (§1.6, validated by
+/// WP routing for its multisite mode. The edge terminates TLS, so the backend
+/// maps Caddy's `X-Forwarded-Proto: https` to the `HTTPS` env var via
+/// mod_rewrite (mod_proxy_fcgi forwards it as a FastCGI param — the nginx
+/// vhosts' `fastcgi_param HTTPS $rexenv_https` equivalent); without it
+/// WordPress `is_ssl()` is false: http:// asset URLs (mixed content) and a
+/// broken wp-admin login. mod_setenvif isn't bundled, hence mod_rewrite. `env` (§1.6, validated by
 /// `site_env::validate`) becomes `SetEnv` lines — mod_env adds them to the
 /// request's subprocess env, which mod_proxy_fcgi forwards as FastCGI params
 /// (the same per-REQUEST delivery as nginx's `fastcgi_param` lines; the shared
@@ -138,6 +144,9 @@ pub fn generate_config(
          \tSetHandler \"proxy:fcgi://127.0.0.1:{fpm_port}\"\n\
          </FilesMatch>\n\
          {set_env}\
+         RewriteEngine On\n\
+         RewriteCond %{{HTTP:X-Forwarded-Proto}} =https\n\
+         RewriteRule .* - [E=HTTPS:on]\n\
          {routing}",
         basedir = basedir.display(),
         run = run_dir.display(),
@@ -289,6 +298,9 @@ mod tests {
         assert!(!c.contains("443"));
         // .php → the site's SHARED php-fpm pool (not an embedded PHP).
         assert!(c.contains("SetHandler \"proxy:fcgi://127.0.0.1:9783\""));
+        // Edge-terminated TLS reaches PHP as HTTPS=on (WordPress is_ssl()).
+        assert!(c.contains("RewriteCond %{HTTP:X-Forwarded-Proto} =https"));
+        assert!(c.contains("RewriteRule .* - [E=HTTPS:on]"));
         // The point of Apache: .htaccess honored.
         assert!(c.contains("AllowOverride All"));
         // Placeholder-free explicit paths, quoted (spaces in app-data paths).
@@ -312,15 +324,19 @@ mod tests {
 
     #[test]
     fn routing_matches_the_rewrite_mode() {
-        // Single + subdomain: front-controller fallback, no rewrite engine.
+        // Single + subdomain: front-controller fallback; the only rewrite
+        // rules are the HTTPS map's (emitted once, before the routing).
         for mode in [RewriteMode::Single, RewriteMode::SubdomainMultisite] {
             let c = cfg(mode, &[]);
             assert!(c.contains("FallbackResource /index.php"));
-            assert!(!c.contains("RewriteEngine"));
+            assert_eq!(c.matches("RewriteEngine On").count(), 1);
+            assert_eq!(c.matches("RewriteRule").count(), 1);
         }
-        // Subdirectory multisite mirrors WP's canonical network rules.
+        // Subdirectory multisite mirrors WP's canonical network rules, after
+        // the HTTPS map (env rules must precede the [L] short-circuits).
         let c = cfg(RewriteMode::SubdirectoryMultisite, &[]);
-        assert!(c.contains("RewriteEngine On"));
+        assert_eq!(c.matches("RewriteEngine On").count(), 1);
+        assert!(c.find("[E=HTTPS:on]").unwrap() < c.find("wp-admin$").unwrap());
         assert!(c.contains("wp-admin$ /$1wp-admin/ [R=301,L]"));
         assert!(c.contains("RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -f [OR]"));
         assert!(c.contains("(wp-(content|admin|includes).*) /$2 [L]"));
