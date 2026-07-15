@@ -98,6 +98,15 @@ pub const HTTPD_VERSION: &str = "2.4.68";
 /// apr / apr-util versions bundled into the httpd bundle.
 pub const BUNDLED_APR_VERSION: &str = "1.7.6";
 pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
+/// Pinned Xdebug version (per-site toggle, §8.2). ONE `xdebug.so` per PHP minor
+/// from shivammathur/homebrew-extensions bottles (the tap GitHub Actions
+/// setup-php uses on macOS) — they dlopen straight into our EXISTING static-php
+/// binaries (ABI = Zend API nr + NTS + non-debug, all matching; live-proven
+/// cli+fpm on 8.1–8.5, full DBGp handshake). No debug PHP build needed; the
+/// debug pool is the same fpm binary + `-d zend_extension`. PHP 8.0 is
+/// EXCLUDED: the Nov 2024 static 8.0.30 build exports no Zend symbols, so any
+/// external .so fails to dlopen (`_OnUpdateBool` unresolved).
+pub const XDEBUG_VERSION: &str = "3.5.3";
 
 /// How a downloaded artifact is packaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,8 +168,15 @@ pub struct BundleSpec {
 /// ghcr.io blob URL for a Homebrew-core bottle. The registry path maps a
 /// versioned formula's `@` to `/` (`openssl@3` → `homebrew/core/openssl/3`).
 fn bottle_url(formula: &str, digest: &str) -> String {
+    tap_bottle_url("homebrew/core", formula, digest)
+}
+
+/// ghcr.io blob URL for a bottle under an arbitrary tap root (same `@` → `/`
+/// mapping; e.g. `shivammathur/extensions` + `xdebug@8.4` →
+/// `shivammathur/extensions/xdebug/8.4`).
+fn tap_bottle_url(root: &str, formula: &str, digest: &str) -> String {
     format!(
-        "https://ghcr.io/v2/homebrew/core/{}/blobs/sha256:{digest}",
+        "https://ghcr.io/v2/{root}/{}/blobs/sha256:{digest}",
         formula.replace('@', "/")
     )
 }
@@ -337,6 +353,53 @@ const APR_1_7_6_BOTTLE_AMD64_SHA256: &str = "fdf0f628598225db7ea43128abaf944011d
 // apr-util bottle (revision `1.6.3_1` inside the tarball — irrelevant post-strip).
 const APR_UTIL_1_6_3_BOTTLE_ARM64_SHA256: &str = "e21a775a4cd6e721ad4f09cd7ed0355b5a1181ca8ad6834911a045c8f076eb01";
 const APR_UTIL_1_6_3_BOTTLE_AMD64_SHA256: &str = "a59301c0e98b321c57fc3c8fac679a1e1bcdd5bce470fef60adc240f9c575674";
+
+// Xdebug 3.5.3 bottles from shivammathur/homebrew-extensions (ghcr root
+// `shivammathur/extensions`, NOT homebrew/core) — one per PHP minor, the .so is
+// ABI-bound to its minor. Same digest convention as above (arm64_sonoma +
+// sonoma). Pinned 2026-07-16: all 10 blobs downloaded + hashed; every arm64
+// .so LOADED into the cached static php/php-fpm of its minor (`with Xdebug
+// v3.5.3` banner + module listed); x86_64 spot-verified under Rosetta (8.4
+// static php x86_64 + sonoma .so → loads). Old tags on this repo stay
+// pullable (verified back to 3.2.2), so these pins can 404 only on a
+// registry-side prune — never drift.
+const XDEBUG_PHP81_BOTTLE_ARM64_SHA256: &str = "78531e924acdca0f8b89c9f0059cf37aacd49e3d42e4daf3b78afa9da99d1507";
+const XDEBUG_PHP81_BOTTLE_AMD64_SHA256: &str = "3995225ef848dc149b49be17c86c657e869f28ff4f64d222dabdd516fc022909";
+const XDEBUG_PHP82_BOTTLE_ARM64_SHA256: &str = "9f7142dd46a12d0f5599c3268c47053f6fe82bceb1d266284f7d3f2b233cdf7b";
+const XDEBUG_PHP82_BOTTLE_AMD64_SHA256: &str = "796a4c7d44eb00e2564d9858abf5f494b9324e4b884fa207484e5e7dd2facec3";
+const XDEBUG_PHP83_BOTTLE_ARM64_SHA256: &str = "3f6a844f949e0574e9569e34eddedb7eef873f49d65d7488a0e710d83719a748";
+const XDEBUG_PHP83_BOTTLE_AMD64_SHA256: &str = "cb8083ae1897da4ea92f473c3425926674fb0a841f58da21fe62044f0d983f2c";
+const XDEBUG_PHP84_BOTTLE_ARM64_SHA256: &str = "6c7304aa2b45236f72ab3417d0ad6cc361888095c5ef34b770544e6af66f6968";
+const XDEBUG_PHP84_BOTTLE_AMD64_SHA256: &str = "bf938d1b176343cd13be5ae1b786e1d029607f1a04b065fee6da0ac60d659af4";
+const XDEBUG_PHP85_BOTTLE_ARM64_SHA256: &str = "c648f2a92e7f1995fb95b46981b16ffa9048c4507625f12999e247e7a3b58581";
+const XDEBUG_PHP85_BOTTLE_AMD64_SHA256: &str = "068070ccb2080d8ce7a312fc934dfe3c6d5901c6527a20fcec783f78e619b53c";
+
+/// The formula + per-arch digests of the Xdebug bottle matching a PHP minor.
+/// `None` = no Xdebug for that minor (8.0's static build can't dlopen — see
+/// [`XDEBUG_VERSION`]). The single source of which minors support the toggle.
+fn xdebug_bottle(minor: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match minor {
+        "8.1" => Some(("xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256)),
+        "8.2" => Some(("xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256)),
+        "8.3" => Some(("xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256)),
+        "8.4" => Some(("xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256)),
+        "8.5" => Some(("xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256)),
+        _ => None,
+    }
+}
+
+/// Whether the per-site Xdebug toggle is available for a PHP minor.
+pub fn xdebug_supported(minor: &str) -> bool {
+    xdebug_bottle(minor).is_some()
+}
+
+/// The bundle (name, version) whose cached tree holds `xdebug.so` for a PHP
+/// minor — pass to [`resolve_bundle`]. The minor is baked into the NAME (the
+/// .so is ABI-bound to it); the VERSION is Xdebug's, so a pin bump busts the
+/// cache dir like every other binary.
+pub fn xdebug_bundle_id(minor: &str) -> Option<(String, &'static str)> {
+    xdebug_bottle(minor).map(|_| (format!("xdebug-{minor}"), XDEBUG_VERSION))
+}
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
 fn caddy_arch(arch: Arch) -> &'static str {
@@ -779,6 +842,25 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
                 ),
             ],
         }),
+        // Per-minor Xdebug .so (shivammathur/extensions tap, not homebrew/core):
+        // a ONE-part bundle whose member is the bare `xdebug.so` — links only
+        // system libSystem+libz, so the relink pass is a no-op and re-sign
+        // applies as usual. Loaded into the SAME static php-fpm by the debug
+        // pool (`core::php`), never a separate PHP build.
+        (n, "macos", v) if n.starts_with("xdebug-") && v == XDEBUG_VERSION => {
+            let minor = n.strip_prefix("xdebug-")?;
+            let (formula, arm_sha, amd_sha) = xdebug_bottle(minor)?;
+            let digest = pick(arch, arm_sha, amd_sha);
+            Some(BundleSpec {
+                member: "xdebug.so",
+                parts: vec![BundlePart {
+                    formula,
+                    url: tap_bottle_url("shivammathur/extensions", formula, &digest),
+                    checksum: Checksum::Sha256(digest),
+                    include: &["xdebug.so"],
+                }],
+            })
+        }
         _ => None,
     }
 }
@@ -1695,6 +1777,53 @@ mod tests {
             checksum_hex(&amd.parts[0].checksum)
         );
         assert!(manifest("mariadb", MARIADB_VERSION, "macos", Arch::Arm64).is_none());
+    }
+
+    #[test]
+    fn bundle_manifest_resolves_xdebug_per_supported_minor() {
+        for minor in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
+            assert!(xdebug_supported(minor), "{minor}");
+            let (name, version) = xdebug_bundle_id(minor).unwrap();
+            assert_eq!(name, format!("xdebug-{minor}"));
+            assert_eq!(version, XDEBUG_VERSION);
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                let bundle = bundle_manifest(&name, version, "macos", arch).unwrap();
+                assert_eq!(bundle.member, "xdebug.so");
+                assert_eq!(bundle.parts.len(), 1, "one-part bundle");
+                let part = &bundle.parts[0];
+                assert_eq!(part.formula, format!("xdebug@{minor}"));
+                assert_eq!(part.include, &["xdebug.so"]);
+                let digest = checksum_hex(&part.checksum);
+                assert_eq!(digest.len(), 64, "pinned digest, not a stub");
+                // shivammathur tap root, NOT homebrew/core; content-addressed.
+                assert_eq!(
+                    part.url,
+                    format!(
+                        "https://ghcr.io/v2/shivammathur/extensions/xdebug/{minor}/blobs/sha256:{digest}"
+                    )
+                );
+            }
+            let arm = bundle_manifest(&name, version, "macos", Arch::Arm64).unwrap();
+            let amd = bundle_manifest(&name, version, "macos", Arch::X86_64).unwrap();
+            assert_ne!(
+                checksum_hex(&arm.parts[0].checksum),
+                checksum_hex(&amd.parts[0].checksum)
+            );
+        }
+    }
+
+    #[test]
+    fn xdebug_is_refused_for_php_80_and_unknown_minors() {
+        // 8.0's static build exports no Zend symbols — dlopen fails, so the
+        // toggle must be unofferable by construction.
+        for minor in ["8.0", "7.4", "9.0", ""] {
+            assert!(!xdebug_supported(minor), "{minor}");
+            assert!(xdebug_bundle_id(minor).is_none());
+            assert!(bundle_manifest(&format!("xdebug-{minor}"), XDEBUG_VERSION, "macos", Arch::Arm64)
+                .is_none());
+        }
+        // Wrong version never resolves (cache-dir identity is honest).
+        assert!(bundle_manifest("xdebug-8.4", "0.0.1", "macos", Arch::Arm64).is_none());
     }
 
     #[test]
