@@ -364,14 +364,75 @@ pub async fn set_site_php_version(
     };
     if let Some(ref s) = site {
         let minor = core::php::minor_of(&s.php_version);
+        // A toggled site also needs the NEW minor's debug pool (and its
+        // xdebug.so) — pool_port_for_site routes it there after the reload.
+        let needs_debug = s.xdebug && core::binaries::xdebug_supported(&minor);
         // Pool binary cached before the locked ensure below. No-op when warm.
-        let plan = core::downloads::plan_for_pool(state.platform.as_ref(), &minor);
+        let plan = if needs_debug {
+            core::downloads::plan_for_xdebug(state.platform.as_ref(), &minor)
+        } else {
+            core::downloads::plan_for_pool(state.platform.as_ref(), &minor)
+        };
         core::downloads::prefetch(state.platform.as_ref(), "Switch PHP version", &plan).await?;
         let checks = {
             let mut mgr = state.services.lock().await;
             if mgr.is_running() {
                 mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
+                if needs_debug {
+                    mgr.ensure_php_debug_pool(state.platform.as_ref(), &minor).await?;
+                }
                 mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await?;
+    }
+    Ok(site)
+}
+
+/// Toggle a site's Xdebug (§8.2): core-validated flag flip (FrankenPHP and
+/// PHP 8.0 refused with the real reason), then — if the stack is running —
+/// ensure the minor's DEBUG pool (downloading the pinned xdebug.so on first
+/// use, prefetched before the lock) and reload so nginx/Apache route the site
+/// at the debug port. Toggling off routes back and stops the debug pool once
+/// no site on that minor still uses it. Returns the updated site.
+#[tauri::command]
+pub async fn set_site_xdebug(
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+) -> Result<Option<Site>> {
+    let (site, sites) = {
+        let conn = lock(&state)?;
+        let updated = core::sites::set_xdebug(&conn, &id, enabled)?;
+        (updated, core::sites::list(&conn)?)
+    };
+    if let Some(ref s) = site {
+        let minor = core::php::minor_of(&s.php_version);
+        if enabled {
+            // Pool binary + xdebug bundle cached BEFORE the locked ensure below.
+            let plan = core::downloads::plan_for_xdebug(state.platform.as_ref(), &minor);
+            core::downloads::prefetch(state.platform.as_ref(), "Enable Xdebug", &plan).await?;
+        }
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                if enabled {
+                    // Load-probe-gated: a bad artifact errors here, before any
+                    // config routes the site at the debug port.
+                    mgr.ensure_php_debug_pool(state.platform.as_ref(), &minor).await?;
+                }
+                let checks = mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?;
+                if !enabled
+                    && !sites
+                        .iter()
+                        .any(|o| o.xdebug && core::php::minor_of(&o.php_version) == minor)
+                {
+                    // Tidy-up AFTER the reload: nothing routes there anymore.
+                    mgr.stop_php_debug_pool(state.platform.as_ref(), &minor);
+                }
+                checks
             } else {
                 Vec::new()
             }

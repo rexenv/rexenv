@@ -361,6 +361,38 @@ pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Opt
     get(conn, id)
 }
 
+/// Toggle a site's Xdebug (§8.2). Validation lives in CORE (M7 — no IPC path
+/// can enable it where it can't work): FrankenPHP sites are refused (their
+/// embedded PHP never touches the fpm pools), as are minors without a pinned
+/// Xdebug bottle (8.0: the static build can't dlopen any .so). Returns the
+/// updated site, or `None` if the id doesn't exist.
+pub fn set_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<Option<Site>> {
+    if enabled {
+        let Some(site) = get(conn, id)? else {
+            return Ok(None);
+        };
+        if matches!(site.web_server, WebServer::Frankenphp) {
+            return Err(Error::Other(
+                "Xdebug isn't available on FrankenPHP sites — FrankenPHP embeds its own \
+                 PHP and never uses the shared pools. Switch the site to Nginx or Apache \
+                 first."
+                    .into(),
+            ));
+        }
+        let minor = php::minor_of(&site.php_version);
+        if !crate::core::binaries::xdebug_supported(&minor) {
+            return Err(Error::Other(format!(
+                "Xdebug isn't available for PHP {minor} — its static build can't load \
+                 extensions. Switch the site to PHP 8.1 or newer first."
+            )));
+        }
+    }
+    if !store::set_site_xdebug(conn, id, enabled)? {
+        return Ok(None);
+    }
+    get(conn, id)
+}
+
 /// Full teardown of a site: remove its DB row, cert material, per-site
 /// config/log artifacts, and docroot. Returns `false` if the site didn't exist.
 /// Does NOT rewrite the shared configs — call [`rebuild_configs`] + reload after
@@ -744,6 +776,38 @@ mod tests {
             path: format!("~/Sites/{name}"),
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
+    }
+
+    #[test]
+    fn set_xdebug_validates_in_core_and_flips_the_flag() {
+        let conn = db::open_in_memory().unwrap();
+        let site = create(&conn, sample("A", "a.test")).unwrap(); // nginx, PHP 8.3
+        assert!(!site.xdebug);
+
+        // Happy path: on, then off.
+        let on = set_xdebug(&conn, &site.id, true).unwrap().unwrap();
+        assert!(on.xdebug);
+        let off = set_xdebug(&conn, &site.id, false).unwrap().unwrap();
+        assert!(!off.xdebug);
+
+        // FrankenPHP refused (embedded PHP — the pools never serve it).
+        set_web_server(&conn, &site.id, WebServer::Frankenphp).unwrap();
+        assert!(set_xdebug(&conn, &site.id, true).is_err());
+        set_web_server(&conn, &site.id, WebServer::Nginx).unwrap();
+
+        // PHP 8.0 refused (static build can't dlopen any .so).
+        set_php_version(&conn, &site.id, "8.0").unwrap();
+        assert!(set_xdebug(&conn, &site.id, true).is_err());
+        set_php_version(&conn, &site.id, "8.4").unwrap();
+        assert!(set_xdebug(&conn, &site.id, true).unwrap().unwrap().xdebug);
+
+        // Disabling never validates (a stale flag must always be clearable).
+        set_php_version(&conn, &site.id, "8.0").unwrap();
+        assert!(!set_xdebug(&conn, &site.id, false).unwrap().unwrap().xdebug);
+
+        // Unknown id → None, not an error.
+        assert!(set_xdebug(&conn, "nope", true).unwrap().is_none());
+        assert!(set_xdebug(&conn, "nope", false).unwrap().is_none());
     }
 
     #[test]

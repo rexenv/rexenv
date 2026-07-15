@@ -151,6 +151,9 @@ pub fn label_for(name: &str, version: &str) -> String {
         "redis" => format!("Redis {}", minor(version)),
         "mariadb" => format!("MariaDB {}", minor(version)),
         "httpd" => "Apache (httpd)".into(),
+        n if n.starts_with("xdebug-") => {
+            format!("Xdebug (PHP {})", n.trim_start_matches("xdebug-"))
+        }
         _ => format!("{name} {version}"),
     }
 }
@@ -225,9 +228,25 @@ pub fn plan_for_start(
     if sites.iter().any(|s| matches!(s.db_engine, crate::state::models::SiteDbEngine::Mariadb)) {
         set.push(("mariadb", &mariadb_version));
     }
-    set.into_iter()
+    let mut plan: Vec<PlannedBinary> = set
+        .into_iter()
         .map(|(n, v)| PlannedBinary::new(platform, n, v))
-        .collect()
+        .collect();
+    // Xdebug bundles for toggled sites' minors — Start-all spawns those debug
+    // pools, and spawn-under-lock must hit cache.
+    let mut xdebug_minors: Vec<String> = sites
+        .iter()
+        .filter(|s| s.xdebug)
+        .map(|s| php::minor_of(&s.php_version))
+        .collect();
+    xdebug_minors.sort_unstable();
+    xdebug_minors.dedup();
+    for minor in xdebug_minors {
+        if let Some((name, version)) = binaries::xdebug_bundle_id(&minor) {
+            plan.push(PlannedBinary::new(platform, &name, version));
+        }
+    }
+    plan
 }
 
 /// The binary set for starting one DB engine on demand. Empty for engines
@@ -262,6 +281,18 @@ pub fn plan_for_pool(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary>
     }
 }
 
+/// The Xdebug toggle-on set: the minor's pool binary + its pinned `xdebug.so`
+/// bundle — `ensure_php_debug_pool` runs under the services lock and must hit
+/// cache. Empty when the minor has no Xdebug support (core refuses the toggle
+/// with the real message).
+pub fn plan_for_xdebug(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+    let mut plan = plan_for_pool(platform, minor);
+    if let Some((name, version)) = binaries::xdebug_bundle_id(minor) {
+        plan.push(PlannedBinary::new(platform, &name, version));
+    }
+    plan
+}
+
 /// WP install tooling for a site create: the minor's PHP CLI build + WP-CLI.
 pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
     let mut plan = Vec::new();
@@ -291,6 +322,9 @@ pub async fn resolve_any(platform: &dyn Platform, name: &str, version: &str) -> 
     match name {
         "mysql" | "postgres" => binaries::resolve_dir(platform, name, version).await.map(drop),
         "redis" | "mariadb" | "httpd" => {
+            binaries::resolve_bundle(platform, name, version).await.map(drop)
+        }
+        n if n.starts_with("xdebug-") => {
             binaries::resolve_bundle(platform, name, version).await.map(drop)
         }
         "wp-cli" | "adminer" => binaries::resolve_file(platform, name, version).await.map(drop),
