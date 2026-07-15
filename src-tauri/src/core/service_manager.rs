@@ -1295,11 +1295,19 @@ impl ServiceManager {
         let mut events = Vec::new();
         let mut checks = Vec::new();
 
-        // Database engines.
-        let (dead_dbs, live_dbs): (Vec<DbEngine>, Vec<DbEngine>) =
-            self.dbs.keys().copied().partition(|e| !e.running());
-        for engine in live_dbs {
-            self.restart_attempts.remove(engine.label());
+        // Database engines. Port-closed alone is not death: a child spawned
+        // by an in-flight Start-all (readiness awaited outside the lock) may
+        // not have bound yet — leave it alone while its master is alive and
+        // within the start grace (the watchdog/Start-all race; a slow first
+        // boot, e.g. MySQL initializing, must not be respawn-looped into
+        // `gave-up`). A dead master is reaped regardless.
+        let mut dead_dbs: Vec<DbEngine> = Vec::new();
+        for (engine, proc_) in self.dbs.iter_mut() {
+            if engine.running() {
+                self.restart_attempts.remove(engine.label());
+            } else if !(proc_.alive() && proc_.starting()) {
+                dead_dbs.push(*engine);
+            }
         }
         for engine in dead_dbs {
             let name = engine.label().to_string();
@@ -1361,12 +1369,17 @@ impl ServiceManager {
 
         // Per-site override backends (FrankenPHP / Apache). Respawn ONLY sites
         // still on that override server — a switched/deleted site's dead
-        // handle is just dropped.
+        // handle is just dropped. Same start grace as above: port-closed with
+        // a live, just-spawned backend is "starting", not dead.
         let dead_overrides: Vec<(String, OverrideKind)> = self
             .overrides
-            .iter()
-            .filter(|(_, b)| !frankenphp::running(b.port))
-            .map(|(d, b)| (d.clone(), b.kind))
+            .iter_mut()
+            .filter_map(|(d, b)| {
+                // Dead = port closed AND (master gone OR out of start grace).
+                let dead = !frankenphp::running(b.port)
+                    && (!b.child.alive() || !b.child.starting());
+                dead.then(|| (d.clone(), b.kind))
+            })
             .collect();
         for (domain, backend) in self.overrides.iter() {
             if !dead_overrides.iter().any(|(d, _)| d == domain) {
@@ -1419,11 +1432,16 @@ impl ServiceManager {
             }
         }
 
-        // Mailpit.
+        // Mailpit. Same start grace: alive + just spawned + port closed =
+        // still starting, not dead.
         if self.mailpit.is_some() {
+            let starting = self
+                .mailpit
+                .as_mut()
+                .is_some_and(|p| p.alive() && p.starting());
             if mail::running() {
                 self.restart_attempts.remove("Mailpit");
-            } else {
+            } else if !starting {
                 if let Some(mut child) = self.mailpit.take() {
                     child.kill();
                     child.wait();
@@ -1455,9 +1473,13 @@ impl ServiceManager {
         // while frozen; on OUR fixed port an `nginx`-titled listener is ours.
         if self.nginx.is_some() {
             let master_alive = self.nginx.as_mut().is_some_and(Proc::alive);
+            // Alive + just spawned + port closed = still starting (start
+            // grace) — never reaped mid-start.
+            let starting =
+                master_alive && self.nginx.as_ref().is_some_and(Proc::starting);
             if services::nginx_running(self.ports.nginx) && master_alive {
                 self.restart_attempts.remove("Nginx");
-            } else {
+            } else if !starting {
                 if let Some(mut child) = self.nginx.take() {
                     child.kill();
                     child.wait();

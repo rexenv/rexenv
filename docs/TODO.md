@@ -103,15 +103,27 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   codesign pass, load-probe gate Ok, **full DBGp handshake**, debug pool via
   `start_fpm_xdebug` accepting. ✓ **Human-verified in-app** (16 Jul 2026): the
   per-site toggle works on a real site.
-- [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
+- [x] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
   during the edge-daemon verification): a watchdog tick landed between `start_core`
   spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned
   them mid-start (benign outcome, but a needless kill of a healthy starting child —
-  and a slow-to-boot MySQL could be respawn-looped into `gave-up`). The edge branch is
-  now race-free (bootout-first stop, `aa79c93`); the non-edge branches still trust a
-  bare port probe with no "start in progress" grace. Options: a manager start-epoch/
-  in-flight flag the watchdog checks, or per-service spawn timestamps with a readiness
-  grace window.
+  and a slow-to-boot MySQL could be respawn-looped into `gave-up`). The edge branch
+  was already race-free (bootout-first stop, `aa79c93`). ✓ **Fixed** with the
+  per-spawn-timestamp option (self-clearing — no caller has to remember to clear a
+  flag on error paths, and it covers EVERY spawn path incl. the watchdog's own
+  respawns, so a slow starter can't be respawn-looped): `Proc::Child` now carries
+  its spawn `Instant` (stamped in `From<Child>`, compile-enforced everywhere);
+  `Proc::starting()` = within `START_GRACE` (30s = 2× the longest readiness budget
+  of 30×500ms); adopted survivors get NO grace (they were already serving). All
+  five non-edge watchdog branches (DB engines, fpm pools incl. debug, override
+  backends, Mailpit, nginx) now treat port-closed as dead only when the master is
+  gone OR the grace has lapsed — a dead master is still reaped instantly, grace or
+  not (a crash during start must restart), so the orphaned-workers detection is
+  untouched. ✓ 268 lib tests (+2: grace semantics in proc.rs; a reap_dead sweep
+  proving a live just-spawned pool with a closed port survives while a dead master
+  is reaped despite grace), clippy (no new), examples build. Observe on the next
+  few Start-alls: health.log should show no "restarted … port closed" events
+  during startup.
 
 - [x] **Configurable TLD (v1: default-TLD-for-new-sites)** — stored `default_tld`
   setting; policy-driven `validate_domain` (hard-block `.local`/gTLDs/2-letter in CORE —

@@ -526,7 +526,14 @@ impl PhpFpmPools {
     pub fn reap_dead(&mut self, platform: &dyn Platform) -> Vec<(String, bool)> {
         let mut dead = Vec::new();
         for mut p in std::mem::take(&mut self.pools) {
-            if !services::fpm_running(p.port) || !p.child.alive() {
+            // A dead MASTER is always reaped. A closed port alone is not — a
+            // just-spawned master (Start-all still awaiting readiness outside
+            // the lock) hasn't bound yet; killing it here is the watchdog/
+            // Start-all race. Within the start grace, alive + not-listening
+            // means "starting", not "dead".
+            let dead_now = !p.child.alive()
+                || (!services::fpm_running(p.port) && !p.child.starting());
+            if dead_now {
                 dead.push(p);
             } else {
                 self.pools.push(p);
@@ -882,5 +889,81 @@ mod tests {
         let pools = PhpFpmPools::default();
         assert!(pools.is_empty());
         assert!(pools.status().is_empty());
+    }
+
+    /// The watchdog/Start-all race (docs/TODO.md): a pool spawned by an
+    /// in-flight Start-all hasn't bound its port when a watchdog tick lands —
+    /// alive + within the start grace must NOT be reaped. A dead master must
+    /// still be reaped immediately, grace or no grace (a crash during start
+    /// has to restart).
+    #[test]
+    fn reap_dead_spares_a_starting_child_but_reaps_a_dead_master() {
+        use crate::platform::traits::*;
+
+        struct StubSupervisor;
+        impl ProcessSupervisor for StubSupervisor {
+            fn spawn(&self, _: &std::path::Path, _: &[String]) -> crate::error::Result<std::process::Child> {
+                unimplemented!()
+            }
+            fn spawn_logged(
+                &self,
+                _: &std::path::Path,
+                _: &[String],
+                _: &std::path::Path,
+            ) -> crate::error::Result<std::process::Child> {
+                unimplemented!()
+            }
+            fn stop(&self, _pid: u32) -> crate::error::Result<()> {
+                Ok(())
+            }
+        }
+        struct StubPlatform(StubSupervisor);
+        impl Platform for StubPlatform {
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                &self.0
+            }
+            fn paths(&self) -> &dyn Paths { unimplemented!() }
+            fn dns(&self) -> &dyn DnsManager { unimplemented!() }
+            fn cert_trust(&self) -> &dyn CertTrustManager { unimplemented!() }
+            fn privileges(&self) -> &dyn PrivilegeManager { unimplemented!() }
+            fn autostart(&self) -> &dyn AutostartManager { unimplemented!() }
+            fn permissions(&self) -> &dyn PermissionManager { unimplemented!() }
+            fn shell(&self) -> &dyn ShellRunner { unimplemented!() }
+            fn binaries(&self) -> &dyn BinaryProvider { unimplemented!() }
+            fn edge(&self) -> &dyn EdgeSupervisor { unimplemented!() }
+            fn dns_agent(&self) -> &dyn DnsAgentManager { unimplemented!() }
+        }
+        let platform = StubPlatform(StubSupervisor);
+
+        // Port 1 is never listening on a dev box without root — both pools
+        // read "port closed"; only liveness + grace differ.
+        let alive = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let mut dead = std::process::Command::new("true").spawn().unwrap();
+        let _ = dead.wait();
+
+        let mut pools = PhpFpmPools::default();
+        pools.pools.push(Pool {
+            minor: "8.4".into(),
+            port: 1,
+            child: alive.into(), // freshly stamped → within START_GRACE
+            debug: false,
+        });
+        pools.pools.push(Pool {
+            minor: "8.3".into(),
+            port: 1,
+            child: dead.into(),
+            debug: false,
+        });
+
+        let reaped = pools.reap_dead(&platform);
+        assert_eq!(reaped, vec![("8.3".to_string(), false)], "dead master reaped despite grace");
+        assert!(pools.has("8.4", false), "starting child must survive the sweep");
+
+        // Kill (not stop_all) — the stub's no-op `stop` would leave `wait`
+        // blocking the suite for the sleep's full 30s.
+        for p in &mut pools.pools {
+            p.child.kill();
+            p.child.wait();
+        }
     }
 }
