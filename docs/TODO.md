@@ -101,10 +101,8 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   tsc, vite. ✓ **Live-verified via `examples/xdebug_pool_check`** (real cache,
   production paths): bundle download→verify→relink→sign→publish, loads-clean +
   codesign pass, load-probe gate Ok, **full DBGp handshake**, debug pool via
-  `start_fpm_xdebug` accepting. **Human verify next:** toggle on a real site →
-  `phpinfo()` shows Xdebug + PhpStorm breakpoint hits over `?XDEBUG_SESSION=1`;
-  site B on the same minor unaffected; off routes back; Apache-override site;
-  FrankenPHP/8.0 cards show the honest disable.
+  `start_fpm_xdebug` accepting. ✓ **Human-verified in-app** (16 Jul 2026): the
+  per-site toggle works on a real site.
 - [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
   during the edge-daemon verification): a watchdog tick landed between `start_core`
   spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned
