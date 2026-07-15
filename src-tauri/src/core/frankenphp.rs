@@ -36,22 +36,22 @@ pub fn site_port(domain: &str) -> u16 {
     FRANKENPHP_BASE_PORT + (h % 100) as u16
 }
 
-/// The `php_server` directive: bare when the site has no env vars (byte-stable
-/// configs), else a block of `env NAME "value"` lines at `depth` tabs. Values
-/// escaped for the double-quoted Caddyfile string (`site_env::escape_value`);
-/// `{`/`}`/`$`/control chars were rejected at validation.
+/// The `php_server` block: always starts with `env HTTPS {https_on}` — the
+/// map's output (see [`generate_config`]) — so PHP sees `HTTPS=on` exactly when
+/// the edge forwarded an https request; the site's own env vars (§1.6) follow
+/// as `env NAME "value"` lines at `depth` tabs. Values escaped for the
+/// double-quoted Caddyfile string (`site_env::escape_value`); `{`/`}`/`$`/
+/// control chars were rejected at validation, and `HTTPS` is a reserved name
+/// there, so a user var can never clash with this line.
 fn php_server(depth: usize, env: &[(String, String)]) -> String {
     let t = "\t".repeat(depth);
-    if env.is_empty() {
-        return format!("{t}php_server\n");
-    }
     let lines: String = env
         .iter()
         .map(|(name, value)| {
             format!("{t}\tenv {name} \"{}\"\n", crate::core::site_env::escape_value(value))
         })
         .collect();
-    format!("{t}php_server {{\n{lines}{t}}}\n")
+    format!("{t}php_server {{\n{t}\tenv HTTPS {{https_on}}\n{lines}{t}}}\n")
 }
 
 /// The site block body for a rewrite mode. Single/subdomain use the high-level
@@ -100,9 +100,16 @@ fn site_body(mode: RewriteMode, env: &[(String, String)]) -> String {
 /// an internal loopback HTTP port. Auto-HTTPS + admin are disabled (it's a backend
 /// behind the edge). Matches any Host on the port (the single edge route targets it).
 /// `env` (§1.6, validated by `site_env::validate`) becomes `env` lines in the
-/// `php_server` block — per-site is natural here (one backend per site). With no
-/// vars the config is byte-identical to before, so the reconcile's config diff
-/// doesn't restart untouched backends.
+/// `php_server` block — per-site is natural here (one backend per site).
+///
+/// The edge terminates TLS, so the backend maps Caddy's `X-Forwarded-Proto:
+/// https` to `HTTPS=on` for PHP (a `map` feeding `php_server`'s `env HTTPS` —
+/// the same contract as the nginx vhosts' `fastcgi_param HTTPS $rexenv_https`
+/// and core::apache's mod_rewrite `E=HTTPS:on`); without it WordPress
+/// `is_ssl()` is false behind the edge (http:// asset URLs, broken wp-admin
+/// login). `trusted_proxies` does NOT do this — live-verified on FrankenPHP
+/// 1.12.4: with it, `HTTPS` stayed empty. A request without the header maps to
+/// `""`, which `is_ssl()` treats as false.
 pub fn generate_config(
     docroot: &Path,
     port: u16,
@@ -119,6 +126,10 @@ pub fn generate_config(
          \n\
          :{port} {{\n\
          \troot * \"{root}\"\n\
+         \tmap {{header.X-Forwarded-Proto}} {{https_on}} {{\n\
+         \t\thttps on\n\
+         \t\tdefault \"\"\n\
+         \t}}\n\
          {body}\
          }}\n",
         root = docroot.display(),
@@ -215,6 +226,12 @@ mod tests {
         assert!(cfg.contains(":8200 {"));
         assert!(cfg.contains("root * \"/Sites/fp/public\""));
         assert!(cfg.contains("php_server"));
+        // Edge-terminated TLS reaches PHP as HTTPS=on (WordPress is_ssl()):
+        // X-Forwarded-Proto maps to the env line, empty when absent.
+        assert!(cfg.contains("map {header.X-Forwarded-Proto} {https_on} {"));
+        assert!(cfg.contains("\t\thttps on"));
+        assert!(cfg.contains("\t\tdefault \"\""));
+        assert!(cfg.contains("env HTTPS {https_on}"));
         // Never terminates TLS itself.
         assert!(!cfg.contains("tls "));
     }
@@ -232,11 +249,14 @@ mod tests {
         assert!(subdir.contains("rewrite @wpstrip"));
         assert!(subdir.contains("env API_URL \"https://x.test\""));
 
-        // No env → bare php_server, byte-identical to the pre-§1.6 output, so the
-        // reconcile's config diff never restarts an untouched backend.
+        // No env → the php_server block still carries the HTTPS map line (and
+        // nothing else), and user env lines come AFTER it.
         let bare = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
-        assert!(bare.contains("\tphp_server\n"));
-        assert!(!bare.contains("php_server {"));
+        assert!(bare.contains("\tphp_server {\n\t\tenv HTTPS {https_on}\n\t}\n"));
+        assert!(
+            single.find("env HTTPS {https_on}").unwrap()
+                < single.find("env API_URL").unwrap()
+        );
     }
 
     #[test]
