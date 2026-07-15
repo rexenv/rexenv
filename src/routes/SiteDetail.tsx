@@ -28,6 +28,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
@@ -52,6 +53,7 @@ import {
   revealPath,
   setSitePhpVersion,
   setSiteWebServer,
+  setSiteXdebug,
   siteCertInfo,
   tailLog,
   tldPolicy,
@@ -773,11 +775,74 @@ function SettingsTab({ site }: { site: Site }) {
           </div>
         )}
       </SettingsCard>
+          <XdebugCard site={site} />
         </div>
       </div>
       <EnvVarsCard siteId={site.id} />
       {domainOpen && <ChangeDomainDialog site={site} onClose={() => setDomainOpen(false)} />}
     </>
+  );
+}
+
+/** Per-site Xdebug toggle (§8.2). On = this site's PHP runs in the version's
+ *  DEBUG pool (Xdebug loaded, mode debug,develop); other sites on the same
+ *  version are unaffected. Client-side disable mirrors the CORE rules
+ *  (FrankenPHP / PHP 8.0) — the backend is the enforcement. */
+function XdebugCard({ site }: { site: Site }) {
+  const qc = useQueryClient();
+  const minor = site.phpVersion.split(".").slice(0, 2).join(".");
+  const blocked =
+    site.webServer === "frankenphp"
+      ? "Not available on FrankenPHP sites — FrankenPHP embeds its own PHP. Switch the site to Nginx or Apache first."
+      : minor === "8.0"
+        ? "Not available for PHP 8.0 — its build can't load extensions. Switch the site to PHP 8.1 or newer first."
+        : null;
+
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => setSiteXdebug(site.id, on),
+    onSuccess: (_s, on) => {
+      void qc.invalidateQueries({ queryKey: ["sites"] });
+      toast.success(
+        on
+          ? "Xdebug on — set your IDE to listen on port 9003, then start a session with the browser helper or ?XDEBUG_SESSION=1."
+          : "Xdebug off — the site is back on the shared PHP pool.",
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  return (
+    <SettingsCard label="Xdebug">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0 text-[12px] text-rex-text-dim">
+          {blocked ??
+            (site.xdebug ? (
+              <>
+                Step debugging is on for this site (Xdebug 3, mode{" "}
+                <span className="font-mono">debug,develop</span>). Your IDE listens on port{" "}
+                <span className="font-mono">9003</span>; sessions start on request (browser
+                helper or <span className="font-mono">?XDEBUG_SESSION=1</span>). Other sites on
+                PHP {minor} are unaffected.
+              </>
+            ) : (
+              <>
+                Enable step debugging for this site only — its PHP moves to a separate debug
+                pool with Xdebug loaded; every other site stays on the shared pool at full
+                speed.
+              </>
+            ))}
+        </div>
+        <StartStopToggle
+          running={site.xdebug}
+          busy={toggle.isPending}
+          disabled={!!blocked}
+          title={blocked ?? undefined}
+          variant="setting"
+          onToggle={() => toggle.mutate(!site.xdebug)}
+          label="Toggle Xdebug"
+        />
+      </div>
+    </SettingsCard>
   );
 }
 

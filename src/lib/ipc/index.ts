@@ -172,6 +172,15 @@ export async function setSiteWebServer(id: string, server: WebServer): Promise<S
   return invoke<Site | null>("set_site_web_server", { id, server });
 }
 
+/** Toggle a site's Xdebug (§8.2). Enabling downloads the minor's pinned
+ *  xdebug.so on first use and starts the debug pool (load-probe gated);
+ *  FrankenPHP sites and PHP 8.0 are refused by core with the real reason.
+ *  Returns the updated site. */
+export async function setSiteXdebug(id: string, enabled: boolean): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site | null>("set_site_xdebug", { id, enabled });
+}
+
 /** Delete a site (DB row + cert + docroot). No-op outside Tauri. */
 export async function deleteSite(id: string): Promise<boolean> {
   if (!isTauri()) return false;

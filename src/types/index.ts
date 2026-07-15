@@ -23,6 +23,7 @@ export interface Site {
   multisite: MultisiteMode; // WordPress multisite mode (§10.1)
   dbName: string; // database name — stored at creation, stable across domain changes
   dbEngine: SiteDbEngine; // SQL engine hosting that database (chosen at create)
+  xdebug: boolean; // per-site Xdebug toggle (§8.2) — routes .php to the minor's debug pool
 }
 
 /** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */

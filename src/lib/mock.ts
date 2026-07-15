@@ -26,6 +26,7 @@ export const mockSites: Site[] = [
     multisite: "none",
     dbName: "wp_acme_test",
   dbEngine: "mysql",
+    xdebug: false,
   },
   {
     id: "2",
@@ -41,6 +42,7 @@ export const mockSites: Site[] = [
     multisite: "none",
     dbName: "wp_portfolio_test",
   dbEngine: "mysql",
+    xdebug: false,
   },
   {
     id: "3",
@@ -56,6 +58,7 @@ export const mockSites: Site[] = [
     multisite: "subdirectory",
     dbName: "wp_network_test",
   dbEngine: "mysql",
+    xdebug: false,
   },
 ];
 
