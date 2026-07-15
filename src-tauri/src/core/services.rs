@@ -142,6 +142,82 @@ pub fn start_fpm(platform: &dyn Platform, php_fpm_bin: &Path, conf: &Path) -> Re
     platform.supervisor().spawn_logged(php_fpm_bin, &args, &log)
 }
 
+/// The `-d` ini pairs that turn a pool into a DEBUG pool: load the minor's
+/// pinned `xdebug.so` and put it in step-debugging mode. Command-line `-d`
+/// applies to every worker (verified live: `php-fpm -d zend_extension=… -m`
+/// lists the module). `xdebug.mode=debug,develop` per the §8.2 spec; client
+/// host/port stay at Xdebug's defaults (127.0.0.1:9003 — what IDEs listen on)
+/// and activation stays on-trigger (XDEBUG_SESSION cookie/param), so an idle
+/// debug pool doesn't stall requests hunting for an absent IDE.
+fn xdebug_args(xdebug_so: &Path) -> Vec<String> {
+    vec![
+        "-d".to_string(),
+        format!("zend_extension={}", xdebug_so.display()),
+        "-d".to_string(),
+        "xdebug.mode=debug,develop".to_string(),
+    ]
+}
+
+/// Start a DEBUG php-fpm master: [`start_fpm`] plus the Xdebug `-d` overrides.
+pub fn start_fpm_xdebug(
+    platform: &dyn Platform,
+    php_fpm_bin: &Path,
+    conf: &Path,
+    xdebug_so: &Path,
+) -> Result<Child> {
+    let mut args = vec![
+        "-F".to_string(),
+        "-y".to_string(),
+        conf.display().to_string(),
+    ];
+    args.extend(xdebug_args(xdebug_so));
+    let log = platform.paths().log_dir()?.join("php-fpm-stdout.log");
+    platform.supervisor().spawn_logged(php_fpm_bin, &args, &log)
+}
+
+/// GATE: prove this php-fpm binary actually loads `xdebug_so` before any debug
+/// pool spawns. PHP treats a failed `zend_extension` as a WARNING and starts
+/// anyway (verified: a symbol-mismatched .so prints "Failed loading …" and the
+/// process continues) — so without this probe, a bad artifact would serve the
+/// toggled site with Xdebug silently missing. Runs `php-fpm -d zend_extension
+/// -m` logged to a probe file and requires the module list to contain
+/// `xdebug`; the probe log is quoted in the error so the dlopen failure is
+/// visible verbatim.
+pub fn assert_fpm_loads_xdebug(
+    platform: &dyn Platform,
+    php_fpm_bin: &Path,
+    xdebug_so: &Path,
+) -> Result<()> {
+    let log_dir = platform.paths().log_dir()?;
+    std::fs::create_dir_all(&log_dir)?;
+    let probe_log = log_dir.join("xdebug-probe.log");
+    let _ = std::fs::remove_file(&probe_log);
+    let mut args = xdebug_args(xdebug_so);
+    args.push("-m".to_string());
+    let mut child = platform
+        .supervisor()
+        .spawn_logged(php_fpm_bin, &args, &probe_log)?;
+    let status = child.wait()?;
+    let out = std::fs::read_to_string(&probe_log).unwrap_or_default();
+    let loaded = status.success() && out.lines().any(|l| l.trim().eq_ignore_ascii_case("xdebug"));
+    if loaded {
+        Ok(())
+    } else {
+        let detail: String = out
+            .lines()
+            .filter(|l| l.contains("Failed loading") || l.contains("Warning"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        Err(Error::Other(format!(
+            "this PHP build did not load xdebug.so ({}) — Xdebug stays off rather than \
+             silently missing{}{}",
+            xdebug_so.display(),
+            if detail.is_empty() { "" } else { ": " },
+            detail
+        )))
+    }
+}
+
 /// Validate a php-fpm config without starting it (`php-fpm -t -y <conf>`).
 pub fn test_fpm_config(platform: &dyn Platform, php_fpm_bin: &Path, conf: &Path) -> Result<()> {
     let args = vec![

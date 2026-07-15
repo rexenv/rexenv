@@ -100,6 +100,7 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         multisite: MultisiteMode::None,
         db_name,
         db_engine: new.db_engine,
+        xdebug: false,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -568,7 +569,7 @@ fn nginx_site_for(
     services::NginxSite {
         domain: s.domain.clone(),
         docroot: PathBuf::from(&s.path),
-        php_fpm_port: pool_port_for(&s.php_version),
+        php_fpm_port: pool_port_for_site(s),
         rewrite: rewrite_mode_for(s.multisite),
         body_limit: body_limits.get(&php::minor_of(&s.php_version)).copied(),
         env: site_env.get(&s.id).cloned().unwrap_or_default(),
@@ -586,6 +587,20 @@ pub(crate) fn pool_port_for(version: &str) -> u16 {
         Some(_) => php::fpm_port(&minor).unwrap_or(services::PHP_FPM_PORT),
         None => services::PHP_FPM_PORT,
     }
+}
+
+/// [`pool_port_for`] with the site's Xdebug toggle applied: a toggled site
+/// routes to the minor's DEBUG pool port instead. Falls back to the normal
+/// pool when the minor has no Xdebug support (a stale flag on 8.0 can't point
+/// at a port that will never listen). The single seam nginx, the override
+/// backends, and `site_serving` all route through.
+pub(crate) fn pool_port_for_site(s: &Site) -> u16 {
+    if s.xdebug {
+        if let Some(port) = php::debug_fpm_port(&php::minor_of(&s.php_version)) {
+            return port;
+        }
+    }
+    pool_port_for(&s.php_version)
 }
 
 /// Map a site's multisite mode to its rewrite template (Phase 1 §6.2). Shared by
@@ -729,6 +744,22 @@ mod tests {
             path: format!("~/Sites/{name}"),
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
+    }
+
+    #[test]
+    fn pool_port_for_site_routes_xdebug_sites_to_the_debug_pool() {
+        let conn = db::open_in_memory().unwrap();
+        let mut site = create(&conn, sample("A", "a.test")).unwrap();
+        site.php_version = "8.4".into();
+        // Toggle off → the shared pool, exactly pool_port_for.
+        assert_eq!(pool_port_for_site(&site), pool_port_for("8.4"));
+        // Toggle on → the minor's debug port.
+        site.xdebug = true;
+        assert_eq!(pool_port_for_site(&site), php::debug_fpm_port("8.4").unwrap());
+        // A stale flag on an unsupported minor falls back to the normal pool —
+        // never a port nothing will ever listen on.
+        site.php_version = "8.0".into();
+        assert_eq!(pool_port_for_site(&site), pool_port_for("8.0"));
     }
 
     #[test]
@@ -922,6 +953,7 @@ mod tests {
             multisite: MultisiteMode::None,
             db_name: "wp_acme_test".into(),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
+            xdebug: false,
         }
     }
 

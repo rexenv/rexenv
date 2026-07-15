@@ -137,15 +137,16 @@ pub async fn apply_php_settings(
         (core::sites::list(&conn)?, crate::state::store::all_php_settings(&conn)?)
     };
 
-    // Swap the map in + restart the affected pool + reload nginx, then await the
-    // pool's readiness OUTSIDE the services lock (locking rule).
-    let check = {
+    // Swap the map in + restart the affected pools (normal + debug when both
+    // live) + reload nginx, then await readiness OUTSIDE the services lock
+    // (locking rule).
+    let checks = {
         let mut mgr = state.services.lock().await;
         mgr.apply_php_settings(platform, &state.ca, &sites, all, &minor)
             .await?
     };
-    if let Some(check) = check {
-        core::service_manager::await_ready(vec![check]).await?;
+    if !checks.is_empty() {
+        core::service_manager::await_ready(checks).await?;
     }
     Ok(())
 }

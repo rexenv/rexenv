@@ -436,6 +436,21 @@ impl ServiceManager {
         }
         self.pools.start(platform, &minors).await?;
 
+        // DEBUG pools for the minors of Xdebug-toggled sites (§8.2) — the
+        // generated configs route those sites at the debug ports, so the pools
+        // must exist for exactly those minors, and only those.
+        let mut debug_minors: Vec<String> = sites
+            .iter()
+            .filter(|s| s.xdebug)
+            .map(|s| php::minor_of(&s.php_version))
+            .filter(|m| binaries::xdebug_supported(m))
+            .collect();
+        debug_minors.sort_unstable();
+        debug_minors.dedup();
+        for minor in &debug_minors {
+            self.pools.ensure_debug(platform, minor).await?;
+        }
+
         // Per-site override backends (FrankenPHP) for the current site set.
         checks.extend(self.reconcile_overrides(platform, sites).await?);
 
@@ -585,6 +600,23 @@ impl ServiceManager {
         self.pools.ensure(platform, minor).await
     }
 
+    /// Ensure the DEBUG (Xdebug) pool for `minor` is running (§8.2). Errors for
+    /// minors without a pinned Xdebug bottle (8.0) and when the .so fails its
+    /// load probe — never a silently Xdebug-less pool.
+    pub async fn ensure_php_debug_pool(
+        &mut self,
+        platform: &dyn Platform,
+        minor: &str,
+    ) -> Result<()> {
+        self.pools.ensure_debug(platform, minor).await
+    }
+
+    /// Stop the DEBUG pool for `minor` if it is running (toggle-off tidy-up when
+    /// no site on the minor keeps Xdebug enabled). Returns whether one ran.
+    pub fn stop_php_debug_pool(&mut self, platform: &dyn Platform, minor: &str) -> bool {
+        self.pools.stop_one(platform, minor, true)
+    }
+
     /// Spawn Mailpit if not already managed (resolve its binary on first use),
     /// port-gated on its SMTP + HTTP ports. Returns its readiness probe for the
     /// caller to [`await_ready`] once the services lock is dropped (M4);
@@ -664,7 +696,7 @@ impl ServiceManager {
                         kind,
                         docroot: PathBuf::from(&s.path),
                         port: kind.port(&s.domain),
-                        fpm_port: sites::pool_port_for(&s.php_version),
+                        fpm_port: sites::pool_port_for_site(s),
                         rewrite: sites::rewrite_mode_for(s.multisite),
                         env: self.site_env.get(&s.id).cloned().unwrap_or_default(),
                     },
@@ -860,7 +892,8 @@ impl ServiceManager {
     /// sizes. The caller has already VALIDATED the values and `php-fpm -t`-gated a
     /// candidate config, so this can't brick the pool. No-op beyond storing the
     /// map when the stack is stopped (the next start uses it). Returns the
-    /// restarted pool's readiness probe to [`await_ready`] after the lock drops.
+    /// restarted pools' readiness probes (normal + debug when both live) to
+    /// [`await_ready`] after the lock drops.
     pub async fn apply_php_settings(
         &mut self,
         platform: &dyn Platform,
@@ -868,18 +901,18 @@ impl ServiceManager {
         sites: &[Site],
         settings: HashMap<String, Vec<(String, String)>>,
         minor: &str,
-    ) -> Result<Option<ReadyCheck>> {
+    ) -> Result<Vec<ReadyCheck>> {
         self.set_php_settings(settings);
         if !self.is_running() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
         // ADOPTED sessions never ran start_all, so nginx/caddy paths aren't
         // resolved yet and the reload below would fail AFTER the pool restart
         // (cache hit here — an adopted stack is running from cached binaries).
         self.ensure_bins(platform).await?;
-        // Restart only a pool that was actually running; never start a new pool
+        // Restart only pools that were actually running; never start a new pool
         // as a side effect of a settings edit.
-        let check = self.restart_php_pool(platform, minor).await?;
+        let checks = self.restart_php_pool(platform, minor).await?;
         // Nginx: regenerate with the new body limits + reload. Caddy routes are
         // untouched by ini settings — no edge reload needed.
         let bins = self.bins()?;
@@ -894,38 +927,53 @@ impl ServiceManager {
             &self.site_env,
         )?;
         services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
-        Ok(check)
+        Ok(checks)
     }
 
-    /// Whether a php-fpm pool for `minor` is currently managed (spawned or
-    /// adopted). Lets the startup patch-bump task skip minors with no live pool
-    /// (nothing to restart — the next start resolves the new pin anyway).
+    /// Whether a php-fpm pool for `minor` (normal or debug) is currently
+    /// managed (spawned or adopted). Lets the startup patch-bump task skip
+    /// minors with no live pool (nothing to restart — the next start resolves
+    /// the new pin anyway).
     pub fn has_php_pool(&self, minor: &str) -> bool {
-        self.pools.has(minor)
+        self.pools.has(minor, false) || self.pools.has(minor, true)
     }
 
-    /// Restart one pool IF it is currently managed: stop it (reaping orphaned
-    /// workers so the port gate passes) and re-`ensure` — which rewrites the
-    /// config from the current settings map AND resolves the currently pinned
-    /// patch, so this is both the settings-change and the patch-bump restart.
-    /// `None` if no pool for `minor` was running.
+    /// Restart a minor's pools IF currently managed — BOTH the normal and the
+    /// debug pool, since per-version settings and patch bumps apply to each:
+    /// stop (reaping orphaned workers so the port gate passes) and
+    /// re-`ensure`/`ensure_debug` — which rewrites the config from the current
+    /// settings map AND resolves the currently pinned patch, so this is both
+    /// the settings-change and the patch-bump restart. Empty if no pool for
+    /// `minor` was running.
     async fn restart_php_pool(
         &mut self,
         platform: &dyn Platform,
         minor: &str,
-    ) -> Result<Option<ReadyCheck>> {
-        if !self.pools.stop_one(platform, minor) {
-            return Ok(None);
+    ) -> Result<Vec<ReadyCheck>> {
+        let mut checks = Vec::new();
+        for debug in [false, true] {
+            if !self.pools.stop_one(platform, minor, debug) {
+                continue;
+            }
+            let (port, log_name) = if debug {
+                self.pools.ensure_debug(platform, minor).await?;
+                let port = php::debug_fpm_port(minor)
+                    .ok_or_else(|| Error::Other(format!("no debug fpm port for {minor}")))?;
+                (port, format!("php-fpm-{minor}-debug.log"))
+            } else {
+                self.pools.ensure(platform, minor).await?;
+                let port = php::fpm_port(minor)
+                    .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
+                (port, format!("php-fpm-{minor}.log"))
+            };
+            checks.push(ReadyCheck {
+                service: pool_service_name(minor, debug),
+                log: platform.paths().log_dir()?.join(log_name),
+                tries: 20,
+                probe: Box::new(move || services::fpm_running(port)),
+            });
         }
-        self.pools.ensure(platform, minor).await?;
-        let port = php::fpm_port(minor)
-            .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
-        Ok(Some(ReadyCheck {
-            service: format!("PHP-FPM {minor}"),
-            log: platform.paths().log_dir()?.join(format!("php-fpm-{minor}.log")),
-            tries: 20,
-            probe: Box::new(move || services::fpm_running(port)),
-        }))
+        Ok(checks)
     }
 
     /// Restart every listed minor's live pool (patch bump riding an app release
@@ -939,9 +987,7 @@ impl ServiceManager {
     ) -> Result<Vec<ReadyCheck>> {
         let mut checks = Vec::new();
         for minor in minors {
-            if let Some(check) = self.restart_php_pool(platform, minor).await? {
-                checks.push(check);
-            }
+            checks.extend(self.restart_php_pool(platform, minor).await?);
         }
         Ok(checks)
     }
@@ -1042,7 +1088,10 @@ impl ServiceManager {
         // ports a listener with the service's title can only be ours — sweep
         // those too.
         for minor in php::all_minors() {
-            if let Some(port) = php::fpm_port(&minor) {
+            for port in [php::fpm_port(&minor), php::debug_fpm_port(&minor)]
+                .into_iter()
+                .flatten()
+            {
                 for pid in platform.supervisor().owned_listeners(port, "php-fpm") {
                     let _ = platform.supervisor().stop(pid);
                 }
@@ -1104,7 +1153,16 @@ impl ServiceManager {
         for minor in php::all_minors() {
             if let Some(port) = php::fpm_port(&minor) {
                 if let Some(pid) = owned(port) {
-                    self.pools.adopt(&minor, port, pid);
+                    self.pools.adopt(&minor, port, pid, false);
+                    adopted += 1;
+                }
+            }
+            // A DEBUG pool surviving from a prior session (its own port; the
+            // Xdebug args live in the running master, so plain adoption keeps
+            // them).
+            if let Some(port) = php::debug_fpm_port(&minor) {
+                if let Some(pid) = owned(port) {
+                    self.pools.adopt(&minor, port, pid, true);
                     adopted += 1;
                 }
             }
@@ -1269,18 +1327,25 @@ impl ServiceManager {
             }
         }
 
-        // php-fpm pools: drop dead masters, then ensure those minors again.
+        // php-fpm pools: drop dead masters, then ensure those minors again
+        // (a debug pool respawns through ensure_debug so its Xdebug args and
+        // load-probe gate apply on every respawn, not just the first start).
         for p in self.pools.status() {
             if p.running {
-                self.restart_attempts.remove(&format!("PHP-FPM {}", p.minor));
+                self.restart_attempts.remove(&pool_service_name(&p.minor, p.debug));
             }
         }
-        for minor in self.pools.reap_dead(platform) {
-            let name = format!("PHP-FPM {minor}");
+        for (minor, debug) in self.pools.reap_dead(platform) {
+            let name = pool_service_name(&minor, debug);
             if !self.should_restart(&name, &mut events) {
                 continue;
             }
-            match self.pools.ensure(platform, &minor).await {
+            let result = if debug {
+                self.pools.ensure_debug(platform, &minor).await
+            } else {
+                self.pools.ensure(platform, &minor).await
+            };
+            match result {
                 Ok(()) => events.push(HealthEvent {
                     service: name,
                     action: "restarted",
@@ -1332,7 +1397,7 @@ impl ServiceManager {
                     &domain,
                     &PathBuf::from(&site.path),
                     kind.port(&domain),
-                    sites::pool_port_for(&site.php_version),
+                    sites::pool_port_for_site(site),
                     sites::rewrite_mode_for(site.multisite),
                     &env,
                 )
@@ -1613,14 +1678,25 @@ impl ServiceManager {
         minors.sort_unstable();
         minors.dedup();
         for minor in minors {
-            let pool = pools.iter().find(|p| p.minor == minor);
+            let pool = pools.iter().find(|p| p.minor == minor && !p.debug);
             infos.push(ServiceInfo {
-                name: format!("PHP-FPM {minor}"),
+                name: pool_service_name(minor, false),
                 running: pool.is_some_and(|p| p.running),
                 pid: pool.map(|p| p.pid),
                 port: pool.map(|p| p.port).or_else(|| php::fpm_port(minor)).unwrap_or(0),
                 optional: false,
             });
+            // Debug pools appear only while managed (they exist on demand —
+            // a permanent row would imply Xdebug is a start-all service).
+            if let Some(p) = pools.iter().find(|p| p.minor == minor && p.debug) {
+                infos.push(ServiceInfo {
+                    name: pool_service_name(minor, true),
+                    running: p.running,
+                    pid: Some(p.pid),
+                    port: p.port,
+                    optional: true,
+                });
+            }
         }
 
         // One row per per-site override backend (sorted for stable display).
@@ -1811,6 +1887,17 @@ fn stdout_log(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
     Ok(platform.paths().log_dir()?.join(format!("{key}-stdout.log")))
 }
 
+/// Display/keying name for a minor's pool: `PHP-FPM 8.4` / `PHP-FPM 8.4 (Xdebug)`.
+/// Shared by status rows, watchdog events, and restart-attempt counters so a
+/// debug pool never aliases its minor's normal pool.
+fn pool_service_name(minor: &str, debug: bool) -> String {
+    if debug {
+        format!("PHP-FPM {minor} (Xdebug)")
+    } else {
+        format!("PHP-FPM {minor}")
+    }
+}
+
 /// Per-site serving status (H1 follow-up), derived from a live [`ServiceInfo`]
 /// snapshot (the single non-blocking source shared with `services_status`). A site
 /// is *serving* only when the edge is up AND its own upstream is up — so a partial
@@ -1819,8 +1906,9 @@ fn stdout_log(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
 ///
 /// Upstream, per server:
 /// - **FrankenPHP override** — its per-site backend port must be up (nginx is bypassed).
-/// - **nginx (default)** — the shared nginx AND the php-fpm pool the site's version
-///   routes to (via [`sites::pool_port_for`], mirroring `nginx_site_for`).
+/// - **nginx (default)** — the shared nginx AND the php-fpm pool the site actually
+///   routes to (via [`sites::pool_port_for_site`], mirroring `nginx_site_for` —
+///   an Xdebug-toggled site is checked against its DEBUG pool).
 ///
 /// The edge and nginx are the fixed singletons, matched by their stable names; the
 /// per-site upstreams are matched by port (the same ports the config generator emits,
@@ -1840,9 +1928,9 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
                 // Apache serves through the shared pool too — both must be up.
                 WebServer::Apache => {
                     port_up(apache::site_port(&s.domain))
-                        && port_up(sites::pool_port_for(&s.php_version))
+                        && port_up(sites::pool_port_for_site(s))
                 }
-                _ => nginx_up && port_up(sites::pool_port_for(&s.php_version)),
+                _ => nginx_up && port_up(sites::pool_port_for_site(s)),
             };
             SiteServing {
                 domain: s.domain.clone(),
@@ -2065,6 +2153,7 @@ mod tests {
             multisite: MultisiteMode::None,
             db_name: crate::core::wordpress::db_name_for(domain),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
+            xdebug: false,
         };
 
         let sites = vec![

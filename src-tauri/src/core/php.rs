@@ -21,6 +21,12 @@ use rusqlite::Connection;
 /// 8.2 → 9782, 8.3 → 9783 (keeps the Phase-1 port for 8.3).
 const FPM_PORT_BASE: u16 = 9700;
 
+/// Base for per-version DEBUG pool ports (same scheme: 8.4 → 9984). A debug
+/// pool is the SAME static php-fpm binary with the minor's pinned `xdebug.so`
+/// loaded via `-d zend_extension` (§8.2) — sites with the Xdebug toggle route
+/// here; every other site on the version keeps the normal pool, unaffected.
+const DEBUG_FPM_PORT_BASE: u16 = 9900;
+
 /// The minor series of a (patch) version string: `"8.3.31"` → `"8.3"`.
 pub fn minor_of(version: &str) -> String {
     let mut parts = version.split('.');
@@ -61,6 +67,23 @@ pub fn fpm_port(minor: &str) -> Option<u16> {
         return None; // exactly major.minor, not a patch string
     }
     Some(FPM_PORT_BASE + major * 10 + min)
+}
+
+/// Deterministic loopback port for a minor's DEBUG (Xdebug) pool, or `None`
+/// when the toggle isn't available for that minor — gated on
+/// [`binaries::xdebug_supported`], so an unsupported minor (8.0: its static
+/// build can't dlopen any .so) can never grow a debug pool by construction.
+pub fn debug_fpm_port(minor: &str) -> Option<u16> {
+    if !binaries::xdebug_supported(minor) {
+        return None;
+    }
+    let mut parts = minor.split('.');
+    let major: u16 = parts.next()?.parse().ok()?;
+    let min: u16 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some(DEBUG_FPM_PORT_BASE + major * 10 + min)
 }
 
 /// Seed/refresh the `php_versions` registry from the pinned build set. Idempotent:
@@ -349,12 +372,16 @@ pub struct PoolStatus {
     pub port: u16,
     pub pid: u32,
     pub running: bool,
+    /// Whether this is the minor's DEBUG (Xdebug) pool.
+    pub debug: bool,
 }
 
 struct Pool {
     minor: String,
     port: u16,
     child: Proc,
+    /// Debug (Xdebug) pool — same binary, own port/config, `-d zend_extension`.
+    debug: bool,
 }
 
 /// Owns one php-fpm master per PHP version. Held by the `ServiceManager`.
@@ -392,7 +419,7 @@ impl PhpFpmPools {
     /// (downloads on first use) the version's `php-fpm`, gates on a free port, then
     /// writes the pool config and spawns the foreground master.
     pub async fn ensure(&mut self, platform: &dyn Platform, minor: &str) -> Result<()> {
-        if self.pools.iter().any(|p| p.minor == minor) {
+        if self.has(minor, false) {
             return Ok(());
         }
         let patch = patch_for_minor(minor)
@@ -414,6 +441,48 @@ impl PhpFpmPools {
             minor: minor.to_string(),
             port,
             child: child.into(),
+            debug: false,
+        });
+        Ok(())
+    }
+
+    /// Start the DEBUG (Xdebug) pool for `minor` if one isn't already running.
+    /// Same shape as [`Self::ensure`] plus: resolves the minor's pinned
+    /// `xdebug.so` bundle, then GATES on a real load probe (`php-fpm -m` must
+    /// list the module) — PHP treats a failed `zend_extension` as a warning and
+    /// starts anyway, so without the gate a bad .so would serve sites with the
+    /// toggle silently OFF. Refused for minors without Xdebug support (8.0).
+    pub async fn ensure_debug(&mut self, platform: &dyn Platform, minor: &str) -> Result<()> {
+        if self.has(minor, true) {
+            return Ok(());
+        }
+        let patch = patch_for_minor(minor)
+            .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
+        let port = debug_fpm_port(minor).ok_or_else(|| {
+            Error::Other(format!("Xdebug is not available for PHP {minor}"))
+        })?;
+        ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM (Xdebug)")?;
+        let bin = binaries::resolve(platform, "php-fpm", patch).await?;
+        let (bundle, bundle_version) = binaries::xdebug_bundle_id(minor)
+            .ok_or_else(|| Error::Other(format!("Xdebug is not available for PHP {minor}")))?;
+        let so = binaries::resolve_bundle(platform, &bundle, bundle_version)
+            .await?
+            .join("xdebug.so");
+        services::assert_fpm_loads_xdebug(platform, &bin, &so)?;
+        let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
+        let conf = services::write_fpm_config(
+            platform,
+            &format!("{minor}-debug"),
+            port,
+            self.sendmail_path.as_deref(),
+            settings,
+        )?;
+        let child = services::start_fpm_xdebug(platform, &bin, &conf, &so)?;
+        self.pools.push(Pool {
+            minor: minor.to_string(),
+            port,
+            child: child.into(),
+            debug: true,
         });
         Ok(())
     }
@@ -422,11 +491,16 @@ impl PhpFpmPools {
     /// the app; see `ServiceManager::adopt_startup`). The pool is then managed
     /// exactly like a spawned one: listed in status, skipped by `ensure`,
     /// stopped by `stop_all`.
-    pub fn adopt(&mut self, minor: &str, port: u16, pid: u32) {
-        if self.pools.iter().any(|p| p.minor == minor) {
+    pub fn adopt(&mut self, minor: &str, port: u16, pid: u32, debug: bool) {
+        if self.has(minor, debug) {
             return;
         }
-        self.pools.push(Pool { minor: minor.to_string(), port, child: Proc::Adopted(pid) });
+        self.pools.push(Pool {
+            minor: minor.to_string(),
+            port,
+            child: Proc::Adopted(pid),
+            debug,
+        });
     }
 
     /// Ensure a pool is running for each minor in `minors`.
@@ -439,8 +513,8 @@ impl PhpFpmPools {
 
     /// Drop pools that are dead — port closed OR master process gone — reaping
     /// the child and any ORPHANED WORKERS still squatting on the pool port.
-    /// Returns the affected minors so the health watchdog can `ensure` them
-    /// again (a fresh spawn, same config path).
+    /// Returns the affected `(minor, debug)` pairs so the health watchdog can
+    /// `ensure`/`ensure_debug` them again (a fresh spawn, same config path).
     ///
     /// The master-alive check matters: php-fpm workers outlive a SIGKILLed
     /// master, keep the inherited listen socket accepting (so the port probe
@@ -449,7 +523,7 @@ impl PhpFpmPools {
     /// `php-fpm: pool www` (no app-data path), so the marker-gated orphan sweep
     /// can't see them; on OUR fixed pool port, a `php-fpm`-titled listener is
     /// ours — kill it so the respawn's port gate passes.
-    pub fn reap_dead(&mut self, platform: &dyn Platform) -> Vec<String> {
+    pub fn reap_dead(&mut self, platform: &dyn Platform) -> Vec<(String, bool)> {
         let mut dead = Vec::new();
         for mut p in std::mem::take(&mut self.pools) {
             if !services::fpm_running(p.port) || !p.child.alive() {
@@ -466,17 +540,21 @@ impl PhpFpmPools {
                 for pid in platform.supervisor().owned_listeners(p.port, "php-fpm") {
                     let _ = platform.supervisor().stop(pid);
                 }
-                p.minor
+                (p.minor, p.debug)
             })
             .collect()
     }
 
     /// Stop ONE pool (for a settings-change restart), reaping the master and any
     /// orphaned workers still on the pool port — same sweep as [`Self::reap_dead`],
-    /// so the follow-up `ensure`'s port gate passes. Returns whether a pool for
-    /// `minor` was actually running (false ⇒ nothing to restart).
-    pub fn stop_one(&mut self, platform: &dyn Platform, minor: &str) -> bool {
-        let Some(i) = self.pools.iter().position(|p| p.minor == minor) else {
+    /// so the follow-up `ensure`'s port gate passes. Returns whether that pool
+    /// was actually running (false ⇒ nothing to restart).
+    pub fn stop_one(&mut self, platform: &dyn Platform, minor: &str, debug: bool) -> bool {
+        let Some(i) = self
+            .pools
+            .iter()
+            .position(|p| p.minor == minor && p.debug == debug)
+        else {
             return false;
         };
         let mut p = self.pools.remove(i);
@@ -501,12 +579,14 @@ impl PhpFpmPools {
         self.pools.is_empty()
     }
 
-    /// Whether a pool for `minor` is currently managed (spawned or adopted).
-    pub fn has(&self, minor: &str) -> bool {
-        self.pools.iter().any(|p| p.minor == minor)
+    /// Whether a pool for `minor` (normal or debug) is currently managed
+    /// (spawned or adopted).
+    pub fn has(&self, minor: &str, debug: bool) -> bool {
+        self.pools.iter().any(|p| p.minor == minor && p.debug == debug)
     }
 
-    /// Per-pool status, ordered by minor series.
+    /// Per-pool status, ordered by minor series (a minor's normal pool before
+    /// its debug pool).
     pub fn status(&self) -> Vec<PoolStatus> {
         let mut out: Vec<PoolStatus> = self
             .pools
@@ -516,9 +596,10 @@ impl PhpFpmPools {
                 port: p.port,
                 pid: p.child.id(),
                 running: services::fpm_running(p.port),
+                debug: p.debug,
             })
             .collect();
-        out.sort_by(|a, b| a.minor.cmp(&b.minor));
+        out.sort_by(|a, b| (&a.minor, a.debug).cmp(&(&b.minor, b.debug)));
         out
     }
 }
@@ -642,6 +723,24 @@ mod tests {
         // Rejects a patch string or junk.
         assert_eq!(fpm_port("8.3.31"), None);
         assert_eq!(fpm_port("x.y"), None);
+    }
+
+    #[test]
+    fn debug_fpm_port_covers_supported_minors_and_refuses_80() {
+        // Same 9900-based scheme, disjoint from the normal pool range.
+        assert_eq!(debug_fpm_port("8.1"), Some(9981));
+        assert_eq!(debug_fpm_port("8.4"), Some(9984));
+        assert_eq!(debug_fpm_port("8.5"), Some(9985));
+        for minor in all_minors() {
+            if let (Some(d), Some(n)) = (debug_fpm_port(&minor), fpm_port(&minor)) {
+                assert_ne!(d, n);
+            }
+        }
+        // 8.0's static build can't dlopen — no debug port EXISTS for it, so no
+        // caller can ever route a site there.
+        assert_eq!(debug_fpm_port("8.0"), None);
+        assert_eq!(debug_fpm_port("8.3.31"), None);
+        assert_eq!(debug_fpm_port("banana"), None);
     }
 
     #[test]

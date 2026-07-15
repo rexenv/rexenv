@@ -108,6 +108,9 @@ const MIGRATIONS: &[&str] = &[
     // v10 — per-site SQL engine (MySQL default, MariaDB optional at create).
     // Existing sites all live in MySQL's datadir, so the backfill is exact.
     "ALTER TABLE sites ADD COLUMN db_engine TEXT NOT NULL DEFAULT 'mysql';",
+    // v11 — per-site Xdebug toggle (§8.2): routes the site's .php to the
+    // minor's DEBUG pool. Off for every existing site.
+    "ALTER TABLE sites ADD COLUMN xdebug INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

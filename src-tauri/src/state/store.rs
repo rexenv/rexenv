@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, Row};
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
-     created_at, multisite, db_name, db_engine";
+     created_at, multisite, db_name, db_engine, xdebug";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -34,6 +34,7 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         multisite: MultisiteMode::parse_db(&multisite).map_err(to_sqlite_err)?,
         db_name: row.get(11)?,
         db_engine: SiteDbEngine::parse_db(&db_engine).map_err(to_sqlite_err)?,
+        xdebug: row.get::<_, i64>(13)? != 0,
     })
 }
 
@@ -47,8 +48,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         params![
             site.id,
             site.name,
@@ -63,6 +64,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.multisite.as_db(),
             site.db_name,
             site.db_engine.as_db(),
+            site.xdebug as i64,
         ],
     )?;
     Ok(())
@@ -98,6 +100,15 @@ pub fn set_site_status(conn: &Connection, id: &str, status: ServiceStatus) -> Re
     let affected = conn.execute(
         "UPDATE sites SET status = ?1 WHERE id = ?2",
         params![status.as_db(), id],
+    )?;
+    Ok(affected > 0)
+}
+
+/// Update a site's Xdebug toggle; returns whether a row was updated.
+pub fn set_site_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET xdebug = ?1 WHERE id = ?2",
+        params![enabled as i64, id],
     )?;
     Ok(affected > 0)
 }

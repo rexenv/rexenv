@@ -94,6 +94,11 @@ pub struct Site {
     pub db_name: String,
     /// SQL engine hosting that database (v8; default `mysql`).
     pub db_engine: SiteDbEngine,
+    /// Per-site Xdebug toggle (v11, §8.2): when true the site's `.php` routes
+    /// to its PHP minor's DEBUG pool (same binary + the pinned `xdebug.so`)
+    /// instead of the shared pool. Only offerable on minors with a pinned
+    /// Xdebug bottle (`binaries::xdebug_supported`).
+    pub xdebug: bool,
 }
 
 /// Live per-site serving status (H1 follow-up). `serving` is true only when the edge

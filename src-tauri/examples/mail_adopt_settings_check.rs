@@ -94,14 +94,14 @@ async fn main() {
     // 3. Settings edit for the 8.3 pool IN THE ADOPTED SESSION → pool restart.
     let mut settings: HashMap<String, Vec<(String, String)>> = HashMap::new();
     settings.insert(MINOR.into(), vec![("memory_limit".into(), "256M".into())]);
-    let check = b
+    let checks = b
         .apply_php_settings(&*plat, &ca, &all, settings, MINOR)
         .await
         .expect("apply_php_settings in the adopted session");
     // A skipped restart (pool not adopted — e.g. racing a previous run's
     // teardown) would pass 4a vacuously; require the restart actually happened.
-    assert!(check.is_some(), "PHP {MINOR} pool was not adopted, nothing restarted");
-    await_ready(check.into_iter().collect()).await.expect("restarted pool ready");
+    assert!(!checks.is_empty(), "PHP {MINOR} pool was not adopted, nothing restarted");
+    await_ready(checks).await.expect("restarted pool ready");
     println!("session B: applied memory_limit=256M to PHP {MINOR} (pool restarted)");
 
     // 4a. The rewritten config must still pin the shim.
