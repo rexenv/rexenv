@@ -13,6 +13,8 @@ binary, update THIS file in the same commit.
 | Embedded DNS | **15353** | UDP | `core/dns.rs` `DEFAULT_DNS_PORT` |
 | Shared Nginx | **18088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` |
 | php-fpm pools | **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.0–8.5, one pool per installed minor) |
+| php-fpm DEBUG (Xdebug) pools | **9981–9985** | TCP | `core/php.rs` — `9900 + major*10 + minor` (8.1–8.5 only; started on demand for Xdebug-toggled sites) |
+| Xdebug DBGp (IDE listens) | **9003** | TCP | Xdebug default — outbound from PHP to the IDE, rexenv binds nothing |
 | FrankenPHP override backends | **8200–8299** (per-site, FNV-1a of domain) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT` |
 | Apache override backends | **8300–8399** (per-site, same FNV-1a) | TCP | `core/apache.rs` `APACHE_BASE_PORT` |
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |
@@ -36,7 +38,7 @@ binary, update THIS file in the same commit.
 |---|---|---|
 | Caddy | 2.11.4 | edge only |
 | PHP | 8.0.30 / 8.1.34 / 8.2.31 / 8.3.31 / 8.4.23 / 8.5.8 | static-php **"bulk"** build ("common" lacks `mysqli`). 8.0 = upstream-EOL, frozen at .30. NO 7.4 (never published — needs self-hosting, like the Xdebug build) |
-| PHP debug (Xdebug 3.4.5) | 8.3.31 | wired but **unresolvable** — checksums empty until hosted (see `docs/xdebug-debug-build.md`) |
+| Xdebug | 3.5.3 (per-minor `xdebug.so`, PHP 8.1–8.5) | bottle BUNDLE (one part) from `shivammathur/extensions` ghcr (the setup-php tap; arm64_sonoma + sonoma digests, all 10 downloaded + load-tested at pin time). Loads into the EXISTING static php-fpm (`-d zend_extension`) — the per-site toggle's debug pools; every spawn is gated on a real load probe. **PHP 8.0 excluded** (its static build exports no Zend symbols — dlopen impossible; the legacy `php-debug` self-build wiring in `core/binaries.rs` + `docs/xdebug-debug-build.md` stays as the fallback recipe, still unresolvable) |
 | Nginx | 1.30.3 | jirutka static; Homebrew `libpcre2` relinked to `/usr/lib` |
 | MySQL | 8.4.6 (default) / 8.0.44 | dir tree, Oracle-signed (no re-sign), CDN URL + browser UA. **Per-engine version switch**: each SERIES keeps its own datadir (default series on the legacy `mysql/data`; others under `mysql/<series>/data`) — never an in-place up/downgrade. 8.0.44 hashed from real downloads (both arches), arm64 run-verified |
 | WP-CLI | 2.12.0 | `.phar`, `resolve_file`, no chmod/codesign |

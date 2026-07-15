@@ -75,27 +75,36 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   answers 127.0.0.1; `https://tr.rex`/`lm.rex` → 200; SIGTERM'd agent relaunched by
   launchd in ~3s and kept resolving. Follow-up: Settings doesn't RENDER `dns_status.mode`
   yet (backend field + TS type only).
-- [ ] **Xdebug per-site toggle (§8.2) — UNBLOCKED 16 Jul 2026, live-proven.** The
+- [x] **Xdebug per-site toggle (§8.2) — UNBLOCKED 16 Jul 2026, built.** The
   original blocker (no hosted Xdebug for static PHP) dissolved: shivammathur's
   homebrew-extensions ghcr bottles (`xdebug@8.1`–`@8.5`, Xdebug 3.5.3 — the same
   content-addressed digest-pinned bottle class as Redis/MariaDB/Apache; the tap
   powering GitHub Actions setup-php) **dlopen directly into our EXISTING static-php
   binaries** — no debug PHP build, no extension-parity problem, extension set stays
-  identical by construction. Proven on this machine: cli+fpm load on 8.1/8.2/8.3/
-  8.4/8.5 (`with Xdebug v3.5.3` banner, module listed), `xdebug_info()` functional,
-  full DBGp init packet captured on a live socket (8.4.23); sonoma-tag bottle (our
-  pin convention) loads on Tahoe; `.so` links ONLY system libSystem+libz (single-
-  part bundle); old bottle tags retained (back to 3.2.2) — pins 404-but-never-drift,
-  same accepted risk class as existing bottles. **8.0.30 excluded** (see Blocked).
-  Plan: per-minor `xdebug` one-part bundle pins → per-minor DEBUG fpm pool (same
-  static binary + `-d zend_extension` + `xdebug.mode=debug,develop`, port
-  `9900+major*10+minor`, started only when a toggled site needs it) → v11
-  `sites.xdebug` flag → nginx/Apache vhost `fastcgi_pass` flips to the debug pool
-  (FrankenPHP refused honestly — embedded PHP) → SiteDetail toggle + start-time
-  load-probe gate (a future symbol-stripped upstream rebuild surfaces as an error,
-  never a silently-dead pool). Done when: toggle on site A (8.4) → `phpinfo()`
-  shows Xdebug + IDE breakpoint hits; site B same minor unaffected; off routes
-  back; Apache site works; FrankenPHP shows honest note.
+  identical by construction. Feasibility proven first (cli+fpm load on 8.1–8.5,
+  `xdebug_info()` functional, DBGp init on a live socket; sonoma bottles load on
+  Tahoe; `.so` links only system libs; old tags retained → pins 404-but-never-
+  drift). **8.0.30 excluded** (see Blocked). ✓ **Built** in 5 commits `617d050`/
+  `c424322`/`a731311`/`cb28b13`/`99e9fce` + example: per-minor one-part bundles
+  (all 10 digests downloaded + load-tested at pin time); per-minor DEBUG pools
+  (same fpm binary, `-d zend_extension` + `xdebug.mode=debug,develop`, ports
+  `9981–9985`, spawned only for toggled sites, adopted/watchdog-respawned/orphan-
+  swept/settings-restarted like normal pools, status row `PHP-FPM x.y (Xdebug)`);
+  **every debug spawn gated on a real load probe** (PHP treats a bad
+  zend_extension as a warning — the gate makes it an error, never a silently
+  Xdebug-less pool); v11 `sites.xdebug`; `pool_port_for_site` = the single
+  routing seam (nginx vhost, Apache override, site_serving; stale flag on 8.0
+  falls back to the normal pool); core-validated toggle (FrankenPHP + 8.0
+  refused with real reasons, disable always allowed); toggle carries across a
+  PHP-version switch; Start-all prefetches toggled minors' bundles; SiteDetail
+  Settings card with IDE hints. ✓ 266 lib tests, clippy (no new), examples,
+  tsc, vite. ✓ **Live-verified via `examples/xdebug_pool_check`** (real cache,
+  production paths): bundle download→verify→relink→sign→publish, loads-clean +
+  codesign pass, load-probe gate Ok, **full DBGp handshake**, debug pool via
+  `start_fpm_xdebug` accepting. **Human verify next:** toggle on a real site →
+  `phpinfo()` shows Xdebug + PhpStorm breakpoint hits over `?XDEBUG_SESSION=1`;
+  site B on the same minor unaffected; off routes back; Apache-override site;
+  FrankenPHP/8.0 cards show the honest disable.
 - [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
   during the edge-daemon verification): a watchdog tick landed between `start_core`
   spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned
