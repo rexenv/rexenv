@@ -75,6 +75,27 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   answers 127.0.0.1; `https://tr.rex`/`lm.rex` → 200; SIGTERM'd agent relaunched by
   launchd in ~3s and kept resolving. Follow-up: Settings doesn't RENDER `dns_status.mode`
   yet (backend field + TS type only).
+- [ ] **Xdebug per-site toggle (§8.2) — UNBLOCKED 16 Jul 2026, live-proven.** The
+  original blocker (no hosted Xdebug for static PHP) dissolved: shivammathur's
+  homebrew-extensions ghcr bottles (`xdebug@8.1`–`@8.5`, Xdebug 3.5.3 — the same
+  content-addressed digest-pinned bottle class as Redis/MariaDB/Apache; the tap
+  powering GitHub Actions setup-php) **dlopen directly into our EXISTING static-php
+  binaries** — no debug PHP build, no extension-parity problem, extension set stays
+  identical by construction. Proven on this machine: cli+fpm load on 8.1/8.2/8.3/
+  8.4/8.5 (`with Xdebug v3.5.3` banner, module listed), `xdebug_info()` functional,
+  full DBGp init packet captured on a live socket (8.4.23); sonoma-tag bottle (our
+  pin convention) loads on Tahoe; `.so` links ONLY system libSystem+libz (single-
+  part bundle); old bottle tags retained (back to 3.2.2) — pins 404-but-never-drift,
+  same accepted risk class as existing bottles. **8.0.30 excluded** (see Blocked).
+  Plan: per-minor `xdebug` one-part bundle pins → per-minor DEBUG fpm pool (same
+  static binary + `-d zend_extension` + `xdebug.mode=debug,develop`, port
+  `9900+major*10+minor`, started only when a toggled site needs it) → v11
+  `sites.xdebug` flag → nginx/Apache vhost `fastcgi_pass` flips to the debug pool
+  (FrankenPHP refused honestly — embedded PHP) → SiteDetail toggle + start-time
+  load-probe gate (a future symbol-stripped upstream rebuild surfaces as an error,
+  never a silently-dead pool). Done when: toggle on site A (8.4) → `phpinfo()`
+  shows Xdebug + IDE breakpoint hits; site B same minor unaffected; off routes
+  back; Apache site works; FrankenPHP shows honest note.
 - [ ] **Watchdog races an in-flight Start-all.** Observed live (health.log 12:25:46Z,
   during the edge-daemon verification): a watchdog tick landed between `start_core`
   spawning MySQL/fpm and their readiness, saw "port closed", and killed + respawned
@@ -345,10 +366,13 @@ Each line = one feature, live-verified before its commit.
 
 ## Blocked on external work
 
-- [ ] **Xdebug per-site toggle** (Phase 3 §8.2) — blocked on §11.2: no hosted
-  Xdebug-enabled static-php build exists. Recipe + wiring done (`docs/xdebug-debug-build.md`,
-  `core/binaries.rs` `php-debug` variant, checksums intentionally empty). Needs: maintainer
-  build + host + checksum pin.
+- [ ] **Xdebug on PHP 8.0** (corner of §8.2) — the Nov 2024 static-php 8.0.30 build
+  exports ZERO Zend symbols (`nm -gU` = 0; dlopen of any xdebug.so fails with
+  `symbol not found: _OnUpdateBool`), and upstream still serves that exact build
+  (re-verified 16 Jul 2026). 8.1+ solved via the bottle path (see Actionable). Fix
+  needs an upstream rebuild of 8.0.30 with symbols, or the self-build recipe
+  (`docs/xdebug-debug-build.md`, `php-debug` variant wiring in `core/binaries.rs`
+  kept as the fallback path). PHP 8.0 is EOL — acceptable to leave excluded.
 - [ ] **SMAppService privileged helper** (Phase 1 §10.4) — single-prompt system setup.
   Needs a signed + notarized bundle → packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** (Release 1.6) — needs paid Apple account.
