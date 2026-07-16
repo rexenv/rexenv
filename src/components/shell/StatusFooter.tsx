@@ -201,12 +201,14 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
             </button>
           )}
 
-          <div className="flex gap-2">
+          {/* gap-1.5 + px-2.5 (not 2/3): at the 1.1x type scale the nowrap
+              labels need every px of the fixed 220px sidebar. */}
+          <div className="flex gap-1.5">
             <button
               onClick={() => toggleAll.mutate()}
               disabled={busy}
               className={cn(
-                "flex h-[34px] flex-1 items-center justify-center gap-2 rounded text-[0.78125rem] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
+                "flex h-[34px] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded text-[0.78125rem] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
                 isStart
                   ? "bg-primary text-white shadow-glow-primary"
                   : "border border-rex-border-strong bg-rex-surface-2 text-rex-text-bright",
@@ -229,7 +231,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                 onClick={() => restartAll.mutate()}
                 disabled={busy}
                 title="Stop everything, then start everything"
-                className="flex h-[34px] flex-none items-center justify-center gap-1.5 rounded border border-rex-border-strong bg-rex-surface-2 px-3 text-[0.78125rem] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
+                className="flex h-[34px] flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded border border-rex-border-strong bg-rex-surface-2 px-2.5 text-[0.78125rem] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
               >
                 <RotateCcw
                   className={cn("h-3 w-3", restartAll.isPending && "animate-rex-spin motion-reduce:animate-none")}

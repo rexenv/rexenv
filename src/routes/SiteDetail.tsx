@@ -1449,7 +1449,10 @@ function EnvMini({ label, children }: { label: string; children: React.ReactNode
   return (
     <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
       <div className="mb-[9px] text-[0.75rem] text-rex-text-muted">{label}</div>
-      <div className="flex items-center justify-between gap-2">{children}</div>
+      {/* flex-wrap: native selects can't shrink below their content, so at the
+          980px min window the control reflows under the value instead of
+          spilling out of the card. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">{children}</div>
     </div>
   );
 }

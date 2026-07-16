@@ -100,7 +100,7 @@ function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
     </div>
   );
   return (
-    <div className="flex w-[132px] flex-none flex-col gap-1">
+    <div className="flex w-[112px] flex-none flex-col gap-1">
       {bar("CPU", (cpu / 12) * 100, `${cpu.toFixed(1)}%`)}
       {bar("RAM", (ram / 500) * 100, ram >= 1024 ? `${(ram / 1024).toFixed(1)}G` : `${ram}M`)}
     </div>
@@ -135,7 +135,9 @@ function ServiceRow({
         // composites the stale frame over the new text — the overlapping-words
         // glitch on Running->Idle (idle = the direction that ADDS the layer and
         // stops all animation, so the ghost lingers). Dim instantly instead.
-        "flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0",
+        // gap-3 (not 4): at the 980px min window + 1.1x type scale the fixed
+        // columns left the flex-1 name < 30px — tighter gaps keep names readable.
+        "flex items-center gap-3 border-b border-rex-border-subtle px-4 py-3 last:border-b-0",
         !running && "opacity-[0.74]",
       )}
     >
@@ -200,7 +202,7 @@ function ServiceRow({
           </ActionBtn>
         )}
       </div>
-      <div className="flex w-[118px] flex-none items-center justify-end">
+      <div className="flex w-[132px] flex-none items-center justify-end">
         {svc.serviceKey ? (
           // Independent service (DB engine / Mailpit): safe to toggle alone.
           <StartStopToggle
@@ -213,7 +215,7 @@ function ServiceRow({
           // Serving core (edge → web server → PHP): ONE organism — stopping a
           // single piece would 502 every site, so no per-row toggle by design.
           <span
-            className="cursor-help rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[0.59375rem] uppercase tracking-[0.07em] text-rex-text-dim"
+            className="cursor-help whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[0.59375rem] uppercase tracking-[0.07em] text-rex-text-dim"
             title="Part of the serving stack (edge → web server → PHP). These start and stop together — use Start all / Stop all / Restart in the sidebar. Stopping one alone would break every site."
           >
             via Start/Stop all

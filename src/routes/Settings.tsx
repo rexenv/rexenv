@@ -271,8 +271,11 @@ function PhpVersionRow({
 }) {
   return (
     <div className="border-b border-rex-border-subtle last:border-b-0">
-      <div className="flex items-center gap-3 py-2.5">
-        <div className="min-w-0 flex-1">
+      {/* flex-wrap: at the 980px min window the action cluster is wider than
+          the row can spare — let it reflow under the version name instead of
+          crushing it. */}
+      <div className="flex flex-wrap items-center gap-3 py-2.5">
+        <div className="min-w-0 flex-1 basis-[9rem]">
           <span className="font-mono text-[0.8125rem] text-rex-text">PHP {v.minor}</span>
           <span className="ml-2 font-mono text-[0.6875rem] text-rex-text-dim">{v.patch}</span>
           {v.isDefault && (
@@ -690,7 +693,10 @@ function CliCard() {
         onClick={() => install.mutate()}
       />
       <div className="border-t border-rex-border-subtle py-[13px]">
-        <code className="block truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[0.6875rem] text-rex-text">
+        <code
+          className="block truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[0.6875rem] text-rex-text"
+          title={`${cli.linkPath} → ${cli.bundledPath ?? "?"}`}
+        >
           {cli.linkPath} → {cli.bundledPath ?? "?"}
         </code>
       </div>
