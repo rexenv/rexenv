@@ -285,6 +285,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   283 lib tests, +3); `4037b71` Settings General-tab card (status-aware
   Install/Reinstall, link+target shown). **Human-verify:** Settings → Install
   (expect one admin prompt) → `rex status` from a fresh terminal.
+- [ ] **`rex` CLI roadmap — work through `docs/CLI-ROADMAP.md`** (created 16 Jul).
+  Verified v1 surface + every future command tagged 🟢 IPC-exists / 🟡 composite /
+  🔴 new-backend, with a suggested pick order (cheap wins first: `site info` /
+  `site open` / `site login`, then logs, then `rex doctor`). Pick items off it
+  one at a time; tick them THERE with evidence.
 - [ ] **Release 5.4 — execute the clean-Mac smoke test** — checklist already written:
   `docs/SMOKE-TEST.md`. First pass (fresh-account, 10 Jul 2026) all green except the
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;

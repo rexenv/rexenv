@@ -72,6 +72,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Any feature/bug — system mental model | `docs/ARCHITECTURE.md` |
 | Ports, pinned binary versions, checksums | `docs/PORTS.md` |
 | What's open / pick up work | `docs/TODO.md` |
+| rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |
 | Module/file map | `README.md` ("Project structure") |
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |

@@ -1,0 +1,146 @@
+# rex CLI roadmap
+
+The pick-list for growing the `rex` CLI. Work through it one item at a time;
+tick items here with ✓ evidence (same convention as TODO.md).
+
+**The CLI principle (from v1, non-negotiable):** `rex` is remote-control ONLY —
+every command is one request over the app's private socket, dispatched in
+`src-tauri/src/cli_server.rs` to the SAME `commands::*` fn the UI calls. Never
+a parallel code path, never new backend unless flagged here. `cli/` never
+links the app lib.
+
+**Legend** — per-item cost tag:
+- 🟢 **IPC exists** — cheap win: one dispatch arm + one CLI subcommand + output formatting.
+- 🟡 **composite** — new dispatch arm composing EXISTING core/commands fns; no new core logic.
+- 🔴 **new backend** — needs new core/IPC work first; design before building.
+- ⚪ **CLI-only** — no socket round-trip needed (or a trivial one); lives in `cli/` alone.
+
+Destructive commands take a confirm prompt + `--yes` (the `site delete`
+convention). Long-running commands hold the connection (the `site create`
+convention) — see "Infrastructure" for progress streaming.
+
+## Shipped (v1 — verified against `cli/src/main.rs` + `cli_server.rs` dispatch)
+
+| Command | Backing IPC |
+|---|---|
+| `rex status` (`--json` global) | `services_status` + `dns_status` |
+| `rex start` / `rex stop` / `rex restart` | `start_services` / `stop_services` (restart = both) |
+| `rex site list` | `list_sites` + `sites_serving` |
+| `rex site create <domain> [--name --type --php --server --db]` | `create_site` |
+| `rex site delete <domain> [--yes]` | `delete_site` (domain→id lookup client-side) |
+| `rex help`, exit codes 0/1/2 | — |
+
+## Sites
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | 🟡 | convert-after-install, exactly the blueprint flow |
+| `site create --blueprint <name>` | `list_blueprints` (resolve name→id) + `create_site(blueprint_id)` | 🟢 | |
+| `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | 🟢 | one merged detail view |
+| `site open <domain>` | — (`open https://<domain>`) | ⚪ | validate domain against `site list` first |
+| `site login <domain>` | `wp_admin_login_url` | 🟢 | print or `open` the magic wp-admin link |
+| `site logs <domain> [--follow]` | `log_targets` + `tail_log` | 🟢 | `--follow` = client-side poll loop |
+| `site rename <domain> <name>` | `rename_site` | 🟢 | |
+| `site domain <domain> <new-domain>` | `change_site_domain` | 🟢 | destructive-ish (URL rewrite) → confirm + `--yes` |
+| `site move <domain> <path>` | `move_site_docroot` | 🟢 | preflight errors already backend-side |
+| `site php <domain> <minor>` | `set_site_php_version` | 🟢 | |
+| `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | 🟢 | |
+| `site xdebug <domain> on\|off` | `set_site_xdebug` | 🟢 | backend already refuses 8.0/FrankenPHP with real reasons |
+| `site env <domain> [get\|set K=V\|unset K]` | `list_site_env` / `set_site_env` | 🟢 | |
+| `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | 🟢 | |
+| `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
+
+## PHP
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `php list` | `list_php_versions` | 🟢 | minor, patch, default, installed, pool port |
+| `php default <minor>` | `set_default_php_version` | 🟢 | |
+| `php install <minor>` / `php uninstall <minor>` | `set_php_version_installed` | 🟢 | uninstall refused while sites use it (backend rule) |
+| `php settings <minor> [get\|set K=V]` | `get_php_settings` / `apply_php_settings` | 🟢 | apply restarts that minor's pool — say so |
+
+## Services
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `service start\|stop mysql\|mariadb\|postgres\|redis` | `start_database` / `stop_database` | 🟢 | per-engine |
+| `service start\|stop mailpit` | `start_mail` / `stop_mail` | 🟢 | |
+| `service start\|stop nginx\|caddy\|php-<minor>` | — | 🔴 | web tier has no single-service IPC (deliberate — topology invariants); design first |
+| `logs <service> [--follow]` | `log_targets` + `tail_log` | 🟢 | same plumbing as `site logs` |
+
+## Database
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `db export <domain> [path]` | `wp_db_export` | 🟢 | prints the written `.sql` path |
+| `db import <domain> <file>` | `wp_db_import` | 🟢 | destructive → confirm + `--yes` |
+| `db reset <domain>` | `wp_site_reset` | 🟢 | VERY destructive (drop + reinstall) → typed confirmation, not just `--yes` |
+| `db versions [--set <engine> <version>]` | `db_engine_versions` / `set_db_engine_version` | 🟢 | switch restarts the engine — say so |
+| `db browse` | — (`open https://adminer.rexenv.rex`) | ⚪ | the Adminer vhost; needs stack running |
+
+## WordPress
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `wp plugin list\|install\|activate\|deactivate\|update\|delete <domain> [slug]` | `wp_plugins` / `wp_plugin_*` | 🟢 | network variants exist too |
+| `wp theme list\|install\|activate\|update\|delete <domain> [slug]` | `wp_themes` / `wp_theme_*` | 🟢 | |
+| `wp user list\|create\|set-password\|set-role <domain> …` | `wp_users` / `wp_user_*` | 🟢 | passwords: prompt, never a bare argv (ps-visible) |
+| `wp search-replace <domain> <from> <to>` | `wp_search_replace` | 🟢 | destructive → `--yes`; check the IPC's dry-run flag and expose it |
+| `wp cache-flush <domain>` / `wp cron run <domain>` | `wp_cache_flush` / `wp_cron_run_due` | 🟢 | |
+| `wp core update\|switch <domain> [version]` | `wp_core_update` / `wp_core_switch_version` / `wp_core_versions` | 🟢 | long-running |
+| `wp maintenance <domain> on\|off` | `wp_maintenance_set` | 🟢 | |
+| `rex wp <domain> -- <raw wp-cli args>` (passthrough) | — | 🔴 | no generic-exec IPC (deliberate: every WP op is a vetted command); a raw passthrough is a security/design decision, not a gap-fill |
+
+## Mail
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `mail list` | `mailpit_messages` | 🟢 | |
+| `mail clear` | `mailpit_clear` | 🟢 | destructive-lite → `--yes` |
+| `mail open` | `mailpit_status` (port) + local `open` | ⚪ | Mailpit web UI |
+
+## Tunnels
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `tunnel list` | `tunnels_status` | 🟢 | |
+| `tunnel start\|stop <domain>` | `start_tunnel` / `stop_tunnel` | 🟢 | start = public exposure → confirm + `--yes`; check provider-config preconditions |
+
+## TLD & config
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `tld [--set <tld>]` | `default_tld` / `set_default_tld` / `tld_policy` | 🟢 | policy errors (blocked TLDs) already backend-side |
+| `config get\|set <key> [value]` | `get_setting` / `set_setting` | 🟡 | raw KV — allow-list the keys the UI exposes, don't open the whole table |
+
+## Misc
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `rex version` | `app_info` + CLI's own version | 🟢 | also surfaces CLI↔app protocol drift |
+| `rex doctor` | composite: `global_status` + `dns_status` + `services_status` + port/wire probes | 🟡 | one honest diagnosis: DNS mode, edge wire identity (Herd shadow-bind!), port conflicts with fix-its — the support-request killer |
+| shell completions (`rex completions zsh\|bash\|fish`) | — | ⚪ | static generation in `cli/` |
+
+## Infrastructure (enables the above, not user commands)
+
+- **Progress streaming** 🔴 — long ops (`site create`, `db import`, `wp core
+  update`) currently hold the connection silently; stream progress lines over
+  the same socket (multi-line response before the final envelope). Design
+  once, benefits everything.
+- **Protocol version handshake** 🟡 — v1 already errors on unknown cmds both
+  directions; add an explicit version field when the surface grows.
+- **`--json` everywhere** — v1 rule, keep it: every new command returns the
+  raw IPC payload under `--json`.
+
+## Suggested pick order (cheap wins first, by daily-use value)
+
+1. `site info` + `site open` + `site login` (🟢/⚪ — the daily loop)
+2. `logs` / `site logs --follow` (🟢 — debugging)
+3. `rex doctor` (🟡 — support killer, composes existing probes)
+4. `db export` / `db import` (🟢 — backup habit)
+5. `site php` / `site xdebug` / `php list|default` (🟢 — version workflows)
+6. `wp plugin|theme|user` group (🟢 — broad but mechanical)
+7. `service start|stop` for DB engines + mail (🟢)
+8. `tunnel`, `mail`, `tld`, `version`, completions (🟢/⚪ — round-out)
+9. Infra: progress streaming (🔴) once long ops feel opaque
+10. Design-first items: `site restart`, web-tier single-service control, wp passthrough (🔴)
