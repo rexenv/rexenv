@@ -27,6 +27,7 @@ COMMANDS:
   start         Start the shared stack (same as the app's Start all)
   stop          Stop the shared stack (same as Stop all)
   restart       stop, then start
+  site list     All sites + whether each is actually serving
   help          Show this help
 
 OPTIONS:
@@ -118,6 +119,13 @@ fn main() {
         Some("start") => cmd_lifecycle(&["start"], json_output),
         Some("stop") => cmd_lifecycle(&["stop"], json_output),
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
+        Some("site") => match words.get(1).map(String::as_str) {
+            Some("list") => cmd_site_list(json_output),
+            _ => {
+                eprintln!("rex: usage: rex site <list>\n\n{USAGE}");
+                exit(1);
+            }
+        },
         Some(other) => {
             eprintln!("rex: unknown command `{other}`\n\n{USAGE}");
             exit(1);
@@ -149,6 +157,56 @@ fn cmd_lifecycle(steps: &[&str], json_output: bool) {
     }
     if json_output {
         print_json(&json!({ "ok": true }));
+    }
+}
+
+// ── site list ────────────────────────────────────────────────────────────────
+
+fn cmd_site_list(json_output: bool) {
+    let data = request("site.list", Value::Null);
+    if json_output {
+        return print_json(&data);
+    }
+    let Some(sites) = data["sites"].as_array() else {
+        return println!("(no sites)");
+    };
+    if sites.is_empty() {
+        return println!("no sites yet — create one with the app or `rex site create <domain>`");
+    }
+    // `serving` is the live wire truth (edge up AND the site's upstream up);
+    // sites the stack isn't serving right now show "down".
+    let serving: Vec<(&str, bool)> = data["serving"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| Some((r["domain"].as_str()?, r["serving"] == json!(true))))
+                .collect()
+        })
+        .unwrap_or_default();
+    let col = |key: &str, min: usize| -> usize {
+        sites
+            .iter()
+            .filter_map(|s| s[key].as_str())
+            .map(str::len)
+            .max()
+            .unwrap_or(min)
+            .max(min)
+    };
+    let (dw, nw) = (col("domain", 6), col("name", 4));
+    println!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  STATE", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB");
+    for s in sites {
+        let domain = s["domain"].as_str().unwrap_or("?");
+        let up = serving.iter().any(|(d, up)| *d == domain && *up);
+        println!(
+            "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {}",
+            domain,
+            s["name"].as_str().unwrap_or("?"),
+            s["type"].as_str().unwrap_or("?"),
+            s["phpVersion"].as_str().unwrap_or("?"),
+            s["webServer"].as_str().unwrap_or("?"),
+            s["dbEngine"].as_str().unwrap_or("?"),
+            if up { "serving" } else { "down" },
+        );
     }
 }
 

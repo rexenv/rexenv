@@ -145,6 +145,13 @@ where
             commands::services::stop_services(app_state(app)?).await?;
             Ok(Value::Null)
         }
+        // Sites — the Sites screen's data, merged client-side for display.
+        "site.list" => {
+            let state = app_state(app)?;
+            let sites = commands::sites::list_sites(state.clone())?;
+            let serving = commands::sites::sites_serving(state.clone())?;
+            Ok(json!({ "sites": to_value(&sites)?, "serving": to_value(&serving)? }))
+        }
         other => Err(Error::Other(format!(
             "unknown command: {other} (this rex may be newer than the running app)"
         ))),
@@ -232,7 +239,7 @@ mod tests {
         let app = tauri::test::mock_app();
         // Every ROUTED command reaches the state check (proving the arm
         // exists); an unrouted one must say so instead.
-        for cmd in ["status", "start", "stop"] {
+        for cmd in ["status", "start", "stop", "site.list"] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
             let v: Value = serde_json::from_str(&reply).expect("valid envelope");
