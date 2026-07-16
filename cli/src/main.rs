@@ -51,6 +51,11 @@ COMMANDS:
   php install <minor> / php uninstall <minor>
   site php <domain> <minor>          Switch a site's PHP version
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
+  wp <domain> plugin list|install|activate|deactivate|update|delete [slug…] [--activate]
+  wp <domain> theme  list|install|activate|update|delete [slug…] [--activate]
+  wp <domain> user   list|create|set-password|set-role …
+                WordPress manager (vetted WP-CLI ops; passwords are
+                auto-generated and printed once — never passed on argv)
   help          Show this help
 
 OPTIONS:
@@ -145,6 +150,7 @@ fn main() {
         Some("logs") => cmd_logs(&words[1..], json_output),
         Some("doctor") => cmd_doctor(json_output),
         Some("php") => cmd_php(&words[1..], json_output),
+        Some("wp") => cmd_wp(&words[1..], json_output),
         Some("db") => match words.get(1).map(String::as_str) {
             Some("export") => cmd_db_export(&words[2..], json_output),
             Some("import") => cmd_db_import(&words[2..], json_output),
@@ -494,6 +500,205 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
         return print_json(&updated);
     }
     print_site_update(&updated);
+}
+
+// ── wp: plugins / themes / users ─────────────────────────────────────────────
+
+const WP_USAGE: &str = "rex wp <domain> <plugin|theme|user> <action> …";
+
+/// 16-char password from /dev/urandom — generated and PRINTED ONCE instead of
+/// ever accepting one on argv (argv is world-readable via ps).
+fn generate_password() -> String {
+    const CHARS: &[u8] = b"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut bytes = [0u8; 16];
+    if std::io::Read::read_exact(
+        &mut std::fs::File::open("/dev/urandom").expect("urandom"),
+        &mut bytes,
+    )
+    .is_err()
+    {
+        eprintln!("rex: could not read /dev/urandom");
+        exit(1);
+    }
+    bytes.iter().map(|b| CHARS[(*b as usize) % CHARS.len()] as char).collect()
+}
+
+fn cmd_wp(words: &[String], json_output: bool) {
+    let site = find_site(words, WP_USAGE);
+    if site["type"] != json!("wordpress") {
+        eprintln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
+        exit(1);
+    }
+    let id = site["id"].clone();
+    let (area, action) = (words.get(1).map(String::as_str), words.get(2).map(String::as_str));
+    let rest: Vec<String> =
+        words.iter().skip(3).filter(|w| !w.starts_with("--")).cloned().collect();
+    let activate = words.iter().any(|w| w == "--activate");
+    match (area, action) {
+        (Some("plugin"), Some("list")) | (Some("plugin"), None) => {
+            let data = request("wp.plugins", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(rows) = data["plugins"].as_array() else { return println!("(none)") };
+            for p in rows {
+                println!(
+                    "{:<32} {:<9} {:<10} {}",
+                    p["name"].as_str().unwrap_or("?"),
+                    p["status"].as_str().unwrap_or(""),
+                    p["version"].as_str().unwrap_or(""),
+                    if p["update"] == json!("available") { "update available" } else { "" },
+                );
+            }
+        }
+        (Some("plugin"), Some("install")) => {
+            let Some(slug) = rest.first() else {
+                eprintln!("rex: usage: rex wp <domain> plugin install <slug> [--activate]");
+                exit(1);
+            };
+            let r = request("wp.plugin.install", json!({ "id": id, "slug": slug, "activate": activate }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ installed {slug}{}", if activate { " (activated)" } else { "" });
+        }
+        (Some("plugin"), Some(act @ ("activate" | "deactivate" | "update" | "delete"))) => {
+            if rest.is_empty() {
+                eprintln!("rex: usage: rex wp <domain> plugin {act} <name…>");
+                exit(1);
+            }
+            let r = request(&format!("wp.plugin.{act}"), json!({ "id": id, "names": rest }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {act}d: {}", rest.join(", "));
+        }
+        (Some("theme"), Some("list")) | (Some("theme"), None) => {
+            let data = request("wp.themes", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(rows) = data["themes"].as_array() else { return println!("(none)") };
+            for t in rows {
+                println!(
+                    "{:<32} {:<9} {:<10} {}",
+                    t["name"].as_str().unwrap_or("?"),
+                    t["status"].as_str().unwrap_or(""),
+                    t["version"].as_str().unwrap_or(""),
+                    if t["update"] == json!("available") { "update available" } else { "" },
+                );
+            }
+        }
+        (Some("theme"), Some("install")) => {
+            let Some(slug) = rest.first() else {
+                eprintln!("rex: usage: rex wp <domain> theme install <slug> [--activate]");
+                exit(1);
+            };
+            let r = request("wp.theme.install", json!({ "id": id, "slug": slug, "activate": activate }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ installed {slug}{}", if activate { " (activated)" } else { "" });
+        }
+        (Some("theme"), Some("activate")) => {
+            let Some(name) = rest.first() else {
+                eprintln!("rex: usage: rex wp <domain> theme activate <name>");
+                exit(1);
+            };
+            let r = request("wp.theme.activate", json!({ "id": id, "name": name }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ activated {name}");
+        }
+        (Some("theme"), Some(act @ ("update" | "delete"))) => {
+            if rest.is_empty() {
+                eprintln!("rex: usage: rex wp <domain> theme {act} <name…>");
+                exit(1);
+            }
+            let r = request(&format!("wp.theme.{act}"), json!({ "id": id, "names": rest }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {act}d: {}", rest.join(", "));
+        }
+        (Some("user"), Some("list")) | (Some("user"), None) => {
+            let data = request("wp.users", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(rows) = data["users"].as_array() else { return println!("(none)") };
+            println!("{:<5} {:<20} {:<30} ROLES", "ID", "LOGIN", "EMAIL");
+            for u in rows {
+                println!(
+                    "{:<5} {:<20} {:<30} {}",
+                    u["id"].as_u64().unwrap_or(0),
+                    u["login"].as_str().unwrap_or("?"),
+                    u["email"].as_str().unwrap_or(""),
+                    u["roles"].as_str().unwrap_or(""),
+                );
+            }
+        }
+        (Some("user"), Some("create")) => {
+            let (Some(login), Some(email)) = (rest.first(), rest.get(1)) else {
+                eprintln!("rex: usage: rex wp <domain> user create <login> <email> [--role R]");
+                exit(1);
+            };
+            let role = flag_value(words, "--role").unwrap_or_else(|| "subscriber".into());
+            let password = generate_password();
+            let r = request(
+                "wp.user.create",
+                json!({ "id": id, "login": login, "email": email, "role": role, "password": password }),
+            );
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ created {login} ({role})\n  password: {password}   (shown once — store it now)");
+        }
+        (Some("user"), Some(act @ ("set-password" | "set-role"))) => {
+            let Some(who) = rest.first() else {
+                eprintln!("rex: usage: rex wp <domain> user {act} <login|id> [role]");
+                exit(1);
+            };
+            // Accept a login or a numeric id; resolve via the app's own list.
+            let user_id = who.parse::<u64>().ok().unwrap_or_else(|| {
+                request("wp.users", json!({ "id": id }))["users"]
+                    .as_array()
+                    .and_then(|users| {
+                        users.iter().find(|u| u["login"] == json!(who)).and_then(|u| u["id"].as_u64())
+                    })
+                    .unwrap_or_else(|| {
+                        eprintln!("rex: no user `{who}` on this site (see `rex wp … user list`)");
+                        exit(1);
+                    })
+            });
+            if act == "set-password" {
+                let password = generate_password();
+                let r = request(
+                    "wp.user.password",
+                    json!({ "id": id, "userId": user_id, "password": password }),
+                );
+                if json_output {
+                    return print_json(&r);
+                }
+                println!("✓ password reset for {who}\n  password: {password}   (shown once — store it now)");
+            } else {
+                let Some(role) = rest.get(1) else {
+                    eprintln!("rex: usage: rex wp <domain> user set-role <login|id> <role>");
+                    exit(1);
+                };
+                let r = request("wp.user.role", json!({ "id": id, "userId": user_id, "role": role }));
+                if json_output {
+                    return print_json(&r);
+                }
+                println!("✓ {who} is now {role}");
+            }
+        }
+        _ => {
+            eprintln!("rex: usage: {WP_USAGE}\n\n{USAGE}");
+            exit(1);
+        }
+    }
 }
 
 // ── db export / import ───────────────────────────────────────────────────────

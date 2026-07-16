@@ -119,6 +119,24 @@ fn to_value<T: serde::Serialize>(v: &T) -> Result<Value> {
     serde_json::to_value(v).map_err(|e| Error::Other(format!("encode response: {e}")))
 }
 
+fn need_str(args: &Value, key: &str, cmd: &str) -> Result<String> {
+    args[key]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| Error::Other(format!("{cmd} needs `{key}`")))
+}
+
+fn need_names(args: &Value, cmd: &str) -> Result<Vec<String>> {
+    let names: Vec<String> = args["names"]
+        .as_array()
+        .map(|v| v.iter().filter_map(|n| n.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    if names.is_empty() {
+        return Err(Error::Other(format!("{cmd} needs `names`")));
+    }
+    Ok(names)
+}
+
 /// AppState is managed only after a successful DB/CA init — mirror the UI's
 /// InitError screen with a plain error instead of a state panic. Fetched per
 /// command arm so an unknown cmd reports as unknown even before init.
@@ -375,6 +393,114 @@ where
             let site = commands::sites::set_site_xdebug(state.clone(), id, enabled).await?;
             to_value(&site)
         }
+        // WordPress manager — plugins/themes/users, the WP Manager tab's fns.
+        // Every op runs vetted WP-CLI backend-side; nothing here is a raw
+        // passthrough. Multi-name ops take {names: [..]}.
+        "wp.plugins" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            // check_updates: one synchronous wp-org pass so the CLI list shows
+            // update badges (the UI does the fast list + a background refresh).
+            let plugins =
+                commands::wordpress::wp_plugins(state.clone(), id, Some(true)).await?;
+            Ok(json!({ "plugins": to_value(&plugins)? }))
+        }
+        "wp.plugin.install" => {
+            let state = app_state(app)?;
+            let (id, slug) = (need_str(&args, "id", cmd)?, need_str(&args, "slug", cmd)?);
+            let activate = args["activate"].as_bool().unwrap_or(false);
+            commands::wordpress::wp_plugin_install(state.clone(), id, slug, activate).await?;
+            Ok(Value::Null)
+        }
+        "wp.plugin.activate" | "wp.plugin.deactivate" | "wp.plugin.update" | "wp.plugin.delete" => {
+            let state = app_state(app)?;
+            let (id, names) = (need_str(&args, "id", cmd)?, need_names(&args, cmd)?);
+            match cmd {
+                "wp.plugin.activate" => {
+                    commands::wordpress::wp_plugin_activate(state.clone(), id, names).await?
+                }
+                "wp.plugin.deactivate" => {
+                    commands::wordpress::wp_plugin_deactivate(state.clone(), id, names).await?
+                }
+                "wp.plugin.update" => {
+                    commands::wordpress::wp_plugin_update(state.clone(), id, names).await?
+                }
+                _ => commands::wordpress::wp_plugin_delete(state.clone(), id, names).await?,
+            }
+            Ok(Value::Null)
+        }
+        "wp.themes" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let themes = commands::wordpress::wp_themes(state.clone(), id, Some(true)).await?;
+            Ok(json!({ "themes": to_value(&themes)? }))
+        }
+        "wp.theme.install" => {
+            let state = app_state(app)?;
+            let (id, slug) = (need_str(&args, "id", cmd)?, need_str(&args, "slug", cmd)?);
+            let activate = args["activate"].as_bool().unwrap_or(false);
+            commands::wordpress::wp_theme_install(state.clone(), id, slug, activate).await?;
+            Ok(Value::Null)
+        }
+        "wp.theme.activate" => {
+            let state = app_state(app)?;
+            let (id, name) = (need_str(&args, "id", cmd)?, need_str(&args, "name", cmd)?);
+            commands::wordpress::wp_theme_activate(state.clone(), id, name).await?;
+            Ok(Value::Null)
+        }
+        "wp.theme.update" | "wp.theme.delete" => {
+            let state = app_state(app)?;
+            let (id, names) = (need_str(&args, "id", cmd)?, need_names(&args, cmd)?);
+            if cmd == "wp.theme.update" {
+                commands::wordpress::wp_theme_update(state.clone(), id, names).await?;
+            } else {
+                commands::wordpress::wp_theme_delete(state.clone(), id, names).await?;
+            }
+            Ok(Value::Null)
+        }
+        "wp.users" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            Ok(json!({ "users": to_value(&commands::wordpress::wp_users(state.clone(), id).await?)? }))
+        }
+        "wp.user.create" => {
+            let state = app_state(app)?;
+            commands::wordpress::wp_user_create(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "login", cmd)?,
+                need_str(&args, "email", cmd)?,
+                need_str(&args, "role", cmd)?,
+                need_str(&args, "password", cmd)?,
+            )
+            .await?;
+            Ok(Value::Null)
+        }
+        "wp.user.password" | "wp.user.role" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let user_id = args["userId"]
+                .as_u64()
+                .ok_or_else(|| Error::Other(format!("{cmd} needs `userId`")))?;
+            if cmd == "wp.user.password" {
+                commands::wordpress::wp_user_set_password(
+                    state.clone(),
+                    id,
+                    user_id,
+                    need_str(&args, "password", cmd)?,
+                )
+                .await?;
+            } else {
+                commands::wordpress::wp_user_set_role(
+                    state.clone(),
+                    id,
+                    user_id,
+                    need_str(&args, "role", cmd)?,
+                )
+                .await?;
+            }
+            Ok(Value::Null)
+        }
         // Database export/import — the SiteDetail Tools actions. Export writes
         // `<domain>-db.sql` into ~/Downloads (numbered on collision) and
         // returns the path; import is DESTRUCTIVE and .sql/engine-gated
@@ -556,6 +682,8 @@ mod tests {
             "status", "start", "stop", "site.list", "site.create", "site.delete", "site.info",
             "site.login", "logs.targets", "logs.tail", "logs.list", "doctor", "db.export",
             "db.import", "php.list", "php.default", "php.installed", "site.php", "site.xdebug",
+            "wp.plugins", "wp.plugin.install", "wp.plugin.activate", "wp.themes",
+            "wp.theme.install", "wp.users", "wp.user.create", "wp.user.password", "wp.user.role",
         ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
