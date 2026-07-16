@@ -322,6 +322,69 @@ where
             files.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
             Ok(json!({ "files": files }))
         }
+        // Doctor: one honest diagnosis pass composing the app's own probes —
+        // nothing here invents a new check, it reuses the exact machinery the
+        // watchdog/Start-all/Settings already trust.
+        "doctor" => {
+            let state = app_state(app)?;
+            let services = commands::services::services_status(state.clone()).await?;
+            let dns = app
+                .try_state::<crate::state::app::DnsState>()
+                .map(|dns| commands::system::dns_status(state.clone(), dns));
+            let cli = commands::system::cli_status(state.clone()).ok();
+            // Edge WIRE identity — the Herd class: every process check can be
+            // green while a foreign 127.0.0.1:443 listener answers all sites.
+            let caddy_running = services.iter().any(|s| s.name == "Caddy" && s.running);
+            let wire_ours = crate::core::proxy::edge_answers_as_ours(
+                crate::core::adminer::ADMINER_HOST,
+                crate::core::proxy::DEFAULT_HTTPS_PORT,
+            )
+            .await;
+            let edge_conflict = (caddy_running && !wire_ours).then(|| {
+                let help = state
+                    .platform
+                    .supervisor()
+                    .port_conflict_help(crate::core::proxy::DEFAULT_HTTPS_PORT, false);
+                json!({ "holder": help.holder, "app": help.app, "fix": help.free_command })
+            });
+            // Foreign holders on rexenv's fixed ports. Ours-by-marker is fine
+            // (running services); 80/443 are judged by the wire probe above
+            // (the root edge's binary lives outside the user marker); the DNS
+            // UDP port is judged by dns_status.
+            let marker = state
+                .platform
+                .paths()
+                .app_data_dir()
+                .map(|d| d.display().to_string())
+                .unwrap_or_default();
+            let mut port_conflicts = Vec::new();
+            for req in crate::core::ports::default_ports() {
+                if matches!(req.proto, crate::core::ports::Proto::Udp)
+                    || req.port == crate::core::proxy::DEFAULT_HTTPS_PORT
+                    || req.port == crate::core::proxy::DEFAULT_HTTP_PORT
+                    || crate::core::ports::is_free(req.port, req.proto)
+                    || (!marker.is_empty()
+                        && state.platform.supervisor().owned_master(req.port, &marker).is_some())
+                {
+                    continue;
+                }
+                let help = state.platform.supervisor().port_conflict_help(req.port, false);
+                port_conflicts.push(json!({
+                    "service": req.service,
+                    "port": req.port,
+                    "holder": help.holder,
+                    "fix": help.free_command,
+                }));
+            }
+            Ok(json!({
+                "app": to_value(&commands::system::app_info())?,
+                "dns": to_value(&dns)?,
+                "services": to_value(&services)?,
+                "edge": { "running": caddy_running, "wireOurs": wire_ours, "conflict": edge_conflict },
+                "portConflicts": port_conflicts,
+                "cli": to_value(&cli)?,
+            }))
+        }
         other => Err(Error::Other(format!(
             "unknown command: {other} (this rex may be newer than the running app)"
         ))),
@@ -411,7 +474,7 @@ mod tests {
         // exists); an unrouted one must say so instead.
         for cmd in [
             "status", "start", "stop", "site.list", "site.create", "site.delete", "site.info",
-            "site.login", "logs.targets", "logs.tail", "logs.list",
+            "site.login", "logs.targets", "logs.tail", "logs.list", "doctor",
         ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;

@@ -41,6 +41,7 @@ COMMANDS:
                 Tail a site's log sources (no --source lists them)
   logs [key] [--lines N] [--follow]
                 Tail any service log (no key lists all log files)
+  doctor        Diagnose: DNS mode, edge wire identity, port conflicts, CLI link
   help          Show this help
 
 OPTIONS:
@@ -133,6 +134,7 @@ fn main() {
         Some("stop") => cmd_lifecycle(&["stop"], json_output),
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
         Some("logs") => cmd_logs(&words[1..], json_output),
+        Some("doctor") => cmd_doctor(json_output),
         Some("site") => match words.get(1).map(String::as_str) {
             Some("list") => cmd_site_list(json_output),
             Some("create") => cmd_site_create(&words[2..], json_output),
@@ -379,6 +381,113 @@ fn cmd_site_login(words: &[String], json_output: bool) {
         println!("{url}");
     } else {
         open_url(url);
+    }
+}
+
+// ── doctor ───────────────────────────────────────────────────────────────────
+
+/// Exit 0 = healthy; exit 1 = at least one finding (scriptable gate).
+fn cmd_doctor(json_output: bool) {
+    let data = request("doctor", Value::Null);
+    if json_output {
+        print_json(&data);
+        // json mode still gates the exit code so CI can use it
+    }
+    let mut findings = 0;
+    let mut line = |ok: bool, warn: bool, label: &str, msg: String| {
+        let mark = if ok { "✓" } else if warn { "⚠" } else { "✗" };
+        if !ok {
+            findings += 1;
+        }
+        if !json_output {
+            println!("{mark} {label:<9} {msg}");
+        }
+    };
+
+    let app = &data["app"];
+    if !json_output {
+        println!("rexenv {} ({})", app["version"].as_str().unwrap_or("?"), app["platform"].as_str().unwrap_or("?"));
+    }
+
+    let dns = &data["dns"];
+    let dns_running = dns["running"] == json!(true);
+    let mode = dns["mode"].as_str().unwrap_or("down");
+    let resolver = dns["resolverInstalled"] == json!(true);
+    let ca = dns["caTrusted"] == json!(true);
+    line(
+        dns_running && mode == "agent" && resolver && ca,
+        dns_running, // running-but-degraded = warning, not failure
+        "DNS",
+        if !dns_running {
+            "not answering — sites won't resolve (open the app / check Settings)".into()
+        } else {
+            format!(
+                "{} · resolver {} · CA {}",
+                if mode == "agent" { "agent (always on)".to_string() } else { format!("{mode} — stops when the app quits") },
+                if resolver { "installed" } else { "MISSING (run system setup)" },
+                if ca { "trusted" } else { "NOT TRUSTED (Settings → Re-trust)" },
+            )
+        },
+    );
+
+    let edge = &data["edge"];
+    if edge["running"] == json!(true) {
+        if edge["wireOurs"] == json!(true) {
+            line(true, false, "Edge", "answering as rexenv on :443".into());
+        } else {
+            let holder = edge["conflict"]["holder"].as_str().unwrap_or("another proxy");
+            let fix = edge["conflict"]["fix"].as_str().map(|f| format!("\n            $ {f}")).unwrap_or_default();
+            line(false, false, "Edge", format!("{holder} answers :443 IN FRONT of rexenv — sites unreachable{fix}"));
+        }
+    } else {
+        line(false, true, "Edge", "not running — Start all to serve sites".into());
+    }
+
+    let services = data["services"].as_array().cloned().unwrap_or_default();
+    let up = services.iter().filter(|s| s["running"] == json!(true)).count();
+    line(true, false, "Services", format!("{up}/{} running", services.len()));
+
+    let conflicts = data["portConflicts"].as_array().cloned().unwrap_or_default();
+    if conflicts.is_empty() {
+        line(true, false, "Ports", "no foreign holders on rexenv ports".into());
+    } else {
+        for c in &conflicts {
+            let fix = c["fix"].as_str().map(|f| format!("\n            $ {f}")).unwrap_or_default();
+            line(
+                false,
+                false,
+                "Ports",
+                format!(
+                    "port {} (needed by {}) held by {}{fix}",
+                    c["port"],
+                    c["service"].as_str().unwrap_or("?"),
+                    c["holder"].as_str().unwrap_or("an unknown process"),
+                ),
+            );
+        }
+    }
+
+    let cli = &data["cli"];
+    if cli.is_object() {
+        line(
+            cli["current"] == json!(true),
+            true, // absent/stale link is a warning, not a fault
+            "CLI",
+            if cli["current"] == json!(true) {
+                format!("{} → this app", cli["linkPath"].as_str().unwrap_or("?"))
+            } else if cli["installed"] == json!(true) {
+                "rex on PATH points at a different copy (Settings → Reinstall)".into()
+            } else {
+                "rex not on PATH (Settings → Command-line tool → Install)".into()
+            },
+        );
+    }
+
+    if findings > 0 {
+        if !json_output {
+            println!("\n{findings} finding{}", if findings == 1 { "" } else { "s" });
+        }
+        exit(1);
     }
 }
 
