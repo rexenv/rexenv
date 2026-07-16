@@ -247,6 +247,28 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   HTTPS through the real edge; delete → row gone, wire dead, docroot removed).
   **Human-verify remaining:** `rex start/stop/restart` need the NEW app build running
   (the socket server ships with it) — exercise on the next app run.
+- [x] **Orphaned httpd blocks Start-all + "sudo kill our own process" message**
+  (found by the first live `rex start`, 16 Jul). ROOT CAUSE: adoption picked the
+  lowest listener pid on the claim "masters fork first" — false under worker churn
+  + pid recycling (live: Apache worker 71063 sat below master 95274) → a WORKER got
+  adopted → Stop-all killed the worker → the surviving master held `:8320` → the
+  port gate told the user to sudo-kill rexenv's own orphan. Latent for every
+  adopted service (nginx/fpm/DB/Mailpit workers share the listen socket too).
+  ✓ **Fixed** in 3 commits: `af1d248` `owned_master` (parent-based master selection,
+  pure `select_master` + 5 tests incl. wraparound; adoption switched); `e8d31ff`
+  override stops resolve the CURRENT master + `ports::wait_free` drain (stopped ==
+  port free), spawn_override self-heals (our leftover reaped, foreign → honest
+  error), plus a pre-existing guard gap closed (reconcile's stale/mismatch stops
+  now refuse adopted backends outside the app — the likely source of the orphan);
+  `372f1f0` marker-aware `ensure_free` (ours → plain `kill`, no sudo; foreign →
+  Herd-style help unchanged). 280 lib tests (+7 across the round), clippy clean.
+  ✓ **Human-verified:** rex stop frees `:8320` (master gone, no survivors), rex
+  start/restart clean, Apache serves, health.log quiet.
+- [ ] **Apache reconcile bounce check** (observation, low): the 16 Jul log showed
+  two Apache restarts 19s apart across app launches. After the fix round, run
+  Start-all twice with no stop between — the Apache pid should be STABLE on the
+  second run. If it changes every time, reconcile's config diff has a
+  session-dependent input; chase `desired_override_config` vs the on-disk conf.
 - [ ] **`rex` CLI packaging** — ship the `rex` binary in the app bundle + a
   Settings/onboarding "install CLI" step (symlink into PATH, Herd/Docker-style).
   v1 builds from `cli/` only; not release-blocking until the CLI is user-facing.
@@ -266,9 +288,11 @@ they aren't lost; fix opportunistically or before the next deep test.
 - [ ] **WP Manager cron list: arguments display** — QA to supply the exact
   complaint (recorded as a placeholder so it isn't lost; likely the event args
   column in the SiteDetail cron tab).
-- [ ] **Watchdog/Start-all race fix (`d07e4f2`) — observation window still open.**
+- [x] **Watchdog/Start-all race fix (`d07e4f2`) — observation window still open.**
   Code + regression tests are in; confirm `logs/health.log` shows no
   `restarted … port closed` events across the next few real Start-alls, then close.
+  ✓ **Closed 16 Jul:** health.log stayed quiet through repeated rex stop/start/
+  restart cycles (human-verified during the orphan-httpd fix round).
 - [ ] **TLD v1 Done-when checklist not formally walked**
   (`docs/TLD-FEATURE-REPORT.md`) — de-facto mostly proven by later live work on
   `.rex` sites (auto-start reboot test, Herd suite), but the checklist itself
