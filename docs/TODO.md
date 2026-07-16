@@ -303,9 +303,13 @@ they aren't lost; fix opportunistically or before the next deep test.
   rexenv is closed", in-process AMBER dot + "DNS stops when you quit rexenv.
   Restart the app to retry the always-on agent", inactive unchanged. Services
   DNS row: same honest amber for in-process; stale "runs with the app" header
-  copy fixed (agent survives quits). tsc + vite green; agent-state visual
-  eyeballed by human verify (force fallback: `launchctl bootout
-  gui/$UID/dev.rexenv.rexenv.dns` while the app runs → amber within ~30s).
+  copy fixed (agent survives quits). Follow-up fix `9338b32`: the Settings tile
+  was FROZEN at mount-time state (Services was the only ["dns-status"] poller
+  and it unmounts when Settings shows) — Settings now polls the same shared key
+  at 5s, so both views read one cache entry. ✓ **Human-verified** (16 Jul):
+  agent bootout while sitting on Settings → amber "in-process" within ~30s on
+  BOTH views in sync; app relaunch → both green "agent / always on"; sites kept
+  resolving throughout.
 - [ ] **WP Manager cron list: arguments display** — QA to supply the exact
   complaint (recorded as a placeholder so it isn't lost; likely the event args
   column in the SiteDetail cron tab).
