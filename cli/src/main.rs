@@ -33,6 +33,7 @@ COMMANDS:
   site login <domain>   Open a logged-in wp-admin (magic link; --print to not open)
   site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
               [--server nginx|frankenphp|apache] [--db mysql|mariadb]
+              [--blueprint <name>] [--multisite subdomain|subdirectory]
                 Create a site (defaults mirror the app's New Site dialog;
                 WordPress sites get the one-click install)
   site delete <domain> [--yes]
@@ -51,6 +52,13 @@ COMMANDS:
   php install <minor> / php uninstall <minor>
   site php <domain> <minor>          Switch a site's PHP version
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
+  site server <domain> nginx|frankenphp|apache   Switch the web server
+  site rename <domain> <name>        Display name only (domain unchanged)
+  site domain <domain> <new-domain>  Change the domain (URL rewrite; asks first)
+  site move <domain> <dest-parent>   Move the docroot under a new parent folder
+  site env <domain> [set K=V | unset K]          Per-site env vars
+  site cert <domain> [--regenerate]  Certificate info / fresh leaf
+  blueprints                         Saved blueprints (for site create --blueprint)
   wp <domain> plugin list|install|activate|deactivate|update|delete [slug…] [--activate]
   wp <domain> theme  list|install|activate|update|delete [slug…] [--activate]
   wp <domain> user   list|create|set-password|set-role …
@@ -167,6 +175,21 @@ fn main() {
         Some("tunnel") => cmd_tunnel(&words[1..], json_output),
         Some("tld") => cmd_tld(&words[1..], json_output),
         Some("version") => cmd_version(json_output),
+        Some("blueprints") => {
+            let data = request("blueprint.list", Value::Null);
+            if json_output {
+                print_json(&data);
+            } else {
+                match data["blueprints"].as_array().filter(|b| !b.is_empty()) {
+                    None => println!("no saved blueprints (create them in the app: Settings → Blueprints)"),
+                    Some(rows) => {
+                        for b in rows {
+                            println!("{}", b["name"].as_str().unwrap_or("?"));
+                        }
+                    }
+                }
+            }
+        }
         Some("db") => match words.get(1).map(String::as_str) {
             Some("export") => cmd_db_export(&words[2..], json_output),
             Some("import") => cmd_db_import(&words[2..], json_output),
@@ -183,6 +206,12 @@ fn main() {
             Some("logs") => cmd_site_logs(&words[2..], json_output),
             Some("php") => cmd_site_php(&words[2..], json_output),
             Some("xdebug") => cmd_site_xdebug(&words[2..], json_output),
+            Some("server") => cmd_site_server(&words[2..], json_output),
+            Some("rename") => cmd_site_rename(&words[2..], json_output),
+            Some("domain") => cmd_site_domain(&words[2..], json_output),
+            Some("move") => cmd_site_move(&words[2..], json_output),
+            Some("env") => cmd_site_env(&words[2..], json_output),
+            Some("cert") => cmd_site_cert(&words[2..], json_output),
             Some("open") => cmd_site_open(&words[2..]),
             Some("login") => cmd_site_login(&words[2..], json_output),
             _ => {
@@ -291,9 +320,15 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     };
     let mut args = serde_json::Map::new();
     args.insert("domain".into(), json!(domain));
-    for (flag, key) in
-        [("--name", "name"), ("--type", "type"), ("--php", "php"), ("--server", "server"), ("--db", "db")]
-    {
+    for (flag, key) in [
+        ("--name", "name"),
+        ("--type", "type"),
+        ("--php", "php"),
+        ("--server", "server"),
+        ("--db", "db"),
+        ("--blueprint", "blueprint"),
+        ("--multisite", "multisite"),
+    ] {
         if let Some(v) = flag_value(words, flag) {
             args.insert(key.into(), json!(v));
         }
@@ -516,6 +551,193 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
         return print_json(&updated);
     }
     print_site_update(&updated);
+}
+
+// ── site settings: server / rename / domain / move / env / cert ─────────────
+
+fn cmd_site_server(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site server <domain> nginx|frankenphp|apache");
+    let Some(server) = words.get(1).filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site server <domain> nginx|frankenphp|apache");
+        exit(1);
+    };
+    let updated = request("site.server", json!({ "id": site["id"], "server": server }));
+    if json_output {
+        return print_json(&updated);
+    }
+    print_site_update(&updated);
+}
+
+fn cmd_site_rename(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site rename <domain> <name>");
+    let name = words[1..].iter().filter(|w| !w.starts_with("--")).cloned().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        eprintln!("rex: usage: rex site rename <domain> <name>");
+        exit(1);
+    }
+    let r = request("site.rename", json!({ "id": site["id"], "name": name }));
+    if json_output {
+        return print_json(&r);
+    }
+    println!("✓ {} is now named “{name}”", site["domain"].as_str().unwrap_or("?"));
+}
+
+fn cmd_site_domain(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site domain <domain> <new-domain> [--yes]");
+    let old = site["domain"].as_str().unwrap_or("?").to_string();
+    let Some(new_domain) = words.get(1).filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site domain <domain> <new-domain> [--yes]");
+        exit(1);
+    };
+    if !words.iter().any(|w| w == "--yes") {
+        eprint!(
+            "change {old} → {new_domain}? WordPress URLs are rewritten across the \
+             database (a backup is taken first). [y/N] "
+        );
+        let mut a = String::new();
+        if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
+            eprintln!("aborted (domain unchanged)");
+            exit(1);
+        }
+    }
+    let r = request("site.domain", json!({ "id": site["id"], "domain": new_domain }));
+    if json_output {
+        return print_json(&r);
+    }
+    println!(
+        "✓ {old} → https://{} ({} URL replacement{}{})",
+        r["site"]["domain"].as_str().unwrap_or(new_domain),
+        r["replacements"].as_u64().unwrap_or(0),
+        if r["replacements"] == json!(1) { "" } else { "s" },
+        r["backup_path"]
+            .as_str()
+            .or(r["backupPath"].as_str())
+            .map(|p| format!("; backup: {p}"))
+            .unwrap_or_default(),
+    );
+}
+
+fn cmd_site_move(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site move <domain> <dest-parent>");
+    let Some(dest) = words.get(1).filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site move <domain> <dest-parent>");
+        exit(1);
+    };
+    let dest = match std::fs::canonicalize(dest) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("rex: cannot use {dest}: {e}");
+            exit(1);
+        }
+    };
+    let r = request(
+        "site.move",
+        json!({ "id": site["id"], "destParent": dest.to_string_lossy() }),
+    );
+    if json_output {
+        return print_json(&r);
+    }
+    println!("✓ moved → {}", r["path"].as_str().unwrap_or("?"));
+}
+
+fn cmd_site_env(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site env <domain> [set K=V | unset K]");
+    let id = site["id"].clone();
+    let fetch = || -> Vec<(String, String)> {
+        request("site.env", json!({ "id": id }))["vars"]
+            .as_array()
+            .map(|v| {
+                v.iter()
+                    .filter_map(|e| {
+                        Some((e["name"].as_str()?.to_string(), e["value"].as_str()?.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    match words.get(1).map(String::as_str) {
+        None => {
+            if json_output {
+                return print_json(&request("site.env", json!({ "id": id })));
+            }
+            let vars = fetch();
+            if vars.is_empty() {
+                return println!("(no env vars)");
+            }
+            for (k, v) in vars {
+                println!("{k}={v}");
+            }
+        }
+        // The backend replaces the whole set — merge client-side.
+        Some("set") => {
+            let Some((k, v)) = words.get(2).and_then(|kv| kv.split_once('=')) else {
+                eprintln!("rex: usage: rex site env <domain> set KEY=value");
+                exit(1);
+            };
+            let mut vars = fetch();
+            vars.retain(|(name, _)| name != k);
+            vars.push((k.to_string(), v.to_string()));
+            let payload: Vec<Value> =
+                vars.iter().map(|(n, val)| json!({ "name": n, "value": val })).collect();
+            let r = request("site.env.set", json!({ "id": id, "vars": payload }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {k}={v} (site backend reloaded)");
+        }
+        Some("unset") => {
+            let Some(k) = words.get(2) else {
+                eprintln!("rex: usage: rex site env <domain> unset KEY");
+                exit(1);
+            };
+            let mut vars = fetch();
+            let before = vars.len();
+            vars.retain(|(name, _)| name != k);
+            if vars.len() == before {
+                eprintln!("rex: no env var `{k}` on this site");
+                exit(1);
+            }
+            let payload: Vec<Value> =
+                vars.iter().map(|(n, val)| json!({ "name": n, "value": val })).collect();
+            let r = request("site.env.set", json!({ "id": id, "vars": payload }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ removed {k}");
+        }
+        _ => {
+            eprintln!("rex: usage: rex site env <domain> [set K=V | unset K]");
+            exit(1);
+        }
+    }
+}
+
+fn cmd_site_cert(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site cert <domain> [--regenerate]");
+    if words.iter().any(|w| w == "--regenerate") {
+        let r = request("site.cert.regenerate", json!({ "id": site["id"] }));
+        if json_output {
+            return print_json(&r);
+        }
+        println!("✓ fresh certificate issued (edge reloaded)");
+        return;
+    }
+    let data = request("site.cert", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&data);
+    }
+    if data.is_null() {
+        return println!("no certificate yet (issued on first serve)");
+    }
+    println!(
+        "expires {} ({} days left)\nSANs: {}",
+        data["notAfter"].as_str().unwrap_or("?"),
+        data["daysLeft"].as_i64().unwrap_or(0),
+        data["sans"]
+            .as_array()
+            .map(|s| s.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default(),
+    );
 }
 
 // ── service / mail / tunnel / tld / version ──────────────────────────────────

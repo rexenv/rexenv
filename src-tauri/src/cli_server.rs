@@ -50,6 +50,11 @@ struct SiteCreateArgs {
     php: Option<String>,
     server: Option<crate::state::models::WebServer>,
     db: Option<crate::state::models::SiteDbEngine>,
+    /// Blueprint NAME (resolved to its id against the saved list).
+    blueprint: Option<String>,
+    /// Convert to multisite right after the install (`subdomain` /
+    /// `subdirectory`) — the same convert-after-install flow blueprints use.
+    multisite: Option<String>,
 }
 
 pub fn parse_request(line: &str) -> Result<Request> {
@@ -221,7 +226,40 @@ where
                 path: String::new(),
                 db_engine: a.db.unwrap_or(crate::state::models::SiteDbEngine::Mysql),
             };
-            let created = commands::sites::create_site(state.clone(), site, None, None).await?;
+            let blueprint_id = match &a.blueprint {
+                None => None,
+                Some(name) => {
+                    let all = commands::blueprints::list_blueprints(state.clone())?;
+                    let found = all.iter().find(|b| &b.name == name).map(|b| b.id.clone());
+                    Some(found.ok_or_else(|| {
+                        Error::Other(format!(
+                            "no blueprint named `{name}` (saved: {})",
+                            all.iter().map(|b| b.name.as_str()).collect::<Vec<_>>().join(", ")
+                        ))
+                    })?)
+                }
+            };
+            let is_wp = matches!(
+                a.site_type.unwrap_or(crate::state::models::SiteType::Wordpress),
+                crate::state::models::SiteType::Wordpress
+            );
+            let multisite = a.multisite.clone();
+            if multisite.is_some() && !is_wp {
+                return Err(Error::Other("--multisite needs a WordPress site".into()));
+            }
+            let created =
+                commands::sites::create_site(state.clone(), site, None, blueprint_id).await?;
+            // Convert-after-install — the blueprint flow's seam, reused.
+            let created = match multisite {
+                Some(mode) => commands::wordpress::wp_multisite_convert(
+                    state.clone(),
+                    created.id.clone(),
+                    mode,
+                )
+                .await?
+                .unwrap_or(created),
+                None => created,
+            };
             to_value(&created)
         }
         // Site detail: the SiteDetail overview's data, merged. Resources, cert
@@ -283,6 +321,84 @@ where
                 .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
             let deleted = commands::sites::delete_site(state.clone(), tunnels, id).await?;
             Ok(json!({ "deleted": deleted }))
+        }
+        // Site settings — the SiteDetail Settings-card actions.
+        "site.rename" => {
+            let state = app_state(app)?;
+            let site = commands::sites::rename_site(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "name", cmd)?,
+            )?;
+            to_value(&site)
+        }
+        "site.domain" => {
+            let state = app_state(app)?;
+            let tunnels = app
+                .try_state::<commands::tunnels::Tunnels>()
+                .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
+            let change = commands::sites::change_site_domain(
+                state.clone(),
+                tunnels,
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "domain", cmd)?,
+            )
+            .await?;
+            to_value(&change)
+        }
+        "site.move" => {
+            let state = app_state(app)?;
+            let site = commands::sites::move_site_docroot(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "destParent", cmd)?,
+            )
+            .await?;
+            to_value(&site)
+        }
+        "site.env" => {
+            let state = app_state(app)?;
+            let vars = commands::sites::list_site_env(state.clone(), need_str(&args, "id", cmd)?)?;
+            Ok(json!({ "vars": to_value(&vars)? }))
+        }
+        // Replaces the WHOLE set (the UI's model) — the CLI merges client-side.
+        "site.env.set" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let vars: Vec<commands::sites::EnvVarInput> =
+                serde_json::from_value(args["vars"].clone())
+                    .map_err(|e| Error::Other(format!("bad site.env.set vars: {e}")))?;
+            commands::sites::set_site_env(state.clone(), id, vars).await?;
+            Ok(Value::Null)
+        }
+        "site.cert" => {
+            let state = app_state(app)?;
+            let cert =
+                commands::sites::site_cert_info(state.clone(), need_str(&args, "id", cmd)?)?;
+            to_value(&cert)
+        }
+        "site.cert.regenerate" => {
+            let state = app_state(app)?;
+            commands::sites::regenerate_site_cert(state.clone(), need_str(&args, "id", cmd)?)
+                .await?;
+            Ok(Value::Null)
+        }
+        "site.server" => {
+            let state = app_state(app)?;
+            let server: crate::state::models::WebServer =
+                serde_json::from_value(args["server"].clone())
+                    .map_err(|e| Error::Other(format!("bad server: {e}")))?;
+            let site = commands::sites::set_site_web_server(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                server,
+            )
+            .await?;
+            to_value(&site)
+        }
+        "blueprint.list" => {
+            let state = app_state(app)?;
+            Ok(json!({ "blueprints": to_value(&commands::blueprints::list_blueprints(state.clone())?)? }))
         }
         // Logs. `logs.targets` = the Logs tab's curated per-site sources (plus
         // the WP debug.log entry the tab exposes separately); `logs.tail` = any
