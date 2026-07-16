@@ -37,20 +37,20 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | 🟡 | convert-after-install, exactly the blueprint flow |
-| `site create --blueprint <name>` | `list_blueprints` (resolve name→id) + `create_site(blueprint_id)` | 🟢 | |
+| `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | ✓ | shipped 16 Jul — full live run: create → multisite subdirectory in info → 200 → deleted |
+| `site create --blueprint <name>` | `list_blueprints` (name→id) + `create_site(blueprint_id)` | ✓ | shipped 16 Jul — miss errors naming saved blueprints; `rex blueprints` lists them |
 | `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on tr.rex (WP, real core version) + gpt.rex (php/FrankenPHP resources) |
 | `site open <domain>` | — (`open https://<domain>`) | ✓ | shipped 16 Jul — domain validated via `site.list`; missing-domain exit 1 |
 | `site login <domain> [--print]` | `wp_admin_login_url` | ✓ | shipped 16 Jul — minted link curl-verified: 302 → /wp-admin/; non-WP site refused |
 | `site logs <domain> [--source K] [--lines N] [--follow]` | `log_targets` + `tail_log` (+ `wp_debug_log_tail` via the `wp-debug` pseudo-source) | ✓ | shipped 16 Jul — sources list, tails, --follow caught a live request; wp-debug reads the docroot debug.log |
-| `site rename <domain> <name>` | `rename_site` | 🟢 | |
-| `site domain <domain> <new-domain>` | `change_site_domain` | 🟢 | destructive-ish (URL rewrite) → confirm + `--yes` |
-| `site move <domain> <path>` | `move_site_docroot` | 🟢 | preflight errors already backend-side |
+| `site rename <domain> <name>` | `rename_site` | ✓ | shipped 16 Jul — round-trip live |
+| `site domain <domain> <new-domain> [--yes]` | `change_site_domain` | ✓ | shipped 16 Jul — confirm-gated; passthrough, live-verify against the running app (guard blocks override bounce in the harness) |
+| `site move <domain> <dest-parent>` | `move_site_docroot` | ✓ | shipped 16 Jul — passthrough (preflights backend-side); verify in-app once |
 | `site php <domain> <minor>` | `set_site_php_version` | ✓ | shipped 16 Jul — 8.3→8.4→8.3 live, 200 both ways |
-| `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | 🟢 | |
+| `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | ✓ | shipped 16 Jul — passthrough; verify against the running app (override stop is guard-blocked in the harness) |
 | `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
-| `site env <domain> [get\|set K=V\|unset K]` | `list_site_env` / `set_site_env` | 🟢 | |
-| `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | 🟢 | |
+| `site env <domain> [set K=V \| unset K]` | `list_site_env` / `set_site_env` | ✓ | shipped 16 Jul — set→list→unset live (client-side merge; backend replaces the set) |
+| `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | ✓ | shipped 16 Jul — info live (SANs, days left) |
 | `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
 
 ## PHP
@@ -60,7 +60,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `php list` | `list_php_versions` | ✓ | shipped 16 Jul — live (6 pinned minors) |
 | `php default <minor>` | `set_default_php_version` | ✓ | shipped 16 Jul — flip + restore live |
 | `php install <minor>` / `php uninstall <minor>` | `set_php_version_installed` | ✓ | shipped 16 Jul — thin passthrough, NOT live-run (pool stop is meaningless under the example guard); verify in-app once |
-| `php settings <minor> [get\|set K=V]` | `get_php_settings` / `apply_php_settings` | 🟢 | apply restarts that minor's pool — say so |
+| `php settings <minor> [set K=V]` | `get_php_settings` / `apply_php_settings` | ✓ | shipped 16 Jul — read live (real ini values); set is a passthrough (pool restart guard-blocked in harness) |
 
 ## Services
 
@@ -77,9 +77,9 @@ convention) — see "Infrastructure" for progress streaming.
 |---|---|---|---|
 | `db export <domain>` | `wp_db_export` | ✓ | shipped 16 Jul — always ~/Downloads (the IPC's contract; a custom path would be new backend); MySQL + MariaDB both live-verified |
 | `db import <domain> <file.sql> [--yes]` | `wp_db_import` | ✓ | shipped 16 Jul — confirm + backup-first tip; path canonicalized client-side; round-trip live-verified (site 200 after) |
-| `db reset <domain>` | `wp_site_reset` | 🟢 | VERY destructive (drop + reinstall) → typed confirmation, not just `--yes` |
-| `db versions [--set <engine> <version>]` | `db_engine_versions` / `set_db_engine_version` | 🟢 | switch restarts the engine — say so |
-| `db browse` | — (`open https://adminer.rexenv.rex`) | ⚪ | the Adminer vhost; needs stack running |
+| `db reset <domain>` | `wp_site_reset` | ✓ | shipped 16 Jul — TYPED domain confirmation (--confirm <domain> for scripts); wrong-confirm abort live |
+| `db versions [--set <engine> <version>]` | `databases_status` + `db_engine_versions` / `set_db_engine_version` | ✓ | shipped 16 Jul — matrix live; --set passthrough |
+| `db browse` | — (`open https://adminer.rexenv.rex`) | ✓ | shipped 16 Jul |
 
 ## WordPress
 
@@ -90,7 +90,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `wp <domain> user list\|create\|set-password\|set-role` | `wp_users` / `wp_user_*` | ✓ | shipped 16 Jul — passwords generated (urandom) + printed once, never argv; login-or-id accepted. NOTE: no `wp_user_delete` IPC exists — a CLI user delete would be new backend |
 | `wp <domain> search-replace <from> <to> [--dry-run] [--yes]` | `wp_search_replace` | ✓ | shipped 16 Jul — dry_run exposed; live dry-run verified |
 | `wp <domain> cache-flush` / `cron run` | `wp_cache_flush` / `wp_cron_run_due` | ✓ | shipped 16 Jul — 18 due events executed live |
-| `wp <domain> core update` | `wp_core_update` | ✓ | shipped 16 Jul (passthrough, not live-run); core switch/versions still 🟢 open |
+| `wp <domain> core update\|versions\|switch <v>` | `wp_core_update/versions/switch_version` | ✓ | shipped 16 Jul — versions live (wp.org list); update/switch passthroughs (long, not live-run) |
 | `wp <domain> maintenance [on\|off]` | `wp_maintenance_get/set` | ✓ | shipped 16 Jul — wire-proven (503 during, 200 after) |
 | `rex wp <domain> -- <raw wp-cli args>` (passthrough) | — | 🔴 | no generic-exec IPC (deliberate: every WP op is a vetted command); a raw passthrough is a security/design decision, not a gap-fill |
 
@@ -122,7 +122,7 @@ convention) — see "Infrastructure" for progress streaming.
 |---|---|---|---|
 | `rex version` | `app_info` + CLI's own version | ✓ | shipped 16 Jul |
 | `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
-| shell completions (`rex completions zsh\|bash\|fish`) | — | ⚪ | static generation in `cli/` |
+| `rex completions zsh\|bash` | — | ✓ | shipped 16 Jul — static tree, both syntax-checked |
 
 ## Infrastructure (enables the above, not user commands)
 
