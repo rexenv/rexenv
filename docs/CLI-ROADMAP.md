@@ -66,8 +66,8 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `service start\|stop mysql\|mariadb\|postgres\|redis` | `start_database` / `stop_database` | 🟢 | per-engine |
-| `service start\|stop mailpit` | `start_mail` / `stop_mail` | 🟢 | |
+| `service start\|stop <engine>` | `start_database` / `stop_database` | ✓ | shipped 16 Jul — postgres cycled idle→running→idle live |
+| `service start\|stop mailpit` | `start_mail` / `stop_mail` | ✓ | shipped 16 Jul |
 | `service start\|stop nginx\|caddy\|php-<minor>` | — | 🔴 | web tier has no single-service IPC (deliberate — topology invariants); design first |
 | `logs [key] [--lines N] [--follow]` | `tail_log` + a `logs.list` dir-listing arm | ✓ | shipped 16 Jul — no key lists every log file with sizes |
 
@@ -88,39 +88,39 @@ convention) — see "Infrastructure" for progress streaming.
 | `wp <domain> plugin list\|install\|activate\|deactivate\|update\|delete` | `wp_plugins` / `wp_plugin_*` | ✓ | shipped 16 Jul — full install→delete cycle live, zero residue; network variants still unmapped |
 | `wp <domain> theme list\|install\|activate\|update\|delete` | `wp_themes` / `wp_theme_*` | ✓ | shipped 16 Jul |
 | `wp <domain> user list\|create\|set-password\|set-role` | `wp_users` / `wp_user_*` | ✓ | shipped 16 Jul — passwords generated (urandom) + printed once, never argv; login-or-id accepted. NOTE: no `wp_user_delete` IPC exists — a CLI user delete would be new backend |
-| `wp search-replace <domain> <from> <to>` | `wp_search_replace` | 🟢 | destructive → `--yes`; check the IPC's dry-run flag and expose it |
-| `wp cache-flush <domain>` / `wp cron run <domain>` | `wp_cache_flush` / `wp_cron_run_due` | 🟢 | |
-| `wp core update\|switch <domain> [version]` | `wp_core_update` / `wp_core_switch_version` / `wp_core_versions` | 🟢 | long-running |
-| `wp maintenance <domain> on\|off` | `wp_maintenance_set` | 🟢 | |
+| `wp <domain> search-replace <from> <to> [--dry-run] [--yes]` | `wp_search_replace` | ✓ | shipped 16 Jul — dry_run exposed; live dry-run verified |
+| `wp <domain> cache-flush` / `cron run` | `wp_cache_flush` / `wp_cron_run_due` | ✓ | shipped 16 Jul — 18 due events executed live |
+| `wp <domain> core update` | `wp_core_update` | ✓ | shipped 16 Jul (passthrough, not live-run); core switch/versions still 🟢 open |
+| `wp <domain> maintenance [on\|off]` | `wp_maintenance_get/set` | ✓ | shipped 16 Jul — wire-proven (503 during, 200 after) |
 | `rex wp <domain> -- <raw wp-cli args>` (passthrough) | — | 🔴 | no generic-exec IPC (deliberate: every WP op is a vetted command); a raw passthrough is a security/design decision, not a gap-fill |
 
 ## Mail
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `mail list` | `mailpit_messages` | 🟢 | |
-| `mail clear` | `mailpit_clear` | 🟢 | destructive-lite → `--yes` |
-| `mail open` | `mailpit_status` (port) + local `open` | ⚪ | Mailpit web UI |
+| `mail list` | `mailpit_messages` | ✓ | shipped 16 Jul — 3 real caught messages listed |
+| `mail clear [--yes]` | `mailpit_clear` | ✓ | shipped 16 Jul (confirm-gated; not live-run — user mail) |
+| `mail open` | `mailpit_status` (uiUrl) + local `open` | ✓ | shipped 16 Jul |
 
 ## Tunnels
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `tunnel list` | `tunnels_status` | 🟢 | |
-| `tunnel start\|stop <domain>` | `start_tunnel` / `stop_tunnel` | 🟢 | start = public exposure → confirm + `--yes`; check provider-config preconditions |
+| `tunnel list` | `tunnels_status` | ✓ | shipped 16 Jul |
+| `tunnel start\|stop <domain>` | `start_tunnel` / `stop_tunnel` | ✓ | shipped 16 Jul — start confirm-gated, prints public URL; start not live-run (public exposure) |
 
 ## TLD & config
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `tld [--set <tld>]` | `default_tld` / `set_default_tld` / `tld_policy` | 🟢 | policy errors (blocked TLDs) already backend-side |
+| `tld [--set <tld>]` | `default_tld` / `set_default_tld` | ✓ | shipped 16 Jul — policy errors stay backend-side |
 | `config get\|set <key> [value]` | `get_setting` / `set_setting` | 🟡 | raw KV — allow-list the keys the UI exposes, don't open the whole table |
 
 ## Misc
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `rex version` | `app_info` + CLI's own version | 🟢 | also surfaces CLI↔app protocol drift |
+| `rex version` | `app_info` + CLI's own version | ✓ | shipped 16 Jul |
 | `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
 | shell completions (`rex completions zsh\|bash\|fish`) | — | ⚪ | static generation in `cli/` |
 
