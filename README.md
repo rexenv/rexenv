@@ -78,6 +78,10 @@ rexenv/
 ├── package.json · tsconfig.json · vite.config.ts
 ├── tailwind.config.js · postcss.config.js · index.html
 │
+├── cli/                        # ── `rex` CLI (bin) — remote control ONLY ──
+│   └── src/main.rs             # never links the app lib: one JSON line over the
+│                               #   app's private 0600 socket; app not running → exit 2
+│
 ├── src/                        # ── FRONTEND (React + TS) ──
 │   ├── main.tsx                # React entry
 │   ├── App.tsx                 # router, first-run gate, fatal-error screen
@@ -106,6 +110,8 @@ rexenv/
     └── src/
         ├── main.rs             # binary entry (calls lib::run)
         ├── lib.rs              # Tauri builder; registers all commands
+        ├── cli_server.rs       # `rex` socket server — dispatches to the SAME
+        │                       #   commands::* fns the UI calls (one code path)
         ├── error.rs            # shared error type (serializes for the UI)
         │
         ├── commands/           # Tauri IPC handlers (THIN — just call core/)

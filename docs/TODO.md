@@ -231,6 +231,25 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   flow. Pairs with the next item. ✓ **Done:** verified by a real fresh-account cold run on
   10 July 2026 — onboarding system setup, live binary downloads, WordPress site over HTTPS
   with a valid lock, rest of the app all worked end to end.
+- [x] **`rex` CLI v1 — remote control for the running app** (design green-lit 16 Jul).
+  Separate `cli/` crate (bin `rex`) that CANNOT link the app lib (structural
+  second-brain guarantee — the examples-stop-the-edge class is impossible at compile
+  time); one JSON line per request over `<config>/rexenv-cli.sock` (`0600`, unlinked
+  at bind, connect-probed); app-side `cli_server.rs` dispatches to the SAME
+  `commands::*` fns the UI calls. Surface: `status`, `start`/`stop`/`restart`,
+  `site list`, `site create <domain> [--name --type --php --server --db]`,
+  `site delete <domain> [--yes]` (confirm-gated), global `--json`; app not running →
+  exit 2 with a clear message. ✓ **Done** in 4 commits `d08d157`/`9b8e01e`/`a9e4963`/
+  `164fed9`: 273 lib tests (+4), clippy no new, examples build; **live-verified** via
+  `examples/cli_socket_check` against the real stack (13 adopted services, real DNS
+  probe, `rex status`/`--json`, not-running exit path) and a full site round-trip
+  (`rex site create clitest.rex --type php --php 8.4` → listed serving + 200 over
+  HTTPS through the real edge; delete → row gone, wire dead, docroot removed).
+  **Human-verify remaining:** `rex start/stop/restart` need the NEW app build running
+  (the socket server ships with it) — exercise on the next app run.
+- [ ] **`rex` CLI packaging** — ship the `rex` binary in the app bundle + a
+  Settings/onboarding "install CLI" step (symlink into PATH, Herd/Docker-style).
+  v1 builds from `cli/` only; not release-blocking until the CLI is user-facing.
 - [ ] **Release 5.4 — execute the clean-Mac smoke test** — checklist already written:
   `docs/SMOKE-TEST.md`. First pass (fresh-account, 10 Jul 2026) all green except the
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;

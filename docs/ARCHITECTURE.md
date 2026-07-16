@@ -322,6 +322,27 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding
   process + a copy-paste free command.
 
+## 8.1 `rex` CLI (`cli/`, `src-tauri/src/cli_server.rs`)
+
+- **Remote control ONLY — the app stays the single brain.** The `cli/` crate (bin
+  `rex`) never links the app lib: it cannot open SQLite or spawn/stop services, only
+  write one JSON request line to the app's private socket and print the reply. That
+  makes the examples-stop-the-edge bug class impossible at compile time.
+- **Socket:** `<config>/rexenv-cli.sock`, `0600`, next to `caddy-admin.sock` — same
+  trust boundary (same-user processes already own our SQLite/processes; other users
+  are locked out). Never TCP. Stale files are unlinked at bind; the CLI *connects*
+  to detect liveness (a stat would lie — same lesson as `admin_alive`).
+- **One code path:** each request dispatches to the SAME `commands::*` fn the UI
+  invokes (`status`, `start`, `stop`, `site.list`, `site.create`, `site.delete`);
+  `rex restart` is the client sending `stop` then `start`. `site.create` submits
+  what the New Site dialog submits (empty `path` → backend-derived, registry-default
+  PHP); `site.delete` is by-id after a domain lookup, confirm-gated in the client.
+- **App not running → hard error, exit 2** ("open the app first"). Deliberate: a
+  headless CLI-spawned backend would be a second ServiceManager/SQLite writer/
+  watchdog racing the GUI — the exact second-brain class the stack guard exists to
+  kill. Protocol: newline-delimited JSON, one request per connection,
+  `{"ok":true,"data":…}` / `{"ok":false,"error":…}`; `--json` for scripting.
+
 ## 9. WordPress layer
 
 - Provision (`core/sites.rs`): docroot + cert + DB + config gen + WP core install via
