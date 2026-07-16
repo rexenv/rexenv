@@ -44,6 +44,24 @@ tauri-plugin-dialog = "2"
 # Read-only parsing of our own issued certs (Settings tab cert info); also used by tests.
 x509-parser = "0.16"
 
+# Native JS dialog panels for the webview (platform/macos/webview_dialogs.rs) —
+# wry implements no WKUIDelegate JS dialogs on macOS. Versions match wry's own
+# transitive deps, so nothing new enters the tree.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry", "objc2-core-foundation"] }
+objc2-app-kit = { version = "0.3", features = [
+    "NSAlert",
+    "NSButton",
+    "NSControl",
+    "NSResponder",
+    "NSTextField",
+    "NSView",
+    "NSWindow",
+] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKUIDelegate", "objc2-app-kit"] }
+
 [dev-dependencies]
 # MockRuntime app for cli_server tests + the cli_socket_check example — lets us
 # exercise the real command dispatch without a GUI event loop.

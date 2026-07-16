@@ -13,6 +13,15 @@ mod linux;
 
 use traits::Platform;
 
+/// Native JS dialog panels (alert/confirm/prompt) for the app webview — a
+/// container gap, not a service concern, so it lives beside the traits rather
+/// than behind one. macOS only: wry implements no WKUIDelegate JS-dialog
+/// methods there, so `confirm()` silently returns `false`. Windows (WebView2)
+/// and Linux (webkitgtk) webviews render their own JS dialogs, and tauri's
+/// `PlatformWebview::inner` is macOS/iOS-only — so no cross-platform shim.
+#[cfg(target_os = "macos")]
+pub use macos::webview_dialogs::install_js_dialog_panels;
+
 /// Construct the platform implementation for the current OS.
 pub fn current() -> Box<dyn Platform> {
     #[cfg(target_os = "macos")]

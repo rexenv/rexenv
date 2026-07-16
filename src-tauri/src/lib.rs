@@ -82,6 +82,18 @@ pub fn run() {
                 )?;
             }
 
+            // JS dialog panels (alert/confirm/prompt): wry implements none on
+            // macOS, so confirm() silently returned false in-app — Adminer's
+            // confirm-gated delete/drop buttons no-oped. Installed on the raw
+            // WKWebView. macOS-only gap (and `PlatformWebview::inner` is
+            // macOS/iOS-only): Windows/Linux webviews render their own dialogs.
+            #[cfg(target_os = "macos")]
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.with_webview(|pw| unsafe {
+                    platform::install_js_dialog_panels(pw.inner());
+                });
+            }
+
             let platform = platform::current();
 
             // DNS: the resolution plane must SURVIVE the app — the data plane

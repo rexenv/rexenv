@@ -5,6 +5,8 @@
 //! CA trust, privileged port binding, autostart, binary download) are wired up
 //! as `todo!()` so the architecture is complete and `cargo check` passes.
 
+pub mod webview_dialogs;
+
 use crate::error::{Error, Result};
 use crate::platform::traits::*;
 use std::path::{Path, PathBuf};
