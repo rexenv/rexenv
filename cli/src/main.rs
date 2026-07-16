@@ -37,6 +37,10 @@ COMMANDS:
                 WordPress sites get the one-click install)
   site delete <domain> [--yes]
                 Delete a site — drops its database and docroot (asks first)
+  site logs <domain> [--source K] [--lines N] [--follow]
+                Tail a site's log sources (no --source lists them)
+  logs [key] [--lines N] [--follow]
+                Tail any service log (no key lists all log files)
   help          Show this help
 
 OPTIONS:
@@ -128,11 +132,13 @@ fn main() {
         Some("start") => cmd_lifecycle(&["start"], json_output),
         Some("stop") => cmd_lifecycle(&["stop"], json_output),
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
+        Some("logs") => cmd_logs(&words[1..], json_output),
         Some("site") => match words.get(1).map(String::as_str) {
             Some("list") => cmd_site_list(json_output),
             Some("create") => cmd_site_create(&words[2..], json_output),
             Some("delete") => cmd_site_delete(&words[2..], json_output),
             Some("info") => cmd_site_info(&words[2..], json_output),
+            Some("logs") => cmd_site_logs(&words[2..], json_output),
             Some("open") => cmd_site_open(&words[2..]),
             Some("login") => cmd_site_login(&words[2..], json_output),
             _ => {
@@ -374,6 +380,90 @@ fn cmd_site_login(words: &[String], json_output: bool) {
     } else {
         open_url(url);
     }
+}
+
+// ── logs ─────────────────────────────────────────────────────────────────────
+
+/// Print a tail, then (--follow) poll every second and print only the lines
+/// beyond the largest tail/head overlap of consecutive windows — the same
+/// near-real-time model as the app's Logs tab. Repeated identical lines can
+/// fool the overlap occasionally; fine for a log follower.
+fn tail_loop(base_args: Value, lines: u64, follow: bool) {
+    let fetch = |n: u64| -> Vec<String> {
+        let mut a = base_args.clone();
+        a["lines"] = json!(n);
+        request("logs.tail", a)["lines"]
+            .as_array()
+            .map(|v| v.iter().filter_map(|l| l.as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    };
+    let mut prev = fetch(lines);
+    for l in &prev {
+        println!("{l}");
+    }
+    if !follow {
+        return;
+    }
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let new = fetch(200);
+        let overlap = (1..=prev.len().min(new.len()))
+            .rev()
+            .find(|&k| prev[prev.len() - k..] == new[..k])
+            .unwrap_or(0);
+        for l in &new[overlap..] {
+            println!("{l}");
+        }
+        prev = new;
+    }
+}
+
+fn lines_flag(words: &[String]) -> u64 {
+    flag_value(words, "--lines").and_then(|v| v.parse().ok()).unwrap_or(100)
+}
+
+fn cmd_logs(words: &[String], json_output: bool) {
+    let key = words.first().filter(|w| !w.starts_with("--"));
+    let Some(key) = key else {
+        let data = request("logs.list", Value::Null);
+        if json_output {
+            return print_json(&data);
+        }
+        let Some(files) = data["files"].as_array() else { return println!("(no logs)") };
+        for f in files {
+            println!("{:>9}  {}", format!("{} B", f["bytes"].as_u64().unwrap_or(0)), f["key"].as_str().unwrap_or("?"));
+        }
+        return;
+    };
+    if json_output {
+        return print_json(&request("logs.tail", json!({ "key": key, "lines": lines_flag(words) })));
+    }
+    tail_loop(json!({ "key": key }), lines_flag(words), words.iter().any(|w| w == "--follow"));
+}
+
+fn cmd_site_logs(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site logs <domain> [--source K] [--lines N] [--follow]");
+    let id = site["id"].clone();
+    let Some(source) = flag_value(words, "--source") else {
+        let data = request("logs.targets", json!({ "id": id }));
+        if json_output {
+            return print_json(&data);
+        }
+        let Some(targets) = data["targets"].as_array() else { return println!("(no sources)") };
+        println!("sources (pass one via --source):");
+        for t in targets {
+            println!("  {:<28} {}", t["key"].as_str().unwrap_or("?"), t["label"].as_str().unwrap_or(""));
+        }
+        return;
+    };
+    // `id` rides along for the wp-debug pseudo-source (docroot-based tail).
+    let base = json!({ "key": source, "id": id });
+    if json_output {
+        let mut a = base;
+        a["lines"] = json!(lines_flag(words));
+        return print_json(&request("logs.tail", a));
+    }
+    tail_loop(base, lines_flag(words), words.iter().any(|w| w == "--follow"));
 }
 
 fn cmd_site_delete(words: &[String], json_output: bool) {

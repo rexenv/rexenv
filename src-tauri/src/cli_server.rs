@@ -266,6 +266,62 @@ where
             let deleted = commands::sites::delete_site(state.clone(), tunnels, id).await?;
             Ok(json!({ "deleted": deleted }))
         }
+        // Logs. `logs.targets` = the Logs tab's curated per-site sources (plus
+        // the WP debug.log entry the tab exposes separately); `logs.tail` = any
+        // key within the log dir; `logs.list` = every service log file (the
+        // log dir listing — no site scope). Follow mode is client-side polling
+        // of the same tail, exactly like the Logs tab.
+        "logs.targets" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("logs.targets needs an id".into()))?
+                .to_string();
+            let mut targets =
+                to_value(&commands::logs::log_targets(state.clone(), id.clone())?)?;
+            let is_wp = commands::sites::list_sites(state.clone())?
+                .into_iter()
+                .any(|s| s.id == id && matches!(s.site_type, crate::state::models::SiteType::Wordpress));
+            if let (Some(list), true) = (targets.as_array_mut(), is_wp) {
+                list.push(json!({ "key": "wp-debug", "label": "WordPress debug.log" }));
+            }
+            Ok(json!({ "targets": targets }))
+        }
+        "logs.tail" => {
+            let state = app_state(app)?;
+            let key = args["key"]
+                .as_str()
+                .ok_or_else(|| Error::Other("logs.tail needs a key".into()))?
+                .to_string();
+            let lines = args["lines"].as_u64().unwrap_or(100) as usize;
+            // The per-site WP debug.log lives in the DOCROOT, not the log dir —
+            // routed by pseudo-key + site id (same split as the Logs tab).
+            let lines = if key == "wp-debug" {
+                let id = args["id"]
+                    .as_str()
+                    .ok_or_else(|| Error::Other("wp-debug tail needs an id".into()))?
+                    .to_string();
+                commands::logs::wp_debug_log_tail(state.clone(), id, lines)?
+            } else {
+                commands::logs::tail_log(state.clone(), key, lines)?
+            };
+            Ok(json!({ "lines": lines }))
+        }
+        "logs.list" => {
+            let state = app_state(app)?;
+            let dir = state.platform.paths().log_dir()?;
+            let mut files: Vec<Value> = std::fs::read_dir(&dir)
+                .map_err(Error::from)?
+                .flatten()
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    let meta = e.metadata().ok()?;
+                    meta.is_file().then(|| json!({ "key": name, "bytes": meta.len() }))
+                })
+                .collect();
+            files.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
+            Ok(json!({ "files": files }))
+        }
         other => Err(Error::Other(format!(
             "unknown command: {other} (this rex may be newer than the running app)"
         ))),
@@ -353,9 +409,10 @@ mod tests {
         let app = tauri::test::mock_app();
         // Every ROUTED command reaches the state check (proving the arm
         // exists); an unrouted one must say so instead.
-        for cmd in
-            ["status", "start", "stop", "site.list", "site.create", "site.delete", "site.info", "site.login"]
-        {
+        for cmd in [
+            "status", "start", "stop", "site.list", "site.create", "site.delete", "site.info",
+            "site.login", "logs.targets", "logs.tail", "logs.list",
+        ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
             let v: Value = serde_json::from_str(&reply).expect("valid envelope");
