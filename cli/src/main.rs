@@ -80,6 +80,7 @@ COMMANDS:
   tld [--set <tld>]
                 Default TLD for new sites
   version       App + CLI versions
+  completions zsh|bash    Print a shell completion script (eval or install it)
   help          Show this help
 
 OPTIONS:
@@ -180,6 +181,7 @@ fn main() {
         Some("tunnel") => cmd_tunnel(&words[1..], json_output),
         Some("tld") => cmd_tld(&words[1..], json_output),
         Some("version") => cmd_version(json_output),
+        Some("completions") => cmd_completions(words.get(1).map(String::as_str)),
         Some("blueprints") => {
             let data = request("blueprint.list", Value::Null);
             if json_output {
@@ -615,6 +617,62 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
         return print_json(&updated);
     }
     print_site_update(&updated);
+}
+
+// ── shell completions ────────────────────────────────────────────────────────
+
+/// Static word completion (subcommand tree only — domains change too often to
+/// bake in; a dynamic version can call `rex site list --json` later).
+/// zsh:  rex completions zsh  > ~/.zfunc/_rex   (with ~/.zfunc in $fpath)
+/// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
+fn cmd_completions(shell: Option<&str>) {
+    const TOP: &str = "status start stop restart site wp php db service logs doctor mail tunnel tld blueprints version completions help";
+    const SITE: &str = "list create delete info open login logs php xdebug server rename domain move env cert";
+    const DB: &str = "export import reset versions browse";
+    const PHP: &str = "list default install uninstall settings";
+    const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
+    match shell {
+        Some("zsh") => println!(
+            "#compdef rex\n\
+             local -a words2\n\
+             case $CURRENT in\n\
+             2) compadd {TOP} ;;\n\
+             3) case $words[2] in\n\
+                site) compadd {SITE} ;;\n\
+                db) compadd {DB} ;;\n\
+                php) compadd {PHP} ;;\n\
+                service) compadd start stop ;;\n\
+                mail) compadd list open clear ;;\n\
+                tunnel) compadd list start stop ;;\n\
+                completions) compadd zsh bash ;;\n\
+                esac ;;\n\
+             4) case $words[2] in wp) compadd {WPA} ;; esac ;;\n\
+             esac"
+        ),
+        Some("bash") => println!(
+            "_rex() {{\n\
+             local cur=${{COMP_WORDS[COMP_CWORD]}}\n\
+             case $COMP_CWORD in\n\
+             1) COMPREPLY=($(compgen -W \"{TOP}\" -- \"$cur\")) ;;\n\
+             2) case ${{COMP_WORDS[1]}} in\n\
+                site) COMPREPLY=($(compgen -W \"{SITE}\" -- \"$cur\")) ;;\n\
+                db) COMPREPLY=($(compgen -W \"{DB}\" -- \"$cur\")) ;;\n\
+                php) COMPREPLY=($(compgen -W \"{PHP}\" -- \"$cur\")) ;;\n\
+                service) COMPREPLY=($(compgen -W \"start stop\" -- \"$cur\")) ;;\n\
+                mail) COMPREPLY=($(compgen -W \"list open clear\" -- \"$cur\")) ;;\n\
+                tunnel) COMPREPLY=($(compgen -W \"list start stop\" -- \"$cur\")) ;;\n\
+                completions) COMPREPLY=($(compgen -W \"zsh bash\" -- \"$cur\")) ;;\n\
+                esac ;;\n\
+             3) case ${{COMP_WORDS[1]}} in wp) COMPREPLY=($(compgen -W \"{WPA}\" -- \"$cur\")) ;; esac ;;\n\
+             esac\n\
+             }}\n\
+             complete -F _rex rex"
+        ),
+        _ => {
+            eprintln!("rex: usage: rex completions zsh|bash");
+            exit(1);
+        }
+    }
 }
 
 // ── site settings: server / rename / domain / move / env / cert ─────────────
