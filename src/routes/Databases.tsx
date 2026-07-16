@@ -49,11 +49,15 @@ function DbRow({
   onGoServices: () => void;
 }) {
   return (
-    <div className="flex items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0">
+    // flex-wrap + a name floor: the stopped-engine row (pill + long "Start …
+    // from Services" button + two meters) is wider than the 980px min window
+    // can spare — controls reflow to a second line instead of crushing and
+    // overlapping the name block.
+    <div className="flex flex-wrap items-center gap-4 border-b border-rex-border-subtle px-4 py-3 last:border-b-0">
       <div className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-rex-border bg-rex-surface-2 text-rex-text-muted">
         <Database className="h-4 w-4" strokeWidth={1.7} />
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[9rem] flex-1">
         <div className="flex items-center text-[0.84375rem] font-semibold text-rex-text">
           {db.label}
           {versions.length > 1 ? (
