@@ -1151,13 +1151,12 @@ impl ServiceManager {
         if marker.is_empty() {
             return 0;
         }
-        let owned = |port: u16| {
-            platform
-                .supervisor()
-                .owned_listeners(port, &marker)
-                .into_iter()
-                .min() // masters fork first → lowest pid (workers rarely match anyway)
-        };
+        // Adopt the MASTER of whatever holds the port — workers share the
+        // listen socket, so the listener query returns the whole tree, and the
+        // old lowest-pid pick broke under worker churn + pid recycling
+        // (Apache: a recycled worker got adopted, Stop-all killed that worker,
+        // and the surviving master blocked the next start's port gate).
+        let owned = |port: u16| platform.supervisor().owned_master(port, &marker);
         let mut adopted = 0u32;
 
         // Mail routing must survive adoption (QA P0-3): pool restarts (a settings

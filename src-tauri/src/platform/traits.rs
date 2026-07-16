@@ -143,6 +143,19 @@ pub trait ProcessSupervisor: Send + Sync {
         Vec::new()
     }
 
+    /// The MASTER among [`Self::owned_listeners`] on `port` — the pid to ADOPT
+    /// (and later signal). Workers share the master's listen socket (httpd,
+    /// nginx, php-fpm, mysqld all show the whole tree in a listener query), so
+    /// "who listens" is a SET and adoption must pick its root. The old
+    /// lowest-pid heuristic ("masters fork first") is FALSE under worker churn
+    /// plus pid recycling — observed live with Apache: recycled worker 71063
+    /// sat below master 95274, so the worker got adopted, Stop-all killed the
+    /// worker, and the surviving master blocked the next start's port gate.
+    /// Default: platforms without parent info degrade to lowest-pid.
+    fn owned_master(&self, port: u16, owner_marker: &str) -> Option<u32> {
+        self.owned_listeners(port, owner_marker).into_iter().min()
+    }
+
     /// PIDs whose full command line contains `marker` (a substring, typically an
     /// app-data path we own). Unlike `owned_listeners` this doesn't require the
     /// process to hold a port — used to reap a wedged, listener-less service (e.g.
@@ -376,4 +389,57 @@ pub trait Platform: Send + Sync {
     /// User-level supervisor that keeps the DNS resolver alive across app quits
     /// (macOS LaunchAgent KeepAlive).
     fn dns_agent(&self) -> &dyn DnsAgentManager;
+}
+
+/// Pick the MASTER from `(pid, ppid)` pairs of processes sharing one listen
+/// socket: the process whose parent is NOT itself in the set — workers are
+/// children of the master, while a master orphaned by an app quit is
+/// reparented to launchd (ppid 1) and a supervised one to its (non-listening)
+/// launcher. Multiple roots (shouldn't happen) resolve to the lowest pid for
+/// determinism; a set with no root (can't happen — a cycle) degrades the same
+/// way. Pure so the wraparound case is unit-testable without an OS.
+pub(crate) fn select_master(procs: &[(u32, u32)]) -> Option<u32> {
+    let pids: std::collections::HashSet<u32> = procs.iter().map(|&(pid, _)| pid).collect();
+    procs
+        .iter()
+        .filter(|(_, ppid)| !pids.contains(ppid))
+        .map(|&(pid, _)| pid)
+        .min()
+        .or_else(|| pids.into_iter().min())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_master;
+
+    #[test]
+    fn master_forked_first_still_wins() {
+        // The common shape the old lowest-pid heuristic happened to get right.
+        assert_eq!(select_master(&[(100, 1), (101, 100), (102, 100)]), Some(100));
+    }
+
+    #[test]
+    fn pid_wraparound_worker_below_master() {
+        // The live Apache bug: churned workers get recycled LOW pids, so
+        // lowest-pid picks a WORKER. Parent-based selection must not.
+        let procs = [(71063, 95274), (95274, 1), (95279, 95274), (95280, 95274)];
+        assert_eq!(select_master(&procs), Some(95274));
+    }
+
+    #[test]
+    fn single_process_is_its_own_master() {
+        assert_eq!(select_master(&[(500, 321)]), Some(500));
+    }
+
+    #[test]
+    fn supervised_master_with_a_live_foreign_parent() {
+        // Master's parent alive but not a listener (launcher/supervisor).
+        assert_eq!(select_master(&[(60, 42), (61, 60)]), Some(60));
+    }
+
+    #[test]
+    fn empty_and_multi_root_degrade_deterministically() {
+        assert_eq!(select_master(&[]), None);
+        assert_eq!(select_master(&[(20, 1), (10, 1)]), Some(10));
+    }
 }

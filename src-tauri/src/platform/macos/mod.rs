@@ -331,6 +331,32 @@ impl ProcessSupervisor for MacosSupervisor {
             .collect()
     }
 
+    fn owned_master(&self, port: u16, owner_marker: &str) -> Option<u32> {
+        let pids = self.owned_listeners(port, owner_marker);
+        if pids.is_empty() {
+            return None;
+        }
+        // One ps call for the whole set: pid+ppid pairs feed the pure
+        // parent-based selection (see `traits::select_master` — the lowest-pid
+        // fallback broke on Apache's churned/recycled worker pids).
+        let list = pids.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+        let pairs: Vec<(u32, u32)> = std::process::Command::new("ps")
+            .args(["-o", "pid=,ppid=", "-p", &list])
+            .output()
+            .ok()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter_map(|l| {
+                        let mut it = l.split_whitespace();
+                        Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        super::traits::select_master(&pairs).or_else(|| pids.into_iter().min())
+    }
+
     fn resource_usage(&self, pid: u32) -> Option<(f32, u64)> {
         // `ps` reads world-readable kinfo_proc, so this works for the ROOT edge
         // Caddy where sysinfo's proc_pidinfo (same-user only) returns nothing.
