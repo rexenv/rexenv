@@ -490,6 +490,10 @@ function DnsSslSetting() {
   });
 
   const dnsActive = !!dns?.running && !!dns?.resolverInstalled;
+  // Mode is part of the status, not a technical label: agent = the goal state
+  // (survives app quits), in-process = honest DEGRADED fallback (DNS dies with
+  // the app — amber, never green), down = fault. See DnsStatus.mode.
+  const dnsDegraded = dnsActive && dns?.mode === "in-process";
 
   return (
     <>
@@ -500,22 +504,38 @@ function DnsSslSetting() {
         <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center gap-[11px] rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
             <span className="relative inline-flex h-[9px] w-[9px] flex-none">
-              {dnsActive && (
+              {dnsActive && !dnsDegraded && (
                 <span className="absolute inset-0 rounded-full bg-status-running opacity-50 animate-rex-ping motion-reduce:animate-none" />
               )}
               <span
                 className="relative h-[9px] w-[9px] rounded-full"
                 style={{
-                  background: dnsActive ? "var(--rex-running)" : "var(--rex-stopped)",
-                  boxShadow: dnsActive ? "var(--rex-glow-run)" : "none",
+                  background: !dnsActive
+                    ? "var(--rex-stopped)"
+                    : dnsDegraded
+                      ? "var(--rex-warning-bright)"
+                      : "var(--rex-running)",
+                  boxShadow: dnsActive && !dnsDegraded ? "var(--rex-glow-run)" : "none",
                 }}
               />
             </span>
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-rex-text">DNS resolver</div>
               <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
-                *.{tld} → 127.0.0.1 · {dnsActive ? "active" : "inactive"}
+                *.{tld} → 127.0.0.1 · {dnsActive ? (dnsDegraded ? "in-process" : "agent") : "inactive"}
               </div>
+              {dnsActive && (
+                <div
+                  className="mt-0.5 text-[10.5px] leading-snug"
+                  style={{
+                    color: dnsDegraded ? "var(--rex-warning-bright)" : "var(--rex-text-muted)",
+                  }}
+                >
+                  {dnsDegraded
+                    ? "Running inside the app — DNS stops when you quit rexenv. Restart the app to retry the always-on agent."
+                    : "Always on — resolves even when rexenv is closed."}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-[11px] rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">

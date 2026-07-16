@@ -295,9 +295,17 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 QA green-lit the round (no majors). These are the agreed-deferred light items so
 they aren't lost; fix opportunistically or before the next deep test.
 
-- [ ] **Settings doesn't render `dns_status.mode`** — backend field + TS type
+- [x] **Settings doesn't render `dns_status.mode`** — backend field + TS type
   exist (see the DNS-LaunchAgent item above); the Settings DNS card should say
-  agent / in-process / down so a fallback-mode session is visible.
+  agent / in-process / down so a fallback-mode session is visible. ✓ **Done:**
+  mode was already end-to-end (pure UI render). Settings DNS tile: mode in the
+  mono status line + meaning line — agent green "Always on — resolves even when
+  rexenv is closed", in-process AMBER dot + "DNS stops when you quit rexenv.
+  Restart the app to retry the always-on agent", inactive unchanged. Services
+  DNS row: same honest amber for in-process; stale "runs with the app" header
+  copy fixed (agent survives quits). tsc + vite green; agent-state visual
+  eyeballed by human verify (force fallback: `launchctl bootout
+  gui/$UID/dev.rexenv.rexenv.dns` while the app runs → amber within ~30s).
 - [ ] **WP Manager cron list: arguments display** — QA to supply the exact
   complaint (recorded as a placeholder so it isn't lost; likely the event args
   column in the SiteDetail cron tab).

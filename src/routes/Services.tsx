@@ -337,7 +337,9 @@ export function Services() {
                   </span>
                   <span className="text-[13.5px] font-semibold text-rex-text">Always on</span>
                   <span className="font-mono text-[11px] text-rex-text-dim">
-                    runs with the app — not affected by Stop all
+                    {dns.mode === "agent"
+                      ? "survives app quits — not affected by Stop all"
+                      : "runs with the app — not affected by Stop all"}
                   </span>
                 </div>
                 <div className="overflow-hidden rounded-[13px] border border-rex-border-subtle bg-rex-surface-1">
@@ -350,10 +352,26 @@ export function Services() {
                         <span className="text-[13.5px] font-semibold text-rex-text">
                           DNS resolver
                         </span>
-                        <div className="text-[11px] text-rex-text-dim">
-                          Resolves <span className="font-mono">*.{tld}</span> — restarted
-                          automatically if it dies
-                        </div>
+                        {/* Mode is user-facing state: agent survives quits;
+                            in-process is the DEGRADED fallback (dies with the
+                            app) and must be honestly amber, never blended into
+                            a generic "running". */}
+                        {dns.running && dns.mode === "in-process" ? (
+                          <div
+                            className="text-[11px]"
+                            style={{ color: "var(--rex-warning-bright)" }}
+                          >
+                            Running inside the app — DNS stops when you quit rexenv (restart
+                            the app to retry the always-on agent)
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-rex-text-dim">
+                            Resolves <span className="font-mono">*.{tld}</span> —{" "}
+                            {dns.mode === "agent"
+                              ? "always on, resolves even when rexenv is closed"
+                              : "restarted automatically if it dies"}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
