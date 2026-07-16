@@ -52,3 +52,4 @@ Desktop.ini
 .chrome-devtools-mcp/
 /sites.png
 /*.screenshot.png
+src-tauri/binaries/
