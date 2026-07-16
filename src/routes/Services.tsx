@@ -100,7 +100,7 @@ function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
     </div>
   );
   return (
-    <div className="flex w-[112px] flex-none flex-col gap-1">
+    <div className="flex w-[104px] flex-none flex-col gap-1">
       {bar("CPU", (cpu / 12) * 100, `${cpu.toFixed(1)}%`)}
       {bar("RAM", (ram / 500) * 100, ram >= 1024 ? `${(ram / 1024).toFixed(1)}G` : `${ram}M`)}
     </div>
@@ -162,7 +162,7 @@ function ServiceRow({
           )}
         </div>
       </div>
-      <div className="w-[62px] flex-none font-mono text-[0.71875rem] text-rex-text-dim">
+      <div className="w-[54px] flex-none font-mono text-[0.71875rem] text-rex-text-dim">
         :{svc.port}
       </div>
       <StackedMeters cpu={svc.cpuPercent} ram={svc.ramMb} />
@@ -202,7 +202,7 @@ function ServiceRow({
           </ActionBtn>
         )}
       </div>
-      <div className="flex w-[132px] flex-none items-center justify-end">
+      <div className="flex w-[148px] flex-none items-center justify-end">
         {svc.serviceKey ? (
           // Independent service (DB engine / Mailpit): safe to toggle alone.
           <StartStopToggle

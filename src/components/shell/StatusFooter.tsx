@@ -231,7 +231,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                 onClick={() => restartAll.mutate()}
                 disabled={busy}
                 title="Stop everything, then start everything"
-                className="flex h-[34px] flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded border border-rex-border-strong bg-rex-surface-2 px-2.5 text-[0.78125rem] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
+                className="flex h-[34px] flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded border border-rex-border-strong bg-rex-surface-2 px-2 text-[0.78125rem] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
               >
                 <RotateCcw
                   className={cn("h-3 w-3", restartAll.isPending && "animate-rex-spin motion-reduce:animate-none")}
