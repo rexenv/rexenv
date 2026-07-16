@@ -714,8 +714,11 @@ impl ServiceManager {
             .collect();
         for domain in stale {
             if let Some(mut backend) = self.overrides.remove(&domain) {
-                let _ = platform.supervisor().stop(backend.child.id());
-                backend.child.wait();
+                if !Self::stop_override_backend(platform, &domain, &mut backend) {
+                    // Guard refused (adopted backend, non-app process) — keep
+                    // tracking it; a forgotten live backend is an instant orphan.
+                    self.overrides.insert(domain, backend);
+                }
             }
         }
 
@@ -736,8 +739,12 @@ impl ServiceManager {
                     continue;
                 }
                 if let Some(mut backend) = self.overrides.remove(domain) {
-                    let _ = platform.supervisor().stop(backend.child.id());
-                    backend.child.wait();
+                    if !Self::stop_override_backend(platform, domain, &mut backend) {
+                        // Guard refused — leave the user's serving backend
+                        // alone instead of spawning into its port.
+                        self.overrides.insert(domain.clone(), backend);
+                        continue;
+                    }
                 }
             }
             checks.push(
@@ -746,6 +753,63 @@ impl ServiceManager {
             );
         }
         Ok(checks)
+    }
+
+    /// Stop an override backend FOR REAL, honoring the stack guard: a non-app
+    /// process may not stop an ADOPTED backend (the user's serving stack) —
+    /// returns false and the caller keeps/skips it. See
+    /// [`Self::reap_override_backend`] for what a real stop means.
+    fn stop_override_backend(
+        platform: &dyn Platform,
+        domain: &str,
+        backend: &mut OverrideBackend,
+    ) -> bool {
+        if backend.child.is_adopted() && !stack_guard::may_control_real_stack() {
+            log::warn!("rexenv: stack guard — leaving adopted {domain} backend running");
+            return false;
+        }
+        Self::reap_override_backend(platform, domain, backend);
+        true
+    }
+
+    /// Reap whatever actually serves an override port. The tracked pid can go
+    /// stale (pre-master-fix sessions adopted churning WORKER pids; a crashed
+    /// session leaves an untracked tree), so resolve the CURRENT master of
+    /// the port and signal that — the tracked pid too when it differs — then
+    /// wait, bounded, for the port to actually close: workers exit a beat
+    /// after their master, and "stopped" must mean the port is FREE or the
+    /// next spawn's port gate trips over our own dying tree. Split from the
+    /// guard check so it's unit-testable without global guard state.
+    fn reap_override_backend(
+        platform: &dyn Platform,
+        domain: &str,
+        backend: &mut OverrideBackend,
+    ) {
+        let master = platform
+            .paths()
+            .app_data_dir()
+            .ok()
+            .map(|d| d.display().to_string())
+            .filter(|m| !m.is_empty())
+            .and_then(|m| platform.supervisor().owned_master(backend.port, &m));
+        let tracked = backend.child.id();
+        let target = master.unwrap_or(tracked);
+        let _ = platform.supervisor().stop(target);
+        if tracked != target {
+            let _ = platform.supervisor().stop(tracked); // no-op if already gone
+        }
+        backend.child.wait();
+        if !ports::wait_free(
+            backend.port,
+            ports::Proto::Tcp,
+            20,
+            std::time::Duration::from_millis(100),
+        ) {
+            log::warn!(
+                "rexenv: {domain} backend did not release port {} after stop",
+                backend.port
+            );
+        }
     }
 
     /// The config a backend SHOULD be running with (the reconcile diff input).
@@ -817,6 +881,36 @@ impl ServiceManager {
         rewrite: services::RewriteMode,
         env: &[(String, String)],
     ) -> Result<ReadyCheck> {
+        // Self-heal: OUR OWN leftover holding the port (a tree adoption missed
+        // — crashed session, pre-master-fix worker adoption) is reaped here,
+        // never surfaced to the user as a conflict. Foreign holders fall
+        // through to the port gate's honest error. Guarded: an unmarked
+        // process (live-check example) fails the gate instead of stopping the
+        // user's real backend.
+        if !ports::is_free(port, ports::Proto::Tcp) && stack_guard::may_control_real_stack() {
+            let leftover = platform
+                .paths()
+                .app_data_dir()
+                .ok()
+                .map(|d| d.display().to_string())
+                .filter(|m| !m.is_empty())
+                .and_then(|m| platform.supervisor().owned_master(port, &m));
+            if let Some(master) = leftover {
+                log::warn!(
+                    "rexenv: reaping our leftover {} (pid {master}) holding port {port}",
+                    kind.label()
+                );
+                let _ = platform.supervisor().stop(master);
+                if !ports::wait_free(
+                    port,
+                    ports::Proto::Tcp,
+                    20,
+                    std::time::Duration::from_millis(100),
+                ) {
+                    log::warn!("rexenv: leftover pid {master} did not release port {port}");
+                }
+            }
+        }
         ports::ensure_free(platform, port, ports::Proto::Tcp, kind.label())?;
         let child = match kind {
             OverrideKind::Frankenphp => {
@@ -1029,12 +1123,7 @@ impl ServiceManager {
         }
         self.pools.stop_all(platform);
         for (domain, mut backend) in std::mem::take(&mut self.overrides) {
-            if may_foreign || !backend.child.is_adopted() {
-                let _ = platform.supervisor().stop(backend.child.id());
-                backend.child.wait();
-            } else {
-                log::warn!("rexenv: stack guard — leaving adopted {domain} backend running");
-            }
+            Self::stop_override_backend(platform, &domain, &mut backend);
         }
         for (engine, mut child) in std::mem::take(&mut self.dbs) {
             if may_foreign || !child.is_adopted() {
@@ -2096,6 +2185,103 @@ mod tests {
             unimplemented!()
         }
     }
+
+    /// Recording supervisor for override-stop tests: configurable
+    /// `owned_master`, every `stop` call recorded.
+    struct TestSupervisor {
+        master: Option<u32>,
+        stopped: std::sync::Mutex<Vec<u32>>,
+    }
+    impl ProcessSupervisor for TestSupervisor {
+        fn spawn(&self, _: &Path, _: &[String]) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn spawn_logged(&self, _: &Path, _: &[String], _: &Path) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn stop(&self, pid: u32) -> Result<()> {
+            self.stopped.lock().unwrap().push(pid);
+            Ok(())
+        }
+        fn owned_master(&self, _port: u16, _marker: &str) -> Option<u32> {
+            self.master
+        }
+    }
+    struct OverrideTestPlatform {
+        paths: TestPaths,
+        sup: TestSupervisor,
+    }
+    impl Platform for OverrideTestPlatform {
+        fn paths(&self) -> &dyn Paths {
+            &self.paths
+        }
+        fn supervisor(&self) -> &dyn ProcessSupervisor {
+            &self.sup
+        }
+        fn dns(&self) -> &dyn DnsManager {
+            unimplemented!()
+        }
+        fn cert_trust(&self) -> &dyn CertTrustManager {
+            unimplemented!()
+        }
+        fn privileges(&self) -> &dyn PrivilegeManager {
+            unimplemented!()
+        }
+        fn autostart(&self) -> &dyn AutostartManager {
+            unimplemented!()
+        }
+        fn permissions(&self) -> &dyn PermissionManager {
+            unimplemented!()
+        }
+        fn shell(&self) -> &dyn ShellRunner {
+            unimplemented!()
+        }
+        fn binaries(&self) -> &dyn BinaryProvider {
+            unimplemented!()
+        }
+        fn edge(&self) -> &dyn EdgeSupervisor {
+            unimplemented!()
+        }
+        fn dns_agent(&self) -> &dyn DnsAgentManager {
+            unimplemented!()
+        }
+    }
+    fn override_test_platform(name: &str, master: Option<u32>) -> OverrideTestPlatform {
+        let dir = std::env::temp_dir().join(format!("rexenv-ovr-{name}"));
+        let _ = std::fs::create_dir_all(&dir);
+        OverrideTestPlatform {
+            paths: TestPaths(dir),
+            sup: TestSupervisor { master, stopped: std::sync::Mutex::new(Vec::new()) },
+        }
+    }
+    /// A port that is actually free right now (bind :0, take the number).
+    fn free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    }
+
+    /// The live incident's stop half: the tracked pid was a stale adopted
+    /// WORKER (71063) while the real master (95274) kept serving the port —
+    /// the reap must signal the resolved MASTER (first), and the stale
+    /// tracked pid too, then see the port free.
+    #[test]
+    fn override_reap_targets_the_resolved_master_not_the_stale_tracked_pid() {
+        let platform = override_test_platform("reap-master", Some(95274));
+        let mut backend = OverrideBackend {
+            kind: OverrideKind::Apache,
+            port: free_port(),
+            child: Proc::Adopted(71063),
+        };
+        ServiceManager::reap_override_backend(&platform, "tr4.rex", &mut backend);
+        let stopped = platform.sup.stopped.lock().unwrap().clone();
+        assert_eq!(stopped.first(), Some(&95274), "signal the resolved master first");
+        assert!(stopped.contains(&71063), "reap the stale tracked pid too");
+    }
+
+    // The guard-refusal side of `stop_override_backend` is NOT unit-testable
+    // here: `may_control_real_stack()` is always true under cfg(test) by
+    // design (see stack_guard). It shares the exact check the other guarded
+    // chokepoints use, covered by stack_guard's sequenced flag test and the
+    // live `examples/stack_guard_check`.
 
     fn edge_test_platform(name: &str, installed: bool, enabled: bool) -> EdgeTestPlatform {
         let dir = std::env::temp_dir().join(format!("rexenv-edge-sm-{name}"));

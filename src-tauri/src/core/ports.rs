@@ -75,6 +75,19 @@ pub fn is_listening(port: u16) -> bool {
 /// **Format contract with the frontend:** a suggested shell command, when
 /// present, is the last line and starts with `"$ "` — the toast layer parses
 /// it out to render a copyable command block.
+/// Bounded wait for `port` to actually close. A stopped master's workers exit
+/// a beat after it; "stopped" must mean the port is FREE, or the next spawn's
+/// port gate trips over our own dying tree. True = freed within the budget.
+pub fn wait_free(port: u16, proto: Proto, tries: u32, interval: std::time::Duration) -> bool {
+    for _ in 0..tries {
+        if is_free(port, proto) {
+            return true;
+        }
+        std::thread::sleep(interval);
+    }
+    is_free(port, proto)
+}
+
 pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &str) -> Result<()> {
     if is_free(port, proto) {
         return Ok(());
