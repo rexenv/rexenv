@@ -236,6 +236,28 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;
   re-verify converted-multisite items + onboarding fixes on the next cold run.
 
+## QA round 1 — light issues (deferred, recorded 16 Jul 2026)
+
+QA green-lit the round (no majors). These are the agreed-deferred light items so
+they aren't lost; fix opportunistically or before the next deep test.
+
+- [ ] **Settings doesn't render `dns_status.mode`** — backend field + TS type
+  exist (see the DNS-LaunchAgent item above); the Settings DNS card should say
+  agent / in-process / down so a fallback-mode session is visible.
+- [ ] **WP Manager cron list: arguments display** — QA to supply the exact
+  complaint (recorded as a placeholder so it isn't lost; likely the event args
+  column in the SiteDetail cron tab).
+- [ ] **Watchdog/Start-all race fix (`d07e4f2`) — observation window still open.**
+  Code + regression tests are in; confirm `logs/health.log` shows no
+  `restarted … port closed` events across the next few real Start-alls, then close.
+- [ ] **TLD v1 Done-when checklist not formally walked**
+  (`docs/TLD-FEATURE-REPORT.md`) — de-facto mostly proven by later live work on
+  `.rex` sites (auto-start reboot test, Herd suite), but the checklist itself
+  was never ticked; walk it or fold into the next clean-Mac smoke test.
+
+(Onboarding locked-visual eyeball + converted-multisite re-verify are already
+tracked in the open Release 5.4 smoke-test item — not duplicated here.)
+
 ## Smoke-test fallout (10 Jul 2026 fresh-account run) — all fixed
 
 - [x] **Multisite convert missing from the UI** (spec §2.1 "one-click enable/convert").
