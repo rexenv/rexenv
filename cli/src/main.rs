@@ -24,6 +24,9 @@ USAGE:
 
 COMMANDS:
   status        Services + DNS state (the app's ownership-and-liveness truth)
+  start         Start the shared stack (same as the app's Start all)
+  stop          Stop the shared stack (same as Stop all)
+  restart       stop, then start
   help          Show this help
 
 OPTIONS:
@@ -112,6 +115,9 @@ fn main() {
     match words.first().map(String::as_str) {
         None => println!("{USAGE}"),
         Some("status") => cmd_status(json_output),
+        Some("start") => cmd_lifecycle(&["start"], json_output),
+        Some("stop") => cmd_lifecycle(&["stop"], json_output),
+        Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
         Some(other) => {
             eprintln!("rex: unknown command `{other}`\n\n{USAGE}");
             exit(1);
@@ -121,6 +127,29 @@ fn main() {
 
 fn print_json(data: &Value) {
     println!("{}", serde_json::to_string_pretty(data).unwrap_or_else(|_| data.to_string()));
+}
+
+// ── start / stop / restart ───────────────────────────────────────────────────
+
+/// Runs each lifecycle step as its own request; `request` exits on the first
+/// failure, so a failed stop never chains into a start. A start can run for a
+/// while on a cold cache (the app downloads binaries) — say so up front.
+fn cmd_lifecycle(steps: &[&str], json_output: bool) {
+    for step in steps {
+        if !json_output {
+            match *step {
+                "start" => println!("starting services… (first run may download binaries)"),
+                _ => println!("stopping services…"),
+            }
+        }
+        request(step, Value::Null);
+        if !json_output {
+            println!("✓ {step} done");
+        }
+    }
+    if json_output {
+        print_json(&json!({ "ok": true }));
+    }
 }
 
 // ── status ───────────────────────────────────────────────────────────────────

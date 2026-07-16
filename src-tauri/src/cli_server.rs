@@ -104,6 +104,21 @@ fn to_value<T: serde::Serialize>(v: &T) -> Result<Value> {
     serde_json::to_value(v).map_err(|e| Error::Other(format!("encode response: {e}")))
 }
 
+/// AppState is managed only after a successful DB/CA init — mirror the UI's
+/// InitError screen with a plain error instead of a state panic. Fetched per
+/// command arm so an unknown cmd reports as unknown even before init.
+fn app_state<R, M>(app: &M) -> Result<tauri::State<'_, AppState>>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    app.try_state::<AppState>().ok_or_else(|| {
+        Error::Other(
+            "rexenv is still starting (or failed to initialize) — check the app window".into(),
+        )
+    })
+}
+
 /// Route a command to the SAME `commands::*` fn the UI calls — never a
 /// parallel implementation.
 async fn dispatch<R, M>(app: &M, cmd: &str, _args: Value) -> Result<Value>
@@ -111,20 +126,24 @@ where
     R: tauri::Runtime,
     M: Manager<R>,
 {
-    // AppState is managed only after a successful DB/CA init — mirror the
-    // UI's InitError screen with a plain error instead of a state panic.
-    let state = app.try_state::<AppState>().ok_or_else(|| {
-        Error::Other(
-            "rexenv is still starting (or failed to initialize) — check the app window".into(),
-        )
-    })?;
     match cmd {
         "status" => {
+            let state = app_state(app)?;
             let services = commands::services::services_status(state.clone()).await?;
             let dns = app
                 .try_state::<crate::state::app::DnsState>()
                 .map(|dns| commands::system::dns_status(state.clone(), dns));
             Ok(json!({ "services": to_value(&services)?, "dns": to_value(&dns)? }))
+        }
+        // Global lifecycle — exactly the footer buttons. `rex restart` is the
+        // CLI sending `stop` then `start`; no third code path exists.
+        "start" => {
+            commands::services::start_services(app_state(app)?).await?;
+            Ok(Value::Null)
+        }
+        "stop" => {
+            commands::services::stop_services(app_state(app)?).await?;
+            Ok(Value::Null)
         }
         other => Err(Error::Other(format!(
             "unknown command: {other} (this rex may be newer than the running app)"
@@ -211,10 +230,18 @@ mod tests {
         // A mock app with NO managed state = the init-failed / still-starting
         // shape; the reply must be an error envelope, never a panic.
         let app = tauri::test::mock_app();
-        let reply = handle_request(app.handle(), "{\"cmd\":\"status\"}".into()).await;
+        // Every ROUTED command reaches the state check (proving the arm
+        // exists); an unrouted one must say so instead.
+        for cmd in ["status", "start", "stop"] {
+            let reply =
+                handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
+            let v: Value = serde_json::from_str(&reply).expect("valid envelope");
+            assert_eq!(v["ok"], false);
+            assert!(v["error"].as_str().unwrap().contains("starting"), "{cmd}: {v}");
+        }
+        let reply = handle_request(app.handle(), "{\"cmd\":\"bogus\"}".into()).await;
         let v: Value = serde_json::from_str(&reply).expect("valid envelope");
-        assert_eq!(v["ok"], false);
-        assert!(v["error"].as_str().unwrap().contains("starting"));
+        assert!(v["error"].as_str().unwrap().contains("unknown command"));
         let reply = handle_request(app.handle(), "not json at all".into()).await;
         let v: Value = serde_json::from_str(&reply).expect("valid envelope");
         assert_eq!(v["ok"], false);
