@@ -189,6 +189,20 @@ fn main() {
             _ => words.push(arg),
         }
     }
+    // Preflight: every subcommand below talks to the app. Probe the socket
+    // ONCE up front so a not-running app prints only the honest message and
+    // exits 2 — never after a misleading in-progress line ("starting
+    // services…", "creating <domain>…"). The app can still die between this
+    // probe and a request; `request` then prints the same message.
+    match words.first().map(String::as_str) {
+        None | Some("completions") => {} // native output, no app needed
+        _ => {
+            if UnixStream::connect(socket_path()).is_err() {
+                eprintln!("{NOT_RUNNING}");
+                exit(2);
+            }
+        }
+    }
     match words.first().map(String::as_str) {
         None => println!("{USAGE}"),
         Some("status") => cmd_status(json_output),
