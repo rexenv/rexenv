@@ -75,8 +75,8 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `db export <domain> [path]` | `wp_db_export` | 🟢 | prints the written `.sql` path |
-| `db import <domain> <file>` | `wp_db_import` | 🟢 | destructive → confirm + `--yes` |
+| `db export <domain>` | `wp_db_export` | ✓ | shipped 16 Jul — always ~/Downloads (the IPC's contract; a custom path would be new backend); MySQL + MariaDB both live-verified |
+| `db import <domain> <file.sql> [--yes]` | `wp_db_import` | ✓ | shipped 16 Jul — confirm + backup-first tip; path canonicalized client-side; round-trip live-verified (site 200 after) |
 | `db reset <domain>` | `wp_site_reset` | 🟢 | VERY destructive (drop + reinstall) → typed confirmation, not just `--yes` |
 | `db versions [--set <engine> <version>]` | `db_engine_versions` / `set_db_engine_version` | 🟢 | switch restarts the engine — say so |
 | `db browse` | — (`open https://adminer.rexenv.rex`) | ⚪ | the Adminer vhost; needs stack running |
