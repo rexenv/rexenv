@@ -322,6 +322,59 @@ where
             files.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
             Ok(json!({ "files": files }))
         }
+        // PHP versions — the Settings PHP card + SiteDetail switches. All
+        // rules live backend-side (uninstall refused while sites use the
+        // minor; xdebug refused on 8.0/FrankenPHP; live pools restarted).
+        "php.list" => {
+            let state = app_state(app)?;
+            Ok(json!({ "versions": to_value(&commands::php::list_php_versions(state.clone())?)? }))
+        }
+        "php.default" => {
+            let state = app_state(app)?;
+            let minor = args["minor"]
+                .as_str()
+                .ok_or_else(|| Error::Other("php.default needs a minor".into()))?
+                .to_string();
+            commands::php::set_default_php_version(state.clone(), minor)?;
+            Ok(Value::Null)
+        }
+        "php.installed" => {
+            let state = app_state(app)?;
+            let minor = args["minor"]
+                .as_str()
+                .ok_or_else(|| Error::Other("php.installed needs a minor".into()))?
+                .to_string();
+            let installed = args["installed"]
+                .as_bool()
+                .ok_or_else(|| Error::Other("php.installed needs installed: bool".into()))?;
+            commands::php::set_php_version_installed(state.clone(), minor, installed).await?;
+            Ok(Value::Null)
+        }
+        "site.php" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("site.php needs an id".into()))?
+                .to_string();
+            let version = args["version"]
+                .as_str()
+                .ok_or_else(|| Error::Other("site.php needs a version".into()))?
+                .to_string();
+            let site = commands::sites::set_site_php_version(state.clone(), id, version).await?;
+            to_value(&site)
+        }
+        "site.xdebug" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("site.xdebug needs an id".into()))?
+                .to_string();
+            let enabled = args["enabled"]
+                .as_bool()
+                .ok_or_else(|| Error::Other("site.xdebug needs enabled: bool".into()))?;
+            let site = commands::sites::set_site_xdebug(state.clone(), id, enabled).await?;
+            to_value(&site)
+        }
         // Database export/import — the SiteDetail Tools actions. Export writes
         // `<domain>-db.sql` into ~/Downloads (numbered on collision) and
         // returns the path; import is DESTRUCTIVE and .sql/engine-gated
@@ -502,7 +555,7 @@ mod tests {
         for cmd in [
             "status", "start", "stop", "site.list", "site.create", "site.delete", "site.info",
             "site.login", "logs.targets", "logs.tail", "logs.list", "doctor", "db.export",
-            "db.import",
+            "db.import", "php.list", "php.default", "php.installed", "site.php", "site.xdebug",
         ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;

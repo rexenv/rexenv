@@ -46,6 +46,11 @@ COMMANDS:
                 Dump the site's database to ~/Downloads (prints the path)
   db import <domain> <file.sql> [--yes]
                 Import a dump — OVERWRITES the site's tables (asks first)
+  php list      Pinned PHP versions: installed, default, pool port
+  php default <minor>      Default version for new sites
+  php install <minor> / php uninstall <minor>
+  site php <domain> <minor>          Switch a site's PHP version
+  site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   help          Show this help
 
 OPTIONS:
@@ -139,6 +144,7 @@ fn main() {
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
         Some("logs") => cmd_logs(&words[1..], json_output),
         Some("doctor") => cmd_doctor(json_output),
+        Some("php") => cmd_php(&words[1..], json_output),
         Some("db") => match words.get(1).map(String::as_str) {
             Some("export") => cmd_db_export(&words[2..], json_output),
             Some("import") => cmd_db_import(&words[2..], json_output),
@@ -153,6 +159,8 @@ fn main() {
             Some("delete") => cmd_site_delete(&words[2..], json_output),
             Some("info") => cmd_site_info(&words[2..], json_output),
             Some("logs") => cmd_site_logs(&words[2..], json_output),
+            Some("php") => cmd_site_php(&words[2..], json_output),
+            Some("xdebug") => cmd_site_xdebug(&words[2..], json_output),
             Some("open") => cmd_site_open(&words[2..]),
             Some("login") => cmd_site_login(&words[2..], json_output),
             _ => {
@@ -394,6 +402,98 @@ fn cmd_site_login(words: &[String], json_output: bool) {
     } else {
         open_url(url);
     }
+}
+
+// ── php versions ─────────────────────────────────────────────────────────────
+
+fn cmd_php(words: &[String], json_output: bool) {
+    match words.first().map(String::as_str) {
+        Some("list") | None => {
+            let data = request("php.list", Value::Null);
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(versions) = data["versions"].as_array() else { return println!("(none)") };
+            println!("{:<7} {:<9} {:<6} {:<10} DEFAULT", "MINOR", "PATCH", "PORT", "INSTALLED");
+            for v in versions {
+                println!(
+                    "{:<7} {:<9} {:<6} {:<10} {}",
+                    v["minor"].as_str().unwrap_or("?"),
+                    v["patch"].as_str().unwrap_or("?"),
+                    v["fpmPort"].as_u64().unwrap_or(0),
+                    if v["installed"] == json!(true) { "yes" } else { "-" },
+                    if v["isDefault"] == json!(true) { "✓" } else { "" },
+                );
+            }
+        }
+        Some("default") => {
+            let Some(minor) = words.get(1) else {
+                eprintln!("rex: usage: rex php default <minor>");
+                exit(1);
+            };
+            request("php.default", json!({ "minor": minor }));
+            println!("✓ PHP {minor} is the default for new sites");
+        }
+        Some(action @ ("install" | "uninstall")) => {
+            let Some(minor) = words.get(1) else {
+                eprintln!("rex: usage: rex php {action} <minor>");
+                exit(1);
+            };
+            if action == "install" {
+                println!("installing PHP {minor}… (binaries download on first start)");
+            }
+            request("php.installed", json!({ "minor": minor, "installed": action == "install" }));
+            println!("✓ PHP {minor} {}", if action == "install" { "installed" } else { "uninstalled" });
+        }
+        _ => {
+            eprintln!("rex: usage: rex php <list|default|install|uninstall>\n\n{USAGE}");
+            exit(1);
+        }
+    }
+}
+
+/// Print the post-switch site line the backend returns (the updated row).
+fn print_site_update(site: &Value) {
+    println!(
+        "✓ {} — PHP {}{} on {}",
+        site["domain"].as_str().unwrap_or("?"),
+        site["phpVersion"].as_str().unwrap_or("?"),
+        if site["xdebug"] == json!(true) { " (Xdebug)" } else { "" },
+        site["webServer"].as_str().unwrap_or("?"),
+    );
+}
+
+fn cmd_site_php(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site php <domain> <minor>");
+    let Some(minor) = words.get(1).filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site php <domain> <minor>");
+        exit(1);
+    };
+    if !json_output {
+        println!("switching {} to PHP {minor}…", site["domain"].as_str().unwrap_or("?"));
+    }
+    let updated = request("site.php", json!({ "id": site["id"], "version": minor }));
+    if json_output {
+        return print_json(&updated);
+    }
+    print_site_update(&updated);
+}
+
+fn cmd_site_xdebug(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site xdebug <domain> on|off");
+    let enabled = match words.get(1).map(String::as_str) {
+        Some("on") => true,
+        Some("off") => false,
+        _ => {
+            eprintln!("rex: usage: rex site xdebug <domain> on|off");
+            exit(1);
+        }
+    };
+    let updated = request("site.xdebug", json!({ "id": site["id"], "enabled": enabled }));
+    if json_output {
+        return print_json(&updated);
+    }
+    print_site_update(&updated);
 }
 
 // ── db export / import ───────────────────────────────────────────────────────
