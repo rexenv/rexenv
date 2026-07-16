@@ -264,11 +264,14 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   Herd-style help unchanged). 280 lib tests (+7 across the round), clippy clean.
   ✓ **Human-verified:** rex stop frees `:8320` (master gone, no survivors), rex
   start/restart clean, Apache serves, health.log quiet.
-- [ ] **Apache reconcile bounce check** (observation, low): the 16 Jul log showed
+- [x] **Apache reconcile bounce check** (observation, low): the 16 Jul log showed
   two Apache restarts 19s apart across app launches. After the fix round, run
   Start-all twice with no stop between — the Apache pid should be STABLE on the
   second run. If it changes every time, reconcile's config diff has a
   session-dependent input; chase `desired_override_config` vs the on-disk conf.
+  ✓ **Closed 16 Jul (human-verified):** back-to-back Start-alls, Apache pid STABLE
+  — reconcile does not bounce; the earlier double-restart was one-time conf drift
+  from the pre-fix build's session, not a persistent diff.
 - [ ] **`rex` CLI packaging** — ship the `rex` binary in the app bundle + a
   Settings/onboarding "install CLI" step (symlink into PATH, Herd/Docker-style).
   v1 builds from `cli/` only; not release-blocking until the CLI is user-facing.
