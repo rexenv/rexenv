@@ -13,6 +13,9 @@ use rexenv_lib::platform;
 
 #[tokio::main]
 async fn main() {
+    // Deliberate real-stack control: this utility exists to adopt/stop the
+    // shared stack. Without this, core::stack_guard skips adopted services.
+    rexenv_lib::core::stack_guard::allow_real_stack_control();
     let phase = std::env::args().nth(1).unwrap_or_default();
     let plat = platform::current();
 

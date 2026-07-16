@@ -378,6 +378,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - `cargo test --lib` in `src-tauri/` — unit tests on pure functions (~261 and growing).
 - Live checks = standalone `src-tauri/examples/*.rs` binaries (spawn real services,
   probe real ports) — the repo's convention instead of mocked integration tests.
+  They share the REAL app-data dir (cache + admin socket) by design, so
+  `core::stack_guard` protects the user's running stack: a non-app process may
+  stop only what it SPAWNED — adopted survivors, `proxy::stop_edge` /
+  `recover_stale_edge`, and the orphan sweep are refused unless the process is
+  the app (`mark_app_process` in `lib::run`) or opted in
+  (`allow_real_stack_control()` / `REXENV_CONTROL_REAL_STACK=1` — only for
+  deliberate stack-control utilities like `stack_stop`). Guard verified live by
+  `examples/stack_guard_check`.
 - Manual release gate: `docs/SMOKE-TEST.md` on a clean Mac.
 - Work in small verifiable steps; one task at a time; commit per task; tick the item in
   `docs/TODO.md` with ✓ evidence.

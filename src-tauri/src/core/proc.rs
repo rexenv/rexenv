@@ -38,6 +38,13 @@ impl Proc {
         }
     }
 
+    /// Whether this handle was adopted from a prior session rather than
+    /// spawned by this process — the `stack_guard` provenance check: a non-app
+    /// process may stop only what it spawned.
+    pub fn is_adopted(&self) -> bool {
+        matches!(self, Proc::Adopted(_))
+    }
+
     /// Whether this process was spawned within `window`. Adopted processes are
     /// never "starting" — they were already serving when we picked them up.
     pub fn within_grace(&self, window: Duration) -> bool {

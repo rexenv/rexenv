@@ -573,11 +573,20 @@ impl PhpFpmPools {
         true
     }
 
-    /// Stop and clear every pool.
+    /// Stop and clear every pool. Stack guard: a non-app process (live-check
+    /// example) skips ADOPTED pools — they are the user's serving stack.
     pub fn stop_all(&mut self, platform: &dyn Platform) {
+        let may_foreign = crate::core::stack_guard::may_control_real_stack();
         for mut p in std::mem::take(&mut self.pools) {
-            let _ = services::stop(platform, p.child.id());
-            p.child.wait();
+            if may_foreign || !p.child.is_adopted() {
+                let _ = services::stop(platform, p.child.id());
+                p.child.wait();
+            } else {
+                log::warn!(
+                    "rexenv: stack guard — leaving adopted php-fpm {} pool running",
+                    p.minor
+                );
+            }
         }
     }
 

@@ -186,13 +186,28 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   `sudo kill` self-healed in ~1s with ZERO health events → Stop-all prompt-first,
   edge stayed down, zero events across 35s (3+ polls) → Start-all-after-stop restored
   the edge, sites 200 over `:443` (`lm.rex`/`tr.rex`/`adminer.rexenv.rex`).
-- [ ] **Isolate live-check examples from the real stack.** `examples/*.rs` use
+- [x] **Isolate live-check examples from the real stack.** `examples/*.rs` use
   `platform::current()` → the REAL app-data dir: their `start_all`/`stop_all`/
   `recover_stale_edge` stop the USER'S running edge over the shared admin socket (and
   restart shared services). Adopt-don't-kill removed the worst path, but an example's
   explicit `stop_all` still tears the stack down. Options: env-var app-data override for
   example runs, or a guard that refuses `stop_all` when the edge wasn't started by the
-  example.
+  example. ✓ **Done (guard option)** — sharing the real app-data is the POINT of a
+  live check (cache + adopt paths), so the fix is provenance, not isolation:
+  `core::stack_guard` — a non-app process may stop only what it SPAWNED
+  (`Proc::Child`). Guarded chokepoints: `proxy::stop_edge` (skip+log),
+  `recover_stale_edge` (refuse with a real error), `stop_stale_owned` orphan sweep
+  (skip), and adopted-`Proc` skips in `stop_all` + `PhpFpmPools::stop_all` (Drop
+  paths were already adopted-safe). App opens the guard via `mark_app_process()`
+  in `lib::run`; deliberate utilities (`stack_stop`, `adopt_check`,
+  `caddy_recovery_demo`, `service_manager_demo`, `mail_adopt_settings_check`)
+  call `allow_real_stack_control()`; ad-hoc override `REXENV_CONTROL_REAL_STACK=1`.
+  ✓ 269 lib tests, examples build. ✓ **Live-verified** (16 Jul,
+  `examples/stack_guard_check` — no opt-in, real running stack): with edge +
+  MySQL + MariaDB + 6 fpm pools serving, `recover_stale_edge` refused naming the
+  guard, `stop_edge` skipped (admin socket stayed live), adopt (11 services) +
+  `stop_all` left everything serving; `https://tr.rex` → 200 with
+  `x-rexenv-edge: 1` after.
 - [x] **L7 — move shared Nginx off 8088** (from BACKLOG). `8088` collides with Hadoop
   YARN / common dev proxies; moved to `18088`. Low risk: loopback-only, bind-tested at
   start. ✓ **Done:** `core/services.rs` `NGINX_HTTP_PORT` = 18088; configs regenerate

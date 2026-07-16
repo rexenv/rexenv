@@ -14,6 +14,10 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The interactive app may stop ADOPTED services (Stop-all after a relaunch);
+    // any other process linking this lib (live-check examples) may stop only
+    // what it spawned. See core::stack_guard.
+    core::stack_guard::mark_app_process();
     tauri::Builder::default()
         // Native open/save dialogs (Settings → Sites folder picker).
         .plugin(tauri_plugin_dialog::init())

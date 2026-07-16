@@ -9,7 +9,7 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{adminer, apache, binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl};
+use crate::core::{adminer, apache, binaries, frankenphp, mail, php, ports, proxy, services, sites, ssl, stack_guard};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, SiteServing, WebServer};
@@ -1017,19 +1017,40 @@ impl ServiceManager {
                 }
             }
         }
-        self.stop_mailpit(platform)?;
+        // Stack guard: a non-app process (live-check example) may stop only what
+        // it SPAWNED — adopted survivors are the user's serving stack; skip them
+        // (dropping a `Proc::Adopted` handle never signals the process).
+        let may_foreign = stack_guard::may_control_real_stack();
+        if may_foreign || !self.mailpit.as_ref().is_some_and(Proc::is_adopted) {
+            self.stop_mailpit(platform)?;
+        } else {
+            log::warn!("rexenv: stack guard — leaving adopted Mailpit running");
+            self.mailpit = None;
+        }
         self.pools.stop_all(platform);
-        for (_domain, mut backend) in std::mem::take(&mut self.overrides) {
-            let _ = platform.supervisor().stop(backend.child.id());
-            backend.child.wait();
+        for (domain, mut backend) in std::mem::take(&mut self.overrides) {
+            if may_foreign || !backend.child.is_adopted() {
+                let _ = platform.supervisor().stop(backend.child.id());
+                backend.child.wait();
+            } else {
+                log::warn!("rexenv: stack guard — leaving adopted {domain} backend running");
+            }
         }
         for (engine, mut child) in std::mem::take(&mut self.dbs) {
-            let _ = engine.stop(platform, child.id());
-            child.wait();
+            if may_foreign || !child.is_adopted() {
+                let _ = engine.stop(platform, child.id());
+                child.wait();
+            } else {
+                log::warn!("rexenv: stack guard — leaving adopted {engine:?} running");
+            }
         }
         if let Some(mut c) = self.nginx.take() {
-            let _ = services::stop(platform, c.id());
-            c.wait();
+            if may_foreign || !c.is_adopted() {
+                let _ = services::stop(platform, c.id());
+                c.wait();
+            } else {
+                log::warn!("rexenv: stack guard — leaving adopted nginx running");
+            }
         }
         // Orphan sweep: kill any rexenv-owned process STILL on one of our managed
         // ports that the handle-based stops above missed — a survivor of an app
@@ -1068,6 +1089,16 @@ impl ServiceManager {
     /// orphan we no longer track). Guarded to our own processes by the app-data
     /// marker, so an unrelated process on the same port is never touched.
     fn stop_stale_owned(&self, platform: &dyn Platform) {
+        // Stack guard: an untracked listener is by definition not THIS process's
+        // child — in a live-check example it's the user's serving stack.
+        if !stack_guard::may_control_real_stack() {
+            log::warn!(
+                "rexenv: stack guard — not the rexenv app; skipping the orphan sweep \
+                 (set {}=1 to override)",
+                stack_guard::ALLOW_ENV
+            );
+            return;
+        }
         let marker = match platform.paths().app_data_dir() {
             Ok(p) => p.display().to_string(),
             Err(_) => return,

@@ -385,6 +385,17 @@ pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<(
     if !admin_alive(platform) {
         return Ok(());
     }
+    if !crate::core::stack_guard::may_control_real_stack() {
+        // A live listener on the admin socket is most likely the USER'S serving
+        // edge (root LaunchDaemon) — a live-check example must refuse to kill it
+        // rather than take the fresh-start path over the shared socket.
+        return Err(crate::error::Error::Other(format!(
+            "a live rexenv edge is on the admin socket and this process is not the \
+             rexenv app — refusing to stop it (stack guard). If this teardown is \
+             deliberate, set {}=1 or call stack_guard::allow_real_stack_control().",
+            crate::core::stack_guard::ALLOW_ENV
+        )));
+    }
     log::warn!(
         "rexenv: a leftover rexenv Caddy edge is live on its admin socket; \
          stopping it via the admin API so startup isn't blocked"
@@ -416,6 +427,16 @@ pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<(
 /// `:2019` is invisible to us), and the reap matches our own caddy binary path. A
 /// developer's own Caddy is never stopped by launch or Stop-all.
 pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
+    if !crate::core::stack_guard::may_control_real_stack() {
+        // Live-check example: the edge on the shared admin socket is the USER'S
+        // — skip the stop instead of tearing down every site (stack guard).
+        log::warn!(
+            "rexenv: stack guard — not the rexenv app; leaving the live edge \
+             running (set {}=1 to override)",
+            crate::core::stack_guard::ALLOW_ENV
+        );
+        return Ok(());
+    }
     // 1) Graceful: if our edge's admin socket is live, stop via the API + wait for it.
     if admin_alive(platform) {
         let _ = stop_admin(platform, caddy_bin);
