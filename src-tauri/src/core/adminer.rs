@@ -173,9 +173,11 @@ pub struct ProxiedResponse {
 /// Shared client for the Database Browser proxy: pinned to the loopback edge
 /// (no DNS), with a persistent RUST-SIDE cookie jar so Adminer's session
 /// survives the login POST no matter what cookie policy the webview applies to
-/// cross-site iframes. Redirects pass through to the webview (Adminer is
-/// strictly POST-redirect-GET); the jar lives for the app run, so the session
-/// persists across iframe remounts.
+/// cross-site iframes. Redirect policy is `none` so [`forward`] can resolve
+/// Adminer's POST-redirect-GET itself — WKWebView does NOT follow redirects
+/// returned by a custom-scheme handler (`WKURLSchemeTask` has no redirect
+/// mechanism), so a passed-through 302 dead-ends as a blank frame. The jar
+/// lives for the app run, so the session persists across iframe remounts.
 fn proxy_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(|| {
@@ -210,26 +212,65 @@ const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
 /// Forward one Database Browser request (`rexdb://localhost<path_and_query>`)
 /// to the Adminer vhost through the edge and return the response for the
 /// webview. `content_type` is the request's Content-Type (form POSTs).
+///
+/// Redirects are followed HERE (≤5 hops, same-vhost only): Adminer is strictly
+/// POST-redirect-GET, and WKWebView never follows a redirect returned by a
+/// custom-scheme handler — replaying the 302 to the webview leaves the iframe
+/// on a dead blank frame (observed live as "Save does nothing" / blank first
+/// open). Per browser form semantics 301/302/303 become a body-less GET;
+/// 307/308 keep the method + body.
 pub async fn forward(
     method: &str,
     path_and_query: &str,
     content_type: Option<&str>,
     body: Vec<u8>,
 ) -> Result<ProxiedResponse> {
-    let url = format!("https://{ADMINER_HOST}{path_and_query}");
-    let method = reqwest::Method::from_bytes(method.as_bytes())
+    let mut url = reqwest::Url::parse(&format!("https://{ADMINER_HOST}{path_and_query}"))
+        .map_err(|e| Error::Other(format!("adminer proxy: bad url: {e}")))?;
+    let mut method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| Error::Other(format!("adminer proxy: bad method: {e}")))?;
-    let mut req = proxy_client().request(method, &url);
-    if let Some(ct) = content_type {
-        req = req.header(reqwest::header::CONTENT_TYPE, ct);
-    }
-    if !body.is_empty() {
-        req = req.body(body);
-    }
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("adminer proxy: {e}")))?;
+    let mut content_type = content_type.map(str::to_string);
+    let mut body = body;
+
+    let mut hops = 0u8;
+    let resp = loop {
+        let mut req = proxy_client().request(method.clone(), url.clone());
+        if let Some(ct) = &content_type {
+            req = req.header(reqwest::header::CONTENT_TYPE, ct);
+        }
+        if !body.is_empty() {
+            req = req.body(body.clone());
+        }
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| Error::Other(format!("adminer proxy: {e}")))?;
+
+        if resp.status().is_redirection() && hops < 5 {
+            let target = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|loc| url.join(loc).ok())
+                // Never follow OFF the vhost — anything else replays to the
+                // webview below (where frame policy applies).
+                .filter(|next| next.host_str() == Some(ADMINER_HOST));
+            if let Some(next) = target {
+                hops += 1;
+                url = next;
+                let s = resp.status();
+                if s != reqwest::StatusCode::TEMPORARY_REDIRECT
+                    && s != reqwest::StatusCode::PERMANENT_REDIRECT
+                {
+                    method = reqwest::Method::GET;
+                    body = Vec::new();
+                    content_type = None;
+                }
+                continue;
+            }
+        }
+        break resp;
+    };
 
     let status = resp.status().as_u16();
     let mut headers = Vec::new();
@@ -297,6 +338,22 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains("http://localhost:1420"));
         // No wildcard — never embeddable by arbitrary origins.
         assert!(!WRAPPER_INDEX_PHP.contains("frame-ancestors *"));
+    }
+
+    #[test]
+    fn relative_locations_resolve_on_the_vhost() {
+        // Adminer redirects with bare query-string Locations ("?select=notes");
+        // the follow loop must resolve them onto the vhost so they get followed
+        // in Rust (WKWebView can't follow custom-scheme redirects itself).
+        let url =
+            reqwest::Url::parse(&format!("https://{ADMINER_HOST}/?edit=notes&where%5Bid%5D=1"))
+                .unwrap();
+        let next = url.join("?select=notes").unwrap();
+        assert_eq!(next.host_str(), Some(ADMINER_HOST));
+        assert_eq!(next.query(), Some("select=notes"));
+        // An absolute off-vhost Location must NOT be followed.
+        let foreign = url.join("https://example.com/x").unwrap();
+        assert_ne!(foreign.host_str(), Some(ADMINER_HOST));
     }
 
     #[test]
