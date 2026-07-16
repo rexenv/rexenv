@@ -42,7 +42,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on tr.rex (WP, real core version) + gpt.rex (php/FrankenPHP resources) |
 | `site open <domain>` | — (`open https://<domain>`) | ✓ | shipped 16 Jul — domain validated via `site.list`; missing-domain exit 1 |
 | `site login <domain> [--print]` | `wp_admin_login_url` | ✓ | shipped 16 Jul — minted link curl-verified: 302 → /wp-admin/; non-WP site refused |
-| `site logs <domain> [--follow]` | `log_targets` + `tail_log` | 🟢 | `--follow` = client-side poll loop |
+| `site logs <domain> [--source K] [--lines N] [--follow]` | `log_targets` + `tail_log` (+ `wp_debug_log_tail` via the `wp-debug` pseudo-source) | ✓ | shipped 16 Jul — sources list, tails, --follow caught a live request; wp-debug reads the docroot debug.log |
 | `site rename <domain> <name>` | `rename_site` | 🟢 | |
 | `site domain <domain> <new-domain>` | `change_site_domain` | 🟢 | destructive-ish (URL rewrite) → confirm + `--yes` |
 | `site move <domain> <path>` | `move_site_docroot` | 🟢 | preflight errors already backend-side |
@@ -69,7 +69,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `service start\|stop mysql\|mariadb\|postgres\|redis` | `start_database` / `stop_database` | 🟢 | per-engine |
 | `service start\|stop mailpit` | `start_mail` / `stop_mail` | 🟢 | |
 | `service start\|stop nginx\|caddy\|php-<minor>` | — | 🔴 | web tier has no single-service IPC (deliberate — topology invariants); design first |
-| `logs <service> [--follow]` | `log_targets` + `tail_log` | 🟢 | same plumbing as `site logs` |
+| `logs [key] [--lines N] [--follow]` | `tail_log` + a `logs.list` dir-listing arm | ✓ | shipped 16 Jul — no key lists every log file with sizes |
 
 ## Database
 
@@ -121,7 +121,7 @@ convention) — see "Infrastructure" for progress streaming.
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
 | `rex version` | `app_info` + CLI's own version | 🟢 | also surfaces CLI↔app protocol drift |
-| `rex doctor` | composite: `global_status` + `dns_status` + `services_status` + port/wire probes | 🟡 | one honest diagnosis: DNS mode, edge wire identity (Herd shadow-bind!), port conflicts with fix-its — the support-request killer |
+| `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
 | shell completions (`rex completions zsh\|bash\|fish`) | — | ⚪ | static generation in `cli/` |
 
 ## Infrastructure (enables the above, not user commands)
