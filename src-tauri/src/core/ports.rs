@@ -92,6 +92,30 @@ pub fn ensure_free(platform: &dyn Platform, port: u16, proto: Proto, service: &s
     if is_free(port, proto) {
         return Ok(());
     }
+    // OUR OWN leftover (the app-data marker on the holder's cmdline) is
+    // rexenv's problem, never the user's: spawn paths reap it automatically
+    // (spawn_override self-heal), so reaching here means that reap failed or
+    // an unguarded process hit the gate. Say so honestly — and never suggest
+    // `sudo kill` for our own same-user process (the old message did exactly
+    // that for an orphaned httpd). TCP only: the listener query is TCP-based.
+    if matches!(proto, Proto::Tcp) {
+        let ours = platform
+            .paths()
+            .app_data_dir()
+            .ok()
+            .map(|d| d.display().to_string())
+            .filter(|m| !m.is_empty())
+            .and_then(|m| platform.supervisor().owned_master(port, &m));
+        if let Some(pid) = ours {
+            return Err(Error::Other(format!(
+                "port {port}/{} (needed by {service}) is still held by a leftover rexenv \
+                 process (pid {pid}). rexenv reclaims these automatically on start — if \
+                 this keeps happening, run this in a terminal, then start services again:\n\
+                 $ kill {pid}",
+                proto.as_str()
+            )));
+        }
+    }
     let help = platform.supervisor().port_conflict_help(port, matches!(proto, Proto::Udp));
     let by = match &help.holder {
         Some(h) => format!(" by {h}"),
@@ -180,6 +204,102 @@ mod tests {
             }
         }
         panic!("freed TCP port never probed free across 10 attempts");
+    }
+
+    /// A conflict with OUR OWN leftover (holder cmdline carries the app-data
+    /// marker) must say so and give a plain `kill` — never `sudo kill` for a
+    /// same-user process rexenv spawned (the original bug told the user to
+    /// sudo-kill our own orphaned httpd).
+    #[test]
+    fn conflict_with_our_own_leftover_says_kill_without_sudo() {
+        use crate::platform::traits::*;
+        struct OursPaths;
+        impl Paths for OursPaths {
+            fn app_data_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(std::env::temp_dir())
+            }
+            fn config_dir(&self) -> Result<std::path::PathBuf> {
+                unimplemented!()
+            }
+            fn log_dir(&self) -> Result<std::path::PathBuf> {
+                unimplemented!()
+            }
+            fn bin_dir(&self) -> Result<std::path::PathBuf> {
+                unimplemented!()
+            }
+            fn hosts_file(&self) -> std::path::PathBuf {
+                unimplemented!()
+            }
+        }
+        struct OursSup;
+        impl ProcessSupervisor for OursSup {
+            fn spawn(
+                &self,
+                _: &std::path::Path,
+                _: &[String],
+            ) -> Result<std::process::Child> {
+                unimplemented!()
+            }
+            fn spawn_logged(
+                &self,
+                _: &std::path::Path,
+                _: &[String],
+                _: &std::path::Path,
+            ) -> Result<std::process::Child> {
+                unimplemented!()
+            }
+            fn stop(&self, _: u32) -> Result<()> {
+                unimplemented!()
+            }
+            fn owned_master(&self, _: u16, _: &str) -> Option<u32> {
+                Some(4321)
+            }
+        }
+        struct OursPlatform;
+        impl Platform for OursPlatform {
+            fn paths(&self) -> &dyn Paths {
+                &OursPaths
+            }
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                &OursSup
+            }
+            fn dns(&self) -> &dyn DnsManager {
+                unimplemented!()
+            }
+            fn cert_trust(&self) -> &dyn CertTrustManager {
+                unimplemented!()
+            }
+            fn privileges(&self) -> &dyn PrivilegeManager {
+                unimplemented!()
+            }
+            fn autostart(&self) -> &dyn AutostartManager {
+                unimplemented!()
+            }
+            fn permissions(&self) -> &dyn PermissionManager {
+                unimplemented!()
+            }
+            fn shell(&self) -> &dyn ShellRunner {
+                unimplemented!()
+            }
+            fn binaries(&self) -> &dyn BinaryProvider {
+                unimplemented!()
+            }
+            fn edge(&self) -> &dyn EdgeSupervisor {
+                unimplemented!()
+            }
+            fn dns_agent(&self) -> &dyn DnsAgentManager {
+                unimplemented!()
+            }
+        }
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let err = ensure_free(&OursPlatform, port, Proto::Tcp, "Apache")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("leftover rexenv process (pid 4321)"), "msg: {err}");
+        assert!(err.lines().last().unwrap().starts_with("$ kill 4321"), "msg: {err}");
+        assert!(!err.contains("sudo"), "never sudo for our own process: {err}");
+        drop(listener);
     }
 
     #[test]
