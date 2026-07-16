@@ -337,6 +337,13 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `rex restart` is the client sending `stop` then `start`. `site.create` submits
   what the New Site dialog submits (empty `path` → backend-derived, registry-default
   PHP); `site.delete` is by-id after a domain lookup, confirm-gated in the client.
+- **Packaging:** `rex` ships as a Tauri sidecar (`bundle.externalBin`, staged by
+  `scripts/build-cli.sh` — aarch64 + x86_64 + lipo'd universal; `build.rs`
+  self-stages for bare cargo builds) → `Contents/MacOS/rex`, signed with the
+  bundle. PATH install = one symlink `/usr/local/bin/rex → <bundle>/rex`
+  (`Paths::cli_symlink_path`; unprivileged attempt first, one admin prompt
+  fallback) from the Settings "Command-line tool" card; teardown removes the
+  link only when it is ours (content-checked).
 - **App not running → hard error, exit 2** ("open the app first"). Deliberate: a
   headless CLI-spawned backend would be a second ServiceManager/SQLite writer/
   watchdog racing the GUI — the exact second-brain class the stack guard exists to

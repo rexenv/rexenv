@@ -272,9 +272,19 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   ✓ **Closed 16 Jul (human-verified):** back-to-back Start-alls, Apache pid STABLE
   — reconcile does not bounce; the earlier double-restart was one-time conf drift
   from the pre-fix build's session, not a persistent diff.
-- [ ] **`rex` CLI packaging** — ship the `rex` binary in the app bundle + a
+- [x] **`rex` CLI packaging** — ship the `rex` binary in the app bundle + a
   Settings/onboarding "install CLI" step (symlink into PATH, Herd/Docker-style).
   v1 builds from `cli/` only; not release-blocking until the CLI is user-facing.
+  ✓ **Done** in 3 commits: `0a85cec` sidecar bundling (`scripts/build-cli.sh`
+  stages aarch64+x86_64+universal as `externalBin`; build.rs self-stages so a
+  fresh clone's bare cargo build works — verified broken without; debug bundle
+  contains a signed, working `Contents/MacOS/rex`); `40e2630` install backend
+  (`core/cli.rs` status/install — unprivileged symlink first, one-prompt
+  `PrivilegeManager` fallback, read_link-verified; `Paths::cli_symlink_path` =
+  `/usr/local/bin/rex`; teardown removes OUR link only, content-checked;
+  283 lib tests, +3); `4037b71` Settings General-tab card (status-aware
+  Install/Reinstall, link+target shown). **Human-verify:** Settings → Install
+  (expect one admin prompt) → `rex status` from a fresh terminal.
 - [ ] **Release 5.4 — execute the clean-Mac smoke test** — checklist already written:
   `docs/SMOKE-TEST.md`. First pass (fresh-account, 10 Jul 2026) all green except the
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;

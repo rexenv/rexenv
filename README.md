@@ -81,6 +81,7 @@ rexenv/
 ├── cli/                        # ── `rex` CLI (bin) — remote control ONLY ──
 │   └── src/main.rs             # never links the app lib: one JSON line over the
 │                               #   app's private 0600 socket; app not running → exit 2
+├── scripts/build-cli.sh        # stages rex as Tauri sidecars (bundled into the app)
 │
 ├── src/                        # ── FRONTEND (React + TS) ──
 │   ├── main.tsx                # React entry
