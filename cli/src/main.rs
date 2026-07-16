@@ -79,7 +79,7 @@ COMMANDS:
                 Public cloudflared tunnels (start prints the public URL)
   tld [--set <tld>]
                 Default TLD for new sites
-  version       App + CLI versions
+  version       App + CLI versions (needs the app; -v/--version works without)
   completions zsh|bash    Print a shell completion script (eval or install it)
   help          Show this help
 
@@ -153,6 +153,19 @@ fn request(cmd: &str, args: Value) -> Value {
     }
 }
 
+/// Best-effort request: `None` on any transport/command failure — for output
+/// that must not require a running app (`--version`).
+fn soft_request(cmd: &str) -> Option<Value> {
+    let mut stream = UnixStream::connect(socket_path()).ok()?;
+    let line = json!({ "cmd": cmd, "args": Value::Null }).to_string();
+    stream.write_all(format!("{line}\n").as_bytes()).ok()?;
+    stream.flush().ok()?;
+    let mut reply = String::new();
+    BufReader::new(stream).read_line(&mut reply).ok()?;
+    let envelope: Value = serde_json::from_str(reply.trim()).ok()?;
+    (envelope["ok"] == json!(true)).then(|| envelope["data"].clone())
+}
+
 fn main() {
     let mut json_output = false;
     let mut words: Vec<String> = Vec::new();
@@ -161,6 +174,16 @@ fn main() {
             "--json" => json_output = true,
             "-h" | "--help" | "help" => {
                 println!("{USAGE}");
+                return;
+            }
+            // Native version: must work WITHOUT the app (unlike `rex version`,
+            // the app round-trip) — CLI version always, app version best-effort.
+            "-v" | "-V" | "--version" => {
+                print!("rex {}", env!("CARGO_PKG_VERSION"));
+                if let Some(app) = soft_request("version") {
+                    print!(" · rexenv {}", app["version"].as_str().unwrap_or("?"));
+                }
+                println!();
                 return;
             }
             _ => words.push(arg),
