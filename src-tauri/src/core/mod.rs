@@ -8,6 +8,7 @@ pub mod adminer;
 pub mod apache;
 pub mod binaries;
 pub mod blueprints;
+pub mod cli;
 pub mod database;
 pub mod db;
 pub mod dns;

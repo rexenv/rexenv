@@ -26,6 +26,12 @@ pub trait Paths: Send + Sync {
     fn bin_dir(&self) -> Result<PathBuf>;
     /// The system hosts file (`/etc/hosts` vs Windows path).
     fn hosts_file(&self) -> PathBuf;
+    /// Where the `rex` CLI symlink is installed on PATH (macOS:
+    /// `/usr/local/bin/rex` — the Docker/Herd convention). Default:
+    /// unsupported, so platforms without a CLI story fail honestly.
+    fn cli_symlink_path(&self) -> Result<PathBuf> {
+        Err(crate::error::Error::Unsupported("CLI PATH install"))
+    }
 }
 
 /// Points the OS resolver at our embedded `hickory-dns` server so `*.<tld>`

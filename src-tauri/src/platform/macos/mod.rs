@@ -42,6 +42,9 @@ impl Paths for MacosPaths {
     fn hosts_file(&self) -> PathBuf {
         PathBuf::from("/etc/hosts")
     }
+    fn cli_symlink_path(&self) -> Result<PathBuf> {
+        Ok(PathBuf::from("/usr/local/bin/rex"))
+    }
 }
 
 pub struct MacosDns;

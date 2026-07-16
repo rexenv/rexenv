@@ -204,6 +204,22 @@ pub fn dns_status(
     }
 }
 
+/// `rex` CLI install status for the Settings card.
+#[tauri::command]
+pub fn cli_status(state: State<'_, AppState>) -> Result<core::cli::CliStatus> {
+    core::cli::status(state.platform.as_ref())
+}
+
+/// Install/refresh the `rex` PATH symlink. May show ONE admin prompt
+/// (`/usr/local/bin` is root-owned on most machines) — `async` so the
+/// blocking prompt runs off the UI thread, same handling as `system_setup`.
+/// Returns the refreshed status so the card updates in one round-trip.
+#[tauri::command]
+pub async fn cli_install(state: State<'_, AppState>) -> Result<core::cli::CliStatus> {
+    core::cli::install(state.platform.as_ref())?;
+    core::cli::status(state.platform.as_ref())
+}
+
 /// Run first-run system setup (§3.4): install the `.rex` backbone OS resolver (one admin
 /// prompt) + trust the local CA (native keychain dialog). Idempotent — safe to
 /// re-run. Backs the Onboarding "Set up domains & SSL" step. `async` so the blocking

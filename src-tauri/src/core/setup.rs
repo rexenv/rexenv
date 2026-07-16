@@ -52,6 +52,9 @@ pub fn run_system_teardown(platform: &dyn Platform) -> Result<()> {
     dns::remove_all_resolvers(platform, dns::DEFAULT_DNS_PORT)?;
     ssl::untrust_ca(platform, &ca)?;
     platform.dns_agent().uninstall()?;
+    // The `rex` PATH symlink — ours only (content-checked), unprivileged
+    // best-effort: teardown must not add a prompt for harmless litter.
+    super::cli::remove_symlink_best_effort(platform);
     Ok(())
 }
 

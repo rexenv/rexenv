@@ -465,6 +465,8 @@ pub fn run() {
             commands::system::list_editors,
             commands::system::open_in_editor,
             commands::system::dns_status,
+            commands::system::cli_status,
+            commands::system::cli_install,
             commands::system::system_setup,
             commands::system::trust_local_ca,
             commands::system::firefox_trust_status,
