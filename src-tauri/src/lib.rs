@@ -3,6 +3,8 @@
 //! Architecture: `commands/` (thin IPC) → `core/` (platform-agnostic) →
 //! `platform/` (OS traits, selected via cfg). See CLAUDE.md.
 
+#[cfg(unix)]
+pub mod cli_server;
 pub mod commands;
 pub mod core;
 pub mod error;
@@ -290,6 +292,13 @@ pub fn run() {
                 }
             };
             app.manage(commands::system::InitError(init_error));
+
+            // `rex` CLI socket (see `cli_server`): requests execute in THIS
+            // process through the same command fns the UI calls. Spawned even
+            // when init failed — each request then gets the honest
+            // still-starting/failed error instead of a dead socket.
+            #[cfg(unix)]
+            cli_server::spawn(app.handle().clone());
 
             // Health watchdog: every 10s probe every service the manager OWNS and
             // respawn dead ones (bounded attempts) — the UI used to show "running"

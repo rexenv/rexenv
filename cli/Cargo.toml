@@ -1,0 +1,18 @@
+[package]
+name = "rexenv-cli"
+version = "0.1.0"
+description = "rex — remote control for the running rexenv app"
+license = "MIT"
+edition = "2021"
+
+# STRUCTURAL second-brain guarantee (do not relitigate): this crate must NEVER
+# depend on the app lib (rexenv_lib) or any service/DB machinery. It cannot
+# open the app SQLite or spawn/stop services — it can only write one JSON
+# request line to the running app's private socket and print the reply. That
+# makes the examples-stop-the-edge bug class impossible at compile time.
+[dependencies]
+serde_json = "1"
+
+[[bin]]
+name = "rex"
+path = "src/main.rs"

@@ -45,3 +45,6 @@ tauri-plugin-dialog = "2"
 x509-parser = "0.16"
 
 [dev-dependencies]
+# MockRuntime app for cli_server tests + the cli_socket_check example — lets us
+# exercise the real command dispatch without a GUI event loop.
+tauri = { version = "2.11.3", features = ["test"] }
