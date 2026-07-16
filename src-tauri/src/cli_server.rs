@@ -37,6 +37,21 @@ pub struct Request {
     pub args: Value,
 }
 
+/// `site.create` args — only `domain` is required; everything else falls back
+/// to the New Site dialog's defaults. Enum fields reuse the models' serde
+/// forms, so the CLI accepts exactly the values the UI submits.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct SiteCreateArgs {
+    domain: String,
+    name: Option<String>,
+    #[serde(rename = "type")]
+    site_type: Option<crate::state::models::SiteType>,
+    php: Option<String>,
+    server: Option<crate::state::models::WebServer>,
+    db: Option<crate::state::models::SiteDbEngine>,
+}
+
 pub fn parse_request(line: &str) -> Result<Request> {
     serde_json::from_str(line.trim()).map_err(|e| Error::Other(format!("bad request: {e}")))
 }
@@ -121,7 +136,7 @@ where
 
 /// Route a command to the SAME `commands::*` fn the UI calls — never a
 /// parallel implementation.
-async fn dispatch<R, M>(app: &M, cmd: &str, _args: Value) -> Result<Value>
+async fn dispatch<R, M>(app: &M, cmd: &str, args: Value) -> Result<Value>
 where
     R: tauri::Runtime,
     M: Manager<R>,
@@ -151,6 +166,59 @@ where
             let sites = commands::sites::list_sites(state.clone())?;
             let serving = commands::sites::sites_serving(state.clone())?;
             Ok(json!({ "sites": to_value(&sites)?, "serving": to_value(&serving)? }))
+        }
+        // Site create: exactly what the New Site dialog submits — an empty
+        // `path` (the backend derives it under the sites folder), WordPress
+        // install options falling back to their site-derived defaults, and the
+        // dialog's own default choices for anything the flag set omits. All
+        // validation stays where it lives (validate_domain, core checks).
+        "site.create" => {
+            let state = app_state(app)?;
+            let a: SiteCreateArgs = serde_json::from_value(args)
+                .map_err(|e| Error::Other(format!("bad site.create args: {e}")))?;
+            if a.domain.is_empty() {
+                return Err(Error::Other("site.create needs a domain".into()));
+            }
+            let php_version = match a.php {
+                Some(v) => v,
+                // The dialog preselects the registry's default minor.
+                None => {
+                    let conn = state
+                        .db
+                        .lock()
+                        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                    crate::core::php::list_versions(&conn)?
+                        .into_iter()
+                        .find(|v| v.is_default)
+                        .map(|v| v.minor)
+                        .ok_or_else(|| Error::Other("no default PHP version".into()))?
+                }
+            };
+            let site = crate::state::models::NewSite {
+                name: a.name.unwrap_or_else(|| a.domain.clone()),
+                domain: a.domain,
+                site_type: a.site_type.unwrap_or(crate::state::models::SiteType::Wordpress),
+                php_version,
+                web_server: a.server.unwrap_or(crate::state::models::WebServer::Nginx),
+                path: String::new(),
+                db_engine: a.db.unwrap_or(crate::state::models::SiteDbEngine::Mysql),
+            };
+            let created = commands::sites::create_site(state.clone(), site, None, None).await?;
+            to_value(&created)
+        }
+        // Site delete: the CLI resolves domain → id via site.list first; this
+        // arm is by-id like the UI row action (tunnel stop + DB drop + files).
+        "site.delete" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("site.delete needs an id".into()))?
+                .to_string();
+            let tunnels = app
+                .try_state::<commands::tunnels::Tunnels>()
+                .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
+            let deleted = commands::sites::delete_site(state.clone(), tunnels, id).await?;
+            Ok(json!({ "deleted": deleted }))
         }
         other => Err(Error::Other(format!(
             "unknown command: {other} (this rex may be newer than the running app)"
@@ -239,7 +307,7 @@ mod tests {
         let app = tauri::test::mock_app();
         // Every ROUTED command reaches the state check (proving the arm
         // exists); an unrouted one must say so instead.
-        for cmd in ["status", "start", "stop", "site.list"] {
+        for cmd in ["status", "start", "stop", "site.list", "site.create", "site.delete"] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
             let v: Value = serde_json::from_str(&reply).expect("valid envelope");

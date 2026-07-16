@@ -47,6 +47,8 @@ async fn main() {
     // Display-only mode label: liveness in dns_status is a real wire probe
     // either way; this example doesn't know agent vs in-process.
     app.manage(DnsState::new(None, DnsMode::Agent));
+    // site.delete resolves the tunnel registry; empty is the app-start shape.
+    app.manage(rexenv_lib::commands::tunnels::Tunnels::default());
     let state = AppState::new(conn, platform, ca);
     let adopted = {
         let mut mgr = state.services.lock().await;
@@ -83,8 +85,8 @@ async fn main() {
     assert_eq!(v["ok"], false);
     assert!(v["error"].as_str().unwrap().contains("unknown command"));
 
-    println!("✓ self-test green — serving 30s for a manual `rex status` …");
-    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    println!("✓ self-test green — serving 150s for manual `rex` commands …");
+    tokio::time::sleep(std::time::Duration::from_secs(150)).await;
     let _ = std::fs::remove_file(&sock);
     println!("✓ cli_socket_check done (socket removed)");
 }

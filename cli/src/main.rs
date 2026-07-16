@@ -28,6 +28,12 @@ COMMANDS:
   stop          Stop the shared stack (same as Stop all)
   restart       stop, then start
   site list     All sites + whether each is actually serving
+  site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
+              [--server nginx|frankenphp|apache] [--db mysql|mariadb]
+                Create a site (defaults mirror the app's New Site dialog;
+                WordPress sites get the one-click install)
+  site delete <domain> [--yes]
+                Delete a site — drops its database and docroot (asks first)
   help          Show this help
 
 OPTIONS:
@@ -121,8 +127,10 @@ fn main() {
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
         Some("site") => match words.get(1).map(String::as_str) {
             Some("list") => cmd_site_list(json_output),
+            Some("create") => cmd_site_create(&words[2..], json_output),
+            Some("delete") => cmd_site_delete(&words[2..], json_output),
             _ => {
-                eprintln!("rex: usage: rex site <list>\n\n{USAGE}");
+                eprintln!("rex: usage: rex site <list|create|delete>\n\n{USAGE}");
                 exit(1);
             }
         },
@@ -208,6 +216,82 @@ fn cmd_site_list(json_output: bool) {
             if up { "serving" } else { "down" },
         );
     }
+}
+
+// ── site create / delete ─────────────────────────────────────────────────────
+
+fn flag_value(words: &[String], flag: &str) -> Option<String> {
+    words
+        .iter()
+        .position(|w| w == flag)
+        .and_then(|i| words.get(i + 1))
+        .cloned()
+}
+
+fn cmd_site_create(words: &[String], json_output: bool) {
+    let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site create <domain> [--name N] [--type T] [--php V] [--server S] [--db D]");
+        exit(1);
+    };
+    let mut args = serde_json::Map::new();
+    args.insert("domain".into(), json!(domain));
+    for (flag, key) in
+        [("--name", "name"), ("--type", "type"), ("--php", "php"), ("--server", "server"), ("--db", "db")]
+    {
+        if let Some(v) = flag_value(words, flag) {
+            args.insert(key.into(), json!(v));
+        }
+    }
+    if !json_output {
+        println!("creating {domain}… (WordPress sites install on first create — this can take a minute)");
+    }
+    let created = request("site.create", Value::Object(args));
+    if json_output {
+        return print_json(&created);
+    }
+    println!(
+        "✓ created {} ({}, PHP {}, {}, {}) → https://{}",
+        created["domain"].as_str().unwrap_or(domain),
+        created["type"].as_str().unwrap_or("?"),
+        created["phpVersion"].as_str().unwrap_or("?"),
+        created["webServer"].as_str().unwrap_or("?"),
+        created["dbEngine"].as_str().unwrap_or("?"),
+        created["domain"].as_str().unwrap_or(domain),
+    );
+}
+
+fn cmd_site_delete(words: &[String], json_output: bool) {
+    let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex site delete <domain> [--yes]");
+        exit(1);
+    };
+    // Resolve domain → id through the app (same list the UI shows).
+    let data = request("site.list", Value::Null);
+    let site = data["sites"]
+        .as_array()
+        .and_then(|sites| sites.iter().find(|s| s["domain"] == json!(domain)))
+        .cloned();
+    let Some(site) = site else {
+        eprintln!("rex: no site with domain `{domain}` (see `rex site list`)");
+        exit(1);
+    };
+    // Destructive: database + docroot go away. Ask unless --yes (and always
+    // require --yes when stdin isn't a terminal-driven human).
+    if !words.iter().any(|w| w == "--yes") {
+        eprint!("delete {domain}? This drops its database and docroot. [y/N] ");
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_err()
+            || !matches!(answer.trim(), "y" | "Y" | "yes")
+        {
+            eprintln!("aborted (nothing deleted)");
+            exit(1);
+        }
+    }
+    let result = request("site.delete", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&result);
+    }
+    println!("✓ deleted {domain} (database + files removed)");
 }
 
 // ── status ───────────────────────────────────────────────────────────────────
