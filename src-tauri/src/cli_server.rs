@@ -322,6 +322,33 @@ where
             files.sort_by(|a, b| a["key"].as_str().cmp(&b["key"].as_str()));
             Ok(json!({ "files": files }))
         }
+        // Database export/import — the SiteDetail Tools actions. Export writes
+        // `<domain>-db.sql` into ~/Downloads (numbered on collision) and
+        // returns the path; import is DESTRUCTIVE and .sql/engine-gated
+        // backend-side. The CLI confirms import (--yes) like the UI's typed
+        // confirm.
+        "db.export" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("db.export needs an id".into()))?
+                .to_string();
+            let path = commands::wordpress::wp_db_export(state.clone(), id).await?;
+            Ok(json!({ "path": path }))
+        }
+        "db.import" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("db.import needs an id".into()))?
+                .to_string();
+            let path = args["path"]
+                .as_str()
+                .ok_or_else(|| Error::Other("db.import needs a path".into()))?
+                .to_string();
+            commands::wordpress::wp_db_import(state.clone(), id, path).await?;
+            Ok(Value::Null)
+        }
         // Doctor: one honest diagnosis pass composing the app's own probes —
         // nothing here invents a new check, it reuses the exact machinery the
         // watchdog/Start-all/Settings already trust.
@@ -474,7 +501,8 @@ mod tests {
         // exists); an unrouted one must say so instead.
         for cmd in [
             "status", "start", "stop", "site.list", "site.create", "site.delete", "site.info",
-            "site.login", "logs.targets", "logs.tail", "logs.list", "doctor",
+            "site.login", "logs.targets", "logs.tail", "logs.list", "doctor", "db.export",
+            "db.import",
         ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;

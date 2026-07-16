@@ -42,6 +42,10 @@ COMMANDS:
   logs [key] [--lines N] [--follow]
                 Tail any service log (no key lists all log files)
   doctor        Diagnose: DNS mode, edge wire identity, port conflicts, CLI link
+  db export <domain>
+                Dump the site's database to ~/Downloads (prints the path)
+  db import <domain> <file.sql> [--yes]
+                Import a dump — OVERWRITES the site's tables (asks first)
   help          Show this help
 
 OPTIONS:
@@ -135,6 +139,14 @@ fn main() {
         Some("restart") => cmd_lifecycle(&["stop", "start"], json_output),
         Some("logs") => cmd_logs(&words[1..], json_output),
         Some("doctor") => cmd_doctor(json_output),
+        Some("db") => match words.get(1).map(String::as_str) {
+            Some("export") => cmd_db_export(&words[2..], json_output),
+            Some("import") => cmd_db_import(&words[2..], json_output),
+            _ => {
+                eprintln!("rex: usage: rex db <export|import>\n\n{USAGE}");
+                exit(1);
+            }
+        },
         Some("site") => match words.get(1).map(String::as_str) {
             Some("list") => cmd_site_list(json_output),
             Some("create") => cmd_site_create(&words[2..], json_output),
@@ -382,6 +394,59 @@ fn cmd_site_login(words: &[String], json_output: bool) {
     } else {
         open_url(url);
     }
+}
+
+// ── db export / import ───────────────────────────────────────────────────────
+
+fn cmd_db_export(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex db export <domain>");
+    if !json_output {
+        println!("exporting {}…", site["domain"].as_str().unwrap_or("?"));
+    }
+    let data = request("db.export", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&data);
+    }
+    println!("✓ exported → {}", data["path"].as_str().unwrap_or("?"));
+}
+
+fn cmd_db_import(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex db import <domain> <file.sql> [--yes]");
+    let domain = site["domain"].as_str().unwrap_or("?").to_string();
+    let Some(file) = words.get(1).filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: rex db import <domain> <file.sql> [--yes]");
+        exit(1);
+    };
+    // Absolute path client-side: the APP resolves relative paths against ITS
+    // cwd, not this shell's.
+    let file = match std::fs::canonicalize(file) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("rex: cannot read {file}: {e}");
+            exit(1);
+        }
+    };
+    if !words.iter().any(|w| w == "--yes") {
+        eprint!(
+            "import into {domain}? The dump's tables OVERWRITE existing ones \
+             (tip: `rex db export {domain}` first). [y/N] "
+        );
+        let mut answer = String::new();
+        if std::io::stdin().read_line(&mut answer).is_err()
+            || !matches!(answer.trim(), "y" | "Y" | "yes")
+        {
+            eprintln!("aborted (nothing imported)");
+            exit(1);
+        }
+    }
+    let result = request(
+        "db.import",
+        json!({ "id": site["id"], "path": file.to_string_lossy() }),
+    );
+    if json_output {
+        return print_json(&result);
+    }
+    println!("✓ imported {} into {domain}", file.display());
 }
 
 // ── doctor ───────────────────────────────────────────────────────────────────
