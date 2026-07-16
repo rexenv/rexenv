@@ -109,7 +109,7 @@ export function MenuItem({
         close();
       }}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-[7px] px-[9px] py-[7px] text-left text-[12.5px] transition-colors",
+        "flex w-full items-center gap-2.5 rounded-[7px] px-[9px] py-[7px] text-left text-[0.78125rem] transition-colors",
         danger
           ? "text-status-error-bright hover:bg-status-error-bg"
           : "text-rex-text-bright hover:bg-rex-hover",

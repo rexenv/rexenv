@@ -100,7 +100,7 @@ function Row({ item }: { item: DownloadItem }) {
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <span
           className={cn(
-            "truncate text-[12px]",
+            "truncate text-[0.75rem]",
             item.phase === "cached" || item.phase === "done"
               ? "text-rex-text-muted"
               : "text-rex-text",
@@ -110,7 +110,7 @@ function Row({ item }: { item: DownloadItem }) {
         </span>
         <span
           className={cn(
-            "flex flex-none items-center gap-1 font-mono text-[10px]",
+            "flex flex-none items-center gap-1 font-mono text-[0.625rem]",
             item.phase === "failed" ? "text-status-error-bright" : "text-rex-text-dim",
           )}
         >
@@ -122,12 +122,12 @@ function Row({ item }: { item: DownloadItem }) {
       </div>
       <Track pct={pct} state={trackState} />
       {detail && (
-        <div className="mt-1 truncate font-mono text-[9.5px] text-rex-text-dim">{detail}</div>
+        <div className="mt-1 truncate font-mono text-[0.59375rem] text-rex-text-dim">{detail}</div>
       )}
       {item.phase === "failed" && (
         <div className="mt-1.5 flex items-start justify-between gap-2">
           <span
-            className="line-clamp-2 flex-1 text-[10.5px] leading-[1.4] text-status-error-bright"
+            className="line-clamp-2 flex-1 text-[0.65625rem] leading-[1.4] text-status-error-bright"
             title={item.error ?? undefined}
           >
             {item.error}
@@ -135,7 +135,7 @@ function Row({ item }: { item: DownloadItem }) {
           <button
             onClick={() => retry.mutate()}
             disabled={retry.isPending}
-            className="flex flex-none items-center gap-1 rounded-[6px] border border-rex-border-strong bg-rex-surface-2 px-2 py-1 text-[10.5px] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
+            className="flex flex-none items-center gap-1 rounded-[6px] border border-rex-border-strong bg-rex-surface-2 px-2 py-1 text-[0.65625rem] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
           >
             <RotateCw className={cn("h-[10px] w-[10px]", retry.isPending && "animate-rex-spin")} strokeWidth={2.2} />
             Retry
@@ -155,10 +155,10 @@ export function DownloadPanel({ snapshot }: { snapshot: DownloadsSnapshot }) {
     <div className="absolute bottom-full left-2.5 right-2.5 z-50 mb-1.5 rounded-[11px] border border-rex-border-strong bg-rex-surface-2 p-[5px] shadow-menu">
       {snapshot.batch && (
         <div className="flex items-baseline justify-between px-2 pb-1 pt-1.5">
-          <span className="text-[11px] font-semibold text-rex-text-bright">
+          <span className="text-[0.6875rem] font-semibold text-rex-text-bright">
             {snapshot.batch.action}
           </span>
-          <span className="font-mono text-[10px] text-rex-text-dim">
+          <span className="font-mono text-[0.625rem] text-rex-text-dim">
             {snapshot.batch.done}/{snapshot.batch.total}
           </span>
         </div>
@@ -168,7 +168,7 @@ export function DownloadPanel({ snapshot }: { snapshot: DownloadsSnapshot }) {
           <Row key={i.id} item={i} />
         ))}
         {snapshot.items.length === 0 && (
-          <div className="px-2 py-3 text-center text-[11px] text-rex-text-dim">
+          <div className="px-2 py-3 text-center text-[0.6875rem] text-rex-text-dim">
             No downloads this session
           </div>
         )}

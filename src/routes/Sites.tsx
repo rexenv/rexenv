@@ -37,7 +37,7 @@ function SiteMetrics({ res }: { res?: SiteResources }) {
         : "not running";
     return (
       <span
-        className="w-[168px] flex-none truncate text-right font-mono text-[10.5px] text-rex-text-dim"
+        className="w-[168px] flex-none truncate text-right font-mono text-[0.65625rem] text-rex-text-dim"
         title="Dedicated FrankenPHP process — real CPU/RAM for this site (plus its DB size)"
       >
         {own}
@@ -48,10 +48,10 @@ function SiteMetrics({ res }: { res?: SiteResources }) {
   const req = res.requestsPerMin ?? 0;
   return (
     <span
-      className="flex w-[168px] flex-none items-center justify-end gap-[6px] font-mono text-[10.5px] text-rex-text-dim"
+      className="flex w-[168px] flex-none items-center justify-end gap-[6px] font-mono text-[0.65625rem] text-rex-text-dim"
       title="Shared nginx + PHP pool — a per-site CPU/RAM number doesn't exist here; showing real activity (requests in the last 60s) and DB size instead"
     >
-      <span className="rounded-[5px] border border-rex-border bg-rex-surface-2 px-[5px] py-px text-[9px] uppercase tracking-[0.08em] text-rex-text-faint">
+      <span className="rounded-[5px] border border-rex-border bg-rex-surface-2 px-[5px] py-px text-[0.5625rem] uppercase tracking-[0.08em] text-rex-text-faint">
         shared
       </span>
       <span className="truncate">
@@ -71,7 +71,7 @@ function Badge({
   return (
     <span
       className={cn(
-        "flex-none rounded-[6px] border border-rex-border-strong bg-rex-surface-1 px-[7px] py-[3px] font-mono text-[10.5px] text-rex-text-bright",
+        "flex-none rounded-[6px] border border-rex-border-strong bg-rex-surface-1 px-[7px] py-[3px] font-mono text-[0.65625rem] text-rex-text-bright",
         className,
       )}
     >
@@ -116,14 +116,14 @@ function FilterTabs({
           key={t.key}
           onClick={() => onChange(t.key)}
           className={cn(
-            "flex h-7 items-center gap-1.5 rounded-[7px] px-[11px] text-[12.5px] font-medium transition-colors",
+            "flex h-7 items-center gap-1.5 rounded-[7px] px-[11px] text-[0.78125rem] font-medium transition-colors",
             value === t.key
               ? "bg-brand-tint-bg text-brand-tint"
               : "text-rex-text-muted hover:text-rex-text-bright",
           )}
         >
           {t.label}
-          <span className="font-mono text-[10.5px] opacity-70">{counts[t.key]}</span>
+          <span className="font-mono text-[0.65625rem] opacity-70">{counts[t.key]}</span>
         </button>
       ))}
     </div>
@@ -135,7 +135,7 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
     <button
       onClick={onCycle}
       title="Change sort order"
-      className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[13px] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2"
+      className="flex h-[34px] items-center gap-[7px] rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2"
     >
       <ArrowDownUp className="h-3.5 w-3.5 text-rex-text-muted" strokeWidth={1.8} />
       {SORT_LABEL[value]}
@@ -197,16 +197,16 @@ function SiteRow({
       className="group flex h-11 cursor-pointer items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/15"
     >
       <div
-        className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border text-[11px] font-bold"
+        className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border text-[0.6875rem] font-bold"
         style={{ background: t.bg, color: t.color, borderColor: t.border }}
       >
         {t.letter}
       </div>
       <div className="flex w-[188px] flex-none flex-col gap-px">
-        <div className="truncate text-[13.5px] font-semibold text-rex-text">
+        <div className="truncate text-[0.84375rem] font-semibold text-rex-text">
           {site.name}
         </div>
-        <div className="truncate font-mono text-[11px] text-rex-text-muted">
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
           {site.domain}
         </div>
       </div>
@@ -450,7 +450,7 @@ export function Sites() {
       {!isLoading && sites.length > 0 && (
         <div className="flex flex-none items-center justify-between px-[22px] pb-[9px] pt-[14px]">
           <FilterTabs value={filter} onChange={setFilter} counts={counts} />
-          <div className="flex items-center gap-[18px] pr-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
+          <div className="flex items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
             <span className="w-[118px]">Stack</span>
             <span className="w-[88px]">Status</span>
           </div>
@@ -479,8 +479,8 @@ export function Sites() {
               </svg>
             </div>
             <div>
-              <div className="text-[19px] font-semibold text-rex-text">No sites yet</div>
-              <div className="mt-2 max-w-[400px] text-[13.5px] leading-[1.55] text-rex-text-muted">
+              <div className="text-[1.1875rem] font-semibold text-rex-text">No sites yet</div>
+              <div className="mt-2 max-w-[400px] text-[0.84375rem] leading-[1.55] text-rex-text-muted">
                 Point rexenv at a folder and it serves your site instantly — with its
                 own <span className="font-mono">.{tld}</span> domain, PHP, and database.
               </div>
@@ -492,10 +492,10 @@ export function Sites() {
           </div>
         ) : noResults ? (
           <div className="flex flex-col items-center justify-center gap-1.5 px-5 py-[54px] text-center">
-            <div className="text-[14px] font-medium text-rex-text-bright">
+            <div className="text-[0.875rem] font-medium text-rex-text-bright">
               {query ? `No sites match “${query}”` : "No sites in this view"}
             </div>
-            <div className="text-[12.5px] text-rex-text-dim">
+            <div className="text-[0.78125rem] text-rex-text-dim">
               Try a different name, domain, or clear the filter.
             </div>
           </div>

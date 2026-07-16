@@ -22,10 +22,10 @@ export function Placeholder({
         <div className="flex h-[46px] w-[46px] items-center justify-center rounded-[12px] border border-rex-panel-border bg-rex-surface-1 text-[var(--rex-placeholder)]">
           {icon}
         </div>
-        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--rex-placeholder)]">
+        <div className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-[var(--rex-placeholder)]">
           {label}
         </div>
-        <div className="text-[13px] text-[var(--rex-placeholder-hint)]">{hint}</div>
+        <div className="text-[0.8125rem] text-[var(--rex-placeholder-hint)]">{hint}</div>
       </div>
     </div>
   );

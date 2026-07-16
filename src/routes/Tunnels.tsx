@@ -13,7 +13,7 @@ import type { Site, TunnelInfo } from "@/types";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-[10px] px-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-rex-text-label">
+    <div className="mb-[10px] px-0.5 font-mono text-[0.625rem] uppercase tracking-[0.12em] text-rex-text-label">
       {children}
     </div>
   );
@@ -72,7 +72,7 @@ export function Tunnels() {
       <button
         onClick={() => stopAll.mutate()}
         disabled={stopAll.isPending}
-        className="flex h-[34px] items-center gap-1.5 rounded-[9px] border border-status-error-border bg-status-error-bg px-3 text-[13px] font-medium text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
+        className="flex h-[34px] items-center gap-1.5 rounded-[9px] border border-status-error-border bg-status-error-bg px-3 text-[0.8125rem] font-medium text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
       >
         <Square className="h-3 w-3 fill-current" />
         Stop all sharing
@@ -106,12 +106,12 @@ export function Tunnels() {
                 style={{ color: "var(--rex-lock-insecure)" }}
                 strokeWidth={1.7}
               />
-              <div className="flex-1 text-[13px] leading-[1.55] text-rex-text-bright">
+              <div className="flex-1 text-[0.8125rem] leading-[1.55] text-rex-text-bright">
                 Sharing creates a <span className="font-medium text-rex-text">free, temporary public link</span>{" "}
                 through Cloudflare — anyone with the URL reaches your local site, no deploy required. Links
                 last while sharing is on and disappear when you stop.
               </div>
-              <span className="flex-none whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-[9px] py-1 font-mono text-[10px] text-rex-text-dim">
+              <span className="flex-none whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-[9px] py-1 font-mono text-[0.625rem] text-rex-text-dim">
                 via cloudflared
               </span>
             </div>
@@ -173,7 +173,7 @@ function DefaultCredsSummary({ sites }: { sites: Site[] }) {
           className={cn("h-3.5 w-3.5 flex-none text-rex-text-muted transition-transform", open && "rotate-90")}
           strokeWidth={2}
         />
-        <span className="flex-1 text-[12.5px] text-rex-text-muted">
+        <span className="flex-1 text-[0.78125rem] text-rex-text-muted">
           {n === 1 ? "1 site accepts" : `${n} sites accept`} the default{" "}
           <span className="font-mono text-rex-text-bright">admin/admin</span> login — fine locally;
           it only matters while a tunnel is active (you'll be warned on the card).
@@ -185,13 +185,13 @@ function DefaultCredsSummary({ sites }: { sites: Site[] }) {
             {sites.map((s) => (
               <span
                 key={s.id}
-                className="rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[11px] text-rex-text-muted"
+                className="rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[0.6875rem] text-rex-text-muted"
               >
                 {s.domain}
               </span>
             ))}
           </div>
-          <div className="mt-2 text-[11.5px] text-rex-text-dim">
+          <div className="mt-2 text-[0.71875rem] text-rex-text-dim">
             To change one: Site → WordPress → Users → key icon on the admin user.
           </div>
         </div>
@@ -230,25 +230,25 @@ function TunnelCard({
     <div className={cn("rounded-[13px] border bg-rex-surface-1 px-4 py-[14px] transition-colors", border)}>
       <div className="flex items-center gap-[13px]">
         <div
-          className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border text-[12px] font-bold"
+          className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border text-[0.75rem] font-bold"
           style={{ background: t.bg, color: t.color, borderColor: t.border }}
         >
           {site.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold text-rex-text">{site.name}</div>
-          <div className="mt-0.5 font-mono text-[11px] text-rex-text-muted">{site.domain}</div>
+          <div className="text-[0.875rem] font-semibold text-rex-text">{site.name}</div>
+          <div className="mt-0.5 font-mono text-[0.6875rem] text-rex-text-muted">{site.domain}</div>
         </div>
 
         {state === "live" && <StatusPill status="running" label="Live" />}
         {state === "starting" && (
-          <span className="flex items-center gap-[7px] text-[12px] text-status-warning-bright">
+          <span className="flex items-center gap-[7px] text-[0.75rem] text-status-warning-bright">
             <span className="h-3 w-3 rounded-full border-2 border-status-warning/30 border-t-status-warning animate-rex-spin motion-reduce:animate-none" />
             Starting…
           </span>
         )}
-        {state === "stopping" && <span className="text-[12px] text-rex-text-muted">Stopping…</span>}
-        {state === "idle" && <span className="text-[12px] text-rex-text-muted">Share publicly</span>}
+        {state === "stopping" && <span className="text-[0.75rem] text-rex-text-muted">Stopping…</span>}
+        {state === "idle" && <span className="text-[0.75rem] text-rex-text-muted">Share publicly</span>}
 
         <StartStopToggle
           running={on || busy}
@@ -261,7 +261,7 @@ function TunnelCard({
       {/* Loud only where it MATTERS: a live public URL + default credentials.
           Idle sites are covered by the page-level summary instead. */}
       {on && defaultCreds && (
-        <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[12px] leading-[1.5] text-status-warning-bright">
+        <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-warning-bright">
           <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />
           <span>
             This site is PUBLIC and still accepts the default{" "}
@@ -280,7 +280,7 @@ function TunnelCard({
               strokeWidth={1.7}
             />
             <a
-              className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-link hover:underline"
+              className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-link hover:underline"
               onClick={(e) => {
                 e.preventDefault();
                 openExternal(tunnel.url);
@@ -300,13 +300,13 @@ function TunnelCard({
             </button>
             <button
               onClick={() => onToggle(false)}
-              className="flex h-7 items-center rounded-md border border-status-error-border bg-status-error-bg px-[11px] text-[11.5px] font-medium text-status-error-bright transition-[filter] hover:brightness-110"
+              className="flex h-7 items-center rounded-md border border-status-error-border bg-status-error-bg px-[11px] text-[0.71875rem] font-medium text-status-error-bright transition-[filter] hover:brightness-110"
             >
               Stop sharing
             </button>
           </div>
           {/* TODO(backend): request count + uptime aren't tracked on TunnelInfo yet. */}
-          <div className="mt-2 flex items-center justify-between px-0.5 text-[11px] text-rex-text-dim">
+          <div className="mt-2 flex items-center justify-between px-0.5 text-[0.6875rem] text-rex-text-dim">
             <span>Public link active</span>
             <span>Anyone with this link can reach your local site.</span>
           </div>
@@ -330,7 +330,7 @@ function CopyButton({ value }: { value: string }) {
         }
       }}
       className={cn(
-        "flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[11.5px] transition-colors hover:bg-rex-hover-strong",
+        "flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[0.71875rem] transition-colors hover:bg-rex-hover-strong",
         copied ? "text-status-running-bright" : "text-rex-text-muted",
       )}
     >

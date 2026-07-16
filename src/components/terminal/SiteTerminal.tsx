@@ -47,7 +47,9 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
 
     const term = new XTerm({
       fontFamily: token("--rex-font-mono", "ui-monospace, monospace"),
-      fontSize: 12,
+      // xterm is canvas-rendered (px only) — follow the html font-size scale
+      // (globals.css) manually: 12px × the root scale, rounded.
+      fontSize: Math.round(12 * (parseFloat(getComputedStyle(document.documentElement).fontSize) / 16)),
       cursorBlink: true,
       theme: xtermTheme(),
     });
@@ -120,18 +122,18 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
       <div className="flex items-center justify-between border-b border-rex-border bg-rex-surface-1 px-3 py-2">
-        <span className="font-mono text-[11.5px] text-rex-text-muted">bundled php + wp on PATH</span>
+        <span className="font-mono text-[0.71875rem] text-rex-text-muted">bundled php + wp on PATH</span>
         <div className="flex items-center gap-2">
           <button
             onClick={() => termRef.current?.clear()}
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
           >
             <Eraser className="h-3.5 w-3.5" />
             Clear
           </button>
           <button
             onClick={() => setRestartN((n) => n + 1)}
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
           >
             <RotateCw className="h-3.5 w-3.5" />
             Restart

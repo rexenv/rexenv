@@ -38,10 +38,10 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
   return (
     <div>
       <div className="mb-1.5 flex justify-between">
-        <span className="font-mono text-[10px] tracking-wide text-rex-text-dim">
+        <span className="font-mono text-[0.625rem] tracking-wide text-rex-text-dim">
           {label}
         </span>
-        <span className="font-mono text-[10.5px] text-rex-text-bright">{value}</span>
+        <span className="font-mono text-[0.65625rem] text-rex-text-bright">{value}</span>
       </div>
       <div className="h-[5px] overflow-hidden rounded-full bg-rex-well">
         <div
@@ -126,11 +126,11 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                   style={{ background: meta.dot, boxShadow: meta.glow }}
                 />
               </span>
-              <span className={cn("text-[12.5px] font-semibold", meta.labelClass)}>
+              <span className={cn("text-[0.78125rem] font-semibold", meta.labelClass)}>
                 {meta.label}
               </span>
             </div>
-            <span className="font-mono text-[10.5px] text-rex-text-dim">
+            <span className="font-mono text-[0.65625rem] text-rex-text-dim">
               {status.running}/{status.total}
             </span>
           </div>
@@ -169,7 +169,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
               <div className="mb-1.5 flex items-baseline justify-between gap-2">
                 <span
                   className={cn(
-                    "flex min-w-0 items-center gap-1.5 text-[11px] font-medium",
+                    "flex min-w-0 items-center gap-1.5 text-[0.6875rem] font-medium",
                     failed.length > 0 && !batchActive
                       ? "text-status-error-bright"
                       : "text-rex-text-bright",
@@ -184,7 +184,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                   </span>
                 </span>
                 {current && (
-                  <span className="flex-none font-mono text-[10px] text-rex-text-dim">
+                  <span className="flex-none font-mono text-[0.625rem] text-rex-text-dim">
                     {pctOf(current) != null ? `${pctOf(current)}%` : "…"}
                   </span>
                 )}
@@ -194,7 +194,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                 state={failed.length > 0 && !batchActive ? "error" : batchActive ? "run" : "idle"}
               />
               {current && (
-                <div className="mt-1 truncate font-mono text-[9.5px] text-rex-text-dim">
+                <div className="mt-1 truncate font-mono text-[0.59375rem] text-rex-text-dim">
                   {current.label}
                 </div>
               )}
@@ -206,7 +206,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
               onClick={() => toggleAll.mutate()}
               disabled={busy}
               className={cn(
-                "flex h-[34px] flex-1 items-center justify-center gap-2 rounded text-[12.5px] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
+                "flex h-[34px] flex-1 items-center justify-center gap-2 rounded text-[0.78125rem] font-medium transition-[background-color,border-color,filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60",
                 isStart
                   ? "bg-primary text-white shadow-glow-primary"
                   : "border border-rex-border-strong bg-rex-surface-2 text-rex-text-bright",
@@ -229,7 +229,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                 onClick={() => restartAll.mutate()}
                 disabled={busy}
                 title="Stop everything, then start everything"
-                className="flex h-[34px] flex-none items-center justify-center gap-1.5 rounded border border-rex-border-strong bg-rex-surface-2 px-3 text-[12.5px] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
+                className="flex h-[34px] flex-none items-center justify-center gap-1.5 rounded border border-rex-border-strong bg-rex-surface-2 px-3 text-[0.78125rem] font-medium text-rex-text-bright transition-[filter] hover:brightness-110 focus-visible:outline-none disabled:opacity-60"
               >
                 <RotateCcw
                   className={cn("h-3 w-3", restartAll.isPending && "animate-rex-spin motion-reduce:animate-none")}

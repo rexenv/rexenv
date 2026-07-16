@@ -45,8 +45,8 @@ export function ConfirmDialog({
 }) {
   return (
     <Overlay onClose={onCancel}>
-      <div className="text-[15px] font-semibold text-rex-text">{title}</div>
-      {message && <div className="mt-2 text-[13px] leading-[1.55] text-rex-text-muted">{message}</div>}
+      <div className="text-[0.9375rem] font-semibold text-rex-text">{title}</div>
+      {message && <div className="mt-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">{message}</div>}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>
           Cancel
@@ -86,8 +86,8 @@ export function PromptDialog({
   };
   return (
     <Overlay onClose={onCancel}>
-      <div className="text-[15px] font-semibold text-rex-text">{title}</div>
-      {label && <label className="mb-1.5 mt-3 block text-[12px] text-rex-text-muted">{label}</label>}
+      <div className="text-[0.9375rem] font-semibold text-rex-text">{title}</div>
+      {label && <label className="mb-1.5 mt-3 block text-[0.75rem] text-rex-text-muted">{label}</label>}
       <input {...TECH_INPUT}
         autoFocus
         value={value}
@@ -96,8 +96,8 @@ export function PromptDialog({
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
         }}
-        className={`mt-${label ? "0" : "3"} h-[34px] w-full rounded border border-rex-border bg-rex-surface-2 px-3 text-[13px] text-rex-text outline-none focus:border-brand ${
-          mono ? "font-mono text-[12.5px]" : ""
+        className={`mt-${label ? "0" : "3"} h-[34px] w-full rounded border border-rex-border bg-rex-surface-2 px-3 text-[0.8125rem] text-rex-text outline-none focus:border-brand ${
+          mono ? "font-mono text-[0.78125rem]" : ""
         }`}
       />
       <div className="mt-5 flex justify-end gap-2">

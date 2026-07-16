@@ -85,7 +85,7 @@ const roleMeta = (role: string) => ROLE_META[role] ?? DEFAULT_ROLE;
 type SubTab = "plugins" | "themes" | "users" | "network" | "tools";
 
 const BTN =
-  "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[12px] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
+  "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 // Every WP-CLI list call boots WordPress (~0.5s+) — cache results briefly, skip
 // window-focus refetches, and fail after ONE retry so a broken site surfaces an
@@ -147,7 +147,7 @@ function useWpUsers(siteId: string) {
 
 function PanelLoading({ what }: { what: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 p-6 text-[12.5px] text-rex-text-muted">
+    <div className="flex items-center justify-center gap-2 p-6 text-[0.78125rem] text-rex-text-muted">
       <Loader2 className="h-4 w-4 animate-spin" />
       Loading {what}…
     </div>
@@ -158,8 +158,8 @@ function PanelError({ what, error, onRetry }: { what: string; error: unknown; on
   return (
     <div className="flex flex-col items-center gap-2 p-6 text-center">
       <AlertTriangle className="h-5 w-5 text-status-error-bright" />
-      <div className="text-[12.5px] font-medium text-rex-text">Couldn't load {what}</div>
-      <div className="max-w-[440px] break-words font-mono text-[11px] text-rex-text-muted">{String(error)}</div>
+      <div className="text-[0.78125rem] font-medium text-rex-text">Couldn't load {what}</div>
+      <div className="max-w-[440px] break-words font-mono text-[0.6875rem] text-rex-text-muted">{String(error)}</div>
       <button className={BTN + " mt-1 flex items-center gap-1.5"} onClick={onRetry}>
         <RefreshCw className="h-3.5 w-3.5" />
         Retry
@@ -209,7 +209,7 @@ export function WordPressManager({
             key={s.key}
             onClick={() => setSub(s.key)}
             className={cn(
-              "flex h-8 items-center gap-1.5 rounded-[7px] px-3 text-[12.5px] font-medium transition-colors",
+              "flex h-8 items-center gap-1.5 rounded-[7px] px-3 text-[0.78125rem] font-medium transition-colors",
               sub === s.key
                 ? "bg-brand-tint-bg text-brand-tint"
                 : "text-rex-text-muted hover:text-rex-text-bright",
@@ -217,7 +217,7 @@ export function WordPressManager({
           >
             {s.label}
             {s.count !== undefined && (
-              <span className="font-mono text-[10.5px] opacity-70">{s.count}</span>
+              <span className="font-mono text-[0.65625rem] opacity-70">{s.count}</span>
             )}
           </button>
         ))}
@@ -261,14 +261,14 @@ function ConvertPanel({ siteId, domain }: { siteId: string; domain: string }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-3">
         <Network className="h-4 w-4 text-brand" />
-        <span className="text-[13px] font-medium text-rex-text">Multisite network</span>
-        <span className="rounded-full bg-rex-well px-2 py-0.5 text-[11px] font-medium text-rex-text-muted">
+        <span className="text-[0.8125rem] font-medium text-rex-text">Multisite network</span>
+        <span className="rounded-full bg-rex-well px-2 py-0.5 text-[0.6875rem] font-medium text-rex-text-muted">
           Not enabled
         </span>
       </div>
 
       <Card title="Convert to multisite">
-        <div className="text-[12.5px] leading-[1.5] text-rex-text-muted">
+        <div className="text-[0.78125rem] leading-[1.5] text-rex-text-muted">
           Run many sites from this one WordPress install. Choose how sub-sites are addressed:
         </div>
         <div className="mt-3 grid grid-cols-2 gap-[10px]">
@@ -286,12 +286,12 @@ function ConvertPanel({ siteId, domain }: { siteId: string; domain: string }) {
           />
         </div>
         {mode === "subdomain" && (
-          <div className="mt-2.5 text-[12px] text-rex-text-muted">
+          <div className="mt-2.5 text-[0.75rem] text-rex-text-muted">
             <span className="font-mono">*.{domain}</span> DNS, HTTPS certificate and routing are
             handled automatically.
           </div>
         )}
-        <div className="mt-2.5 flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[12px] leading-[1.5] text-status-warning-bright">
+        <div className="mt-2.5 flex items-start gap-2 rounded-[9px] border border-status-warning-border bg-status-warning-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-warning-bright">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
           <span>
             Conversion edits <span className="font-mono">wp-config.php</span> and changes the
@@ -374,8 +374,8 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
       {/* Mode badge */}
       <div className="flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-3">
         <Network className="h-4 w-4 text-brand" />
-        <span className="text-[13px] font-medium text-rex-text">Multisite network</span>
-        <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-medium text-brand">
+        <span className="text-[0.8125rem] font-medium text-rex-text">Multisite network</span>
+        <span className="rounded-full bg-brand/15 px-2 py-0.5 text-[0.6875rem] font-medium text-brand">
           {modeLabel}
         </span>
       </div>
@@ -387,7 +387,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder={mode === "subdomain" ? `slug (→ slug.${domain})` : `slug (→ ${domain}/slug)`}
-            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
           />
           <button
             className={BTN + " flex items-center gap-1.5"}
@@ -406,7 +406,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
         ) : isError ? (
           <PanelError what="sub-sites" error={error} onRetry={refetch} />
         ) : sites.length === 0 ? (
-          <div className="py-4 text-center text-[12.5px] text-rex-text-muted">No sub-sites yet.</div>
+          <div className="py-4 text-center text-[0.78125rem] text-rex-text-muted">No sub-sites yet.</div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-rex-border">
             {sites.map((s) => (
@@ -414,14 +414,14 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                 key={s.id}
                 className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
               >
-                <span className="rounded bg-rex-surface-3 px-1.5 py-0.5 font-mono text-[10.5px] text-rex-text-muted">
+                <span className="rounded bg-rex-surface-3 px-1.5 py-0.5 font-mono text-[0.65625rem] text-rex-text-muted">
                   #{s.id}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-text" title={s.url}>
+                <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-text" title={s.url}>
                   {s.url}
                 </span>
                 {s.deleted && (
-                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-400">
+                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] text-amber-400">
                     archived
                   </span>
                 )}
@@ -452,7 +452,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
       <Card title="Plugins (network)">
         <div className="overflow-hidden rounded-lg border border-rex-border">
           {plugins.length === 0 ? (
-            <div className="py-4 text-center text-[12.5px] text-rex-text-muted">No plugins installed.</div>
+            <div className="py-4 text-center text-[0.78125rem] text-rex-text-muted">No plugins installed.</div>
           ) : (
             plugins.map((p) => {
               const net = p.status === "active-network";
@@ -464,15 +464,15 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                   key={p.name}
                   className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
                 >
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-rex-text">{p.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-[0.78125rem] text-rex-text">{p.name}</span>
                   {net && (
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-medium text-emerald-400">
+                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[0.65625rem] font-medium text-emerald-400">
                       Network active
                     </span>
                   )}
                   {immutable ? (
                     <span
-                      className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10.5px] font-medium text-emerald-400"
+                      className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[0.65625rem] font-medium text-emerald-400"
                       title="Loads automatically on every site (must-use / drop-in) — nothing to toggle."
                     >
                       {p.status === "must-use" ? "Must-use" : "Drop-in"}
@@ -507,7 +507,7 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
             value={admin}
             onChange={(e) => setAdmin(e.target.value)}
             placeholder="username or email"
-            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
           />
           <button
             className={BTN + " flex items-center gap-1.5"}
@@ -523,12 +523,12 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
         </div>
         <div className="flex flex-wrap gap-1.5">
           {supers.length === 0 ? (
-            <span className="text-[12.5px] text-rex-text-muted">No super admins.</span>
+            <span className="text-[0.78125rem] text-rex-text-muted">No super admins.</span>
           ) : (
             supers.map((u) => (
               <span
                 key={u}
-                className="flex items-center gap-1 rounded-full bg-rex-surface-3 px-2 py-0.5 font-mono text-[11.5px] text-rex-text"
+                className="flex items-center gap-1 rounded-full bg-rex-surface-3 px-2 py-0.5 font-mono text-[0.71875rem] text-rex-text"
               >
                 <Shield className="h-3 w-3 text-brand" />
                 {u}
@@ -758,18 +758,18 @@ function ToolsPanel({
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
                 placeholder="old (e.g. old.rex)"
-                className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+                className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
               />
               <span className="text-rex-text-muted">→</span>
               <input {...TECH_INPUT}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
                 placeholder="new (e.g. new.rex)"
-                className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+                className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
               />
             </div>
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+              <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
                 <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
                 Dry run (report only, don't change data)
               </label>
@@ -788,7 +788,7 @@ function ToolsPanel({
             {srResult && (
               <div className="flex items-center gap-2.5 rounded-lg border border-rex-border-strong border-l-[3px] border-l-brand bg-rex-surface-2 px-3 py-2.5">
                 <Replace className="h-4 w-4 flex-none text-brand-tint" />
-                <span className="font-mono text-[11.5px] text-rex-text-bright">{srResult}</span>
+                <span className="font-mono text-[0.71875rem] text-rex-text-bright">{srResult}</span>
               </div>
             )}
           </div>
@@ -802,8 +802,8 @@ function ToolsPanel({
       <Card title="Debugging">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12.5px] text-rex-text-muted">
-              <span className="font-mono text-[11.5px] text-rex-text-bright">WP_DEBUG</span>
+            <span className="text-[0.78125rem] text-rex-text-muted">
+              <span className="font-mono text-[0.71875rem] text-rex-text-bright">WP_DEBUG</span>
               <span className="ml-1.5">— sets the recommended trio (log on, display off).</span>
             </span>
             <StartStopToggle
@@ -816,8 +816,8 @@ function ToolsPanel({
           <div className="flex flex-col gap-2 border-t border-rex-border-subtle pt-2.5">
             {DEBUG_FLAG_ROWS.map((f) => (
               <div key={f.name} className="flex items-center justify-between gap-2">
-                <span className="min-w-0 text-[12.5px] text-rex-text-muted">
-                  <span className="font-mono text-[11.5px] text-rex-text-bright">{f.name}</span>
+                <span className="min-w-0 text-[0.78125rem] text-rex-text-muted">
+                  <span className="font-mono text-[0.71875rem] text-rex-text-bright">{f.name}</span>
                   <span className="ml-1.5">— {f.hint}</span>
                 </span>
                 <StartStopToggle
@@ -839,7 +839,7 @@ function ToolsPanel({
             <Card title="Maintenance">
         <div className="flex flex-col gap-2">
           <div className="mb-1 flex items-center justify-between gap-2">
-            <span className="text-[12.5px] text-rex-text-muted">
+            <span className="text-[0.78125rem] text-rex-text-muted">
               Maintenance mode — visitors see &ldquo;briefly unavailable&rdquo;.
             </span>
             <StartStopToggle
@@ -893,7 +893,7 @@ function ToolsPanel({
             value={permalink ?? ""}
             disabled={permalink === undefined || setPermalink.isPending}
             onChange={(e) => setPermalink.mutate(e.target.value)}
-            className="h-[30px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+            className="h-[30px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
           >
             {permalink !== undefined &&
               !PERMALINK_PRESETS.some((p) => p.value === permalink) && (
@@ -905,7 +905,7 @@ function ToolsPanel({
               </option>
             ))}
           </select>
-          <div className="font-mono text-[11.5px] text-rex-text-dim">
+          <div className="font-mono text-[0.71875rem] text-rex-text-dim">
             {permalink === undefined ? "…" : permalink === "" ? "?p=123 (plain)" : permalink}
           </div>
           <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
@@ -920,7 +920,7 @@ function ToolsPanel({
             value={activeLocale}
             disabled={!langs || switchLang.isPending}
             onChange={(e) => switchLang.mutate(e.target.value)}
-            className="h-[30px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+            className="h-[30px] w-full rounded border border-rex-border bg-rex-surface-2 px-2 text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
           >
             {!langs ? (
               <option value={activeLocale}>Loading languages…</option>
@@ -948,12 +948,12 @@ function ToolsPanel({
             )}
           </select>
           {switchLang.isPending && (
-            <span className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+            <span className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               {langBusyLabel}
             </span>
           )}
-          <div className="text-[11.5px] leading-[1.5] text-rex-text-dim">
+          <div className="text-[0.71875rem] leading-[1.5] text-rex-text-dim">
             Core translations only — plugins and themes fetch their own packs.
             {isNetwork && " On a multisite network this switches the main site; subsites set theirs in their own admin."}
           </div>
@@ -997,9 +997,9 @@ function ToolsPanel({
             {verify.isPending ? "Verifying…" : "Verify core checksums"}
           </button>
           {verifyOut && <ChecksumResult r={verifyOut} siteId={siteId} onReport={setVerifyOut} />}
-          {working && <span className="text-center text-[12px] text-rex-text-muted">Working…</span>}
+          {working && <span className="text-center text-[0.75rem] text-rex-text-muted">Working…</span>}
         </div>
-        {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[11.5px] text-rex-text-muted">{coreOut}</pre>}
+        {coreOut && <pre className="mt-2 whitespace-pre-wrap font-mono text-[0.71875rem] text-rex-text-muted">{coreOut}</pre>}
         <CoreVersionSwitch siteId={siteId} />
       </Card>
 
@@ -1053,8 +1053,8 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
         className="w-[440px] rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-[15px] font-semibold text-rex-text">Import a database dump?</div>
-        <div className="mt-2 flex flex-col gap-2 text-[13px] leading-[1.55] text-rex-text-muted">
+        <div className="text-[0.9375rem] font-semibold text-rex-text">Import a database dump?</div>
+        <div className="mt-2 flex flex-col gap-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
           <p>
             This runs a <span className="font-mono">.sql</span> dump against{" "}
             <span className="font-mono text-rex-text">{domain}</span>&rsquo;s database —{" "}
@@ -1085,7 +1085,7 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
           <FileUp className="h-3.5 w-3.5" />
           {fileName ? `File: ${fileName}` : "Choose .sql file…"}
         </button>
-        <div className="mt-4 text-[12.5px] text-rex-text-muted">
+        <div className="mt-4 text-[0.78125rem] text-rex-text-muted">
           Type <span className="font-mono text-rex-text">{domain}</span> to confirm:
         </div>
         <input {...TECH_INPUT}
@@ -1094,7 +1094,7 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
           placeholder={domain}
           disabled={busy}
           autoFocus
-          className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
+          className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-status-error-border"
         />
         <div className="mt-4 flex justify-end gap-2">
           <button className={BTN} disabled={busy} onClick={onClose}>
@@ -1173,7 +1173,7 @@ function ChecksumResult({
         ) : (
           <AlertTriangle className="h-4 w-4 flex-none text-status-warning-bright" />
         )}
-        <span className="text-[12px] text-rex-text-bright">
+        <span className="text-[0.75rem] text-rex-text-bright">
           {hasReal
             ? "Verification found modified, missing or foreign core files:"
             : toolFailed
@@ -1184,17 +1184,17 @@ function ChecksumResult({
         </span>
       </div>
       {hasReal && (
-        <pre className="max-h-[160px] overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-rex-text-muted">
+        <pre className="max-h-[160px] overflow-y-auto whitespace-pre-wrap font-mono text-[0.6875rem] text-rex-text-muted">
           {r.real.join("\n")}
         </pre>
       )}
       {toolFailed && (
-        <pre className="max-h-[160px] overflow-y-auto whitespace-pre-wrap font-mono text-[11px] text-rex-text-muted">
+        <pre className="max-h-[160px] overflow-y-auto whitespace-pre-wrap font-mono text-[0.6875rem] text-rex-text-muted">
           {r.output}
         </pre>
       )}
       {r.benign.length > 0 && (
-        <div className="font-mono text-[10.5px] text-rex-text-dim" title={r.benign.join("\n")}>
+        <div className="font-mono text-[0.65625rem] text-rex-text-dim" title={r.benign.join("\n")}>
           {pass
             ? r.benign.join("  ·  ")
             : `+ ${r.benign.length} OS system file(s) (.DS_Store etc.) — harmless.`}
@@ -1217,7 +1217,7 @@ function ChecksumResult({
         </button>
       )}
       {lastSkipped.length > 0 && (
-        <div className="font-mono text-[10.5px] text-status-warning-bright">
+        <div className="font-mono text-[0.65625rem] text-status-warning-bright">
           {lastSkipped.map((s) => (
             <div key={s.path}>
               skipped {s.path} — {s.reason}
@@ -1262,7 +1262,7 @@ function CronCard({ siteId }: { siteId: string }) {
     <Card title="Cron">
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <span className="text-[12px] text-rex-text-muted">
+          <span className="text-[0.75rem] text-rex-text-muted">
             {events ? `${events.length} scheduled event(s)` : "…"} — local dev has no visitors,
             so overdue events are normal; run them on demand.
           </span>
@@ -1281,12 +1281,12 @@ function CronCard({ siteId }: { siteId: string }) {
           ) : isError ? (
             <PanelError what="cron events" error={error} onRetry={refetch} />
           ) : !events || events.length === 0 ? (
-            <div className="p-4 text-center text-[12.5px] text-rex-text-muted">
+            <div className="p-4 text-center text-[0.78125rem] text-rex-text-muted">
               No scheduled cron events.
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
+              <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
                 <span className="flex-1">Hook</span>
                 <span className="w-[170px]">Next run</span>
                 <span className="w-[110px]">Recurrence</span>
@@ -1298,13 +1298,13 @@ function CronCard({ siteId }: { siteId: string }) {
                     key={`${e.hook}-${i}`}
                     className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
                   >
-                    <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-text-bright" title={e.hook}>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-text-bright" title={e.hook}>
                       {e.hook}
                     </span>
-                    <span className="w-[170px] text-[12px] text-rex-text-muted" title={`${e.nextRun} GMT`}>
+                    <span className="w-[170px] text-[0.75rem] text-rex-text-muted" title={`${e.nextRun} GMT`}>
                       {e.nextRunRelative || "now"}
                     </span>
-                    <span className="w-[110px] text-[12px] text-rex-text-muted">{e.recurrence}</span>
+                    <span className="w-[110px] text-[0.75rem] text-rex-text-muted">{e.recurrence}</span>
                     <button
                       className={BTN + " w-[64px] justify-center text-center"}
                       title={`Run ${e.hook} now (due or not)`}
@@ -1361,14 +1361,14 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
       >
         {done ? (
           <>
-            <div className="text-[15px] font-semibold text-rex-text">Site reset complete</div>
-            <div className="mt-2 text-[13px] leading-[1.55] text-rex-text-muted">
+            <div className="text-[0.9375rem] font-semibold text-rex-text">Site reset complete</div>
+            <div className="mt-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
               <span className="font-mono">{domain}</span> is a clean WordPress install again. Admin account:
             </div>
-            <div className="mt-3 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 py-2.5 font-mono text-[12.5px] text-rex-text-bright">
+            <div className="mt-3 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 py-2.5 font-mono text-[0.78125rem] text-rex-text-bright">
               admin / admin
             </div>
-            <div className="mt-2 text-[12px] text-rex-text-muted">One-click admin login keeps working too.</div>
+            <div className="mt-2 text-[0.75rem] text-rex-text-muted">One-click admin login keeps working too.</div>
             <div className="mt-4 flex justify-end">
               <button className={BTN} onClick={onClose}>
                 Close
@@ -1377,8 +1377,8 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
           </>
         ) : (
           <>
-            <div className="text-[15px] font-semibold text-rex-text">Erase database &amp; reset site?</div>
-            <div className="mt-2 flex flex-col gap-2 text-[13px] leading-[1.55] text-rex-text-muted">
+            <div className="text-[0.9375rem] font-semibold text-rex-text">Erase database &amp; reset site?</div>
+            <div className="mt-2 flex flex-col gap-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
               <p>
                 This <span className="font-medium text-status-error-bright">permanently erases the database</span> of{" "}
                 <span className="font-mono text-rex-text">{domain}</span> — all posts, pages, comments, users, and
@@ -1398,7 +1398,7 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
               <Download className="h-3.5 w-3.5" />
               {dbExport.isPending ? "Exporting…" : "Export database first"}
             </button>
-            <div className="mt-4 text-[12.5px] text-rex-text-muted">
+            <div className="mt-4 text-[0.78125rem] text-rex-text-muted">
               Type <span className="font-mono text-rex-text">{domain}</span> to confirm:
             </div>
             <input {...TECH_INPUT}
@@ -1407,7 +1407,7 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
               placeholder={domain}
               disabled={busy}
               autoFocus
-              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
+              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-status-error-border"
             />
             <div className="mt-4 flex justify-end gap-2">
               <button className={BTN} disabled={busy} onClick={onClose}>
@@ -1499,11 +1499,11 @@ function CoreVersionSwitch({ siteId }: { siteId: string }) {
 
   return (
     <div className="mt-2 flex flex-col gap-2 border-t border-rex-border-subtle pt-2">
-      <div className="text-[12px] text-rex-text-muted">
+      <div className="text-[0.75rem] text-rex-text-muted">
         Core version{current ? <span className="font-mono"> · {current}</span> : null}
       </div>
       {versionsFailed ? (
-        <div className="text-[11.5px] text-status-warning-bright">
+        <div className="text-[0.71875rem] text-status-warning-bright">
           Couldn't fetch the release list — check your connection.
         </div>
       ) : (
@@ -1553,7 +1553,7 @@ function CoreVersionSwitch({ siteId }: { siteId: string }) {
         </div>
       )}
       {result && (
-        <div className="text-[11.5px] text-rex-text-dim">
+        <div className="text-[0.71875rem] text-rex-text-dim">
           Now on <span className="font-mono">{result.version}</span>.{" "}
           {result.dbUpdateRequired
             ? "WordPress will ask to update the database on the next wp-admin visit (normally one click)."
@@ -1567,7 +1567,7 @@ function CoreVersionSwitch({ siteId }: { siteId: string }) {
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const OPTION_SELECT =
-  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
+  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
 /** Client-side pre-validation (Save disabled + hint) — the backend re-validates
  *  every write regardless. */
@@ -1612,7 +1612,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
       await confirm({
         title: `Change ${row.label}?`,
         message: (
-          <span className="font-mono text-[12px]">
+          <span className="font-mono text-[0.75rem]">
             “{row.value}” → “{value}”
           </span>
         ),
@@ -1625,9 +1625,9 @@ function OptionsCard({ siteId }: { siteId: string }) {
   return (
     <Card title="Site options">
       {isLoading ? (
-        <div className="text-[12.5px] text-rex-text-dim">Reading options…</div>
+        <div className="text-[0.78125rem] text-rex-text-dim">Reading options…</div>
       ) : isError ? (
-        <div className="text-[12.5px] text-status-warning-bright">
+        <div className="text-[0.78125rem] text-status-warning-bright">
           Could not read options: {String(error)}
         </div>
       ) : !data ? null : (
@@ -1642,7 +1642,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
             const disabled = !row.editable || save.isPending;
             return (
               <div key={row.name} className="flex min-w-0 items-center gap-2">
-                <div className="w-[150px] flex-none text-[12px] text-rex-text-muted">
+                <div className="w-[150px] flex-none text-[0.75rem] text-rex-text-muted">
                   {row.label}
                 </div>
                 {row.kind === "bool" ? (
@@ -1681,12 +1681,12 @@ function OptionsCard({ siteId }: { siteId: string }) {
                   />
                 )}
                 {!row.editable && row.note && (
-                  <span className="min-w-0 truncate text-[11.5px] text-rex-text-dim" title={row.note}>
+                  <span className="min-w-0 truncate text-[0.71875rem] text-rex-text-dim" title={row.note}>
                     {row.note}
                   </span>
                 )}
                 {dirty && problem && (
-                  <span className="min-w-0 truncate text-[11.5px] text-status-warning-bright" title={problem}>
+                  <span className="min-w-0 truncate text-[0.71875rem] text-status-warning-bright" title={problem}>
                     {problem}
                   </span>
                 )}
@@ -1701,7 +1701,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
                 )}
                 {dirty && (
                   <button
-                    className="text-[11.5px] text-rex-text-dim hover:underline"
+                    className="text-[0.71875rem] text-rex-text-dim hover:underline"
                     onClick={() => setDrafts((d) => {
                       const next = { ...d };
                       delete next[row.name];
@@ -1714,7 +1714,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
               </div>
             );
           })}
-          <div className="mt-1 text-[11.5px] text-rex-text-dim">
+          <div className="mt-1 text-[0.71875rem] text-rex-text-dim">
             Only this curated, known-safe set is editable — site URLs, plugin/theme state and
             serialized options can't be changed here. Saves apply immediately (no undo).
           </div>
@@ -1727,7 +1727,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
-      <div className="mb-3 text-[13px] font-semibold text-rex-text">{title}</div>
+      <div className="mb-3 text-[0.8125rem] font-semibold text-rex-text">{title}</div>
       {children}
     </div>
   );
@@ -1814,7 +1814,7 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
             if (!emailTouched) setEmail(v.trim() ? `${v.trim()}@${domain}` : "");
           }}
           placeholder="username"
-          className="h-[30px] w-32 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] w-32 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         <input {...TECH_INPUT}
           value={email}
@@ -1823,7 +1823,7 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
             setEmailTouched(true);
           }}
           placeholder={`email@${domain}`}
-          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         <span className="relative">
           <input {...TECH_INPUT}
@@ -1832,7 +1832,7 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="password"
             title="Password for the new user (local default: 123456)"
-            className="h-[30px] w-[110px] rounded border border-rex-border bg-rex-surface-2 py-0 pl-2 pr-7 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+            className="h-[30px] w-[110px] rounded border border-rex-border bg-rex-surface-2 py-0 pl-2 pr-7 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
           />
           <button
             type="button"
@@ -1846,7 +1846,7 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
         <select
           value={role}
           onChange={(e) => setRole(e.target.value)}
-          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[0.75rem] text-rex-text outline-none focus:border-brand"
         >
           {WP_ROLES.map((r) => (
             <option key={r} value={r}>
@@ -1870,10 +1870,10 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
         ) : isError ? (
           <PanelError what="users" error={error} onRetry={refetch} />
         ) : users.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">No users.</div>
+          <div className="p-6 text-center text-[0.78125rem] text-rex-text-muted">No users.</div>
         ) : (
           <>
-            <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
+            <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
               <span className="flex-1">User</span>
               <span className="w-[120px]">Role</span>
               <span className="w-[84px]" />
@@ -1935,20 +1935,20 @@ function UserRow({
   return (
     <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2.5 last:border-b-0">
       <span
-        className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border text-[12px] font-semibold"
+        className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border text-[0.75rem] font-semibold"
         style={{ background: rm.bg, color: rm.color, borderColor: rm.border }}
       >
         {initial}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium text-rex-text">{u.login}</div>
-        <div className="truncate font-mono text-[11px] text-rex-text-dim">{u.email}</div>
+        <div className="truncate text-[0.8125rem] font-medium text-rex-text">{u.login}</div>
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">{u.email}</div>
       </div>
       <span className="w-[120px]">
         {primary ? (
           <span
             title="Primary administrator — role locked (one-click login and site tools depend on it)"
-            className="inline-flex cursor-help items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium capitalize"
+            className="inline-flex cursor-help items-center gap-1 rounded-full border px-2 py-0.5 text-[0.65625rem] font-medium capitalize"
             style={{ background: rm.bg, color: rm.color, borderColor: rm.border }}
           >
             {role}
@@ -1959,7 +1959,7 @@ function UserRow({
             value={role}
             disabled={roleBusy}
             onChange={(e) => onSetRole(e.target.value)}
-            className="h-[26px] w-full rounded border border-rex-border bg-rex-surface-2 px-1.5 text-[11.5px] capitalize text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
+            className="h-[26px] w-full rounded border border-rex-border bg-rex-surface-2 px-1.5 text-[0.71875rem] capitalize text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50"
           >
             {!WP_ROLES.includes(role) && role && <option value={role}>{role}</option>}
             {WP_ROLES.map((r) => (
@@ -2001,13 +2001,13 @@ function WpOrgThemeHit({ t, onPick }: { t: WpOrgTheme; onPick: () => void }) {
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium text-rex-text">{t.name}</span>
-        <span className="block truncate text-[11px] text-rex-text-dim">
+        <span className="block truncate text-[0.78125rem] font-medium text-rex-text">{t.name}</span>
+        <span className="block truncate text-[0.6875rem] text-rex-text-dim">
           {t.author && `by ${t.author} · `}
           <span className="font-mono">{t.slug}</span>
         </span>
       </span>
-      <span className="flex flex-none items-center gap-2 font-mono text-[10.5px] text-rex-text-dim">
+      <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-dim">
         {t.rating > 0 && (
           <span className="flex items-center gap-0.5">
             <Star className="h-3 w-3 fill-current text-amber-400" />
@@ -2056,20 +2056,20 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             setPicked(false);
           }}
           placeholder="Search WordPress.org or enter a slug…"
-          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         {showSearch && (
           <div className="absolute left-2.5 right-2.5 top-[46px] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
-              <div className="flex items-center gap-2 px-3 py-2.5 text-[12px] text-rex-text-muted">
+              <div className="flex items-center gap-2 px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
                 <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> Searching WordPress.org…
               </div>
             ) : search.isError ? (
-              <div className="px-3 py-2.5 text-[12px] text-status-error-bright">
+              <div className="px-3 py-2.5 text-[0.75rem] text-status-error-bright">
                 {String(search.error)} — you can still enter the theme slug manually.
               </div>
             ) : (search.data ?? []).length === 0 ? (
-              <div className="px-3 py-2.5 text-[12px] text-rex-text-muted">
+              <div className="px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
                 No themes match “{slug.trim()}” — if you know the exact slug, just Add it.
               </div>
             ) : (
@@ -2088,7 +2088,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             )}
           </div>
         )}
-        <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+        <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
           <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
           Activate
         </label>
@@ -2106,7 +2106,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
       </div>
 
       {!isLoading && themes.length > 0 && (
-        <div className="px-0.5 font-mono text-[11px] text-rex-text-dim">
+        <div className="px-0.5 font-mono text-[0.6875rem] text-rex-text-dim">
           {themes.length} {themes.length === 1 ? "theme" : "themes"} ·{" "}
           {themes.filter((t) => t.status === "active").length} active
         </div>
@@ -2120,7 +2120,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
           <PanelError what="themes" error={error} onRetry={refetch} />
         </div>
       ) : themes.length === 0 ? (
-        <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[12.5px] text-rex-text-muted">
+        <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center text-[0.78125rem] text-rex-text-muted">
           No themes installed.
         </div>
       ) : (
@@ -2179,7 +2179,7 @@ function ThemeCard({
           </div>
         )}
         {active && (
-          <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-status-running-bg px-2 py-0.5 text-[10px] font-medium text-status-running-bright">
+          <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-status-running-bg px-2 py-0.5 text-[0.625rem] font-medium text-status-running-bright">
             <span className="h-1.5 w-1.5 rounded-full bg-status-running" />
             Live
           </span>
@@ -2187,20 +2187,20 @@ function ThemeCard({
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3">
         <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-rex-text">{t.name}</span>
+          <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-rex-text">{t.name}</span>
           {active && (
-            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-emerald-400">
               <Check className="h-3 w-3" />
               Active
             </span>
           )}
           {updatable && !active && (
-            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">
               update
             </span>
           )}
         </div>
-        <div className="font-mono text-[11px] text-rex-text-dim">v{t.version}</div>
+        <div className="font-mono text-[0.6875rem] text-rex-text-dim">v{t.version}</div>
         <div className="mt-auto flex items-center gap-1.5">
           {!active && (
             <button className={BTN + " flex-1"} disabled={busy} onClick={onActivate}>
@@ -2249,7 +2249,7 @@ function PluginFilterTabs({
           key={t.key}
           onClick={() => onChange(t.key)}
           className={cn(
-            "flex h-7 items-center gap-1.5 rounded-[7px] px-[11px] text-[12.5px] font-medium transition-colors",
+            "flex h-7 items-center gap-1.5 rounded-[7px] px-[11px] text-[0.78125rem] font-medium transition-colors",
             value === t.key
               ? "bg-brand-tint-bg text-brand-tint"
               : "text-rex-text-muted hover:text-rex-text-bright",
@@ -2259,7 +2259,7 @@ function PluginFilterTabs({
           {counts[t.key] > 0 && (
             <span
               className={cn(
-                "rounded-[5px] px-1 font-mono text-[10px]",
+                "rounded-[5px] px-1 font-mono text-[0.625rem]",
                 t.amber ? "bg-status-warning-bg text-status-warning-bright" : "opacity-70",
               )}
             >
@@ -2300,18 +2300,18 @@ function WpOrgHit({ p, onPick }: { p: WpOrgPlugin; onPick: () => void }) {
       {p.icon ? (
         <img src={p.icon} alt="" className="h-7 w-7 flex-none rounded-[6px] object-cover" />
       ) : (
-        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[6px] border border-rex-border bg-rex-surface-2 font-mono text-[11px] font-bold text-rex-text-muted">
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[6px] border border-rex-border bg-rex-surface-2 font-mono text-[0.6875rem] font-bold text-rex-text-muted">
           {p.name.slice(0, 1).toUpperCase() || "?"}
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium text-rex-text">{p.name}</span>
-        <span className="block truncate text-[11px] text-rex-text-dim">
+        <span className="block truncate text-[0.78125rem] font-medium text-rex-text">{p.name}</span>
+        <span className="block truncate text-[0.6875rem] text-rex-text-dim">
           {p.author && `by ${p.author} · `}
           <span className="font-mono">{p.slug}</span>
         </span>
       </span>
-      <span className="flex flex-none items-center gap-2 font-mono text-[10.5px] text-rex-text-dim">
+      <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-dim">
         {p.rating > 0 && (
           <span className="flex items-center gap-0.5">
             <Star className="h-3 w-3 fill-current text-amber-400" />
@@ -2394,20 +2394,20 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             setPicked(false);
           }}
           placeholder="Search WordPress.org or enter a slug…"
-          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         {showSearch && (
           <div className="absolute left-2.5 right-2.5 top-[46px] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
-              <div className="flex items-center gap-2 px-3 py-2.5 text-[12px] text-rex-text-muted">
+              <div className="flex items-center gap-2 px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
                 <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> Searching WordPress.org…
               </div>
             ) : search.isError ? (
-              <div className="px-3 py-2.5 text-[12px] text-status-error-bright">
+              <div className="px-3 py-2.5 text-[0.75rem] text-status-error-bright">
                 {String(search.error)} — you can still enter the plugin slug manually.
               </div>
             ) : (search.data ?? []).length === 0 ? (
-              <div className="px-3 py-2.5 text-[12px] text-rex-text-muted">
+              <div className="px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
                 No plugins match “{slug.trim()}” — if you know the exact slug, just Add it.
               </div>
             ) : (
@@ -2426,7 +2426,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             )}
           </div>
         )}
-        <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+        <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
           <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
           Activate
         </label>
@@ -2451,7 +2451,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search plugins…"
-            className="h-[30px] w-full rounded-lg border border-rex-border bg-rex-surface-2 pl-8 pr-2.5 text-[12px] text-rex-text outline-none transition-colors focus:border-brand"
+            className="h-[30px] w-full rounded-lg border border-rex-border bg-rex-surface-2 pl-8 pr-2.5 text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand"
           />
         </div>
         <PluginFilterTabs value={filter} onChange={setFilter} counts={counts} />
@@ -2459,7 +2459,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
       {/* Bulk bar */}
       {selNames.length > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[12px]">
+        <div className="flex items-center gap-2 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[0.75rem]">
           <span className="text-rex-text-muted">
             {selNames.length} plugin{selNames.length === 1 ? "" : "s"} selected
           </span>
@@ -2496,12 +2496,12 @@ function PluginsPanel({ siteId }: { siteId: string }) {
         ) : isError ? (
           <PanelError what="plugins" error={error} onRetry={refetch} />
         ) : visible.length === 0 ? (
-          <div className="p-6 text-center text-[12.5px] text-rex-text-muted">
+          <div className="p-6 text-center text-[0.78125rem] text-rex-text-muted">
             {plugins.length === 0 ? "No plugins installed." : "No plugins match."}
           </div>
         ) : (
           <>
-          <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] text-rex-text-label">
+          <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
             <span className="w-[14px]" />
             <span className="flex-1">Plugin</span>
             <span className="w-[150px]">Status</span>
@@ -2569,14 +2569,14 @@ function PluginRow({
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-rex-text">{p.name}</span>
+          <span className="truncate text-[0.8125rem] font-medium text-rex-text">{p.name}</span>
           {updatable && (
-            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+            <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">
               update
             </span>
           )}
         </div>
-        <div className="font-mono text-[11px] text-rex-text-dim">v{p.version}</div>
+        <div className="font-mono text-[0.6875rem] text-rex-text-dim">v{p.version}</div>
       </div>
       {updatable && (
         <button className={BTN + " flex items-center gap-1"} disabled={busy} onClick={onUpdate} title="Update">
@@ -2585,7 +2585,7 @@ function PluginRow({
       )}
       <span
         className={cn(
-          "w-[58px] text-right text-[11.5px] font-medium",
+          "w-[58px] text-right text-[0.71875rem] font-medium",
           active || immutable ? "text-status-running-bright" : "text-rex-text-muted",
         )}
         title={immutable ? immutableWhy : undefined}

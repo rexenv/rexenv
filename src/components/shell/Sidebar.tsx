@@ -48,7 +48,7 @@ function NavButton({ item }: { item: NavItem }) {
       to={item.to}
       className={({ isActive }) =>
         cn(
-          "relative flex w-full items-center gap-2.5 rounded-[9px] py-2 pl-3 pr-2.5 text-left text-[13.5px] transition-colors",
+          "relative flex w-full items-center gap-2.5 rounded-[9px] py-2 pl-3 pr-2.5 text-left text-[0.84375rem] transition-colors",
           isActive
             ? "bg-brand-active text-brand-tint"
             : "text-rex-text-muted hover:bg-rex-hover hover:text-rex-text-bright",
@@ -73,7 +73,7 @@ function NavButton({ item }: { item: NavItem }) {
                   <span className="relative h-1.5 w-1.5 rounded-full bg-status-running" />
                 </span>
               )}
-              <span className="font-mono text-[10.5px] text-rex-text-faint">
+              <span className="font-mono text-[0.65625rem] text-rex-text-faint">
                 {item.badge}
               </span>
             </span>
@@ -130,7 +130,7 @@ export function Sidebar() {
         <div className="h-3" aria-hidden />
         <div className="flex items-center gap-2.5">
           <CrownMark />
-          <span className="font-display text-[16.5px] font-semibold tracking-[-0.02em] text-rex-text">
+          <span className="font-display text-[1.03125rem] font-semibold tracking-[-0.02em] text-rex-text">
             rexenv
           </span>
         </div>
@@ -140,7 +140,7 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-0.5 overflow-auto p-2.5">
         {groups.map((group) => (
           <div key={group} className="contents">
-            <div className="mb-1.5 mt-1.5 px-3.5 font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label first:mt-1.5">
+            <div className="mb-1.5 mt-1.5 px-3.5 font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label first:mt-1.5">
               {group}
             </div>
             {main

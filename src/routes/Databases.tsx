@@ -14,7 +14,7 @@ import type { DbStatus } from "@/types";
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
     <div className="w-24">
-      <div className="mb-1 flex justify-between font-mono text-[10px] text-rex-text-dim">
+      <div className="mb-1 flex justify-between font-mono text-[0.625rem] text-rex-text-dim">
         <span>{label}</span>
         <span className="text-rex-text-bright">{value}</span>
       </div>
@@ -54,14 +54,14 @@ function DbRow({
         <Database className="h-4 w-4" strokeWidth={1.7} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center text-[13.5px] font-semibold text-rex-text">
+        <div className="flex items-center text-[0.84375rem] font-semibold text-rex-text">
           {db.label}
           {versions.length > 1 ? (
             <select
               value={db.version}
               onChange={(e) => onSwitchVersion(e.target.value)}
               title="Switch the engine version (each version keeps its own data directory)"
-              className="ml-2 h-[22px] rounded border border-rex-border bg-rex-surface-2 px-1 font-mono text-[10.5px] text-rex-text-muted outline-none transition-colors hover:border-brand focus:border-brand"
+              className="ml-2 h-[22px] rounded border border-rex-border bg-rex-surface-2 px-1 font-mono text-[0.65625rem] text-rex-text-muted outline-none transition-colors hover:border-brand focus:border-brand"
             >
               {versions.map((v) => (
                 <option key={v} value={v}>
@@ -71,11 +71,11 @@ function DbRow({
             </select>
           ) : (
             db.version && (
-              <span className="ml-2 font-mono text-[10.5px] text-rex-text-dim">{db.version}</span>
+              <span className="ml-2 font-mono text-[0.65625rem] text-rex-text-dim">{db.version}</span>
             )
           )}
         </div>
-        <div className="font-mono text-[11px] text-rex-text-dim">
+        <div className="font-mono text-[0.6875rem] text-rex-text-dim">
           127.0.0.1:{db.port}
           {db.pid != null && ` · pid ${db.pid}`}
         </div>
@@ -86,7 +86,7 @@ function DbRow({
           <button
             onClick={onBrowse}
             title="Open in database browser"
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
           >
             <TableProperties className="h-3.5 w-3.5" />
             Browse
@@ -94,7 +94,7 @@ function DbRow({
         ) : (
           <span
             title={`No browser for ${db.label} — connect with redis-cli -p ${db.port}`}
-            className="font-mono text-[11px] text-rex-text-dim"
+            className="font-mono text-[0.6875rem] text-rex-text-dim"
           >
             redis-cli -p {db.port}
           </span>
@@ -105,7 +105,7 @@ function DbRow({
         <button
           onClick={onGoServices}
           title={`${db.label} is stopped — start it from the Services page`}
-          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text-muted transition-colors hover:border-brand hover:text-rex-text"
+          className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text-muted transition-colors hover:border-brand hover:text-rex-text"
         >
           <ArrowUpRight className="h-3.5 w-3.5" />
           Start {db.label} from Services
@@ -154,12 +154,12 @@ export function Databases() {
         <div className="flex items-center gap-2 border-b border-rex-border px-[18px] py-2.5">
           <button
             onClick={() => setBrowse(null)}
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Back
           </button>
-          <span className="font-mono text-[12px] text-rex-text-muted">{browse.label} · Adminer</span>
+          <span className="font-mono text-[0.75rem] text-rex-text-muted">{browse.label} · Adminer</span>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-[18px]">
           <AdminerFrame src={adminerFrameSrc({ engine })} />

@@ -30,11 +30,11 @@ export function TopBar({
       className="drag-region flex h-[84px] flex-none items-center justify-between gap-4 border-b border-rex-border-subtle px-[22px]"
     >
       <div>
-        <div className="text-[18px] font-semibold tracking-[-0.01em] text-rex-text">
+        <div className="text-[1.125rem] font-semibold tracking-[-0.01em] text-rex-text">
           {title}
         </div>
         {subtitle && (
-          <div className="mt-[3px] font-mono text-[11px] text-rex-text-dim">
+          <div className="mt-[3px] font-mono text-[0.6875rem] text-rex-text-dim">
             {subtitle}
           </div>
         )}
@@ -53,7 +53,7 @@ export function TopBar({
               onChange={
                 onSearchChange ? (e) => onSearchChange(e.target.value) : undefined
               }
-              className="h-[34px] w-[190px] rounded border border-rex-border bg-rex-surface-1 pl-[33px] pr-3 text-[13px] text-rex-text outline-none transition-colors focus:border-brand"
+              className="h-[34px] w-[190px] rounded border border-rex-border bg-rex-surface-1 pl-[33px] pr-3 text-[0.8125rem] text-rex-text outline-none transition-colors focus:border-brand"
             />
           </div>
         )}

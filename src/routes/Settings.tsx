@@ -48,7 +48,7 @@ const AUTO_START_KEY = "start_services_on_launch";
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-      <div className="mb-3.5 text-[14px] font-semibold text-rex-text">{title}</div>
+      <div className="mb-3.5 text-[0.875rem] font-semibold text-rex-text">{title}</div>
       {children}
     </div>
   );
@@ -59,7 +59,7 @@ function Notice({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2.5 rounded-[11px] border border-rex-border-strong border-l-[3px] border-l-status-running bg-rex-surface-2 px-3 py-2.5">
       <CheckCircle2 className="h-4 w-4 flex-none text-status-running-bright" strokeWidth={2} />
-      <span className="font-mono text-[11.5px] text-rex-text-bright">{children}</span>
+      <span className="font-mono text-[0.71875rem] text-rex-text-bright">{children}</span>
     </div>
   );
 }
@@ -78,7 +78,7 @@ function ThemeSetting() {
   ];
   return (
     <>
-      <div className="mb-[14px] text-[12.5px] text-rex-text-muted">
+      <div className="mb-[14px] text-[0.78125rem] text-rex-text-muted">
         Choose how rexenv looks. System follows your macOS appearance.
       </div>
       <div className="grid grid-cols-3 gap-[10px]">
@@ -112,7 +112,7 @@ function ThemeSetting() {
                 <span className="absolute bottom-[9px] right-[9px] h-[18px] w-[18px] rounded-[5px] bg-brand" />
               </div>
               <div className="flex items-center justify-between px-[11px] py-[9px]">
-                <span className="text-[12.5px] font-medium text-rex-text">{t.label}</span>
+                <span className="text-[0.78125rem] font-medium text-rex-text">{t.label}</span>
                 <CheckCircle2
                   className="h-[15px] w-[15px]"
                   style={{ color: selected ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
@@ -177,15 +177,15 @@ function GeneralPrefsCard() {
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">
         <div className="flex-1">
-          <div className="text-[13.5px] font-medium text-rex-text">Default PHP version</div>
-          <div className="mt-0.5 text-[12px] text-rex-text-muted">
+          <div className="text-[0.84375rem] font-medium text-rex-text">Default PHP version</div>
+          <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">
             New sites use this version unless you pick another.
           </div>
         </div>
         <select
           value={currentPhp}
           onChange={(e) => setDefault.mutate(e.target.value)}
-          className="h-[34px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 font-mono text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
+          className="h-[34px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 font-mono text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand"
         >
           {installed.map((v) => (
             <option key={v.minor} value={v.minor}>
@@ -196,14 +196,14 @@ function GeneralPrefsCard() {
       </div>
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">
         <div className="flex-1">
-          <div className="text-[13.5px] font-medium text-rex-text">Code editor</div>
-          <div className="mt-0.5 text-[12px] text-rex-text-muted">
+          <div className="text-[0.84375rem] font-medium text-rex-text">Code editor</div>
+          <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">
             "Open in editor" opens a site's folder as a project here.
           </div>
         </div>
         {editors.length === 0 ? (
           <span
-            className="font-mono text-[11.5px] text-rex-text-muted"
+            className="font-mono text-[0.71875rem] text-rex-text-muted"
             title="Looked in /Applications and ~/Applications for VS Code, Cursor, PhpStorm, Windsurf, Zed, Sublime Text, WebStorm, VSCodium, Nova and TextMate."
           >
             No code editor detected
@@ -212,7 +212,7 @@ function GeneralPrefsCard() {
           <select
             value={currentEditor}
             onChange={(e) => saveEditor.mutate(e.target.value)}
-            className="h-[34px] max-w-[220px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
+            className="h-[34px] max-w-[220px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand"
           >
             {editors.map((e) => (
               <option key={e.id} value={e.id}>
@@ -224,8 +224,8 @@ function GeneralPrefsCard() {
       </div>
       <div className="flex items-center gap-[14px] py-[15px]">
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-medium text-rex-text">Sites folder</div>
-          <div className="mt-0.5 truncate font-mono text-[11.5px] text-rex-text-muted">
+          <div className="text-[0.84375rem] font-medium text-rex-text">Sites folder</div>
+          <div className="mt-0.5 truncate font-mono text-[0.71875rem] text-rex-text-muted">
             {resolved ?? "…"}
           </div>
         </div>
@@ -234,7 +234,7 @@ function GeneralPrefsCard() {
             onClick={() => saveFolder.mutate("")}
             disabled={saveFolder.isPending}
             title="Use the default folder (~/rexenv/Sites) for new sites — existing sites stay where they are"
-            className="flex h-8 flex-none items-center rounded-[9px] px-[9px] text-[12px] text-rex-text-muted transition-colors hover:text-rex-text-bright disabled:opacity-40"
+            className="flex h-8 flex-none items-center rounded-[9px] px-[9px] text-[0.75rem] text-rex-text-muted transition-colors hover:text-rex-text-bright disabled:opacity-40"
           >
             Reset to default
           </button>
@@ -244,7 +244,7 @@ function GeneralPrefsCard() {
             const v = await pickFolder("Choose your sites folder", resolved ?? undefined);
             if (v && v.trim()) saveFolder.mutate(v.trim());
           }}
-          className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
+          className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[0.78125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
         >
           <FolderOpen className="h-3.5 w-3.5" />
           Choose…
@@ -273,10 +273,10 @@ function PhpVersionRow({
     <div className="border-b border-rex-border-subtle last:border-b-0">
       <div className="flex items-center gap-3 py-2.5">
         <div className="min-w-0 flex-1">
-          <span className="font-mono text-[13px] text-rex-text">PHP {v.minor}</span>
-          <span className="ml-2 font-mono text-[11px] text-rex-text-dim">{v.patch}</span>
+          <span className="font-mono text-[0.8125rem] text-rex-text">PHP {v.minor}</span>
+          <span className="ml-2 font-mono text-[0.6875rem] text-rex-text-dim">{v.patch}</span>
           {v.isDefault && (
-            <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[10px] font-medium text-brand">
+            <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
               Default
             </span>
           )}
@@ -289,7 +289,7 @@ function PhpVersionRow({
                 {busy ? "…" : "Make default"}
               </Button>
             )}
-            <span className="text-[11.5px] text-status-running">Installed</span>
+            <span className="text-[0.71875rem] text-status-running">Installed</span>
             <Button variant="ghost" onClick={onExpand}>
               <ChevronRight
                 className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-90")}
@@ -350,21 +350,21 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
   });
 
   if (isLoading) {
-    return <div className="pb-3 text-[12px] text-rex-text-muted">Loading…</div>;
+    return <div className="pb-3 text-[0.75rem] text-rex-text-muted">Loading…</div>;
   }
   return (
     <div className="mb-2.5 rounded-[9px] border border-rex-border-subtle bg-rex-well/50 p-3">
       <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-3">
         {settings.map((s) => (
           <div key={s.key}>
-            <label className="mb-1 block font-mono text-[11px] text-rex-text-muted">
+            <label className="mb-1 block font-mono text-[0.6875rem] text-rex-text-muted">
               {s.key}
             </label>
             <input {...TECH_INPUT}
               value={current(s)}
               placeholder={s.default}
               onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
-              className="h-[30px] w-full rounded-[7px] border border-rex-border-strong bg-rex-well px-[9px] font-mono text-[12px] text-rex-text outline-none transition-colors placeholder:text-rex-text-dim focus:border-brand"
+              className="h-[30px] w-full rounded-[7px] border border-rex-border-strong bg-rex-well px-[9px] font-mono text-[0.75rem] text-rex-text outline-none transition-colors placeholder:text-rex-text-dim focus:border-brand"
             />
           </div>
         ))}
@@ -373,7 +373,7 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
         <Button variant="primary" disabled={!dirty || apply.isPending} onClick={() => apply.mutate()}>
           {apply.isPending ? "Applying…" : "Save & restart pool"}
         </Button>
-        <div className="text-[11px] leading-snug text-rex-text-dim">
+        <div className="text-[0.6875rem] leading-snug text-rex-text-dim">
           Empty = PHP default (placeholder). Applies to every nginx-served site on PHP {minor};
           FrankenPHP sites use their own embedded PHP. Requests are still recycled after 5&nbsp;min
           wall-clock unless max_execution_time is set higher (0 keeps the 5-min cap).
@@ -410,7 +410,7 @@ function PhpVersionsSetting() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (isLoading) {
-    return <div className="text-[12.5px] text-rex-text-muted">Loading…</div>;
+    return <div className="text-[0.78125rem] text-rex-text-muted">Loading…</div>;
   }
   return (
     <div>
@@ -425,7 +425,7 @@ function PhpVersionsSetting() {
           onExpand={() => setExpanded((e) => (e === v.minor ? null : v.minor))}
         />
       ))}
-      <div className="mt-2.5 text-[11px] text-rex-text-dim">
+      <div className="mt-2.5 text-[0.6875rem] text-rex-text-dim">
         Installed versions each run a php-fpm pool; new sites use the default. A site can pick its own
         version in its detail view.
       </div>
@@ -451,13 +451,13 @@ function ActionRow({
   return (
     <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
       <div className="flex-1">
-        <div className="text-[13.5px] font-medium text-rex-text">{title}</div>
-        <div className="mt-0.5 text-[12px] text-rex-text-muted">{desc}</div>
+        <div className="text-[0.84375rem] font-medium text-rex-text">{title}</div>
+        <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">{desc}</div>
       </div>
       <button
         onClick={onClick}
         disabled={busy}
-        className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
+        className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[0.78125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
       >
         {busy && (
           <span className="h-3 w-3 rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
@@ -506,7 +506,7 @@ function DnsSslSetting() {
   return (
     <>
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-        <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+        <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
           Status
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -528,13 +528,13 @@ function DnsSslSetting() {
               />
             </span>
             <div className="min-w-0">
-              <div className="text-[13px] font-medium text-rex-text">DNS resolver</div>
-              <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
+              <div className="text-[0.8125rem] font-medium text-rex-text">DNS resolver</div>
+              <div className="mt-px font-mono text-[0.65625rem] text-rex-text-muted">
                 *.{tld} → 127.0.0.1 · {dnsActive ? (dnsDegraded ? "in-process" : "agent") : "inactive"}
               </div>
               {dnsActive && (
                 <div
-                  className="mt-0.5 text-[10.5px] leading-snug"
+                  className="mt-0.5 text-[0.65625rem] leading-snug"
                   style={{
                     color: dnsDegraded ? "var(--rex-warning-bright)" : "var(--rex-text-muted)",
                   }}
@@ -555,8 +555,8 @@ function DnsSslSetting() {
               strokeWidth={1.8}
             />
             <div className="min-w-0">
-              <div className="text-[13px] font-medium text-rex-text">Local CA</div>
-              <div className="mt-px font-mono text-[10.5px] text-rex-text-muted">
+              <div className="text-[0.8125rem] font-medium text-rex-text">Local CA</div>
+              <div className="mt-px font-mono text-[0.65625rem] text-rex-text-muted">
                 {dns?.caTrusted ? "trusted · login keychain" : "not trusted — use Re-trust below"}
               </div>
             </div>
@@ -630,13 +630,13 @@ function FirefoxTrustCard() {
         onClick={() => force.mutate()}
       />
       <div className="border-t border-rex-border-subtle py-[13px]">
-        <div className="text-[12px] text-rex-text-muted">
+        <div className="text-[0.75rem] text-rex-text-muted">
           Still warning? Import the CA manually: Firefox Settings → Privacy &amp; Security →
           Certificates → View Certificates → Authorities → Import, pick the file below and check
           “Trust this CA to identify websites”.
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[11px] text-rex-text">
+          <code className="min-w-0 flex-1 truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[0.6875rem] text-rex-text">
             {ff.caPath}
           </code>
           <button
@@ -645,7 +645,7 @@ function FirefoxTrustCard() {
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
             }}
-            className="h-8 flex-none rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[12.5px] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
+            className="h-8 flex-none rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[0.78125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover"
           >
             {copied ? "Copied" : "Copy path"}
           </button>
@@ -690,7 +690,7 @@ function CliCard() {
         onClick={() => install.mutate()}
       />
       <div className="border-t border-rex-border-subtle py-[13px]">
-        <code className="block truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[11px] text-rex-text">
+        <code className="block truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[0.6875rem] text-rex-text">
           {cli.linkPath} → {cli.bundledPath ?? "?"}
         </code>
       </div>
@@ -729,14 +729,14 @@ function DefaultTldCard() {
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
       <div className="flex items-center gap-[14px]">
         <div className="flex-1">
-          <div className="text-[13.5px] font-medium text-rex-text">Default domain ending</div>
-          <div className="mt-0.5 text-[12px] text-rex-text-muted">
+          <div className="text-[0.84375rem] font-medium text-rex-text">Default domain ending</div>
+          <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">
             New sites are created under this TLD. Existing sites keep their domain — re-point
             one from its page via Change domain.
           </div>
         </div>
         <div className="flex h-9 w-[150px] items-center rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] transition-colors has-[input:focus]:border-brand">
-          <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.</span>
+          <span className="flex-none font-mono text-[0.78125rem] text-rex-text-dim">.</span>
           <input
             {...TECH_INPUT}
             value={input ?? current}
@@ -745,7 +745,7 @@ function DefaultTldCard() {
               if (e.key === "Enter" && dirty && policy?.allowed && !save.isPending) save.mutate();
             }}
             aria-label="Default TLD for new sites"
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
+            className="min-w-0 flex-1 bg-transparent font-mono text-[0.78125rem] text-rex-text outline-none focus-visible:shadow-none"
           />
         </div>
         <Button
@@ -757,17 +757,17 @@ function DefaultTldCard() {
         </Button>
       </div>
       {policy && !policy.allowed && value !== "" && (
-        <div className="mt-2.5 text-[11.5px] text-status-error-bright">{policy.reason}</div>
+        <div className="mt-2.5 text-[0.71875rem] text-status-error-bright">{policy.reason}</div>
       )}
       {policy?.allowed && policy.warn && (
-        <div className="mt-2.5 text-[11.5px] text-status-warning-bright">
+        <div className="mt-2.5 text-[0.71875rem] text-status-warning-bright">
           <span className="font-mono">.{value}</span> may shadow a real internet TLD on this
           machine{value === "rex" ? " — and ICANN could delegate it for real use in the future" : ""}.
           The reserved-for-testing TLDs (<span className="font-mono">.test</span>) can never
           collide.
         </div>
       )}
-      <div className="mt-2.5 text-[11.5px] text-rex-text-dim">
+      <div className="mt-2.5 text-[0.71875rem] text-rex-text-dim">
         <span className="font-mono">.rex</span> is rexenv's home TLD — its resolver is set up
         during onboarding and rexenv's own tools use it. Any other TLD (including{" "}
         <span className="font-mono">.test</span>) asks for your password once, when its first
@@ -793,8 +793,8 @@ function PrefRow({
   return (
     <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">
       <div className="flex-1">
-        <div className="text-[13.5px] font-medium text-rex-text">{title}</div>
-        <div className="mt-0.5 text-[12px] text-rex-text-muted">{desc}</div>
+        <div className="text-[0.84375rem] font-medium text-rex-text">{title}</div>
+        <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">{desc}</div>
       </div>
       <StartStopToggle running={on} variant="setting" onToggle={onToggle} label={label} />
     </div>
@@ -863,17 +863,17 @@ function DefaultPortsCard() {
   const [mysql, setMysql] = useState("13306");
   const input = (label: string, value: string, onChange: (v: string) => void) => (
     <div>
-      <label className="mb-1.5 block text-[12px] text-rex-text-muted">{label}</label>
+      <label className="mb-1.5 block text-[0.75rem] text-rex-text-muted">{label}</label>
       <input {...TECH_INPUT}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-[34px] w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] font-mono text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand"
+        className="h-[34px] w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] font-mono text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand"
       />
     </div>
   );
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-      <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
         Default ports
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -929,7 +929,7 @@ function BlueprintsSetting() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[12px] text-rex-text-muted">
+      <p className="text-[0.75rem] text-rex-text-muted">
         Reusable WordPress setups — pick one in <span className="font-mono">New site</span> to auto-install its
         plugins/themes and apply multisite.
       </p>
@@ -939,8 +939,8 @@ function BlueprintsSetting() {
           {blueprints.map((b) => (
             <div key={b.id} className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[12.5px] text-rex-text">{b.name}</div>
-                <div className="truncate font-mono text-[10.5px] text-rex-text-dim">
+                <div className="truncate text-[0.78125rem] text-rex-text">{b.name}</div>
+                <div className="truncate font-mono text-[0.65625rem] text-rex-text-dim">
                   {b.spec.multisite !== "none" ? `multisite:${b.spec.multisite} · ` : ""}
                   {b.spec.plugins.length} plugin(s){b.spec.wpDebug ? " · WP_DEBUG" : ""}
                 </div>
@@ -960,7 +960,7 @@ function BlueprintsSetting() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Blueprint name"
-            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand"
+            className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 text-[0.75rem] text-rex-text outline-none focus:border-brand"
           />
           <select value={multisite} onChange={(e) => setMultisite(e.target.value as MultisiteMode)} className={SELECT}>
             <option value="none">Single site</option>
@@ -972,16 +972,16 @@ function BlueprintsSetting() {
           value={plugins}
           onChange={(e) => setPlugins(e.target.value)}
           placeholder="Plugin slugs (comma-separated, e.g. woocommerce, jetpack)"
-          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         <input {...TECH_INPUT}
           value={themes}
           onChange={(e) => setThemes(e.target.value)}
           placeholder="Theme slugs (comma-separated)"
-          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none focus:border-brand"
+          className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         <div className="flex items-center justify-between">
-          <label className="flex items-center gap-1.5 text-[12px] text-rex-text-muted">
+          <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
             <input type="checkbox" checked={wpDebug} onChange={(e) => setWpDebug(e.target.checked)} />
             Enable WP_DEBUG
           </label>
@@ -995,7 +995,7 @@ function BlueprintsSetting() {
 }
 
 const SELECT =
-  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[12px] text-rex-text outline-none focus:border-brand";
+  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 text-[0.75rem] text-rex-text outline-none focus:border-brand";
 
 function UninstallSetting() {
   const [msg, setMsg] = useState<string | null>(null);
@@ -1008,14 +1008,14 @@ function UninstallSetting() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[12px] text-rex-text-muted">
+      <p className="text-[0.75rem] text-rex-text-muted">
         Reverse the system-level changes rexenv made — stop all services, remove every rexenv DNS
         resolver (<span className="font-mono">.rex</span> plus any other TLDs you added), and
         untrust the local HTTPS certificate authority. Your site files and databases are{" "}
         <span className="font-medium">not</span> deleted.
       </p>
       <div className="flex items-center justify-between rounded-lg border border-status-error/40 bg-status-error/5 p-3">
-        <span className="text-[12.5px] text-rex-text">Remove rexenv's system changes</span>
+        <span className="text-[0.78125rem] text-rex-text">Remove rexenv's system changes</span>
         <Button
           variant="ghost"
           disabled={run.isPending}
@@ -1080,9 +1080,9 @@ function AboutSetting() {
       <span className="flex flex-none" style={{ color }}>
         {icon}
       </span>
-      <span className="flex-1 text-[13.5px] text-rex-text">{label}</span>
+      <span className="flex-1 text-[0.84375rem] text-rex-text">{label}</span>
       {url && (
-        <span className="font-mono text-[11px] text-rex-text-dim">
+        <span className="font-mono text-[0.6875rem] text-rex-text-dim">
           {url.replace(/^https?:\/\//, "")}
         </span>
       )}
@@ -1099,14 +1099,14 @@ function AboutSetting() {
       <div className="flex flex-col items-center gap-3 rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5 py-6 text-center">
         <CrownBadge size={56} />
         <div>
-          <div className="font-display text-[22px] font-semibold tracking-[-0.02em] text-rex-text">
+          <div className="font-display text-[1.375rem] font-semibold tracking-[-0.02em] text-rex-text">
             rexenv
           </div>
-          <div className="mt-1 font-mono text-[11.5px] text-rex-text-muted">
+          <div className="mt-1 font-mono text-[0.71875rem] text-rex-text-muted">
             {info && `v${info.version} · ${info.platform}`}
           </div>
         </div>
-        <div className="max-w-[380px] text-[12.5px] leading-[1.55] text-rex-text-muted">
+        <div className="max-w-[380px] text-[0.78125rem] leading-[1.55] text-rex-text-muted">
           A calm, fast command room for your local kingdom — every server, site, and database in one place.
         </div>
       </div>
@@ -1132,7 +1132,7 @@ function AboutSetting() {
         )}
       </div>
 
-      <div className="text-center text-[11.5px] leading-[1.6] text-rex-text-faint">
+      <div className="text-center text-[0.71875rem] leading-[1.6] text-rex-text-faint">
         Built on open source — nginx, PHP, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared.
         <br />
         Made for developers who run their kingdom locally.
@@ -1167,7 +1167,7 @@ export function Settings() {
                 key={s.key}
                 onClick={() => setSection(s.key)}
                 className={cn(
-                  "flex items-center gap-2.5 rounded-[9px] px-[11px] py-[9px] text-left text-[13px] transition-colors",
+                  "flex items-center gap-2.5 rounded-[9px] px-[11px] py-[9px] text-left text-[0.8125rem] transition-colors",
                   active
                     ? "bg-brand-active text-brand-tint"
                     : "text-rex-text-muted hover:bg-rex-hover hover:text-rex-text",

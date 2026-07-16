@@ -79,8 +79,8 @@ function FatalError({ message }: { message: string }) {
         <AlertCircle className="h-7 w-7 text-status-error-bright" strokeWidth={1.8} />
       </div>
       <div>
-        <div className="text-[19px] font-semibold text-rex-text">rexenv couldn't start</div>
-        <div className="mt-2 max-w-[460px] whitespace-pre-wrap text-[13px] leading-[1.6] text-rex-text-muted">
+        <div className="text-[1.1875rem] font-semibold text-rex-text">rexenv couldn't start</div>
+        <div className="mt-2 max-w-[460px] whitespace-pre-wrap text-[0.8125rem] leading-[1.6] text-rex-text-muted">
           {message}
         </div>
       </div>

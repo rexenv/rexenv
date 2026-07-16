@@ -56,7 +56,7 @@ function ActionBtn({
     <button
       onClick={onClick}
       className={cn(
-        "flex h-[29px] items-center gap-1.5 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 text-[12px] font-medium transition-colors hover:bg-rex-surface-2-hover",
+        "flex h-[29px] items-center gap-1.5 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 text-[0.75rem] font-medium transition-colors hover:bg-rex-surface-2-hover",
         accent ? "text-brand-tint" : "text-rex-text-bright",
       )}
     >
@@ -87,7 +87,7 @@ const GROUPS: { kind: ServiceKind; title: string; icon: LucideIcon; color: strin
 function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
   const bar = (label: string, pct: number, value: string) => (
     <div className="flex items-center gap-[7px]">
-      <span className="w-[22px] font-mono text-[8.5px] tracking-[0.06em] text-rex-text-dim">
+      <span className="w-[22px] font-mono text-[0.53125rem] tracking-[0.06em] text-rex-text-dim">
         {label}
       </span>
       <span className="h-1 flex-1 overflow-hidden rounded-full bg-rex-well-deep">
@@ -96,7 +96,7 @@ function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
           style={{ width: `${Math.min(100, pct)}%` }}
         />
       </span>
-      <span className="w-8 text-right font-mono text-[9.5px] text-rex-text-bright">{value}</span>
+      <span className="w-8 text-right font-mono text-[0.59375rem] text-rex-text-bright">{value}</span>
     </div>
   );
   return (
@@ -141,26 +141,26 @@ function ServiceRow({
     >
       <div className="flex min-w-0 flex-1 items-center gap-[11px]">
         <span
-          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border font-mono text-[10px] font-bold"
+          className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border font-mono text-[0.625rem] font-bold"
           style={{ background: accent.bg, color: accent.color, borderColor: accent.border }}
         >
           {serviceBadge(svc, kind)}
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="truncate text-[13.5px] font-semibold text-rex-text">
+            <span className="truncate text-[0.84375rem] font-semibold text-rex-text">
               {svc.domain ? "FrankenPHP" : svc.name}
             </span>
             {svc.domain && svc.version && (
-              <span className="font-mono text-[10.5px] text-rex-text-dim">{svc.version}</span>
+              <span className="font-mono text-[0.65625rem] text-rex-text-dim">{svc.version}</span>
             )}
           </div>
           {svc.domain && (
-            <div className="truncate font-mono text-[11px] text-rex-text-dim">{svc.domain}</div>
+            <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">{svc.domain}</div>
           )}
         </div>
       </div>
-      <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
+      <div className="w-[62px] flex-none font-mono text-[0.71875rem] text-rex-text-dim">
         :{svc.port}
       </div>
       <StackedMeters cpu={svc.cpuPercent} ram={svc.ramMb} />
@@ -183,7 +183,7 @@ function ServiceRow({
         )}
         {svc.isDefault === true && (
           <span
-            className="flex h-[29px] items-center rounded-lg border border-rex-border-subtle bg-rex-well px-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-rex-text-muted"
+            className="flex h-[29px] items-center rounded-lg border border-rex-border-subtle bg-rex-well px-3 font-mono text-[0.65625rem] uppercase tracking-[0.08em] text-rex-text-muted"
             title="New sites use this PHP version (change in Settings or here)"
           >
             Default
@@ -213,7 +213,7 @@ function ServiceRow({
           // Serving core (edge → web server → PHP): ONE organism — stopping a
           // single piece would 502 every site, so no per-row toggle by design.
           <span
-            className="cursor-help rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[9.5px] uppercase tracking-[0.07em] text-rex-text-dim"
+            className="cursor-help rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[0.59375rem] uppercase tracking-[0.07em] text-rex-text-dim"
             title="Part of the serving stack (edge → web server → PHP). These start and stop together — use Start all / Stop all / Restart in the sidebar. Stopping one alone would break every site."
           >
             via Start/Stop all
@@ -301,8 +301,8 @@ export function Services() {
                     <span className="flex" style={{ color: g.color }}>
                       <Icon className="h-[15px] w-[15px]" strokeWidth={1.7} />
                     </span>
-                    <span className="text-[13.5px] font-semibold text-rex-text">{g.title}</span>
-                    <span className="font-mono text-[11px] text-rex-text-dim">
+                    <span className="text-[0.84375rem] font-semibold text-rex-text">{g.title}</span>
+                    <span className="font-mono text-[0.6875rem] text-rex-text-dim">
                       {run}/{rows.length} running
                     </span>
                   </div>
@@ -335,8 +335,8 @@ export function Services() {
                   <span className="flex text-rex-text-dim">
                     <Globe className="h-[15px] w-[15px]" strokeWidth={1.7} />
                   </span>
-                  <span className="text-[13.5px] font-semibold text-rex-text">Always on</span>
-                  <span className="font-mono text-[11px] text-rex-text-dim">
+                  <span className="text-[0.84375rem] font-semibold text-rex-text">Always on</span>
+                  <span className="font-mono text-[0.6875rem] text-rex-text-dim">
                     {dns.mode === "agent"
                       ? "survives app quits — not affected by Stop all"
                       : "runs with the app — not affected by Stop all"}
@@ -345,11 +345,11 @@ export function Services() {
                 <div className="overflow-hidden rounded-[13px] border border-rex-border-subtle bg-rex-surface-1">
                   <div className="flex items-center gap-4 px-4 py-3">
                     <div className="flex min-w-0 flex-1 items-center gap-[11px]">
-                      <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-rex-border-strong bg-rex-surface-2 font-mono text-[10px] font-bold text-rex-text-bright">
+                      <span className="flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-rex-border-strong bg-rex-surface-2 font-mono text-[0.625rem] font-bold text-rex-text-bright">
                         Dn
                       </span>
                       <div className="min-w-0">
-                        <span className="text-[13.5px] font-semibold text-rex-text">
+                        <span className="text-[0.84375rem] font-semibold text-rex-text">
                           DNS resolver
                         </span>
                         {/* Mode is user-facing state: agent survives quits;
@@ -358,14 +358,14 @@ export function Services() {
                             a generic "running". */}
                         {dns.running && dns.mode === "in-process" ? (
                           <div
-                            className="text-[11px]"
+                            className="text-[0.6875rem]"
                             style={{ color: "var(--rex-warning-bright)" }}
                           >
                             Running inside the app — DNS stops when you quit rexenv (restart
                             the app to retry the always-on agent)
                           </div>
                         ) : (
-                          <div className="text-[11px] text-rex-text-dim">
+                          <div className="text-[0.6875rem] text-rex-text-dim">
                             Resolves <span className="font-mono">*.{tld}</span> —{" "}
                             {dns.mode === "agent"
                               ? "always on, resolves even when rexenv is closed"
@@ -374,7 +374,7 @@ export function Services() {
                         )}
                       </div>
                     </div>
-                    <div className="w-[62px] flex-none font-mono text-[11.5px] text-rex-text-dim">
+                    <div className="w-[62px] flex-none font-mono text-[0.71875rem] text-rex-text-dim">
                       :{dns.port}
                     </div>
                     {/* Down = red error, not gray "Idle": always-on means a dead

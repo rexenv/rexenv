@@ -88,7 +88,7 @@ const SERVERS: { value: WebServer; label: string }[] = [
 ];
 
 const SELECT_CLS =
-  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[12px] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
+  "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
 type TabKey = "overview" | "wordpress" | "database" | "logs" | "terminal" | "settings";
 
@@ -183,7 +183,7 @@ export function SiteDetail() {
                   key={t.key}
                   onClick={() => navigate(`/sites/${site.id}/${t.key}`)}
                   className={cn(
-                    "-mb-px border-b-2 px-3.5 py-2.5 text-[13.5px] font-medium transition-colors",
+                    "-mb-px border-b-2 px-3.5 py-2.5 text-[0.84375rem] font-medium transition-colors",
                     isActive
                       ? "border-brand text-rex-text"
                       : wpInactive
@@ -294,7 +294,7 @@ function SiteHeader({
     >
       <button
         onClick={onBack}
-        className="mb-[13px] inline-flex items-center gap-1.5 text-[12px] text-rex-text-dim transition-colors hover:text-rex-text-bright"
+        className="mb-[13px] inline-flex items-center gap-1.5 text-[0.75rem] text-rex-text-dim transition-colors hover:text-rex-text-bright"
       >
         <ChevronLeft className="h-[13px] w-[13px]" strokeWidth={2} />
         All sites
@@ -302,21 +302,21 @@ function SiteHeader({
       <div className="flex items-start justify-between gap-[18px] pb-[18px]">
         <div className="flex min-w-0 items-center gap-[13px]">
           <div
-            className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[10px] border text-[15px] font-bold"
+            className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[10px] border text-[0.9375rem] font-bold"
             style={{ background: t.bg, color: t.color, borderColor: t.border }}
           >
             {t.letter}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-[11px]">
-              <span className="text-[19px] font-semibold tracking-[-.01em] text-rex-text">
+              <span className="text-[1.1875rem] font-semibold tracking-[-.01em] text-rex-text">
                 {site.name}
               </span>
               <StatusPill status={status} />
             </div>
-            <div className="mt-1 flex items-center gap-2 font-mono text-[12.5px] text-rex-text-muted">
+            <div className="mt-1 flex items-center gap-2 font-mono text-[0.78125rem] text-rex-text-muted">
               <span className="truncate">{site.domain}</span>
-              <span className="flex-none text-[11px] text-rex-text-dim">· :443</span>
+              <span className="flex-none text-[0.6875rem] text-rex-text-dim">· :443</span>
             </div>
           </div>
         </div>
@@ -367,12 +367,12 @@ function Overview({
   return (
     <>
       <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-        <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+        <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
           Environment
         </div>
         <div className="grid grid-cols-3 gap-[14px]">
           <EnvMini label="PHP version">
-            <span className="font-mono text-[18px] font-semibold text-rex-text">
+            <span className="font-mono text-[1.125rem] font-semibold text-rex-text">
               {site.phpVersion}
             </span>
             <select
@@ -389,7 +389,7 @@ function Overview({
             </select>
           </EnvMini>
           <EnvMini label="Web server">
-            <span className="text-[15px] font-semibold capitalize text-rex-text">
+            <span className="text-[0.9375rem] font-semibold capitalize text-rex-text">
               {serverLabel}
             </span>
             <select
@@ -413,9 +413,9 @@ function Overview({
               <>
                 <div className="flex items-center gap-2">
                   <Lock className="h-[17px] w-[17px] text-status-running" strokeWidth={1.8} />
-                  <span className="text-[13.5px] font-semibold text-rex-text">Trusted</span>
+                  <span className="text-[0.84375rem] font-semibold text-rex-text">Trusted</span>
                 </div>
-                <span className="font-mono text-[10.5px] text-rex-text-dim">rexenv&nbsp;CA</span>
+                <span className="font-mono text-[0.65625rem] text-rex-text-dim">rexenv&nbsp;CA</span>
               </>
             ) : (
               <div className="flex items-center gap-2">
@@ -424,7 +424,7 @@ function Overview({
                   style={{ color: "var(--rex-lock-insecure)" }}
                   strokeWidth={1.8}
                 />
-                <span className="text-[13.5px] font-semibold text-rex-text">Not secured</span>
+                <span className="text-[0.84375rem] font-semibold text-rex-text">Not secured</span>
               </div>
             )}
           </EnvMini>
@@ -433,7 +433,7 @@ function Overview({
 
       <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-[14px]">
         <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-          <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
             Paths
           </div>
           <div className="flex flex-col gap-3">
@@ -447,7 +447,7 @@ function Overview({
         </div>
 
         <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-          <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
             Quick links
           </div>
           <div className="grid grid-cols-2 gap-[9px]">
@@ -517,7 +517,7 @@ function fmtCertDate(iso: string): string {
 function SettingsCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-      <div className="mb-[14px] font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
         {label}
       </div>
       {children}
@@ -528,8 +528,8 @@ function SettingsCard({ label, children }: { label: string; children: React.Reac
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <div className="flex-none text-[12px] text-rex-text-muted">{label}</div>
-      <div className="min-w-0 text-right text-[13px] text-rex-text-bright">{children}</div>
+      <div className="flex-none text-[0.75rem] text-rex-text-muted">{label}</div>
+      <div className="min-w-0 text-right text-[0.8125rem] text-rex-text-bright">{children}</div>
     </div>
   );
 }
@@ -647,7 +647,7 @@ function SettingsTab({ site }: { site: Site }) {
             onKeyDown={(e) => {
               if (e.key === "Enter" && dirty && !rename.isPending) rename.mutate(trimmed);
             }}
-            className="h-9 w-full max-w-[420px] rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[13px] text-rex-text outline-none transition-colors focus:border-brand"
+            className="h-9 w-full max-w-[420px] rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[0.8125rem] text-rex-text outline-none transition-colors focus:border-brand"
           />
           <Button
             variant="primary"
@@ -657,15 +657,15 @@ function SettingsTab({ site }: { site: Site }) {
             {rename.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
-        <div className="mt-2 text-[12px] text-rex-text-dim">
+        <div className="mt-2 text-[0.75rem] text-rex-text-dim">
           Display name only — the domain, folder and database are unchanged.
         </div>
       </SettingsCard>
           <SettingsCard label="Domain">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="font-mono text-[13px] text-rex-text-bright">{site.domain}</div>
-            <div className="mt-1 text-[12px] text-rex-text-dim">
+            <div className="font-mono text-[0.8125rem] text-rex-text-bright">{site.domain}</div>
+            <div className="mt-1 text-[0.75rem] text-rex-text-dim">
               {site.multisite !== "none"
                 ? "Domain change isn't supported on a multisite network yet — the network stores the domain in wp-config and per-site tables."
                 : site.type === "wordpress"
@@ -686,8 +686,8 @@ function SettingsTab({ site }: { site: Site }) {
           <SettingsCard label="Site folder">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="truncate font-mono text-[12.5px] text-rex-text-bright">{site.path}</div>
-            <div className="mt-1 text-[12px] text-rex-text-dim">
+            <div className="truncate font-mono text-[0.78125rem] text-rex-text-bright">{site.path}</div>
+            <div className="mt-1 text-[0.75rem] text-rex-text-dim">
               Move the site's files to another folder — domain, database and certificate stay the
               same.
             </div>
@@ -709,7 +709,7 @@ function SettingsTab({ site }: { site: Site }) {
           <InfoRow label="Database name">
             {hasDb ? (
               <span className="inline-flex items-center gap-1.5">
-                <span className="truncate font-mono text-[12.5px]">{site.dbName}</span>
+                <span className="truncate font-mono text-[0.78125rem]">{site.dbName}</span>
                 <CopyButton value={site.dbName} />
               </span>
             ) : (
@@ -718,7 +718,7 @@ function SettingsTab({ site }: { site: Site }) {
           </InfoRow>
           {hasDb && (
             <InfoRow label="Database engine">
-              <span className="font-mono text-[12.5px]">
+              <span className="font-mono text-[0.78125rem]">
                 {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}
                 <span className="ml-2 text-rex-text-dim">
                   127.0.0.1:{site.dbEngine === "mariadb" ? 13307 : 13306}
@@ -731,10 +731,10 @@ function SettingsTab({ site }: { site: Site }) {
       </SettingsCard>
           <SettingsCard label="HTTPS certificate">
         {certLoading ? (
-          <div className="text-[12.5px] text-rex-text-dim">Reading certificate…</div>
+          <div className="text-[0.78125rem] text-rex-text-dim">Reading certificate…</div>
         ) : !cert ? (
           <div className="flex items-center justify-between gap-4">
-            <div className="text-[12.5px] text-rex-text-dim">
+            <div className="text-[0.78125rem] text-rex-text-dim">
               No certificate on disk — issue one so HTTPS works (normally created when the site
               is provisioned).
             </div>
@@ -748,10 +748,10 @@ function SettingsTab({ site }: { site: Site }) {
               <InfoRow label="Issued">{fmtCertDate(cert.notBefore)}</InfoRow>
               <InfoRow label="Expires">
                 <span>{fmtCertDate(cert.notAfter)}</span>
-                <span className={cn("ml-2 font-mono text-[11.5px]", expiryTone)}>{expiryNote}</span>
+                <span className={cn("ml-2 font-mono text-[0.71875rem]", expiryTone)}>{expiryNote}</span>
               </InfoRow>
               <InfoRow label="Domains">
-                <span className="font-mono text-[12.5px]">{cert.sans.join(", ")}</span>
+                <span className="font-mono text-[0.78125rem]">{cert.sans.join(", ")}</span>
               </InfoRow>
             </div>
             <PathField
@@ -760,7 +760,7 @@ function SettingsTab({ site }: { site: Site }) {
               onOpen={() => void revealPath(cert.certDir)}
             />
             <div className="mt-1 flex items-center justify-between gap-4 border-t border-rex-border-subtle pt-3">
-              <div className="text-[12px] text-rex-text-dim">
+              <div className="text-[0.75rem] text-rex-text-dim">
                 Re-issue from the local CA — for a cert nearing expiry, a corrupted file, or after
                 the CA was re-created. Briefly reloads the edge.
               </div>
@@ -814,7 +814,7 @@ function XdebugCard({ site }: { site: Site }) {
   return (
     <SettingsCard label="Xdebug">
       <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0 text-[12px] text-rex-text-dim">
+        <div className="min-w-0 text-[0.75rem] text-rex-text-dim">
           {blocked ??
             (site.xdebug ? (
               <>
@@ -903,7 +903,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
     <SettingsCard label="Environment variables">
       <div className="flex flex-col gap-2">
         {shown.length === 0 && (
-          <div className="text-[12.5px] text-rex-text-dim">
+          <div className="text-[0.78125rem] text-rex-text-dim">
             No variables set. They're injected per request — the shared PHP pools are untouched.
           </div>
         )}
@@ -916,7 +916,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
                 placeholder="NAME"
                 disabled={save.isPending}
                 onChange={(e) => edit(i, { name: e.target.value })}
-                className="h-8 w-[220px] rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-brand"
+                className="h-8 w-[220px] rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-brand"
               />
               <input
                 {...TECH_INPUT}
@@ -924,7 +924,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
                 placeholder="value"
                 disabled={save.isPending}
                 onChange={(e) => edit(i, { value: e.target.value })}
-                className="h-8 min-w-0 flex-1 rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-brand"
+                className="h-8 min-w-0 flex-1 rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-brand"
               />
               <Button
                 variant="ghost"
@@ -937,12 +937,12 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
               </Button>
             </div>
             {problems[i] && (
-              <div className="font-mono text-[11px] text-status-error-bright">{problems[i]}</div>
+              <div className="font-mono text-[0.6875rem] text-status-error-bright">{problems[i]}</div>
             )}
           </div>
         ))}
         {hasDuplicate && (
-          <div className="font-mono text-[11px] text-status-error-bright">duplicate variable names</div>
+          <div className="font-mono text-[0.6875rem] text-status-error-bright">duplicate variable names</div>
         )}
         <div className="mt-1 flex items-center justify-between gap-4">
           <Button
@@ -960,7 +960,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
             {save.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
-        <div className="mt-1 text-[12px] text-rex-text-dim">
+        <div className="mt-1 text-[0.75rem] text-rex-text-dim">
           Available to PHP via getenv(), $_SERVER and $_ENV. Stored as plain text in the local
           server config; not for secrets.
         </div>
@@ -1020,8 +1020,8 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
       >
         {done ? (
           <>
-            <div className="text-[15px] font-semibold text-rex-text">Domain changed</div>
-            <div className="mt-2 text-[13px] leading-[1.55] text-rex-text-muted">
+            <div className="text-[0.9375rem] font-semibold text-rex-text">Domain changed</div>
+            <div className="mt-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
               The site now lives at{" "}
               <span className="font-mono text-rex-text">https://{done.site.domain}</span>.
               {isWp && <> {done.replacements} URL references were rewritten in the database.</>}{" "}
@@ -1029,7 +1029,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
             </div>
             {done.backupPath && (
               <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rex-border-strong bg-rex-surface-2 px-3 py-2.5">
-                <span className="truncate font-mono text-[11.5px] text-rex-text-bright">
+                <span className="truncate font-mono text-[0.71875rem] text-rex-text-bright">
                   {done.backupPath}
                 </span>
                 <Button
@@ -1054,8 +1054,8 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
           </>
         ) : (
           <>
-            <div className="text-[15px] font-semibold text-rex-text">Change domain?</div>
-            <div className="mt-2 flex flex-col gap-2 text-[13px] leading-[1.55] text-rex-text-muted">
+            <div className="text-[0.9375rem] font-semibold text-rex-text">Change domain?</div>
+            <div className="mt-2 flex flex-col gap-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
               {isWp ? (
                 <>
                   <p>
@@ -1081,7 +1081,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
                 </p>
               )}
             </div>
-            <div className="mt-4 text-[12.5px] text-rex-text-muted">New domain:</div>
+            <div className="mt-4 text-[0.78125rem] text-rex-text-muted">New domain:</div>
             <input
               {...TECH_INPUT}
               value={input}
@@ -1092,18 +1092,18 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
               placeholder="myshop.rex"
               disabled={busy}
               autoFocus
-              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[12.5px] text-rex-text outline-none focus:border-status-error-border"
+              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-status-error-border"
             />
-            <div className="mt-1.5 text-[11.5px] text-rex-text-dim">
+            <div className="mt-1.5 text-[0.71875rem] text-rex-text-dim">
               Lowercase letters, digits and hyphens, ending in a development TLD (e.g.{" "}
               <span className="font-mono">.rex</span> or <span className="font-mono">.test</span>).
               First use of a new TLD asks for your password once to register it with macOS.
             </div>
             {policy && !policy.allowed && (
-              <div className="mt-1.5 text-[11.5px] text-status-error-bright">{policy.reason}</div>
+              <div className="mt-1.5 text-[0.71875rem] text-status-error-bright">{policy.reason}</div>
             )}
             {policy?.allowed && policy.warn && (
-              <div className="mt-1.5 text-[11.5px] text-status-warning-bright">
+              <div className="mt-1.5 text-[0.71875rem] text-status-warning-bright">
                 <span className="font-mono">.{nextTld}</span> may shadow a real internet TLD on
                 this machine. <span className="font-mono">.test</span> is always safe.
               </div>
@@ -1148,18 +1148,18 @@ function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => vo
   return (
     <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
       <div className="mb-[13px] flex items-center justify-between">
-        <div className="font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+        <div className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
           Recent logs
         </div>
         <button
           onClick={onViewAll}
-          className="flex items-center gap-1 text-[12px] text-brand-tint transition-colors hover:underline"
+          className="flex items-center gap-1 text-[0.75rem] text-brand-tint transition-colors hover:underline"
         >
           View all logs
           <ChevronRight className="h-[13px] w-[13px]" strokeWidth={2} />
         </button>
       </div>
-      <div className="rounded-[11px] border border-rex-well-border bg-rex-well-deep px-[14px] py-3 font-mono text-[11.5px] leading-[1.95]">
+      <div className="rounded-[11px] border border-rex-well-border bg-rex-well-deep px-[14px] py-3 font-mono text-[0.71875rem] leading-[1.95]">
         {recent.length === 0 ? (
           <div className="text-rex-text-dim">
             No recent activity — start the site to see logs here.
@@ -1228,7 +1228,7 @@ function LogsTab({ siteId, isWordpress }: { siteId: string; isWordpress: boolean
           </select>
           <button
             onClick={() => setPaused((p) => !p)}
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand"
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
           >
             {paused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
             {paused ? "Resume" : "Pause"}
@@ -1237,7 +1237,7 @@ function LogsTab({ siteId, isWordpress }: { siteId: string; isWordpress: boolean
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className={`${isWordpress ? "h-[42vh]" : "h-[60vh]"} overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[11.5px] leading-relaxed text-rex-text`}
+          className={`${isWordpress ? "h-[42vh]" : "h-[60vh]"} overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[0.71875rem] leading-relaxed text-rex-text`}
         >
           {lines.length === 0 ? (
             <div className="text-rex-text-muted">
@@ -1315,18 +1315,18 @@ function WpDebugLogCard({ siteId }: { siteId: string }) {
   }
 
   const actionCls =
-    "flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[12px] text-rex-text transition-colors hover:border-brand disabled:opacity-50";
+    "flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:opacity-50";
 
   return (
     <div className="rounded-xl border border-rex-border bg-rex-surface-1">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rex-border p-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <FileText className="h-4 w-4 flex-none text-rex-text-muted" strokeWidth={1.7} />
-          <span className="text-[13px] font-medium text-rex-text">WordPress debug log</span>
+          <span className="text-[0.8125rem] font-medium text-rex-text">WordPress debug log</span>
           {status && (
             <span
               className={cn(
-                "rounded-full border px-2 py-0.5 font-mono text-[10.5px]",
+                "rounded-full border px-2 py-0.5 font-mono text-[0.65625rem]",
                 loggingOn
                   ? "border-rex-border text-status-running"
                   : "border-rex-border text-rex-text-dim",
@@ -1336,7 +1336,7 @@ function WpDebugLogCard({ siteId }: { siteId: string }) {
             </span>
           )}
           {status?.exists && (
-            <span className="font-mono text-[10.5px] text-rex-text-dim">
+            <span className="font-mono text-[0.65625rem] text-rex-text-dim">
               {fmtBytes(status.sizeBytes)}
             </span>
           )}
@@ -1390,7 +1390,7 @@ function WpDebugLogCard({ siteId }: { siteId: string }) {
 
       {status && (
         <div className="border-b border-rex-border-subtle px-3 py-1.5">
-          <span className="truncate font-mono text-[11px] text-rex-text-dim" title={status.path}>
+          <span className="truncate font-mono text-[0.6875rem] text-rex-text-dim" title={status.path}>
             {status.path}
           </span>
         </div>
@@ -1399,7 +1399,7 @@ function WpDebugLogCard({ siteId }: { siteId: string }) {
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="h-[32vh] overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[11.5px] leading-relaxed text-rex-text"
+        className="h-[32vh] overflow-auto bg-rex-surface-2/40 p-3 font-mono text-[0.71875rem] leading-relaxed text-rex-text"
       >
         {!status ? null : !loggingOn && !status.exists ? (
           <div className="flex flex-col gap-2 text-rex-text-muted">
@@ -1412,7 +1412,7 @@ function WpDebugLogCard({ siteId }: { siteId: string }) {
               <span className="text-rex-text">WordPress → Tools</span> tab, and add this to{" "}
               <span className="font-mono">wp-config.php</span> to log to a file:
             </div>
-            <pre className="w-fit rounded-lg border border-rex-border-subtle bg-rex-well px-3 py-2 text-[11px] text-rex-text-bright">
+            <pre className="w-fit rounded-lg border border-rex-border-subtle bg-rex-well px-3 py-2 text-[0.6875rem] text-rex-text-bright">
               {"define( 'WP_DEBUG', true );\ndefine( 'WP_DEBUG_LOG', true );"}
             </pre>
           </div>
@@ -1448,7 +1448,7 @@ function WpDebugLogCard({ siteId }: { siteId: string }) {
 function EnvMini({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
-      <div className="mb-[9px] text-[12px] text-rex-text-muted">{label}</div>
+      <div className="mb-[9px] text-[0.75rem] text-rex-text-muted">{label}</div>
       <div className="flex items-center justify-between gap-2">{children}</div>
     </div>
   );
@@ -1469,10 +1469,10 @@ function PathField({
 }) {
   return (
     <div>
-      <div className="mb-1.5 text-[12px] text-rex-text-muted">{label}</div>
+      <div className="mb-1.5 text-[0.75rem] text-rex-text-muted">{label}</div>
       <div className="flex items-center gap-2 rounded-[10px] border border-rex-border-subtle bg-rex-well py-2 pl-[11px] pr-2">
         <span
-          className="min-w-0 flex-1 truncate font-mono text-[12px] text-rex-text-bright"
+          className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-text-bright"
           title={value}
         >
           {value}
@@ -1529,7 +1529,7 @@ function QuickTile({
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-[9px] rounded-[10px] border border-rex-border-subtle bg-rex-well px-[11px] py-[10px] text-[12.5px] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
+        "flex items-center gap-[9px] rounded-[10px] border border-rex-border-subtle bg-rex-well px-[11px] py-[10px] text-[0.78125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
         span2 && "col-span-2",
       )}
     >

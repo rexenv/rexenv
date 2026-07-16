@@ -32,7 +32,7 @@ const LANGUAGES: { value: string; label: string }[] = [
 ];
 
 const PHP_GLYPH = (
-  <span className="font-mono text-[14px] font-semibold leading-none">&lt;?</span>
+  <span className="font-mono text-[0.875rem] font-semibold leading-none">&lt;?</span>
 );
 const WP_GLYPH = (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="block">
@@ -175,8 +175,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
         {/* Header + step indicator */}
         <div className="flex items-center gap-3 border-b border-rex-border-subtle px-5 py-[18px]">
           <div className="flex-1">
-            <div className="text-[15.5px] font-semibold text-rex-text">New site</div>
-            <div className="mt-px text-[12px] text-rex-text-muted">
+            <div className="text-[0.96875rem] font-semibold text-rex-text">New site</div>
+            <div className="mt-px text-[0.75rem] text-rex-text-muted">
               {step === 1 ? "Choose what to build" : "Configure your site"}
             </div>
           </div>
@@ -251,7 +251,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
             {step === 2 && (
               <button
                 onClick={() => setStep(1)}
-                className="flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[13px] font-medium text-rex-text-bright transition-colors hover:bg-rex-hover"
+                className="flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[0.8125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-hover"
               >
                 <ChevronLeft className="h-[15px] w-[15px]" strokeWidth={2} />
                 Back
@@ -289,13 +289,13 @@ function StepDot({ n, label, active, current }: { n: number; label: string; acti
   return (
     <span
       className={cn(
-        "flex items-center gap-[7px] font-mono text-[10.5px]",
+        "flex items-center gap-[7px] font-mono text-[0.65625rem]",
         active ? "text-rex-text-bright" : "text-rex-text-dim",
       )}
     >
       <span
         className={cn(
-          "flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px]",
+          "flex h-[18px] w-[18px] items-center justify-center rounded-full text-[0.625rem]",
           current ? "bg-brand text-white" : active ? "bg-brand-tint-bg text-brand-tint" : "bg-rex-surface-3 text-rex-text-dim",
         )}
       >
@@ -322,8 +322,8 @@ function TypeCardButton({ card, selected, onClick }: { card: TypeCard; selected:
         {card.icon}
       </span>
       <span className="flex-1">
-        <span className="block text-[14px] font-semibold text-rex-text">{card.label}</span>
-        <span className="mt-[3px] block text-[12.5px] text-rex-text-muted">{card.desc}</span>
+        <span className="block text-[0.875rem] font-semibold text-rex-text">{card.label}</span>
+        <span className="mt-[3px] block text-[0.78125rem] text-rex-text-muted">{card.desc}</span>
       </span>
       <CheckCircle2
         className="mt-0.5 h-[19px] w-[19px] flex-none"
@@ -335,9 +335,9 @@ function TypeCardButton({ card, selected, onClick }: { card: TypeCard; selected:
 }
 
 const FIELD_INPUT =
-  "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[13px] text-rex-text outline-none transition-colors focus:border-brand";
+  "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[0.8125rem] text-rex-text outline-none transition-colors focus:border-brand";
 const FIELD_SELECT =
-  "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[12.5px] text-rex-text outline-none transition-colors focus:border-brand";
+  "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand";
 
 function Step2(p: {
   blueprints: import("@/types").Blueprint[];
@@ -409,16 +409,16 @@ function Step2(p: {
               // Pasting a full domain drops the suffix shown next to the field
               // (the TLD is [a-z]+ by policy, so it's regex-safe).
               onChange={(e) => p.onDomainBase(e.target.value.replace(new RegExp(`\\.${p.tld}$`), ""))}
-              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
+              className="min-w-0 flex-1 bg-transparent font-mono text-[0.78125rem] text-rex-text outline-none focus-visible:shadow-none"
             />
-            <span className="flex-none font-mono text-[12.5px] text-rex-text-dim">.{p.tld}</span>
+            <span className="flex-none font-mono text-[0.78125rem] text-rex-text-dim">.{p.tld}</span>
             {p.domainOk && <Check className="ml-2 h-[15px] w-[15px] flex-none text-status-running" strokeWidth={2} />}
             {p.domainTaken && <XIcon className="ml-2 h-[15px] w-[15px] flex-none text-status-error" strokeWidth={2} />}
           </div>
         </Field>
       </div>
       {p.domainTaken && (
-        <div className="-mt-1.5 flex items-center gap-[7px] text-[11.5px] text-status-error-bright">
+        <div className="-mt-1.5 flex items-center gap-[7px] text-[0.71875rem] text-status-error-bright">
           <AlertCircle className="h-[13px] w-[13px] flex-none" strokeWidth={2} />
           <span>
             <span className="font-mono">{domainBase}.{p.tld}</span> is already in use. Try another name.
@@ -459,7 +459,7 @@ function Step2(p: {
               <option value="mariadb">MariaDB</option>
             </select>
           ) : (
-            <div className={cn(FIELD_INPUT, "flex items-center text-[12.5px] text-rex-text-muted")}>
+            <div className={cn(FIELD_INPUT, "flex items-center text-[0.78125rem] text-rex-text-muted")}>
               None
             </div>
           )}
@@ -468,7 +468,7 @@ function Step2(p: {
 
       {p.isWordpress && (
         <div className="mt-1 flex flex-col gap-[14px] border-t border-rex-border-subtle pt-[15px]">
-          <div className="font-mono text-[10px] uppercase tracking-[0.13em] text-rex-text-label">
+          <div className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
             WordPress install
           </div>
           <div className="grid grid-cols-2 gap-[13px]">
@@ -487,10 +487,10 @@ function Step2(p: {
           </div>
           <div className="grid grid-cols-2 gap-[13px]">
             <Field label="Admin username">
-              <input {...TECH_INPUT} value={p.adminUser} placeholder="admin" onChange={(e) => p.setAdminUser(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+              <input {...TECH_INPUT} value={p.adminUser} placeholder="admin" onChange={(e) => p.setAdminUser(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[0.78125rem]")} />
             </Field>
             <Field label="Admin email">
-              <input {...TECH_INPUT} value={p.adminEmail} placeholder="you@example.com" onChange={(e) => p.setAdminEmail(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[12.5px]")} />
+              <input {...TECH_INPUT} value={p.adminEmail} placeholder="you@example.com" onChange={(e) => p.setAdminEmail(e.target.value)} className={cn(FIELD_INPUT, "font-mono text-[0.78125rem]")} />
             </Field>
           </div>
           <Field label="Admin password">
@@ -501,7 +501,7 @@ function Step2(p: {
                 value={p.adminPassword}
                 placeholder="••••••••"
                 onChange={(e) => p.setAdminPassword(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-rex-text outline-none focus-visible:shadow-none"
+                className="min-w-0 flex-1 bg-transparent font-mono text-[0.78125rem] text-rex-text outline-none focus-visible:shadow-none"
               />
               <button
                 onClick={() => p.setShowPassword(!p.showPassword)}
@@ -512,7 +512,7 @@ function Step2(p: {
               </button>
               <button
                 onClick={p.onGeneratePassword}
-                className="flex h-7 flex-none items-center gap-1.5 rounded-[7px] px-[9px] text-[11.5px] text-brand-tint transition-colors hover:bg-brand-tint-bg"
+                className="flex h-7 flex-none items-center gap-1.5 rounded-[7px] px-[9px] text-[0.71875rem] text-brand-tint transition-colors hover:bg-brand-tint-bg"
               >
                 <RefreshCw className="h-[13px] w-[13px]" strokeWidth={1.9} />
                 Generate
@@ -524,8 +524,8 @@ function Step2(p: {
           <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well p-[13px]">
             <div className="flex items-center gap-[11px]">
               <div className="flex-1">
-                <div className="text-[13px] font-medium text-rex-text">Multisite network</div>
-                <div className="mt-0.5 text-[11.5px] text-rex-text-muted">
+                <div className="text-[0.8125rem] font-medium text-rex-text">Multisite network</div>
+                <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
                   Run many sites from one WordPress install.
                 </div>
               </div>
@@ -589,14 +589,14 @@ export function MultiCard({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[12.5px] font-semibold text-rex-text">{label}</span>
+        <span className="text-[0.78125rem] font-semibold text-rex-text">{label}</span>
         <CheckCircle2
           className="h-4 w-4 flex-none"
           style={{ color: selected && !disabled ? "var(--rex-brand)" : "var(--rex-border-strong)" }}
           strokeWidth={2}
         />
       </div>
-      <div className="mt-[5px] font-mono text-[11px] text-rex-text-muted">
+      <div className="mt-[5px] font-mono text-[0.6875rem] text-rex-text-muted">
         {disabled && disabledNote ? disabledNote : example}
       </div>
     </button>
@@ -606,7 +606,7 @@ export function MultiCard({
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <label className="mb-1.5 block text-[12px] text-rex-text-muted">{label}</label>
+      <label className="mb-1.5 block text-[0.75rem] text-rex-text-muted">{label}</label>
       {children}
     </div>
   );

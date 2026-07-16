@@ -92,13 +92,13 @@ export function Onboarding() {
         {/* No "Skip setup": skipping lands in an app where no site can load
             (resolver/CA missing) — the same hole the locked Continue closes. */}
         <div className="min-w-[90px]" />
-        <div className="font-mono text-[11px] text-rex-text-label">{meta.label}</div>
+        <div className="font-mono text-[0.6875rem] text-rex-text-label">{meta.label}</div>
         <div className="flex min-w-[90px] justify-end">
           <button
             onClick={next}
             disabled={locked}
             title={locked ? "Finish the domains & SSL setup to continue" : undefined}
-            className="flex h-10 items-center gap-2 rounded-[11px] bg-primary px-[18px] text-[13.5px] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
+            className="flex h-10 items-center gap-2 rounded-[11px] bg-primary px-[18px] text-[0.84375rem] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
           >
             {meta.primary}
             {step < STEP_COUNT - 1 && <ChevronRight className="h-[15px] w-[15px]" strokeWidth={2.2} />}
@@ -135,13 +135,13 @@ function Welcome() {
   return (
     <div className="flex flex-col items-center">
       <CrownHero />
-      <div className="font-display text-[54px] font-semibold leading-none tracking-[-0.03em] text-rex-text-hero [text-shadow:0_2px_30px_rgba(124,92,255,.25)]">
+      <div className="font-display text-[3.375rem] font-semibold leading-none tracking-[-0.03em] text-rex-text-hero [text-shadow:0_2px_30px_rgba(124,92,255,.25)]">
         rexenv
       </div>
-      <div className="mt-[18px] font-display text-[19px] font-medium tracking-[-0.01em] text-rex-text-bright">
+      <div className="mt-[18px] font-display text-[1.1875rem] font-medium tracking-[-0.01em] text-rex-text-bright">
         Your local development environment — fast, native, all in one.
       </div>
-      <div className="mt-3 max-w-[380px] text-[13.5px] leading-[1.55] text-rex-text-muted">
+      <div className="mt-3 max-w-[380px] text-[0.84375rem] leading-[1.55] text-rex-text-muted">
         Run every server, site, and database from one calm command room. Let's get you set up — it
         takes about a minute.
       </div>
@@ -152,10 +152,10 @@ function Welcome() {
 function StepHeading({ title, subtitle }: { title: string; subtitle: ReactNode }) {
   return (
     <>
-      <div className="font-display text-[27px] font-semibold tracking-[-0.02em] text-rex-text-hero">
+      <div className="font-display text-[1.6875rem] font-semibold tracking-[-0.02em] text-rex-text-hero">
         {title}
       </div>
-      <div className="mt-[9px] text-[13.5px] leading-[1.55] text-rex-text-muted">{subtitle}</div>
+      <div className="mt-[9px] text-[0.84375rem] leading-[1.55] text-rex-text-muted">{subtitle}</div>
     </>
   );
 }
@@ -212,12 +212,12 @@ function InstallRow({ planned, item }: { planned: PlannedDownload; item?: Downlo
     <div className="rounded-[10px] border border-rex-border-subtle bg-rex-surface-1 px-3 py-2.5">
       <div className="mb-2 flex items-center gap-2.5">
         <span
-          className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border font-mono text-[10px] font-bold"
+          className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border font-mono text-[0.625rem] font-bold"
           style={chipStyle(planned.name)}
         >
           {(CHIP[planned.name] ?? { abbr: planned.name.slice(0, 2) }).abbr}
         </span>
-        <span className="flex-1 truncate text-left text-[13.5px] font-medium text-rex-text">
+        <span className="flex-1 truncate text-left text-[0.84375rem] font-medium text-rex-text">
           {planned.label}
         </span>
         {phase === "failed" ? (
@@ -228,13 +228,13 @@ function InstallRow({ planned, item }: { planned: PlannedDownload; item?: Downlo
             }}
             disabled={retrying}
             title={item?.error ?? undefined}
-            className="flex flex-none items-center gap-1 rounded-[6px] border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em] text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
+            className="flex flex-none items-center gap-1 rounded-[6px] border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.625rem] uppercase tracking-[0.08em] text-status-error-bright transition-[filter] hover:brightness-110 disabled:opacity-60"
           >
             <RotateCw className={retrying ? "h-[10px] w-[10px] animate-rex-spin" : "h-[10px] w-[10px]"} strokeWidth={2.2} />
             Retry
           </button>
         ) : (
-          <span className="flex flex-none items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.1em] text-rex-text-dim">
+          <span className="flex flex-none items-center gap-1 font-mono text-[0.65625rem] uppercase tracking-[0.1em] text-rex-text-dim">
             {(phase === "cached" || phase === "done") && (
               <Check className="h-[12px] w-[12px] text-status-running" strokeWidth={2.4} />
             )}
@@ -280,14 +280,14 @@ function Install() {
       />
       <div className="mt-[26px] flex flex-col gap-[10px] text-left">
         {plan === null ? (
-          <div className="py-4 text-center font-mono text-[11px] text-rex-text-dim">
+          <div className="py-4 text-center font-mono text-[0.6875rem] text-rex-text-dim">
             Checking components…
           </div>
         ) : (
           plan.map((p) => <InstallRow key={p.id} planned={p} item={items.get(p.id)} />)
         )}
       </div>
-      <div className="mt-6 text-center font-mono text-[11px] text-rex-text-dim">
+      <div className="mt-6 text-center font-mono text-[0.6875rem] text-rex-text-dim">
         {ready ? "All components ready · no system changes" : "Downloads continue in the background · no system changes"}
       </div>
     </div>
@@ -298,7 +298,7 @@ function StatusPill({ icon, label }: { icon: ReactNode; label: string }) {
   return (
     <span className="inline-flex items-center gap-[7px] rounded-full border border-rex-border bg-rex-surface-1 py-1.5 pl-[10px] pr-3">
       <span className="flex">{icon}</span>
-      <span className="text-[12px] text-rex-text-bright">{label}</span>
+      <span className="text-[0.75rem] text-rex-text-bright">{label}</span>
     </span>
   );
 }
@@ -358,15 +358,15 @@ function Domains() {
         <div className="mt-[22px]">
           <button
             onClick={() => void run()}
-            className="inline-flex h-[42px] items-center gap-2 rounded-[11px] bg-primary px-[22px] text-[14px] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110"
+            className="inline-flex h-[42px] items-center gap-2 rounded-[11px] bg-primary px-[22px] text-[0.875rem] font-semibold text-white shadow-glow-primary transition-[filter] hover:brightness-110"
           >
             {state === "error" ? "Try again" : "Set up domains & SSL"}
           </button>
-          <div className="mt-3 font-mono text-[10.5px] text-rex-text-faint">
+          <div className="mt-3 font-mono text-[0.65625rem] text-rex-text-faint">
             macOS will ask for permission (resolver + certificate)
           </div>
           {state === "error" && (
-            <div className="mx-auto mt-3 max-w-[380px] text-[12px] leading-[1.5] text-status-error-bright">
+            <div className="mx-auto mt-3 max-w-[380px] text-[0.75rem] leading-[1.5] text-status-error-bright">
               {error}
             </div>
           )}
@@ -375,7 +375,7 @@ function Domains() {
       {state === "busy" && (
         <div className="mt-[22px] inline-flex h-[42px] items-center gap-[9px] rounded-[11px] border border-rex-border bg-rex-surface-1 px-5">
           <span className="h-[14px] w-[14px] rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
-          <span className="text-[13px] text-rex-text-bright">
+          <span className="text-[0.8125rem] text-rex-text-bright">
             Configuring certificate authority & DNS…
           </span>
         </div>
@@ -383,7 +383,7 @@ function Domains() {
       {state === "done" && (
         <div className="mt-[22px] inline-flex items-center gap-[9px] rounded-[11px] border border-status-running-border bg-status-running-bg px-[18px] py-[11px]">
           <Check className="h-[17px] w-[17px] text-status-running" strokeWidth={2.2} />
-          <span className="text-[13px] font-medium text-rex-text">Domains & SSL are ready</span>
+          <span className="text-[0.8125rem] font-medium text-rex-text">Domains & SSL are ready</span>
         </div>
       )}
     </div>
@@ -392,7 +392,7 @@ function Domains() {
 
 function DoneChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-rex-text-muted">
+    <span className="inline-flex items-center gap-1.5 font-mono text-[0.6875rem] text-rex-text-muted">
       <Check className="h-[13px] w-[13px] text-status-running" strokeWidth={2.4} />
       {label}
     </span>
@@ -409,10 +409,10 @@ function Done() {
         />
         <Check className="relative h-10 w-10 text-status-running" strokeWidth={2.4} />
       </div>
-      <div className="font-display text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-rex-text-hero">
+      <div className="font-display text-[2.125rem] font-semibold leading-[1.1] tracking-[-0.025em] text-rex-text-hero">
         Your kingdom is ready
       </div>
-      <div className="mt-3 max-w-[400px] text-[14px] leading-[1.55] text-rex-text-muted">
+      <div className="mt-3 max-w-[400px] text-[0.875rem] leading-[1.55] text-rex-text-muted">
         Everything's installed and your local domains work over HTTPS. Create your first site and
         rexenv will serve it instantly.
       </div>

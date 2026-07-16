@@ -27,7 +27,7 @@ export function Toaster() {
           >
             <Icon className="mt-px h-4 w-4 flex-none" style={{ color }} strokeWidth={1.9} />
             <div className="min-w-0 flex-1">
-              <span className="break-words text-[12.5px] leading-[1.5] text-rex-text-bright">
+              <span className="break-words text-[0.78125rem] leading-[1.5] text-rex-text-bright">
                 {t.message}
               </span>
               {t.command && <CommandBlock command={t.command} />}
@@ -37,7 +37,7 @@ export function Toaster() {
                     t.action?.onClick();
                     dismiss(t.id);
                   }}
-                  className="mt-2 rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[12px] text-rex-text transition-colors hover:border-brand"
+                  className="mt-2 rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
                 >
                   {t.action.label}
                 </button>
@@ -62,7 +62,7 @@ function CommandBlock({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="mt-2 flex items-center gap-1.5 rounded-[7px] border border-rex-border bg-rex-surface-2 py-1.5 pl-2.5 pr-1.5">
-      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-[11px] leading-[1.5] text-rex-text-bright">
+      <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-[0.6875rem] leading-[1.5] text-rex-text-bright">
         {command}
       </code>
       <button

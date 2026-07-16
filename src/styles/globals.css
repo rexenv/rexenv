@@ -20,6 +20,13 @@
     @apply border-border;
   }
 
+  /* Global type scale: every font size in the app is rem-based (text-[…rem]
+     utilities), so this single value scales ALL text proportionally.
+     110% of 16px ≈ 17.6px base. Tune here, nowhere else. */
+  html {
+    font-size: 110%;
+  }
+
   html,
   body,
   #root {
