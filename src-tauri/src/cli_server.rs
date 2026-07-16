@@ -206,6 +206,52 @@ where
             let created = commands::sites::create_site(state.clone(), site, None, None).await?;
             to_value(&created)
         }
+        // Site detail: the SiteDetail overview's data, merged. Resources, cert
+        // and WP info are best-effort — a stopped stack or a fresh site must
+        // degrade fields to null, never fail the whole view.
+        "site.info" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("site.info needs an id".into()))?
+                .to_string();
+            let site = commands::sites::list_sites(state.clone())?
+                .into_iter()
+                .find(|s| s.id == id)
+                .ok_or_else(|| Error::Other(format!("no site {id}")))?;
+            let serving = commands::sites::sites_serving(state.clone())?
+                .into_iter()
+                .find(|r| r.domain == site.domain)
+                .map(|r| r.serving)
+                .unwrap_or(false);
+            let resources = commands::sites::sites_resources(state.clone())
+                .await
+                .ok()
+                .and_then(|v| v.into_iter().find(|r| r.id == id));
+            let cert = commands::sites::site_cert_info(state.clone(), id.clone()).ok().flatten();
+            let wp = if matches!(site.site_type, crate::state::models::SiteType::Wordpress) {
+                commands::wordpress::wp_info(state.clone(), id.clone()).await.ok()
+            } else {
+                None
+            };
+            Ok(json!({
+                "site": to_value(&site)?,
+                "serving": serving,
+                "resources": to_value(&resources)?,
+                "cert": to_value(&cert)?,
+                "wp": to_value(&wp)?,
+            }))
+        }
+        // Magic wp-admin login link — the Sites row action.
+        "site.login" => {
+            let state = app_state(app)?;
+            let id = args["id"]
+                .as_str()
+                .ok_or_else(|| Error::Other("site.login needs an id".into()))?
+                .to_string();
+            let url = commands::wordpress::wp_admin_login_url(state.clone(), id).await?;
+            Ok(json!({ "url": url }))
+        }
         // Site delete: the CLI resolves domain → id via site.list first; this
         // arm is by-id like the UI row action (tunnel stop + DB drop + files).
         "site.delete" => {
@@ -307,7 +353,9 @@ mod tests {
         let app = tauri::test::mock_app();
         // Every ROUTED command reaches the state check (proving the arm
         // exists); an unrouted one must say so instead.
-        for cmd in ["status", "start", "stop", "site.list", "site.create", "site.delete"] {
+        for cmd in
+            ["status", "start", "stop", "site.list", "site.create", "site.delete", "site.info", "site.login"]
+        {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
             let v: Value = serde_json::from_str(&reply).expect("valid envelope");

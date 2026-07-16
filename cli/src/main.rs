@@ -28,6 +28,9 @@ COMMANDS:
   stop          Stop the shared stack (same as Stop all)
   restart       stop, then start
   site list     All sites + whether each is actually serving
+  site info <domain>    Full detail: config, serving state, cert, resources, WP
+  site open <domain>    Open https://<domain> in the browser
+  site login <domain>   Open a logged-in wp-admin (magic link; --print to not open)
   site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
               [--server nginx|frankenphp|apache] [--db mysql|mariadb]
                 Create a site (defaults mirror the app's New Site dialog;
@@ -129,8 +132,11 @@ fn main() {
             Some("list") => cmd_site_list(json_output),
             Some("create") => cmd_site_create(&words[2..], json_output),
             Some("delete") => cmd_site_delete(&words[2..], json_output),
+            Some("info") => cmd_site_info(&words[2..], json_output),
+            Some("open") => cmd_site_open(&words[2..]),
+            Some("login") => cmd_site_login(&words[2..], json_output),
             _ => {
-                eprintln!("rex: usage: rex site <list|create|delete>\n\n{USAGE}");
+                eprintln!("rex: usage: rex site <list|create|delete|info|open|login>\n\n{USAGE}");
                 exit(1);
             }
         },
@@ -258,6 +264,116 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         created["dbEngine"].as_str().unwrap_or("?"),
         created["domain"].as_str().unwrap_or(domain),
     );
+}
+
+/// Resolve a `<domain>` argument to the site object via the app's own list —
+/// the same lookup `site delete` does; exits with a helpful error otherwise.
+fn find_site(words: &[String], usage: &str) -> Value {
+    let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
+        eprintln!("rex: usage: {usage}");
+        exit(1);
+    };
+    let data = request("site.list", Value::Null);
+    let site = data["sites"]
+        .as_array()
+        .and_then(|sites| sites.iter().find(|s| s["domain"] == json!(domain)))
+        .cloned();
+    match site {
+        Some(site) => site,
+        None => {
+            eprintln!("rex: no site with domain `{domain}` (see `rex site list`)");
+            exit(1);
+        }
+    }
+}
+
+/// macOS default-browser open; prints the URL either way so the command is
+/// still useful over SSH or when `open` is unavailable.
+fn open_url(url: &str) {
+    println!("{url}");
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(url).status();
+    }
+}
+
+fn cmd_site_info(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site info <domain>");
+    let data = request("site.info", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&data);
+    }
+    let s = &data["site"];
+    let field = |label: &str, v: String| println!("{label:<12} {v}");
+    let str_of = |v: &Value| v.as_str().unwrap_or("?").to_string();
+    field("domain", format!("https://{}", str_of(&s["domain"])));
+    field("name", str_of(&s["name"]));
+    field("state", if data["serving"] == json!(true) { "serving".into() } else { "down".into() });
+    field(
+        "type",
+        format!(
+            "{}{}",
+            str_of(&s["type"]),
+            data["wp"]["version"].as_str().map(|v| format!(" {v}")).unwrap_or_default()
+        ),
+    );
+    if data["wp"]["multisite"] == json!(true) || s["multisite"].as_str().is_some_and(|m| m != "none") {
+        field("multisite", str_of(&s["multisite"]));
+    }
+    field(
+        "php",
+        format!(
+            "{}{}",
+            str_of(&s["phpVersion"]),
+            if s["xdebug"] == json!(true) { " (Xdebug)" } else { "" }
+        ),
+    );
+    field("server", str_of(&s["webServer"]));
+    field("database", format!("{} ({})", str_of(&s["dbEngine"]), str_of(&s["dbName"])));
+    field("path", str_of(&s["path"]));
+    if let Some(days) = data["cert"]["daysLeft"].as_i64() {
+        field("cert", format!("{days} days left (expires {})", str_of(&data["cert"]["notAfter"])));
+    }
+    let res = &data["resources"];
+    if res.is_object() {
+        let mut parts = Vec::new();
+        if let Some(c) = res["cpuPercent"].as_f64() {
+            parts.push(format!("cpu {c:.1}%"));
+        }
+        if let Some(r) = res["ramMb"].as_u64() {
+            parts.push(format!("ram {r} MB"));
+        }
+        if let Some(r) = res["requestsPerMin"].as_u64() {
+            parts.push(format!("{r} req/min"));
+        }
+        if !parts.is_empty() {
+            field("resources", parts.join(" · "));
+        }
+    }
+    field("created", str_of(&s["createdAt"]));
+}
+
+fn cmd_site_open(words: &[String]) {
+    let site = find_site(words, "rex site open <domain>");
+    open_url(&format!("https://{}", site["domain"].as_str().unwrap_or_default()));
+}
+
+fn cmd_site_login(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex site login <domain> [--print]");
+    if site["type"] != json!("wordpress") {
+        eprintln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
+        exit(1);
+    }
+    let data = request("site.login", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&data);
+    }
+    let url = data["url"].as_str().unwrap_or_default();
+    if words.iter().any(|w| w == "--print") {
+        println!("{url}");
+    } else {
+        open_url(url);
+    }
 }
 
 fn cmd_site_delete(words: &[String], json_output: bool) {

@@ -28,6 +28,9 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex site list` | `list_sites` + `sites_serving` |
 | `rex site create <domain> [--name --type --php --server --db]` | `create_site` |
 | `rex site delete <domain> [--yes]` | `delete_site` (domain→id lookup client-side) |
+| `rex site info <domain>` | `list_sites`+`sites_serving`+`sites_resources`+`site_cert_info`+`wp_info` |
+| `rex site open <domain>` | CLI-only (`open https://…`, domain validated via `site.list`) |
+| `rex site login <domain> [--print]` | `wp_admin_login_url` |
 | `rex help`, exit codes 0/1/2 | — |
 
 ## Sites
@@ -36,9 +39,9 @@ convention) — see "Infrastructure" for progress streaming.
 |---|---|---|---|
 | `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | 🟡 | convert-after-install, exactly the blueprint flow |
 | `site create --blueprint <name>` | `list_blueprints` (resolve name→id) + `create_site(blueprint_id)` | 🟢 | |
-| `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | 🟢 | one merged detail view |
-| `site open <domain>` | — (`open https://<domain>`) | ⚪ | validate domain against `site list` first |
-| `site login <domain>` | `wp_admin_login_url` | 🟢 | print or `open` the magic wp-admin link |
+| `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on tr.rex (WP, real core version) + gpt.rex (php/FrankenPHP resources) |
+| `site open <domain>` | — (`open https://<domain>`) | ✓ | shipped 16 Jul — domain validated via `site.list`; missing-domain exit 1 |
+| `site login <domain> [--print]` | `wp_admin_login_url` | ✓ | shipped 16 Jul — minted link curl-verified: 302 → /wp-admin/; non-WP site refused |
 | `site logs <domain> [--follow]` | `log_targets` + `tail_log` | 🟢 | `--follow` = client-side poll loop |
 | `site rename <domain> <name>` | `rename_site` | 🟢 | |
 | `site domain <domain> <new-domain>` | `change_site_domain` | 🟢 | destructive-ish (URL rewrite) → confirm + `--yes` |
