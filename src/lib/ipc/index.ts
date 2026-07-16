@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1048,6 +1048,20 @@ export async function tldPolicy(tld: string): Promise<TldPolicy> {
   if (!isTauri())
     return { allowed: true, warn: !["test", "localhost", "example", "invalid"].includes(tld), reason: "" };
   return invoke<TldPolicy>("tld_policy", { tld });
+}
+
+// ── rex CLI (Settings) ───────────────────────────────────────────────────────
+
+/** `rex` CLI install state. Mock fallback outside Tauri. */
+export async function cliStatus(): Promise<CliStatus> {
+  if (!isTauri())
+    return { available: true, installed: false, current: false, linkPath: "/usr/local/bin/rex", bundledPath: "/Applications/rexenv.app/Contents/MacOS/rex" };
+  return invoke<CliStatus>("cli_status");
+}
+
+/** Install/refresh the `rex` PATH symlink (may show ONE admin prompt). */
+export async function cliInstall(): Promise<CliStatus> {
+  return invoke<CliStatus>("cli_install");
 }
 
 // ── DNS & SSL + autostart (Settings, §11.1) ─────────────────────────────────

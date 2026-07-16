@@ -333,6 +333,16 @@ export interface Blueprint {
 }
 
 /** Embedded-DNS + OS-resolver health for Settings (mirrors the Rust DnsStatus DTO). */
+/** `rex` CLI install state (mirrors the Rust `CliStatus`). */
+export interface CliStatus {
+  available: boolean; // the bundled sidecar exists — install is possible
+  installed: boolean; // something is symlinked at linkPath
+  /** The link resolves to THIS app's bundled rex (false = stale/foreign). */
+  current: boolean;
+  linkPath: string;
+  bundledPath: string | null;
+}
+
 export interface DnsStatus {
   running: boolean; // a resolver with our semantics answers on the loopback port
   /** Who serves DNS: LaunchAgent (survives app quits), legacy in-process

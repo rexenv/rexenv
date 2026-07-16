@@ -10,6 +10,8 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   applyPhpSettings,
   autostartStatus,
+  cliInstall,
+  cliStatus,
   defaultTld,
   deleteBlueprint,
   dnsStatus,
@@ -625,6 +627,49 @@ function FirefoxTrustCard() {
   );
 }
 
+/** `rex` CLI install card: one symlink on PATH (may cost one admin prompt —
+ *  /usr/local/bin is root-owned on most Macs). The link tracks the bundle, so
+ *  app updates need no re-install; a moved bundle shows as "points elsewhere"
+ *  and Install refreshes it. Hidden when the sidecar isn't next to the app
+ *  binary (bare `cargo run` — `tauri dev` and the packaged app always have it). */
+function CliCard() {
+  const qc = useQueryClient();
+  const { data: cli } = useQuery({ queryKey: ["cli-status"], queryFn: cliStatus });
+
+  const install = useMutation({
+    mutationFn: cliInstall,
+    onSuccess: (s) => {
+      toast.success(`rex installed — run it from any terminal (${s.linkPath})`);
+      void qc.invalidateQueries({ queryKey: ["cli-status"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  if (!cli?.available) return null;
+  const desc = cli.current
+    ? "Installed — manage rexenv from any terminal: rex status, rex start, rex site create."
+    : cli.installed
+      ? `${cli.linkPath} points elsewhere (an old copy or another tool) — reinstall to point it at this app.`
+      : "Put the rex command on your PATH to manage rexenv from the terminal. One admin prompt.";
+  return (
+    <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5">
+      <ActionRow
+        title="Command-line tool"
+        desc={desc}
+        busy={install.isPending}
+        label={cli.installed ? "Reinstall" : "Install"}
+        busyLabel="Installing…"
+        onClick={() => install.mutate()}
+      />
+      <div className="border-t border-rex-border-subtle py-[13px]">
+        <code className="block truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[11px] text-rex-text">
+          {cli.linkPath} → {cli.bundledPath ?? "?"}
+        </code>
+      </div>
+    </div>
+  );
+}
+
 /** Default-TLD picker (configurable TLD v1): new sites are created under this
  *  TLD. Existing sites keep their domain (re-point one via Change domain).
  *  Blocked TLDs are refused by the BACKEND — the inline feedback here mirrors
@@ -1115,6 +1160,7 @@ export function Settings() {
                   <ThemeSetting />
                 </Card>
                 <GeneralPrefsCard />
+                <CliCard />
                 <Card title="Blueprints">
                   <BlueprintsSetting />
                 </Card>
