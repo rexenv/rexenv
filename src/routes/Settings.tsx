@@ -470,7 +470,15 @@ function ActionRow({
 
 function DnsSslSetting() {
   const qc = useQueryClient();
-  const { data: dns } = useQuery({ queryKey: ["dns-status"], queryFn: dnsStatus });
+  // Poll on the Services cadence: the shared ["dns-status"] key is only
+  // refetched by MOUNTED observers, and Services (the other poller) unmounts
+  // when this page shows — without an interval here the tile freezes at
+  // mount-time state and never reflects an agent → in-process fallback.
+  const { data: dns } = useQuery({
+    queryKey: ["dns-status"],
+    queryFn: dnsStatus,
+    refetchInterval: 5000,
+  });
   // The card copy shows the USER'S configured TLD (changeable below), not a literal.
   const { data: tld = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
   const [msg, setMsg] = useState<string | null>(null);
