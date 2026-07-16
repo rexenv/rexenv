@@ -333,10 +333,15 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   are locked out). Never TCP. Stale files are unlinked at bind; the CLI *connects*
   to detect liveness (a stat would lie — same lesson as `admin_alive`).
 - **One code path:** each request dispatches to the SAME `commands::*` fn the UI
-  invokes (`status`, `start`, `stop`, `site.list`, `site.create`, `site.delete`);
-  `rex restart` is the client sending `stop` then `start`. `site.create` submits
-  what the New Site dialog submits (empty `path` → backend-derived, registry-default
-  PHP); `site.delete` is by-id after a domain lookup, confirm-gated in the client.
+  invokes — never a parallel implementation. The surface (42 commands as of 16 Jul
+  2026) covers lifecycle, sites (create incl. `--blueprint`/`--multisite`, delete,
+  info/open/login, settings switches), logs (`--follow`), PHP/Xdebug, databases
+  (export/import/reset/versions), the WP plugin/theme/user manager + singles,
+  mail/tunnels/tld, `doctor`, and completions — the authoritative list with
+  per-command evidence lives in `docs/CLI-ROADMAP.md` (and `rex help`).
+  Conventions: destructive ops confirm + `--yes` (`db reset` requires TYPING the
+  domain), passwords are generated + printed once (never argv), long ops hold the
+  connection, `--json` everywhere, exit codes 0/1/2.
 - **Packaging:** `rex` ships as a Tauri sidecar (`bundle.externalBin`, staged by
   `scripts/build-cli.sh` — aarch64 + x86_64 + lipo'd universal; `build.rs`
   self-stages for bare cargo builds) → `Contents/MacOS/rex`, signed with the

@@ -135,15 +135,17 @@ convention) — see "Infrastructure" for progress streaming.
 - **`--json` everywhere** — v1 rule, keep it: every new command returns the
   raw IPC payload under `--json`.
 
-## Suggested pick order (cheap wins first, by daily-use value)
+## Status (16 Jul 2026) — cheap tier COMPLETE
 
-1. `site info` + `site open` + `site login` (🟢/⚪ — the daily loop)
-2. `logs` / `site logs --follow` (🟢 — debugging)
-3. `rex doctor` (🟡 — support killer, composes existing probes)
-4. `db export` / `db import` (🟢 — backup habit)
-5. `site php` / `site xdebug` / `php list|default` (🟢 — version workflows)
-6. `wp plugin|theme|user` group (🟢 — broad but mechanical)
-7. `service start|stop` for DB engines + mail (🟢)
-8. `tunnel`, `mail`, `tld`, `version`, completions (🟢/⚪ — round-out)
-9. Infra: progress streaming (🔴) once long ops feel opaque
-10. Design-first items: `site restart`, web-tier single-service control, wp passthrough (🔴)
+42 commands shipped (every 🟢/🟡/⚪ except `config get/set`). What remains:
+
+1. `config get|set` (🟡) — parked on a decision: which settings keys to
+   allow-list (never the whole KV table).
+2. Design-first 🔴 set: single-site restart (manager seam), web-tier
+   single-service control (topology invariant), raw wp passthrough (security
+   decision), `wp_user_delete` (no IPC exists), progress streaming for long ops.
+3. **In-app verifies owed** (passthroughs whose restart/exposure half is
+   guard-blocked in the example harness — exercise each once against the
+   running app): `php install/uninstall`, `php settings set`, `db versions
+   --set`, `site server/domain/move`, `mail clear`, `tunnel start`,
+   `wp core update/switch`.

@@ -285,11 +285,21 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   283 lib tests, +3); `4037b71` Settings General-tab card (status-aware
   Install/Reinstall, link+target shown). **Human-verify:** Settings → Install
   (expect one admin prompt) → `rex status` from a fresh terminal.
-- [ ] **`rex` CLI roadmap — work through `docs/CLI-ROADMAP.md`** (created 16 Jul).
-  Verified v1 surface + every future command tagged 🟢 IPC-exists / 🟡 composite /
-  🔴 new-backend, with a suggested pick order (cheap wins first: `site info` /
-  `site open` / `site login`, then logs, then `rex doctor`). Pick items off it
-  one at a time; tick them THERE with evidence.
+- [x] **`rex` CLI roadmap — work through `docs/CLI-ROADMAP.md`** (created 16 Jul).
+  ✓ **Cheap tier COMPLETE, same day** — 42 commands shipped across 12 commits
+  (`b05f09d` … `23403f1`), each live-verified against the real stack where the
+  example-harness stack guard allows (per-command evidence in the roadmap doc):
+  full site lifecycle incl. `--blueprint`/`--multisite`, logs `--follow`,
+  `doctor`, db export/import/reset/versions, PHP + Xdebug + ini settings, the
+  whole WP plugin/theme/user manager + singles (maintenance wire-proven
+  503→200), service/mail/tunnel/tld/version, zsh+bash completions.
+- [ ] **`rex` CLI — remaining** (see the roadmap doc's Status section):
+  (a) in-app verifies owed for the guard-blocked passthrough halves
+  (`php install/uninstall`, `php settings set`, `db versions --set`,
+  `site server/domain/move`, `mail clear`, `tunnel start`, `wp core
+  update/switch`) — fold into the next deep test; (b) `config get|set` parked
+  on an allow-list decision; (c) the 🔴 design-first set (single-site restart,
+  web-tier singles, wp passthrough, `wp_user_delete`, progress streaming).
 - [ ] **Release 5.4 — execute the clean-Mac smoke test** — checklist already written:
   `docs/SMOKE-TEST.md`. First pass (fresh-account, 10 Jul 2026) all green except the
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;

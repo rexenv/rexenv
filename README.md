@@ -20,13 +20,18 @@ multiple PHP versions (8.0–8.5), databases (**MySQL** or **MariaDB** per site,
 per-version data dirs), one-click WordPress with a full plugin/theme/user/
 **multisite** manager, local `.rex` domains with auto-HTTPS, mail catching (Mailpit), a DB
 browser (Adminer deep-link), log viewer, per-site terminal, and public sharing (Cloudflare
-quick tunnels) — all native and lightweight, from one UI.
+quick tunnels) — all native and lightweight, from one UI — plus the **`rex` CLI**
+(bundled; Settings installs it on PATH), which remote-controls the running app for
+nearly everything: `rex status|start|stop`, full site lifecycle incl. `site create
+--multisite`, logs with `--follow`, `db export/import`, PHP/Xdebug switches, the
+whole WP plugin/theme/user manager, and `rex doctor`.
 
 ## Docs
 
 - **`docs/ARCHITECTURE.md`** — how rexenv works today, end-to-end. *Read this first.*
 - **`docs/PORTS.md`** — the full port map + pinned binary versions.
 - **`docs/TODO.md`** — all open work (the single active-work file).
+- **`docs/CLI-ROADMAP.md`** — the `rex` CLI: shipped command surface + remaining items.
 - **`CLAUDE.md`** — agent router: non-negotiable rules + "for X read Y" index.
 - **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide / clean-Mac release checklist.
 - **`docs/archive/`** — historical: founding spec, design brief, phase task logs, audit record. May contradict current code.
