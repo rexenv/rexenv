@@ -85,9 +85,9 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `wp plugin list\|install\|activate\|deactivate\|update\|delete <domain> [slug]` | `wp_plugins` / `wp_plugin_*` | 🟢 | network variants exist too |
-| `wp theme list\|install\|activate\|update\|delete <domain> [slug]` | `wp_themes` / `wp_theme_*` | 🟢 | |
-| `wp user list\|create\|set-password\|set-role <domain> …` | `wp_users` / `wp_user_*` | 🟢 | passwords: prompt, never a bare argv (ps-visible) |
+| `wp <domain> plugin list\|install\|activate\|deactivate\|update\|delete` | `wp_plugins` / `wp_plugin_*` | ✓ | shipped 16 Jul — full install→delete cycle live, zero residue; network variants still unmapped |
+| `wp <domain> theme list\|install\|activate\|update\|delete` | `wp_themes` / `wp_theme_*` | ✓ | shipped 16 Jul |
+| `wp <domain> user list\|create\|set-password\|set-role` | `wp_users` / `wp_user_*` | ✓ | shipped 16 Jul — passwords generated (urandom) + printed once, never argv; login-or-id accepted. NOTE: no `wp_user_delete` IPC exists — a CLI user delete would be new backend |
 | `wp search-replace <domain> <from> <to>` | `wp_search_replace` | 🟢 | destructive → `--yes`; check the IPC's dry-run flag and expose it |
 | `wp cache-flush <domain>` / `wp cron run <domain>` | `wp_cache_flush` / `wp_cron_run_due` | 🟢 | |
 | `wp core update\|switch <domain> [version]` | `wp_core_update` / `wp_core_switch_version` / `wp_core_versions` | 🟢 | long-running |
