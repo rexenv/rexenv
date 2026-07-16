@@ -692,6 +692,60 @@ where
             commands::wordpress::wp_db_import(state.clone(), id, path).await?;
             Ok(Value::Null)
         }
+        // PHP ini settings — whitelisted keys only (core::php::SETTINGS);
+        // apply restarts that minor's live pool.
+        "php.settings" => {
+            let state = app_state(app)?;
+            let minor = need_str(&args, "minor", cmd)?;
+            Ok(json!({ "settings": to_value(&commands::php::get_php_settings(state.clone(), minor)?)? }))
+        }
+        "php.settings.set" => {
+            let state = app_state(app)?;
+            let minor = need_str(&args, "minor", cmd)?;
+            let settings: Vec<commands::php::PhpSettingInput> =
+                serde_json::from_value(args["settings"].clone())
+                    .map_err(|e| Error::Other(format!("bad php settings: {e}")))?;
+            commands::php::apply_php_settings(state.clone(), minor, settings).await?;
+            Ok(Value::Null)
+        }
+        // DB engine versions + the nuclear per-site reset (typed-confirm in
+        // the CLI, like the UI's dialog).
+        "db.versions" => {
+            let state = app_state(app)?;
+            let status = commands::database::databases_status(state.clone()).await?;
+            let available = commands::database::db_engine_versions()?;
+            Ok(json!({ "engines": to_value(&status)?, "available": to_value(&available)? }))
+        }
+        "db.version.set" => {
+            let state = app_state(app)?;
+            commands::database::set_db_engine_version(
+                state.clone(),
+                need_str(&args, "key", cmd)?,
+                need_str(&args, "version", cmd)?,
+            )
+            .await?;
+            Ok(Value::Null)
+        }
+        "db.reset" => {
+            let state = app_state(app)?;
+            commands::wordpress::wp_site_reset(state.clone(), need_str(&args, "id", cmd)?)
+                .await?;
+            Ok(Value::Null)
+        }
+        // Core version pinning — update lives above; switch is exact-version.
+        "wp.core-versions" => {
+            Ok(json!({ "versions": to_value(&commands::wordpress::wp_core_versions().await?)? }))
+        }
+        "wp.core-switch" => {
+            let state = app_state(app)?;
+            let switch = commands::wordpress::wp_core_switch_version(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "version", cmd)?,
+            )
+            .await?;
+            to_value(&switch)
+        }
         // Optional services — the Databases/Mail start-stop toggles. Engine
         // keys are validated by engine_from_key; web-tier singles stay
         // deliberately unmapped (topology invariants).

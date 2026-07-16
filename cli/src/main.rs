@@ -47,9 +47,13 @@ COMMANDS:
                 Dump the site's database to ~/Downloads (prints the path)
   db import <domain> <file.sql> [--yes]
                 Import a dump — OVERWRITES the site's tables (asks first)
+  db reset <domain>       Drop + reinstall WordPress (type the domain to confirm)
+  db versions [--set <engine> <version>]   Per-engine server versions
+  db browse               Open Adminer in the browser
   php list      Pinned PHP versions: installed, default, pool port
   php default <minor>      Default version for new sites
   php install <minor> / php uninstall <minor>
+  php settings <minor> [set K=V]     Whitelisted ini settings (set restarts the pool)
   site php <domain> <minor>          Switch a site's PHP version
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
   site server <domain> nginx|frankenphp|apache   Switch the web server
@@ -66,6 +70,7 @@ COMMANDS:
                 auto-generated and printed once — never passed on argv)
   wp <domain> search-replace <from> <to> [--dry-run] [--yes]
   wp <domain> cache-flush | cron run | maintenance [on|off] | core update
+  wp <domain> core versions | core switch <version>
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
   mail          List caught messages (Mailpit)
@@ -193,8 +198,11 @@ fn main() {
         Some("db") => match words.get(1).map(String::as_str) {
             Some("export") => cmd_db_export(&words[2..], json_output),
             Some("import") => cmd_db_import(&words[2..], json_output),
+            Some("reset") => cmd_db_reset(&words[2..], json_output),
+            Some("versions") => cmd_db_versions(&words[2..], json_output),
+            Some("browse") => open_url("https://adminer.rexenv.rex"),
             _ => {
-                eprintln!("rex: usage: rex db <export|import>\n\n{USAGE}");
+                eprintln!("rex: usage: rex db <export|import|reset|versions|browse>\n\n{USAGE}");
                 exit(1);
             }
         },
@@ -490,6 +498,62 @@ fn cmd_php(words: &[String], json_output: bool) {
             };
             request("php.default", json!({ "minor": minor }));
             println!("✓ PHP {minor} is the default for new sites");
+        }
+        Some("settings") => {
+            let Some(minor) = words.get(1).filter(|w| !w.starts_with("--")) else {
+                eprintln!("rex: usage: rex php settings <minor> [set K=V]");
+                exit(1);
+            };
+            match words.get(2).map(String::as_str) {
+                None => {
+                    let data = request("php.settings", json!({ "minor": minor }));
+                    if json_output {
+                        return print_json(&data);
+                    }
+                    for s in data["settings"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                        println!(
+                            "{:<24} {}",
+                            s["key"].as_str().unwrap_or("?"),
+                            s["value"]
+                                .as_str()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| format!("(default: {})", s["default"].as_str().unwrap_or("?"))),
+                        );
+                    }
+                }
+                Some("set") => {
+                    let Some((k, v)) = words.get(3).and_then(|kv| kv.split_once('=')) else {
+                        eprintln!("rex: usage: rex php settings <minor> set KEY=value");
+                        exit(1);
+                    };
+                    // The backend applies the FULL submitted set — resend every
+                    // stored value plus the change (unset keys stay default).
+                    let current = request("php.settings", json!({ "minor": minor }));
+                    let mut pairs: Vec<(String, String)> = current["settings"]
+                        .as_array()
+                        .map(|rows| {
+                            rows.iter()
+                                .filter_map(|s| {
+                                    Some((s["key"].as_str()?.to_string(), s["value"].as_str()?.to_string()))
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    pairs.retain(|(key, _)| key != k);
+                    pairs.push((k.to_string(), v.to_string()));
+                    let payload: Vec<Value> =
+                        pairs.iter().map(|(key, val)| json!({ "key": key, "value": val })).collect();
+                    let r = request("php.settings.set", json!({ "minor": minor, "settings": payload }));
+                    if json_output {
+                        return print_json(&r);
+                    }
+                    println!("✓ {k}={v} (PHP {minor} pool restarted if live)");
+                }
+                _ => {
+                    eprintln!("rex: usage: rex php settings <minor> [set K=V]");
+                    exit(1);
+                }
+            }
         }
         Some(action @ ("install" | "uninstall")) => {
             let Some(minor) = words.get(1) else {
@@ -1102,6 +1166,35 @@ fn cmd_wp(words: &[String], json_output: bool) {
             }
             println!("maintenance {}", if r["on"] == json!(true) { "ON" } else { "off" });
         }
+        (Some("core"), Some("versions")) => {
+            let data = request("wp.core-versions", Value::Null);
+            if json_output {
+                return print_json(&data);
+            }
+            for v in data["versions"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                println!("{:<10} {}", v["version"].as_str().unwrap_or("?"), v["status"].as_str().unwrap_or(""));
+            }
+        }
+        (Some("core"), Some("switch")) => {
+            let Some(version) = rest.first() else {
+                eprintln!("rex: usage: rex wp <domain> core switch <version>");
+                exit(1);
+            };
+            println!("switching core to {version}… (download + install)");
+            let r = request("wp.core-switch", json!({ "id": id, "version": version }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!(
+                "✓ core is now {}{}",
+                r["version"].as_str().unwrap_or(version),
+                if r["dbUpdateRequired"] == json!(true) {
+                    " — DB update required (open wp-admin once)"
+                } else {
+                    ""
+                },
+            );
+        }
         (Some("core"), Some("update")) => {
             println!("updating WordPress core… (this can take a minute)");
             let r = request("wp.core-update", json!({ "id": id }));
@@ -1207,6 +1300,62 @@ fn cmd_db_import(words: &[String], json_output: bool) {
         return print_json(&result);
     }
     println!("✓ imported {} into {domain}", file.display());
+}
+
+// ── db reset / versions ──────────────────────────────────────────────────────
+
+fn cmd_db_reset(words: &[String], json_output: bool) {
+    let site = find_site(words, "rex db reset <domain>");
+    let domain = site["domain"].as_str().unwrap_or("?").to_string();
+    // Nuclear: drop + reinstall. Typed confirmation (the UI's model), never
+    // just --yes; scripts pass --confirm <domain>.
+    let confirmed = flag_value(words, "--confirm").is_some_and(|c| c == domain) || {
+        eprint!(
+            "RESET {domain}? This DROPS the database and reinstalls WordPress.\n\
+             Type the domain to confirm: "
+        );
+        let mut a = String::new();
+        std::io::stdin().read_line(&mut a).is_ok() && a.trim() == domain
+    };
+    if !confirmed {
+        eprintln!("aborted (nothing reset)");
+        exit(1);
+    }
+    let r = request("db.reset", json!({ "id": site["id"] }));
+    if json_output {
+        return print_json(&r);
+    }
+    println!("✓ {domain} reset — fresh WordPress install");
+}
+
+fn cmd_db_versions(words: &[String], json_output: bool) {
+    if let (Some(engine), Some(version)) = (
+        words.iter().position(|w| w == "--set").and_then(|i| words.get(i + 1)),
+        words.iter().position(|w| w == "--set").and_then(|i| words.get(i + 2)),
+    ) {
+        let r = request("db.version.set", json!({ "key": engine, "version": version }));
+        if json_output {
+            return print_json(&r);
+        }
+        return println!("✓ {engine} → {version} (engine restarted if it was running)");
+    }
+    let data = request("db.versions", Value::Null);
+    if json_output {
+        return print_json(&data);
+    }
+    for e in data["engines"].as_array().map(Vec::as_slice).unwrap_or_default() {
+        let key = e["key"].as_str().unwrap_or("?");
+        let avail = data["available"][key]
+            .as_array()
+            .map(|v| v.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default();
+        println!(
+            "{:<10} {:<9} {:<8} available: {avail}",
+            key,
+            e["version"].as_str().unwrap_or("?"),
+            if e["running"] == json!(true) { "running" } else { "idle" },
+        );
+    }
 }
 
 // ── doctor ───────────────────────────────────────────────────────────────────
