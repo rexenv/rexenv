@@ -46,9 +46,9 @@ convention) — see "Infrastructure" for progress streaming.
 | `site rename <domain> <name>` | `rename_site` | 🟢 | |
 | `site domain <domain> <new-domain>` | `change_site_domain` | 🟢 | destructive-ish (URL rewrite) → confirm + `--yes` |
 | `site move <domain> <path>` | `move_site_docroot` | 🟢 | preflight errors already backend-side |
-| `site php <domain> <minor>` | `set_site_php_version` | 🟢 | |
+| `site php <domain> <minor>` | `set_site_php_version` | ✓ | shipped 16 Jul — 8.3→8.4→8.3 live, 200 both ways |
 | `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | 🟢 | |
-| `site xdebug <domain> on\|off` | `set_site_xdebug` | 🟢 | backend already refuses 8.0/FrankenPHP with real reasons |
+| `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
 | `site env <domain> [get\|set K=V\|unset K]` | `list_site_env` / `set_site_env` | 🟢 | |
 | `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | 🟢 | |
 | `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
@@ -57,9 +57,9 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `php list` | `list_php_versions` | 🟢 | minor, patch, default, installed, pool port |
-| `php default <minor>` | `set_default_php_version` | 🟢 | |
-| `php install <minor>` / `php uninstall <minor>` | `set_php_version_installed` | 🟢 | uninstall refused while sites use it (backend rule) |
+| `php list` | `list_php_versions` | ✓ | shipped 16 Jul — live (6 pinned minors) |
+| `php default <minor>` | `set_default_php_version` | ✓ | shipped 16 Jul — flip + restore live |
+| `php install <minor>` / `php uninstall <minor>` | `set_php_version_installed` | ✓ | shipped 16 Jul — thin passthrough, NOT live-run (pool stop is meaningless under the example guard); verify in-app once |
 | `php settings <minor> [get\|set K=V]` | `get_php_settings` / `apply_php_settings` | 🟢 | apply restarts that minor's pool — say so |
 
 ## Services
