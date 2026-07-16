@@ -56,6 +56,8 @@ COMMANDS:
   wp <domain> user   list|create|set-password|set-role …
                 WordPress manager (vetted WP-CLI ops; passwords are
                 auto-generated and printed once — never passed on argv)
+  wp <domain> search-replace <from> <to> [--dry-run] [--yes]
+  wp <domain> cache-flush | cron run | maintenance [on|off] | core update
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
   mail          List caught messages (Mailpit)
@@ -811,6 +813,80 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 return print_json(&r);
             }
             println!("✓ created {login} ({role})\n  password: {password}   (shown once — store it now)");
+        }
+        (Some("search-replace"), from_word) => {
+            // Grammar: rex wp <domain> search-replace <from> <to> [--dry-run] [--yes]
+            let (Some(from), Some(to)) = (from_word, words.get(3).map(String::as_str)) else {
+                eprintln!("rex: usage: rex wp <domain> search-replace <from> <to> [--dry-run] [--yes]");
+                exit(1);
+            };
+            let dry = words.iter().any(|w| w == "--dry-run");
+            if !dry && !words.iter().any(|w| w == "--yes") {
+                eprint!(
+                    "replace `{from}` → `{to}` across the database? (tip: --dry-run first, \
+                     `rex db export` for a backup) [y/N] "
+                );
+                let mut a = String::new();
+                if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
+                    eprintln!("aborted (nothing replaced)");
+                    exit(1);
+                }
+            }
+            let r = request(
+                "wp.search-replace",
+                json!({ "id": id, "from": from, "to": to, "dryRun": dry }),
+            );
+            if json_output {
+                return print_json(&r);
+            }
+            println!(
+                "✓ {} replacement{}{}",
+                r["replacements"].as_u64().unwrap_or(0),
+                if r["replacements"] == json!(1) { "" } else { "s" },
+                if dry { " (dry run — nothing written)" } else { "" },
+            );
+        }
+        (Some("cache-flush"), _) => {
+            let r = request("wp.cache-flush", json!({ "id": id }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {}", r["message"].as_str().unwrap_or("cache flushed"));
+        }
+        (Some("cron"), Some("run")) => {
+            let r = request("wp.cron-run", json!({ "id": id }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {}", r["message"].as_str().unwrap_or("due events run"));
+        }
+        (Some("maintenance"), mode) => {
+            let on = match mode {
+                Some("on") => Some(true),
+                Some("off") => Some(false),
+                None => None,
+                _ => {
+                    eprintln!("rex: usage: rex wp <domain> maintenance [on|off]");
+                    exit(1);
+                }
+            };
+            let payload = match on {
+                Some(on) => json!({ "id": id, "on": on }),
+                None => json!({ "id": id }),
+            };
+            let r = request("wp.maintenance", payload);
+            if json_output {
+                return print_json(&r);
+            }
+            println!("maintenance {}", if r["on"] == json!(true) { "ON" } else { "off" });
+        }
+        (Some("core"), Some("update")) => {
+            println!("updating WordPress core… (this can take a minute)");
+            let r = request("wp.core-update", json!({ "id": id }));
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ {}", r["message"].as_str().unwrap_or("core updated"));
         }
         (Some("user"), Some(act @ ("set-password" | "set-role"))) => {
             let Some(who) = rest.first() else {

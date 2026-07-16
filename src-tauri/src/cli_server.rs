@@ -501,6 +501,54 @@ where
             }
             Ok(Value::Null)
         }
+        // WP singles — Tools-tab one-shots. search-replace carries the
+        // backend's dry_run flag; maintenance get/set share one arm.
+        "wp.search-replace" => {
+            let state = app_state(app)?;
+            let count = commands::wordpress::wp_search_replace(
+                state.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "from", cmd)?,
+                need_str(&args, "to", cmd)?,
+                args["dryRun"].as_bool().unwrap_or(false),
+            )
+            .await?;
+            Ok(json!({ "replacements": count }))
+        }
+        "wp.cache-flush" => {
+            let state = app_state(app)?;
+            let msg =
+                commands::wordpress::wp_cache_flush(state.clone(), need_str(&args, "id", cmd)?)
+                    .await?;
+            Ok(json!({ "message": msg }))
+        }
+        "wp.cron-run" => {
+            let state = app_state(app)?;
+            let msg =
+                commands::wordpress::wp_cron_run_due(state.clone(), need_str(&args, "id", cmd)?)
+                    .await?;
+            Ok(json!({ "message": msg }))
+        }
+        "wp.maintenance" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            match args["on"].as_bool() {
+                Some(on) => {
+                    commands::wordpress::wp_maintenance_set(state.clone(), id, on).await?;
+                    Ok(json!({ "on": on }))
+                }
+                None => Ok(json!({
+                    "on": commands::wordpress::wp_maintenance_get(state.clone(), id).await?
+                })),
+            }
+        }
+        "wp.core-update" => {
+            let state = app_state(app)?;
+            let msg =
+                commands::wordpress::wp_core_update(state.clone(), need_str(&args, "id", cmd)?)
+                    .await?;
+            Ok(json!({ "message": msg }))
+        }
         // Database export/import — the SiteDetail Tools actions. Export writes
         // `<domain>-db.sql` into ~/Downloads (numbered on collision) and
         // returns the path; import is DESTRUCTIVE and .sql/engine-gated
