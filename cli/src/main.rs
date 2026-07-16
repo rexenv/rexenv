@@ -56,6 +56,15 @@ COMMANDS:
   wp <domain> user   list|create|set-password|set-role …
                 WordPress manager (vetted WP-CLI ops; passwords are
                 auto-generated and printed once — never passed on argv)
+  service start|stop <mysql|mariadb|postgres|redis|mailpit>
+                Start/stop one optional service (web tier stays via rex start/stop)
+  mail          List caught messages (Mailpit)
+  mail open     Open the Mailpit web UI · mail clear [--yes] deletes ALL messages
+  tunnel list | tunnel start|stop <domain>
+                Public cloudflared tunnels (start prints the public URL)
+  tld [--set <tld>]
+                Default TLD for new sites
+  version       App + CLI versions
   help          Show this help
 
 OPTIONS:
@@ -151,6 +160,11 @@ fn main() {
         Some("doctor") => cmd_doctor(json_output),
         Some("php") => cmd_php(&words[1..], json_output),
         Some("wp") => cmd_wp(&words[1..], json_output),
+        Some("service") => cmd_service(&words[1..], json_output),
+        Some("mail") => cmd_mail(&words[1..], json_output),
+        Some("tunnel") => cmd_tunnel(&words[1..], json_output),
+        Some("tld") => cmd_tld(&words[1..], json_output),
+        Some("version") => cmd_version(json_output),
         Some("db") => match words.get(1).map(String::as_str) {
             Some("export") => cmd_db_export(&words[2..], json_output),
             Some("import") => cmd_db_import(&words[2..], json_output),
@@ -500,6 +514,149 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
         return print_json(&updated);
     }
     print_site_update(&updated);
+}
+
+// ── service / mail / tunnel / tld / version ──────────────────────────────────
+
+fn cmd_service(words: &[String], json_output: bool) {
+    let (action, name) = (words.first().map(String::as_str), words.get(1).map(String::as_str));
+    let (Some(action @ ("start" | "stop")), Some(name)) = (action, name) else {
+        eprintln!("rex: usage: rex service start|stop <mysql|mariadb|postgres|redis|mailpit>");
+        exit(1);
+    };
+    let running = action == "start";
+    let r = if name == "mailpit" {
+        request("service.mail", json!({ "running": running }))
+    } else {
+        request("service.db", json!({ "key": name, "running": running }))
+    };
+    if json_output {
+        return print_json(&r);
+    }
+    println!("✓ {name} {}", if running { "started" } else { "stopped" });
+}
+
+fn cmd_mail(words: &[String], json_output: bool) {
+    match words.first().map(String::as_str) {
+        None | Some("list") => {
+            let data = request("mail.list", Value::Null);
+            if json_output {
+                return print_json(&data);
+            }
+            let (total, unread) = (data["total"].as_i64().unwrap_or(0), data["unread"].as_i64().unwrap_or(0));
+            println!("{total} message{} ({unread} unread)", if total == 1 { "" } else { "s" });
+            for m in data["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
+                println!(
+                    "{} {:<28} {}",
+                    if m["read"] == json!(true) { " " } else { "•" },
+                    m["from"]["address"].as_str().unwrap_or("?"),
+                    m["subject"].as_str().unwrap_or(""),
+                );
+            }
+        }
+        Some("open") => {
+            let status = request("mail.status", Value::Null);
+            match status["uiUrl"].as_str().filter(|u| !u.is_empty()) {
+                Some(url) => open_url(url),
+                None => {
+                    let port = status["httpPort"].as_u64().unwrap_or(18025);
+                    open_url(&format!("http://127.0.0.1:{port}"));
+                }
+            }
+        }
+        Some("clear") => {
+            if !words.iter().any(|w| w == "--yes") {
+                eprint!("delete ALL caught messages? [y/N] ");
+                let mut a = String::new();
+                if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
+                    eprintln!("aborted");
+                    exit(1);
+                }
+            }
+            let r = request("mail.clear", Value::Null);
+            if json_output {
+                return print_json(&r);
+            }
+            println!("✓ mailbox cleared");
+        }
+        _ => {
+            eprintln!("rex: usage: rex mail [list|open|clear]");
+            exit(1);
+        }
+    }
+}
+
+fn cmd_tunnel(words: &[String], json_output: bool) {
+    match words.first().map(String::as_str) {
+        None | Some("list") => {
+            let data = request("tunnel.list", Value::Null);
+            if json_output {
+                return print_json(&data);
+            }
+            let tunnels = data["tunnels"].as_array().map(Vec::as_slice).unwrap_or_default();
+            if tunnels.is_empty() {
+                return println!("no public tunnels running");
+            }
+            for t in tunnels {
+                println!("{:<24} {}", t["domain"].as_str().unwrap_or("?"), t["url"].as_str().unwrap_or(""));
+            }
+        }
+        Some(act @ ("start" | "stop")) => {
+            let site = find_site(&words[1..], "rex tunnel start|stop <domain>");
+            if act == "start" && !words.iter().any(|w| w == "--yes") {
+                eprint!(
+                    "expose {} PUBLICLY via a cloudflared tunnel? [y/N] ",
+                    site["domain"].as_str().unwrap_or("?")
+                );
+                let mut a = String::new();
+                if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
+                    eprintln!("aborted (nothing exposed)");
+                    exit(1);
+                }
+            }
+            let r = request(&format!("tunnel.{act}"), json!({ "id": site["id"] }));
+            if json_output {
+                return print_json(&r);
+            }
+            if act == "start" {
+                println!("✓ public URL: {}", r["url"].as_str().unwrap_or("?"));
+            } else {
+                println!("✓ tunnel stopped");
+            }
+        }
+        _ => {
+            eprintln!("rex: usage: rex tunnel [list|start <domain>|stop <domain>]");
+            exit(1);
+        }
+    }
+}
+
+fn cmd_tld(words: &[String], json_output: bool) {
+    if let Some(tld) = flag_value(words, "--set") {
+        let r = request("tld.set", json!({ "tld": tld }));
+        if json_output {
+            return print_json(&r);
+        }
+        return println!("✓ new sites default to .{tld}");
+    }
+    let data = request("tld.get", Value::Null);
+    if json_output {
+        return print_json(&data);
+    }
+    println!(".{}", data["tld"].as_str().unwrap_or("?"));
+}
+
+fn cmd_version(json_output: bool) {
+    let data = request("version", Value::Null);
+    if json_output {
+        return print_json(&json!({ "app": data, "cli": env!("CARGO_PKG_VERSION") }));
+    }
+    println!(
+        "rexenv {} ({}) · rex {}",
+        data["version"].as_str().unwrap_or("?"),
+        data["platform"].as_str().unwrap_or("?"),
+        env!("CARGO_PKG_VERSION"),
+    );
 }
 
 // ── wp: plugins / themes / users ─────────────────────────────────────────────

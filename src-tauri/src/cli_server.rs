@@ -528,6 +528,76 @@ where
             commands::wordpress::wp_db_import(state.clone(), id, path).await?;
             Ok(Value::Null)
         }
+        // Optional services — the Databases/Mail start-stop toggles. Engine
+        // keys are validated by engine_from_key; web-tier singles stay
+        // deliberately unmapped (topology invariants).
+        "service.db" => {
+            let state = app_state(app)?;
+            let key = need_str(&args, "key", cmd)?;
+            if args["running"].as_bool().ok_or_else(|| Error::Other("service.db needs `running`".into()))? {
+                commands::database::start_database(state.clone(), key).await?;
+            } else {
+                commands::database::stop_database(state.clone(), key).await?;
+            }
+            Ok(Value::Null)
+        }
+        "service.mail" => {
+            let state = app_state(app)?;
+            if args["running"].as_bool().ok_or_else(|| Error::Other("service.mail needs `running`".into()))? {
+                commands::mail::start_mail(state.clone()).await?;
+            } else {
+                commands::mail::stop_mail(state.clone()).await?;
+            }
+            Ok(Value::Null)
+        }
+        // Mail — the Mail screen's list/clear + the web-UI port for `mail open`.
+        "mail.list" => {
+            let state = app_state(app)?;
+            let query = args["query"].as_str().map(str::to_string);
+            Ok(to_value(&commands::mail::mailpit_messages(state.clone(), query).await?)?)
+        }
+        "mail.clear" => {
+            let state = app_state(app)?;
+            commands::mail::mailpit_clear(state.clone()).await?;
+            Ok(Value::Null)
+        }
+        "mail.status" => {
+            let state = app_state(app)?;
+            Ok(to_value(&commands::mail::mailpit_status(state.clone()).await?)?)
+        }
+        // Tunnels — the SiteDetail Share actions (cloudflared).
+        "tunnel.list" => {
+            let tunnels = app
+                .try_state::<commands::tunnels::Tunnels>()
+                .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
+            Ok(json!({ "tunnels": to_value(&commands::tunnels::tunnels_status(tunnels).await?)? }))
+        }
+        "tunnel.start" | "tunnel.stop" => {
+            let state = app_state(app)?;
+            let tunnels = app
+                .try_state::<commands::tunnels::Tunnels>()
+                .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
+            let id = need_str(&args, "id", cmd)?;
+            if cmd == "tunnel.start" {
+                let info = commands::tunnels::start_tunnel(state.clone(), tunnels, id).await?;
+                Ok(to_value(&info)?)
+            } else {
+                commands::tunnels::stop_tunnel(state.clone(), tunnels, id).await?;
+                Ok(Value::Null)
+            }
+        }
+        // Default TLD (new sites) — policy stays in core::tld.
+        "tld.get" => {
+            let state = app_state(app)?;
+            Ok(json!({ "tld": commands::settings::default_tld(state.clone())? }))
+        }
+        "tld.set" => {
+            let state = app_state(app)?;
+            let tld = need_str(&args, "tld", cmd)?;
+            commands::settings::set_default_tld(state.clone(), tld.clone())?;
+            Ok(json!({ "tld": tld }))
+        }
+        "version" => Ok(to_value(&commands::system::app_info())?),
         // Doctor: one honest diagnosis pass composing the app's own probes —
         // nothing here invents a new check, it reuses the exact machinery the
         // watchdog/Start-all/Settings already trust.
