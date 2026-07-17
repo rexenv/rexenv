@@ -103,6 +103,7 @@ pub fn resolve_package_manager(env: &[(String, String)], name: &str) -> Result<T
              corepack (ships with Node) provides it — enable once, then hit \
              Re-detect:\n$ corepack enable"
         }
+        "bun" => "this repo uses Bun. Install it, then hit Re-detect:\n$ brew install oven-sh/bun/bun",
         _ => "install it, then hit Re-detect.",
     };
     Err(Error::Other(format!(

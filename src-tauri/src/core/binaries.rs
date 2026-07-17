@@ -49,6 +49,12 @@ pub const MYSQL_VERSION: &str = "8.4.6";
 pub const MYSQL_VERSIONS: &[&str] = &["8.4.6", "8.0.44"];
 /// Pinned WP-CLI version (a .phar run via the bundled PHP; OS-agnostic).
 pub const WP_CLI_VERSION: &str = "2.12.0";
+/// Pinned Composer version (a .phar, ALWAYS run via the SITE's bundled PHP so
+/// `composer install` platform checks match the PHP the plugin runs on; a
+/// system composer is never executed — it can be a non-phar wrapper, e.g.
+/// Herd's). Downloaded + sha-verified against getcomposer.org's published
+/// .sha256sum + run-tested on the static PHP at pin time.
+pub const COMPOSER_VERSION: &str = "2.10.2";
 /// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
 /// per-site override server on an internal loopback port — Phase 2 §2.
 pub const FRANKENPHP_VERSION: &str = "1.12.4";
@@ -277,6 +283,10 @@ fn postgres_sha256(version: &str, arch: Arch) -> Option<&'static str> {
 
 // WP-CLI phar SHA-256 (GitHub release; same artifact on every OS/arch).
 const WP_CLI_2_12_0_SHA256: &str = "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c";
+// Verified 17 Jul 2026: download hashed == getcomposer.org's published
+// composer.phar.sha256sum, phar run-tested on the static PHP 8.3.31.
+const COMPOSER_2_10_2_SHA256: &str =
+    "5ee7125f8a30a34d246cefdc0bc85b8a783b28f2aec968994118512350d28027";
 
 // Adminer single-file SHA-256 (GitHub release `adminer-5.4.2-en.php`; same on every
 // OS/arch — a PHP script). English UI, all DB drivers (MySQL + PostgreSQL).
@@ -673,6 +683,14 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             checksum: Checksum::Sha256(WP_CLI_2_12_0_SHA256.to_string()),
             archive: Archive::Raw,
             member: "wp-cli.phar",
+        }),
+        // Composer, same model as WP-CLI: a .phar run via the SITE's bundled
+        // PHP (core::repo composer step), identical on every OS.
+        ("composer", _, "2.10.2") => Some(BinarySpec {
+            url: format!("https://getcomposer.org/download/{version}/composer.phar"),
+            checksum: Checksum::Sha256(COMPOSER_2_10_2_SHA256.to_string()),
+            archive: Archive::Raw,
+            member: "composer.phar",
         }),
         _ => None,
     }
@@ -2041,6 +2059,17 @@ mod tests {
         let b = manifest("wp-cli", WP_CLI_VERSION, "linux", Arch::X86_64).unwrap();
         assert!(a.url.ends_with("wp-cli-2.12.0.phar"));
         assert_eq!(a.member, "wp-cli.phar");
+        assert_eq!(a.archive, Archive::Raw);
+        assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
+    }
+
+    #[test]
+    fn manifest_resolves_composer_os_agnostic() {
+        // Same phar on every OS/arch — run via the SITE's bundled PHP.
+        let a = manifest("composer", COMPOSER_VERSION, "macos", Arch::Arm64).unwrap();
+        let b = manifest("composer", COMPOSER_VERSION, "linux", Arch::X86_64).unwrap();
+        assert!(a.url.ends_with("download/2.10.2/composer.phar"));
+        assert_eq!(a.member, "composer.phar");
         assert_eq!(a.archive, Archive::Raw);
         assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
     }

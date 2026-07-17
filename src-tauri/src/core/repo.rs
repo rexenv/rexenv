@@ -661,6 +661,321 @@ fn host_of(url: &str) -> String {
     parse_source(url).map(|s| s.host).unwrap_or_else(|_| "the remote".into())
 }
 
+// ---------------------------------------------------------------------------
+// Detection (pure fs — runs right after a clone, before any button shows)
+// ---------------------------------------------------------------------------
+
+/// What a cloned repo needs. Read-only inspection — detection itself never
+/// executes repo code; only the explicit install/build steps do.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoInspection {
+    /// composer.json present → offer `composer install` (vendor/ is required
+    /// for the plugin to run at all).
+    pub composer: bool,
+    /// package.json present → offer `<manager> install` (+ build).
+    pub node: Option<NodePlan>,
+    /// `Plugin Name:` / `Theme Name:` header found (a monorepo warning when
+    /// neither matches what the user is adding).
+    pub wp: WpHeader,
+    /// Raw `.nvmrc` / `engines.node` content, for display + the version
+    /// warning ([`node_version_warning`]).
+    pub node_want: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodePlan {
+    /// npm | pnpm | yarn | bun.
+    pub manager: String,
+    /// Why: "packageManager" (authoritative field) | "lockfile" | "default".
+    pub pinned_by: String,
+    /// package.json has a "build" script.
+    pub has_build: bool,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpHeader {
+    /// "plugin" | "theme" | "none".
+    pub kind: String,
+    pub name: Option<String>,
+}
+
+pub fn inspect_repo(dir: &Path) -> RepoInspection {
+    let composer = dir.join("composer.json").is_file();
+    let mut node = None;
+    let mut node_want = None;
+    if let Ok(raw) = std::fs::read_to_string(dir.join("package.json")) {
+        let pkg: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+        // packageManager ("pnpm@9.1.0") is authoritative; lockfiles next.
+        let (manager, pinned_by) = match pkg
+            .get("packageManager")
+            .and_then(|v| v.as_str())
+            .and_then(|v| v.split('@').next())
+            .filter(|m| ["npm", "pnpm", "yarn", "bun"].contains(m))
+        {
+            Some(m) => (m.to_string(), "packageManager".to_string()),
+            None => {
+                let by_lock = [
+                    ("pnpm-lock.yaml", "pnpm"),
+                    ("yarn.lock", "yarn"),
+                    ("bun.lockb", "bun"),
+                    ("bun.lock", "bun"),
+                    ("package-lock.json", "npm"),
+                ]
+                .iter()
+                .find(|(f, _)| dir.join(f).is_file());
+                match by_lock {
+                    Some((_, m)) => (m.to_string(), "lockfile".to_string()),
+                    None => ("npm".to_string(), "default".to_string()),
+                }
+            }
+        };
+        let has_build = pkg
+            .get("scripts")
+            .and_then(|s| s.get("build"))
+            .and_then(|b| b.as_str())
+            .is_some_and(|b| !b.trim().is_empty());
+        node = Some(NodePlan { manager, pinned_by, has_build });
+        node_want = pkg
+            .get("engines")
+            .and_then(|e| e.get("node"))
+            .and_then(|n| n.as_str())
+            .map(|s| s.trim().to_string());
+    }
+    // .nvmrc beats engines for display — it's what `nvm use` would pick.
+    if let Ok(nvmrc) = std::fs::read_to_string(dir.join(".nvmrc")) {
+        let v = nvmrc.lines().next().unwrap_or("").trim().to_string();
+        if !v.is_empty() {
+            node_want = Some(v);
+        }
+    }
+    RepoInspection { composer, node, wp: wp_header(dir), node_want }
+}
+
+/// Depth-1 scan for the WordPress header: any root `*.php` with
+/// `Plugin Name:`, or `style.css` with `Theme Name:` (first 8KB — WP itself
+/// reads the first 8KB of headers).
+fn wp_header(dir: &Path) -> WpHeader {
+    const HEADER_BYTES: usize = 8192;
+    let read_head = |p: &Path| -> String {
+        std::fs::read(p)
+            .map(|b| String::from_utf8_lossy(&b[..b.len().min(HEADER_BYTES)]).into_owned())
+            .unwrap_or_default()
+    };
+    let style = dir.join("style.css");
+    if style.is_file() {
+        if let Some(name) = header_value(&read_head(&style), "Theme Name:") {
+            return WpHeader { kind: "theme".into(), name: Some(name) };
+        }
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return WpHeader { kind: "none".into(), name: None };
+    };
+    for entry in entries.flatten().take(50) {
+        let p = entry.path();
+        if p.extension().and_then(|e| e.to_str()) == Some("php") {
+            if let Some(name) = header_value(&read_head(&p), "Plugin Name:") {
+                return WpHeader { kind: "plugin".into(), name: Some(name) };
+            }
+        }
+    }
+    WpHeader { kind: "none".into(), name: None }
+}
+
+fn header_value(head: &str, key: &str) -> Option<String> {
+    let pos = head.find(key)?;
+    let rest = &head[pos + key.len()..];
+    let val = rest.lines().next()?.trim().trim_end_matches("*/").trim();
+    (!val.is_empty()).then(|| val.to_string())
+}
+
+/// Amber pre-install warning when the repo pins a Node major the resolved
+/// node doesn't match. Display-only — never blocks. `want` is raw `.nvmrc` /
+/// `engines.node` text; anything unparseable (e.g. `lts/iron`) warns nothing.
+pub fn node_version_warning(want: &str, have_version: &str) -> Option<String> {
+    let have_major = leading_int(have_version.trim_start_matches('v'))?;
+    let cleaned = want.trim().trim_start_matches(['^', '~', 'v', '=']);
+    let want_major = leading_int(cleaned.trim_start_matches(">=").trim_start_matches('>').trim())?;
+    let range_min = want.contains(">=") || want.contains('>');
+    let mismatch = if range_min { have_major < want_major } else { have_major != want_major };
+    mismatch.then(|| {
+        format!(
+            "This repo wants Node {want} — you have {have_version}. Installs \
+             and builds may fail; switch with your version manager first \
+             (e.g. `nvm install {want_major}`), then hit Re-detect."
+        )
+    })
+}
+
+fn leading_int(s: &str) -> Option<u32> {
+    let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
+}
+
+// ---------------------------------------------------------------------------
+// Install / build steps
+// ---------------------------------------------------------------------------
+
+/// `composer install` — ALWAYS the pinned composer.phar executed by the
+/// SITE's bundled PHP: platform checks (`php` version, `ext-*`) then match
+/// the PHP the plugin actually runs on, and a system "composer" is never
+/// executed (it can be a non-phar wrapper — Herd's is). The user's env rides
+/// along (their COMPOSER_HOME/auth.json for private packages).
+pub fn composer_install(
+    supervisor: &dyn ProcessSupervisor,
+    php: &Path,
+    composer_phar: &Path,
+    dir: &Path,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let args: Vec<String> = vec![
+        composer_phar.to_string_lossy().into_owned(),
+        "install".into(),
+        "--no-interaction".into(),
+    ];
+    on_line("$ composer install --no-interaction");
+    let result = run_step_streamed(supervisor, php, &args, dir, env, cancel, on_line)?;
+    step_verdict(result, "composer install", map_composer_error)
+}
+
+/// `<manager> install` (npm/pnpm/yarn/bun — the repo's own pick).
+pub fn node_install(
+    supervisor: &dyn ProcessSupervisor,
+    manager: &Path,
+    dir: &Path,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let name = tool_name(manager);
+    on_line(&format!("$ {name} install"));
+    let result =
+        run_step_streamed(supervisor, manager, &["install".into()], dir, env, cancel, on_line)?;
+    step_verdict(result, &format!("{name} install"), map_node_error)
+}
+
+/// `<manager> run build`.
+pub fn node_build(
+    supervisor: &dyn ProcessSupervisor,
+    manager: &Path,
+    dir: &Path,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let name = tool_name(manager);
+    on_line(&format!("$ {name} run build"));
+    let result = run_step_streamed(
+        supervisor,
+        manager,
+        &["run".into(), "build".into()],
+        dir,
+        env,
+        cancel,
+        on_line,
+    )?;
+    step_verdict(result, &format!("{name} run build"), map_node_error)
+}
+
+fn tool_name(p: &Path) -> String {
+    p.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "tool".into())
+}
+
+fn step_verdict(
+    result: StepResult,
+    what: &str,
+    map: fn(&[String]) -> Error,
+) -> Result<()> {
+    if result.ok {
+        return Ok(());
+    }
+    if result.cancelled {
+        return Err(Error::Other(format!("{what} cancelled")));
+    }
+    Err(map(&result.tail))
+}
+
+/// Composer failures → honest messages. The two structural ones are PHP
+/// version and missing extensions — both statements about OUR bundled PHP.
+pub fn map_composer_error(tail: &[String]) -> Error {
+    let joined = tail.join("\n");
+    if joined.contains("your php version") || joined.to_lowercase().contains("requires php") {
+        return Error::Other(format!(
+            "Composer refused: the repo requires a PHP version this site \
+             isn't running. Switch the site's PHP version (Site → Settings) \
+             and retry.\n{}",
+            last_lines(tail, 3)
+        ));
+    }
+    if joined.contains("ext-") {
+        return Error::Other(format!(
+            "Composer refused: the repo needs a PHP extension rexenv's \
+             bundled PHP doesn't ship. Details:\n{}",
+            last_lines(tail, 3)
+        ));
+    }
+    if joined.contains("Could not resolve host")
+        || joined.contains("curl error")
+        || joined.contains("getaddrinfo")
+    {
+        return Error::Other(
+            "Composer can't reach the package registry — you look offline. \
+             Check your connection and retry."
+                .into(),
+        );
+    }
+    Error::Other(format!("composer install failed:\n{}", last_lines(tail, 3)))
+}
+
+/// npm/pnpm/yarn failures → honest messages. node-gyp is the classic one.
+pub fn map_node_error(tail: &[String]) -> Error {
+    let joined = tail.join("\n");
+    if joined.contains("node-gyp") || joined.contains("gyp ERR") {
+        return Error::Other(
+            "A native module failed to compile (node-gyp). That needs the \
+             Xcode Command Line Tools — install them, then retry:\n\
+             $ xcode-select --install"
+                .into(),
+        );
+    }
+    if joined.contains("EBADENGINE") || joined.contains("Unsupported engine") {
+        return Error::Other(
+            "Your Node version doesn't match what this repo requires (see \
+             the warning above the install button). Switch Node with your \
+             version manager, then hit Re-detect and retry."
+                .into(),
+        );
+    }
+    if joined.contains("ENOTFOUND")
+        || joined.contains("ETIMEDOUT")
+        || joined.contains("ECONNRESET")
+        || joined.contains("network")
+    {
+        return Error::Other(
+            "The package registry is unreachable — you look offline. Check \
+             your connection and retry."
+                .into(),
+        );
+    }
+    if joined.contains("Missing script") {
+        return Error::Other(
+            "This repo has no \"build\" script (package.json → scripts). \
+             Nothing to build — the plugin may ship ready-to-run."
+                .into(),
+        );
+    }
+    Error::Other(format!("install/build failed:\n{}", last_lines(tail, 3)))
+}
+
+fn last_lines(tail: &[String], n: usize) -> String {
+    let lines: Vec<&str> = tail.iter().rev().take(n).map(|s| s.as_str()).collect();
+    lines.into_iter().rev().collect::<Vec<_>>().join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -840,5 +1155,89 @@ mod tests {
         // Unknown failures keep the raw tail — never swallowed.
         let raw = map_git_error(&["something exploded".into()], "https://github.com/a/b");
         assert!(raw.to_string().contains("something exploded"));
+    }
+
+    fn fixture_dir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir()
+            .join(format!("rexenv-repo-inspect-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn inspection_prefers_package_manager_field_over_lockfile() {
+        let d = fixture_dir("pm");
+        std::fs::write(
+            d.join("package.json"),
+            r#"{"packageManager":"pnpm@9.1.0","scripts":{"build":"wp-scripts build"},"engines":{"node":">=18"}}"#,
+        )
+        .unwrap();
+        std::fs::write(d.join("yarn.lock"), "").unwrap(); // lies — field wins
+        std::fs::write(d.join("composer.json"), "{}").unwrap();
+        std::fs::write(d.join("plugin.php"), "<?php\n/*\nPlugin Name: Fixture PM\n*/\n").unwrap();
+        let i = inspect_repo(&d);
+        let node = i.node.expect("node plan");
+        assert_eq!(node.manager, "pnpm");
+        assert_eq!(node.pinned_by, "packageManager");
+        assert!(node.has_build);
+        assert!(i.composer);
+        assert_eq!(i.wp.kind, "plugin");
+        assert_eq!(i.wp.name.as_deref(), Some("Fixture PM"));
+        assert_eq!(i.node_want.as_deref(), Some(">=18"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn inspection_falls_back_lockfile_then_npm_and_nvmrc_beats_engines() {
+        let d = fixture_dir("lock");
+        std::fs::write(d.join("package.json"), r#"{"engines":{"node":"20"}}"#).unwrap();
+        std::fs::write(d.join("pnpm-lock.yaml"), "").unwrap();
+        std::fs::write(d.join(".nvmrc"), "18.19.0\n").unwrap();
+        std::fs::write(d.join("style.css"), "/*\nTheme Name: Fixture Theme\n*/\n").unwrap();
+        let i = inspect_repo(&d);
+        let node = i.node.expect("node plan");
+        assert_eq!((node.manager.as_str(), node.pinned_by.as_str()), ("pnpm", "lockfile"));
+        assert!(!node.has_build);
+        assert_eq!(i.node_want.as_deref(), Some("18.19.0")); // .nvmrc wins
+        assert_eq!(i.wp.kind, "theme");
+        let bare = fixture_dir("bare");
+        std::fs::write(bare.join("package.json"), "{}").unwrap();
+        let b = inspect_repo(&bare);
+        assert_eq!(b.node.unwrap().pinned_by, "default"); // npm
+        assert_eq!(b.wp.kind, "none");
+        assert!(!b.composer);
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&bare);
+    }
+
+    #[test]
+    fn node_version_warning_fires_on_real_mismatches_only() {
+        // .nvmrc-style exact major mismatch.
+        assert!(node_version_warning("18", "v22.17.0").is_some());
+        assert!(node_version_warning("v20.11.1", "v22.17.0").is_some());
+        assert!(node_version_warning("22", "v22.17.0").is_none());
+        // Range minimum: only warn when we're BELOW it.
+        assert!(node_version_warning(">=18", "v22.17.0").is_none());
+        assert!(node_version_warning(">=24", "v22.17.0").is_some());
+        // Unparseable pins (lts aliases) never warn — display-only honesty.
+        assert!(node_version_warning("lts/iron", "v22.17.0").is_none());
+        let msg = node_version_warning("18", "v22.17.0").unwrap();
+        assert!(msg.contains("nvm install 18"), "{msg}");
+    }
+
+    #[test]
+    fn composer_and_node_errors_map_to_actionable_messages() {
+        let php = map_composer_error(&["  - Root composer.json requires php >=8.4 but your php version (8.3.31) does not satisfy that requirement.".into()]);
+        assert!(php.to_string().contains("Switch the site's PHP version"), "{php}");
+        let ext = map_composer_error(&["requires ext-imagick * -> it is missing".into()]);
+        assert!(ext.to_string().contains("extension"), "{ext}");
+        let gyp = map_node_error(&["gyp ERR! stack Error".into()]);
+        assert!(gyp.to_string().ends_with("$ xcode-select --install"), "{gyp}");
+        let engine = map_node_error(&["npm warn EBADENGINE Unsupported engine".into()]);
+        assert!(engine.to_string().contains("Node version"), "{engine}");
+        // Unknown failures keep the tail.
+        let raw = map_node_error(&["ERR_PNPM_SOMETHING went sideways".into()]);
+        assert!(raw.to_string().contains("went sideways"), "{raw}");
     }
 }
