@@ -54,12 +54,36 @@ fn php_server(depth: usize, env: &[(String, String)]) -> String {
     format!("{t}php_server {{\n{t}\tenv HTTPS {{https_on}}\n{lines}{t}}}\n")
 }
 
+/// Dot-segment guard: 404 for any path with a dot-leading segment (`/.git/…`,
+/// `/x/.env`), except the root `/.well-known/` subtree (ACME/plugin probes).
+/// Docroots carry `.git` (git-cloned plugins) and tunnels make a served docroot
+/// PUBLIC. Two matchers because Go's RE2 has no lookahead (can't mirror the
+/// nginx template's `(?!well-known)`): root-level dot except well-known, plus
+/// any NESTED dot-segment — the nested rule also denies `/.well-known/.hidden`,
+/// keeping parity with the nginx/Apache templates. At site level Caddy's
+/// canonical directive order runs `respond` before `php_server`; inside a
+/// `route` block order is literal, so the caller puts the guard FIRST.
+fn dotfile_guard(depth: usize) -> String {
+    let t = "\t".repeat(depth);
+    format!(
+        "{t}@dot_root {{\n\
+         {t}\tpath_regexp ^/\\.\n\
+         {t}\tnot path_regexp ^/\\.well-known(/|$)\n\
+         {t}}}\n\
+         {t}respond @dot_root 404\n\
+         {t}@dot_nested path_regexp ^/.+/\\.\n\
+         {t}respond @dot_nested 404\n"
+    )
+}
+
 /// The site block body for a rewrite mode. Single/subdomain use the high-level
 /// `php_server` (its built-in `try_files … /index.php` is the single-site rule);
 /// subdirectory multisite adds WordPress's network path rewrites.
 fn site_body(mode: RewriteMode, env: &[(String, String)]) -> String {
     match mode {
-        RewriteMode::Single | RewriteMode::SubdomainMultisite => php_server(1, env),
+        RewriteMode::Single | RewriteMode::SubdomainMultisite => {
+            format!("{}{}", dotfile_guard(1), php_server(1, env))
+        }
         RewriteMode::SubdirectoryMultisite => {
             // WordPress subdirectory-multisite: faithfully mirror the proven nginx
             // rules (`services::rewrite_block`) as Caddy directives. A `route` block
@@ -73,6 +97,7 @@ fn site_body(mode: RewriteMode, env: &[(String, String)]) -> String {
             // fires (like nginx's `last`). Validated with `frankenphp adapt`/`validate`.
             format!(
                 "\troute {{\n\
+                 {guard}\
                  \t\t@wpadmin {{\n\
                  \t\t\tnot file\n\
                  \t\t\tpath_regexp ^(/[^/]+)?/wp-admin$\n\
@@ -90,6 +115,7 @@ fn site_body(mode: RewriteMode, env: &[(String, String)]) -> String {
                  \t\trewrite @phpstrip {{http.regexp.phpstrip.2}}\n\
                  {php_server}\
                  \t}}\n",
+                guard = dotfile_guard(2),
                 php_server = php_server(2, env),
             )
         }
@@ -257,6 +283,26 @@ mod tests {
             single.find("env HTTPS {https_on}").unwrap()
                 < single.find("env API_URL").unwrap()
         );
+    }
+
+    #[test]
+    fn dotfile_guard_denies_dot_segments_except_root_well_known() {
+        // Root dot-segment (minus /.well-known/) + any nested dot-segment →
+        // 404. Two matchers because RE2 has no lookahead; the nested rule also
+        // denies /.well-known/.hidden (parity with nginx/Apache).
+        let single = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[]);
+        assert!(single.contains("respond @dot_root 404"), "got: {single}");
+        assert!(single.contains("not path_regexp ^/\\.well-known(/|$)"));
+        assert!(single.contains("@dot_nested path_regexp ^/.+/\\."));
+        assert!(single.contains("respond @dot_nested 404"));
+        // Subdirectory multisite: inside a route block order is LITERAL — the
+        // guard must precede the WP rewrites and php_server.
+        let subdir =
+            generate_config(Path::new("/d"), 8200, RewriteMode::SubdirectoryMultisite, &[]);
+        let guard = subdir.find("respond @dot_root 404").unwrap();
+        assert!(guard > subdir.find("route {").unwrap());
+        assert!(guard < subdir.find("@wpadmin").unwrap());
+        assert!(guard < subdir.find("php_server").unwrap());
     }
 
     #[test]

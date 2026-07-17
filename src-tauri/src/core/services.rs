@@ -378,6 +378,15 @@ fn env_params(env: &[(String, String)]) -> String {
         .collect()
 }
 
+/// Dot-segment guard, emitted before the `.php` location (regex locations match
+/// in order — `/.hidden/x.php` must 404, never reach fastcgi). Docroots carry
+/// `.git`/`.env` (git-cloned plugins, hand-copied repos) and tunnels make a
+/// served docroot PUBLIC; only the root `/.well-known/` subtree stays reachable
+/// (ACME/app probes). 404, not 403 — don't advertise what exists.
+const NGINX_DOTFILE_DENY: &str = "\t\tlocation ~ /\\.(?!well-known(/|$)) {\n\
+     \t\t\treturn 404;\n\
+     \t\t}\n";
+
 fn server_block(http_port: u16, site: &NginxSite) -> String {
     // Subdomain multisite serves every sub-site (`a.mysite.test`) from the same
     // block, so the wildcard joins the exact host in `server_name` (§10.2).
@@ -402,6 +411,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t\troot \"{root}\";\n\
          \t\tindex index.php index.html;\n\
          {rewrite}\
+         {dotdeny}\
          \t\tlocation ~ \\.php$ {{\n\
          \t\t\tfastcgi_pass 127.0.0.1:{fpm};\n\
          \t\t\tfastcgi_index index.php;\n\
@@ -414,6 +424,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
         root = site.docroot.display(),
         fpm = site.php_fpm_port,
         rewrite = rewrite_block(site.rewrite),
+        dotdeny = NGINX_DOTFILE_DENY,
         params = fcgi_params(),
         env = env_params(&site.env),
     )
@@ -736,6 +747,30 @@ mod tests {
         // No env → no extra params, config identical shape to before.
         let none = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
         assert!(!none.contains("API_URL"));
+    }
+
+    #[test]
+    fn dotfile_paths_are_denied_before_php_execution() {
+        // A cloned plugin's `.git/`, a repo `.env`: 404 (root /.well-known/
+        // exempt). Regex locations match in ORDER — the deny must precede the
+        // `.php` location so `/.hidden/x.php` hits the deny, never fastcgi.
+        for mode in [
+            RewriteMode::Single,
+            RewriteMode::SubdomainMultisite,
+            RewriteMode::SubdirectoryMultisite,
+        ] {
+            let out = generate_nginx_config(&nginx_cfg(mode));
+            assert!(
+                out.contains("location ~ /\\.(?!well-known(/|$)) {"),
+                "got: {out}"
+            );
+            assert!(out.contains("return 404;"));
+            assert!(
+                out.find("location ~ /\\.").unwrap()
+                    < out.find("location ~ \\.php$").unwrap(),
+                "deny must precede the php location"
+            );
+        }
     }
 
     #[test]

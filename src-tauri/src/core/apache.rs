@@ -101,6 +101,13 @@ fn routing(mode: RewriteMode) -> &'static str {
 /// request's subprocess env, which mod_proxy_fcgi forwards as FastCGI params
 /// (the same per-REQUEST delivery as nginx's `fastcgi_param` lines; the shared
 /// pool is untouched). All paths quoted (app-data paths contain spaces).
+///
+/// Dot-segment guard: mod_alias isn't bundled (no `RedirectMatch`), so the
+/// deny is a mod_rewrite `[R=404]` placed BEFORE the WP routing — subdirectory
+/// multisite's `-f/-d` passthrough (`RewriteRule ^ - [L]`) would otherwise
+/// L-stop first and serve an existing `.git/config`. Root `/.well-known/`
+/// exempt (ACME/app probes); this also covers `.htaccess` itself, which the
+/// generated conf never protected (no stock `<Files ".ht*">` block here).
 #[allow(clippy::too_many_arguments)] // flat mirror of the site's serving inputs
 pub fn generate_config(
     basedir: &Path,
@@ -147,6 +154,7 @@ pub fn generate_config(
          RewriteEngine On\n\
          RewriteCond %{{HTTP:X-Forwarded-Proto}} =https\n\
          RewriteRule .* - [E=HTTPS:on]\n\
+         RewriteRule \"(^|/)\\.(?!well-known(/|$))\" - [R=404,L]\n\
          {routing}",
         basedir = basedir.display(),
         run = run_dir.display(),
@@ -325,12 +333,12 @@ mod tests {
     #[test]
     fn routing_matches_the_rewrite_mode() {
         // Single + subdomain: front-controller fallback; the only rewrite
-        // rules are the HTTPS map's (emitted once, before the routing).
+        // rules are the HTTPS map's + the dotfile deny (before the routing).
         for mode in [RewriteMode::Single, RewriteMode::SubdomainMultisite] {
             let c = cfg(mode, &[]);
             assert!(c.contains("FallbackResource /index.php"));
             assert_eq!(c.matches("RewriteEngine On").count(), 1);
-            assert_eq!(c.matches("RewriteRule").count(), 1);
+            assert_eq!(c.matches("RewriteRule").count(), 2);
         }
         // Subdirectory multisite mirrors WP's canonical network rules, after
         // the HTTPS map (env rules must precede the [L] short-circuits).
@@ -343,6 +351,33 @@ mod tests {
         assert!(c.contains("(.*\\.php)$ /$2 [L]"));
         assert!(c.contains("RewriteRule . /index.php [L]"));
         assert!(!c.contains("FallbackResource"));
+    }
+
+    #[test]
+    fn dotfile_paths_return_404_before_wp_routing() {
+        // `.git`/`.env` inside a served docroot must 404 (root /.well-known/
+        // exempt). The deny must precede the mode routing: subdirectory
+        // multisite's `-f/-d` passthrough (`RewriteRule ^ - [L]`) would
+        // otherwise L-stop first and serve an existing `.git/config`.
+        for mode in [
+            RewriteMode::Single,
+            RewriteMode::SubdomainMultisite,
+            RewriteMode::SubdirectoryMultisite,
+        ] {
+            let c = cfg(mode, &[]);
+            assert!(
+                c.contains("RewriteRule \"(^|/)\\.(?!well-known(/|$))\" - [R=404,L]"),
+                "got: {c}"
+            );
+            let deny = c.find("[R=404,L]").unwrap();
+            let routing = match mode {
+                RewriteMode::SubdirectoryMultisite => {
+                    c.find("RewriteCond %{DOCUMENT_ROOT}").unwrap()
+                }
+                _ => c.find("FallbackResource").unwrap(),
+            };
+            assert!(deny < routing, "deny must precede routing");
+        }
     }
 
     #[test]
