@@ -6,6 +6,47 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [ ] **Add plugin/theme from Git — clone → detect → install → build** (plan
+  green-lit 17 Jul 2026: system git/node resolved via the user's login-shell
+  env, composer.phar on the site's PHP as fallback, per-step streamed jobs
+  with cancel, repo scripts NEVER auto-run — explicit click + disclosure).
+  Phases, each gated on lib tests + a live check:
+  - [x] **Phase 1 — hardening + foundations** (17 Jul, 3 commits). (1)
+    `00716bb` dotfile deny in ALL THREE vhost templates — nginx regex location
+    BEFORE the `.php` location, Apache mod_rewrite `[R=404,L]` before the WP
+    routing (also covers the previously unprotected `.htaccess`), FrankenPHP
+    two-RE2-matcher guard (no lookahead in Go); root `/.well-known/` exempt.
+    Pre-existing hole, tunnel-exposed — any docroot `.git`/`.env` was served.
+    (2) `b44cbcf` `core/repo.rs` git source parser: https/ssh/scp/shorthand,
+    GitHub `/tree/` + GitLab `/-/tree/` ref candidates, folder-name validated
+    at the source. (3) `1ebbe62` `ShellRunner::login_shell_env` (macOS
+    `$SHELL -ilc`, NUL-marker protocol, 10s cap) + `git_preflight` (quiet CLT
+    probe — no GUI dialog) + `core/devtools` resolution with `$`-fix errors.
+    ✓ 297 lib tests, clippy no new, examples build; devtools_check live on the
+    dev machine: node → `~/.nvm/versions/node/v22.23.1/bin/node` (the nvm
+    case), SSH_AUTH_SOCK present. **Awaiting human verify:** `.git/config` →
+    404 on nginx AND Apache AND FrankenPHP with `/.well-known/` still served
+    (needs a config regen — restart services once); `devtools_check` output
+    matches your terminal's `which node`.
+  - [ ] Phase 2 — `git ls-remote` probe (30s cap, `GIT_TERMINAL_PROMPT=0`) +
+    clone job: streamed output events, process-GROUP cancel (npm spawns
+    trees), partial-dir cleanup, jobs terminate on app quit.
+  - [ ] Phase 3 — detection (`packageManager` > lockfile > npm; `scripts.build`;
+    `.nvmrc`/`engines` mismatch warning; plugin/theme header check) + composer
+    step on the SITE's PHP (pin composer.phar) + npm/pnpm/yarn install/build +
+    error mapping (ssh auth, host-key, node-gyp/CLT, ext-*). NOTE from the
+    phase-1 live check: a system `composer` can be a NON-phar wrapper (Herd's
+    was) — verify phar-ness before running it through our PHP, else use the
+    pinned phar.
+  - [ ] Phase 4 — UI/IPC: Git source toggle in the Plugins/Themes add-bars,
+    ls-remote → branch/tag combobox, steps panel + live log + cancel +
+    disclosure line, v12 `site_git_assets` provenance + "git" row badge,
+    Activate offered post-build (never auto).
+  - [ ] Phase 5 — polish + docs: row "view last job log", error-copy pass,
+    ARCHITECTURE §9 + PORTS.md (composer pin) + SMOKE-TEST item. Post-v1
+    ladder: link-existing-folder (symlink), watch mode (dies with app BY
+    DESIGN — not a ServiceManager service), update/pull via provenance.
+
 - [x] **Supervisor-aware fix-it commands + status-pill ghost fix** (`2fc0b37`/`d55f3dd`).
   (1) Port-conflict messages carry a copyable command matched to how the holder is
   MANAGED (toast CommandBlock): app-supervised → `osascript -e 'quit app "Herd"'`
