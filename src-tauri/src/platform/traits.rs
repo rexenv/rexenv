@@ -140,6 +140,30 @@ pub trait ProcessSupervisor: Send + Sync {
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
 
+    /// Spawn `program` in its OWN process group with stdout+stderr piped, a
+    /// working dir, and a caller-supplied FULL environment (the login-shell
+    /// snapshot — not our launchd env). The repo-job primitive
+    /// (`core::repo::run_step_streamed`). Own group because npm/git spawn
+    /// worker trees — a positive-pid kill would orphan them (§5
+    /// orphan-workers lesson, preempted).
+    fn spawn_streamed(
+        &self,
+        _program: &std::path::Path,
+        _args: &[String],
+        _cwd: &std::path::Path,
+        _env: &[(String, String)],
+    ) -> Result<Child> {
+        Err(crate::error::Error::Unsupported("spawn_streamed"))
+    }
+
+    /// SIGTERM the whole process GROUP `pgid`, wait a short grace, then
+    /// SIGKILL the group; returns when the group is empty. Group liveness is
+    /// checked (not the leader's — a leader can die while a TERM-ignoring
+    /// child lives on).
+    fn stop_group(&self, _pgid: u32) -> Result<()> {
+        Err(crate::error::Error::Unsupported("stop_group"))
+    }
+
     /// PIDs currently listening on TCP `port` whose process command line contains
     /// `owner_marker` — so callers only ever touch their OWN services. Lets the
     /// service manager stop orphaned processes still holding our known ports that

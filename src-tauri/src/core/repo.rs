@@ -1,13 +1,27 @@
 //! Git-repo sources for "add plugin/theme from Git": parse every common way a
 //! developer pastes a repository — https, ssh://, scp-like `git@host:path`,
 //! `owner/repo` shorthand, and forge web URLs with a `/tree/<branch>` suffix —
-//! into one normalized clone URL + derived target folder name.
+//! into one normalized clone URL + derived target folder name; then the
+//! network side: the `ls-remote` probe (branch/tag picker + early auth check)
+//! and the streamed, cancellable clone.
 //!
-//! PURE string work: no network, no fs. The ls-remote probe and the clone job
-//! build on these (later phases). Anything that reaches `git` argv comes out
-//! of here validated (M7 class — pasted text becomes a path + argv element).
+//! Execution model: every child runs in its OWN process group via
+//! `ProcessSupervisor::spawn_streamed` with the user's login-shell env
+//! (`core::devtools`), stdout+stderr pumped line-wise to the caller (UI log
+//! pane + flat log file) — never a frozen spinner. Cancel = group signal
+//! (git/npm spawn worker trees; a positive-pid kill would orphan them).
+//! `GIT_TERMINAL_PROMPT=0` on every git call: a hidden credential prompt
+//! must FAIL FAST with a mapped, honest error — never hang. Anything that
+//! reaches `git` argv is validated at parse time (M7 class).
 
 use crate::error::{Error, Result};
+use crate::platform::traits::ProcessSupervisor;
+use std::collections::VecDeque;
+use std::io::Read;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// A parsed, normalized repository source.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -229,6 +243,424 @@ fn derive_dir_name(seg: &str) -> Result<String> {
     Ok(name.to_string())
 }
 
+// ---------------------------------------------------------------------------
+// Remote probe (git ls-remote)
+// ---------------------------------------------------------------------------
+
+/// What a remote offers — feeds the branch/tag picker. Probing also validates
+/// URL + auth EARLY, before any clone starts.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteRefs {
+    pub default_branch: Option<String>,
+    pub branches: Vec<String>,
+    pub tags: Vec<String>,
+}
+
+/// Hard cap for the probe — it's one small round-trip; anything longer is a
+/// stalled network or a hidden prompt (which `GIT_TERMINAL_PROMPT=0` turns
+/// into a fast error instead).
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `git ls-remote --symref <url>`: default branch (HEAD symref), branches,
+/// tags. `env` is the login-shell snapshot (SSH_AUTH_SOCK rides along for
+/// private repos).
+pub fn probe_remote(git: &Path, env: &[(String, String)], url: &str) -> Result<RemoteRefs> {
+    let env = with_git_env(env);
+    let args = ["ls-remote", "--symref", "--", url];
+    let out = run_captured_with_cap(git, &args, &env, PROBE_TIMEOUT)
+        .map_err(|e| Error::Other(format!("probing {url} failed: {e}")))?;
+    if !out.ok {
+        return Err(map_git_error(&out.stderr_tail, url));
+    }
+    Ok(parse_ls_remote(&out.stdout))
+}
+
+fn parse_ls_remote(stdout: &str) -> RemoteRefs {
+    let mut refs = RemoteRefs::default();
+    for line in stdout.lines() {
+        // `ref: refs/heads/main\tHEAD` — the default branch symref.
+        if let Some(rest) = line.strip_prefix("ref: refs/heads/") {
+            if let Some((name, target)) = rest.split_once('\t') {
+                if target == "HEAD" {
+                    refs.default_branch = Some(name.to_string());
+                }
+            }
+            continue;
+        }
+        let Some((_oid, name)) = line.split_once('\t') else {
+            continue;
+        };
+        if let Some(b) = name.strip_prefix("refs/heads/") {
+            refs.branches.push(b.to_string());
+        } else if let Some(t) = name.strip_prefix("refs/tags/") {
+            if !t.ends_with("^{}") {
+                // peeled duplicates
+                refs.tags.push(t.to_string());
+            }
+        }
+    }
+    refs
+}
+
+/// The user's env + non-negotiable git overrides. `GIT_TERMINAL_PROMPT=0`:
+/// a credential prompt from a background process is an invisible hang — fail
+/// fast and map the error instead.
+fn with_git_env(env: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> =
+        env.iter().filter(|(k, _)| k != "GIT_TERMINAL_PROMPT").cloned().collect();
+    out.push(("GIT_TERMINAL_PROMPT".into(), "0".into()));
+    out
+}
+
+/// Captured run with a wall-clock cap. Output is drained on reader THREADS —
+/// `ls-remote` on a big repo overflows a pipe buffer (gutenberg has thousands
+/// of refs), so a `wait`-then-read would deadlock into a fake timeout.
+struct CapturedRun {
+    ok: bool,
+    stdout: String,
+    stderr_tail: Vec<String>,
+}
+
+fn run_captured_with_cap(
+    program: &Path,
+    args: &[&str],
+    env: &[(String, String)],
+    cap: Duration,
+) -> Result<CapturedRun> {
+    use std::process::Stdio;
+    let mut child = std::process::Command::new(program)
+        .args(args)
+        .env_clear()
+        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut stdout = child.stdout.take().expect("piped");
+    let mut stderr = child.stderr.take().expect("piped");
+    let out_t = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        let _ = stdout.read_to_end(&mut b);
+        b
+    });
+    let err_t = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        let _ = stderr.read_to_end(&mut b);
+        b
+    });
+    let start = Instant::now();
+    let status = loop {
+        if let Some(s) = child.try_wait()? {
+            break s;
+        }
+        if start.elapsed() >= cap {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Error::Other(format!(
+                "timed out after {}s (stalled network?)",
+                cap.as_secs()
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let stdout = String::from_utf8_lossy(&out_t.join().unwrap_or_default()).into_owned();
+    let stderr = String::from_utf8_lossy(&err_t.join().unwrap_or_default()).into_owned();
+    let stderr_tail: Vec<String> =
+        stderr.lines().rev().take(20).map(|l| l.to_string()).collect::<Vec<_>>();
+    let stderr_tail = stderr_tail.into_iter().rev().collect();
+    Ok(CapturedRun { ok: status.success(), stdout, stderr_tail })
+}
+
+// ---------------------------------------------------------------------------
+// Streaming step runner + cancellation
+// ---------------------------------------------------------------------------
+
+/// Cooperative cancel shared between a running step and the UI. Killing goes
+/// through the SUPERVISOR (whole process group) — never a bare pid.
+#[derive(Clone, Default)]
+pub struct CancelToken {
+    inner: Arc<CancelInner>,
+}
+
+#[derive(Default)]
+struct CancelInner {
+    cancelled: AtomicBool,
+    pgid: Mutex<Option<u32>>,
+}
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.inner.cancelled.load(Ordering::SeqCst)
+    }
+    /// The live child's process group, when a step is running (ps evidence,
+    /// diagnostics).
+    pub fn current_pgid(&self) -> Option<u32> {
+        *self.inner.pgid.lock().expect("pgid lock")
+    }
+    /// Flag + signal the whole group of the current step (if any). A step
+    /// that spawns AFTER this sees the flag and stops itself.
+    pub fn cancel(&self, supervisor: &dyn ProcessSupervisor) {
+        self.inner.cancelled.store(true, Ordering::SeqCst);
+        if let Some(pgid) = self.current_pgid() {
+            let _ = supervisor.stop_group(pgid);
+        }
+    }
+    fn register(&self, pgid: u32) {
+        *self.inner.pgid.lock().expect("pgid lock") = Some(pgid);
+    }
+    fn clear(&self) {
+        *self.inner.pgid.lock().expect("pgid lock") = None;
+    }
+}
+
+/// One streamed step's outcome. `Err` is reserved for plumbing failures
+/// (spawn, IO); a non-zero exit or a cancel comes back `Ok` with the flags +
+/// tail so the caller applies TOOL-SPECIFIC error mapping.
+#[derive(Debug)]
+pub struct StepResult {
+    pub ok: bool,
+    pub cancelled: bool,
+    pub exit: Option<i32>,
+    /// Last output lines (stdout+stderr interleaved) — error-mapping input.
+    pub tail: Vec<String>,
+}
+
+const TAIL_LINES: usize = 40;
+
+/// Run one child in its own process group, pumping stdout+stderr to `on_line`
+/// as they arrive (log pane + log file). Blocking — callers use
+/// `spawn_blocking` (the wp-cli convention).
+pub fn run_step_streamed(
+    supervisor: &dyn ProcessSupervisor,
+    program: &Path,
+    args: &[String],
+    cwd: &Path,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<StepResult> {
+    if cancel.is_cancelled() {
+        return Ok(StepResult { ok: false, cancelled: true, exit: None, tail: Vec::new() });
+    }
+    let mut child = supervisor.spawn_streamed(program, args, cwd, env)?;
+    let pgid = child.id();
+    cancel.register(pgid);
+    // Cancel raced the spawn: the flag was set between the check above and
+    // register — kill what we just started.
+    if cancel.is_cancelled() {
+        let _ = supervisor.stop_group(pgid);
+    }
+    let stdout = child.stdout.take().expect("spawn_streamed pipes stdout");
+    let stderr = child.stderr.take().expect("spawn_streamed pipes stderr");
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let tx2 = tx.clone();
+    let t1 = std::thread::spawn(move || pump_lines(stdout, tx));
+    let t2 = std::thread::spawn(move || pump_lines(stderr, tx2));
+    let mut tail: VecDeque<String> = VecDeque::with_capacity(TAIL_LINES);
+    for line in rx {
+        // recv ends when both pumps drop their senders (child closed pipes).
+        on_line(&line);
+        if tail.len() == TAIL_LINES {
+            tail.pop_front();
+        }
+        tail.push_back(line);
+    }
+    let _ = t1.join();
+    let _ = t2.join();
+    let status = child.wait()?;
+    cancel.clear();
+    Ok(StepResult {
+        ok: status.success() && !cancel.is_cancelled(),
+        cancelled: cancel.is_cancelled(),
+        exit: status.code(),
+        tail: tail.into(),
+    })
+}
+
+/// Byte pump: split on `\n` AND `\r` (git's `--progress` redraws lines with
+/// bare carriage returns), strip ANSI color, drop empties, forward.
+fn pump_lines(mut reader: impl Read, tx: std::sync::mpsc::Sender<String>) {
+    let mut buf = [0u8; 8192];
+    let mut line: Vec<u8> = Vec::new();
+    loop {
+        let n = match reader.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        for &b in &buf[..n] {
+            if b == b'\n' || b == b'\r' {
+                flush_line(&mut line, &tx);
+            } else {
+                line.push(b);
+            }
+        }
+    }
+    flush_line(&mut line, &tx);
+}
+
+fn flush_line(line: &mut Vec<u8>, tx: &std::sync::mpsc::Sender<String>) {
+    if line.is_empty() {
+        return;
+    }
+    let s = strip_ansi(&String::from_utf8_lossy(line));
+    line.clear();
+    let s = s.trim_end();
+    if !s.is_empty() {
+        let _ = tx.send(s.to_string());
+    }
+}
+
+/// Remove ANSI escape sequences (CSI `ESC[…<final>` and the stray lone ESC) —
+/// the log pane is a plain styled `<pre>`, not a terminal.
+pub fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        if chars.peek() == Some(&'[') {
+            chars.next();
+            // consume parameter/intermediate bytes until a final byte @–~
+            for f in chars.by_ref() {
+                if ('\u{40}'..='\u{7e}').contains(&f) {
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Clone
+// ---------------------------------------------------------------------------
+
+/// Streamed, cancellable `git clone` into `dest` (which must NOT exist — the
+/// collision is checked here, before any network traffic). On failure or
+/// cancel the partially-written `dest` is removed — but only because this fn
+/// created it; an existing dir is refused, never deleted. Full history +
+/// `--recurse-submodules`: this is a working checkout the developer will
+/// commit and push from, not an artifact download.
+#[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs (apache::generate_config precedent)
+pub fn clone_repo(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    url: &str,
+    git_ref: Option<&str>,
+    dest: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    if dest.exists() {
+        return Err(Error::Other(format!(
+            "\"{}\" already exists — pick another folder name, or remove the \
+             existing folder first.",
+            dest.display()
+        )));
+    }
+    let parent = dest
+        .parent()
+        .ok_or_else(|| Error::Other(format!("invalid clone target {}", dest.display())))?;
+    std::fs::create_dir_all(parent)?;
+    let mut args: Vec<String> =
+        vec!["clone".into(), "--progress".into(), "--recurse-submodules".into()];
+    if let Some(r) = git_ref {
+        args.push("--branch".into());
+        args.push(r.to_string());
+    }
+    args.push("--".into());
+    args.push(url.to_string());
+    args.push(dest.to_string_lossy().into_owned());
+    let env = with_git_env(env);
+    on_line(&format!("$ git {}", args.join(" ")));
+    let result = run_step_streamed(supervisor, git, &args, parent, &env, cancel, on_line)?;
+    if result.ok {
+        return Ok(());
+    }
+    // Failed or cancelled clone: remove the partial checkout so a retry
+    // doesn't hit our own collision guard. Guarded by the exists-check above —
+    // this fn is the dir's creator.
+    if dest.exists() {
+        let _ = std::fs::remove_dir_all(dest);
+    }
+    if result.cancelled {
+        return Err(Error::Other("clone cancelled".into()));
+    }
+    Err(map_git_error(&result.tail, url))
+}
+
+/// Translate git's stderr tail into an honest, actionable error (ports.rs
+/// house style: the copy-paste fix is the last line, `$ `-prefixed).
+pub fn map_git_error(tail: &[String], url: &str) -> Error {
+    let joined = tail.join("\n");
+    let host = host_of(url);
+    if joined.contains("Permission denied (publickey)")
+        || joined.contains("Authentication failed")
+    {
+        return Error::Other(format!(
+            "{host} refused authentication. For a private repo, make sure the \
+             SSH key you use for it is loaded — test your access in a \
+             terminal:\n$ ssh -T git@{host}"
+        ));
+    }
+    if joined.contains("Host key verification failed") {
+        return Error::Other(format!(
+            "First SSH contact with {host}: its host key isn't in your \
+             ~/.ssh/known_hosts yet. Accept it once in a terminal, then \
+             retry:\n$ ssh -T git@{host}"
+        ));
+    }
+    if joined.contains("could not read Username")
+        || joined.contains("terminal prompts disabled")
+    {
+        // GitHub answers a PRIVATE repo and a WRONG URL identically over
+        // https (anti-enumeration) — the message covers both.
+        return Error::Other(format!(
+            "{host} asked for credentials — this is a PRIVATE repo (or the \
+             URL is wrong; {host} answers both the same way). rexenv never \
+             prompts for credentials: check the URL, use the SSH form \
+             (git@{host}:owner/repo.git), or log the git CLI in once:\n\
+             $ gh auth login"
+        ));
+    }
+    // Before the generic not-found: "Remote branch X not found" contains it.
+    if joined.contains("Remote branch") && joined.contains("not found") {
+        return Error::Other(
+            "That branch/tag doesn't exist on the remote anymore — hit Fetch \
+             to refresh the list."
+                .into(),
+        );
+    }
+    if joined.contains("Repository not found")
+        || joined.contains("not found")
+        || joined.contains("does not appear to be a git repository")
+    {
+        return Error::Other(format!(
+            "Repository not found at {url}. Check the URL — or if it's \
+             private, use its SSH form (git@{host}:owner/repo.git)."
+        ));
+    }
+    if joined.contains("Could not resolve host") {
+        return Error::Other(format!(
+            "Can't reach {host} — you look offline. Check your connection and retry."
+        ));
+    }
+    let detail: Vec<&str> = tail.iter().rev().take(3).map(|s| s.as_str()).collect();
+    let detail: Vec<&str> = detail.into_iter().rev().collect();
+    Error::Other(format!("git failed:\n{}", detail.join("\n")))
+}
+
+fn host_of(url: &str) -> String {
+    parse_source(url).map(|s| s.host).unwrap_or_else(|_| "the remote".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,5 +774,71 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("folder name"));
+    }
+
+    #[test]
+    fn ls_remote_parse_extracts_default_branch_tags_and_skips_peeled() {
+        let out = "ref: refs/heads/trunk\tHEAD\n\
+                   aaa\tHEAD\n\
+                   aaa\trefs/heads/trunk\n\
+                   bbb\trefs/heads/feat/fast-build\n\
+                   ccc\trefs/tags/v1.0.0\n\
+                   ddd\trefs/tags/v1.0.0^{}\n\
+                   eee\trefs/pull/12/head\n";
+        let refs = parse_ls_remote(out);
+        assert_eq!(refs.default_branch.as_deref(), Some("trunk"));
+        assert_eq!(refs.branches, vec!["trunk", "feat/fast-build"]);
+        // Peeled ^{} duplicates and PR refs never reach the picker.
+        assert_eq!(refs.tags, vec!["v1.0.0"]);
+    }
+
+    #[test]
+    fn git_env_forces_no_terminal_prompt() {
+        let user = vec![
+            ("PATH".to_string(), "/x".to_string()),
+            ("GIT_TERMINAL_PROMPT".to_string(), "1".to_string()),
+        ];
+        let env = with_git_env(&user);
+        let vals: Vec<&str> = env
+            .iter()
+            .filter(|(k, _)| k == "GIT_TERMINAL_PROMPT")
+            .map(|(_, v)| v.as_str())
+            .collect();
+        // The user's own =1 must never survive — a hidden prompt is a hang.
+        assert_eq!(vals, vec!["0"]);
+        assert!(env.iter().any(|(k, v)| k == "PATH" && v == "/x"));
+    }
+
+    #[test]
+    fn strip_ansi_removes_csi_sequences() {
+        assert_eq!(strip_ansi("\u{1b}[32mok\u{1b}[0m done"), "ok done");
+        assert_eq!(strip_ansi("plain"), "plain");
+        assert_eq!(strip_ansi("\u{1b}[1;31mred\u{1b}[m"), "red");
+    }
+
+    #[test]
+    fn git_errors_map_to_actionable_messages() {
+        let cases: &[(&str, &str)] = &[
+            ("git@github.com: Permission denied (publickey).", "ssh -T git@github.com"),
+            ("Host key verification failed.", "known_hosts"),
+            (
+                "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+                "PRIVATE",
+            ),
+            ("remote: Repository not found.", "Repository not found"),
+            ("fatal: Remote branch gone-branch not found in upstream origin", "Fetch"),
+            ("fatal: unable to access 'x': Could not resolve host: github.com", "offline"),
+        ];
+        for (stderr, needle) in cases {
+            let err = map_git_error(
+                &[stderr.to_string()],
+                "https://github.com/acme/my-plugin",
+            )
+            .to_string();
+            assert!(err.contains(needle), "{stderr}: {err}");
+        }
+        // Unknown failures keep the raw tail — never swallowed.
+        let raw = map_git_error(&["something exploded".into()], "https://github.com/a/b");
+        assert!(raw.to_string().contains("something exploded"));
     }
 }

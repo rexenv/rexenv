@@ -311,6 +311,64 @@ impl ProcessSupervisor for MacosSupervisor {
         stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL)
     }
 
+    fn spawn_streamed(
+        &self,
+        program: &Path,
+        args: &[String],
+        cwd: &Path,
+        env: &[(String, String)],
+    ) -> Result<Child> {
+        use std::os::unix::process::CommandExt;
+        use std::process::Stdio;
+        let mut cmd = std::process::Command::new(program);
+        cmd.args(args)
+            .current_dir(cwd)
+            // FULL env replacement: the child sees the user's shell env (nvm
+            // PATH, SSH_AUTH_SOCK), never our bare launchd inheritance.
+            .env_clear()
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            // Own group (pgid = child pid) so stop_group signals the TREE.
+            .process_group(0);
+        Ok(cmd.spawn()?)
+    }
+
+    fn stop_group(&self, pgid: u32) -> Result<()> {
+        // pkill -g matches by process group — no negative-pid argv parsing
+        // pitfalls. Liveness = "any process left in the group" (pgrep -g),
+        // NOT the leader's pid: a dead leader can leave TERM-ignoring
+        // children holding the group.
+        fn group_signal(sig: &str, pgid: u32) {
+            let _ = std::process::Command::new("pkill")
+                .args([&format!("-{sig}"), "-g", &pgid.to_string()])
+                .status();
+        }
+        fn group_alive(pgid: u32) -> bool {
+            std::process::Command::new("pgrep")
+                .args(["-g", &pgid.to_string()])
+                .output()
+                .map(|o| o.status.success() && !o.stdout.is_empty())
+                .unwrap_or(false)
+        }
+        group_signal("TERM", pgid);
+        for _ in 0..STOP_GRACE_TRIES {
+            if !group_alive(pgid) {
+                return Ok(());
+            }
+            std::thread::sleep(STOP_POLL_INTERVAL);
+        }
+        group_signal("KILL", pgid);
+        for _ in 0..STOP_GRACE_TRIES {
+            if !group_alive(pgid) {
+                return Ok(());
+            }
+            std::thread::sleep(STOP_POLL_INTERVAL);
+        }
+        Err(Error::Other(format!("process group {pgid} survived SIGKILL")))
+    }
+
     fn owned_listeners(&self, port: u16, owner_marker: &str) -> Vec<u32> {
         // `lsof -t` → pids with a LISTEN socket on this TCP port.
         let out = match std::process::Command::new("lsof")
