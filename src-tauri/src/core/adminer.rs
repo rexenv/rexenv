@@ -93,18 +93,29 @@ function adminer_object() {
             function loginForm() {
                 parent::loginForm();
                 if (isset($_GET['rexenv_auto'])) {
-                    // Auto-submit once. Guards: never on a page already showing a
-                    // login error (prevents a submit loop when the engine is down),
-                    // and sessionStorage is best-effort — it can throw on the
-                    // app's custom-scheme origin, and a thrown guard must not
-                    // kill the submit.
+                    // Auto-submit once PER TARGET SERVER. Guards: never on a page
+                    // already showing a login error (prevents a submit loop when
+                    // the engine is down); sessionStorage is best-effort — it can
+                    // throw on the app's custom-scheme origin, and a thrown guard
+                    // must not kill the submit. The guard key MUST include the
+                    // target server: the embedded webview is ONE permanent tab
+                    // (one sessionStorage per origin), so a global one-shot let
+                    // the first engine's auto-login permanently suppress every
+                    // other engine's (observed live: embedded MariaDB never
+                    // auto-logged-in after MySQL had). The param name is part of
+                    // the key so MySQL-protocol (server=) and Postgres (pgsql=)
+                    // targets can never collide.
+                    $target = isset($_GET['pgsql'])
+                        ? 'pgsql:' . $_GET['pgsql']
+                        : 'server:' . (isset($_GET['server']) ? $_GET['server'] : '');
                     echo "<script" . \Adminer\nonce() . ">"
                        . "(function(){"
                        . "if(document.querySelector('.error'))return;"
+                       . "var key=" . json_encode('rexenv_autologin:' . $target) . ";"
                        . "var seen=null;"
-                       . "try{seen=sessionStorage.getItem('rexenv_autologin');}catch(e){}"
+                       . "try{seen=sessionStorage.getItem(key);}catch(e){}"
                        . "if(seen)return;"
-                       . "try{sessionStorage.setItem('rexenv_autologin','1');}catch(e){}"
+                       . "try{sessionStorage.setItem(key,'1');}catch(e){}"
                        . "var f=document.querySelector('[name=\"auth[driver]\"]');"
                        . "if(f&&f.form){f.form.submit();}"
                        . "})();"
@@ -325,6 +336,25 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains("\\Adminer\\nonce()"));
         // It serves the real Adminer beside it.
         assert!(WRAPPER_INDEX_PHP.contains("require __DIR__ . '/adminer.php'"));
+    }
+
+    #[test]
+    fn autologin_guard_is_keyed_per_target_server() {
+        // The embedded webview is one permanent tab (one sessionStorage per
+        // origin) — a global one-shot guard let the first engine's auto-login
+        // suppress every other engine's. The key must carry the target server,
+        // for BOTH param families we expose (server= for MySQL/MariaDB,
+        // pgsql= for Postgres), with the param name in the key so the two
+        // families can never collide.
+        assert!(WRAPPER_INDEX_PHP.contains("'rexenv_autologin:' . $target"));
+        assert!(WRAPPER_INDEX_PHP.contains("'pgsql:' . $_GET['pgsql']"));
+        assert!(WRAPPER_INDEX_PHP.contains("'server:' . (isset($_GET['server'])"));
+        // Same-server loop protection stays: the key is still set before the
+        // submit and checked before firing.
+        assert!(WRAPPER_INDEX_PHP.contains("sessionStorage.getItem(key)"));
+        assert!(WRAPPER_INDEX_PHP.contains("sessionStorage.setItem(key,'1')"));
+        // No global (unkeyed) guard left behind.
+        assert!(!WRAPPER_INDEX_PHP.contains("getItem('rexenv_autologin')"));
     }
 
     #[test]
