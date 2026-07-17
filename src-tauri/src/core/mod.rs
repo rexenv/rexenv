@@ -25,6 +25,7 @@ pub mod postgres;
 pub mod proc;
 pub mod proxy;
 pub mod redis;
+pub mod repo;
 pub mod service_manager;
 pub mod services;
 pub mod setup;
