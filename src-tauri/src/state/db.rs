@@ -123,6 +123,11 @@ const MIGRATIONS: &[&str] = &[
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         PRIMARY KEY (site_id, kind, dir_name)
     );",
+    // v13 — asset provenance origin: 'cloned' (added via the Git flow),
+    // 'adopted' (manually-cloned checkout the user chose to manage), or
+    // 'linked' (symlink into wp-content — deletes must UNLINK, never recurse
+    // into the target). Every pre-v13 row came from the clone flow — exact.
+    "ALTER TABLE site_git_assets ADD COLUMN source TEXT NOT NULL DEFAULT 'cloned';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

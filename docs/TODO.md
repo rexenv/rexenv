@@ -372,6 +372,39 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;
   re-verify converted-multisite items + onboarding fixes on the next cold run.
 
+## Asset follow-ups — plan green-lit 18 Jul 2026 (phases A-D; build in order)
+
+- [x] **Phase A — asset foundation + adopt + status-driven delete safety**
+  (18 Jul, 1 commit). v13 `site_git_assets.source` (cloned|adopted|linked —
+  linked deletes must UNLINK; backfill exact). `core/repo.rs`:
+  `parse_status_v2` (PURE; tested against detached HEAD, no-upstream,
+  dirty+ahead, unborn), `loss_warning` (exact sentences, Rust-tested —
+  "3 changed files, 2 untracked files, and 2 unpushed commits will be
+  lost."), `read_git_status`/`read_remote_url` (local, capped, no repo
+  code), `scan_unmanaged` (.git dir OR file — worktrees; symlink detection;
+  tested incl. symlink fixture). IPC: `repo_asset_status` (+lossWarning,
+  +logKey), `repo_unmanaged`, `repo_adopt` (metadata only). UI: git badge →
+  button opening the per-asset RepoPanel (branch/clean-dirty/↑↓ vs
+  upstream/remote/source + last-job log inline; row expansion, themes
+  col-span-full); dashed "git?" adopt chips; plugin single+bulk delete and
+  theme delete confirms show the loss warning verbatim for git assets.
+  ✓ 310 lib tests (+3), tsc, vite build, examples, clippy no new; WebKit
+  harness `?panel=repo` ALL PASS + rehydrate/interactive re-run green.
+  **Awaiting human verify — test-doc §9** (dirty+ahead delete confirm names
+  the numbers; manual-clone adopt round-trip).
+- [ ] Phase B — git ops (fetch / pull --ff-only / checkout / push) as jobs
+  in the panel; branch dropdown; lockfile-change → "run install" hint;
+  git_ref provenance update on checkout; mapped errors (diverged, dirty,
+  non-ff, no-upstream push).
+- [ ] Phase C — scripts + watch (RepoWatches registry: process-group,
+  die-with-app, Restart-not-auto; name heuristic dev/watch/start/serve/hot;
+  global watcher chip).
+- [ ] Phase D — link existing folder (third source tab, picker,
+  validations, symlink, source=linked) + DELETE INTERCEPTION for linked
+  assets (unlink only — wp-cli delete would walk INTO the link and destroy
+  the real checkout) incl. the bulk path; serve-verify on all three
+  servers; docs + test-doc §10-12.
+
 ## QA round — add-from-Git (18 Jul 2026)
 
 - [x] **Running git job disappears on tab switch (dangerous — invited a

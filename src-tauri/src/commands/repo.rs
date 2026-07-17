@@ -376,6 +376,7 @@ fn run_clone_and_detect(app: &AppHandle, entry: &Arc<JobEntry>) {
             &entry.dir_name,
             &entry.url,
             entry.git_ref.as_deref(),
+            "cloned",
         );
     }
 }
@@ -548,6 +549,125 @@ pub async fn repo_assets(
 ) -> Result<Vec<crate::state::models::GitAsset>> {
     let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
     store::get_git_assets(&conn, &site_id)
+}
+
+/// A checkout's live state for the RepoPanel + the delete-safety confirm.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetStatusResult {
+    #[serde(flatten)]
+    pub status: repo::GitStatus,
+    /// `origin` remote URL, when set.
+    pub remote: Option<String>,
+    /// What deleting this checkout destroys — the confirm shows it verbatim.
+    /// None = clean and provably pushed.
+    pub loss_warning: Option<String>,
+    /// Log key of the last add-job for this dir, when the file exists.
+    pub log_key: Option<String>,
+}
+
+/// Live git status for one managed (or about-to-be-adopted) asset dir.
+/// Local + fast, runs no repo code.
+#[tauri::command]
+pub async fn repo_asset_status(
+    app: AppHandle,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<AssetStatusResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let jobs = app.state::<RepoJobs>();
+        let site = site_of(&state, &site_id)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        if !dir.join(".git").exists() {
+            return Err(Error::Other(format!(
+                "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
+            )));
+        }
+        let env = shell_env(&state, &jobs, false)?;
+        let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
+        let status = repo::read_git_status(&git.path, &env, &dir)?;
+        let remote = repo::read_remote_url(&git.path, &env, &dir);
+        let loss_warning = repo::loss_warning(&status);
+        let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+        let log_key = state
+            .platform
+            .paths()
+            .log_dir()
+            .ok()
+            .filter(|d| d.join(&log_key).is_file())
+            .map(|_| log_key);
+        Ok(AssetStatusResult { status, remote, loss_warning, log_key })
+    })
+    .await
+    .map_err(|e| Error::Other(format!("status task failed: {e}")))?
+}
+
+/// wp-content dirs that look like git checkouts but have no provenance row —
+/// the quiet "git?" adopt chips.
+#[tauri::command]
+pub async fn repo_unmanaged(
+    state: State<'_, AppState>,
+    site_id: String,
+    kind: String,
+) -> Result<Vec<repo::UnmanagedRepo>> {
+    let site = site_of(&state, &site_id)?;
+    let content = repo::asset_dest(std::path::Path::new(&site.path), &kind, "probe")?
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| Error::Other("no content dir".into()))?;
+    let known: Vec<String> = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        store::get_git_assets(&conn, &site_id)?
+            .into_iter()
+            .filter(|a| a.kind == kind)
+            .map(|a| a.dir_name)
+            .collect()
+    };
+    Ok(repo::scan_unmanaged(&content, &known))
+}
+
+/// Adopt a manually-cloned (or manually-linked) checkout: record provenance
+/// (origin remote + current branch) — metadata only, nothing on disk changes.
+#[tauri::command]
+pub async fn repo_adopt(
+    app: AppHandle,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let jobs = app.state::<RepoJobs>();
+        let site = site_of(&state, &site_id)?;
+        let dir_name = repo::validate_dir_name(&dir_name)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        if !dir.join(".git").exists() {
+            return Err(Error::Other(format!(
+                "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
+            )));
+        }
+        let linked = std::fs::symlink_metadata(&dir)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        let env = shell_env(&state, &jobs, false)?;
+        let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
+        let remote = repo::read_remote_url(&git.path, &env, &dir).unwrap_or_default();
+        let branch = repo::read_git_status(&git.path, &env, &dir).ok().and_then(|s| s.branch);
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        store::upsert_git_asset(
+            &conn,
+            &site_id,
+            &kind,
+            &dir_name,
+            &remote,
+            branch.as_deref(),
+            if linked { "linked" } else { "adopted" },
+        )
+    })
+    .await
+    .map_err(|e| Error::Other(format!("adopt task failed: {e}")))?
 }
 
 #[derive(Debug, Clone, Serialize)]

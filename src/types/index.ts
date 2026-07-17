@@ -583,6 +583,32 @@ export interface GitAsset {
   dirName: string;
   url: string;
   gitRef: string | null;
+  /** "cloned" | "adopted" | "linked" — linked assets delete by UNLINK. */
+  source: string;
+}
+
+/** Live checkout state (RepoPanel + the delete-safety confirm). */
+export interface RepoAssetStatus {
+  branch: string | null;
+  detached: boolean;
+  unborn: boolean;
+  upstream: string | null;
+  ahead: number | null;
+  behind: number | null;
+  changed: number;
+  untracked: number;
+  remote: string | null;
+  /** What deleting this checkout destroys, ready to show verbatim — null =
+   *  clean and provably pushed. */
+  lossWarning: string | null;
+  /** Last add-job log key, when the file exists. */
+  logKey: string | null;
+}
+
+/** A wp-content dir that looks like a git checkout but isn't managed yet. */
+export interface UnmanagedRepo {
+  dirName: string;
+  linked: boolean;
 }
 
 /** git/node availability for the Git add panel (composer is always the

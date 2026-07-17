@@ -684,6 +684,190 @@ fn host_of(url: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Asset status (git status --porcelain=v2 --branch) — pure parser + runners
+// ---------------------------------------------------------------------------
+
+/// One checkout's working-tree state. Feeds the RepoPanel header AND the
+/// delete-safety warning ([`loss_warning`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatus {
+    /// Current branch; None when detached.
+    pub branch: Option<String>,
+    pub detached: bool,
+    /// No commits yet (fresh `git init` / empty clone) — porcelain `(initial)`.
+    pub unborn: bool,
+    pub upstream: Option<String>,
+    /// Some only when an upstream is set and resolvable (`branch.ab` line).
+    pub ahead: Option<u32>,
+    pub behind: Option<u32>,
+    /// Tracked entries with changes (staged or not, renames, unmerged).
+    pub changed: u32,
+    /// Untracked files — also lost on delete, so counted separately.
+    pub untracked: u32,
+}
+
+/// Parse `git status --porcelain=v2 --branch` output. PURE — unit-tested
+/// against the tricky shapes (detached HEAD, no upstream, dirty+ahead,
+/// unborn branch).
+pub fn parse_status_v2(out: &str) -> GitStatus {
+    let mut st = GitStatus::default();
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix("# branch.oid ") {
+            st.unborn = rest.trim() == "(initial)";
+        } else if let Some(rest) = line.strip_prefix("# branch.head ") {
+            let head = rest.trim();
+            if head == "(detached)" {
+                st.detached = true;
+            } else {
+                st.branch = Some(head.to_string());
+            }
+        } else if let Some(rest) = line.strip_prefix("# branch.upstream ") {
+            st.upstream = Some(rest.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("# branch.ab ") {
+            for part in rest.split_whitespace() {
+                if let Some(a) = part.strip_prefix('+') {
+                    st.ahead = a.parse().ok();
+                } else if let Some(b) = part.strip_prefix('-') {
+                    st.behind = b.parse().ok();
+                }
+            }
+        } else if line.starts_with("1 ") || line.starts_with("2 ") || line.starts_with("u ") {
+            st.changed += 1;
+        } else if line.starts_with("? ") {
+            st.untracked += 1;
+        }
+    }
+    st
+}
+
+/// What deleting this checkout would destroy, as one honest sentence — or
+/// None when nothing is provably at risk (clean tree, everything pushed).
+/// The UI prepends context ("This folder is a git checkout…").
+pub fn loss_warning(st: &GitStatus) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if st.changed > 0 {
+        parts.push(format!(
+            "{} changed file{}",
+            st.changed,
+            if st.changed == 1 { "" } else { "s" }
+        ));
+    }
+    if st.untracked > 0 {
+        parts.push(format!(
+            "{} untracked file{}",
+            st.untracked,
+            if st.untracked == 1 { "" } else { "s" }
+        ));
+    }
+    if let Some(ahead) = st.ahead.filter(|a| *a > 0) {
+        parts.push(format!(
+            "{ahead} unpushed commit{}",
+            if ahead == 1 { "" } else { "s" }
+        ));
+    }
+    let mut caveat = String::new();
+    if st.detached {
+        caveat.push_str(" (detached HEAD — commits made here may not be on any branch)");
+    } else if st.upstream.is_none() && !st.unborn {
+        caveat.push_str(" (no upstream set — local-only commits can't be counted)");
+    }
+    if parts.is_empty() {
+        // Nothing countable at risk — but a no-upstream/detached checkout
+        // still can't be proven pushed, so keep that caveat as the warning.
+        if caveat.is_empty() {
+            return None;
+        }
+        return Some(format!("This checkout can't be verified as pushed{caveat}."));
+    }
+    let list = match parts.len() {
+        1 => parts.remove(0),
+        2 => format!("{} and {}", parts[0], parts[1]),
+        _ => format!("{}, {}, and {}", parts[0], parts[1], parts[2]),
+    };
+    Some(format!("{list} will be lost{caveat}."))
+}
+
+/// Run + parse git status for a checkout (local, fast, no network; runs no
+/// repo code). 10s cap is generous — gutenberg answers in ~100ms.
+pub fn read_git_status(git: &Path, env: &[(String, String)], dir: &Path) -> Result<GitStatus> {
+    let env = with_git_env(env);
+    let out = run_captured_with_cap(
+        git,
+        &["-C", &dir.to_string_lossy(), "status", "--porcelain=v2", "--branch"],
+        &env,
+        Duration::from_secs(10),
+    )?;
+    if !out.ok {
+        return Err(Error::Other(format!(
+            "git status failed in {}:\n{}",
+            dir.display(),
+            out.stderr_tail.join("\n")
+        )));
+    }
+    Ok(parse_status_v2(&out.stdout))
+}
+
+/// The checkout's `origin` remote URL, if any (local read, no network).
+pub fn read_remote_url(git: &Path, env: &[(String, String)], dir: &Path) -> Option<String> {
+    let env = with_git_env(env);
+    let out = run_captured_with_cap(
+        git,
+        &["-C", &dir.to_string_lossy(), "remote", "get-url", "origin"],
+        &env,
+        Duration::from_secs(10),
+    )
+    .ok()?;
+    if !out.ok {
+        return None;
+    }
+    let url = out.stdout.trim();
+    (!url.is_empty()).then(|| url.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Unmanaged-checkout scan (adopt flow)
+// ---------------------------------------------------------------------------
+
+/// A wp-content dir that looks like a git checkout but has no provenance row.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmanagedRepo {
+    pub dir_name: String,
+    /// The dir itself is a symlink (manual link — adopts as source "linked").
+    pub linked: bool,
+}
+
+/// Depth-1 scan of a wp-content/{plugins,themes} dir for git checkouts not in
+/// `known`. `.git` may be a dir OR a file (worktrees, submodules) — existence
+/// is the signal. Hidden dirs skipped (the vhost guard 404s them anyway).
+pub fn scan_unmanaged(content_dir: &Path, known: &[String]) -> Vec<UnmanagedRepo> {
+    let Ok(entries) = std::fs::read_dir(content_dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<UnmanagedRepo> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            if name.starts_with('.') || known.iter().any(|k| k == &name) {
+                return None;
+            }
+            let path = e.path();
+            // is_dir follows symlinks — a linked checkout is still a dir here.
+            if !path.is_dir() || !path.join(".git").exists() {
+                return None;
+            }
+            let linked = std::fs::symlink_metadata(&path)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false);
+            Some(UnmanagedRepo { dir_name: name, linked })
+        })
+        .collect();
+    out.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
+    out
+}
+
+// ---------------------------------------------------------------------------
 // Detection (pure fs — runs right after a clone, before any button shows)
 // ---------------------------------------------------------------------------
 
@@ -1246,6 +1430,115 @@ mod tests {
         assert!(node_version_warning("lts/iron", "v22.17.0").is_none());
         let msg = node_version_warning("18", "v22.17.0").unwrap();
         assert!(msg.contains("nvm install 18"), "{msg}");
+    }
+
+    #[test]
+    fn porcelain_v2_parses_the_tricky_shapes() {
+        // Dirty + ahead simultaneously, upstream set: the everyday case.
+        let dirty_ahead = "# branch.oid 3fe2\n\
+                           # branch.head feat/x\n\
+                           # branch.upstream origin/feat/x\n\
+                           # branch.ab +2 -1\n\
+                           1 .M N... 100644 100644 100644 a1 a2 src/index.js\n\
+                           1 M. N... 100644 100644 100644 b1 b2 readme.md\n\
+                           2 R. N... 100644 100644 100644 c1 c2 R100 new.js\told.js\n\
+                           u UU N... 100644 100644 100644 100644 d1 d2 d3 conflict.js\n\
+                           ? build/out.js\n";
+        let st = parse_status_v2(dirty_ahead);
+        assert_eq!(st.branch.as_deref(), Some("feat/x"));
+        assert!(!st.detached && !st.unborn);
+        assert_eq!(st.upstream.as_deref(), Some("origin/feat/x"));
+        assert_eq!((st.ahead, st.behind), (Some(2), Some(1)));
+        assert_eq!((st.changed, st.untracked), (4, 1)); // 1+1+rename+unmerged / ?
+
+        // Detached HEAD: no branch, no upstream/ab lines.
+        let detached = "# branch.oid 3fe2\n# branch.head (detached)\n";
+        let st = parse_status_v2(detached);
+        assert!(st.detached);
+        assert_eq!(st.branch, None);
+        assert_eq!(st.ahead, None);
+
+        // No upstream: branch known, ahead/behind UNKNOWN (None, not 0).
+        let no_up = "# branch.oid 3fe2\n# branch.head main\n1 .M N... 100644 100644 100644 a b f\n";
+        let st = parse_status_v2(no_up);
+        assert_eq!(st.branch.as_deref(), Some("main"));
+        assert_eq!(st.upstream, None);
+        assert_eq!(st.ahead, None);
+        assert_eq!(st.changed, 1);
+
+        // Fresh clone/init with no commits: unborn.
+        let unborn = "# branch.oid (initial)\n# branch.head main\n? plugin.php\n";
+        let st = parse_status_v2(unborn);
+        assert!(st.unborn);
+        assert_eq!(st.untracked, 1);
+    }
+
+    #[test]
+    fn loss_warning_names_exactly_what_dies() {
+        let mk = |changed, untracked, ahead: Option<u32>, upstream: bool, detached: bool, unborn: bool| GitStatus {
+            branch: (!detached).then(|| "main".into()),
+            detached,
+            unborn,
+            upstream: upstream.then(|| "origin/main".into()),
+            ahead,
+            behind: None,
+            changed,
+            untracked,
+        };
+        // The case the human verify targets: dirty + unpushed, all named.
+        assert_eq!(
+            loss_warning(&mk(3, 2, Some(2), true, false, false)).unwrap(),
+            "3 changed files, 2 untracked files, and 2 unpushed commits will be lost."
+        );
+        assert_eq!(
+            loss_warning(&mk(1, 0, Some(0), true, false, false)).unwrap(),
+            "1 changed file will be lost."
+        );
+        // Clean + pushed → no warning at all.
+        assert_eq!(loss_warning(&mk(0, 0, Some(0), true, false, false)), None);
+        // No upstream: honest that unpushed can't be counted.
+        let no_up = loss_warning(&mk(2, 0, None, false, false, false)).unwrap();
+        assert!(no_up.starts_with("2 changed files will be lost"), "{no_up}");
+        assert!(no_up.contains("no upstream"), "{no_up}");
+        // Clean but no upstream: still can't prove pushed — caveat-only warning.
+        let clean_no_up = loss_warning(&mk(0, 0, None, false, false, false)).unwrap();
+        assert!(clean_no_up.contains("can't be verified as pushed"), "{clean_no_up}");
+        // Detached: the caveat names it.
+        let det = loss_warning(&mk(0, 1, None, false, true, false)).unwrap();
+        assert!(det.contains("detached HEAD"), "{det}");
+        // Unborn with untracked work: counted, no upstream caveat (meaningless).
+        let un = loss_warning(&mk(0, 3, None, false, false, true)).unwrap();
+        assert_eq!(un, "3 untracked files will be lost.");
+    }
+
+    #[test]
+    #[cfg(unix)] // creates a symlink fixture
+    fn unmanaged_scan_finds_unknown_checkouts_only() {
+        let base = std::env::temp_dir().join(format!("rexenv-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let content = base.join("wp-content/plugins");
+        std::fs::create_dir_all(content.join("known-git/.git")).unwrap();
+        std::fs::create_dir_all(content.join("manual-clone/.git")).unwrap();
+        std::fs::create_dir_all(content.join("plain-plugin")).unwrap(); // no .git
+        // .git as a FILE (worktree/submodule form) still counts.
+        std::fs::create_dir_all(content.join("worktree-form")).unwrap();
+        std::fs::write(content.join("worktree-form/.git"), "gitdir: elsewhere").unwrap();
+        std::fs::create_dir_all(content.join(".hidden/.git")).unwrap(); // skipped
+        // A symlinked checkout elsewhere on disk.
+        let target = base.join("elsewhere/my-linked");
+        std::fs::create_dir_all(target.join(".git")).unwrap();
+        std::os::unix::fs::symlink(&target, content.join("my-linked")).unwrap();
+
+        let found = scan_unmanaged(&content, &["known-git".to_string()]);
+        let names: Vec<(&str, bool)> =
+            found.iter().map(|u| (u.dir_name.as_str(), u.linked)).collect();
+        assert_eq!(
+            names,
+            vec![("manual-clone", false), ("my-linked", true), ("worktree-form", false)]
+        );
+        // Missing dir → empty, no error.
+        assert!(scan_unmanaged(&base.join("nope"), &[]).is_empty());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

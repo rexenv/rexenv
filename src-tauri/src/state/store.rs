@@ -380,7 +380,7 @@ pub fn replace_site_env(
 /// One site's git-sourced wp-content dirs (list badges; future update/watch).
 pub fn get_git_assets(conn: &Connection, site_id: &str) -> Result<Vec<GitAsset>> {
     let mut stmt = conn.prepare(
-        "SELECT kind, dir_name, url, git_ref FROM site_git_assets \
+        "SELECT kind, dir_name, url, git_ref, source FROM site_git_assets \
          WHERE site_id = ?1 ORDER BY kind, dir_name",
     )?;
     let rows = stmt.query_map([site_id], |r| {
@@ -389,6 +389,7 @@ pub fn get_git_assets(conn: &Connection, site_id: &str) -> Result<Vec<GitAsset>>
             dir_name: r.get(1)?,
             url: r.get(2)?,
             git_ref: r.get(3)?,
+            source: r.get(4)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -396,6 +397,7 @@ pub fn get_git_assets(conn: &Connection, site_id: &str) -> Result<Vec<GitAsset>>
 
 /// Record (or replace) where a cloned dir came from — written on clone
 /// success. Re-adding the same (site, kind, dir) replaces the row.
+#[allow(clippy::too_many_arguments)] // flat mirror of the row
 pub fn upsert_git_asset(
     conn: &Connection,
     site_id: &str,
@@ -403,11 +405,12 @@ pub fn upsert_git_asset(
     dir_name: &str,
     url: &str,
     git_ref: Option<&str>,
+    source: &str,
 ) -> Result<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO site_git_assets (site_id, kind, dir_name, url, git_ref) \
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![site_id, kind, dir_name, url, git_ref],
+        "INSERT OR REPLACE INTO site_git_assets (site_id, kind, dir_name, url, git_ref, source) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![site_id, kind, dir_name, url, git_ref, source],
     )?;
     Ok(())
 }

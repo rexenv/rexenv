@@ -142,10 +142,13 @@ pub struct GitAsset {
     /// Folder name under wp-content/{plugins,themes} — matches the wp-cli
     /// list row's slug/stylesheet name.
     pub dir_name: String,
-    /// Normalized clone URL.
+    /// Normalized clone URL (adopted repos: their origin remote; may be
+    /// empty when a local-only checkout has no remote).
     pub url: String,
     /// Requested branch/tag at add time (None = the remote default).
     pub git_ref: Option<String>,
+    /// "cloned" | "adopted" | "linked" — linked assets DELETE BY UNLINK.
+    pub source: String,
 }
 
 /// One plugin/theme entry in a blueprint: a wp.org slug + whether to activate it

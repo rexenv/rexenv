@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoJobState, RepoProbeResult, RepoToolStatus, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoJobState, RepoProbeResult, RepoToolStatus, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1259,4 +1259,33 @@ export async function onRepoJobOutput(
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   return listen<string>(`repo-job://output/${id}`, (e) => cb(e.payload));
+}
+
+/** Live git status for one managed asset dir (local, fast, runs no repo code). */
+export async function repoAssetStatus(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+): Promise<RepoAssetStatus> {
+  return invoke<RepoAssetStatus>("repo_asset_status", { siteId, kind, dirName });
+}
+
+/** wp-content dirs that look like git checkouts but have no provenance row
+ *  (the quiet "git?" adopt chips). Empty outside Tauri. */
+export async function repoUnmanaged(
+  siteId: string,
+  kind: "plugin" | "theme",
+): Promise<UnmanagedRepo[]> {
+  if (!isTauri()) return [];
+  return invoke<UnmanagedRepo[]>("repo_unmanaged", { siteId, kind });
+}
+
+/** Adopt a manually-cloned/linked checkout: records provenance (origin remote
+ *  + current branch) — metadata only, nothing on disk changes. */
+export async function repoAdopt(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+): Promise<void> {
+  await invoke("repo_adopt", { siteId, kind, dirName });
 }

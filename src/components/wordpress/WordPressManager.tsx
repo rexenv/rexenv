@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -58,8 +58,11 @@ import {
   wpSuperAdmins,
   wpThemeActivate,
   wpThemeDelete,
+  repoAdopt,
+  repoAssetStatus,
   repoAssets,
   repoSiteJobs,
+  repoUnmanaged,
   wpThemeInstall,
   wpThemeUpdate,
   wpThemes,
@@ -72,6 +75,7 @@ import {
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
 import { GitAddPanel } from "./GitAddPanel";
+import { RepoPanel } from "./RepoPanel";
 import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
@@ -2146,9 +2150,60 @@ function ThemesPanel({ siteId }: { siteId: string }) {
     () => new Set((gitAssets.data ?? []).filter((a) => a.kind === "theme").map((a) => a.dirName)),
     [gitAssets.data],
   );
+  const assetFor = (name: string) =>
+    (gitAssets.data ?? []).find((a) => a.kind === "theme" && a.dirName === name);
   const refreshAfterGit = () => {
     qc.invalidateQueries({ queryKey: ["wp-themes", siteId] });
     qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
+    qc.invalidateQueries({ queryKey: ["repo-unmanaged", siteId, "theme"] });
+  };
+  const unmanaged = useQuery({
+    queryKey: ["repo-unmanaged", siteId, "theme"],
+    queryFn: () => repoUnmanaged(siteId, "theme"),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const unmanagedSet = useMemo(
+    () => new Set((unmanaged.data ?? []).map((u) => u.dirName)),
+    [unmanaged.data],
+  );
+  const [openRepo, setOpenRepo] = useState<string | null>(null);
+  const adoptRepo = async (name: string) => {
+    if (
+      await confirm({
+        title: `Manage "${name}" in rexenv?`,
+        message:
+          "This folder looks like a git checkout. Adopting records its remote and branch so rexenv can show its repo state — nothing on disk changes.",
+        confirmLabel: "Adopt",
+      })
+    ) {
+      try {
+        await repoAdopt(siteId, "theme", name);
+        refreshAfterGit();
+        setOpenRepo(name);
+      } catch (e) {
+        toastBackendError(e);
+      }
+    }
+  };
+  const confirmDelete = async (title: string, name: string): Promise<boolean> => {
+    let message: React.ReactNode;
+    if (gitDirs.has(name) || unmanagedSet.has(name)) {
+      let line: string;
+      try {
+        const st = await repoAssetStatus(siteId, "theme", name);
+        line = st.lossWarning ?? "clean and pushed — nothing at risk.";
+      } catch {
+        line = "git checkout — anything uncommitted will be lost.";
+      }
+      message = (
+        <div className="space-y-1">
+          <div>This deletes a git checkout:</div>
+          <div className="font-mono text-[0.71875rem]">{`${name}: ${line}`}</div>
+        </div>
+      );
+    }
+    return confirm({ title, message, danger: true, confirmLabel: "Delete" });
   };
   const repoJobs = useQuery({
     queryKey: ["repo-jobs", siteId, "theme"],
@@ -2264,18 +2319,30 @@ function ThemesPanel({ siteId }: { siteId: string }) {
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {themes.map((t) => (
+            <Fragment key={t.name}>
             <ThemeCard
-              key={t.name}
               t={t}
               git={gitDirs.has(t.name)}
+              unmanaged={unmanagedSet.has(t.name)}
+              onGitClick={() =>
+                gitDirs.has(t.name)
+                  ? setOpenRepo((cur) => (cur === t.name ? null : t.name))
+                  : adoptRepo(t.name)
+              }
               busy={busy}
               onActivate={() => run.mutate(() => wpThemeActivate(siteId, t.name))}
               onUpdate={() => run.mutate(() => wpThemeUpdate(siteId, [t.name]))}
               onDelete={async () => {
-                if (await confirm({ title: `Delete theme "${t.name}"?`, danger: true, confirmLabel: "Delete" }))
+                if (await confirmDelete(`Delete theme "${t.name}"?`, t.name))
                   run.mutate(() => wpThemeDelete(siteId, [t.name]));
               }}
             />
+            {openRepo === t.name && assetFor(t.name) && (
+              <div className="col-span-full">
+                <RepoPanel siteId={siteId} kind="theme" asset={assetFor(t.name)!} />
+              </div>
+            )}
+            </Fragment>
           ))}
         </div>
       )}
@@ -2286,6 +2353,8 @@ function ThemesPanel({ siteId }: { siteId: string }) {
 function ThemeCard({
   t,
   git,
+  unmanaged,
+  onGitClick,
   busy,
   onActivate,
   onUpdate,
@@ -2293,6 +2362,8 @@ function ThemeCard({
 }: {
   t: WpTheme;
   git?: boolean;
+  unmanaged?: boolean;
+  onGitClick?: () => void;
   busy: boolean;
   onActivate: () => void;
   onUpdate: () => void;
@@ -2330,12 +2401,24 @@ function ThemeCard({
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-rex-text">{t.name}</span>
           {git && (
-            <span
-              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400"
-              title="Cloned from a git repository"
+            <button
+              type="button"
+              onClick={onGitClick}
+              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400 transition-colors hover:bg-sky-500/25"
+              title="Git checkout — click for repo state"
             >
               git
-            </span>
+            </button>
+          )}
+          {unmanaged && (
+            <button
+              type="button"
+              onClick={onGitClick}
+              className="rounded-full border border-dashed border-sky-400/40 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400/80 transition-colors hover:border-sky-400 hover:text-sky-400"
+              title="Looks like a git checkout — click to manage it in rexenv"
+            >
+              git?
+            </button>
           )}
           {active && (
             <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-emerald-400">
@@ -2574,9 +2657,70 @@ function PluginsPanel({ siteId }: { siteId: string }) {
     () => new Set((gitAssets.data ?? []).filter((a) => a.kind === "plugin").map((a) => a.dirName)),
     [gitAssets.data],
   );
+  const assetFor = (name: string) =>
+    (gitAssets.data ?? []).find((a) => a.kind === "plugin" && a.dirName === name);
   const refreshAfterGit = () => {
     qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
     qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
+    qc.invalidateQueries({ queryKey: ["repo-unmanaged", siteId, "plugin"] });
+  };
+  // Manually-cloned checkouts with no provenance row → quiet "git?" chips.
+  const unmanaged = useQuery({
+    queryKey: ["repo-unmanaged", siteId, "plugin"],
+    queryFn: () => repoUnmanaged(siteId, "plugin"),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const unmanagedSet = useMemo(
+    () => new Set((unmanaged.data ?? []).map((u) => u.dirName)),
+    [unmanaged.data],
+  );
+  const [openRepo, setOpenRepo] = useState<string | null>(null);
+  const adoptRepo = async (name: string) => {
+    if (
+      await confirm({
+        title: `Manage "${name}" in rexenv?`,
+        message:
+          "This folder looks like a git checkout. Adopting records its remote and branch so rexenv can show its repo state — nothing on disk changes.",
+        confirmLabel: "Adopt",
+      })
+    ) {
+      try {
+        await repoAdopt(siteId, "plugin", name);
+        refreshAfterGit();
+        setOpenRepo(name);
+      } catch (e) {
+        toastBackendError(e);
+      }
+    }
+  };
+  /** Delete confirm that NAMES what dies for git checkouts (status-driven:
+   *  changed/untracked/unpushed) — a git dir must never vanish generically. */
+  const confirmDelete = async (title: string, names: string[]): Promise<boolean> => {
+    const gitOnes = names.filter((n) => gitDirs.has(n) || unmanagedSet.has(n));
+    let message: React.ReactNode;
+    if (gitOnes.length > 0) {
+      const lines: string[] = [];
+      for (const n of gitOnes) {
+        try {
+          const st = await repoAssetStatus(siteId, "plugin", n);
+          lines.push(`${n}: ${st.lossWarning ?? "clean and pushed — nothing at risk."}`);
+        } catch {
+          lines.push(`${n}: git checkout — anything uncommitted will be lost.`);
+        }
+      }
+      message = (
+        <div className="space-y-1">
+          <div>This deletes a git checkout:</div>
+          {lines.map((l) => (
+            <div key={l} className="font-mono text-[0.71875rem]">
+              {l}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return confirm({ title, message, danger: true, confirmLabel: "Delete" });
   };
   // Live add-from-Git job for this site? Shared cache with GitAddPanel (it
   // pushes live snapshots in); the poll only carries the dot while the git
@@ -2713,7 +2857,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             className={BTN + " hover:border-red-500/60 hover:text-red-400"}
             disabled={busy}
             onClick={async () => {
-              if (await confirm({ title: `Delete ${selNames.length} plugin(s)?`, danger: true, confirmLabel: "Delete" }))
+              if (await confirmDelete(`Delete ${selNames.length} plugin(s)?`, selNames))
                 run.mutate(() => wpPluginDelete(siteId, selNames));
             }}
           >
@@ -2751,10 +2895,16 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             <span className="w-[150px]">Status</span>
           </div>
           {visible.map((p) => (
+            <Fragment key={p.name}>
             <PluginRow
-              key={p.name}
               p={p}
               git={gitDirs.has(p.name)}
+              unmanaged={unmanagedSet.has(p.name)}
+              onGitClick={() =>
+                gitDirs.has(p.name)
+                  ? setOpenRepo((cur) => (cur === p.name ? null : p.name))
+                  : adoptRepo(p.name)
+              }
               icon={iconMap?.[p.name] ?? null}
               selected={selected.has(p.name)}
               busy={busy}
@@ -2763,10 +2913,14 @@ function PluginsPanel({ siteId }: { siteId: string }) {
               onDeactivate={() => run.mutate(() => wpPluginDeactivate(siteId, [p.name]))}
               onUpdate={() => run.mutate(() => wpPluginUpdate(siteId, [p.name]))}
               onDelete={async () => {
-                if (await confirm({ title: `Delete plugin "${p.name}"?`, danger: true, confirmLabel: "Delete" }))
+                if (await confirmDelete(`Delete plugin "${p.name}"?`, [p.name]))
                   run.mutate(() => wpPluginDelete(siteId, [p.name]));
               }}
             />
+            {openRepo === p.name && assetFor(p.name) && (
+              <RepoPanel siteId={siteId} kind="plugin" asset={assetFor(p.name)!} />
+            )}
+            </Fragment>
           ))}
           </>
         )}
@@ -2778,6 +2932,8 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 function PluginRow({
   p,
   git,
+  unmanaged,
+  onGitClick,
   icon,
   selected,
   busy,
@@ -2789,6 +2945,8 @@ function PluginRow({
 }: {
   p: WpPlugin;
   git?: boolean;
+  unmanaged?: boolean;
+  onGitClick?: () => void;
   icon: string | null;
   selected: boolean;
   busy: boolean;
@@ -2834,12 +2992,24 @@ function PluginRow({
             {p.title || p.name}
           </span>
           {git && (
-            <span
-              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400"
-              title="Cloned from a git repository"
+            <button
+              type="button"
+              onClick={onGitClick}
+              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400 transition-colors hover:bg-sky-500/25"
+              title="Git checkout — click for repo state"
             >
               git
-            </span>
+            </button>
+          )}
+          {unmanaged && (
+            <button
+              type="button"
+              onClick={onGitClick}
+              className="rounded-full border border-dashed border-sky-400/40 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400/80 transition-colors hover:border-sky-400 hover:text-sky-400"
+              title="Looks like a git checkout — click to manage it in rexenv"
+            >
+              git?
+            </button>
           )}
           {updatable && (
             <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">

@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
+import { RepoPanel } from "@/components/wordpress/RepoPanel";
 
 const PROBE = {
   url: "https://github.com/acme/my-plugin",
@@ -82,16 +83,44 @@ const TAIL_LINES = [
   "Progress: resolved 212, reused 212, downloaded 0",
 ];
 
+/** `?panel=repo`: render the phase-A RepoPanel with a rich mocked status
+ *  (dirty + ahead/behind + loss warning) for the WebKit layout check. */
+const ASSET = {
+  kind: "plugin" as const,
+  dirName: "my-plugin",
+  url: "https://github.com/acme/my-plugin",
+  gitRef: "develop",
+  source: "cloned",
+};
+
+const ASSET_STATUS = {
+  branch: "feat/x",
+  detached: false,
+  unborn: false,
+  upstream: "origin/feat/x",
+  ahead: 2,
+  behind: 1,
+  changed: 3,
+  untracked: 2,
+  remote: "git@github.com:acme/my-plugin.git",
+  lossWarning: "3 changed files, 2 untracked files, and 2 unpushed commits will be lost.",
+  logKey: "repo-dev.rex-my-plugin.log",
+};
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
-  const rehydrate = new URLSearchParams(window.location.search).get("rehydrate") === "1";
+  const params = new URLSearchParams(window.location.search);
+  const rehydrate = params.get("rehydrate") === "1";
+  const showRepoPanel = params.get("panel") === "repo";
   useEffect(() => {
     mockIPC(async (cmd) => {
       switch (cmd) {
         case "repo_site_jobs":
           return rehydrate ? [RUNNING_JOB] : [];
+        case "repo_asset_status":
+          return ASSET_STATUS;
         case "tail_log":
-          return rehydrate ? TAIL_LINES : [];
+          return TAIL_LINES;
         case "repo_tools":
           return [
             {
@@ -133,9 +162,15 @@ export function DevGitPanel() {
         <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
           DEV harness — GitAddPanel (mocked IPC)
         </h1>
-        <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-          <GitAddPanel siteId="dev" kind="plugin" onInstalled={() => {}} />
-        </div>
+        {showRepoPanel ? (
+          <div className="rounded-lg border border-rex-border bg-rex-surface-1 py-2">
+            <RepoPanel siteId="dev" kind="plugin" asset={ASSET} />
+          </div>
+        ) : (
+          <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+            <GitAddPanel siteId="dev" kind="plugin" onInstalled={() => {}} />
+          </div>
+        )}
       </div>
     </div>
   );

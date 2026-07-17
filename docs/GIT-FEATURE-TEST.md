@@ -198,6 +198,37 @@ second run (same class as the mount-frozen DNS tile).
 4. Cancel from the reconnected card → step flips cancelled, partial dir
    cleaned (same §7 guarantees).
 
+## 9. Phase A — asset panel, adopt flow, delete safety (added 18 Jul)
+
+Your two named verify targets:
+
+1. **Status-aware delete warning.** Make a cloned asset dirty AND ahead:
+   ```
+   cd <docroot>/wp-content/plugins/<git-plugin>
+   echo x >> readme.md && echo y > new-file.txt        # 1 changed + 1 untracked
+   git add readme.md && git commit -m tmp && git reset --soft HEAD  # or just commit twice w/o pushing
+   git commit -am "local only"                          # → 1+ unpushed
+   ```
+   Delete the plugin from the list → the confirm must NAME the numbers
+   ("N changed file(s), M untracked file(s), and K unpushed commits will be
+   lost."), mono line per asset — not a generic warning. Also try: a CLEAN,
+   pushed asset → plain confirm, no git message (nothing at risk = no cry
+   wolf); a repo with no upstream → "can't be counted / verified as pushed"
+   caveat. Bulk-select delete with a git asset in the selection → same
+   naming inside the bulk confirm. Cancel everything — don't actually lose
+   your fixture unless you're done with it.
+2. **Adopt flow.** Manually `git clone` any repo into
+   `wp-content/plugins/` yourself → refresh the Plugins list → the row shows
+   a dashed **git?** chip → click → adopt confirm ("nothing on disk
+   changes") → Adopt → solid **git** badge + the RepoPanel opens under the
+   row: branch, clean/dirty counts, ↑ahead ↓behind vs upstream, remote URL,
+   source chip "adopted". Provenance backfilled (badge survives an app
+   restart). Dirty the repo, hit Refresh in the panel → counts update.
+
+Also worth a glance: badge click toggles the panel; "Show last job log"
+appears only for assets that have a job log; a detached-HEAD checkout
+(`git checkout <sha>`) shows the amber "detached HEAD" chip.
+
 ---
 
 ## Flagged: what I could NOT self-verify / am least sure about
