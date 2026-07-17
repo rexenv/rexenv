@@ -87,6 +87,10 @@ type SubTab = "plugins" | "themes" | "users" | "network" | "tools";
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
+/** Row-selection checkbox — big enough to hit, pointer cursor. */
+const CHECK =
+  "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
+
 // Every WP-CLI list call boots WordPress (~0.5s+) — cache results briefly, skip
 // window-focus refetches, and fail after ONE retry so a broken site surfaces an
 // error instead of spinning through react-query's default 3 retries.
@@ -2383,6 +2387,15 @@ function PluginsPanel({ siteId }: { siteId: string }) {
     });
   const selNames = [...selected];
 
+  // Select-all over the VISIBLE, selectable rows (must-use/drop-ins can't be
+  // acted on, so they never enter the selection).
+  const selectable = visible
+    .filter((p) => p.status !== "must-use" && p.status !== "dropin")
+    .map((p) => p.name);
+  const allSelected = selectable.length > 0 && selectable.every((n) => selected.has(n));
+  const someSelected = selectable.some((n) => selected.has(n));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectable));
+
   return (
     <div className="flex flex-col gap-3">
       {/* Add: live wp.org search that fills the slug (manual slug still works) */}
@@ -2502,7 +2515,18 @@ function PluginsPanel({ siteId }: { siteId: string }) {
         ) : (
           <>
           <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
-            <span className="w-[14px]" />
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = !allSelected && someSelected;
+              }}
+              onChange={toggleAll}
+              disabled={selectable.length === 0}
+              aria-label="Select all plugins"
+              title="Select all"
+              className={CHECK}
+            />
             <span className="flex-1">Plugin</span>
             <span className="w-[150px]">Status</span>
           </div>
@@ -2566,6 +2590,8 @@ function PluginRow({
         onChange={onSelect}
         disabled={immutable}
         title={immutable ? immutableWhy : undefined}
+        aria-label={`Select ${p.name}`}
+        className={CHECK}
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
