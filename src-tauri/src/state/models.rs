@@ -131,6 +131,23 @@ pub struct PhpVersion {
     pub is_default: bool,
 }
 
+/// A git-sourced wp-content dir's provenance (add-from-Git): which repo/ref a
+/// plugin or theme folder was cloned from. Drives the list "git" badge and is
+/// the seam for future update-pull/watch features.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitAsset {
+    /// "plugin" | "theme".
+    pub kind: String,
+    /// Folder name under wp-content/{plugins,themes} — matches the wp-cli
+    /// list row's slug/stylesheet name.
+    pub dir_name: String,
+    /// Normalized clone URL.
+    pub url: String,
+    /// Requested branch/tag at add time (None = the remote default).
+    pub git_ref: Option<String>,
+}
+
 /// One plugin/theme entry in a blueprint: a wp.org slug + whether to activate it
 /// after install (Phase 3 §11.3).
 #[derive(Debug, Clone, Serialize, Deserialize)]

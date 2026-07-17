@@ -7,6 +7,7 @@ pub mod downloads;
 pub mod logs;
 pub mod mail;
 pub mod php;
+pub mod repo;
 pub mod services;
 pub mod settings;
 pub mod sites;

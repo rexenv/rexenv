@@ -3,8 +3,8 @@
 
 use crate::error::{Error, Result};
 use crate::state::models::{
-    Blueprint, BlueprintSpec, MultisiteMode, PhpVersion, ServiceStatus, Site, SiteDbEngine,
-    SiteType, WebServer,
+    Blueprint, BlueprintSpec, GitAsset, MultisiteMode, PhpVersion, ServiceStatus, Site,
+    SiteDbEngine, SiteType, WebServer,
 };
 use rusqlite::{params, Connection, Row};
 
@@ -372,6 +372,43 @@ pub fn replace_site_env(
         )?;
     }
     tx.commit()?;
+    Ok(())
+}
+
+// ── Git-sourced plugin/theme provenance (add-from-Git) ─────────────────────────
+
+/// One site's git-sourced wp-content dirs (list badges; future update/watch).
+pub fn get_git_assets(conn: &Connection, site_id: &str) -> Result<Vec<GitAsset>> {
+    let mut stmt = conn.prepare(
+        "SELECT kind, dir_name, url, git_ref FROM site_git_assets \
+         WHERE site_id = ?1 ORDER BY kind, dir_name",
+    )?;
+    let rows = stmt.query_map([site_id], |r| {
+        Ok(GitAsset {
+            kind: r.get(0)?,
+            dir_name: r.get(1)?,
+            url: r.get(2)?,
+            git_ref: r.get(3)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Record (or replace) where a cloned dir came from — written on clone
+/// success. Re-adding the same (site, kind, dir) replaces the row.
+pub fn upsert_git_asset(
+    conn: &Connection,
+    site_id: &str,
+    kind: &str,
+    dir_name: &str,
+    url: &str,
+    git_ref: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO site_git_assets (site_id, kind, dir_name, url, git_ref) \
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![site_id, kind, dir_name, url, git_ref],
+    )?;
     Ok(())
 }
 

@@ -527,3 +527,67 @@ export interface PlannedDownload {
   label: string;
   cached: boolean;
 }
+
+// ── Add plugin/theme from Git ─────────────────────────────────────────────────
+
+/** `repo_probe` result: normalized source + what the remote offers. Probing
+ *  validates URL AND auth before any clone starts. */
+export interface RepoProbeResult {
+  url: string;
+  host: string;
+  dirName: string;
+  /** Branch candidate parsed from a pasted /tree/ web URL — only trusted if
+   *  it matches a real ref below. */
+  refCandidate: string | null;
+  defaultBranch: string | null;
+  branches: string[];
+  tags: string[];
+}
+
+/** What a cloned repo needs (read-only detection — runs no repo code). */
+export interface RepoInspection {
+  composer: boolean;
+  node: { manager: string; pinnedBy: string; hasBuild: boolean } | null;
+  wp: { kind: "plugin" | "theme" | "none"; name: string | null };
+  nodeWant: string | null;
+}
+
+export interface RepoStepState {
+  key: "clone" | "detect" | "composer" | "install" | "build";
+  label: string;
+  status: "pending" | "running" | "ok" | "failed" | "cancelled";
+  error: string | null;
+}
+
+/** One add-from-Git job's full snapshot — the `repo-job://state/<id>` event
+ *  payload and the `repo_job_state` poll share this shape. */
+export interface RepoJobState {
+  id: string;
+  siteId: string;
+  kind: "plugin" | "theme";
+  dirName: string;
+  url: string;
+  gitRef: string | null;
+  steps: RepoStepState[];
+  inspection: RepoInspection | null;
+  nodeWarning: string | null;
+  finishedOk: boolean;
+}
+
+/** A git-sourced wp-content dir's provenance (the list "git" badge). */
+export interface GitAsset {
+  kind: "plugin" | "theme";
+  dirName: string;
+  url: string;
+  gitRef: string | null;
+}
+
+/** git/node availability for the Git add panel (composer is always the
+ *  bundled phar). */
+export interface RepoToolStatus {
+  name: string;
+  ok: boolean;
+  version: string | null;
+  path: string | null;
+  error: string | null;
+}

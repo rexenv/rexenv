@@ -111,6 +111,18 @@ const MIGRATIONS: &[&str] = &[
     // v11 — per-site Xdebug toggle (§8.2): routes the site's .php to the
     // minor's DEBUG pool. Off for every existing site.
     "ALTER TABLE sites ADD COLUMN xdebug INTEGER NOT NULL DEFAULT 0;",
+    // v12 — add-from-Git provenance: where a wp-content plugin/theme dir came
+    // from (list badge; the seam for future update-pull/watch). One row per
+    // (site, kind, dir) — re-adding the same dir replaces the row.
+    "CREATE TABLE site_git_assets (
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        dir_name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        git_ref TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (site_id, kind, dir_name)
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

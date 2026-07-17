@@ -164,6 +164,7 @@ pub fn run() {
 
             // Registry of live PTY terminal sessions (§4.1).
             app.manage(commands::terminal::Terminals::default());
+            app.manage(commands::repo::RepoJobs::default());
             // Registry of live per-site public tunnels (§9.1).
             app.manage(commands::tunnels::Tunnels::default());
 
@@ -611,7 +612,23 @@ pub fn run() {
             commands::tunnels::start_tunnel,
             commands::tunnels::stop_tunnel,
             commands::tunnels::tunnels_status,
+            commands::repo::repo_probe,
+            commands::repo::repo_add,
+            commands::repo::repo_run_step,
+            commands::repo::repo_cancel,
+            commands::repo::repo_job_state,
+            commands::repo::repo_assets,
+            commands::repo::repo_tools,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Repo install/build jobs die WITH the app (deliberate opposite of
+            // services-outlive-the-app: they're interactive actions, not
+            // infrastructure — and an orphaned npm would keep writing into
+            // wp-content after quit). Process-group kill via the supervisor.
+            if let tauri::RunEvent::Exit = event {
+                commands::repo::cancel_all_on_exit(app);
+            }
+        });
 }

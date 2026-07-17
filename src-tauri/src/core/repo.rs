@@ -222,6 +222,28 @@ fn parse_shorthand(s: &str) -> Result<Option<RepoSource>> {
     }))
 }
 
+/// Where an added asset lands: `<docroot>/wp-content/{plugins|themes}/<dir>`.
+/// `kind` and `dir_name` are validated HERE (M7 class — both cross IPC).
+pub fn asset_dest(docroot: &Path, kind: &str, dir_name: &str) -> Result<std::path::PathBuf> {
+    let sub = match kind {
+        "plugin" => "plugins",
+        "theme" => "themes",
+        other => return Err(other_kind(other)),
+    };
+    let name = derive_dir_name(dir_name)?;
+    Ok(docroot.join("wp-content").join(sub).join(name))
+}
+
+fn other_kind(kind: &str) -> Error {
+    Error::Other(format!("unknown asset kind \"{kind}\" (expected plugin or theme)"))
+}
+
+/// Public validation for a user-edited target folder name (same rule as the
+/// URL-derived default).
+pub fn validate_dir_name(name: &str) -> Result<String> {
+    derive_dir_name(name)
+}
+
 /// Target folder name from the repo's last path segment, `.git` stripped.
 /// Becomes a directory under wp-content — validated here, once, before it can
 /// touch a path (M7 class). Leading dots are refused outright: WordPress

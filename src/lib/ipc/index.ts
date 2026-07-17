@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoJobState, RepoProbeResult, RepoToolStatus, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1179,4 +1179,73 @@ export async function saveBlueprint(blueprint: Blueprint): Promise<void> {
 export async function deleteBlueprint(id: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("delete_blueprint", { id });
+}
+
+// ── Add plugin/theme from Git ─────────────────────────────────────────────────
+
+/** Parse + `git ls-remote` a pasted repo reference: validates the URL and the
+ *  user's access BEFORE any clone, and feeds the branch/tag picker. */
+export async function repoProbe(url: string): Promise<RepoProbeResult> {
+  return invoke<RepoProbeResult>("repo_probe", { url });
+}
+
+/** Start the clone→detect job for one repo into a site's wp-content. Returns
+ *  the initial snapshot; progress streams via `onRepoJobState`/`onRepoJobOutput`. */
+export async function repoAdd(
+  siteId: string,
+  kind: "plugin" | "theme",
+  url: string,
+  gitRef: string | null,
+  dirName: string | null,
+): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_add", { siteId, kind, url, gitRef, dirName });
+}
+
+/** Run ONE offered step (composer/install/build). Explicit by design — these
+ *  execute the repo's own scripts; nothing runs without this call. */
+export async function repoRunStep(jobId: string, stepKey: string): Promise<void> {
+  await invoke("repo_run_step", { jobId, stepKey });
+}
+
+/** Cancel the job's running step (kills its whole process group; a cancelled
+ *  clone removes its partial checkout). */
+export async function repoCancel(jobId: string): Promise<void> {
+  await invoke("repo_cancel", { jobId });
+}
+
+/** Poll a job's snapshot (re-sync after a panel remount). */
+export async function repoJobState(jobId: string): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_job_state", { jobId });
+}
+
+/** A site's git-sourced plugin/theme dirs (list badges). */
+export async function repoAssets(siteId: string): Promise<GitAsset[]> {
+  if (!isTauri()) return [];
+  return invoke<GitAsset[]>("repo_assets", { siteId });
+}
+
+/** git/node availability for the Git add panel. `refresh` re-resolves the
+ *  login-shell env (the Re-detect button). */
+export async function repoTools(refresh: boolean): Promise<RepoToolStatus[]> {
+  return invoke<RepoToolStatus[]>("repo_tools", { refresh });
+}
+
+/** Subscribe to one job's state snapshots. Returns an unlisten fn. */
+export async function onRepoJobState(
+  id: string,
+  cb: (state: RepoJobState) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<RepoJobState>(`repo-job://state/${id}`, (e) => cb(e.payload));
+}
+
+/** Subscribe to one job's streamed log lines. Returns an unlisten fn. */
+export async function onRepoJobOutput(
+  id: string,
+  cb: (line: string) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<string>(`repo-job://output/${id}`, (e) => cb(e.payload));
 }

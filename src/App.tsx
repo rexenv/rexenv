@@ -11,6 +11,7 @@ import { Mail } from "@/routes/Mail";
 import { Tunnels } from "@/routes/Tunnels";
 import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
+import { DevGitPanel } from "@/routes/DevGitPanel";
 import { dnsStatus, initError, onServiceHealth } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -100,6 +101,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<FirstRunGate />} />
         <Route path="/onboarding" element={<Onboarding />} />
+        {import.meta.env.DEV && <Route path="/dev/git-panel" element={<DevGitPanel />} />}
         <Route element={<AppShell />}>
           <Route path="/sites" element={<Sites />} />
           <Route path="/sites/:id" element={<SiteDetail />} />

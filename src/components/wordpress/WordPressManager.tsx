@@ -58,6 +58,7 @@ import {
   wpSuperAdmins,
   wpThemeActivate,
   wpThemeDelete,
+  repoAssets,
   wpThemeInstall,
   wpThemeUpdate,
   wpThemes,
@@ -69,6 +70,7 @@ import {
   wpUsers,
 } from "@/lib/ipc";
 import type { WpDebugFlag } from "@/lib/ipc";
+import { GitAddPanel } from "./GitAddPanel";
 import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
@@ -122,6 +124,38 @@ function SlugTag({ slug, icon, onRemove }: { slug: string; icon: string | null; 
         <X className="h-3 w-3" />
       </button>
     </span>
+  );
+}
+
+/** wp.org ↔ Git source switch for the add bar (plugins & themes). */
+function SourceTabs({
+  source,
+  onChange,
+}: {
+  source: "wporg" | "git";
+  onChange: (s: "wporg" | "git") => void;
+}) {
+  return (
+    <div className="mb-2 flex items-center gap-1">
+      {(
+        [
+          ["wporg", "WordPress.org"],
+          ["git", "From Git"],
+        ] as const
+      ).map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={cn(
+            "rounded-md px-2 py-0.5 text-[0.6875rem] font-medium transition-colors",
+            source === key ? "bg-rex-surface-3 text-rex-text" : "text-rex-text-muted hover:text-rex-text",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -2094,9 +2128,29 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   });
   const busy = run.isPending;
 
+  const [source, setSource] = useState<"wporg" | "git">("wporg");
+  const gitAssets = useQuery({
+    queryKey: ["repo-assets", siteId],
+    queryFn: () => repoAssets(siteId),
+    staleTime: 30_000,
+  });
+  const gitDirs = useMemo(
+    () => new Set((gitAssets.data ?? []).filter((a) => a.kind === "theme").map((a) => a.dirName)),
+    [gitAssets.data],
+  );
+  const refreshAfterGit = () => {
+    qc.invalidateQueries({ queryKey: ["wp-themes", siteId] });
+    qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <SourceTabs source={source} onChange={setSource} />
+        {source === "git" ? (
+          <GitAddPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
+        ) : (
+        <>
         <div className="flex flex-wrap items-center gap-2">
           {pending.map((t) => (
             <SlugTag
@@ -2164,6 +2218,8 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             )}
           </div>
         )}
+        </>
+        )}
       </div>
 
       {!isLoading && themes.length > 0 && (
@@ -2190,6 +2246,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             <ThemeCard
               key={t.name}
               t={t}
+              git={gitDirs.has(t.name)}
               busy={busy}
               onActivate={() => run.mutate(() => wpThemeActivate(siteId, t.name))}
               onUpdate={() => run.mutate(() => wpThemeUpdate(siteId, [t.name]))}
@@ -2207,12 +2264,14 @@ function ThemesPanel({ siteId }: { siteId: string }) {
 
 function ThemeCard({
   t,
+  git,
   busy,
   onActivate,
   onUpdate,
   onDelete,
 }: {
   t: WpTheme;
+  git?: boolean;
   busy: boolean;
   onActivate: () => void;
   onUpdate: () => void;
@@ -2249,6 +2308,14 @@ function ThemeCard({
       <div className="flex flex-1 flex-col gap-2 p-3">
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-[0.8125rem] font-medium text-rex-text">{t.name}</span>
+          {git && (
+            <span
+              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400"
+              title="Cloned from a git repository"
+            >
+              git
+            </span>
+          )}
           {active && (
             <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-emerald-400">
               <Check className="h-3 w-3" />
@@ -2476,11 +2543,31 @@ function PluginsPanel({ siteId }: { siteId: string }) {
   const someSelected = selectable.some((n) => selected.has(n));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectable));
 
+  const [source, setSource] = useState<"wporg" | "git">("wporg");
+  const gitAssets = useQuery({
+    queryKey: ["repo-assets", siteId],
+    queryFn: () => repoAssets(siteId),
+    staleTime: 30_000,
+  });
+  const gitDirs = useMemo(
+    () => new Set((gitAssets.data ?? []).filter((a) => a.kind === "plugin").map((a) => a.dirName)),
+    [gitAssets.data],
+  );
+  const refreshAfterGit = () => {
+    qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
+    qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
+  };
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Add: live wp.org search; picked hits accumulate as tags, one Install
-          installs the whole batch (single WP-CLI run). */}
+      {/* Add: live wp.org search (batch install), or a git repo
+          (clone → detect → install → build, streamed). */}
       <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <SourceTabs source={source} onChange={setSource} />
+        {source === "git" ? (
+          <GitAddPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
+        ) : (
+        <>
         <div className="flex flex-wrap items-center gap-2">
           {pending.map((t) => (
             <SlugTag
@@ -2547,6 +2634,8 @@ function PluginsPanel({ siteId }: { siteId: string }) {
               </div>
             )}
           </div>
+        )}
+        </>
         )}
       </div>
 
@@ -2628,6 +2717,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             <PluginRow
               key={p.name}
               p={p}
+              git={gitDirs.has(p.name)}
               icon={iconMap?.[p.name] ?? null}
               selected={selected.has(p.name)}
               busy={busy}
@@ -2650,6 +2740,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
 function PluginRow({
   p,
+  git,
   icon,
   selected,
   busy,
@@ -2660,6 +2751,7 @@ function PluginRow({
   onDelete,
 }: {
   p: WpPlugin;
+  git?: boolean;
   icon: string | null;
   selected: boolean;
   busy: boolean;
@@ -2704,6 +2796,14 @@ function PluginRow({
           <span className="truncate text-[0.8125rem] font-medium text-rex-text">
             {p.title || p.name}
           </span>
+          {git && (
+            <span
+              className="rounded-full bg-sky-500/15 px-1.5 py-0.5 font-mono text-[0.625rem] font-medium text-sky-400"
+              title="Cloned from a git repository"
+            >
+              git
+            </span>
+          )}
           {updatable && (
             <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">
               update
