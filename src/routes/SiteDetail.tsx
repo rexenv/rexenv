@@ -34,7 +34,7 @@ import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
-import { adminerFrameSrc } from "@/lib/adminer";
+import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import {
@@ -254,7 +254,10 @@ export function SiteDetail() {
                 hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
               />
             ) : (
-              <AdminerFrame src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })} />
+              <AdminerFrame
+                src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })}
+                externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
+              />
             ))}
           {active === "logs" && <LogsTab siteId={site.id} isWordpress={isWordpress} />}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}

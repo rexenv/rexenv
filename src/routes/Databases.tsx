@@ -8,7 +8,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { confirm } from "@/components/ui/dialog";
 import { databasesStatus, dbEngineVersions, setDbEngineVersion } from "@/lib/ipc";
-import { adminerFrameSrc } from "@/lib/adminer";
+import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
 import type { DbStatus } from "@/types";
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
@@ -166,7 +166,7 @@ export function Databases() {
           <span className="font-mono text-[0.75rem] text-rex-text-muted">{browse.label} · Adminer</span>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-[18px]">
-          <AdminerFrame src={adminerFrameSrc({ engine })} />
+          <AdminerFrame src={adminerFrameSrc({ engine })} externalUrl={adminerUrl({ engine })} />
         </div>
       </>
     );
