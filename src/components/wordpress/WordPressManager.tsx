@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, Trash2, UserPlus, X } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
@@ -91,6 +91,39 @@ const BTN =
 /** Row-selection checkbox — big enough to hit, pointer cursor. */
 const CHECK =
   "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
+
+/** One queued install target in the tag-style Add bar (plugins & themes).
+ *  `icon` is wp.org art (plugin icon / theme screenshot); null → letter tile. */
+type PendingInstall = { slug: string; icon: string | null };
+
+/** Queue an item, deduplicating by slug. */
+function addPending(list: PendingInstall[], item: PendingInstall): PendingInstall[] {
+  return list.some((t) => t.slug === item.slug) ? list : [...list, item];
+}
+
+/** A queued-install chip: icon + slug + remove (×). */
+function SlugTag({ slug, icon, onRemove }: { slug: string; icon: string | null; onRemove: () => void }) {
+  return (
+    <span className="flex items-center gap-1.5 rounded-md border border-rex-border-strong bg-rex-surface-2 py-0.5 pl-1 pr-0.5">
+      {icon ? (
+        <img src={icon} alt="" className="h-4 w-4 flex-none rounded-[3px] object-cover" />
+      ) : (
+        <span className="flex h-4 w-4 flex-none items-center justify-center rounded-[3px] bg-rex-surface-1 font-mono text-[0.5625rem] font-bold text-rex-text-muted">
+          {slug.slice(0, 1).toUpperCase() || "?"}
+        </span>
+      )}
+      <span className="font-mono text-[0.71875rem] text-rex-text">{slug}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${slug}`}
+        className="flex h-4 w-4 items-center justify-center rounded text-rex-text-muted transition-colors hover:text-status-error-bright"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
 
 // Every WP-CLI list call boots WordPress (~0.5s+) — cache results briefly, skip
 // window-focus refetches, and fail after ONE retry so a broken site surfaces an
@@ -2029,18 +2062,28 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [slug, setSlug] = useState("");
   const [activateOnAdd, setActivateOnAdd] = useState(false);
-  // wp.org live search — same pattern as PluginsPanel (debounce, fail fast,
-  // manual slug always works).
-  const [picked, setPicked] = useState(false);
+  // wp.org live search — same tag-queue pattern as PluginsPanel (debounce,
+  // fail fast, manual slug + Enter always works).
+  const [pending, setPending] = useState<PendingInstall[]>([]);
   const debouncedSlug = useDebounced(slug.trim(), 350);
   const search = useQuery({
     queryKey: ["wporg-themes", debouncedSlug],
     queryFn: () => wpOrgSearchThemes(debouncedSlug),
-    enabled: !picked && debouncedSlug.length >= 2,
+    enabled: debouncedSlug.length >= 2,
     staleTime: 60_000,
     retry: false,
   });
-  const showSearch = !picked && slug.trim().length >= 2;
+  const showSearch = slug.trim().length >= 2;
+  const queue = (s: string, icon: string | null) => {
+    const v = s.trim();
+    if (!v) return;
+    setPending((list) => addPending(list, { slug: v, icon }));
+    setSlug("");
+  };
+  const installSlugs = [
+    ...pending.map((t) => t.slug),
+    ...(slug.trim() && !pending.some((t) => t.slug === slug.trim()) ? [slug.trim()] : []),
+  ];
 
   const { themes, isLoading, isError, error, refetch } = useWpThemes(siteId);
 
@@ -2053,18 +2096,53 @@ function ThemesPanel({ siteId }: { siteId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <input {...TECH_INPUT}
-          value={slug}
-          onChange={(e) => {
-            setSlug(e.target.value);
-            setPicked(false);
-          }}
-          placeholder="Search WordPress.org or enter a slug…"
-          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
-        />
+      <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {pending.map((t) => (
+            <SlugTag
+              key={t.slug}
+              slug={t.slug}
+              icon={t.icon}
+              onRemove={() => setPending((l) => l.filter((x) => x.slug !== t.slug))}
+            />
+          ))}
+          <input {...TECH_INPUT}
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                queue(slug, null);
+              } else if (e.key === "Backspace" && slug === "" && pending.length > 0) {
+                setPending((l) => l.slice(0, -1));
+              }
+            }}
+            placeholder={pending.length ? "Add another…" : "Search WordPress.org or enter a slug…"}
+            className="h-[30px] min-w-[180px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
+          />
+          <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+            <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
+            Activate
+          </label>
+          <button
+            className={BTN + " flex items-center gap-1.5"}
+            disabled={busy || installSlugs.length === 0}
+            onClick={() => {
+              const slugs = installSlugs;
+              run.mutate(() =>
+                wpThemeInstall(siteId, slugs, activateOnAdd).then(() => {
+                  setPending([]);
+                  setSlug("");
+                }),
+              );
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Install{installSlugs.length > 1 ? ` (${installSlugs.length})` : ""}
+          </button>
+        </div>
         {showSearch && (
-          <div className="absolute left-2.5 right-2.5 top-[46px] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
+          <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
               <div className="flex items-center gap-2 px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
                 <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> Searching WordPress.org…
@@ -2075,39 +2153,17 @@ function ThemesPanel({ siteId }: { siteId: string }) {
               </div>
             ) : (search.data ?? []).length === 0 ? (
               <div className="px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
-                No themes match “{slug.trim()}” — if you know the exact slug, just Add it.
+                No themes match “{slug.trim()}” — if you know the exact slug, press Enter to queue it.
               </div>
             ) : (
               <div className="max-h-[300px] overflow-y-auto">
                 {(search.data ?? []).map((t) => (
-                  <WpOrgThemeHit
-                    key={t.slug}
-                    t={t}
-                    onPick={() => {
-                      setSlug(t.slug);
-                      setPicked(true);
-                    }}
-                  />
+                  <WpOrgThemeHit key={t.slug} t={t} onPick={() => queue(t.slug, t.screenshot)} />
                 ))}
               </div>
             )}
           </div>
         )}
-        <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-          <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
-          Activate
-        </label>
-        <button
-          className={BTN + " flex items-center gap-1.5"}
-          disabled={busy || !slug.trim()}
-          onClick={() => {
-            const s = slug.trim();
-            run.mutate(() => wpThemeInstall(siteId, s, activateOnAdd).then(() => setSlug("")));
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add
-        </button>
       </div>
 
       {!isLoading && themes.length > 0 && (
@@ -2337,17 +2393,29 @@ function PluginsPanel({ siteId }: { siteId: string }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PluginFilter>("all");
   // wp.org live search: the slug input doubles as the search box (wp-admin
-  // style). Picking a hit fills the slug; typing manually still works as-is.
-  const [picked, setPicked] = useState(false);
+  // style). Picked hits queue as tags (multi-install); typing a slug + Enter
+  // queues it too, so non-wp.org slugs still work.
+  const [pending, setPending] = useState<PendingInstall[]>([]);
   const debouncedSlug = useDebounced(slug.trim(), 350);
   const search = useQuery({
     queryKey: ["wporg-plugins", debouncedSlug],
     queryFn: () => wpOrgSearchPlugins(debouncedSlug),
-    enabled: !picked && debouncedSlug.length >= 2,
+    enabled: debouncedSlug.length >= 2,
     staleTime: 60_000,
     retry: false, // offline → fail fast + honest message, no retry spinner
   });
-  const showSearch = !picked && slug.trim().length >= 2;
+  const showSearch = slug.trim().length >= 2;
+  const queue = (s: string, icon: string | null) => {
+    const v = s.trim();
+    if (!v) return;
+    setPending((list) => addPending(list, { slug: v, icon }));
+    setSlug("");
+  };
+  // Everything Install applies: queued tags + any un-queued typed slug.
+  const installSlugs = [
+    ...pending.map((t) => t.slug),
+    ...(slug.trim() && !pending.some((t) => t.slug === slug.trim()) ? [slug.trim()] : []),
+  ];
 
   const { plugins, isLoading, isError, error, refetch } = useWpPlugins(siteId);
 
@@ -2410,19 +2478,55 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Add: live wp.org search that fills the slug (manual slug still works) */}
-      <div className="relative flex items-center gap-2 rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <input {...TECH_INPUT}
-          value={slug}
-          onChange={(e) => {
-            setSlug(e.target.value);
-            setPicked(false);
-          }}
-          placeholder="Search WordPress.org or enter a slug…"
-          className="h-[30px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
-        />
+      {/* Add: live wp.org search; picked hits accumulate as tags, one Install
+          installs the whole batch (single WP-CLI run). */}
+      <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {pending.map((t) => (
+            <SlugTag
+              key={t.slug}
+              slug={t.slug}
+              icon={t.icon}
+              onRemove={() => setPending((l) => l.filter((x) => x.slug !== t.slug))}
+            />
+          ))}
+          <input {...TECH_INPUT}
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                queue(slug, null);
+              } else if (e.key === "Backspace" && slug === "" && pending.length > 0) {
+                setPending((l) => l.slice(0, -1));
+              }
+            }}
+            placeholder={pending.length ? "Add another…" : "Search WordPress.org or enter a slug…"}
+            className="h-[30px] min-w-[180px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
+          />
+          <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+            <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
+            Activate
+          </label>
+          <button
+            className={BTN + " flex items-center gap-1.5"}
+            disabled={busy || installSlugs.length === 0}
+            onClick={() => {
+              const slugs = installSlugs;
+              run.mutate(() =>
+                wpPluginInstall(siteId, slugs, activateOnAdd).then(() => {
+                  setPending([]);
+                  setSlug("");
+                }),
+              );
+            }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Install{installSlugs.length > 1 ? ` (${installSlugs.length})` : ""}
+          </button>
+        </div>
         {showSearch && (
-          <div className="absolute left-2.5 right-2.5 top-[46px] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
+          <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
               <div className="flex items-center gap-2 px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
                 <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> Searching WordPress.org…
@@ -2433,39 +2537,17 @@ function PluginsPanel({ siteId }: { siteId: string }) {
               </div>
             ) : (search.data ?? []).length === 0 ? (
               <div className="px-3 py-2.5 text-[0.75rem] text-rex-text-muted">
-                No plugins match “{slug.trim()}” — if you know the exact slug, just Add it.
+                No plugins match “{slug.trim()}” — if you know the exact slug, press Enter to queue it.
               </div>
             ) : (
               <div className="max-h-[300px] overflow-y-auto">
                 {(search.data ?? []).map((p) => (
-                  <WpOrgHit
-                    key={p.slug}
-                    p={p}
-                    onPick={() => {
-                      setSlug(p.slug);
-                      setPicked(true);
-                    }}
-                  />
+                  <WpOrgHit key={p.slug} p={p} onPick={() => queue(p.slug, p.icon)} />
                 ))}
               </div>
             )}
           </div>
         )}
-        <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-          <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
-          Activate
-        </label>
-        <button
-          className={BTN + " flex items-center gap-1.5"}
-          disabled={busy || !slug.trim()}
-          onClick={() => {
-            const s = slug.trim();
-            run.mutate(() => wpPluginInstall(siteId, s, activateOnAdd).then(() => setSlug("")));
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add
-        </button>
       </div>
 
       {/* Search + filter toolbar */}

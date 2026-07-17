@@ -36,14 +36,15 @@ pub fn apply_wordpress(
         if p.slug.trim().is_empty() {
             continue;
         }
-        wordpress::plugin_install(php_bin, wp_phar, docroot, p.slug.trim(), p.activate)?;
+        // One install per item: each blueprint entry has its own activate flag.
+        wordpress::plugin_install(php_bin, wp_phar, docroot, &[p.slug.trim().to_string()], p.activate)?;
         applied.plugins_installed += 1;
     }
     for t in &spec.themes {
         if t.slug.trim().is_empty() {
             continue;
         }
-        wordpress::theme_install(php_bin, wp_phar, docroot, t.slug.trim(), t.activate)?;
+        wordpress::theme_install(php_bin, wp_phar, docroot, &[t.slug.trim().to_string()], t.activate)?;
         applied.themes_installed += 1;
     }
     if spec.wp_debug {

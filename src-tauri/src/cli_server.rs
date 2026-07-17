@@ -525,7 +525,7 @@ where
             let state = app_state(app)?;
             let (id, slug) = (need_str(&args, "id", cmd)?, need_str(&args, "slug", cmd)?);
             let activate = args["activate"].as_bool().unwrap_or(false);
-            commands::wordpress::wp_plugin_install(state.clone(), id, slug, activate).await?;
+            commands::wordpress::wp_plugin_install(state.clone(), id, vec![slug], activate).await?;
             Ok(Value::Null)
         }
         "wp.plugin.activate" | "wp.plugin.deactivate" | "wp.plugin.update" | "wp.plugin.delete" => {
@@ -555,7 +555,7 @@ where
             let state = app_state(app)?;
             let (id, slug) = (need_str(&args, "id", cmd)?, need_str(&args, "slug", cmd)?);
             let activate = args["activate"].as_bool().unwrap_or(false);
-            commands::wordpress::wp_theme_install(state.clone(), id, slug, activate).await?;
+            commands::wordpress::wp_theme_install(state.clone(), id, vec![slug], activate).await?;
             Ok(Value::Null)
         }
         "wp.theme.activate" => {

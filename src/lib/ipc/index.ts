@@ -534,10 +534,10 @@ export async function wpOrgPluginIcons(slugs: string[]): Promise<Record<string, 
   return invoke<Record<string, string | null>>("wp_org_plugin_icons", { slugs });
 }
 
-/** Install a plugin by slug (optionally activate). No-op outside Tauri. */
-export async function wpPluginInstall(id: string, slug: string, activate: boolean): Promise<void> {
-  if (!isTauri()) return;
-  await invoke("wp_plugin_install", { id, slug, activate });
+/** Install plugins by slug (bulk-capable, optionally activate). No-op outside Tauri. */
+export async function wpPluginInstall(id: string, slugs: string[], activate: boolean): Promise<void> {
+  if (!isTauri() || slugs.length === 0) return;
+  await invoke("wp_plugin_install", { id, slugs, activate });
 }
 
 /** Activate plugins (bulk-capable). No-op outside Tauri. */
@@ -579,10 +579,10 @@ export async function wpThemes(id: string, checkUpdates = false): Promise<WpThem
   return invoke<WpTheme[]>("wp_themes", { id, checkUpdates });
 }
 
-/** Install a theme by slug (optionally activate). No-op outside Tauri. */
-export async function wpThemeInstall(id: string, slug: string, activate: boolean): Promise<void> {
-  if (!isTauri()) return;
-  await invoke("wp_theme_install", { id, slug, activate });
+/** Install themes by slug (bulk-capable, optionally activate). No-op outside Tauri. */
+export async function wpThemeInstall(id: string, slugs: string[], activate: boolean): Promise<void> {
+  if (!isTauri() || slugs.length === 0) return;
+  await invoke("wp_theme_install", { id, slugs, activate });
 }
 
 /** Activate a theme (only one live). No-op outside Tauri. */

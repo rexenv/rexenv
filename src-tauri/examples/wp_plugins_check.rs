@@ -73,7 +73,7 @@ async fn main() {
     };
 
     // Install hello-dolly by slug + activate.
-    wordpress::plugin_install(&php, &wp, &docroot, "hello-dolly", true).expect("install hello-dolly");
+    wordpress::plugin_install(&php, &wp, &docroot, &["hello-dolly".to_string()], true).expect("install hello-dolly");
     let list = wordpress::plugin_list(&php, &wp, &docroot, false).expect("list");
     println!("after install+activate: hello-dolly status = {}", status(&list, "hello-dolly"));
     assert!(has(&list, "hello-dolly"), "hello-dolly not installed");

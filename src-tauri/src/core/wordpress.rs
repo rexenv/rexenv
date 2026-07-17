@@ -263,15 +263,20 @@ pub fn plugin_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[St
     plugin_verb(php_bin, wp_phar, docroot, "delete", names)
 }
 
-/// Install a plugin by slug (`wp plugin install <slug> [--activate]`).
+/// Install plugins by slug (`wp plugin install <slugs…> [--activate]`) —
+/// bulk-capable: one WP-CLI boot installs (and optionally activates) them all.
 pub fn plugin_install(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
-    slug: &str,
+    slugs: &[String],
     activate: bool,
 ) -> Result<String> {
-    let mut args: Vec<&str> = vec!["plugin", "install", slug];
+    if slugs.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["plugin", "install"];
+    args.extend(slugs.iter().map(String::as_str));
     if activate {
         args.push("--activate");
     }
@@ -347,15 +352,20 @@ pub fn theme_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[Str
 pub fn theme_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
     item_verb(php_bin, wp_phar, docroot, "theme", "delete", names)
 }
-/// Install a theme by slug (`wp theme install <slug> [--activate]`).
+/// Install themes by slug (`wp theme install <slugs…> [--activate]`) —
+/// bulk-capable like [`plugin_install`]; `--activate` applies the LAST slug.
 pub fn theme_install(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
-    slug: &str,
+    slugs: &[String],
     activate: bool,
 ) -> Result<String> {
-    let mut args: Vec<&str> = vec!["theme", "install", slug];
+    if slugs.is_empty() {
+        return Ok(String::new());
+    }
+    let mut args: Vec<&str> = vec!["theme", "install"];
+    args.extend(slugs.iter().map(String::as_str));
     if activate {
         args.push("--activate");
     }

@@ -74,7 +74,7 @@ async fn main() {
     const NEW: &str = "twentytwenty";
 
     // Install a theme by slug (not active yet).
-    wordpress::theme_install(&php, &wp, &docroot, NEW, false).expect("install theme");
+    wordpress::theme_install(&php, &wp, &docroot, &[NEW.to_string()], false).expect("install theme");
     let list = wordpress::theme_list(&php, &wp, &docroot, false).expect("list");
     println!("after install: {NEW} status = {:?}", status(&list, NEW));
     assert_eq!(status(&list, NEW).as_deref(), Some("inactive"), "theme not installed/inactive");
