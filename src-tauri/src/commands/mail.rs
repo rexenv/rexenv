@@ -75,3 +75,9 @@ pub async fn mailpit_message_raw(_state: State<'_, AppState>, id: String) -> Res
 pub async fn mailpit_clear(_state: State<'_, AppState>) -> Result<()> {
     mail::delete_all().await
 }
+
+/// Delete specific messages by ID (row delete / bulk selection delete).
+#[tauri::command]
+pub async fn mailpit_delete(_state: State<'_, AppState>, ids: Vec<String>) -> Result<()> {
+    mail::delete(&ids).await
+}

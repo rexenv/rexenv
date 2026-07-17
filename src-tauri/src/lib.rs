@@ -595,6 +595,7 @@ pub fn run() {
             commands::mail::mailpit_message,
             commands::mail::mailpit_message_raw,
             commands::mail::mailpit_clear,
+            commands::mail::mailpit_delete,
             commands::database::databases_status,
             commands::database::start_database,
             commands::database::stop_database,

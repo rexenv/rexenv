@@ -5,9 +5,13 @@ import { ChevronRight, ExternalLink, Globe, Mail as MailIcon, Search, Trash2 } f
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
+// In-house dialog, NOT window.confirm: tauri-plugin-dialog replaces the native
+// confirm with an ASYNC override (a bare `if (!confirm(...))` never blocks).
+import { confirm } from "@/components/ui/dialog";
 import {
   listSites,
   mailpitClear,
+  mailpitDelete,
   mailpitMessage,
   mailpitMessageRaw,
   mailpitMessages,
@@ -120,6 +124,7 @@ export function Mail() {
   const [siteFilter, setSiteFilter] = useState<string>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<PreviewTab>("html");
 
   const { data: mp } = useQuery({
@@ -156,15 +161,59 @@ export function Mail() {
   useEffect(() => {
     if (selectedId && !messages.some((m) => m.id === selectedId)) setSelectedId(null);
   }, [messages, selectedId]);
+  // Prune checked IDs that no longer exist (deleted elsewhere / new search).
+  useEffect(() => {
+    setChecked((prev) => {
+      const live = new Set(messages.map((m) => m.id));
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [messages]);
 
   const clear = useMutation({
     mutationFn: mailpitClear,
     onSuccess: () => {
       setSelectedId(null);
+      setChecked(new Set());
       qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
     },
     onError: (e) => toastBackendError(e),
   });
+  const del = useMutation({
+    mutationFn: mailpitDelete,
+    onSuccess: (_res, ids) => {
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null);
+      setChecked((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
+      qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const toggleChecked = (id: string) =>
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const deleteChecked = async () => {
+    if (checked.size === 0) return;
+    const n = checked.size;
+    const ok = await confirm({
+      title: n === 1 ? "Delete the selected message?" : `Delete ${n} selected messages?`,
+      danger: true,
+      confirmLabel: "Delete",
+    });
+    if (ok) del.mutate([...checked]);
+  };
+  const clearAll = async () => {
+    const ok = await confirm({
+      title: "Clear the inbox?",
+      message: `All ${list?.total ?? messages.length} captured messages will be deleted.`,
+      danger: true,
+      confirmLabel: "Delete all",
+    });
+    if (ok) clear.mutate();
+  };
 
   const running = !!mp?.running;
   const apiPort = (() => {
@@ -199,8 +248,18 @@ export function Mail() {
               Open Mailpit
             </button>
           )}
+          {checked.size > 0 && (
+            <button
+              onClick={deleteChecked}
+              disabled={del.isPending}
+              className="flex items-center gap-1.5 rounded-lg border border-status-error/60 bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-status-error-bright transition-colors hover:bg-status-error/10 disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete selected ({checked.size})
+            </button>
+          )}
           <button
-            onClick={() => clear.mutate()}
+            onClick={clearAll}
             disabled={clear.isPending || messages.length === 0}
             className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-status-error/60 hover:text-status-error-bright disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border disabled:hover:text-rex-text"
           >
@@ -276,6 +335,9 @@ export function Mail() {
                         key={m.id}
                         m={m}
                         active={m.id === selectedId}
+                        checked={checked.has(m.id)}
+                        onCheck={() => toggleChecked(m.id)}
+                        onDelete={() => del.mutate([m.id])}
                         onClick={() => {
                           setSelectedId(m.id);
                           setTab("html");
@@ -323,32 +385,77 @@ export function Mail() {
   );
 }
 
-function MessageRow({ m, active, onClick }: { m: MailSummary; active: boolean; onClick: () => void }) {
+function MessageRow({
+  m,
+  active,
+  checked,
+  onCheck,
+  onDelete,
+  onClick,
+}: {
+  m: MailSummary;
+  active: boolean;
+  checked: boolean;
+  onCheck: () => void;
+  onDelete: () => void;
+  onClick: () => void;
+}) {
   const recipient = m.to[0]?.address ?? "—";
+  // A <div role="button">, not a <button>: the row contains its own interactive
+  // children (select checkbox, delete button) and nested buttons are invalid.
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className={cn(
-        "relative flex w-full flex-col gap-0.5 border-b border-rex-border-subtle py-2.5 pl-4 pr-3 text-left transition-colors",
+        "group relative flex w-full cursor-pointer items-start gap-2 border-b border-rex-border-subtle py-2.5 pl-3 pr-3 text-left transition-colors",
         active ? "bg-brand-active" : "hover:bg-rex-surface-2/50",
       )}
     >
       {(active || !m.read) && (
         <span className="absolute left-0 top-0 h-full w-[2.5px] bg-brand" />
       )}
-      <div className="flex items-center gap-2">
-        {!m.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
-        <span className={`flex-1 truncate text-[0.78125rem] ${m.read ? "text-rex-text-muted" : "font-semibold text-rex-text"}`}>
-          {m.from.name || m.from.address}
-        </span>
-        <span className="shrink-0 font-mono text-[0.65625rem] text-rex-text-muted">{shortTime(m.created)}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onCheck}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Select "${m.subject || "(no subject)"}"`}
+        className="mt-[3px] h-[15px] w-[15px] shrink-0 cursor-pointer accent-brand"
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          {!m.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />}
+          <span className={`flex-1 truncate text-[0.78125rem] ${m.read ? "text-rex-text-muted" : "font-semibold text-rex-text"}`}>
+            {m.from.name || m.from.address}
+          </span>
+          <span className="shrink-0 font-mono text-[0.65625rem] text-rex-text-muted">{shortTime(m.created)}</span>
+        </div>
+        <div className="truncate text-[0.75rem] text-rex-text">{m.subject || "(no subject)"}</div>
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
+          <span className="text-rex-text-dim">to </span>
+          {recipient}
+        </div>
       </div>
-      <div className="truncate text-[0.75rem] text-rex-text">{m.subject || "(no subject)"}</div>
-      <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
-        <span className="text-rex-text-dim">to </span>
-        {recipient}
-      </div>
-    </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+        }}
+        title="Delete message"
+        aria-label={`Delete "${m.subject || "(no subject)"}"`}
+        className="absolute bottom-2 right-2 hidden h-6 w-6 items-center justify-center rounded-md border border-rex-border bg-rex-surface-2 text-rex-text-muted transition-colors hover:border-status-error/60 hover:text-status-error-bright group-hover:flex"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 

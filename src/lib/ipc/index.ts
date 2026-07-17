@@ -487,6 +487,16 @@ export async function mailpitClear(): Promise<void> {
   await invoke("mailpit_clear");
 }
 
+/** Delete specific messages by ID (row delete / bulk selection delete). */
+export async function mailpitDelete(ids: string[]): Promise<void> {
+  if (ids.length === 0) return; // backend treats empty as an error, never a wipe
+  if (!isTauri()) {
+    mockInbox = mockInbox.filter((m) => !ids.includes(m.id));
+    return;
+  }
+  await invoke("mailpit_delete", { ids });
+}
+
 // ── WordPress Manager — plugins (§6.1) ──────────────────────────────────────
 
 const mockWpPlugins: WpPlugin[] = [

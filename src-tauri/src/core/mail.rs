@@ -287,6 +287,25 @@ pub async fn delete_all() -> Result<()> {
     Ok(())
 }
 
+/// Delete specific captured messages (`DELETE /api/v1/messages` with an IDs
+/// body). NOTE: Mailpit treats an EMPTY ID list as "delete everything", so an
+/// accidental empty selection must not fall through to a wipe — reject it.
+pub async fn delete(ids: &[String]) -> Result<()> {
+    if ids.is_empty() {
+        return Err(Error::Other("mailpit delete: no message IDs given".into()));
+    }
+    let url = format!("{}/api/v1/messages", api_base());
+    reqwest::Client::new()
+        .delete(&url)
+        .json(&serde_json::json!({ "IDs": ids }))
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("mailpit DELETE {url}: {e}")))?
+        .error_for_status()
+        .map_err(|e| Error::Other(format!("mailpit DELETE {url}: {e}")))?;
+    Ok(())
+}
+
 /// Minimal percent-encoding for a search query (keeps unreserved chars; encodes
 /// the rest as %XX). Avoids a url crate dependency for this one small use.
 fn url_encode(s: &str) -> String {
