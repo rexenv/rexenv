@@ -250,6 +250,56 @@ pub trait ShellRunner: Send + Sync {
     fn open_in_editor(&self, _editor_id: &str, _path: &str) -> Result<()> {
         Err(crate::error::Error::Unsupported("open_in_editor"))
     }
+
+    /// The user's REAL shell environment (PATH, SSH_AUTH_SOCK, …), resolved by
+    /// running their login shell the way a terminal would. A Finder-launched
+    /// app inherits the bare launchd environment — Homebrew's shellenv lives in
+    /// `.zprofile` and nvm/fnm/asdf init in `.zshrc` — so SYSTEM dev-tool
+    /// discovery (git/node/npm/composer, `core::devtools`) must go through
+    /// this, never through our own inherited PATH. Expensive (spawns a shell,
+    /// runs the user's rc files) — callers cache the snapshot.
+    fn login_shell_env(&self) -> Result<Vec<(String, String)>> {
+        Err(crate::error::Error::Unsupported("login_shell_env"))
+    }
+
+    /// Preflight before executing SYSTEM `git`: on macOS `/usr/bin/git` is an
+    /// Xcode CLT shim that pops a GUI install dialog when the tools are
+    /// missing — probe quietly (`xcode-select -p`) instead of letting a
+    /// background `git --version` throw a dialog at the user. `Ok(())` means
+    /// git is safe to execute. Default: Ok (no shim on other platforms).
+    fn git_preflight(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Marker a [`ShellRunner::login_shell_env`] impl has the shell print before
+/// `env -0`, so rc-file noise (echoes, motd) can never corrupt the parse —
+/// everything before the LAST marker is noise. Lives here, next to the trait,
+/// so platform impls share the protocol without importing `core`.
+pub const ENV_MARKER: &str = "REXENV-ENV";
+
+/// Parse the raw stdout of `printf '\0<MARKER>\0'; command env -0` into env
+/// pairs. NUL separation means values may contain newlines; entries that
+/// aren't `KEY=value` with an identifier key (rc noise, partial writes) are
+/// dropped. Without the marker (defensive) the whole buffer is parsed.
+pub fn parse_shell_env_output(raw: &[u8]) -> Vec<(String, String)> {
+    let marker: Vec<u8> = format!("\0{ENV_MARKER}\0").into_bytes();
+    let start = raw
+        .windows(marker.len())
+        .rposition(|w| w == marker.as_slice())
+        .map(|p| p + marker.len())
+        .unwrap_or(0);
+    raw[start..]
+        .split(|b| *b == 0)
+        .filter_map(|entry| {
+            let s = std::str::from_utf8(entry).ok()?;
+            let (k, v) = s.split_once('=')?;
+            let key_ok = !k.is_empty()
+                && k.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            key_ok.then(|| (k.to_string(), v.to_string()))
+        })
+        .collect()
 }
 
 /// A detected code editor (`ShellRunner::detect_editors`).

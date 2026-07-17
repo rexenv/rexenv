@@ -11,6 +11,7 @@ pub mod blueprints;
 pub mod cli;
 pub mod database;
 pub mod db;
+pub mod devtools;
 pub mod dns;
 pub mod downloads;
 pub mod firefox;

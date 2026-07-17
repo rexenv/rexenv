@@ -1029,6 +1029,83 @@ impl ShellRunner for MacosShell {
             Err(Error::Other(format!("`open -a {app}` failed: {status}")))
         }
     }
+
+    fn login_shell_env(&self) -> Result<Vec<(String, String)>> {
+        use std::io::Read;
+        use std::process::Stdio;
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+        // -l loads .zprofile (Homebrew shellenv), -i loads .zshrc (nvm/fnm/
+        // asdf init) — a terminal gives tools both, so resolution does too.
+        // rc files print freely; the NUL marker + `env -0` make the parse
+        // immune to that noise (core::devtools::parse_shell_env_output).
+        // stdin is /dev/null so an rc-file `read` can't hang us.
+        let cmd = format!(
+            "printf '\\0{}\\0'; command env -0",
+            crate::platform::traits::ENV_MARKER
+        );
+        let mut child = std::process::Command::new(&shell)
+            .args(["-ilc", &cmd])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let mut stdout = child.stdout.take().expect("stdout piped above");
+        // Reader thread + timeout: reading in-line could block forever on a
+        // pathological rc file; killing on a timer without draining the pipe
+        // could deadlock a noisy one. The thread drains to EOF (also after a
+        // kill), recv_timeout caps the wait.
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout.read_to_end(&mut buf);
+            let _ = tx.send(buf);
+        });
+        let raw = match rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(buf) => buf,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(Error::Other(format!(
+                    "your shell ({shell}) took more than 10s to start — a slow \
+                     startup file? Fix the shell startup, then hit Re-detect."
+                )));
+            }
+        };
+        let _ = child.wait(); // reap — no zombie
+        let env = crate::platform::traits::parse_shell_env_output(&raw);
+        if env.iter().any(|(k, _)| k == "PATH") {
+            Ok(env)
+        } else {
+            Err(Error::Other(format!(
+                "couldn't read your shell environment ({shell} printed no \
+                 PATH). Check the shell's startup files, then hit Re-detect."
+            )))
+        }
+    }
+
+    fn git_preflight(&self) -> Result<()> {
+        // `/usr/bin/git` is an Xcode CLT shim: executing it WITHOUT the tools
+        // installed pops a GUI install dialog — never acceptable from a
+        // background task. `xcode-select -p` answers quietly: exit 0 = a
+        // developer directory exists, git is real.
+        let ok = std::process::Command::new("/usr/bin/xcode-select")
+            .arg("-p")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if ok {
+            Ok(())
+        } else {
+            Err(Error::Other(
+                "git needs the Xcode Command Line Tools (not installed). \
+                 Install them, then hit Re-detect:\n\
+                 $ xcode-select --install"
+                    .into(),
+            ))
+        }
+    }
 }
 
 impl MacosShell {
