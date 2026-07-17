@@ -1218,6 +1218,17 @@ export async function repoJobState(jobId: string): Promise<RepoJobState> {
   return invoke<RepoJobState>("repo_job_state", { jobId });
 }
 
+/** This session's jobs for one site+kind, creation-ordered. The panel uses
+ *  this to RECONNECT to a live/unfinished job after a tab-switch remount —
+ *  the backend job survives the UI; a blank panel invited a second run. */
+export async function repoSiteJobs(
+  siteId: string,
+  kind: "plugin" | "theme",
+): Promise<RepoJobState[]> {
+  if (!isTauri()) return [];
+  return invoke<RepoJobState[]>("repo_site_jobs", { siteId, kind });
+}
+
 /** A site's git-sourced plugin/theme dirs (list badges). */
 export async function repoAssets(siteId: string): Promise<GitAsset[]> {
   if (!isTauri()) return [];

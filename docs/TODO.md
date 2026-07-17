@@ -372,6 +372,29 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   multisite-convert item, untestable because the convert UI didn't exist — fixed below;
   re-verify converted-multisite items + onboarding fixes on the next cold run.
 
+## QA round — add-from-Git (18 Jul 2026)
+
+- [x] **Running git job disappears on tab switch (dangerous — invited a
+  double clone/install).** Cause: the backend job registry (RepoJobs)
+  survives the WordPress-tab unmount and keeps streaming, but GitAddPanel
+  held job+log in component state and had no way back to the live job id on
+  remount — same class as the mount-frozen DNS tile. ✓ **Fixed:** new
+  `repo_site_jobs(site, kind)` IPC (creation-ordered via a registry seq);
+  panel adopts the newest unfinished job on mount, re-subscribes, and seeds
+  its log pane from the job's log file via the existing tail IPC
+  (`log_key` now in the snapshot; overlap-deduped merge with lines that
+  stream during the tail fetch); live snapshots sync into the shared
+  ["repo-jobs"] query cache so the "From Git" tab shows a spinner even from
+  the wp.org tab (2.5s poll only while running); `repo_add` now refuses a
+  second job for a dest with a running step under ONE registry lock (and
+  truncates the log only after that check — never a running job's log);
+  job card gained a `dir · url @ ref` header so a reconnected card names
+  itself. ✓ 307 lib tests, tsc, vite build, WebKit harness: new
+  `?rehydrate=1` scenario ALL PASS (zero-click adoption, seeded log,
+  Cancel visible; blank mode still blank) + prior checks re-run green.
+  **Awaiting human verify** — test-doc §8 (gutenberg clone → tab switch →
+  reconnect; duplicate-Add refusal; wp.org-tab spinner).
+
 ## QA round 1 — light issues (deferred, recorded 16 Jul 2026)
 
 QA green-lit the round (no majors). These are the agreed-deferred light items so

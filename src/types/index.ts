@@ -568,6 +568,9 @@ export interface RepoJobState {
   dirName: string;
   url: string;
   gitRef: string | null;
+  /** Flat log-file key (`repo-<domain>-<dir>.log`) — seeds the log pane via
+   *  `tailLog` when the panel reconnects to a live job after a remount. */
+  logKey: string;
   steps: RepoStepState[];
   inspection: RepoInspection | null;
   nodeWarning: string | null;

@@ -617,6 +617,7 @@ pub fn run() {
             commands::repo::repo_run_step,
             commands::repo::repo_cancel,
             commands::repo::repo_job_state,
+            commands::repo::repo_site_jobs,
             commands::repo::repo_assets,
             commands::repo::repo_tools,
         ])

@@ -16,7 +16,9 @@ import {
   repoJobState,
   repoProbe,
   repoRunStep,
+  repoSiteJobs,
   repoTools,
+  tailLog,
   wpPluginActivate,
   wpThemeActivate,
 } from "@/lib/ipc";
@@ -29,6 +31,20 @@ const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 const LOG_CAP = 500;
+
+/** Merge a log-file tail (authoritative up to its read moment) with lines that
+ *  streamed in while the tail was being fetched: drop the streamed prefix that
+ *  already appears at the tail's end (the sink writes the file BEFORE emitting,
+ *  so an overlapping line is a duplicate, not new output). */
+function mergeTailAndStreamed(tail: string[], streamed: string[]): string[] {
+  const max = Math.min(tail.length, streamed.length, 50);
+  for (let k = max; k > 0; k--) {
+    if (tail.slice(-k).every((l, i) => l === streamed[i])) {
+      return [...tail, ...streamed.slice(k)];
+    }
+  }
+  return [...tail, ...streamed];
+}
 
 /** Step-status glyph — plain text + color, no animation surprises in WKWebView
  *  (only the running state spins, via the same Loader2 the app already uses). */
@@ -63,6 +79,32 @@ export function GitAddPanel({
   const [logOpen, setLogOpen] = useState(false);
   const [activated, setActivated] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const adoptedRef = useRef(false);
+  const qcSyncKey = ["repo-jobs", siteId, kind] as const;
+
+  // RECONNECT after a remount: the backend job registry outlives this panel
+  // (tab switches unmount it). Adopt the newest unfinished job — a blank
+  // panel over a live clone invited a dangerous second run.
+  const siteJobs = useQuery({
+    queryKey: qcSyncKey,
+    queryFn: () => repoSiteJobs(siteId, kind),
+    refetchOnWindowFocus: false,
+    staleTime: 5_000,
+  });
+  useEffect(() => {
+    if (adoptedRef.current || job !== null) return;
+    const candidate = [...(siteJobs.data ?? [])].reverse().find((j) => !j.finishedOk);
+    if (!candidate) return;
+    adoptedRef.current = true;
+    setJob(candidate);
+    setLogOpen(true);
+    // Seed the pane from the job's log file; lines that stream in while the
+    // tail loads are merged (overlap-deduped) after it lands.
+    void tailLog(candidate.logKey, 300)
+      .then((tail) => setLines((streamed) => mergeTailAndStreamed(tail, streamed)))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteJobs.data, job]);
 
   // git/node availability — resolved from the LOGIN-SHELL env (nvm-aware).
   const tools = useQuery({
@@ -92,10 +134,14 @@ export function GitAddPanel({
     mutationFn: () =>
       repoAdd(siteId, kind, url, selRef === "" ? null : selRef, dirName === "" ? null : dirName),
     onSuccess: (snap) => {
+      adoptedRef.current = true; // a fresh job is never re-adopted over
       setJob(snap);
       setLines([]);
       setLogOpen(true);
       setActivated(false);
+      qc.setQueryData(qcSyncKey, (old: RepoJobState[] | undefined) =>
+        old ? [...old.filter((j) => j.id !== snap.id), snap] : [snap],
+      );
     },
     onError: (e) => toastBackendError(e),
   });
@@ -125,7 +171,11 @@ export function GitAddPanel({
     let dead = false;
     const un: Array<() => void> = [];
     void onRepoJobState(job.id, (s) => {
-      if (!dead) setJob(s);
+      if (dead) return;
+      setJob(s);
+      qc.setQueryData(qcSyncKey, (old: RepoJobState[] | undefined) =>
+        old ? old.map((j) => (j.id === s.id ? s : j)) : old,
+      );
     }).then((u) => un.push(u));
     void onRepoJobOutput(job.id, (line) => {
       if (!dead) setLines((l) => [...l.slice(-(LOG_CAP - 1)), line]);
@@ -277,6 +327,10 @@ export function GitAddPanel({
       {/* The job: steps + streamed log + explicit run buttons */}
       {job && (
         <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+          <div className="mb-1.5 truncate font-mono text-[0.6875rem] text-rex-text-muted">
+            {job.dirName} · {job.url}
+            {job.gitRef ? ` @ ${job.gitRef}` : ""}
+          </div>
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
               {job.steps.map((s) => (

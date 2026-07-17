@@ -55,11 +55,43 @@ Command Line Tools — install them, then retry:\n$ xcode-select --install",
   finishedOk: false,
 };
 
+/** `?rehydrate=1`: the panel must ADOPT this running job on mount with zero
+ *  clicks (the tab-return reconnect fix) and seed its log from tail_log. */
+const RUNNING_JOB = {
+  ...JOB,
+  id: "dev-running",
+  gitRef: "main",
+  logKey: "repo-dev.rex-my-plugin.log",
+  steps: [
+    { key: "clone", label: "Clone repository", status: "ok", error: null },
+    { key: "detect", label: "Detect dependencies", status: "ok", error: null },
+    { key: "composer", label: "composer install", status: "ok", error: null },
+    { key: "install", label: "pnpm install", status: "running", error: null },
+    { key: "build", label: "pnpm run build", status: "pending", error: null },
+  ],
+  nodeWarning: null,
+};
+
+const TAIL_LINES = [
+  "$ git clone --progress --recurse-submodules -- https://github.com/acme/my-plugin …",
+  "Receiving objects: 100% (1432/1432), done.",
+  "✓ plugin header: My Plugin",
+  "$ composer install --no-interaction",
+  "Generating autoload files",
+  "$ pnpm install",
+  "Progress: resolved 212, reused 212, downloaded 0",
+];
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
+  const rehydrate = new URLSearchParams(window.location.search).get("rehydrate") === "1";
   useEffect(() => {
     mockIPC(async (cmd) => {
       switch (cmd) {
+        case "repo_site_jobs":
+          return rehydrate ? [RUNNING_JOB] : [];
+        case "tail_log":
+          return rehydrate ? TAIL_LINES : [];
         case "repo_tools":
           return [
             {
@@ -80,8 +112,9 @@ export function DevGitPanel() {
         case "repo_probe":
           return PROBE;
         case "repo_add":
-        case "repo_job_state":
           return JOB;
+        case "repo_job_state":
+          return rehydrate ? RUNNING_JOB : JOB;
         case "repo_run_step":
         case "repo_cancel":
           return null;
@@ -91,6 +124,7 @@ export function DevGitPanel() {
       }
     });
     setReady(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   if (!ready) return null;
   return (

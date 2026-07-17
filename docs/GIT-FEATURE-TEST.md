@@ -178,6 +178,26 @@ while "Clone repository" spins, click **Cancel**:
   (nothing can run our exit hook) — they finish or fail harmlessly; noted
   as accepted.
 
+## 8. Tab-return reconnect (added after QA round 1)
+
+Why: the backend job registry survives a tab switch; the panel's state did
+not — returning showed a blank panel over a live clone, inviting a dangerous
+second run (same class as the mount-frozen DNS tile).
+
+1. Start a big clone (`WordPress/gutenberg`) → while "Clone repository"
+   spins, switch to another SiteDetail tab (or another site) and come back
+   to WordPress → From Git.
+   - Expect: the SAME job card, current step still spinning, log seeded with
+     the earlier output (from the job's log file) and streaming live — not a
+     blank form. Header line names the target (`gutenberg · <url>`).
+2. While it runs, stay on the **WordPress.org** tab: the "From Git" tab
+   label carries a small spinner (the job is visible without entering the
+   panel).
+3. Try to Add the same repo/folder again while it runs (fresh URL → Fetch →
+   Add): refused with "a job for <dir> is already running — reconnect…".
+4. Cancel from the reconnected card → step flips cancelled, partial dir
+   cleaned (same §7 guarantees).
+
 ---
 
 ## Flagged: what I could NOT self-verify / am least sure about

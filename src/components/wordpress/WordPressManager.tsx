@@ -59,6 +59,7 @@ import {
   wpThemeActivate,
   wpThemeDelete,
   repoAssets,
+  repoSiteJobs,
   wpThemeInstall,
   wpThemeUpdate,
   wpThemes,
@@ -127,13 +128,17 @@ function SlugTag({ slug, icon, onRemove }: { slug: string; icon: string | null; 
   );
 }
 
-/** wp.org ↔ Git source switch for the add bar (plugins & themes). */
+/** wp.org ↔ Git source switch for the add bar (plugins & themes). `gitBusy`
+ *  marks a live add-from-Git job so it stays visible from the wp.org tab —
+ *  the job survives the panel (backend registry), the UI must say so. */
 function SourceTabs({
   source,
   onChange,
+  gitBusy,
 }: {
   source: "wporg" | "git";
   onChange: (s: "wporg" | "git") => void;
+  gitBusy?: boolean;
 }) {
   return (
     <div className="mb-2 flex items-center gap-1">
@@ -148,11 +153,14 @@ function SourceTabs({
           type="button"
           onClick={() => onChange(key)}
           className={cn(
-            "rounded-md px-2 py-0.5 text-[0.6875rem] font-medium transition-colors",
+            "flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[0.6875rem] font-medium transition-colors",
             source === key ? "bg-rex-surface-3 text-rex-text" : "text-rex-text-muted hover:text-rex-text",
           )}
         >
           {label}
+          {key === "git" && gitBusy && (
+            <Loader2 className="h-3 w-3 animate-rex-spin text-brand" />
+          )}
         </button>
       ))}
     </div>
@@ -2142,11 +2150,24 @@ function ThemesPanel({ siteId }: { siteId: string }) {
     qc.invalidateQueries({ queryKey: ["wp-themes", siteId] });
     qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
   };
+  const repoJobs = useQuery({
+    queryKey: ["repo-jobs", siteId, "theme"],
+    queryFn: () => repoSiteJobs(siteId, "theme"),
+    refetchOnWindowFocus: false,
+    staleTime: 5_000,
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((j) => j.steps.some((st) => st.status === "running"))
+        ? 2_500
+        : false,
+  });
+  const gitBusy = (repoJobs.data ?? []).some((j) =>
+    j.steps.some((st) => st.status === "running"),
+  );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <SourceTabs source={source} onChange={setSource} />
+        <SourceTabs source={source} onChange={setSource} gitBusy={gitBusy} />
         {source === "git" ? (
           <GitAddPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
         ) : (
@@ -2557,13 +2578,29 @@ function PluginsPanel({ siteId }: { siteId: string }) {
     qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
     qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
   };
+  // Live add-from-Git job for this site? Shared cache with GitAddPanel (it
+  // pushes live snapshots in); the poll only carries the dot while the git
+  // tab is NOT selected.
+  const repoJobs = useQuery({
+    queryKey: ["repo-jobs", siteId, "plugin"],
+    queryFn: () => repoSiteJobs(siteId, "plugin"),
+    refetchOnWindowFocus: false,
+    staleTime: 5_000,
+    refetchInterval: (q) =>
+      (q.state.data ?? []).some((j) => j.steps.some((st) => st.status === "running"))
+        ? 2_500
+        : false,
+  });
+  const gitBusy = (repoJobs.data ?? []).some((j) =>
+    j.steps.some((st) => st.status === "running"),
+  );
 
   return (
     <div className="flex flex-col gap-3">
       {/* Add: live wp.org search (batch install), or a git repo
           (clone → detect → install → build, streamed). */}
       <div className="relative rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
-        <SourceTabs source={source} onChange={setSource} />
+        <SourceTabs source={source} onChange={setSource} gitBusy={gitBusy} />
         {source === "git" ? (
           <GitAddPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
         ) : (

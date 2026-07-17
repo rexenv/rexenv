@@ -35,10 +35,13 @@ type EnvSnapshot = Arc<Vec<(String, String)>>;
 pub struct RepoJobs {
     jobs: Mutex<HashMap<String, Arc<JobEntry>>>,
     env: Mutex<Option<EnvSnapshot>>,
+    /// Creation order for [`repo_site_jobs`] — a HashMap has none.
+    next_seq: std::sync::atomic::AtomicU64,
 }
 
 struct JobEntry {
     id: String,
+    seq: u64,
     site_id: String,
     kind: String,
     php_minor: String,
@@ -63,6 +66,9 @@ pub struct RepoJobState {
     pub dir_name: String,
     pub url: String,
     pub git_ref: Option<String>,
+    /// Flat log-file key under log_dir (`repo-<domain>-<dir>.log`) — the UI
+    /// seeds its log pane from `tail_log` when it reconnects to a live job.
+    pub log_key: String,
     pub steps: Vec<RepoStepState>,
     pub inspection: Option<repo::RepoInspection>,
     pub node_warning: Option<String>,
@@ -229,23 +235,21 @@ pub async fn repo_add(
              another folder name, or remove the existing one first."
         )));
     }
-    let log_path = state
-        .platform
-        .paths()
-        .log_dir()?
-        .join(format!("repo-{}-{}.log", site.domain, dir_name));
-    let _ = std::fs::write(&log_path, ""); // fresh log per add-job
+    let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+    let log_path = state.platform.paths().log_dir()?.join(&log_key);
 
     let id = uuid::Uuid::new_v4().to_string();
+    let seq = jobs.next_seq.fetch_add(1, Ordering::SeqCst);
     let entry = Arc::new(JobEntry {
         id: id.clone(),
+        seq,
         site_id: site_id.clone(),
         kind: kind.clone(),
         php_minor: php::minor_of(&site.php_version).to_string(),
         dir_name: dir_name.clone(),
         url: src.url.clone(),
         git_ref: git_ref.clone(),
-        dest,
+        dest: dest.clone(),
         log_path,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true), // the clone worker below
@@ -256,13 +260,32 @@ pub async fn repo_add(
             dir_name,
             url: src.url,
             git_ref,
+            log_key,
             steps: vec![step("clone", "Clone repository"), step("detect", "Detect dependencies")],
             inspection: None,
             node_warning: None,
             finished_ok: false,
         }),
     });
-    jobs.jobs.lock().expect("jobs lock").insert(id.clone(), entry.clone());
+    {
+        // Registry check + insert under ONE lock: a job for this target with a
+        // step still running means a second Add is a double-clone/install —
+        // refused, not queued (the UI reconnects to the live job instead).
+        let mut map = jobs.jobs.lock().expect("jobs lock");
+        let busy = map
+            .values()
+            .any(|e| e.dest == dest && e.step_running.load(Ordering::SeqCst));
+        if busy {
+            return Err(Error::Other(format!(
+                "a job for {} is already running — reconnect to it in the \
+                 From Git panel instead of starting another.",
+                entry.state.lock().expect("job state lock").dir_name
+            )));
+        }
+        map.insert(id.clone(), entry.clone());
+    }
+    // Fresh log AFTER the busy-refusal — never truncate a running job's log.
+    let _ = std::fs::write(&entry.log_path, "");
 
     let worker = entry.clone();
     let worker_app = app.clone();
@@ -486,6 +509,28 @@ pub async fn repo_cancel(
     let entry = entry_of(&jobs, &job_id)?;
     entry.cancel.cancel(state.platform.supervisor());
     Ok(())
+}
+
+/// This session's jobs for one site+kind, creation-ordered — the panel
+/// RECONNECTS to a live/unfinished job after a tab-switch remount (the
+/// backend job survives the UI; a blank panel invited a dangerous second
+/// run — same bug class as the mount-frozen DNS mode tile).
+#[tauri::command]
+pub async fn repo_site_jobs(
+    jobs: State<'_, RepoJobs>,
+    site_id: String,
+    kind: String,
+) -> Result<Vec<RepoJobState>> {
+    let mut entries: Vec<Arc<JobEntry>> = jobs
+        .jobs
+        .lock()
+        .expect("jobs lock")
+        .values()
+        .filter(|e| e.site_id == site_id && e.kind == kind)
+        .cloned()
+        .collect();
+    entries.sort_by_key(|e| e.seq);
+    Ok(entries.iter().map(|e| snapshot(e)).collect())
 }
 
 /// Poll/refresh a job's snapshot (the UI re-syncs after a remount).
