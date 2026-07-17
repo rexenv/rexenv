@@ -203,6 +203,8 @@ export interface WpPlugin {
   status: string; // active | inactive | active-network | must-use | dropin
   version: string;
   update: string; // none | available | …
+  /** Human title from the plugin header; may be empty (drop-ins) — fall back to the slug. */
+  title: string;
 }
 
 /** A core language row (mirrors the Rust WpLanguage DTO / `wp language core list`). */

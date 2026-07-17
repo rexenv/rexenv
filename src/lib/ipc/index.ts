@@ -500,9 +500,9 @@ export async function mailpitDelete(ids: string[]): Promise<void> {
 // ── WordPress Manager — plugins (§6.1) ──────────────────────────────────────
 
 const mockWpPlugins: WpPlugin[] = [
-  { name: "akismet", status: "inactive", version: "5.3", update: "available" },
-  { name: "hello-dolly", status: "active", version: "1.7.3", update: "none" },
-  { name: "woocommerce", status: "active", version: "9.1.2", update: "none" },
+  { name: "akismet", status: "inactive", version: "5.3", update: "available", title: "Akismet Anti-spam" },
+  { name: "hello-dolly", status: "active", version: "1.7.3", update: "none", title: "Hello Dolly" },
+  { name: "woocommerce", status: "active", version: "9.1.2", update: "none", title: "WooCommerce" },
 ];
 
 /** List a site's plugins (`wp plugin list`). `checkUpdates` opts into the
@@ -525,6 +525,13 @@ export async function wpOrgSearchPlugins(query: string): Promise<WpOrgPlugin[]> 
 export async function wpOrgSearchThemes(query: string): Promise<WpOrgTheme[]> {
   if (!isTauri()) return [];
   return invoke<WpOrgTheme[]>("wp_org_search_themes", { query });
+}
+
+/** Icon URLs for installed plugins (plugin-list display) — backend-cached per
+ *  app run; non-wp.org slugs map to null (letter-tile fallback in the UI). */
+export async function wpOrgPluginIcons(slugs: string[]): Promise<Record<string, string | null>> {
+  if (!isTauri() || slugs.length === 0) return {};
+  return invoke<Record<string, string | null>>("wp_org_plugin_icons", { slugs });
 }
 
 /** Install a plugin by slug (optionally activate). No-op outside Tauri. */

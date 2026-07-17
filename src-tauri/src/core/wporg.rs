@@ -63,6 +63,73 @@ pub async fn search_plugins(query: &str) -> Result<Vec<WpOrgPlugin>> {
     Ok(parse_plugins(&body))
 }
 
+/// Best icon URL from a plugin object's `icons` map (svg → 2x → 1x → default).
+fn best_icon(obj: &serde_json::Value) -> Option<String> {
+    let icons = obj.get("icons");
+    ["svg", "2x", "1x", "default"]
+        .iter()
+        .find_map(|k| icons?.get(k)?.as_str().map(str::to_string))
+}
+
+/// Icon URLs for INSTALLED plugins (the plugin list shows the same icons the
+/// live search does). One `plugin_information` GET per slug, all concurrent,
+/// with a process-lifetime cache — a slug is asked of wp.org at most once per
+/// app run. Non-wp.org plugins (custom, mu, drop-ins) and any fetch failure
+/// resolve to `None` (letter-tile fallback in the UI); the map is total over
+/// the input, and this function never fails.
+pub async fn plugin_icons(slugs: &[String]) -> std::collections::HashMap<String, Option<String>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, Option<String>>>,
+    > = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+
+    let mut out = std::collections::HashMap::new();
+    let mut missing: Vec<String> = Vec::new();
+    {
+        let cached = cache.lock().expect("wporg icon cache");
+        for slug in slugs {
+            match cached.get(slug) {
+                Some(icon) => {
+                    out.insert(slug.clone(), icon.clone());
+                }
+                None => missing.push(slug.clone()),
+            }
+        }
+    }
+    missing.dedup();
+
+    let mut set = tokio::task::JoinSet::new();
+    for slug in missing {
+        set.spawn(async move {
+            let icon = async {
+                let resp = client()
+                    .get("https://api.wordpress.org/plugins/info/1.2/")
+                    .query(&[
+                        ("action", "plugin_information"),
+                        ("request[slug]", slug.as_str()),
+                        ("request[fields][icons]", "1"),
+                    ])
+                    .send()
+                    .await
+                    .ok()?;
+                let body: serde_json::Value = resp.json().await.ok()?;
+                best_icon(&body)
+            }
+            .await;
+            (slug, icon)
+        });
+    }
+    while let Some(joined) = set.join_next().await {
+        let Ok((slug, icon)) = joined else { continue };
+        cache
+            .lock()
+            .expect("wporg icon cache")
+            .insert(slug.clone(), icon.clone());
+        out.insert(slug, icon);
+    }
+    out
+}
+
 /// Pure parser (unit-tested against a captured API shape). Skips malformed
 /// entries instead of failing the whole search.
 fn parse_plugins(body: &serde_json::Value) -> Vec<WpOrgPlugin> {
@@ -73,10 +140,7 @@ fn parse_plugins(body: &serde_json::Value) -> Vec<WpOrgPlugin> {
         .iter()
         .filter_map(|p| {
             let slug = p.get("slug")?.as_str()?.to_string();
-            let icons = p.get("icons");
-            let icon = ["svg", "2x", "1x", "default"]
-                .iter()
-                .find_map(|k| icons?.get(k)?.as_str().map(str::to_string));
+            let icon = best_icon(p);
             Some(WpOrgPlugin {
                 slug,
                 name: decode_entities(p.get("name").and_then(|v| v.as_str()).unwrap_or("")),

@@ -189,19 +189,29 @@ pub struct WpPlugin {
     pub version: String,
     #[serde(default, deserialize_with = "de_update")]
     pub update: String,
+    /// Human title from the plugin header ("Title:" / "Plugin Name:"); may be
+    /// empty for drop-ins whose file has no header — the UI falls back to the
+    /// slug then.
+    #[serde(default)]
+    pub title: String,
 }
 
-/// `wp plugin list` (name, status, version, update). `check_updates: false`
-/// passes `--skip-update-check` — the default check hits api.wordpress.org on
-/// EVERY list (seconds when slow, a hang when offline), so the UI lists fast
-/// without it and refreshes update badges in a background pass.
+/// `wp plugin list` (name, status, version, update, title). `check_updates:
+/// false` passes `--skip-update-check` — the default check hits
+/// api.wordpress.org on EVERY list (seconds when slow, a hang when offline),
+/// so the UI lists fast without it and refreshes update badges in a
+/// background pass.
 pub fn plugin_list(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
     check_updates: bool,
 ) -> Result<Vec<WpPlugin>> {
-    let mut args = vec!["plugin", "list"];
+    let mut args = vec![
+        "plugin",
+        "list",
+        "--fields=name,status,update,version,title",
+    ];
     if !check_updates {
         args.push("--skip-update-check");
     }

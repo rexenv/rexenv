@@ -47,6 +47,7 @@ import {
   wpPluginActivate,
   wpPluginDeactivate,
   wpPluginDelete,
+  wpOrgPluginIcons,
   wpOrgSearchPlugins,
   wpOrgSearchThemes,
   wpPluginInstall,
@@ -2350,6 +2351,17 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
   const { plugins, isLoading, isError, error, refetch } = useWpPlugins(siteId);
 
+  // wp.org icons for the installed list (same source as the live search).
+  // Backend caches per app run; failures just mean letter tiles.
+  const slugKey = plugins.map((p) => p.name).sort().join(",");
+  const { data: iconMap } = useQuery({
+    queryKey: ["wporg-plugin-icons", slugKey],
+    queryFn: () => wpOrgPluginIcons(plugins.map((p) => p.name)),
+    enabled: plugins.length > 0,
+    staleTime: 3_600_000,
+    retry: false,
+  });
+
   // Must-use plugins / drop-ins are always loaded — they belong under "Active".
   const isActive = (p: WpPlugin) =>
     p.status === "active" ||
@@ -2534,6 +2546,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
             <PluginRow
               key={p.name}
               p={p}
+              icon={iconMap?.[p.name] ?? null}
               selected={selected.has(p.name)}
               busy={busy}
               onSelect={() => toggleSel(p.name)}
@@ -2555,6 +2568,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
 
 function PluginRow({
   p,
+  icon,
   selected,
   busy,
   onSelect,
@@ -2564,6 +2578,7 @@ function PluginRow({
   onDelete,
 }: {
   p: WpPlugin;
+  icon: string | null;
   selected: boolean;
   busy: boolean;
   onSelect: () => void;
@@ -2593,16 +2608,31 @@ function PluginRow({
         aria-label={`Select ${p.name}`}
         className={CHECK}
       />
+      {/* Icon spans the title + slug lines, wp-admin style; letter tile when
+          the plugin isn't on wp.org (custom, mu, drop-in) or icons are loading. */}
+      {icon ? (
+        <img src={icon} alt="" className="h-8 w-8 flex-none rounded-[6px] object-cover" />
+      ) : (
+        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-[6px] border border-rex-border bg-rex-surface-2 font-mono text-[0.75rem] font-bold text-rex-text-muted">
+          {(p.title || p.name).slice(0, 1).toUpperCase() || "?"}
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[0.8125rem] font-medium text-rex-text">{p.name}</span>
+          <span className="truncate text-[0.8125rem] font-medium text-rex-text">
+            {p.title || p.name}
+          </span>
           {updatable && (
             <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-amber-400">
               update
             </span>
           )}
         </div>
-        <div className="font-mono text-[0.6875rem] text-rex-text-dim">v{p.version}</div>
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+          {p.name}
+          {/* Drop-ins/mu often have no version — show nothing, never a bare "v". */}
+          {p.version && <span> · v{p.version}</span>}
+        </div>
       </div>
       {updatable && (
         <button className={BTN + " flex items-center gap-1"} disabled={busy} onClick={onUpdate} title="Update">

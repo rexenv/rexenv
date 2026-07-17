@@ -100,6 +100,15 @@ pub async fn wp_org_search_themes(query: String) -> Result<Vec<core::wporg::WpOr
     core::wporg::search_themes(&query).await
 }
 
+/// Icon URLs for installed plugins (plugin-list display) — cached per app run;
+/// unknown/non-wp.org slugs map to null. Never fails: icons are decoration.
+#[tauri::command]
+pub async fn wp_org_plugin_icons(
+    slugs: Vec<String>,
+) -> Result<std::collections::HashMap<String, Option<String>>> {
+    Ok(core::wporg::plugin_icons(&slugs).await)
+}
+
 /// Install a plugin by slug (optionally activating it).
 #[tauri::command]
 pub async fn wp_plugin_install(
