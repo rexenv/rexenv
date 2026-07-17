@@ -402,6 +402,42 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`.
 - **Blueprints** (`core/blueprints.rs`): reusable presets (plugins/themes/WP_DEBUG/
   multisite) applied AFTER the one-click install.
+- **Add plugin/theme from Git** (`core/repo.rs` + `core/devtools.rs` +
+  `commands/repo.rs`): paste URL (https/ssh/scp/`owner/repo`; forge `/tree/`
+  URLs preselect the branch) → `ls-remote` probe (URL+auth validated BEFORE
+  any clone; 30s cap) → streamed clone into `wp-content/{plugins,themes}` →
+  read-only detection (packageManager field > lockfile > npm; composer.json;
+  WP header; `.nvmrc`/engines warning) → EXPLICIT one-click steps. Rules:
+  - **Deliberate bundled-client-rule departure:** builds run the DEVELOPER'S
+    toolchain (their nvm node, their ssh-agent), resolved from a cached
+    login-shell env snapshot (`ShellRunner::login_shell_env` — `$SHELL -ilc`
+    with a NUL-marker protocol; a Finder-launched app has the bare launchd
+    PATH and nvm is rc-file init, so naive PATH detection misses node for
+    every JS dev). Missing tool = honest `$`-fix error; `git_preflight`
+    probes the CLT quietly so `/usr/bin/git`'s shim can never pop a GUI
+    dialog from a background task. EXCEPTION: composer is ALWAYS our pinned
+    phar run by the SITE's PHP version — platform checks (`php`, `ext-*`)
+    then match reality, and system "composer" can be a non-phar wrapper.
+  - **Repo scripts never run implicitly.** Clone+detect executes no repo
+    code; composer/install/build are one explicit click each, with the
+    disclosure line above the buttons. `GIT_TERMINAL_PROMPT=0` forced — a
+    hidden credential prompt fails fast with a mapped error, never hangs.
+  - **Every child runs in its OWN process group** (`spawn_streamed`/
+    `stop_group`, pkill/pgrep `-g`): npm/git spawn worker trees, and cancel
+    must kill the TREE (§5 orphan-workers lesson). Jobs die WITH the app
+    (RunEvent::Exit hook) — the deliberate OPPOSITE of services-outlive-
+    the-app: installs are interactive actions, and an orphaned npm would
+    keep writing into wp-content. Output streams line-wise
+    (`repo-job://state|output/<id>` events) + a flat
+    `logs/repo-<domain>-<dir>.log` (readable via the existing log IPC).
+  - **Dotfile guard in ALL THREE vhost templates** (nginx regex location
+    before the `.php` location; Apache mod_rewrite R=404 before WP routing;
+    FrankenPHP two-RE2-matcher respond) — a cloned `.git/`/`.env` in a
+    served docroot was readable, and tunnels make docroots PUBLIC. Root
+    `/.well-known/` stays exempt.
+  - Provenance in v12 `site_git_assets` (badge; the seam for update-pull/
+    watch later). Collisions refused before any network traffic; a failed/
+    cancelled clone removes only the dir it created.
 - **Autostart** (`AutostartManager`, macOS): per-user LaunchAgent
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist`, `RunAtLoad` — launches the app at
   login (not headless services; the edge still needs its `:443` prompt).

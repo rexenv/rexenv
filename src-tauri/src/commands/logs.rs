@@ -21,7 +21,7 @@ fn get_site(state: &State<'_, AppState>, site_id: &str) -> Result<Site> {
 /// pool, DB error log, and its FrankenPHP backend when overridden).
 #[tauri::command]
 pub fn log_targets(state: State<'_, AppState>, site_id: String) -> Result<Vec<LogTarget>> {
-    Ok(core::logs::targets_for_site(&get_site(&state, &site_id)?))
+    Ok(core::logs::targets_for_site(&get_site(&state, &site_id)?, &state.platform.paths().log_dir()?))
 }
 
 /// The last `lines` lines of the log identified by `key` (a file name within the

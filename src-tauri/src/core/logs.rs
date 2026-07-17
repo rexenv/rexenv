@@ -28,8 +28,11 @@ pub struct LogTarget {
 
 /// The curated set of log sources relevant to a site: the shared edge/nginx, the
 /// site's php-fpm pool (by its PHP version), the DB error log, and — when the site
-/// uses the FrankenPHP override — its per-site backend log.
-pub fn targets_for_site(site: &Site) -> Vec<LogTarget> {
+/// uses the FrankenPHP override — its per-site backend log. `log_dir` is
+/// scanned for the site's Git add-job logs (`repo-<domain>-<dir>.log`, one per
+/// cloned asset — "view the last job's log" with no new IPC); a nonexistent
+/// dir simply adds none.
+pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
     let minor = php::minor_of(&site.php_version);
     let mut targets = vec![
         LogTarget { key: "nginx-access.log".into(), label: "Nginx access".into() },
@@ -45,6 +48,19 @@ pub fn targets_for_site(site: &Site) -> Vec<LogTarget> {
             key: format!("frankenphp-{}-stdout.log", site.domain),
             label: "FrankenPHP".into(),
         });
+    }
+    let prefix = format!("repo-{}-", site.domain);
+    if let Ok(entries) = std::fs::read_dir(log_dir) {
+        let mut repo_keys: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.starts_with(&prefix) && n.ends_with(".log"))
+            .collect();
+        repo_keys.sort();
+        for key in repo_keys {
+            let dir = key[prefix.len()..key.len() - 4].to_string();
+            targets.push(LogTarget { key, label: format!("Git job — {dir}") });
+        }
     }
     targets
 }
@@ -258,7 +274,7 @@ mod tests {
 
     #[test]
     fn targets_use_site_php_version_and_omit_frankenphp_for_nginx() {
-        let t = targets_for_site(&site(WebServer::Nginx));
+        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/nonexistent"));
         let keys: Vec<&str> = t.iter().map(|x| x.key.as_str()).collect();
         assert!(keys.contains(&"php-fpm-8.2.log")); // the site's minor
         assert!(keys.contains(&"nginx-access.log"));
@@ -268,8 +284,25 @@ mod tests {
 
     #[test]
     fn targets_include_frankenphp_backend_for_override_sites() {
-        let t = targets_for_site(&site(WebServer::Frankenphp));
+        let t = targets_for_site(&site(WebServer::Frankenphp), Path::new("/nonexistent"));
         assert!(t.iter().any(|x| x.key == "frankenphp-acme.test-stdout.log"));
+    }
+
+    #[test]
+    fn targets_discover_this_sites_repo_job_logs_only() {
+        let dir = std::env::temp_dir().join(format!("rexenv-logs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("repo-acme.test-my-plugin.log"), "x").unwrap();
+        std::fs::write(dir.join("repo-other.test-thing.log"), "x").unwrap(); // other site
+        std::fs::write(dir.join("nginx-error.log"), "x").unwrap(); // not a repo log
+        let t = targets_for_site(&site(WebServer::Nginx), &dir);
+        let repo: Vec<&LogTarget> =
+            t.iter().filter(|x| x.key.starts_with("repo-")).collect();
+        assert_eq!(repo.len(), 1);
+        assert_eq!(repo[0].key, "repo-acme.test-my-plugin.log");
+        assert_eq!(repo[0].label, "Git job — my-plugin");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

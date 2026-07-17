@@ -28,24 +28,50 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     404 on nginx AND Apache AND FrankenPHP with `/.well-known/` still served
     (needs a config regen — restart services once); `devtools_check` output
     matches your terminal's `which node`.
-  - [ ] Phase 2 — `git ls-remote` probe (30s cap, `GIT_TERMINAL_PROMPT=0`) +
-    clone job: streamed output events, process-GROUP cancel (npm spawns
-    trees), partial-dir cleanup, jobs terminate on app quit.
-  - [ ] Phase 3 — detection (`packageManager` > lockfile > npm; `scripts.build`;
-    `.nvmrc`/`engines` mismatch warning; plugin/theme header check) + composer
-    step on the SITE's PHP (pin composer.phar) + npm/pnpm/yarn install/build +
-    error mapping (ssh auth, host-key, node-gyp/CLT, ext-*). NOTE from the
-    phase-1 live check: a system `composer` can be a NON-phar wrapper (Herd's
-    was) — verify phar-ness before running it through our PHP, else use the
-    pinned phar.
-  - [ ] Phase 4 — UI/IPC: Git source toggle in the Plugins/Themes add-bars,
-    ls-remote → branch/tag combobox, steps panel + live log + cancel +
-    disclosure line, v12 `site_git_assets` provenance + "git" row badge,
-    Activate offered post-build (never auto).
-  - [ ] Phase 5 — polish + docs: row "view last job log", error-copy pass,
-    ARCHITECTURE §9 + PORTS.md (composer pin) + SMOKE-TEST item. Post-v1
-    ladder: link-existing-folder (symlink), watch mode (dies with app BY
-    DESIGN — not a ServiceManager service), update/pull via provenance.
+  - [x] **Phase 2 — probe + streamed cancellable clone** (17 Jul, 1 commit).
+    `probe_remote` (ls-remote --symref, 30s cap, reader-thread capture — big
+    repos overflow a pipe), `run_step_streamed` (own process GROUP via new
+    `ProcessSupervisor::spawn_streamed`/`stop_group`, pkill/pgrep -g GROUP
+    liveness), `clone_repo` (collision refused pre-network; partial dir
+    removed on fail/cancel only if we created it), `map_git_error` house-
+    style. ✓ **Live** (`examples/repo_clone_check` ALL PASS): real probe,
+    missing-repo mapped in 0.5s, clone lands .git + 18 streamed lines,
+    collision leaves existing content, and THE cancel proof — gutenberg
+    clone cancelled mid-transfer, ps showed 3 procs in the group before →
+    EMPTY after, partial checkout gone. 301 lib tests.
+  - [x] **Phase 3 — detect + install/build + mapped errors** (17 Jul, 1
+    commit). `inspect_repo` (packageManager > lockfile > npm; scripts.build;
+    .nvmrc beats engines; WP header 8KB window), `node_version_warning`
+    (display-only), composer = ALWAYS the pinned phar (new `composer` 2.10.2
+    manifest pin, sha == getcomposer.org published sum, run-tested) executed
+    by the SITE's bundled PHP — resolves the Herd-wrapper note; user env
+    rides along (COMPOSER auth). ✓ **Live** (`examples/repo_install_check`
+    ALL PASS): fixture repos through the real pipeline — vendor/psr/log +
+    autoload via PHP 8.3.31, npm install + build artifacts via the nvm node,
+    .nvmrc=18 warning vs v22, php>=9 fixture → "switch the site's PHP"
+    mapped error, missing-bun mapped. 306 lib tests.
+  - [x] **Phase 4 — UI/IPC/provenance** (17 Jul, 1 commit). commands/repo.rs
+    (probe/add/run_step/cancel/state/assets/tools; raw URL re-parsed
+    server-side; one step at a time), events `repo-job://state|output/<id>`
+    + flat `logs/repo-<domain>-<dir>.log`, v12 `site_git_assets` + badge,
+    RunEvent::Exit kills job groups (jobs die WITH the app — deliberate
+    opposite of services-outlive-the-app), GitAddPanel (Fetch → ref select
+    → steps + streamed log + cancel + disclosure + Activate-only-after-
+    all-green), source tabs in both panels (wp.org flow untouched),
+    DEV-only mockIPC harness `/dev/git-panel` (tree-shaken from prod —
+    verified absent in dist). ✓ 306 lib tests, tsc, vite build, Playwright
+    **WebKit** drive of the harness ALL PASS (no-synthetic-clicks rule).
+  - [x] **Phase 5 — polish + docs** (17 Jul, 1 commit). Site → Logs tab
+    lists "Git job — <dir>" sources (`targets_for_site` scans
+    `repo-<domain>-*.log`; +1 test), ARCHITECTURE §9 subsection, PORTS.md
+    composer pin row, `docs/GIT-FEATURE-TEST.md` — the manual checklist
+    (packaged-app WKWebView flow, tunnel dotfile case, private-repo SSH
+    steps, failure matrix, cancel/orphan spot-checks, flagged unknowns).
+    ✓ 307 lib tests. **Awaiting human verification — run
+    `docs/GIT-FEATURE-TEST.md` end to end**; packaging/QA-handoff waits on
+    it. Post-v1 ladder: link-existing-folder (symlink), watch mode (dies
+    with app BY DESIGN — not a ServiceManager service), update/pull via
+    provenance, multisite network-activate variants.
 
 - [x] **Supervisor-aware fix-it commands + status-pill ghost fix** (`2fc0b37`/`d55f3dd`).
   (1) Port-conflict messages carry a copyable command matched to how the holder is
