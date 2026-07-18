@@ -156,6 +156,13 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `launchctl print system/dev.rexenv.rexenv.edge` is gone and nothing answers :443
   (`examples/system_teardown`/`teardown_check`). `cargo test --lib` 334 passed / 0 failed; examples build
   clean.
+- **`eb62f3a`** — **B5** unbounded caddy reload/stop wait (pre-Homebrew): `wait_ok` now polls `try_wait`
+  to a deadline (`ADMIN_CLI_TIMEOUT` = 10s), then kills + reaps and returns a diagnosed timeout — so a
+  wedged edge (admin socket accepts but never answers) can't hang the caller (and any lock it holds)
+  forever. Factored into `wait_ok_within(child, what, timeout)` so it's unit-testable. Tests
+  `wait_ok_within_times_out_and_kills_a_wedged_admin_cli` (a `sleep 30` stand-in is bounded + killed) +
+  `wait_ok_within_reports_success_and_failure`. `cargo test --lib` 336 passed / 0 failed; examples build
+  clean. **This completes all four pre-Homebrew security/availability items (B3, B4, B2, B5).**
 
 ---
 
@@ -263,6 +270,7 @@ submodule guard). Optionally surface submodule presence in the read-only detecti
 disclosure line can mention it. Security → your call.
 
 ### B5 · 🟠 bug · `caddy reload` / `caddy stop` wait on the child with no timeout
+**✅ FIXED — commit `eb62f3a` (pre-Homebrew; see (A)). Analysis kept for the record.**
 **Where:** `core/proxy.rs:362-378` (`reload`) and `381-390` (`stop_admin`), both via `wait_ok` →
 `child.wait()`.
 **Verified:** me.
