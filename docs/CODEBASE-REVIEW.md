@@ -623,6 +623,15 @@ see (D)).
   (stale-handle reset, bounded give-up, re-adopt-on-alive) is correct and regression-tested; status is
   ownership-AND-liveness everywhere (H2). Network timeouts are present where they matter most
   (`wporg` 10s, `binaries::http_get` 15s connect + per-chunk).
+- **`cli/` crate (`rex`, 2171 lines) is well-built** (verified by me): `request`/`soft_request` handle
+  every transport error gracefully with the documented exit codes (2 = app-not-running / transport,
+  1 = command error / unreadable reply, 0 = success) and **never panic** on a malformed reply
+  (`serde_json::from_str` → clean error, not `.unwrap()`); the app-not-running preflight probes the
+  socket once up front; passwords are `/dev/urandom`-generated, sent in the JSON body (never argv),
+  printed once; destructive ops all gate on `--yes`, and `db reset` requires **typing the exact domain**
+  (`a.trim() == domain`). The socket read has no timeout/size bound — intentional ("mutating commands
+  run for minutes; the app closes the connection when done"), and it's the client reading its own
+  same-user app's reply, so B17's concern doesn't really apply here.
 
 **Pass-2 nits / cleanup candidates** (NOT changed this pass — everything to (B)/(D) per your instruction):
 - **Dead-code candidates** (unused `pub fn`, defined + unit-tested, zero call sites — some may be reserved
@@ -661,12 +670,13 @@ build/packaging + docs + frontend still need the URL-consistency sweep (that age
 | macOS platform / privilege | `platform/macos/*` `traits.rs` `windows` `linux` | ✓ reviewed (agent) + uninstall verified by me |
 | repo / shell-exec | `core/repo` `commands/repo` `devtools` `cli` `terminal` | ✓ reviewed (agent) + parse/probe verified by me |
 | examples | `resource_totals_check` | ✓ cleanup committed |
-| binaries / downloads | `binaries` `downloads` | ◐ extraction+publish guards verified by me (zip-slip-safe); `downloads` + rest of `binaries` NOT reviewed |
+| binaries / downloads | `binaries` `downloads` | ◐ extraction+publish verified by me (zip-slip-safe); manifest/checksum/bottle/relink + `downloads` ⧗ agent in progress |
 | service lifecycle | `service_manager` `services` `ports` `monitor` `stack_guard` `site_metrics` | ✓ reviewed (agent) + port-collision/monitor/reap verified by me (B20/B26/B27/B28/B29) |
 | sites / WP / env / tunnels | `sites` `site_env` `wordpress` `wp_login` `wp_tunnel` `tunnels` `wporg` `blueprints` | ✓ reviewed (agent) + `site_env`/`db_name`/slug-hygiene verified by me (B21/B24/B30); crown jewels re-confirmed |
 | CLI server + commands | `cli_server` + `commands/*` | ◐ `cli_server` framing/parse/dispatch-routing verified by me (B17); prefetch-before-lock invariant checked across `commands/*` (B19 gap); `mail`/`downloads` read; other `commands/*` handler bodies NOT fully read |
 | DB engines + override servers | `db` `database` `mariadb` `postgres` `redis` `php` `apache` `frankenphp` `mail` | ✓ reviewed (agent) + datadir-cleanup/bootstrap verified by me (B22/B23/B25/B26) |
 | state / migrations | `state/*` | ✓ `db`/`store`/`app` verified by me (B18 migration atomicity; else clean); `models` skimmed |
-| frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ✗ agent died — NOT reviewed |
-| frontend (components/lib) | `components/*` `lib/*` | ✗ agent died — NOT reviewed |
-| CLI crate + build/packaging | `cli/*` `scripts` `build.rs` `tauri.conf.json` `capabilities` | ✗ agent died — NOT reviewed |
+| frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ✗ agent returned degenerate/injection output (0 tool-uses), discarded — NOT reviewed |
+| frontend (components/lib) | `components/*` `lib/*` | ⧗ agent in progress |
+| CLI crate (`rex`) | `cli/src/main.rs` | ✓ verified by me (robust; matches contract — no new findings) |
+| build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ⧗ agent in progress |
