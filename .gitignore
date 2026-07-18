@@ -50,6 +50,7 @@ Desktop.ini
 # Tooling / MCP artifacts (screenshots, browser sandboxes)
 .playwright-mcp/
 .chrome-devtools-mcp/
+.mcp.json
 /sites.png
 /*.screenshot.png
 src-tauri/binaries/
