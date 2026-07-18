@@ -298,7 +298,7 @@ export function SiteLogs({
             Download
           </button>
           <button
-            onClick={() => pathShown && void openExternal(pathShown)}
+            onClick={() => pathShown && void openExternal(pathShown).catch(toastBackendError)}
             disabled={wpMissing || !pathShown}
             title="Open the log file in the default app"
             className={ACTION_CLS}

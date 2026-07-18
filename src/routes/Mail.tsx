@@ -240,7 +240,7 @@ export function Mail() {
         <div className="flex items-center gap-2">
           {mp && (
             <button
-              onClick={() => openExternal(mp.uiUrl)}
+              onClick={() => void openExternal(mp.uiUrl).catch(toastBackendError)}
               disabled={!running}
               className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:opacity-40"
             >

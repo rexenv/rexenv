@@ -283,7 +283,7 @@ function TunnelCard({
               className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-rex-link hover:underline"
               onClick={(e) => {
                 e.preventDefault();
-                openExternal(tunnel.url);
+                void openExternal(tunnel.url).catch(toastBackendError);
               }}
               href={tunnel.url}
               title={tunnel.url}
@@ -293,7 +293,7 @@ function TunnelCard({
             <CopyButton value={tunnel.url} />
             <button
               title="Open public URL"
-              onClick={() => openExternal(tunnel.url)}
+              onClick={() => void openExternal(tunnel.url).catch(toastBackendError)}
               className="rounded p-1 text-rex-text-muted transition-colors hover:bg-rex-surface-2 hover:text-rex-text"
             >
               <ExternalLink className="h-3.5 w-3.5" />

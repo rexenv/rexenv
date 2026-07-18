@@ -318,7 +318,7 @@ function SiteHeader({
           </div>
         </div>
         <div className="flex flex-none items-center gap-[9px]">
-          <Button variant="secondary" onClick={() => openExternal(url)}>
+          <Button variant="secondary" onClick={() => void openExternal(url).catch(toastBackendError)}>
             <ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />
             Open in browser
           </Button>
@@ -452,7 +452,7 @@ function Overview({
               icon={<Globe className="h-4 w-4" />}
               iconColor="text-rex-text-muted"
               label="Browser"
-              onClick={() => openExternal(url)}
+              onClick={() => void openExternal(url).catch(toastBackendError)}
             />
             {isWordpress && (
               <QuickTile
@@ -478,7 +478,7 @@ function Overview({
               icon={<FolderOpen className="h-4 w-4" />}
               iconColor="text-rex-text-muted"
               label="Open project folder"
-              onClick={() => openExternal(site.path)}
+              onClick={() => void openExternal(site.path).catch(toastBackendError)}
               span2
             />
           </div>
@@ -1040,7 +1040,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 variant="primary"
-                onClick={() => void openExternal(`https://${done.site.domain}`)}
+                onClick={() => void openExternal(`https://${done.site.domain}`).catch(toastBackendError)}
               >
                 Open site
               </Button>
@@ -1206,7 +1206,7 @@ function PathField({
         {(openable || onOpen) && (
           <IconBtn
             title={onOpen ? "Show in Finder" : "Open folder"}
-            onClick={onOpen ?? (() => openExternal(value))}
+            onClick={onOpen ?? (() => void openExternal(value).catch(toastBackendError))}
           >
             <FolderOpen className="h-3.5 w-3.5" />
           </IconBtn>

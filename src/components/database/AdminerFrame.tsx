@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Copy, Database, ExternalLink } from "lucide-react";
 import { Placeholder } from "@/components/common/Placeholder";
 import { isTauri, openExternal } from "@/lib/ipc";
+import { toastBackendError } from "@/lib/toast";
 
 /** Embeds the stack-served Adminer (framed, dark via Adminer's prefers-color-scheme).
  *  Off-Tauri the `rexdb://` proxy scheme doesn't exist, so we show a placeholder.
@@ -46,7 +47,7 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
             {copied ? "Copied" : "Copy"}
           </button>
           <button
-            onClick={() => openExternal(externalUrl)}
+            onClick={() => void openExternal(externalUrl).catch(toastBackendError)}
             title="Open this database in your default browser"
             className="flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[0.71875rem] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
           >

@@ -1080,7 +1080,7 @@ function AboutSetting() {
     url: string | null,
   ) => (
     <button
-      onClick={() => url && openExternal(url)}
+      onClick={() => url && void openExternal(url).catch(toastBackendError)}
       className="flex w-full items-center gap-3 border-b border-rex-border-subtle py-[14px] text-left transition-opacity last:border-b-0 hover:opacity-80"
     >
       <span className="flex flex-none" style={{ color }}>

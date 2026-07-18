@@ -219,7 +219,7 @@ function SiteRow({
           size="icon"
           aria-label="Open in browser"
           title={`Open https://${site.domain}`}
-          onClick={() => openExternal(`https://${site.domain}`)}
+          onClick={() => void openExternal(`https://${site.domain}`).catch(toastBackendError)}
         >
           <Globe className="h-4 w-4" />
         </Button>
@@ -228,7 +228,7 @@ function SiteRow({
           size="icon"
           aria-label="Open folder"
           title="Reveal site folder"
-          onClick={() => openExternal(site.path)}
+          onClick={() => void openExternal(site.path).catch(toastBackendError)}
         >
           <FolderOpen className="h-4 w-4" />
         </Button>
@@ -300,7 +300,7 @@ function SiteRow({
               toast.info(
                 "No code editor found (VS Code, Cursor, PhpStorm, Zed, Sublime…) — opening the folder in Finder instead.",
               );
-              void openExternal(site.path);
+              void openExternal(site.path).catch(toastBackendError);
             }
           }}
         >

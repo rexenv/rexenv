@@ -511,10 +511,10 @@ function NetworkPanel({ siteId, mode, domain }: { siteId: string; mode: Multisit
                     archived
                   </span>
                 )}
-                <IconBtn title="Visit" onClick={() => openExternal(s.url)}>
+                <IconBtn title="Visit" onClick={() => void openExternal(s.url).catch(toastBackendError)}>
                   <Globe className="h-3.5 w-3.5" />
                 </IconBtn>
-                <IconBtn title="Admin" onClick={() => openExternal(`${s.url.replace(/\/$/, "")}/wp-admin/`)}>
+                <IconBtn title="Admin" onClick={() => void openExternal(`${s.url.replace(/\/$/, "")}/wp-admin/`).catch(toastBackendError)}>
                   <ExternalLink className="h-3.5 w-3.5" />
                 </IconBtn>
                 <button
@@ -817,7 +817,7 @@ function ToolsPanel({
   });
   const adminLogin = useMutation({
     mutationFn: () => wpUserLoginUrl(siteId, 1),
-    onSuccess: (url) => openExternal(url),
+    onSuccess: (url) => void openExternal(url).catch(toastBackendError),
     onError: (e) => toastBackendError(e),
   });
   const dbExport = useMutation({
@@ -1867,7 +1867,7 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
 
   const loginAs = useMutation({
     mutationFn: (userId: number) => wpUserLoginUrl(siteId, userId),
-    onSuccess: (url) => openExternal(url),
+    onSuccess: (url) => void openExternal(url).catch(toastBackendError),
     onError: (e) => toastBackendError(e),
   });
 
