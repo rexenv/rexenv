@@ -229,6 +229,11 @@ pub async fn repo_add<R: tauri::Runtime>(
     // Re-parse the RAW url server-side — the UI's normalized copy is display
     // state, not a trust boundary.
     let src = repo::parse_source(&url)?;
+    // Validate the ref here too (the checkout path already does), so everything
+    // reaching git argv is gated at parse time — matches the module invariant.
+    // validate_ref returns the ref unchanged on success, so valid refs are
+    // untouched; malformed ones are refused before the clone.
+    let git_ref = git_ref.map(|r| repo::validate_ref(&r)).transpose()?;
     let site = site_of(&state, &site_id)?;
     let dir_name = match dir_name {
         Some(n) => repo::validate_dir_name(&n)?,
