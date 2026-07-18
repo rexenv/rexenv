@@ -7,7 +7,6 @@
 //! **TCP-only** (`unix_socket_directories=` empty) — our model connects over
 //! `127.0.0.1:<port>`, and it sidesteps macOS's ~104-char Unix-socket path limit.
 
-use crate::core::db::POSTGRES_PORT;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::path::{Path, PathBuf};
@@ -92,11 +91,6 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
 /// Stop a running PostgreSQL by pid.
 pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
     platform.supervisor().stop(pid)
-}
-
-/// The default loopback port (re-exported from the `DbEngine` registry).
-pub fn port() -> u16 {
-    POSTGRES_PORT
 }
 
 #[cfg(test)]

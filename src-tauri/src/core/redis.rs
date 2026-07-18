@@ -6,7 +6,6 @@
 //! passed entirely as command-line arguments, so there is no conf file to
 //! template or quote. The data dir lives under app-data like the other engines.
 
-use crate::core::db::REDIS_PORT;
 use crate::error::Result;
 use crate::platform::traits::Platform;
 use std::path::{Path, PathBuf};
@@ -53,11 +52,6 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
 /// Stop a running Redis by pid.
 pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
     platform.supervisor().stop(pid)
-}
-
-/// The default loopback port (re-exported from the `DbEngine` registry).
-pub fn port() -> u16 {
-    REDIS_PORT
 }
 
 #[cfg(test)]

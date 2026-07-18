@@ -14,7 +14,6 @@
 //! are the build prefix (a `@@HOMEBREW_PREFIX@@` placeholder in the bottle) and
 //! must never be trusted.
 
-use crate::core::db::MARIADB_PORT;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::io::Write;
@@ -182,11 +181,6 @@ pub fn start(
 /// Stop a running MariaDB by pid (SIGTERM → graceful shutdown).
 pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
     platform.supervisor().stop(pid)
-}
-
-/// The default loopback port (re-exported from the `DbEngine` registry).
-pub fn port() -> u16 {
-    MARIADB_PORT
 }
 
 #[cfg(test)]
