@@ -36,13 +36,21 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
 
 ## (A) Fixed & committed
 
-_None._ Every behavioral/security item is in (B) awaiting your decision (per your rules).
+- **`a9d4dbf`** — **B1** Adminer passwordless-login gate: replaced the `strpos(SERVER,'127.0.0.1')
+  === 0` *prefix* test with an **exact** loopback-host match (`127.0.0.1` / `::1` / `localhost`,
+  after stripping an optional `:port` / MySQL `:socket` / bracketed IPv6). Landed ahead of the rest
+  of the review at your direction: it was line-verified, independently exploitable
+  (`127.0.0.1.evil.com` → passwordless login to a remote server → `LOAD DATA LOCAL INFILE`), and
+  isolated from every other finding, with a Homebrew publish imminent. Proven through real PHP
+  (system 8.2 + bundled 8.3/8.5) over a 21-case accept/reject matrix; guarded by a lib unit test +
+  the runnable `examples/adminer_login_gate_check`. Full analysis retained under (B) B1.
 
 ---
 
 ## (B) Found but NOT fixed — needs your decision
 
 ### B1 · 🟠 security · Adminer passwordless-login gate is a *prefix* match, not loopback-only
+**✅ FIXED — commit `a9d4dbf` (landed now at your direction; see (A)). Analysis kept for the record.**
 **Where:** `src-tauri/src/core/adminer.rs:88-92` (the generated `WRAPPER_INDEX_PHP`).
 **Verified:** me.
 ```php
