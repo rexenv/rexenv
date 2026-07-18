@@ -165,10 +165,13 @@ function adminer_object() {
                 header_remove('X-Frame-Options');
             }
             function csp(array $csp) {
-                // Embeddable ONLY by the rexenv app webview (prod macOS/Linux,
-                // prod Windows, Vite dev) — every other ancestor stays blocked.
+                // Embeddable ONLY by the rexenv app webview (prod macOS/Linux +
+                // prod Windows origins) — every other ancestor stays blocked. The
+                // Vite dev origin is appended by Rust ONLY in debug builds
+                // (__REXENV_DEV_ANCESTOR__), so a shipped Adminer isn't frameable
+                // by a local process squatting :1420 (B14).
                 $csp[0]['frame-ancestors'] =
-                    'tauri://localhost https://tauri.localhost http://localhost:1420';
+                    'tauri://localhost https://tauri.localhost__REXENV_DEV_ANCESTOR__';
                 return $csp;
             }
         }
@@ -177,6 +180,23 @@ function adminer_object() {
 }
 require __DIR__ . '/adminer.php';
 "#;
+
+/// The Vite dev server origin, allowed to frame Adminer ONLY in dev builds so
+/// the embedded Database Browser works under `npm run tauri dev`. In release
+/// builds it's empty — a shipped Adminer must not be frameable by any local
+/// process squatting `:1420` (B14). The packaged app frames from
+/// `tauri://localhost`, which stays allowed regardless.
+#[cfg(debug_assertions)]
+const DEV_FRAME_ANCESTOR: &str = " http://localhost:1420";
+#[cfg(not(debug_assertions))]
+const DEV_FRAME_ANCESTOR: &str = "";
+
+/// The wrapper written to disk, with the dev-only frame-ancestor resolved for
+/// this build profile (the `__REXENV_DEV_ANCESTOR__` placeholder in
+/// [`WRAPPER_INDEX_PHP`]).
+pub fn wrapper_index_php() -> String {
+    WRAPPER_INDEX_PHP.replace("__REXENV_DEV_ANCESTOR__", DEV_FRAME_ANCESTOR)
+}
 
 /// Web docroot for Adminer, isolated from the binary cache.
 pub fn docroot(platform: &dyn Platform) -> Result<PathBuf> {
@@ -202,9 +222,12 @@ pub async fn ensure(platform: &dyn Platform) -> Result<PathBuf> {
     }
 
     // The served entrypoint: our deep-link wrapper (rewrite only if changed).
+    // Rendered per build profile — the dev frame-ancestor is present only in
+    // debug builds (B14).
     let index = dir.join("index.php");
-    if std::fs::read_to_string(&index).ok().as_deref() != Some(WRAPPER_INDEX_PHP) {
-        std::fs::write(&index, WRAPPER_INDEX_PHP)?;
+    let rendered = wrapper_index_php();
+    if std::fs::read_to_string(&index).ok().as_deref() != Some(rendered.as_str()) {
+        std::fs::write(&index, &rendered)?;
     }
     Ok(dir)
 }
@@ -422,9 +445,20 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains("function csp("));
         assert!(WRAPPER_INDEX_PHP.contains("'frame-ancestors'"));
         assert!(WRAPPER_INDEX_PHP.contains("tauri://localhost"));
-        assert!(WRAPPER_INDEX_PHP.contains("http://localhost:1420"));
         // No wildcard — never embeddable by arbitrary origins.
         assert!(!WRAPPER_INDEX_PHP.contains("frame-ancestors *"));
+
+        // The Vite dev origin is present ONLY in debug builds (B14): a shipped
+        // Adminer must not be frameable by a local process squatting :1420. The
+        // placeholder is always resolved — it must never ship literally.
+        let rendered = wrapper_index_php();
+        assert!(!rendered.contains("__REXENV_DEV_ANCESTOR__"));
+        assert!(WRAPPER_INDEX_PHP.contains("__REXENV_DEV_ANCESTOR__"));
+        assert!(rendered.contains("tauri://localhost"));
+        #[cfg(debug_assertions)]
+        assert!(rendered.contains("http://localhost:1420"));
+        #[cfg(not(debug_assertions))]
+        assert!(!rendered.contains("http://localhost:1420"));
     }
 
     #[test]
