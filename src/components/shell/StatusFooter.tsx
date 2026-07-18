@@ -4,6 +4,8 @@ import { toastBackendError } from "@/lib/toast";
 import { ArrowDownToLine, Play, RotateCcw, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { startServices, stopServices } from "@/lib/ipc";
+import { onRepoWatchGlobal, repoWatches } from "@/lib/ipc";
+import type { RepoWatchState } from "@/types";
 import { useDownloads } from "@/lib/useDownloads";
 import { DownloadPanel, Track, pctOf } from "@/components/shell/DownloadPanel";
 import type { GlobalStatus } from "@/types";
@@ -65,6 +67,29 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
   // any item needs a retry; a fully successful batch disappears quietly.
   const downloads = useDownloads();
   const [panelOpen, setPanelOpen] = useState(false);
+  // Live repo watchers (npm run dev/watch): session processes that die
+  // with the app — the chip keeps them visible from anywhere.
+  const [watchers, setWatchers] = useState<RepoWatchState[]>([]);
+  useEffect(() => {
+    let dead = false;
+    let un: (() => void) | undefined;
+    void repoWatches(null, null)
+      .then((w) => {
+        if (!dead) setWatchers(w);
+      })
+      .catch(() => {});
+    void onRepoWatchGlobal((w) => {
+      if (!dead) setWatchers(w);
+    }).then((u) => {
+      if (dead) u();
+      else un = u;
+    });
+    return () => {
+      dead = true;
+      un?.();
+    };
+  }, []);
+  const watching = watchers.filter((w) => w.status === "running");
   const failed = downloads.items.filter((i) => i.phase === "failed");
   const batchActive =
     downloads.batch !== null && downloads.batch.done < downloads.batch.total;
@@ -108,6 +133,19 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
 
   return (
     <div className="relative flex-none p-2.5 pb-3">
+      {watching.length > 0 && (
+        <div
+          className="mb-1.5 flex items-center gap-1.5 px-1 text-[0.6875rem] text-rex-text-muted"
+          title={watching.map((w) => `${w.dirName} — ${w.script}`).join("\n")}
+        >
+          <span className="h-1.5 w-1.5 flex-none rounded-full bg-status-running" />
+          <span className="truncate font-mono">
+            {watching.length === 1
+              ? `watching ${watching[0].dirName}`
+              : `${watching.length} watchers running`}
+          </span>
+        </div>
+      )}
       {panelOpen && <DownloadPanel snapshot={downloads} />}
       <div className="overflow-hidden rounded-lg border border-rex-border bg-rex-surface-2">
         <div className="h-0.5" style={{ background: meta.accent }} />

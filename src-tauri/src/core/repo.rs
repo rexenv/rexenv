@@ -1030,6 +1030,85 @@ pub fn lockfile_fingerprint(dir: &Path) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// package.json scripts (phase C) — list + watch heuristic + runner
+// ---------------------------------------------------------------------------
+
+/// One offerable package.json script.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoScript {
+    pub name: String,
+    /// The script's command line — shown so the user sees WHAT runs.
+    pub command: String,
+    /// Long-running by name (dev/watch/start/serve/hot…) → offered as
+    /// "Start watching" instead of a one-shot Run.
+    pub watchy: bool,
+}
+
+/// package.json scripts, name-sorted. Names that could read as argv flags or
+/// contain whitespace/control chars are dropped (pathological; they'd need
+/// shell quoting we refuse to do).
+pub fn list_scripts(dir: &Path) -> Vec<RepoScript> {
+    let Ok(raw) = std::fs::read_to_string(dir.join("package.json")) else {
+        return Vec::new();
+    };
+    let pkg: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+    let Some(scripts) = pkg.get("scripts").and_then(|s| s.as_object()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<RepoScript> = scripts
+        .iter()
+        .filter_map(|(name, cmd)| {
+            let command = cmd.as_str()?.trim().to_string();
+            let ok = !name.is_empty()
+                && !name.starts_with('-')
+                && !command.is_empty()
+                && name.chars().all(|c| {
+                    c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-')
+                });
+            ok.then(|| RepoScript { name: name.clone(), command, watchy: is_watchy(name) })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// Name heuristic for "this script doesn't end on its own": exact dev/watch/
+/// start/serve/hot, a `dev:`/`watch:`-style prefix, or "watch" anywhere
+/// (build:watch). wp-scripts' `start` IS watch mode — the WP-dev norm.
+pub fn is_watchy(name: &str) -> bool {
+    const WATCHY: &[&str] = &["dev", "watch", "start", "serve", "hot"];
+    let lower = name.to_ascii_lowercase();
+    WATCHY.iter().any(|w| {
+        lower == *w || lower.starts_with(&format!("{w}:")) || lower.ends_with(&format!(":{w}"))
+    }) || lower.contains("watch")
+}
+
+/// `<manager> run <script>` — one-shot scripts and watchers share this; the
+/// difference is only who waits (a job worker vs the watch registry thread).
+pub fn node_run_script(
+    supervisor: &dyn ProcessSupervisor,
+    manager: &Path,
+    dir: &Path,
+    script: &str,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<StepResult> {
+    let name = tool_name(manager);
+    on_line(&format!("$ {name} run {script}"));
+    run_step_streamed(
+        supervisor,
+        manager,
+        &["run".into(), script.to_string()],
+        dir,
+        env,
+        cancel,
+        on_line,
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Unmanaged-checkout scan (adopt flow)
 // ---------------------------------------------------------------------------
 
@@ -1713,6 +1792,42 @@ mod tests {
         // Unborn with untracked work: counted, no upstream caveat (meaningless).
         let un = loss_warning(&mk(0, 3, None, false, false, true)).unwrap();
         assert_eq!(un, "3 untracked files will be lost.");
+    }
+
+    #[test]
+    fn script_listing_filters_pathological_names_and_flags_watchy() {
+        let d = fixture_dir("scripts");
+        std::fs::write(
+            d.join("package.json"),
+            r#"{"scripts":{
+                "build":"wp-scripts build",
+                "start":"wp-scripts start",
+                "dev:hot":"vite --hot",
+                "build:watch":"tsc -w",
+                "lint":"eslint .",
+                "-evil":"rm -rf /",
+                "has space":"echo no",
+                "empty":"  "
+            }}"#,
+        )
+        .unwrap();
+        let scripts = list_scripts(&d);
+        let names: Vec<(&str, bool)> =
+            scripts.iter().map(|s| (s.name.as_str(), s.watchy)).collect();
+        assert_eq!(
+            names,
+            vec![
+                ("build", false),
+                ("build:watch", true), // contains watch
+                ("dev:hot", true),     // dev: prefix
+                ("lint", false),
+                ("start", true), // wp-scripts start IS watch mode
+            ]
+        );
+        assert!(scripts.iter().all(|s| !s.command.is_empty()));
+        // No package.json / no scripts → empty, no error.
+        assert!(list_scripts(&d.join("nope")).is_empty());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

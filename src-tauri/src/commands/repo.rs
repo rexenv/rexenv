@@ -50,6 +50,8 @@ struct JobEntry {
     git_ref: Option<String>,
     dest: PathBuf,
     log_path: PathBuf,
+    /// One-shot script jobs (op == "script"): (package manager, script).
+    script: Option<(String, String)>,
     cancel: repo::CancelToken,
     /// One step at a time per job — a second `repo_run_step` while one runs
     /// is refused, not queued.
@@ -255,6 +257,7 @@ pub async fn repo_add(
         git_ref: git_ref.clone(),
         dest: dest.clone(),
         log_path,
+        script: None,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true), // the clone worker below
         state: Mutex::new(RepoJobState {
@@ -400,12 +403,9 @@ pub async fn repo_run_step(
 ) -> Result<()> {
     let entry = entry_of(&jobs, &job_id)?;
     let offered = snapshot(&entry).steps.iter().any(|s| s.key == step_key);
-    if !offered
-        || matches!(
-            step_key.as_str(),
-            "clone" | "detect" | "fetch" | "pull" | "checkout" | "push"
-        )
-    {
+    // Allow-list: ONLY the dependency steps are re-runnable through here —
+    // op/clone/script steps re-run by creating a fresh job instead.
+    if !offered || !matches!(step_key.as_str(), "composer" | "install" | "build") {
         return Err(Error::Other(format!("step \"{step_key}\" is not runnable for this job")));
     }
     if entry.step_running.swap(true, Ordering::SeqCst) {
@@ -621,6 +621,7 @@ pub async fn repo_git_op(
         git_ref: target_ref.clone(),
         dest: dest.clone(),
         log_path,
+        script: None,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true), // the worker below
         state: Mutex::new(RepoJobState {
@@ -768,6 +769,409 @@ pub async fn repo_branches(
     })
     .await
     .map_err(|e| Error::Other(format!("branches task failed: {e}")))?
+}
+
+// ---------------------------------------------------------------------------
+// Scripts + watch registry (phase C)
+// ---------------------------------------------------------------------------
+
+/// package.json scripts for one asset + the manager that would run them.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoScriptsInfo {
+    pub manager: Option<String>,
+    pub scripts: Vec<repo::RepoScript>,
+}
+
+#[tauri::command]
+pub async fn repo_scripts(
+    state: State<'_, AppState>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<RepoScriptsInfo> {
+    let site = site_of(&state, &site_id)?;
+    let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let inspection = repo::inspect_repo(&dir);
+    Ok(RepoScriptsInfo {
+        manager: inspection.node.map(|n| n.manager),
+        scripts: repo::list_scripts(&dir),
+    })
+}
+
+/// Run one script ONCE as a streamed job (op == "script"). Watchy or not —
+/// this is the explicit-click "Run"; watching goes through repo_watch_start.
+#[tauri::command]
+pub async fn repo_script_job(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    jobs: State<'_, RepoJobs>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+    script: String,
+) -> Result<RepoJobState> {
+    let site = site_of(&state, &site_id)?;
+    let dir_name = repo::validate_dir_name(&dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let inspection = repo::inspect_repo(&dest);
+    let manager = inspection
+        .node
+        .map(|n| n.manager)
+        .ok_or_else(|| Error::Other("this folder has no package.json".into()))?;
+    let known = repo::list_scripts(&dest);
+    if !known.iter().any(|sc| sc.name == script) {
+        return Err(Error::Other(format!("no script \"{script}\" in package.json")));
+    }
+    let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+    let log_path = state.platform.paths().log_dir()?.join(&log_key);
+    let id = uuid::Uuid::new_v4().to_string();
+    let seq = jobs.next_seq.fetch_add(1, Ordering::SeqCst);
+    let entry = Arc::new(JobEntry {
+        id: id.clone(),
+        seq,
+        site_id: site_id.clone(),
+        kind: kind.clone(),
+        php_minor: php::minor_of(&site.php_version).to_string(),
+        dir_name: dir_name.clone(),
+        url: String::new(),
+        git_ref: None,
+        dest: dest.clone(),
+        log_path,
+        script: Some((manager.clone(), script.clone())),
+        cancel: repo::CancelToken::new(),
+        step_running: AtomicBool::new(true),
+        state: Mutex::new(RepoJobState {
+            id: id.clone(),
+            site_id,
+            kind,
+            dir_name,
+            url: String::new(),
+            git_ref: None,
+            op: "script".into(),
+            log_key,
+            steps: vec![step("script", &format!("{manager} run {script}"))],
+            inspection: None,
+            node_warning: None,
+            finished_ok: false,
+        }),
+    });
+    {
+        let mut map = jobs.jobs.lock().expect("jobs lock");
+        let busy = map
+            .values()
+            .any(|e| e.dest == dest && e.step_running.load(Ordering::SeqCst));
+        if busy {
+            return Err(Error::Other(format!(
+                "a job for {} is already running — wait for it (or cancel it) first.",
+                entry.state.lock().expect("job state lock").dir_name
+            )));
+        }
+        map.insert(id.clone(), entry.clone());
+    }
+    let _ = std::fs::write(&entry.log_path, "");
+    let worker = entry.clone();
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_script_job(&worker_app, &worker);
+        worker.step_running.store(false, Ordering::SeqCst);
+    });
+    Ok(snapshot(&entry))
+}
+
+fn run_script_job(app: &AppHandle, entry: &Arc<JobEntry>) {
+    let state = app.state::<AppState>();
+    let jobs = app.state::<RepoJobs>();
+    set_step(app, entry, "script", "running", None);
+    let mut sink = make_sink(app.clone(), entry.clone());
+    let outcome = (|| -> Result<()> {
+        let (manager, script) = entry
+            .script
+            .clone()
+            .ok_or_else(|| Error::Other("script job without a script".into()))?;
+        let env = shell_env(&state, &jobs, false)?;
+        let pm = devtools::resolve_package_manager(&env, &manager)?;
+        let result = repo::node_run_script(
+            state.platform.supervisor(),
+            &pm.path,
+            &entry.dest,
+            &script,
+            &env,
+            &entry.cancel,
+            &mut sink,
+        )?;
+        if result.ok {
+            Ok(())
+        } else if result.cancelled {
+            Err(Error::Other("script cancelled".into()))
+        } else {
+            Err(repo::map_node_error(&result.tail))
+        }
+    })();
+    match outcome {
+        Err(e) if entry.cancel.is_cancelled() => {
+            sink(&format!("✕ {e}"));
+            set_step(app, entry, "script", "cancelled", None);
+        }
+        Err(e) => {
+            sink(&format!("✕ {e}"));
+            set_step(app, entry, "script", "failed", Some(e.to_string()));
+        }
+        Ok(()) => set_step(app, entry, "script", "ok", None),
+    }
+}
+
+/// Live watch processes (npm run dev/watch/…). NOT jobs and NOT ServiceManager
+/// services: a watcher belongs to an editing session — it dies WITH the app
+/// (exit hook), never auto-restarts (a crashed watcher shows its exit code +
+/// a Restart button; auto-restarting arbitrary user scripts is a surprise
+/// generator). Max ONE per asset dir.
+#[derive(Default)]
+pub struct RepoWatches {
+    watches: Mutex<HashMap<String, Arc<WatchEntry>>>,
+}
+
+struct WatchEntry {
+    id: String,
+    /// One-per-asset key: "<site_id>/<kind>/<dir>".
+    asset_key: String,
+    cancel: repo::CancelToken,
+    state: Mutex<WatchState>,
+    ring: Mutex<std::collections::VecDeque<String>>,
+}
+
+const WATCH_RING_CAP: usize = 400;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchState {
+    pub id: String,
+    pub site_id: String,
+    pub kind: String,
+    pub dir_name: String,
+    pub script: String,
+    /// "running" | "exited".
+    pub status: String,
+    pub exit: Option<i32>,
+}
+
+fn watch_asset_key(site_id: &str, kind: &str, dir_name: &str) -> String {
+    format!("{site_id}/{kind}/{dir_name}")
+}
+
+pub fn watch_state_event(id: &str) -> String {
+    format!("repo-watch://state/{id}")
+}
+pub fn watch_output_event(id: &str) -> String {
+    format!("repo-watch://output/{id}")
+}
+/// Global event: full watch list on every change (footer chip).
+pub const WATCH_GLOBAL_EVENT: &str = "repo-watch-global";
+
+fn emit_watch_global(app: &AppHandle) {
+    let Some(watches) = app.try_state::<RepoWatches>() else {
+        return;
+    };
+    let all: Vec<WatchState> = watches
+        .watches
+        .lock()
+        .expect("watches lock")
+        .values()
+        .map(|w| w.state.lock().expect("watch state").clone())
+        .collect();
+    let _ = app.emit(WATCH_GLOBAL_EVENT, all);
+}
+
+/// Start watching: `<manager> run <script>` in the asset dir, streamed to the
+/// ring + events + `repo-<domain>-<dir>-watch.log` (the Logs tab picks the
+/// flat name up automatically).
+#[tauri::command]
+pub async fn repo_watch_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    watches: State<'_, RepoWatches>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+    script: String,
+) -> Result<WatchState> {
+    let site = site_of(&state, &site_id)?;
+    let dir_name = repo::validate_dir_name(&dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let inspection = repo::inspect_repo(&dest);
+    let manager = inspection
+        .node
+        .map(|n| n.manager)
+        .ok_or_else(|| Error::Other("this folder has no package.json".into()))?;
+    if !repo::list_scripts(&dest).iter().any(|sc| sc.name == script) {
+        return Err(Error::Other(format!("no script \"{script}\" in package.json")));
+    }
+    let asset_key = watch_asset_key(&site_id, &kind, &dir_name);
+    let id = uuid::Uuid::new_v4().to_string();
+    let entry = Arc::new(WatchEntry {
+        id: id.clone(),
+        asset_key: asset_key.clone(),
+        cancel: repo::CancelToken::new(),
+        state: Mutex::new(WatchState {
+            id: id.clone(),
+            site_id,
+            kind,
+            dir_name: dir_name.clone(),
+            script: script.clone(),
+            status: "running".into(),
+            exit: None,
+        }),
+        ring: Mutex::new(std::collections::VecDeque::with_capacity(WATCH_RING_CAP)),
+    });
+    {
+        // One watcher per asset, checked+inserted under one lock. A dead
+        // (exited) entry for the same asset is replaced.
+        let mut map = watches.watches.lock().expect("watches lock");
+        let running = map.values().any(|w| {
+            w.asset_key == asset_key
+                && w.state.lock().expect("watch state").status == "running"
+        });
+        if running {
+            return Err(Error::Other(format!(
+                "already watching {dir_name} — stop that watcher first."
+            )));
+        }
+        map.retain(|_, w| w.asset_key != asset_key);
+        map.insert(id.clone(), entry.clone());
+    }
+    let log_path = state
+        .platform
+        .paths()
+        .log_dir()?
+        .join(format!("repo-{}-{}-watch.log", site.domain, dir_name));
+    let _ = std::fs::write(&log_path, "");
+    emit_watch_global(&app);
+
+    let worker = entry.clone();
+    let worker_app = app.clone();
+    let pm_name = manager;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_watch(&worker_app, &worker, &pm_name, &log_path);
+    });
+    Ok(snapshot_watch(&entry))
+}
+
+fn snapshot_watch(entry: &WatchEntry) -> WatchState {
+    entry.state.lock().expect("watch state").clone()
+}
+
+fn run_watch(app: &AppHandle, entry: &Arc<WatchEntry>, manager: &str, log_path: &std::path::Path) {
+    let state = app.state::<AppState>();
+    let jobs = app.state::<RepoJobs>();
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(log_path).ok();
+    let app2 = app.clone();
+    let entry2 = entry.clone();
+    let mut sink = move |line: &str| {
+        use std::io::Write;
+        if let Some(f) = file.as_mut() {
+            let _ = writeln!(f, "{line}");
+        }
+        {
+            let mut ring = entry2.ring.lock().expect("watch ring");
+            if ring.len() == WATCH_RING_CAP {
+                ring.pop_front();
+            }
+            ring.push_back(line.to_string());
+        }
+        let _ = app2.emit(&watch_output_event(&entry2.id), line.to_string());
+    };
+    let script = snapshot_watch(entry).script;
+    let outcome = (|| -> Result<repo::StepResult> {
+        let env = shell_env(&state, &jobs, false)?;
+        let pm = devtools::resolve_package_manager(&env, manager)?;
+        let dest = {
+            let st = snapshot_watch(entry);
+            let site = site_of(&state, &st.site_id)?;
+            repo::asset_dest(std::path::Path::new(&site.path), &st.kind, &st.dir_name)?
+        };
+        repo::node_run_script(
+            state.platform.supervisor(),
+            &pm.path,
+            &dest,
+            &script,
+            &env,
+            &entry.cancel,
+            &mut sink,
+        )
+    })();
+    {
+        let mut st = entry.state.lock().expect("watch state");
+        st.status = "exited".into();
+        st.exit = match &outcome {
+            Ok(r) => r.exit,
+            Err(_) => None,
+        };
+    }
+    if let Err(e) = outcome {
+        sink(&format!("✕ {e}"));
+    } else if entry.cancel.is_cancelled() {
+        sink("watcher stopped");
+    } else {
+        sink("watcher exited");
+    }
+    let _ = app.emit(&watch_state_event(&entry.id), snapshot_watch(entry));
+    emit_watch_global(app);
+}
+
+/// Stop a watcher (kills its whole process group) and drop it from the list.
+#[tauri::command]
+pub async fn repo_watch_stop(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    watches: State<'_, RepoWatches>,
+    id: String,
+) -> Result<()> {
+    let entry = watches
+        .watches
+        .lock()
+        .expect("watches lock")
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| Error::Other(format!("no watcher {id}")))?;
+    entry.cancel.cancel(state.platform.supervisor());
+    watches.watches.lock().expect("watches lock").remove(&id);
+    emit_watch_global(&app);
+    Ok(())
+}
+
+/// Watch list — all, or one site+kind's (panel + footer chip seed).
+#[tauri::command]
+pub async fn repo_watches(
+    watches: State<'_, RepoWatches>,
+    site_id: Option<String>,
+    kind: Option<String>,
+) -> Result<Vec<WatchState>> {
+    let mut out: Vec<WatchState> = watches
+        .watches
+        .lock()
+        .expect("watches lock")
+        .values()
+        .map(|w| snapshot_watch(w))
+        .filter(|w| site_id.as_deref().map_or(true, |s| w.site_id == s))
+        .filter(|w| kind.as_deref().map_or(true, |k| w.kind == k))
+        .collect();
+    out.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
+    Ok(out)
+}
+
+/// A watcher's ring-buffer backlog (seeds the pane on remount — in-memory,
+/// no file read).
+#[tauri::command]
+pub async fn repo_watch_log(watches: State<'_, RepoWatches>, id: String) -> Result<Vec<String>> {
+    let entry = watches
+        .watches
+        .lock()
+        .expect("watches lock")
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| Error::Other(format!("no watcher {id}")))?;
+    let ring = entry.ring.lock().expect("watch ring");
+    Ok(ring.iter().cloned().collect())
 }
 
 /// A checkout's live state for the RepoPanel + the delete-safety confirm.
@@ -944,5 +1348,10 @@ pub fn cancel_all_on_exit(app: &AppHandle) {
     };
     for entry in jobs.jobs.lock().expect("jobs lock").values() {
         entry.cancel.cancel(state.platform.supervisor());
+    }
+    if let Some(watches) = app.try_state::<RepoWatches>() {
+        for w in watches.watches.lock().expect("watches lock").values() {
+            w.cancel.cancel(state.platform.supervisor());
+        }
     }
 }

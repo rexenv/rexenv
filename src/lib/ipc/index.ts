@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoProbeResult, RepoToolStatus, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1310,4 +1310,82 @@ export async function repoBranches(
   dirName: string,
 ): Promise<RepoBranches> {
   return invoke<RepoBranches>("repo_branches", { siteId, kind, dirName });
+}
+
+/** package.json scripts for one asset + the manager that would run them. */
+export async function repoScripts(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+): Promise<RepoScriptsInfo> {
+  return invoke<RepoScriptsInfo>("repo_scripts", { siteId, kind, dirName });
+}
+
+/** Run one script ONCE as a streamed job (explicit click — repo code runs). */
+export async function repoScriptJob(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+  script: string,
+): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_script_job", { siteId, kind, dirName, script });
+}
+
+/** Start watching (npm run dev/watch/…): a session process — dies with the
+ *  app, never auto-restarts. One watcher per asset dir. */
+export async function repoWatchStart(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+  script: string,
+): Promise<RepoWatchState> {
+  return invoke<RepoWatchState>("repo_watch_start", { siteId, kind, dirName, script });
+}
+
+/** Stop a watcher (kills its whole process group). */
+export async function repoWatchStop(id: string): Promise<void> {
+  await invoke("repo_watch_stop", { id });
+}
+
+/** Watchers — all (footer chip) or one site+kind's (panel). */
+export async function repoWatches(
+  siteId: string | null,
+  kind: "plugin" | "theme" | null,
+): Promise<RepoWatchState[]> {
+  if (!isTauri()) return [];
+  return invoke<RepoWatchState[]>("repo_watches", { siteId, kind });
+}
+
+/** A watcher's in-memory backlog (seeds the pane on remount). */
+export async function repoWatchLog(id: string): Promise<string[]> {
+  return invoke<string[]>("repo_watch_log", { id });
+}
+
+/** Subscribe to one watcher's state changes. Returns an unlisten fn. */
+export async function onRepoWatchState(
+  id: string,
+  cb: (state: RepoWatchState) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<RepoWatchState>(`repo-watch://state/${id}`, (e) => cb(e.payload));
+}
+
+/** Subscribe to one watcher's streamed output lines. Returns an unlisten fn. */
+export async function onRepoWatchOutput(
+  id: string,
+  cb: (line: string) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<string>(`repo-watch://output/${id}`, (e) => cb(e.payload));
+}
+
+/** Subscribe to the global watcher list (footer chip). Returns an unlisten fn. */
+export async function onRepoWatchGlobal(
+  cb: (watchers: RepoWatchState[]) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<RepoWatchState[]>("repo-watch-global", (e) => cb(e.payload));
 }

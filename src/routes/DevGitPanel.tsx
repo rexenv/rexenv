@@ -137,6 +137,7 @@ export function DevGitPanel() {
   const params = new URLSearchParams(window.location.search);
   const rehydrate = params.get("rehydrate") === "1";
   const showRepoPanel = params.get("panel") === "repo";
+  const watchMode = params.get("watch"); // "1" running | "exited"
   useEffect(() => {
     mockIPC(async (cmd) => {
       switch (cmd) {
@@ -144,6 +145,23 @@ export function DevGitPanel() {
           return rehydrate ? [RUNNING_JOB] : [];
         case "repo_asset_status":
           return ASSET_STATUS;
+        case "repo_scripts":
+          return {
+            manager: "pnpm",
+            scripts: [
+              { name: "build", command: "wp-scripts build", watchy: false },
+              { name: "lint", command: "eslint .", watchy: false },
+              { name: "start", command: "wp-scripts start", watchy: true },
+            ],
+          };
+        case "repo_watches":
+          return watchMode === "1"
+            ? [{ id: "dev-watch", siteId: "dev", kind: "plugin", dirName: "my-plugin", script: "start", status: "running", exit: null }]
+            : watchMode === "exited"
+              ? [{ id: "dev-watch", siteId: "dev", kind: "plugin", dirName: "my-plugin", script: "start", status: "exited", exit: 1 }]
+              : [];
+        case "repo_watch_log":
+          return ["$ pnpm run start", "webpack 5.99 compiled successfully in 830 ms"];
         case "repo_branches":
           return { current: "feat/x", local: ["feat/x", "main"], remote: ["origin/main", "origin/develop"] };
         case "repo_git_op":

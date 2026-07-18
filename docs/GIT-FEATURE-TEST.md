@@ -257,6 +257,33 @@ What's left for you = the panel in the packaged app + your real remotes:
    as §8). Ops are refused while an install/build job runs for the same
    dir (one job per dir).
 
+## 11. Phase C — scripts + watch (added 18 Jul)
+
+Machine-verified already: script listing + watchy heuristic (wp-scripts
+`start` counts as watch), a real `npm run` watcher streaming ticks then
+CANCEL leaving the process group EMPTY (npm + node child both dead, ps
+evidence), and a crashing script surfacing `exit=3` with its output. Yours:
+
+1. On an asset with real scripts (a wp-scripts plugin): the panel lists
+   them under the disclosure line — watchy ones as "Watch: start", others
+   as "Run: build" (hover shows the actual command).
+2. **Run: build** → the one-shot job card streams and finishes; re-click →
+   runs again (fresh job).
+3. **Watch: start** → green dot "watching — start", output streams live
+   (edit a source file → rebuild lines appear). The footer shows the subtle
+   "watching <dir>" chip from ANY screen. Tab away and back → still
+   watching, output backlog seeded (ring buffer).
+4. Stop → `ps -ax | grep node` shows nothing for that watcher; the chip
+   disappears. Start again, then QUIT the app → relaunch → watcher is gone
+   (chip absent, `ps` clean) — watchers die with the app BY DESIGN and
+   never auto-start.
+5. Kill the watcher's node process manually (`kill <pid>` of the child) →
+   panel flips to "watcher exited (code …)" with a **Restart** button —
+   it must NOT restart by itself.
+6. One watcher per asset: with one running, "Watch:" buttons are disabled;
+   a second asset can watch simultaneously (two chips → "2 watchers
+   running").
+
 ---
 
 ## Flagged: what I could NOT self-verify / am least sure about

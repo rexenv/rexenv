@@ -413,9 +413,26 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   `?panel=repo` extended (ops row + Pull → op card + offer + disclosure)
   ALL PASS, rehydrate/interactive re-run green. **Awaiting human verify —
   test-doc §10** (real remotes/agent + packaged-app panel).
-- [ ] Phase C — scripts + watch (RepoWatches registry: process-group,
-  die-with-app, Restart-not-auto; name heuristic dev/watch/start/serve/hot;
-  global watcher chip).
+- [x] **Phase C — scripts + watch** (18 Jul, 1 commit). core: list_scripts
+  (pathological names dropped, command shown; tested), is_watchy heuristic
+  (dev/watch/start/serve/hot + prefixes + contains-watch; wp-scripts start
+  IS watch — tested), node_run_script (shared by one-shot jobs + watchers —
+  the watcher IS run_step_streamed on a dedicated thread, zero new exec
+  machinery). commands: repo_scripts, repo_script_job (op=="script" job,
+  same registry/busy/cancel; re-run = fresh job — repo_run_step flipped to
+  an ALLOW-list {composer,install,build}), RepoWatches registry (uuid ids
+  for event names — dir names can contain dots; one watcher per asset
+  under one lock; 400-line ring + repo-<domain>-<dir>-watch.log which the
+  Logs tab picks up automatically; exited keeps code + Restart, NEVER
+  auto-restart), repo_watch_start/stop/list/log, repo-watch-global event,
+  exit hook extended (watchers die with the app). UI: scripts row under
+  the disclosure (Watch:/Run: split), watch card (dot/Stop/exited-code/
+  Restart/ring-seeded output), StatusFooter chip ("watching <dir>" / "N
+  watchers running"). ✓ 314 lib tests (+1), tsc, vite build; live
+  `examples/repo_watch_check` ALL PASS (ticks streamed, group 2→0 procs on
+  stop, crash exit=3 surfaced); WebKit watch scenario ALL PASS (+3 prior
+  re-run green). **Awaiting human verify — test-doc §11** (real wp-scripts
+  watcher, footer chip, die-with-app on quit, manual-kill → Restart).
 - [ ] Phase D — link existing folder (third source tab, picker,
   validations, symlink, source=linked) + DELETE INTERCEPTION for linked
   assets (unlink only — wp-cli delete would walk INTO the link and destroy

@@ -10,12 +10,20 @@ import { Loader2, RefreshCw } from "lucide-react";
 import {
   onRepoJobOutput,
   onRepoJobState,
+  onRepoWatchOutput,
+  onRepoWatchState,
   repoAssetStatus,
   repoBranches,
   repoCancel,
   repoGitOp,
   repoRunStep,
+  repoScriptJob,
+  repoScripts,
   repoSiteJobs,
+  repoWatchLog,
+  repoWatchStart,
+  repoWatchStop,
+  repoWatches,
   tailLog,
 } from "@/lib/ipc";
 import type { GitAsset, RepoJobState } from "@/types";
@@ -76,6 +84,24 @@ export function RepoPanel({
     refetchOnWindowFocus: false,
     retry: false,
   });
+  // Scripts + the asset's watcher (phase C).
+  const scriptsQ = useQuery({
+    queryKey: ["repo-scripts", siteId, kind, asset.dirName],
+    queryFn: () => repoScripts(siteId, kind, asset.dirName),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const watchesQ = useQuery({
+    queryKey: ["repo-watches", siteId, kind],
+    queryFn: () => repoWatches(siteId, kind),
+    staleTime: 5_000,
+    refetchOnWindowFocus: false,
+  });
+  const myWatch = (watchesQ.data ?? []).find((w) => w.dirName === asset.dirName) ?? null;
+  const [watchLines, setWatchLines] = useState<string[]>([]);
+  const [watchLogOpen, setWatchLogOpen] = useState(false);
+  const watchLogRef = useRef<HTMLDivElement | null>(null);
   const log = useQuery({
     queryKey: ["repo-status-log", siteId, kind, asset.dirName],
     queryFn: () => tailLog(status.data?.logKey ?? "", 200),
@@ -139,6 +165,33 @@ export function RepoPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [opLines, opLogOpen]);
 
+  // Watcher subscriptions: live lines + ring-buffer seed on (re)mount.
+  useEffect(() => {
+    if (!myWatch?.id) return;
+    let dead = false;
+    const un: Array<() => void> = [];
+    void onRepoWatchState(myWatch.id, () => {
+      if (!dead) qc.invalidateQueries({ queryKey: ["repo-watches", siteId, kind] });
+    }).then((u) => un.push(u));
+    void onRepoWatchOutput(myWatch.id, (line) => {
+      if (!dead) setWatchLines((l) => [...l.slice(-(LOG_CAP - 1)), line]);
+    }).then((u) => un.push(u));
+    void repoWatchLog(myWatch.id)
+      .then((ring) => {
+        if (!dead) setWatchLines((streamed) => mergeTailAndStreamed(ring, streamed));
+      })
+      .catch(() => {});
+    return () => {
+      dead = true;
+      un.forEach((u) => u());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myWatch?.id]);
+  useEffect(() => {
+    const el = watchLogRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [watchLines, watchLogOpen]);
+
   const runOp = useMutation({
     mutationFn: (args: { op: "fetch" | "pull" | "checkout" | "push"; ref?: string }) =>
       repoGitOp(siteId, kind, asset.dirName, args.op, args.ref ?? null),
@@ -155,6 +208,33 @@ export function RepoPanel({
   });
   const runStep = useMutation({
     mutationFn: (stepKey: string) => repoRunStep(opJob?.id ?? "", stepKey),
+    onError: (e) => toastBackendError(e),
+  });
+  const runScript = useMutation({
+    mutationFn: (script: string) => repoScriptJob(siteId, kind, asset.dirName, script),
+    onSuccess: (snap) => {
+      adoptedRef.current = true;
+      setOpJob(snap);
+      setOpLines([]);
+      setOpLogOpen(true);
+      qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+        old ? [...old.filter((j) => j.id !== snap.id), snap] : [snap],
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const startWatch = useMutation({
+    mutationFn: (script: string) => repoWatchStart(siteId, kind, asset.dirName, script),
+    onSuccess: () => {
+      setWatchLines([]);
+      setWatchLogOpen(true);
+      qc.invalidateQueries({ queryKey: ["repo-watches", siteId, kind] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const stopWatch = useMutation({
+    mutationFn: (id: string) => repoWatchStop(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["repo-watches", siteId, kind] }),
     onError: (e) => toastBackendError(e),
   });
 
@@ -357,6 +437,83 @@ export function RepoPanel({
                 </div>
               )}
               {opLogOpen && <LogPane lines={opLines} innerRef={opLogRef} />}
+            </div>
+          )}
+
+          {(scriptsQ.data?.scripts.length ?? 0) > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[0.6875rem] text-rex-text-muted">
+                {REPO_SCRIPTS_DISCLOSURE}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {(scriptsQ.data?.scripts ?? []).map((sc) =>
+                  sc.watchy ? (
+                    <button
+                      key={sc.name}
+                      className={BTN}
+                      title={sc.command}
+                      disabled={startWatch.isPending || myWatch?.status === "running"}
+                      onClick={() => startWatch.mutate(sc.name)}
+                    >
+                      Watch: {sc.name}
+                    </button>
+                  ) : (
+                    <button
+                      key={sc.name}
+                      className={BTN}
+                      title={sc.command}
+                      disabled={opsDisabled}
+                      onClick={() => runScript.mutate(sc.name)}
+                    >
+                      Run: {sc.name}
+                    </button>
+                  ),
+                )}
+              </div>
+              {myWatch && (
+                <div className="rounded-md border border-rex-border bg-rex-surface-1 px-2.5 py-2">
+                  <div className="flex items-center gap-2">
+                    {myWatch.status === "running" ? (
+                      <>
+                        <span className="h-1.5 w-1.5 flex-none rounded-full bg-status-running" />
+                        <span className="font-mono text-[0.75rem] text-rex-text">
+                          watching — {myWatch.script}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-mono text-[0.75rem] text-status-error-bright">
+                        watcher exited{myWatch.exit != null ? ` (code ${myWatch.exit})` : ""}
+                      </span>
+                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                      {myWatch.status === "running" ? (
+                        <button
+                          className={BTN}
+                          disabled={stopWatch.isPending}
+                          onClick={() => stopWatch.mutate(myWatch.id)}
+                        >
+                          Stop
+                        </button>
+                      ) : (
+                        <button
+                          className={BTN}
+                          disabled={startWatch.isPending}
+                          onClick={() => startWatch.mutate(myWatch.script)}
+                        >
+                          Restart
+                        </button>
+                      )}
+                      <button
+                        className="text-[0.6875rem] text-rex-text-muted underline decoration-dotted hover:text-rex-text"
+                        onClick={() => setWatchLogOpen((v) => !v)}
+                      >
+                        {watchLogOpen ? "Hide output" : "Show output"}
+                      </button>
+                    </div>
+                  </div>
+                  {watchLogOpen && <LogPane lines={watchLines} innerRef={watchLogRef} />}
+                </div>
+              )}
             </div>
           )}
 

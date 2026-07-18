@@ -165,6 +165,7 @@ pub fn run() {
             // Registry of live PTY terminal sessions (§4.1).
             app.manage(commands::terminal::Terminals::default());
             app.manage(commands::repo::RepoJobs::default());
+            app.manage(commands::repo::RepoWatches::default());
             // Registry of live per-site public tunnels (§9.1).
             app.manage(commands::tunnels::Tunnels::default());
 
@@ -624,6 +625,12 @@ pub fn run() {
             commands::repo::repo_adopt,
             commands::repo::repo_git_op,
             commands::repo::repo_branches,
+            commands::repo::repo_scripts,
+            commands::repo::repo_script_job,
+            commands::repo::repo_watch_start,
+            commands::repo::repo_watch_stop,
+            commands::repo::repo_watches,
+            commands::repo::repo_watch_log,
             commands::repo::repo_tools,
         ])
         .build(tauri::generate_context!())

@@ -630,3 +630,29 @@ export interface RepoBranches {
   local: string[];
   remote: string[];
 }
+
+/** One offerable package.json script (RepoPanel scripts row). */
+export interface RepoScript {
+  name: string;
+  /** The script's command line — shown so the user sees WHAT runs. */
+  command: string;
+  /** Long-running by name (dev/watch/start/serve/hot) → offered as Watch. */
+  watchy: boolean;
+}
+
+export interface RepoScriptsInfo {
+  manager: string | null;
+  scripts: RepoScript[];
+}
+
+/** A live (or crashed) watcher — npm run dev/watch/…; dies with the app,
+ *  never auto-restarts. */
+export interface RepoWatchState {
+  id: string;
+  siteId: string;
+  kind: "plugin" | "theme";
+  dirName: string;
+  script: string;
+  status: "running" | "exited";
+  exit: number | null;
+}
