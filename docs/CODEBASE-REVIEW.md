@@ -65,6 +65,16 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   class). Design choice flagged to + verified by you. Tests
   `db_name_disambiguated_is_injective_and_bounded` + `create_gives_slug_colliding_domains_distinct_databases`.
   `cargo test --lib` 324 passed / 0 failed; examples build clean. Full analysis retained under (B) B21.
+- **`6b4770d`** — **B22 + B23** datadir half-init cleanup: added
+  `core::db::clean_datadir_on_init_failure(datadir, result)` (removes the datadir on any `Err`, passes
+  the result through) and funneled every engine's `initialize` through it — MySQL/Postgres via a scoped
+  closure, MariaDB via an extracted `bootstrap()` fn — so a failed init can no longer leave a
+  half-written datadir whose early `mysql/`/`PG_VERSION` marker lies to `is_initialized` and starts the
+  server on a corrupt datadir. Now covers the nonzero exit **and** every `?` path (the B23 gap), and
+  MariaDB reaps its child on a stdin-write EPIPE so a crashed bootstrap can't zombie. Test
+  `clean_datadir_on_init_failure_removes_only_a_failed_datadir`; per-engine wiring verified by inspection
+  (real end-to-end needs the DB binaries — live-check territory). `cargo test --lib` 325 passed / 0 failed;
+  examples build clean. Full analysis retained under (B) B22/B23.
 
 ---
 
@@ -423,6 +433,7 @@ and reject/suffix on collision; add a UNIQUE index on `sites.db_name` as a backs
 the naming of the DB a site binds to) → your call; note existing sites keep their stored `db_name`.
 
 ### B22 · 🟠 med · MySQL (and Postgres) `initialize` leaves a half-written datadir on failure → lying marker → next start on a corrupt datadir
+**✅ FIXED — commit `6b4770d` (with B23; see (A)). Analysis kept for the record.**
 **Where:** `core/database.rs:46-72` (MySQL), `core/postgres.rs` init (same shape per agent); contrast the
 correct guard in `core/mariadb.rs:128-130`.
 **Verified:** me (MySQL); agent (Postgres).
@@ -441,6 +452,7 @@ mirroring `mariadb::initialize` (and same for Postgres as defense-in-depth). Add
 path (the gap that hid this).
 
 ### B23 · 🟠 med · MariaDB bootstrap cleanup is skipped when the stdin write / wait errors (and leaks a zombie child)
+**✅ FIXED — commit `6b4770d` (with B22; see (A)). Analysis kept for the record.**
 **Where:** `core/mariadb.rs:118-137`.
 **Verified:** me.
 **Why it might be a bug:** the datadir-removal cleanup (line 130) lives only inside the
