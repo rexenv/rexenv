@@ -284,6 +284,38 @@ evidence), and a crashing script surfacing `exit=3` with its output. Yours:
    a second asset can watch simultaneously (two chips → "2 watchers
    running").
 
+## 12. Phase D — link folder + THE unlink-only delete guard (added 18 Jul)
+
+Machine-verified: symlink round-trip through the real platform impls,
+detection through the link, the fs-truth partition, **unlink leaving the
+target byte-intact (plugin.php + uncommitted work + .git all survived)**,
+remove_symlink REFUSING a real directory, and the three validation
+refusals (self-link, cycle, collision incl. a dangling link at dest).
+Yours — the end-to-end through WordPress itself:
+
+1. **Link**: Add bar → Link folder → pick a real checkout you keep
+   elsewhere (with uncommitted work in it!) → linked, badge appears
+   (source "linked"), RepoPanel shows "→ <target>"; the plugin/theme works
+   in wp-admin; a non-plugin folder warns about the missing header.
+2. **THE delete test** (the reason this phase exists): delete the linked
+   plugin from the list — confirm says "removes only the link; your
+   original folder stays untouched" (calm, no loss warning) → after
+   delete: the link is gone from wp-content AND **your original folder is
+   completely intact, uncommitted work included**. Repeat via BULK delete
+   (select the linked plugin + a normal one): normal one deleted by
+   wp-cli, linked one unlinked, original intact.
+3. **Never-adopted manual symlink**: `ln -s` a checkout into
+   wp-content/plugins yourself, do NOT adopt it, delete it from the list →
+   still unlink-only, original intact (the guard keys on fs truth, not
+   provenance).
+4. **Active linked theme**: link a theme, activate it, try to delete →
+   honest refusal ("activate another theme first").
+5. Serving: the linked plugin serves on nginx AND Apache AND FrankenPHP;
+   `curl -sk https://<domain>/wp-content/plugins/<link>/.git/config` → 404
+   (dotfile guard applies through the link path).
+6. RepoPanel git ops + scripts + watch all work on a linked asset (same
+   machinery; cwd resolves through the link).
+
 ---
 
 ## Flagged: what I could NOT self-verify / am least sure about

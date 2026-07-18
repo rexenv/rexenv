@@ -315,6 +315,14 @@ export function RepoPanel({
             {s.remote ?? (asset.url || "(no remote)")}
             {asset.gitRef ? ` · added @ ${asset.gitRef}` : ""}
           </div>
+          {s.linkTarget && (
+            <div
+              className="truncate font-mono text-[0.6875rem] text-rex-text-dim"
+              title="Symlink target — deleting this asset removes only the link"
+            >
+              → {s.linkTarget}
+            </div>
+          )}
 
           {/* Git ops — jobs on the shared runner, one at a time per dir. */}
           <div className="flex flex-wrap items-center gap-2">

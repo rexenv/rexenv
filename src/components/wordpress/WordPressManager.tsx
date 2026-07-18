@@ -76,6 +76,7 @@ import {
 import type { WpDebugFlag } from "@/lib/ipc";
 import { GitAddPanel } from "./GitAddPanel";
 import { RepoPanel } from "./RepoPanel";
+import { LinkFolderPanel } from "./LinkFolderPanel";
 import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
@@ -140,8 +141,8 @@ function SourceTabs({
   onChange,
   gitBusy,
 }: {
-  source: "wporg" | "git";
-  onChange: (s: "wporg" | "git") => void;
+  source: "wporg" | "git" | "link";
+  onChange: (s: "wporg" | "git" | "link") => void;
   gitBusy?: boolean;
 }) {
   return (
@@ -150,6 +151,7 @@ function SourceTabs({
         [
           ["wporg", "WordPress.org"],
           ["git", "From Git"],
+          ["link", "Link folder"],
         ] as const
       ).map(([key, label]) => (
         <button
@@ -2140,7 +2142,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   });
   const busy = run.isPending;
 
-  const [source, setSource] = useState<"wporg" | "git">("wporg");
+  const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
   const gitAssets = useQuery({
     queryKey: ["repo-assets", siteId],
     queryFn: () => repoAssets(siteId),
@@ -2190,11 +2192,15 @@ function ThemesPanel({ siteId }: { siteId: string }) {
     let message: React.ReactNode;
     if (gitDirs.has(name) || unmanagedSet.has(name)) {
       let line: string;
-      try {
-        const st = await repoAssetStatus(siteId, "theme", name);
-        line = st.lossWarning ?? "clean and pushed — nothing at risk.";
-      } catch {
-        line = "git checkout — anything uncommitted will be lost.";
+      if (assetFor(name)?.source === "linked") {
+        line = "LINKED folder — removes only the link; your original folder stays untouched.";
+      } else {
+        try {
+          const st = await repoAssetStatus(siteId, "theme", name);
+          line = st.lossWarning ?? "clean and pushed — nothing at risk.";
+        } catch {
+          line = "git checkout — anything uncommitted will be lost.";
+        }
       }
       message = (
         <div className="space-y-1">
@@ -2225,6 +2231,8 @@ function ThemesPanel({ siteId }: { siteId: string }) {
         <SourceTabs source={source} onChange={setSource} gitBusy={gitBusy} />
         {source === "git" ? (
           <GitAddPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
+        ) : source === "link" ? (
+          <LinkFolderPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
         ) : (
         <>
         <div className="flex flex-wrap items-center gap-2">
@@ -2647,7 +2655,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
   const someSelected = selectable.some((n) => selected.has(n));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectable));
 
-  const [source, setSource] = useState<"wporg" | "git">("wporg");
+  const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
   const gitAssets = useQuery({
     queryKey: ["repo-assets", siteId],
     queryFn: () => repoAssets(siteId),
@@ -2702,6 +2710,11 @@ function PluginsPanel({ siteId }: { siteId: string }) {
     if (gitOnes.length > 0) {
       const lines: string[] = [];
       for (const n of gitOnes) {
+        if (assetFor(n)?.source === "linked") {
+          // Unlink-only path: nothing is lost — the real checkout stays.
+          lines.push(`${n}: LINKED folder — removes only the link; your original folder stays untouched.`);
+          continue;
+        }
         try {
           const st = await repoAssetStatus(siteId, "plugin", n);
           lines.push(`${n}: ${st.lossWarning ?? "clean and pushed — nothing at risk."}`);
@@ -2747,6 +2760,8 @@ function PluginsPanel({ siteId }: { siteId: string }) {
         <SourceTabs source={source} onChange={setSource} gitBusy={gitBusy} />
         {source === "git" ? (
           <GitAddPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
+        ) : source === "link" ? (
+          <LinkFolderPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
         ) : (
         <>
         <div className="flex flex-wrap items-center gap-2">

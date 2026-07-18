@@ -631,6 +631,7 @@ pub fn run() {
             commands::repo::repo_watch_stop,
             commands::repo::repo_watches,
             commands::repo::repo_watch_log,
+            commands::repo::repo_link,
             commands::repo::repo_tools,
         ])
         .build(tauri::generate_context!())

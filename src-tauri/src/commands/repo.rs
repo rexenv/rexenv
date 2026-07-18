@@ -1187,6 +1187,8 @@ pub struct AssetStatusResult {
     pub loss_warning: Option<String>,
     /// Log key of the last add-job for this dir, when the file exists.
     pub log_key: Option<String>,
+    /// For symlinked dirs: where the link points (the user's real checkout).
+    pub link_target: Option<String>,
 }
 
 /// Live git status for one managed (or about-to-be-adopted) asset dir.
@@ -1221,7 +1223,8 @@ pub async fn repo_asset_status(
             .ok()
             .filter(|d| d.join(&log_key).is_file())
             .map(|_| log_key);
-        Ok(AssetStatusResult { status, remote, loss_warning, log_key })
+        let link_target = std::fs::read_link(&dir).ok().map(|t| t.display().to_string());
+        Ok(AssetStatusResult { status, remote, loss_warning, log_key, link_target })
     })
     .await
     .map_err(|e| Error::Other(format!("status task failed: {e}")))?
@@ -1301,6 +1304,66 @@ pub struct ToolStatus {
     pub version: Option<String>,
     pub path: Option<String>,
     pub error: Option<String>,
+}
+
+/// Link-folder result: what landed + what detection saw (the UI surfaces a
+/// mismatch/no-header warning).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoLinkResult {
+    pub dir_name: String,
+    pub is_git: bool,
+    pub wp: repo::WpHeader,
+}
+
+/// Symlink an EXISTING local folder into wp-content (source == "linked").
+/// The folder stays where it is; deleting the asset later removes ONLY the
+/// link (the wp_*_delete interception guarantees that on fs truth).
+#[tauri::command]
+pub async fn repo_link(
+    app: AppHandle,
+    site_id: String,
+    kind: String,
+    dir_name: Option<String>,
+    target: String,
+) -> Result<RepoLinkResult> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let jobs = app.state::<RepoJobs>();
+        let site = site_of(&state, &site_id)?;
+        let docroot = std::path::PathBuf::from(&site.path);
+        let fallback = std::path::Path::new(&target)
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let name = repo::validate_dir_name(&dir_name.unwrap_or(fallback))?;
+        let dest = repo::asset_dest(&docroot, &kind, &name)?;
+        let canonical = repo::validate_link_target(&docroot, &dest, std::path::Path::new(&target))?;
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        state.platform.shell().symlink_dir(&canonical, &dest)?;
+        let inspection = repo::inspect_repo(&dest);
+        let is_git = dest.join(".git").exists();
+        if is_git {
+            // Best-effort git metadata — a missing git tool must not fail the link.
+            let (remote, branch) = match shell_env(&state, &jobs, false) {
+                Ok(env) => match devtools::resolve_git(state.platform.as_ref(), &env) {
+                    Ok(git) => (
+                        repo::read_remote_url(&git.path, &env, &dest).unwrap_or_default(),
+                        repo::read_git_status(&git.path, &env, &dest).ok().and_then(|s| s.branch),
+                    ),
+                    Err(_) => (String::new(), None),
+                },
+                Err(_) => (String::new(), None),
+            };
+            let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            store::upsert_git_asset(&conn, &site_id, &kind, &name, &remote, branch.as_deref(), "linked")?;
+        }
+        Ok(RepoLinkResult { dir_name: name, is_git, wp: inspection.wp })
+    })
+    .await
+    .map_err(|e| Error::Other(format!("link task failed: {e}")))?
 }
 
 /// git + node availability for the Git add panel (composer is always the

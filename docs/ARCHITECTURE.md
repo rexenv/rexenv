@@ -435,9 +435,22 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
     FrankenPHP two-RE2-matcher respond) — a cloned `.git/`/`.env` in a
     served docroot was readable, and tunnels make docroots PUBLIC. Root
     `/.well-known/` stays exempt.
-  - Provenance in v12 `site_git_assets` (badge; the seam for update-pull/
-    watch later). Collisions refused before any network traffic; a failed/
-    cancelled clone removes only the dir it created.
+  - Provenance in v12 `site_git_assets` (+v13 `source`: cloned|adopted|
+    linked — badge, RepoPanel, update-pull/watch seam). Collisions refused
+    before any network traffic; a failed/cancelled clone removes only the
+    dir it created.
+  - **Linked assets + the unlink-only delete guard:** "Link folder" symlinks
+    an existing checkout into wp-content (validated: no self-link, no
+    docroot-containing cycle). `wp plugin|theme delete` would walk INTO a
+    symlink and destroy the user's real checkout — so `wp_*_delete`
+    partitions names on FILESYSTEM truth (`symlink_metadata`, NOT
+    provenance — covers never-adopted manual links): symlinks are removed
+    via `ShellRunner::remove_symlink` (which itself refuses non-symlinks),
+    everything else goes to wp-cli; the active theme's link is refused.
+    Delete confirms are status-driven (`loss_warning`: exact changed/
+    untracked/unpushed counts; linked = calm "removes only the link").
+    Watchers (`RepoWatches`) are session processes: process-grouped, die
+    with the app, Restart-never-auto.
 - **Autostart** (`AutostartManager`, macOS): per-user LaunchAgent
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist`, `RunAtLoad` — launches the app at
   login (not headless services; the edge still needs its `:443` prompt).

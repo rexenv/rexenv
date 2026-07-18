@@ -1141,6 +1141,25 @@ impl ShellRunner for MacosShell {
         }
     }
 
+    fn symlink_dir(&self, target: &Path, link: &Path) -> Result<()> {
+        std::os::unix::fs::symlink(target, link)?;
+        Ok(())
+    }
+
+    fn remove_symlink(&self, link: &Path) -> Result<()> {
+        // A dir symlink is a FILE entry on unix — remove_file drops the link
+        // itself and can never recurse into the target.
+        let meta = std::fs::symlink_metadata(link)?;
+        if !meta.file_type().is_symlink() {
+            return Err(Error::Other(format!(
+                "{} is not a symlink — refusing to remove it here",
+                link.display()
+            )));
+        }
+        std::fs::remove_file(link)?;
+        Ok(())
+    }
+
     fn git_preflight(&self) -> Result<()> {
         // `/usr/bin/git` is an Xcode CLT shim: executing it WITHOUT the tools
         // installed pops a GUI install dialog — never acceptable from a

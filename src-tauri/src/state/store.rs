@@ -415,6 +415,20 @@ pub fn upsert_git_asset(
     Ok(())
 }
 
+/// Drop a git asset's provenance row (after its dir is deleted/unlinked).
+pub fn delete_git_asset(
+    conn: &Connection,
+    site_id: &str,
+    kind: &str,
+    dir_name: &str,
+) -> Result<()> {
+    conn.execute(
+        "DELETE FROM site_git_assets WHERE site_id = ?1 AND kind = ?2 AND dir_name = ?3",
+        params![site_id, kind, dir_name],
+    )?;
+    Ok(())
+}
+
 /// Update a git asset's recorded ref after a checkout (the row stays truthful).
 pub fn set_git_asset_ref(
     conn: &Connection,

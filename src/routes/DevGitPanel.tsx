@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
 import { RepoPanel } from "@/components/wordpress/RepoPanel";
+import { LinkFolderPanel } from "@/components/wordpress/LinkFolderPanel";
 
 const PROBE = {
   url: "https://github.com/acme/my-plugin",
@@ -130,6 +131,7 @@ const ASSET_STATUS = {
   remote: "git@github.com:acme/my-plugin.git",
   lossWarning: "3 changed files, 2 untracked files, and 2 unpushed commits will be lost.",
   logKey: "repo-dev.rex-my-plugin.log",
+  linkTarget: null,
 };
 
 export function DevGitPanel() {
@@ -137,6 +139,7 @@ export function DevGitPanel() {
   const params = new URLSearchParams(window.location.search);
   const rehydrate = params.get("rehydrate") === "1";
   const showRepoPanel = params.get("panel") === "repo";
+  const showLinkPanel = params.get("panel") === "link";
   const watchMode = params.get("watch"); // "1" running | "exited"
   useEffect(() => {
     mockIPC(async (cmd) => {
@@ -160,6 +163,14 @@ export function DevGitPanel() {
             : watchMode === "exited"
               ? [{ id: "dev-watch", siteId: "dev", kind: "plugin", dirName: "my-plugin", script: "start", status: "exited", exit: 1 }]
               : [];
+        case "repo_link":
+          return {
+            dirName: "my-plugin",
+            isGit: true,
+            wp: { kind: "plugin", name: "My Plugin" },
+          };
+        case "plugin:dialog|open":
+          return "/Users/dev/checkouts/my-plugin";
         case "repo_watch_log":
           return ["$ pnpm run start", "webpack 5.99 compiled successfully in 830 ms"];
         case "repo_branches":
@@ -209,7 +220,11 @@ export function DevGitPanel() {
         <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
           DEV harness — GitAddPanel (mocked IPC)
         </h1>
-        {showRepoPanel ? (
+        {showLinkPanel ? (
+          <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+            <LinkFolderPanel siteId="dev" kind="plugin" onInstalled={() => {}} />
+          </div>
+        ) : showRepoPanel ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 py-2">
             <RepoPanel siteId="dev" kind="plugin" asset={ASSET} />
           </div>

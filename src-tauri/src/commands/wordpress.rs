@@ -150,7 +150,34 @@ pub async fn wp_plugin_update(state: State<'_, AppState>, id: String, names: Vec
 #[tauri::command]
 pub async fn wp_plugin_delete(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
-    wp_blocking(move || core::wordpress::plugin_delete(&php, &wp, &docroot, &names).map(|_| ())).await
+    // SAFETY SPLIT on filesystem truth: a symlinked plugin dir must be
+    // UNLINKED — `wp plugin delete` walks INTO the link and destroys the
+    // user's real checkout elsewhere on disk. Covers manually-linked dirs
+    // that were never adopted (provenance is metadata, the fs is the guard).
+    let content = docroot.join("wp-content").join("plugins");
+    let (linked, normal) = core::repo::partition_symlink_deletes(&content, &names);
+    for name in &linked {
+        // Best-effort deactivate so WP doesn't trip over a vanished active
+        // plugin; the unlink below is the real operation.
+        let (p2, w2, d2, n2) = (php.clone(), wp.clone(), docroot.clone(), name.clone());
+        let _ = wp_blocking(move || {
+            core::wordpress::plugin_deactivate(&p2, &w2, &d2, &[n2]).map(|_| ())
+        })
+        .await;
+        let dir = content.join(core::repo::validate_dir_name(name)?);
+        state.platform.shell().remove_symlink(&dir)?;
+    }
+    if !normal.is_empty() {
+        let (p2, w2, d2, n2) = (php.clone(), wp.clone(), docroot.clone(), normal.clone());
+        wp_blocking(move || core::wordpress::plugin_delete(&p2, &w2, &d2, &n2).map(|_| ())).await?;
+    }
+    // Provenance rows for anything that's gone.
+    if let Ok(conn) = state.db.lock() {
+        for name in linked.iter().chain(normal.iter()) {
+            let _ = crate::state::store::delete_git_asset(&conn, &id, "plugin", name);
+        }
+    }
+    Ok(())
 }
 
 /// List the site's themes (`wp theme list`), each with its screenshot as a
@@ -202,7 +229,36 @@ pub async fn wp_theme_update(state: State<'_, AppState>, id: String, names: Vec<
 #[tauri::command]
 pub async fn wp_theme_delete(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
-    wp_blocking(move || core::wordpress::theme_delete(&php, &wp, &docroot, &names).map(|_| ())).await
+    // Same unlink-only guard as plugins (fs truth). The ACTIVE theme's link
+    // is refused — wp-cli refuses deleting the active theme on the normal
+    // path, and removing its link would leave WP themeless.
+    let content = docroot.join("wp-content").join("themes");
+    let (linked, normal) = core::repo::partition_symlink_deletes(&content, &names);
+    if !linked.is_empty() {
+        let (p2, w2, d2) = (php.clone(), wp.clone(), docroot.clone());
+        let active =
+            wp_blocking(move || core::wordpress::active_stylesheet(&p2, &w2, &d2)).await?;
+        if let Some(a) = linked.iter().find(|n| **n == active) {
+            return Err(Error::Other(format!(
+                "\"{a}\" is the ACTIVE theme — activate another theme first, \
+                 then remove the link."
+            )));
+        }
+        for name in &linked {
+            let dir = content.join(core::repo::validate_dir_name(name)?);
+            state.platform.shell().remove_symlink(&dir)?;
+        }
+    }
+    if !normal.is_empty() {
+        let (p2, w2, d2, n2) = (php.clone(), wp.clone(), docroot.clone(), normal.clone());
+        wp_blocking(move || core::wordpress::theme_delete(&p2, &w2, &d2, &n2).map(|_| ())).await?;
+    }
+    if let Ok(conn) = state.db.lock() {
+        for name in linked.iter().chain(normal.iter()) {
+            let _ = crate::state::store::delete_git_asset(&conn, &id, "theme", name);
+        }
+    }
+    Ok(())
 }
 
 /// List the site's WordPress users (`wp user list`).

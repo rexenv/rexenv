@@ -606,6 +606,8 @@ export interface RepoAssetStatus {
   lossWarning: string | null;
   /** Last add-job log key, when the file exists. */
   logKey: string | null;
+  /** For symlinked dirs: where the link points (the user's real checkout). */
+  linkTarget: string | null;
 }
 
 /** A wp-content dir that looks like a git checkout but isn't managed yet. */
@@ -655,4 +657,11 @@ export interface RepoWatchState {
   script: string;
   status: "running" | "exited";
   exit: number | null;
+}
+
+/** repo_link result: what landed + what detection saw. */
+export interface RepoLinkResult {
+  dirName: string;
+  isGit: boolean;
+  wp: { kind: "plugin" | "theme" | "none"; name: string | null };
 }

@@ -89,6 +89,12 @@ pub fn wp_cli_checked(
     }
 }
 
+/// The ACTIVE theme's directory name (`wp option get stylesheet`) — the
+/// unlink-only delete path refuses to remove the active theme's link.
+pub fn active_stylesheet(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
+    wp_run(php_bin, wp_phar, docroot, &["option", "get", "stylesheet"])
+}
+
 /// Run a WP-CLI command scoped to a docroot (`--path=<docroot>` is appended for
 /// the caller) and return trimmed stdout, erroring (with stderr) on non-zero exit.
 pub fn wp_run(php_bin: &Path, wp_phar: &Path, docroot: &Path, args: &[&str]) -> Result<String> {

@@ -1151,6 +1151,75 @@ pub fn scan_unmanaged(content_dir: &Path, known: &[String]) -> Vec<UnmanagedRepo
 }
 
 // ---------------------------------------------------------------------------
+// Link-folder assets (phase D) — validation + the unlink-only delete guard
+// ---------------------------------------------------------------------------
+
+/// Validate a link-folder request BEFORE any symlink is created. Both
+/// containment directions are refused: a target inside the docroot
+/// (self-link), and a docroot inside the target (a cycle — linking a parent
+/// of wp-content would make WP serve itself recursively).
+pub fn validate_link_target(docroot: &Path, dest: &Path, target: &Path) -> Result<std::path::PathBuf> {
+    let target = target
+        .canonicalize()
+        .map_err(|_| Error::Other(format!("{} doesn't exist (or isn't readable)", target.display())))?;
+    if !target.is_dir() {
+        return Err(Error::Other(format!("{} is not a folder", target.display())));
+    }
+    let docroot = docroot
+        .canonicalize()
+        .map_err(|e| Error::Other(format!("site folder unreadable: {e}")))?;
+    if target.starts_with(&docroot) {
+        return Err(Error::Other(
+            "that folder is already inside this site — linking it to itself \
+             would nest the site into the plugin. Pick a folder outside the site."
+                .into(),
+        ));
+    }
+    if docroot.starts_with(&target) {
+        return Err(Error::Other(
+            "that folder CONTAINS this site — linking it would create a cycle \
+             (WordPress would serve itself recursively). Pick the plugin/theme \
+             folder itself, not a parent."
+                .into(),
+        ));
+    }
+    if dest.exists() || std::fs::symlink_metadata(dest).is_ok() {
+        return Err(Error::Other(format!(
+            "\"{}\" already exists — pick another name or remove it first.",
+            dest.display()
+        )));
+    }
+    Ok(target)
+}
+
+/// Split delete candidates by FILESYSTEM truth: a dir that IS a symlink must
+/// be unlinked, never handed to wp-cli — `wp plugin delete` walks INTO the
+/// link and destroys the user's real checkout elsewhere on disk. Provenance
+/// is metadata; the fs is the guard (covers manually-linked dirs that were
+/// never adopted).
+pub fn partition_symlink_deletes(
+    content_dir: &Path,
+    names: &[String],
+) -> (Vec<String>, Vec<String>) {
+    let mut linked = Vec::new();
+    let mut normal = Vec::new();
+    for name in names {
+        let is_link = derive_dir_name(name)
+            .ok()
+            .map(|n| content_dir.join(n))
+            .and_then(|p| std::fs::symlink_metadata(p).ok())
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_link {
+            linked.push(name.clone());
+        } else {
+            normal.push(name.clone());
+        }
+    }
+    (linked, normal)
+}
+
+// ---------------------------------------------------------------------------
 // Detection (pure fs — runs right after a clone, before any button shows)
 // ---------------------------------------------------------------------------
 
@@ -1792,6 +1861,59 @@ mod tests {
         // Unborn with untracked work: counted, no upstream caveat (meaningless).
         let un = loss_warning(&mk(0, 3, None, false, false, true)).unwrap();
         assert_eq!(un, "3 untracked files will be lost.");
+    }
+
+    #[test]
+    #[cfg(unix)] // symlink fixtures
+    fn link_validation_refuses_nesting_cycles_and_collisions() {
+        let base = fixture_dir("linkval");
+        let docroot = base.join("site/public");
+        let plugins = docroot.join("wp-content/plugins");
+        std::fs::create_dir_all(&plugins).unwrap();
+        let outside = base.join("checkouts/my-plugin");
+        std::fs::create_dir_all(&outside).unwrap();
+
+        // Happy path: canonicalized target comes back.
+        let dest = plugins.join("my-plugin");
+        let ok = validate_link_target(&docroot, &dest, &outside).unwrap();
+        assert!(ok.ends_with("checkouts/my-plugin"));
+        // Target inside the docroot → self-link refused.
+        let inner = plugins.join("existing");
+        std::fs::create_dir_all(&inner).unwrap();
+        let err = validate_link_target(&docroot, &dest, &inner).unwrap_err().to_string();
+        assert!(err.contains("inside this site"), "{err}");
+        // Target CONTAINING the docroot → cycle refused.
+        let err = validate_link_target(&docroot, &dest, &base.join("site")).unwrap_err().to_string();
+        assert!(err.contains("cycle"), "{err}");
+        // Collision — including a DANGLING symlink at dest (exists() is false
+        // for those; symlink_metadata catches it).
+        std::os::unix::fs::symlink(base.join("gone"), plugins.join("dangling")).unwrap();
+        let err = validate_link_target(&docroot, &plugins.join("dangling"), &outside)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already exists"), "{err}");
+        // Missing target.
+        assert!(validate_link_target(&docroot, &dest, &base.join("nope")).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    #[cfg(unix)] // symlink fixtures
+    fn symlink_deletes_partition_on_fs_truth_not_provenance() {
+        let base = fixture_dir("delpart");
+        let plugins = base.join("plugins");
+        std::fs::create_dir_all(plugins.join("real-plugin")).unwrap();
+        let target = base.join("elsewhere/linked-plugin");
+        std::fs::create_dir_all(&target).unwrap();
+        std::os::unix::fs::symlink(&target, plugins.join("linked-plugin")).unwrap();
+        let (linked, normal) = partition_symlink_deletes(
+            &plugins,
+            &["real-plugin".into(), "linked-plugin".into(), "not-there".into()],
+        );
+        assert_eq!(linked, vec!["linked-plugin"]);
+        // Missing dirs stay on the normal path (wp-cli reports them honestly).
+        assert_eq!(normal, vec!["real-plugin", "not-there"]);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

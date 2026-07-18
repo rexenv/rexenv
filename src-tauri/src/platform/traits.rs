@@ -286,6 +286,20 @@ pub trait ShellRunner: Send + Sync {
         Err(crate::error::Error::Unsupported("login_shell_env"))
     }
 
+    /// Create a directory symlink `link` → `target` (Link-folder assets:
+    /// wp-content/<kind>s/<name> → the user's own checkout elsewhere).
+    /// OS-specific: unix symlink vs Windows directory junction/symlink.
+    fn symlink_dir(&self, _target: &std::path::Path, _link: &std::path::Path) -> Result<()> {
+        Err(crate::error::Error::Unsupported("symlink_dir"))
+    }
+
+    /// Remove a symlink WITHOUT touching its target. The unlink-only delete
+    /// path for linked assets — the caller has already verified `link` IS a
+    /// symlink (fs truth, not metadata).
+    fn remove_symlink(&self, _link: &std::path::Path) -> Result<()> {
+        Err(crate::error::Error::Unsupported("remove_symlink"))
+    }
+
     /// Preflight before executing SYSTEM `git`: on macOS `/usr/bin/git` is an
     /// Xcode CLT shim that pops a GUI install dialog when the tools are
     /// missing — probe quietly (`xcode-select -p`) instead of letting a

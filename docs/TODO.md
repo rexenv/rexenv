@@ -433,11 +433,29 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   stop, crash exit=3 surfaced); WebKit watch scenario ALL PASS (+3 prior
   re-run green). **Awaiting human verify — test-doc §11** (real wp-scripts
   watcher, footer chip, die-with-app on quit, manual-kill → Restart).
-- [ ] Phase D — link existing folder (third source tab, picker,
-  validations, symlink, source=linked) + DELETE INTERCEPTION for linked
-  assets (unlink only — wp-cli delete would walk INTO the link and destroy
-  the real checkout) incl. the bulk path; serve-verify on all three
-  servers; docs + test-doc §10-12.
+- [x] **Phase D — link folder + the unlink-only delete guard** (18 Jul,
+  1 commit). traits: ShellRunner::symlink_dir / remove_symlink (macOS impls;
+  remove_symlink itself REFUSES non-symlinks — defense in depth). core:
+  validate_link_target (canonicalized; refuses self-link, docroot-containing
+  CYCLE, collision incl. dangling links — tested), partition_symlink_deletes
+  (FILESYSTEM truth via symlink_metadata, NOT provenance — a never-adopted
+  manual `ln -s` is protected too; tested). commands: wp_plugin_delete /
+  wp_theme_delete now partition: symlinks → best-effort deactivate + unlink
+  (active linked THEME refused via wp option get stylesheet), rest → wp-cli;
+  provenance rows cleaned for everything deleted — covers UI single, UI
+  bulk, and the rex CLI (same command fns). repo_link (canonical target,
+  provenance source=linked only for git checkouts w/ best-effort remote/
+  branch; non-git folders link fine, guarded by fs truth), linkTarget on
+  asset status. UI: third source tab "Link folder" (picker via the existing
+  pickFolder, name prefill, honest copy), calm linked-delete confirm
+  ("removes only the link"), RepoPanel "→ target" line. ✓ 316 lib tests
+  (+2), tsc, vite build, examples, clippy no new; **live**
+  `examples/repo_link_check` ALL PASS — link lands + detects through the
+  link, partition correct, UNLINK LEFT THE TARGET BYTE-INTACT (uncommitted
+  work + .git survived), remove_symlink refused a real dir, all three
+  validations refused; WebKit link scenario ALL PASS (+4 prior re-run
+  green). **Awaiting human verify — test-doc §12** (the delete test through
+  real WordPress, bulk path, active linked theme, serving on all three).
 
 ## QA round — add-from-Git (18 Jul 2026)
 
