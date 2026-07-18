@@ -6,7 +6,10 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
-- [ ] **Add plugin/theme from Git — clone → detect → install → build** (plan
+- [x] **Add plugin/theme from Git — clone → detect → install → build** ✓
+  **HUMAN-VERIFIED 18 Jul 2026** — full docs/GIT-FEATURE-TEST.md pass (all
+  sections incl. tunnel dotfile case, private-repo SSH, WKWebView streaming,
+  cancel/orphans, force-kill gap accepted). (plan
   green-lit 17 Jul 2026: system git/node resolved via the user's login-shell
   env, composer.phar on the site's PHP as fallback, per-step streamed jobs
   with cancel, repo scripts NEVER auto-run — explicit click + disclosure).
@@ -67,9 +70,8 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     composer pin row, `docs/GIT-FEATURE-TEST.md` — the manual checklist
     (packaged-app WKWebView flow, tunnel dotfile case, private-repo SSH
     steps, failure matrix, cancel/orphan spot-checks, flagged unknowns).
-    ✓ 307 lib tests. **Awaiting human verification — run
-    `docs/GIT-FEATURE-TEST.md` end to end**; packaging/QA-handoff waits on
-    it. Post-v1 ladder: link-existing-folder (symlink), watch mode (dies
+    ✓ 307 lib tests. ✓ **Human-verified 18 Jul** (full test-doc run — all
+    green; packaging/QA-handoff unblocked). Post-v1 ladder: link-existing-folder (symlink), watch mode (dies
     with app BY DESIGN — not a ServiceManager service), update/pull via
     provenance, multisite network-activate variants.
 
@@ -390,8 +392,9 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   theme delete confirms show the loss warning verbatim for git assets.
   ✓ 310 lib tests (+3), tsc, vite build, examples, clippy no new; WebKit
   harness `?panel=repo` ALL PASS + rehydrate/interactive re-run green.
-  **Awaiting human verify — test-doc §9** (dirty+ahead delete confirm names
-  the numbers; manual-clone adopt round-trip).
+  ✓ **Human-verified 18 Jul** (§9: exact counts named in single+bulk
+  confirms, no cry-wolf on clean+pushed, no-upstream caveat, adopt
+  round-trip survives restart, Refresh tracks dirtying).
 - [x] **Phase B — git ops as jobs in the RepoPanel** (18 Jul, 1 commit).
   core: validate_ref (argv-trick guard, tested), git_fetch/--prune,
   git_pull_ff (--ff-only ONLY — diverged = honest error), git_checkout
@@ -477,8 +480,8 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   itself. ✓ 307 lib tests, tsc, vite build, WebKit harness: new
   `?rehydrate=1` scenario ALL PASS (zero-click adoption, seeded log,
   Cancel visible; blank mode still blank) + prior checks re-run green.
-  **Awaiting human verify** — test-doc §8 (gutenberg clone → tab switch →
-  reconnect; duplicate-Add refusal; wp.org-tab spinner).
+  ✓ **Human-verified 18 Jul** (§8: reconnect mid-clone with seeded log,
+  wp.org-tab spinner, duplicate-Add refused, cancel-from-reconnected clean).
 
 ## QA round 1 — light issues (deferred, recorded 16 Jul 2026)
 
