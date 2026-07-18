@@ -419,10 +419,15 @@ export interface MailpitStatus {
   uiUrl: string;
 }
 
+/** Logs-tab category grouping (mirrors the Rust LogCategory). */
+export type LogCategory = "server" | "database" | "git";
+
 /** A selectable log source for the Logs viewer (mirrors the Rust LogTarget DTO). */
 export interface LogTarget {
   key: string; // file name within the log dir
   label: string;
+  category: LogCategory;
+  path: string; // absolute file path — path row / "Open file"
 }
 
 /** WordPress debug-log status (mirrors the Rust WpDebugLogStatus DTO). */

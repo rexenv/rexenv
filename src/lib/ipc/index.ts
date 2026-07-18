@@ -385,12 +385,19 @@ export async function mailpitStatus(): Promise<MailpitStatus> {
 /** The log sources selectable for a site. Mock fallback outside Tauri. */
 export async function logTargets(siteId: string): Promise<LogTarget[]> {
   if (!isTauri()) {
+    const mock = (key: string, label: string, category: LogTarget["category"]): LogTarget => ({
+      key,
+      label,
+      category,
+      path: `/Users/dev/Library/Application Support/dev.rexenv.rexenv/logs/${key}`,
+    });
     return [
-      { key: "nginx-access.log", label: "Nginx access" },
-      { key: "nginx-error.log", label: "Nginx error" },
-      { key: "php-fpm-8.3.log", label: "PHP-FPM 8.3" },
-      { key: "caddy-stdout.log", label: "Caddy (edge)" },
-      { key: "mysql-error.log", label: "MySQL" },
+      mock("nginx-access.log", "Nginx access", "server"),
+      mock("nginx-error.log", "Nginx error", "server"),
+      mock("php-fpm-8.3.log", "PHP-FPM 8.3", "server"),
+      mock("caddy-stdout.log", "Caddy (edge)", "server"),
+      mock("mysql-error.log", "MySQL", "database"),
+      mock("repo-demo.rex-my-plugin.log", "Git job — my-plugin", "git"),
     ];
   }
   return invoke<LogTarget[]>("log_targets", { siteId });
@@ -403,6 +410,18 @@ export async function tailLog(key: string, lines: number): Promise<string[]> {
     return Array.from({ length: 12 }, (_, i) => `${now} [${key}] mock log line ${i + 1}`).slice(-lines);
   }
   return invoke<string[]>("tail_log", { key, lines });
+}
+
+/** Truncate a service/DB/Git log to empty (append-mode writers keep going). */
+export async function logClear(key: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("log_clear", { key });
+}
+
+/** Copy a service/DB/Git log to Downloads; resolves to the saved path. */
+export async function logDownload(key: string): Promise<string> {
+  if (!isTauri()) return `/Users/dev/Downloads/${key}`;
+  return invoke<string>("log_download", { key });
 }
 
 /** WordPress debug-log status for a site (WP_DEBUG/WP_DEBUG_LOG, path, size). */

@@ -31,6 +31,19 @@ pub fn tail_log(state: State<'_, AppState>, key: String, lines: usize) -> Result
     core::logs::tail(state.platform.as_ref(), &key, lines)
 }
 
+/// Truncate the log identified by `key` to empty (append-mode writers keep
+/// appending at the new EOF — no service restart needed).
+#[tauri::command]
+pub fn log_clear(state: State<'_, AppState>, key: String) -> Result<()> {
+    core::logs::clear(state.platform.as_ref(), &key)
+}
+
+/// Copy the log identified by `key` to the Downloads folder; returns the path.
+#[tauri::command]
+pub fn log_download(state: State<'_, AppState>, key: String) -> Result<String> {
+    core::logs::download(state.platform.as_ref(), &key).map(|p| p.to_string_lossy().into_owned())
+}
+
 /// WordPress debug-log status for a site (WP_DEBUG / WP_DEBUG_LOG, resolved
 /// path, file presence + size). Cheap static wp-config.php read — pollable.
 #[tauri::command]

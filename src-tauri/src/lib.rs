@@ -583,6 +583,8 @@ pub fn run() {
             commands::downloads::prefetch_core_binaries,
             commands::logs::log_targets,
             commands::logs::tail_log,
+            commands::logs::log_clear,
+            commands::logs::log_download,
             commands::logs::wp_debug_log_status,
             commands::logs::wp_debug_log_tail,
             commands::logs::wp_debug_log_clear,

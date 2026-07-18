@@ -17,6 +17,19 @@ use std::path::{Path, PathBuf};
 /// Only ever tail the trailing slice of a file (bounds memory on big access logs).
 const TAIL_CAP_BYTES: u64 = 256 * 1024;
 
+/// Which Logs-tab category a source belongs to (drives the tab grouping in
+/// the UI; the WordPress debug log is its own tab with dedicated IPC).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogCategory {
+    /// Edge / web server / PHP pools — shared across all sites.
+    Server,
+    /// Database engine logs — shared across all sites.
+    Database,
+    /// This site's Git add-job logs (per-site files).
+    Git,
+}
+
 /// One selectable log source (a file under `log_dir` + a human label).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +37,9 @@ pub struct LogTarget {
     /// File name within `log_dir` (also the IPC key passed back to `tail`).
     pub key: String,
     pub label: String,
+    pub category: LogCategory,
+    /// Absolute path of the file — for the UI's path row / "Open file".
+    pub path: String,
 }
 
 /// The curated set of log sources relevant to a site: the shared edge/nginx, the
@@ -34,20 +50,29 @@ pub struct LogTarget {
 /// dir simply adds none.
 pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
     let minor = php::minor_of(&site.php_version);
+    let t = |key: String, label: String, category: LogCategory| LogTarget {
+        path: log_dir.join(&key).to_string_lossy().into_owned(),
+        key,
+        label,
+        category,
+    };
+    use LogCategory::{Database, Git, Server};
     let mut targets = vec![
-        LogTarget { key: "nginx-access.log".into(), label: "Nginx access".into() },
-        LogTarget { key: "nginx-error.log".into(), label: "Nginx error".into() },
-        LogTarget { key: format!("php-fpm-{minor}.log"), label: format!("PHP-FPM {minor}") },
-        LogTarget { key: "php-fpm-stdout.log".into(), label: "PHP-FPM output".into() },
-        LogTarget { key: "caddy-stdout.log".into(), label: "Caddy (edge)".into() },
-        LogTarget { key: "mysql-error.log".into(), label: "MySQL".into() },
-        LogTarget { key: "postgres-stdout.log".into(), label: "PostgreSQL".into() },
+        t("nginx-access.log".into(), "Nginx access".into(), Server),
+        t("nginx-error.log".into(), "Nginx error".into(), Server),
+        t(format!("php-fpm-{minor}.log"), format!("PHP-FPM {minor}"), Server),
+        t("php-fpm-stdout.log".into(), "PHP-FPM output".into(), Server),
+        t("caddy-stdout.log".into(), "Caddy (edge)".into(), Server),
+        t("mysql-error.log".into(), "MySQL".into(), Database),
+        t("mariadb-error.log".into(), "MariaDB".into(), Database),
+        t("postgres-stdout.log".into(), "PostgreSQL".into(), Database),
     ];
     if matches!(site.web_server, WebServer::Frankenphp) {
-        targets.push(LogTarget {
-            key: format!("frankenphp-{}-stdout.log", site.domain),
-            label: "FrankenPHP".into(),
-        });
+        targets.push(t(
+            format!("frankenphp-{}-stdout.log", site.domain),
+            "FrankenPHP".into(),
+            Server,
+        ));
     }
     let prefix = format!("repo-{}-", site.domain);
     if let Ok(entries) = std::fs::read_dir(log_dir) {
@@ -59,7 +84,8 @@ pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
         repo_keys.sort();
         for key in repo_keys {
             let dir = key[prefix.len()..key.len() - 4].to_string();
-            targets.push(LogTarget { key, label: format!("Git job — {dir}") });
+            let label = format!("Git job — {dir}");
+            targets.push(t(key, label, Git));
         }
     }
     targets
@@ -82,6 +108,56 @@ pub fn tail(platform: &dyn Platform, key: &str, lines: usize) -> Result<Vec<Stri
         return Err(Error::Other(format!("invalid log key: {key}")));
     }
     tail_file(&platform.paths().log_dir()?.join(key), lines)
+}
+
+/// Truncate the log `key` to empty (same key gate as [`tail`]). Safe in place:
+/// every writer holds these files in append mode — nginx/php-fpm/the DB
+/// engines open their own logs `O_APPEND`, and `spawn_logged` captures stdout
+/// with `.append(true)` — so the next write lands at the new EOF (no reopen
+/// needed, no NUL gap). A missing file is fine (nothing to clear).
+pub fn clear(platform: &dyn Platform, key: &str) -> Result<()> {
+    if !is_safe_key(key) {
+        return Err(Error::Other(format!("invalid log key: {key}")));
+    }
+    let path = platform.paths().log_dir()?.join(key);
+    if path.is_file() {
+        std::fs::write(&path, "")?;
+    }
+    Ok(())
+}
+
+/// Copy the log `key` into the user's Downloads folder (same file name,
+/// numbered on collision). Returns the destination. A missing file errors —
+/// there is nothing to download.
+pub fn download(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
+    if !is_safe_key(key) {
+        return Err(Error::Other(format!("invalid log key: {key}")));
+    }
+    let src = platform.paths().log_dir()?.join(key);
+    if !src.is_file() {
+        return Err(Error::Other(format!("no {key} to download")));
+    }
+    let dest = numbered_log_dest(&downloads_dir()?, key.trim_end_matches(".log"));
+    std::fs::copy(&src, &dest)?;
+    Ok(dest)
+}
+
+/// The user's Downloads folder (shared by every log download).
+fn downloads_dir() -> Result<PathBuf> {
+    directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
+        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))
+}
+
+/// First non-existing `<stem>.log` / `<stem>-<n>.log` under `dir`.
+fn numbered_log_dest(dir: &Path, stem: &str) -> PathBuf {
+    let mut dest = dir.join(format!("{stem}.log"));
+    let mut n = 1;
+    while dest.exists() {
+        dest = dir.join(format!("{stem}-{n}.log"));
+        n += 1;
+    }
+    dest
 }
 
 /// The last `lines` lines of an arbitrary log file (the trailing
@@ -235,15 +311,7 @@ pub fn wp_debug_log_download(docroot: &Path, domain: &str) -> Result<PathBuf> {
     if !status.exists {
         return Err(Error::Other("no debug.log to download".into()));
     }
-    let downloads = directories::UserDirs::new()
-        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
-        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))?;
-    let mut dest = downloads.join(format!("{domain}-debug.log"));
-    let mut n = 1;
-    while dest.exists() {
-        dest = downloads.join(format!("{domain}-debug-{n}.log"));
-        n += 1;
-    }
+    let dest = numbered_log_dest(&downloads_dir()?, &format!("{domain}-debug"));
     std::fs::copy(&status.path, &dest)?;
     Ok(dest)
 }
@@ -279,7 +347,45 @@ mod tests {
         assert!(keys.contains(&"php-fpm-8.2.log")); // the site's minor
         assert!(keys.contains(&"nginx-access.log"));
         assert!(keys.contains(&"mysql-error.log"));
+        assert!(keys.contains(&"mariadb-error.log"));
         assert!(!keys.iter().any(|k| k.starts_with("frankenphp-")));
+    }
+
+    #[test]
+    fn targets_carry_category_and_absolute_path() {
+        let t = targets_for_site(&site(WebServer::Nginx), Path::new("/logs"));
+        let by_key = |k: &str| t.iter().find(|x| x.key == k).unwrap();
+        assert_eq!(by_key("nginx-access.log").category, LogCategory::Server);
+        assert_eq!(by_key("caddy-stdout.log").category, LogCategory::Server);
+        assert_eq!(by_key("mysql-error.log").category, LogCategory::Database);
+        assert_eq!(by_key("mariadb-error.log").category, LogCategory::Database);
+        assert_eq!(by_key("postgres-stdout.log").category, LogCategory::Database);
+        assert_eq!(by_key("nginx-access.log").path, "/logs/nginx-access.log");
+    }
+
+    #[test]
+    fn repo_targets_are_git_category() {
+        let dir = std::env::temp_dir().join(format!("rexenv-logs-cat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("repo-acme.test-my-plugin.log"), "x").unwrap();
+        let t = targets_for_site(&site(WebServer::Nginx), &dir);
+        let repo = t.iter().find(|x| x.key.starts_with("repo-")).unwrap();
+        assert_eq!(repo.category, LogCategory::Git);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn numbered_dest_skips_existing() {
+        let dir = std::env::temp_dir().join(format!("rexenv-logs-num-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(numbered_log_dest(&dir, "a"), dir.join("a.log"));
+        std::fs::write(dir.join("a.log"), "x").unwrap();
+        assert_eq!(numbered_log_dest(&dir, "a"), dir.join("a-1.log"));
+        std::fs::write(dir.join("a-1.log"), "x").unwrap();
+        assert_eq!(numbered_log_dest(&dir, "a"), dir.join("a-2.log"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
