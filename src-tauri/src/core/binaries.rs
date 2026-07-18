@@ -932,6 +932,7 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
         // Relink every Mach-O to @loader_path + ad-hoc re-sign (LAST), so the
         // published tree is self-contained — no Homebrew install needed.
         platform.binaries().prepare_binary_tree(&staging)?;
+        ensure_member_extracted(&staging, name, version, spec.member)?;
         publish(&staging, &dir, spec.member)
     }
     .await;
@@ -941,6 +942,25 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
     finish_item(&id, &staged);
     staged?;
     Ok(dir)
+}
+
+/// A prepared bundle MUST contain its pinned `member` before we publish it — the
+/// file the early-return marker (`dir.join(member)`) and the caller both depend
+/// on. `extract_tar_gz_tree_filtered` silently skips anything outside its
+/// `include` prefixes and never errors on an absent member, so a bad
+/// `member`/`include` pin would otherwise publish an INCOMPLETE tree: the caller
+/// spawns a missing binary (ENOENT), and because the marker is never satisfied
+/// every future resolve re-downloads the whole bundle forever. Fail loud here
+/// instead (B35) — mirrors `resolve`'s "member not found in archive".
+fn ensure_member_extracted(staging: &Path, name: &str, version: &str, member: &str) -> Result<()> {
+    if staging.join(member).exists() {
+        Ok(())
+    } else {
+        Err(Error::Other(format!(
+            "bundle {name} {version}: pinned member '{member}' is missing from the extracted \
+             tree (bad member/include pin?)"
+        )))
+    }
 }
 
 /// Whether `name`@`version` is already fully published in the binary cache —
@@ -1720,6 +1740,26 @@ mod tests {
             "must not hang past the guard: {:?}",
             start.elapsed()
         );
+    }
+
+    #[test]
+    fn ensure_member_extracted_fails_loud_when_the_pinned_member_is_absent() {
+        let base = std::env::temp_dir().join(format!("rexenv-bundle-member-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("bin")).unwrap();
+
+        // Missing member → loud error naming it (never a silent publish → the
+        // infinite re-download of B35).
+        let e = ensure_member_extracted(&base, "redis", "8.0.0", "bin/redis-server")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("bin/redis-server") && e.contains("missing"), "{e}");
+
+        // Present member → Ok (the normal, complete-extract path).
+        std::fs::write(base.join("bin/redis-server"), b"x").unwrap();
+        assert!(ensure_member_extracted(&base, "redis", "8.0.0", "bin/redis-server").is_ok());
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
