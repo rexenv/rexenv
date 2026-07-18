@@ -1350,6 +1350,29 @@ enum FetchError {
     Transient(String),
 }
 
+/// Await the response head with a size-independent stall guard. `connect_timeout`
+/// covers only TCP+TLS, and the per-chunk `CHUNK_TIMEOUT` in [`fetch_to_file`]
+/// only guards body reads AFTER `send()` resolves — so a server that completes
+/// the handshake then never sends headers (captive portal / wedged mirror) would
+/// otherwise hang `send()` forever, inside attempt 1, with no retry (B34). Mapped
+/// to `Transient` so the retry loop handles it, exactly like a chunk stall.
+async fn send_bounded(
+    req: reqwest::RequestBuilder,
+    url: &str,
+    timeout: std::time::Duration,
+) -> std::result::Result<reqwest::Response, FetchError> {
+    match tokio::time::timeout(timeout, req.send()).await {
+        Ok(Ok(r)) => Ok(r),
+        // Connect/timeout/transport problems are transient (retry); they're also
+        // what "no internet" looks like, so use the connectivity-aware message.
+        Ok(Err(e)) => Err(FetchError::Transient(download_error_message(url, &e))),
+        Err(_) => Err(FetchError::Transient(format!(
+            "download {url} stalled (no response headers for {}s)",
+            timeout.as_secs()
+        ))),
+    }
+}
+
 async fn fetch_to_file(
     client: &reqwest::Client,
     url: &str,
@@ -1362,12 +1385,7 @@ async fn fetch_to_file(
     for (name, value) in headers {
         req = req.header(*name, *value);
     }
-    let resp = match req.send().await {
-        Ok(r) => r,
-        // Connect/timeout/transport problems are transient (retry); they're also
-        // what "no internet" looks like, so use the connectivity-aware message.
-        Err(e) => return Err(FetchError::Transient(download_error_message(url, &e))),
-    };
+    let resp = send_bounded(req, url, CHUNK_TIMEOUT).await?;
     let mut resp = match resp.error_for_status() {
         Ok(r) => r,
         Err(e) => {
@@ -1669,6 +1687,40 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn send_bounded_times_out_when_response_headers_never_arrive() {
+        // A server that accepts the TCP connection then sends NOTHING back — the
+        // exact "handshake done, headers never arrive" stall (B34). send_bounded
+        // must return a transient "stalled" error fast, not hang forever.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                // Hold the connection open, replying nothing.
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                drop(stream);
+            }
+        });
+
+        let url = format!("http://{addr}/x");
+        let req = reqwest::Client::new().get(&url);
+        let start = std::time::Instant::now();
+        let out = send_bounded(req, &url, std::time::Duration::from_millis(300)).await;
+
+        assert!(
+            matches!(out, Err(FetchError::Transient(_))),
+            "a header stall is transient (retryable)"
+        );
+        if let Err(FetchError::Transient(msg)) = out {
+            assert!(msg.contains("stalled"), "{msg}");
+        }
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(3),
+            "must not hang past the guard: {:?}",
+            start.elapsed()
+        );
+    }
 
     #[test]
     fn manifest_resolves_caddy_per_arch() {
