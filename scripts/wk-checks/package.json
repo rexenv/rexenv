@@ -1,0 +1,11 @@
+{
+  "name": "rexenv-wk-checks",
+  "private": true,
+  "description": "Dev/test tooling only — WebKit regression checks for the add-from-Git UI. Never shipped.",
+  "scripts": {
+    "check": "node run-all.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1"
+  }
+}

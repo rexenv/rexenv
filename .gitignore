@@ -53,3 +53,7 @@ Desktop.ini
 /sites.png
 /*.screenshot.png
 src-tauri/binaries/
+
+# WebKit check screenshots (scripts/wk-checks)
+scripts/wk-checks/*.png
+scripts/wk-checks/package-lock.json
