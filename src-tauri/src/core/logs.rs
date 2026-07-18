@@ -135,7 +135,7 @@ pub fn download(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
     }
     let src = platform.paths().log_dir()?.join(key);
     if !src.is_file() {
-        return Err(Error::Other(format!("no {key} to download")));
+        return Err(Error::Other(format!("no {key} yet — nothing to download")));
     }
     let dest = numbered_log_dest(&downloads_dir()?, key.trim_end_matches(".log"));
     std::fs::copy(&src, &dest)?;

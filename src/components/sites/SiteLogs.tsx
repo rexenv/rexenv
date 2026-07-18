@@ -58,7 +58,19 @@ const ACTION_CLS =
  *  Open file) and one live-tail pane. Server/DB logs are SHARED files — Clear
  *  on those asks first and says so; the WP debug log and Git job logs are
  *  per-site, so Clear there stays one click (matching the old behavior). */
-export function SiteLogs({ site, isWordpress }: { site: Site; isWordpress: boolean }) {
+export function SiteLogs({
+  site,
+  isWordpress,
+  wpResolved,
+}: {
+  site: Site;
+  isWordpress: boolean;
+  /** Whether the wp-info query has settled — until then `isWordpress` is a
+   *  placeholder `false`, and rendering the tabs would default to Server and
+   *  then self-switch to WordPress when the answer lands (a tab jump under
+   *  the user's cursor). Hold the first paint instead. */
+  wpResolved: boolean;
+}) {
   const qc = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<LogsSection | null>(null);
   const [sel, setSel] = useState<Partial<Record<LogCategory, string>>>({});
@@ -171,6 +183,17 @@ export function SiteLogs({ site, isWordpress }: { site: Site; isWordpress: boole
   // WP actions stay existence-gated (we know); file logs have no cheap
   // existence signal — leave enabled, the backend errors honestly.
   const wpMissing = active === "wordpress" && !status?.exists;
+
+  // Paint the tabs ONCE, with the final default (after every hook — React's
+  // rules). Only the first-ever open of a site waits here; wp-info is cached
+  // afterwards, so the card renders instantly with no self-switching tab.
+  if (!wpResolved) {
+    return (
+      <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-[0.8125rem] text-rex-text-muted">
+        Loading logs…
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-rex-border bg-rex-surface-1">

@@ -96,7 +96,7 @@ export function SiteDetail() {
   // WordPress detection drives whether the WordPress tab shows + the WP-admin link.
   // It runs three WP-CLI calls (each boots WordPress) — cache it and skip
   // window-focus refetches; the answer only changes on install/convert.
-  const { data: wp } = useQuery({
+  const { data: wp, isFetched: wpResolved } = useQuery({
     queryKey: ["wp-info", id],
     queryFn: () => wpInfo(id!),
     enabled: !!id,
@@ -251,7 +251,9 @@ export function SiteDetail() {
                 externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
               />
             ))}
-          {active === "logs" && <SiteLogs site={site} isWordpress={isWordpress} />}
+          {active === "logs" && (
+            <SiteLogs site={site} isWordpress={isWordpress} wpResolved={wpResolved} />
+          )}
           {active === "terminal" && <SiteTerminal siteId={site.id} />}
           {active === "settings" && <SettingsTab site={site} />}
         </div>
