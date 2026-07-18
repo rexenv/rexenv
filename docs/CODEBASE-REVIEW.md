@@ -123,6 +123,16 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   disposed xterm), mirroring `useDownloads.ts`/`StatusFooter.tsx`. No frontend test runner in the repo →
   verified via `tsc --noEmit` (green) + inspection; open/close-terminal behavior is part of the pending
   packaged smoke test.
+- **B31 UPDATE** — packaged smoke test **PASSED** (every flow works, no CSP-refusal console lines): app
+  loads + IPC · Terminal · Adminer `rexdb:` iframe · Plugins wp.org icons · Git-feature log pane +
+  RepoPanel · Mailpit. B31 is now **verified in the packaged app**.
+- **`5740c36`** — **B3** ssh/scp option-injection (pre-Homebrew): `parse_ssh_url`/`parse_scp_like` now
+  reject a `user` or `host` starting with `-` (and `parse_ssh_url` enforces the host charset it previously
+  lacked), so a pasted `-oProxyCommand=…@host:repo` can't reach `ssh` as an option flag at `ls-remote`
+  time (RCE, CVE-2017-1000117 class) — refused at parse, before any clone. Test
+  `ssh_scp_forms_reject_dash_authority_option_injection` (5 injection strings rejected; real forms still
+  parse, and `ssh_and_scp_forms_pass_through_for_private_repos` still passes). `cargo test --lib` 332
+  passed / 0 failed; examples build clean.
 
 ---
 
@@ -186,6 +196,7 @@ takes the lighter `start_command()` — but `start_command()` also has zero prod
 (`start_edge_daemon` always reinstalls). Worth reconciling doc ↔ code.
 
 ### B3 · 🟠 security · Git ssh/scp URL parsing doesn't reject a leading-dash authority → `ssh` option injection before any clone
+**✅ FIXED — commit `5740c36` (pre-Homebrew; see (A)). Analysis kept for the record.**
 **Where:** `core/repo.rs:147-171` (`parse_ssh_url`), `173-201` (`parse_scp_like`).
 **Verified:** me.
 **Why it might be a bug:** neither parser rejects a `user` or `host` component beginning with `-`,
@@ -655,8 +666,8 @@ see (D)).
   noise/`._` buckets.
 
 ### B31 · 🟠 med · No Content-Security-Policy on the production webview
-**◑ WIRED — commit `318f425` (see (A)). BUILD-ONLY: awaits your packaged-app smoke test (not claimed
-verified — a CSP break is silent and only shows in a built app's console).**
+**✅ FIXED & VERIFIED — commit `318f425`; packaged-app smoke test PASSED (every flow works, no
+CSP-refusal console lines). See (A).**
 **Where:** `src-tauri/tauri.conf.json:26-28` (`"security": { "csp": null }`); no runtime CSP override
 either.
 **Verified:** me.
