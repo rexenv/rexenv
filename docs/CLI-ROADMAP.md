@@ -124,6 +124,38 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
 | `rex completions zsh\|bash` | — | ✓ | shipped 16 Jul — static tree, both syntax-checked |
 
+## Repo group (git/asset feature-set — recorded 18 Jul 2026, NOT built)
+
+Every backing IPC below shipped with the add-from-Git/asset phases
+(`commands/repo.rs`) — the whole group is dispatch arms + subcommands, no
+new core. **The delete guard needs no CLI work at all:** `rex wp <domain>
+plugin|theme delete` already dispatches to `wp_plugin_delete`/
+`wp_theme_delete` (cli_server.rs), which carry the phase-D unlink-only
+symlink interception — the CLI cannot bypass it BY CONSTRUCTION (one code
+path). What a `repo delete` alias would add is only the loss-warning
+preview in the confirm (the UI fetches `repo_asset_status` first).
+
+Job-shaped ops (add / fetch / pull / checkout / push / run) return a job id
+and stream via Tauri events, which the CLI socket doesn't carry — the 🟡
+arms below poll `repo_job_state` until terminal, then print the job's flat
+log via the existing `logs.tail` (`log_key` is in every snapshot). LIVE
+line streaming is the same 🔴 "progress streaming" infra item as always.
+
+| Command | Backing IPC | Tag | Notes |
+|---|---|---|---|
+| `repo status <domain> <dir> [--theme]` | `repo_asset_status` | 🟢 | branch/dirty/↑↓/remote/lossWarning/linkTarget in one call |
+| `repo list <domain>` | `repo_assets` (+ `repo_asset_status` per row for a `--status` flag) | 🟢/🟡 | plain list 🟢; per-row status 🟡 (N status calls) |
+| `repo adopt <domain> <dir> [--theme]` | `repo_adopt` | 🟢 | metadata only, matches the "git?" chip |
+| `repo link <domain> <path> [--theme --name]` | `repo_link` | 🟢 | CLI passes an absolute path; all validation backend-side |
+| `repo branches <domain> <dir>` | `repo_branches` | 🟢 | feeds checkout |
+| `repo add <domain> <url> [--theme --branch --name]` | `repo_probe` + `repo_add` + poll `repo_job_state` + `logs.tail` | 🟡 | hold the connection (site-create convention); print step transitions + log tail on finish |
+| `repo fetch\|pull\|checkout\|push <domain> <dir> [ref]` | `repo_git_op` + poll + `logs.tail` | 🟡 | same job-poll shape; checkout requires ref |
+| `repo run <domain> <dir> <script>` | `repo_scripts` (validate) + `repo_script_job` + poll + `logs.tail` | 🟡 | one-shot scripts only |
+| `repo install <domain> <dir> [composer\|install\|build]` | `repo_run_step` on the latest job / or a fresh op job | 🟡 | needs a live job with offered steps — or fold into `repo add --install` (run offered steps after clone, still explicit via the flag) |
+| `repo watch start\|stop\|list <domain> [dir] [script]` | `repo_watch_start` / `repo_watch_stop` / `repo_watches` | 🟢 | watcher lives IN THE APP (dies with the app — CLI just starts/stops it); `--tail` live output = 🔴 streaming |
+| `repo delete <domain> <dir> [--theme --yes]` | `repo_asset_status` (loss preview) + `wp_plugin_delete`/`wp_theme_delete` | 🟡 | alias over the ALREADY-GUARDED delete + the UI's status-driven confirm text; `--yes` prints the warning anyway |
+| `repo tools [--refresh]` | `repo_tools` | 🟢 | git/node resolution from the login-shell snapshot |
+
 ## Infrastructure (enables the above, not user commands)
 
 - **Progress streaming** 🔴 — long ops (`site create`, `db import`, `wp core
