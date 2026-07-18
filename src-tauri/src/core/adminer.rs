@@ -54,7 +54,10 @@ pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
 /// SECURITY: Adminer here is an INTERNAL vhost (`adminer.rexenv.rex` → 127.0.0.1)
 /// behind the local edge and is NEVER a public tunnel origin (§9), so passwordless
 /// loopback access stays confined to the local machine.
-const WRAPPER_INDEX_PHP: &str = r#"<?php
+///
+/// `pub` so `examples/adminer_login_gate_check` can extract the loopback gate
+/// (between the `rexenv-loopback-gate` markers) and prove it through real PHP.
+pub const WRAPPER_INDEX_PHP: &str = r#"<?php
 // rexenv Adminer deep-link wrapper (§11.4) — generated; do not edit by hand.
 
 // The Database Browser embeds this vhost in a cross-site <iframe> (webview
@@ -82,13 +85,46 @@ header_register_callback(function () {
     }
 });
 
+// rexenv-loopback-gate:start
+// Passwordless login is granted ONLY when the target server's HOST is EXACTLY a
+// loopback name. \Adminer\SERVER is request-controlled (auth[server] / ?server= /
+// ?pgsql=), so a PREFIX test (a starts-with match on the SERVER string) once
+// accepted "127.0.0.1.evil.com" and handed a passwordless session to a REMOTE
+// server — a malicious server can then use `LOAD DATA LOCAL INFILE` to read local
+// files off this machine. Strip an optional :port (or MySQL :socket, or bracketed
+// IPv6) and compare the bare host to the allow-list. See docs/CODEBASE-REVIEW.md B1.
+// (examples/adminer_login_gate_check runs this exact function through PHP.)
+if (!function_exists('rexenv_is_loopback')) {
+    function rexenv_is_loopback($server) {
+        $server = (string) $server;
+        if ($server === '') {
+            return false;
+        }
+        if ($server[0] === '[') {
+            // Bracketed IPv6 literal, optional ":port": [::1] or [::1]:3306.
+            $end = strpos($server, ']');
+            $host = $end === false ? '' : substr($server, 1, $end - 1);
+        } elseif (substr_count($server, ':') === 1) {
+            // host:port (or host:/socket for MySQL) — take the host.
+            $host = substr($server, 0, strpos($server, ':'));
+        } else {
+            // Bare host, or a bare IPv6 literal (::1) which has more than one colon.
+            $host = $server;
+        }
+        return in_array(strtolower($host), array('127.0.0.1', '::1', 'localhost'), true);
+    }
+}
+// rexenv-loopback-gate:end
+
 function adminer_object() {
     if (!class_exists('RexenvAdminer')) {
         class RexenvAdminer extends \Adminer\Adminer {
             function login($login, $password) {
-                // Passwordless login for rexenv's loopback engines only.
-                return strpos(\Adminer\SERVER, '127.0.0.1') === 0
-                    || strpos(\Adminer\SERVER, 'localhost') === 0;
+                // Passwordless login for rexenv's loopback engines ONLY — the host
+                // must match a loopback name EXACTLY (see the rexenv-loopback-gate
+                // above). SERVER is request-controlled, so a prefix match would let
+                // "127.0.0.1.evil.com" reach a remote server passwordless (B1).
+                return rexenv_is_loopback(\Adminer\SERVER);
             }
             function loginForm() {
                 parent::loginForm();
@@ -336,6 +372,27 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains("\\Adminer\\nonce()"));
         // It serves the real Adminer beside it.
         assert!(WRAPPER_INDEX_PHP.contains("require __DIR__ . '/adminer.php'"));
+    }
+
+    #[test]
+    fn login_gate_matches_loopback_host_exactly_not_by_prefix() {
+        // B1 regression: the passwordless gate must compare the target HOST to a
+        // loopback allow-list EXACTLY. The OLD prefix test
+        // (`strpos(\Adminer\SERVER, '127.0.0.1') === 0`) accepted
+        // "127.0.0.1.evil.com" and granted a passwordless session to a REMOTE
+        // server (→ LOAD DATA LOCAL INFILE local-file read). The behavioral proof
+        // over a real PHP interpreter lives in examples/adminer_login_gate_check.
+        assert!(WRAPPER_INDEX_PHP.contains("function rexenv_is_loopback("));
+        assert!(WRAPPER_INDEX_PHP.contains("return rexenv_is_loopback(\\Adminer\\SERVER)"));
+        assert!(WRAPPER_INDEX_PHP.contains(
+            "in_array(strtolower($host), array('127.0.0.1', '::1', 'localhost'), true)"
+        ));
+        // The vulnerable prefix gate must be GONE — both halves of it.
+        assert!(!WRAPPER_INDEX_PHP.contains("strpos(\\Adminer\\SERVER, '127.0.0.1') === 0"));
+        assert!(!WRAPPER_INDEX_PHP.contains("strpos(\\Adminer\\SERVER, 'localhost') === 0"));
+        // Extraction markers the example relies on stay present.
+        assert!(WRAPPER_INDEX_PHP.contains("rexenv-loopback-gate:start"));
+        assert!(WRAPPER_INDEX_PHP.contains("rexenv-loopback-gate:end"));
     }
 
     #[test]
