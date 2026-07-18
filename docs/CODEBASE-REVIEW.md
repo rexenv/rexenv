@@ -546,6 +546,52 @@ see (D)).
   docroot write (same-user), so it only weakens the diagnostic. Suggest excluding `*.php` from the
   noise/`._` buckets.
 
+### B31 · 🟠 med · No Content-Security-Policy on the production webview
+**Where:** `src-tauri/tauri.conf.json:26-28` (`"security": { "csp": null }`); no runtime CSP override
+either.
+**Verified:** me.
+**Why it might be a bug:** `csp: null` means Tauri injects **no** CSP into the shipped `index.html`.
+This is a privileged app (manages DBs, runs a CLI dispatch socket, embeds Adminer as a cross-origin
+iframe). With no `default-src`/`script-src`/`connect-src` backstop, any stray HTML injection (a raw site
+name, a log line) could in principle exfiltrate. Real exploitability is **low** — React auto-escapes,
+there's no `dangerouslySetInnerHTML` (I checked), all assets are local (`@fontsource`, no CDN), and
+Adminer serves its own nonce'd CSP — but it's the weakest possible setting on a broad attack surface.
+**Why it might be intentional:** convenient during development; xterm.js + the Adminer frame + `ipc:`
+make a tight CSP fiddly.
+**Recommendation:** set a restrictive CSP before publish, e.g.
+`default-src 'self'; frame-src https://adminer.rexenv.rex; connect-src 'self' ipc: http://ipc.localhost;
+img-src 'self' data:; style-src 'self' 'unsafe-inline'` (tune for xterm/Adminer). Defense-in-depth → your
+call, but cheap and appropriate for a shipping privileged app.
+
+### B32 · 🟠 release-gate · Ad-hoc bundle signing → the `.app` can't be notarized → Gatekeeper blocks it on other Macs
+**Where:** `src-tauri/tauri.conf.json:41-43` (`"macOS": { "signingIdentity": "-" }`).
+**Verified:** me.
+**Why it matters (you're about to publish to Homebrew):** ad-hoc signing (`-`) is intentional for local
+dev and matches the app's self-de-quarantine model — but an ad-hoc-signed app **cannot be notarized**,
+so on any Mac other than the build machine Gatekeeper shows "unidentified developer" / "damaged" and
+blocks launch. A Homebrew **cask** distributing this will hit that unless the cask force-removes the
+quarantine xattr (fragile, and a poor first-run experience). Proper public distribution needs a
+**Developer ID Application** identity + notarization (`xcrun notarytool`) + stapling.
+**Why it might be intentional:** yes, for the current pre-release/local state (documented in the archive).
+Flagging because your next step is a public Homebrew publish, where this becomes a hard gate.
+**Recommendation:** before the cask goes public, switch to a Developer ID identity and add notarization
+to the release build; verify a clean-Mac launch (the `docs/SMOKE-TEST.md` gate). Decision/logistics →
+yours; I can't do the signing.
+
+### B33 · 🟡 low · Debug-PHP download host is on a different domain (`dl.rexenv.dev`) than canonical `rexenv.rex.bd`
+**Where:** `src-tauri/src/core/binaries.rs:40` (`PHP_DEBUG_BASE_URL = "https://dl.rexenv.dev/php-debug"`).
+**Verified:** agent (I confirmed the CSP/signing siblings; this one via the agent's line ref + the
+xdebug-build being a documented blocked item).
+**Why it might be a bug / inconsistency:** you said the canonical URL is `https://rexenv.rex.bd` and to
+flag inconsistencies. This self-hosted download host uses `rexenv.dev`, a different org domain. It's
+currently **inert** — `manifest()` only surfaces the debug-PHP spec once its checksums are pinned
+(`None` until then, test-asserted), so nothing downloads from it today — but it's a hardcoded off-domain
+host that will go live when the Xdebug build ships.
+**Recommendation:** decide the real, checksum-locked download host for the debug PHP (a `rexenv.rex.bd`
+path, GitHub Releases, or S3) before that feature ships, and align it with the canonical domain (or
+document why the download host is deliberately separate). All *active* downloads are correctly pinned to
+their real upstreams (Caddy GitHub, `dl.static-php.dev`, getcomposer.org).
+
 ---
 
 ## (C) Cleanup done
@@ -644,7 +690,28 @@ see (D)).
   dead weight to the prod bundle. (Component-level query-invalidation / useEffect-dep review of the big
   screens — WordPressManager/SiteDetail/Settings — is still pending; a reviewer agent is on it.)
 
+- **Build/packaging is clean** (agent + I confirmed tauri.conf.json): Tauri **capabilities are minimal**
+  (`core:default` + two window perms + `dialog:allow-open` — no fs/shell/http/updater allowlist exposed
+  to the webview); **no updater plugin** (no insecure/placeholder update endpoint); `cli/Cargo.toml` has
+  exactly one dep (`serde_json`) so the "CLI never links the app lib" guarantee holds at compile time;
+  `src-tauri/Cargo.toml` deps are conventional + rustls (no native-tls), nothing unpinned/suspicious; no
+  hardcoded secrets; all active downloads are sha256/512-pinned; `dist/`/`target/`/`binaries/` gitignored;
+  sidecars staged aarch64 + x86_64 + universal matching `externalBin`. **Bundle identifier
+  `dev.rexenv.rexenv` is consistent** across tauri.conf, `APP_IDENTIFIER`, the CLI socket path, app-data
+  dir, and all launchd labels (historical `dev.rexenv.app` fully gone).
+- **URL-consistency result (canonical `https://rexenv.rex.bd`):** it appears in **no** source/config/
+  runtime file — only in this review doc — so there's **no wrong/placeholder public domain to fix**.
+  Corollary: the app doesn't link to its own public site yet (About/docs/footer) — not a defect, just
+  unwired. Internal `.rex` hosts (`adminer.rexenv.rex` from the single `ADMINER_HOST` source, mirrored in
+  `src/lib/adminer.ts`; the `.rex` DNS backbone) are **correct and must stay `.rex`** — do NOT change them
+  to `.rex.bd`. Only other domain is the dormant `dl.rexenv.dev` (B33).
+
 **Pass-2 nits / cleanup candidates** (NOT changed this pass — everything to (B)/(D) per your instruction):
+- **`tauri.conf.json:45-47`** dead `android` block (no Android target — `tauri init` leftover; safe to drop).
+- **`.mcp.json`** untracked local dev scratch (loopback PhpStorm MCP) — add to `.gitignore` if not shared.
+- **`scripts/build-cli.sh:9`** `set -e` (could add `-u`; no pipes so `pipefail` moot; paths quoted — no bug).
+- **`src-tauri/build.rs:10`** self-stages only when the aarch64 sidecar slice is missing → a deleted
+  x86_64/universal slice won't re-stage and fails later with a confusing tauri_build error (edge case).
 - **Dead-code candidates** (unused `pub fn`, defined + unit-tested, zero call sites — some may be reserved
   seams, so flagging not removing): `core/database.rs:25 mysql_client_bin`, `core/postgres.rs:27 psql_bin`,
   `core/redis.rs:21 redis_cli_bin` (the `*_client_bin` locators may be reserved for a future Redis
@@ -690,4 +757,4 @@ build/packaging + docs + frontend still need the URL-consistency sweep (that age
 | frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ◐ high-risk patterns spot-checked by me (XSS/mock-gating/dev-panel/listener-cleanup all clean); `App`/`ipc` read; per-route query-invalidation NOT fully read (routes agent failed) |
 | frontend (components/lib) | `components/*` `lib/*` | ⧗ agent in progress |
 | CLI crate (`rex`) | `cli/src/main.rs` | ✓ verified by me (robust; matches contract — no new findings) |
-| build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ⧗ agent in progress |
+| build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ✓ reviewed (agent) + tauri.conf verified by me (B31 CSP, B32 signing, B33 url); URL sweep done |
