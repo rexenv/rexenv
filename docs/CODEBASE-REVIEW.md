@@ -118,6 +118,11 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   errors (and the existing cleanup removes the staging) instead of publishing an incomplete bundle that
   ENOENTs on spawn and re-downloads forever. Test `ensure_member_extracted_fails_loud_when_the_pinned_member_is_absent`;
   full `resolve_bundle` end-to-end needs real bottles (live-check). `cargo test --lib` 331 passed / 0 failed.
+- **`21d20ae`** — **B37** SiteTerminal listener leak: re-check `disposed` after `await onTerminalOutput`
+  so an unmount during that await unlistens the just-registered listener (instead of leaking it over a
+  disposed xterm), mirroring `useDownloads.ts`/`StatusFooter.tsx`. No frontend test runner in the repo →
+  verified via `tsc --noEmit` (green) + inspection; open/close-terminal behavior is part of the pending
+  packaged smoke test.
 
 ---
 
@@ -750,6 +755,7 @@ defeating HTTPS + the pinned digest to be more than a nuisance, hence low.
 margin; otherwise enforce a hard per-download cap.
 
 ### B37 · 🟡 low/med · `SiteTerminal` leaks a Tauri listener if it unmounts between `openTerminal` and `onTerminalOutput` resolving
+**✅ FIXED — commit `21d20ae` (see (A)). Analysis kept for the record.**
 **Where:** `src/components/terminal/SiteTerminal.tsx:77` (register) + `:105` (cleanup); the `disposed`
 guard at `:72` covers only the earlier window.
 **Verified:** agent (matches the async-listen-vs-unmount race class — the same one `App.tsx`'s
