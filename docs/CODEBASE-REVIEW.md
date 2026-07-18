@@ -108,6 +108,11 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `Refused to … violates CSP` naming the directive to widen): app loads + IPC works · Terminal (xterm) ·
   Database browser (Adminer `rexdb:` iframe) · Plugins tab wp.org icons · **Git-feature UI (streamed log
   pane + RepoPanel)** · **Mailpit**. Full analysis under (B) B31.
+- **`c24e4fe`** — **B34** download response-header timeout: `send_bounded` wraps `req.send()` in a
+  size-independent `CHUNK_TIMEOUT` stall guard (mapped to `Transient` so the retry loop handles it),
+  so a server that finishes the TLS handshake then never sends headers can't hang the download forever.
+  Test `send_bounded_times_out_when_response_headers_never_arrive` (a TCP listener that accepts then
+  sends nothing → transient "stalled" within the guard, no hang). `cargo test --lib` 330 passed / 0 failed.
 
 ---
 
@@ -690,6 +695,7 @@ document why the download host is deliberately separate). All *active* downloads
 their real upstreams (Caddy GitHub, `dl.static-php.dev`, getcomposer.org).
 
 ### B34 · 🟠 med · Download has no response-header (TTFB) timeout → a post-connect stall hangs forever
+**✅ FIXED — commit `c24e4fe` (see (A)). Analysis kept for the record.**
 **Where:** `core/binaries.rs:1264-1277` (`http_client`) + the `req.send().await` in `fetch_to_file`
 (~`:1365`); `CHUNK_TIMEOUT` guards only body chunks.
 **Verified:** me.
