@@ -970,11 +970,14 @@ void closeTerminal(id); return; } unlisten = un;` — mirroring `useDownloads.ts
   resolve unwind leaks the `.staging-*` dir; a drop-guard would fix); `hex_lower` allocates per byte
   (`format!("{b:02x}")` in a loop — use `write!`); the download-hub batch counter can stick below 100% when
   a planned item becomes cached before its resolve runs (UI-only artifact, `prefetch` still returns Ok).
-- **Dead-code candidates** (unused `pub fn`, defined + unit-tested, zero call sites — some may be reserved
-  seams, so flagging not removing): `core/database.rs:25 mysql_client_bin`, `core/postgres.rs:27 psql_bin`,
-  `core/redis.rs:21 redis_cli_bin` (the `*_client_bin` locators may be reserved for a future Redis
-  terminal / Adminer deep link); `core/mariadb.rs:175`, `core/postgres.rs:94`, `core/redis.rs:59` `port()`
-  wrappers (the `DbEngine::port()` method + `*_PORT` consts are used directly — these look vestigial).
+- **Dead-code note (audited — corrected):** the pass-1 flag on `mysql_client_bin` / `psql_bin` /
+  `redis_cli_bin` was a **false positive** — those `*_client_bin` locators are **used by the live-check
+  examples** (`mysql_serve`, `db_drop_check`, `db_engine_serve`, `db_version_switch_check`,
+  `redis_bundle_check`) + unit tests; the pass-1 agent only searched `src/` and missed `examples/`. They
+  are **NOT dead — kept.** The `mariadb`/`postgres`/`redis` `port()` re-export wrappers WERE genuinely dead
+  (zero callers anywhere, no tests, no seam signal, and MySQL had no equivalent — the real API is
+  `DbEngine::port()` + the `db::*_PORT` consts) and were **removed in `b5a9cc2`** (with their now-unused
+  `*_PORT` imports).
 - `core/sites.rs:566` — an empty `if needs_database(...) { }` placeholder branch (documented no-op).
 - `core/wp_login.rs:137` — comment calls two v4 UUIDs "256-bit"; it's ~244 bits (ample; the number's
   just wrong).
