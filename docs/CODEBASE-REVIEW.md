@@ -5,18 +5,22 @@
 **Baseline (clean):** `cargo test --lib` 320 passed / 0 failed · `cargo build --examples` ok · `tsc --noEmit` ok
 **Canonical public URL:** `https://rexenv.rex.bd`
 
-> ### ⚠️ Coverage status — this is a PARTIAL first pass
-> A session usage limit (resets 20:50 Asia/Dhaka) killed most of the parallel reviewer
-> agents mid-run. **Fully reviewed & verified so far:** the edge/DNS/TLS/Adminer core
-> (`proxy`, `dns`, `ssl`, `adminer`, `tld`, `setup`, `firefox`), the macOS platform /
-> privilege layer, the Git-repo + shell-exec feature (`repo`, `commands/repo`, `devtools`,
-> `cli`, `terminal`), plus my own reads of the Adminer/repo/ssl/proxy/sites-parsing/uninstall
-> paths. **NOT yet covered** (agents died before finishing): `binaries`/`downloads`,
-> `service_manager`/`services`/`ports`/`monitor`/`stack_guard`, `sites`(full)/`site_env`(full)/
-> `wordpress`/`wp_login`/`wp_tunnel`/`tunnels`/`wporg`/`blueprints`, `cli_server` + all
-> `commands/*`, the DB engines (`db`/`database`/`mariadb`/`postgres`/`redis`/`php`/`apache`/
-> `frankenphp`/`mail`), `state/*` + migrations, the **entire React/TS frontend**, the `cli/`
-> crate, and build/packaging. See the Coverage log at the bottom. A second pass is needed.
+> ### Coverage status — substantially complete (pass 1 + pass 2)
+> Every major area has now been reviewed by a reviewer agent **and/or** read line-by-line by me,
+> with each load-bearing finding verified against the real code before it entered this doc. Covered:
+> edge/DNS/TLS/Adminer, macOS platform/privilege, Git-repo + shell-exec, binaries/downloads (checksum
+> spine verified), service lifecycle (`service_manager`/`services`/`ports`/`monitor`/`stack_guard`),
+> sites/WordPress/`wp_login`/tunnels/`wporg`/blueprints, `site_env`, DB engines
+> (MySQL/MariaDB/Postgres/Redis/php/apache/frankenphp/mail), `state/*` + migrations, `cli_server`
+> framing/dispatch, the `cli/` (`rex`) crate, build/packaging + the `rexenv.rex.bd` URL sweep, and the
+> frontend (`App`/`ipc` + high-risk patterns by me; components/lib by agent).
+> **Residual gaps (lighter):** the individual `commands/*` handler *bodies* beyond the prefetch-before-lock
+> invariant + `mail`/`downloads` (thin translators — the trust logic lives in `core/`, already reviewed);
+> the per-route query-invalidation in the biggest screens was covered at the *component* layer but the
+> route files themselves weren't fully read (the routes agent returned injection-degenerate output and was
+> discarded — see Coverage log). Two reviewer agents returned 0-tool-use prompt-injection-style output;
+> both were **discarded** and I covered those areas myself. No fixes were applied in pass 2 — every
+> finding is in (B)/(D) for the batched priority-fix pass, per your instruction.
 
 ## How to read this
 
@@ -592,6 +596,68 @@ path, GitHub Releases, or S3) before that feature ships, and align it with the c
 document why the download host is deliberately separate). All *active* downloads are correctly pinned to
 their real upstreams (Caddy GitHub, `dl.static-php.dev`, getcomposer.org).
 
+### B34 · 🟠 med · Download has no response-header (TTFB) timeout → a post-connect stall hangs forever
+**Where:** `core/binaries.rs:1264-1277` (`http_client`) + the `req.send().await` in `fetch_to_file`
+(~`:1365`); `CHUNK_TIMEOUT` guards only body chunks.
+**Verified:** me.
+**Why it might be a bug:** `http_client` sets `.connect_timeout(15s)` — which bounds **TCP+TLS
+establishment only**. The per-chunk `tokio::time::timeout(CHUNK_TIMEOUT, resp.chunk())` guards body
+reads, but that runs **after** `send()` resolves. The wait for the response **status line + headers**
+is bounded by nothing. A captive portal / transparent proxy / misbehaving mirror that completes the
+TLS handshake (within 15s) then never sends headers hangs `req.send().await` indefinitely, and the
+retry/backoff loop can't fire because it's stuck inside attempt 1 — "Start all" / "Install PHP x.y"
+spins forever with no error or progress. The comment (`:1258-1268`) shows this is a **regression**: the
+old 120s whole-request timeout (deliberately removed so a big slow download wouldn't abort) also
+happened to cover the header phase, and removing it dropped that guard.
+**Why it might be intentional:** dropping the whole-request cap was correct for the *body* (don't
+penalize a large slow download); the header-phase gap is an unintended side effect, not a choice.
+**Recommendation:** restore a size-independent stall guard on the header phase — either
+`.read_timeout(CHUNK_TIMEOUT)` on the client (reqwest 0.12; also covers the header read), or wrap the
+send in `tokio::time::timeout(CHUNK_TIMEOUT, req.send())` and map elapsed → `Transient` so the existing
+retry handles it.
+
+### B35 · 🟡 low/med · `resolve_bundle` publishes without asserting the pinned `member` was actually extracted → incomplete tree + infinite re-download
+**Where:** `core/binaries.rs:934-943` (`resolve_bundle`); contrast `resolve`'s loud
+`"member '{member}' not found in archive"` at `:1503`.
+**Verified:** agent (checksum spine I confirmed myself; this is the extract-completeness gap).
+**Why it might be a bug:** `extract_tar_gz_tree_filtered` silently skips anything not matching an
+`include` prefix and **never errors if the pinned `member` (or any include) is absent** from the bottle.
+So a wrong `member`/`include` pin yields a staging tree missing its primary binary; `prepare_binary_tree`
+still succeeds (relinks whatever Mach-Os it finds), `publish` renames the incomplete tree in, and
+`resolve_bundle` returns `Ok(dir)`. The caller then spawns `dir/bin/redis-server` → ENOENT — and because
+the early-return marker `dir.join(spec.member).exists()` is never satisfied, **every** later resolve
+re-downloads the whole bundle forever. `resolve`'s TarGz path fails loudly here; `resolve_bundle` doesn't.
+**Why it might be intentional:** the trigger is a bad pin, which the unit tests catch (they assert each
+include list contains its member), so it can't happen with today's pins — but the loud-fail guarantee
+that exists in `resolve` is simply missing.
+**Recommendation:** after `prepare_binary_tree`, assert `staging.join(spec.member).exists()` (error if
+not) before `publish`; optionally make `extract_tar_gz_tree_filtered` error on an `include` prefix that
+matched zero entries (also catches a silently-dropped httpd module `.so`).
+
+### B36 · 🟡 low · Streamed download has no size ceiling — a lying `Content-Length` can exhaust disk before the checksum runs
+**Where:** `core/binaries.rs:1394-1418` (chunk-append loop; checksum verified only after EOF at `:1419`).
+**Verified:** agent.
+**Why it might be a bug:** the loop appends every chunk with no bound relative to `Content-Length`, and
+integrity is checked only after the stream ends. A compromised/misbehaving mirror (or one lying about
+`Content-Length`) can stream unbounded data and fill the disk before the checksum rejects it. Requires
+defeating HTTPS + the pinned digest to be more than a nuisance, hence low.
+**Recommendation:** when `total` is known, abort (`Transient`) once `downloaded` exceeds it by a small
+margin; otherwise enforce a hard per-download cap.
+
+### B37 · 🟡 low/med · `SiteTerminal` leaks a Tauri listener if it unmounts between `openTerminal` and `onTerminalOutput` resolving
+**Where:** `src/components/terminal/SiteTerminal.tsx:77` (register) + `:105` (cleanup); the `disposed`
+guard at `:72` covers only the earlier window.
+**Verified:** agent (matches the async-listen-vs-unmount race class — the same one `App.tsx`'s
+`HealthWatch` and `useDownloads.ts` handle correctly, so this is the one spot that doesn't).
+**Why it might be a bug:** `unlisten = await onTerminalOutput(id, …)` stores the unsubscribe in a plain
+`let`. If the component unmounts in the window **after** `openTerminal` resolves (`sessionId` set) but
+**before** `onTerminalOutput` resolves, the cleanup runs with `unlisten === null` and skips it — the
+listener registers *after* teardown and is never removed, its callback closing over an already-
+`dispose()`d xterm. Across repeated site/terminal switches these accumulate.
+**Why it might be intentional:** no — the sibling components guard this correctly; it's an omission here.
+**Recommendation:** re-check after the await: `const un = await onTerminalOutput(...); if (disposed) { un();
+void closeTerminal(id); return; } unlisten = un;` — mirroring `useDownloads.ts`/`StatusFooter.tsx`.
+
 ---
 
 ## (C) Cleanup done
@@ -699,6 +765,22 @@ their real upstreams (Caddy GitHub, `dl.static-php.dev`, getcomposer.org).
   sidecars staged aarch64 + x86_64 + universal matching `externalBin`. **Bundle identifier
   `dev.rexenv.rexenv` is consistent** across tauri.conf, `APP_IDENTIFIER`, the CLI socket path, app-data
   dir, and all launchd labels (historical `dev.rexenv.app` fully gone).
+- **Binary download integrity is sound** (agent + my spot-check): the checksum is compared **before** any
+  extract/sign/publish and fails **closed** (empty/wrong-algorithm pin → `got != expected` →
+  `FetchError::Permanent`, cache file deleted); no unverified file ever lands at a cache path or executes
+  (downloads go to a hidden per-`(pid,seq)` staging dir → verify → prepare → atomic `publish` rename); the
+  one unverified fetch (`http_get`) pulls only the wp.org version-picker JSON (parsed/displayed, never
+  executed); codesign-LAST/relink/error-on-unbundled-dep are `?`-propagated so the cache never holds an
+  unsigned binary; same-binary resolves are single-flighted (`in_flight` lock released before the await);
+  cross-process races settled by `publish`'s 3-case rename; retry/backoff + progress arithmetic are
+  overflow/underflow-safe. (Gaps are B34-B36 — a header-phase timeout, a bundle completeness assert, and a
+  size ceiling — none of which weaken the hash gate.)
+- **Frontend component layer is largely clean** (agent, deep read): `mock.ts` re-confirmed dev-only (no
+  shipping component imports it); no `dangerouslySetInnerHTML`; index-as-key appears **only** on
+  append-only log lists (acceptable); **no query-key collisions and no mutation→stale-UI gaps** —
+  create/activate/delete/convert/link/checkout all invalidate the right keys (updates-pass included);
+  `theme.ts` `useSyncExternalStore` snapshot is Object.is-stable (no render loop); `NewSiteDialog`'s
+  phpVersion reset compares by value so a background `["php-versions"]` refetch can't clobber a manual pick.
 - **URL-consistency result (canonical `https://rexenv.rex.bd`):** it appears in **no** source/config/
   runtime file — only in this review doc — so there's **no wrong/placeholder public domain to fix**.
   Corollary: the app doesn't link to its own public site yet (About/docs/footer) — not a defect, just
@@ -712,6 +794,25 @@ their real upstreams (Caddy GitHub, `dl.static-php.dev`, getcomposer.org).
 - **`scripts/build-cli.sh:9`** `set -e` (could add `-u`; no pipes so `pipefail` moot; paths quoted — no bug).
 - **`src-tauri/build.rs:10`** self-stages only when the aarch64 sidecar slice is missing → a deleted
   x86_64/universal slice won't re-stage and fails later with a confusing tauri_build error (edge case).
+- **`src/components/shell/AppShell.tsx:9-14`** — leftover Phase-1 smoke-test logging (`console.info("[ipc]
+  app_info", …)` + `console.error(...)`) fires on every launch in prod. Safe to delete or gate behind
+  `import.meta.env.DEV`. (This is the debug output my earlier grep half-missed — `console.info`.)
+- **`WordPressManager.tsx` plugin/theme search (⚪ ux)** — for ~350ms between the 2nd keystroke and the
+  debounce, the dropdown flashes "No plugins match …" before "Searching…" (disabled RQ query reads
+  `isLoading:false`+`data:undefined`). Cosmetic; treat "debounce pending" as loading.
+- **`src/components/ui/dialog.tsx` (⚪ latent)** — the imperative `confirm()`/`promptText()` use a single-
+  slot Zustand store; a second programmatic open overwrites `current` and drops the first `resolve`
+  (hangs its `await` forever). Unreachable via UI (the modal overlay serializes clicks), but a foot-gun
+  for any non-UI double-open. Also `dialog.tsx:99` builds a Tailwind class by interpolation
+  (`mt-${…}`) which JIT can't see (renders today only because `mt-3` exists statically elsewhere).
+- **`src/components/sites/NewSiteDialog.tsx:170` (⚪ nit)** — backdrop click closes the dialog mid-create
+  (siblings guard with `busy ? undefined : onClose`); harmless (success still invalidates `["sites"]`).
+- **Pervasive minor** — many `openExternal(...)` calls don't `.catch`, so an IPC rejection surfaces as an
+  unhandled promise rejection instead of a toast (unlike `revealPath(...).catch(toastBackendError)`).
+- **Binaries nits** — staging cleanup (`if staged.is_err() { remove_dir_all }`) isn't panic-safe (a mid-
+  resolve unwind leaks the `.staging-*` dir; a drop-guard would fix); `hex_lower` allocates per byte
+  (`format!("{b:02x}")` in a loop — use `write!`); the download-hub batch counter can stick below 100% when
+  a planned item becomes cached before its resolve runs (UI-only artifact, `prefetch` still returns Ok).
 - **Dead-code candidates** (unused `pub fn`, defined + unit-tested, zero call sites — some may be reserved
   seams, so flagging not removing): `core/database.rs:25 mysql_client_bin`, `core/postgres.rs:27 psql_bin`,
   `core/redis.rs:21 redis_cli_bin` (the `*_client_bin` locators may be reserved for a future Redis
@@ -748,13 +849,13 @@ build/packaging + docs + frontend still need the URL-consistency sweep (that age
 | macOS platform / privilege | `platform/macos/*` `traits.rs` `windows` `linux` | ✓ reviewed (agent) + uninstall verified by me |
 | repo / shell-exec | `core/repo` `commands/repo` `devtools` `cli` `terminal` | ✓ reviewed (agent) + parse/probe verified by me |
 | examples | `resource_totals_check` | ✓ cleanup committed |
-| binaries / downloads | `binaries` `downloads` | ◐ extraction+publish verified by me (zip-slip-safe); manifest/checksum/bottle/relink + `downloads` ⧗ agent in progress |
+| binaries / downloads | `binaries` `downloads` | ✓ reviewed (agent) + checksum spine & extraction/publish verified by me (hash gate sound; B34-B36) |
 | service lifecycle | `service_manager` `services` `ports` `monitor` `stack_guard` `site_metrics` | ✓ reviewed (agent) + port-collision/monitor/reap verified by me (B20/B26/B27/B28/B29) |
 | sites / WP / env / tunnels | `sites` `site_env` `wordpress` `wp_login` `wp_tunnel` `tunnels` `wporg` `blueprints` | ✓ reviewed (agent) + `site_env`/`db_name`/slug-hygiene verified by me (B21/B24/B30); crown jewels re-confirmed |
 | CLI server + commands | `cli_server` + `commands/*` | ◐ `cli_server` framing/parse/dispatch-routing verified by me (B17); prefetch-before-lock invariant checked across `commands/*` (B19 gap); `mail`/`downloads` read; other `commands/*` handler bodies NOT fully read |
 | DB engines + override servers | `db` `database` `mariadb` `postgres` `redis` `php` `apache` `frankenphp` `mail` | ✓ reviewed (agent) + datadir-cleanup/bootstrap verified by me (B22/B23/B25/B26) |
 | state / migrations | `state/*` | ✓ `db`/`store`/`app` verified by me (B18 migration atomicity; else clean); `models` skimmed |
 | frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ◐ high-risk patterns spot-checked by me (XSS/mock-gating/dev-panel/listener-cleanup all clean); `App`/`ipc` read; per-route query-invalidation NOT fully read (routes agent failed) |
-| frontend (components/lib) | `components/*` `lib/*` | ⧗ agent in progress |
+| frontend (components/lib) | `components/*` `lib/*` | ✓ reviewed (agent, deep read) — B37 (SiteTerminal listener leak) + nits; no query-key/mutation-stale gaps |
 | CLI crate (`rex`) | `cli/src/main.rs` | ✓ verified by me (robust; matches contract — no new findings) |
 | build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ✓ reviewed (agent) + tauri.conf verified by me (B31 CSP, B32 signing, B33 url); URL sweep done |
