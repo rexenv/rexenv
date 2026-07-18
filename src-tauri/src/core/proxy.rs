@@ -27,6 +27,14 @@ pub const ADMIN_SOCKET_FILE: &str = "caddy-admin.sock";
 /// block) — the positive wire-identity marker for [`edge_answers_as_ours`].
 pub const EDGE_MARKER_HEADER: &str = "X-Rexenv-Edge";
 
+/// Path the wire probe requests (see [`edge_answers_as_ours`]). The internal
+/// Adminer site block answers it AT the edge (`respond 204`, marker already
+/// stamped) so the every-10s health probe never reaches nginx/PHP — no probe
+/// noise drowning real requests in the user-visible nginx access log, and no
+/// Adminer page render per tick. Only the internal tooling vhost carries the
+/// route: user sites reserve no paths.
+pub const EDGE_PROBE_PATH: &str = "/__rexenv-probe";
+
 /// Path of Caddy's admin unix socket under the platform config dir.
 pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE))
@@ -40,14 +48,17 @@ pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
 /// connections to the most-specific listener. Observed live: Herd's nginx
 /// answered every site with its own 404 while our edge sat green.
 ///
-/// Probe: request `https://<host>/` pinned to `127.0.0.1:443` (no DNS involved)
-/// and require the [`EDGE_MARKER_HEADER`] our config stamps on every site block
-/// (fallback: a `Server: Caddy` header — a pre-marker rexenv edge — still
-/// distinguishes us from Herd/Valet's nginx). Any HTTP status counts: a 502
-/// from OUR edge still proves the wire is ours. Connection failure or a foreign
-/// server → false.
+/// Probe: request [`EDGE_PROBE_PATH`] on `<host>` pinned to `127.0.0.1:443`
+/// (no DNS involved) and require the [`EDGE_MARKER_HEADER`] our config stamps
+/// on every site block (fallback: a `Server: Caddy` header — a pre-marker
+/// rexenv edge — still distinguishes us from Herd/Valet's nginx). Any HTTP
+/// status counts: a 502 from OUR edge still proves the wire is ours. A current
+/// edge answers the path itself (204 at the edge, no nginx round-trip); an
+/// older surviving edge just proxies it through as a 404 that still carries
+/// the marker — detection is config-version-independent. Connection failure or
+/// a foreign server → false.
 pub async fn edge_answers_as_ours(host: &str, https_port: u16) -> bool {
-    let url = format!("https://{host}:{https_port}/");
+    let url = format!("https://{host}:{https_port}{EDGE_PROBE_PATH}");
     let Ok(client) = reqwest::Client::builder()
         // Our local-CA leaf won't chain for reqwest's store; identity comes from
         // the marker header, not the chain.
@@ -161,6 +172,14 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
         // no bind error anywhere (observed live with Herd) — process liveness
         // alone can't detect that the wire belongs to someone else.
         s.push_str(&format!("\theader {EDGE_MARKER_HEADER} \"1\"\n"));
+        // The health wire-probe polls EDGE_PROBE_PATH every 10s; the internal
+        // tooling vhost answers it at the edge so the probe never reaches
+        // nginx (`respond` orders before `reverse_proxy`). Marker is already
+        // stamped above, so the 204 still carries the wire identity.
+        if r.host == crate::core::adminer::ADMINER_HOST {
+            s.push_str(&format!("\t@rexenv_probe path {EDGE_PROBE_PATH}\n"));
+            s.push_str("\trespond @rexenv_probe 204\n");
+        }
         s.push_str(&format!("\treverse_proxy {}\n", r.upstream));
         s.push_str("}\n");
     }
@@ -554,6 +573,32 @@ mod tests {
         assert!(f.contains("https://proxytest.test {"));
         assert!(f.contains("https://two.test {"));
         assert_eq!(f.matches("reverse_proxy").count(), 2);
+    }
+
+    #[test]
+    fn probe_route_only_on_internal_adminer_block() {
+        let mut cfg = sample();
+        cfg.routes.push(SiteRoute {
+            host: crate::core::adminer::ADMINER_HOST.into(),
+            wildcard: false,
+            upstream: "127.0.0.1:18088".into(),
+            cert_path: "/c/a.pem".into(),
+            key_path: "/c/a.key".into(),
+        });
+        let f = generate_caddyfile(&cfg);
+        // The probe endpoint is answered at the edge, exactly once, on the
+        // internal tooling vhost — the 10s health probe never reaches nginx
+        // (no access-log noise), and user sites reserve no paths.
+        assert_eq!(f.matches(&format!("@rexenv_probe path {EDGE_PROBE_PATH}")).count(), 1);
+        assert_eq!(f.matches("respond @rexenv_probe 204").count(), 1);
+        let adminer_at = f.find("https://adminer.rexenv.rex {").unwrap();
+        let user_block = &f[..adminer_at];
+        assert!(!user_block.contains("respond"), "user site block gained a probe route");
+        // The adminer block still stamps the marker and proxies everything
+        // else — probe replies carry the wire identity, Adminer keeps working.
+        let adminer_block = &f[adminer_at..];
+        assert!(adminer_block.contains("header X-Rexenv-Edge \"1\""));
+        assert!(adminer_block.contains("reverse_proxy 127.0.0.1:18088"));
     }
 
     #[test]
