@@ -72,6 +72,48 @@ fn ensure_server_available(server: WebServer) -> Result<()> {
     }
 }
 
+/// The per-site override backend port for `server`, or `None` for nginx (which
+/// has no per-site port — it vhosts by `server_name` on the shared stack).
+/// FrankenPHP/Apache hash the domain into a small loopback range, so two domains
+/// of the same server type can land on the same port.
+fn override_port(domain: &str, server: WebServer) -> Option<u16> {
+    match server {
+        WebServer::Frankenphp => Some(super::frankenphp::site_port(domain)),
+        WebServer::Apache => Some(super::apache::site_port(domain)),
+        _ => None,
+    }
+}
+
+/// If a site in `others` already claims `(domain, server)`'s override backend
+/// port, return that site's domain + the shared port. Two per-site backends
+/// (FrankenPHP/Apache) that hash to the same slot would share ONE loopback
+/// server — cross-site content bleed, and the spawn self-heal would reap the
+/// live sibling. Refused at create / web-server switch / domain change so the
+/// collision is a loud, actionable error, never a silent shared backend
+/// (finding B20). A recorded-port allocator (follow-up) will remove the
+/// collision outright; this guard is a permanent safety net regardless.
+pub fn override_port_conflict(
+    others: &[Site],
+    domain: &str,
+    server: WebServer,
+) -> Option<(String, u16)> {
+    let port = override_port(domain, server)?;
+    others
+        .iter()
+        .filter(|s| s.web_server == server && !s.domain.eq_ignore_ascii_case(domain))
+        .find(|s| override_port(&s.domain, server) == Some(port))
+        .map(|s| (s.domain.clone(), port))
+}
+
+/// Clear, actionable error for an override-port collision (B20).
+fn override_port_collision_error(domain: &str, other: &str, port: u16) -> Error {
+    Error::Other(format!(
+        "can't use this web server for \"{domain}\": its backend port ({port}) collides with \
+         \"{other}\", so the two sites would share one server. Rename this site or give it a \
+         different web server."
+    ))
+}
+
 /// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
 /// [`wordpress::db_name_for`] base (what existing sites already store); falls
 /// back to a hash-suffixed form when that base would COLLIDE with an existing
@@ -108,6 +150,11 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
             "domain already in use: {}",
             new.domain
         )));
+    }
+    // Refuse a per-site override server whose hashed backend port already
+    // belongs to another site — the two would share one loopback server (B20).
+    if let Some((other, port)) = override_port_conflict(&list(conn)?, &new.domain, new.web_server) {
+        return Err(override_port_collision_error(&new.domain, &other, port));
     }
     // Derived from the domain ONCE, here — every later operation reads the
     // stored value, so a domain change never re-points the database. Unique per
@@ -204,6 +251,13 @@ pub fn check_domain_change(conn: &Connection, site: &Site, new_domain: &str) -> 
 pub fn set_domain(conn: &Connection, id: &str, new_domain: &str) -> Result<Option<Site>> {
     let Some(site) = get(conn, id)? else { return Ok(None) };
     check_domain_change(conn, &site, new_domain)?;
+    // An override site changing domain re-hashes its backend port — refuse if the
+    // NEW domain would collide with a DIFFERENT override site (B20). Exclude this
+    // site itself (its old domain would otherwise be compared against the new).
+    let others: Vec<Site> = list(conn)?.into_iter().filter(|s| s.id != id).collect();
+    if let Some((other, port)) = override_port_conflict(&others, new_domain, site.web_server) {
+        return Err(override_port_collision_error(new_domain, &other, port));
+    }
     store::set_site_domain(conn, id, new_domain)?;
     get(conn, id)
 }
@@ -327,6 +381,13 @@ pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>
 /// backend up / old down and reloads the edge.
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
     ensure_server_available(server)?;
+    let Some(site) = get(conn, id)? else { return Ok(None) };
+    // Switching TO a per-site override server re-derives a backend port — refuse
+    // if it would collide with another override site (B20). `list` includes this
+    // site, but the conflict check skips its own domain.
+    if let Some((other, port)) = override_port_conflict(&list(conn)?, &site.domain, server) {
+        return Err(override_port_collision_error(&site.domain, &other, port));
+    }
     if !store::set_site_web_server(conn, id, server.as_db())? {
         return Ok(None);
     }
@@ -1003,6 +1064,89 @@ mod tests {
             b.db_name
         );
         assert!(b.db_name.len() <= crate::core::wordpress::DB_NAME_MAX);
+    }
+
+    /// Two distinct domains that hash to the SAME FrankenPHP backend slot — the
+    /// 100-slot space guarantees a collision within 101 domains (pigeonhole).
+    fn colliding_frankenphp_domains() -> (String, String) {
+        let mut seen: std::collections::HashMap<u16, String> = std::collections::HashMap::new();
+        for i in 0..1000u32 {
+            let d = format!("collide{i}.test");
+            let p = crate::core::frankenphp::site_port(&d);
+            if let Some(prev) = seen.get(&p) {
+                return (prev.clone(), d);
+            }
+            seen.insert(p, d);
+        }
+        panic!("expected a FrankenPHP port collision within 1000 domains");
+    }
+
+    fn fp_site(domain: &str) -> Site {
+        Site {
+            id: format!("id-{domain}"),
+            name: domain.into(),
+            domain: domain.into(),
+            site_type: SiteType::Wordpress,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: WebServer::Frankenphp,
+            ssl: true,
+            path: format!("~/Sites/{domain}"),
+            created_at: "t".into(),
+            multisite: MultisiteMode::None,
+            db_name: format!("wp_{domain}"),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
+            xdebug: false,
+        }
+    }
+
+    #[test]
+    fn override_port_conflict_only_flags_same_kind_same_slot() {
+        let (da, db_) = colliding_frankenphp_domains();
+        let existing = [fp_site(&da)];
+
+        // db_ as FrankenPHP shares da's backend port → flagged, naming da + port.
+        assert_eq!(
+            override_port_conflict(&existing, &db_, WebServer::Frankenphp),
+            Some((da.clone(), crate::core::frankenphp::site_port(&db_)))
+        );
+        // Nginx has no per-site port → never a conflict.
+        assert!(override_port_conflict(&existing, &db_, WebServer::Nginx).is_none());
+        // Apache uses a different port base → no conflict with a FrankenPHP site.
+        assert!(override_port_conflict(&existing, &db_, WebServer::Apache).is_none());
+        // A site is never flagged against its own domain.
+        assert!(override_port_conflict(&existing, &da, WebServer::Frankenphp).is_none());
+    }
+
+    #[test]
+    fn create_refuses_a_second_override_site_that_shares_a_backend_port() {
+        let conn = db::open_in_memory().unwrap();
+        let (da, db_) = colliding_frankenphp_domains();
+
+        // First FrankenPHP site — created fine.
+        let mut a = sample("A", &da);
+        a.web_server = WebServer::Frankenphp;
+        let created_a = create(&conn, a).unwrap();
+
+        // Second FrankenPHP site hashing to the SAME backend port is refused with
+        // a clear error naming the other site — never a silent shared backend.
+        let mut b = sample("B", &db_);
+        b.web_server = WebServer::Frankenphp;
+        let err = create(&conn, b).unwrap_err().to_string();
+        assert!(err.contains(&da), "error names the colliding site: {err}");
+        assert!(err.contains("collides"), "error is actionable: {err}");
+
+        // The first site is untouched and still the only one — the guard refused
+        // BEFORE persisting the second (so nothing could reap the first).
+        let all = list(&conn).unwrap();
+        assert_eq!(all.len(), 1, "the refused site was not persisted");
+        assert_eq!(all[0].domain, da);
+        assert_eq!(all[0].path, created_a.path);
+
+        // An nginx site at the same domain is fine — no per-site port to collide.
+        let mut c = sample("C", &db_);
+        c.web_server = WebServer::Nginx;
+        assert!(create(&conn, c).is_ok(), "nginx has no per-site backend port");
     }
 
     #[test]

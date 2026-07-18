@@ -881,6 +881,25 @@ impl ServiceManager {
         rewrite: services::RewriteMode,
         env: &[(String, String)],
     ) -> Result<ReadyCheck> {
+        // Never reap a port a DIFFERENT site's tracked backend already holds:
+        // positive identification via our own state, not a bare port match. Two
+        // override sites hashing to the same slot would otherwise let this spawn
+        // KILL the live sibling — refuse loudly instead (B20). create /
+        // set_web_server / set_domain normally stop a collision from ever being
+        // persisted; this guard is the permanent runtime safety net.
+        if let Some(other) = self
+            .overrides
+            .iter()
+            .find(|(d, b)| d.as_str() != domain && b.port == port)
+            .map(|(d, _)| d.clone())
+        {
+            return Err(Error::Other(format!(
+                "can't start {} for \"{domain}\": its backend port ({port}) collides with \
+                 \"{other}\" — rename one site or give it a different web server.",
+                kind.label()
+            )));
+        }
+
         // Self-heal: OUR OWN leftover holding the port (a tree adoption missed
         // — crashed session, pre-master-fix worker adoption) is reaped here,
         // never surfaced to the user as a conflict. Foreign holders fall
