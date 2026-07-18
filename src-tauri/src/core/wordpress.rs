@@ -237,7 +237,8 @@ fn item_verb(
     if names.is_empty() {
         return Ok(String::new());
     }
-    let mut args: Vec<&str> = vec![noun, verb];
+    // `--` end-of-flags: a name like "--all" is a positional, never a wp-cli flag.
+    let mut args: Vec<&str> = vec![noun, verb, "--"];
     args.extend(names.iter().map(String::as_str));
     wp_run(php_bin, wp_phar, docroot, &args)
 }
@@ -269,6 +270,30 @@ pub fn plugin_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[St
     plugin_verb(php_bin, wp_phar, docroot, "delete", names)
 }
 
+/// A wp.org plugin/theme slug: `^[a-z0-9][a-z0-9-]*$`. Mirrors [`valid_locale`] /
+/// `parse_wp_version` — refuses argv smuggling (a leading `-` can't become a
+/// wp-cli flag) AND install-from-source tricks (a slug is NOT a URL / path / zip:
+/// no `:`, `/`, `.`, `_`). Real wp.org slugs always match.
+fn valid_slug(slug: &str) -> bool {
+    let mut bytes = slug.bytes();
+    matches!(bytes.next(), Some(b) if b.is_ascii_lowercase() || b.is_ascii_digit())
+        && slug.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// Refuse anything that isn't a bare wp.org slug BEFORE it reaches `wp … install`
+/// — where a URL/path/zip would install arbitrary code and a leading `-` a flag.
+fn ensure_slugs(kind: &str, slugs: &[String]) -> Result<()> {
+    for slug in slugs {
+        if !valid_slug(slug) {
+            return Err(Error::Other(format!(
+                "invalid {kind} slug \"{slug}\": expected a wp.org slug (lowercase letters, \
+                 digits, hyphens) — installing from a URL, path, or zip isn't supported here."
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Install plugins by slug (`wp plugin install <slugs…> [--activate]`) —
 /// bulk-capable: one WP-CLI boot installs (and optionally activates) them all.
 pub fn plugin_install(
@@ -281,6 +306,7 @@ pub fn plugin_install(
     if slugs.is_empty() {
         return Ok(String::new());
     }
+    ensure_slugs("plugin", slugs)?;
     let mut args: Vec<&str> = vec!["plugin", "install"];
     args.extend(slugs.iter().map(String::as_str));
     if activate {
@@ -348,7 +374,7 @@ pub fn theme_list(
 
 /// Activate a theme (`wp theme activate <name>`) — only one can be live.
 pub fn theme_activate(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["theme", "activate", name])
+    wp_run(php_bin, wp_phar, docroot, &["theme", "activate", "--", name])
 }
 /// Update one or more themes (`wp theme update …`).
 pub fn theme_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
@@ -370,6 +396,7 @@ pub fn theme_install(
     if slugs.is_empty() {
         return Ok(String::new());
     }
+    ensure_slugs("theme", slugs)?;
     let mut args: Vec<&str> = vec!["theme", "install"];
     args.extend(slugs.iter().map(String::as_str));
     if activate {
@@ -453,11 +480,13 @@ pub fn user_create(
     // wp-cli's generated one that nobody ever sees. Passed as a single argv
     // element — no shell, no interpolation.
     let pass_arg = format!("--user_pass={password}");
+    // Flags first, then `--`, then the positionals: a login/email starting with
+    // `-` is a positional, never a wp-cli flag (e.g. can't smuggle --role=admin).
     wp_run(
         php_bin,
         wp_phar,
         docroot,
-        &["user", "create", login, email, &role_arg, &pass_arg, "--porcelain"],
+        &["user", "create", &role_arg, &pass_arg, "--porcelain", "--", login, email],
     )
 }
 
@@ -592,7 +621,7 @@ pub fn network_site_create(php_bin: &Path, wp_phar: &Path, docroot: &Path, slug:
 /// Delete a sub-site by `blog_id` (`wp site delete <id> --yes`). The main site
 /// (id 1) can't be deleted — WP-CLI rejects it.
 pub fn network_site_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, blog_id: &str) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["site", "delete", blog_id, "--yes"])
+    wp_run(php_bin, wp_phar, docroot, &["site", "delete", "--yes", "--", blog_id])
 }
 
 /// Network-activate one or more plugins (`wp plugin activate … --network`) — they
@@ -637,7 +666,7 @@ pub fn super_admin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Resul
 
 /// Grant super-admin to a user (`wp super-admin add <user>`).
 pub fn super_admin_add(php_bin: &Path, wp_phar: &Path, docroot: &Path, user: &str) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["super-admin", "add", user])
+    wp_run(php_bin, wp_phar, docroot, &["super-admin", "add", "--", user])
 }
 
 // ── Tools (§7.2) ─────────────────────────────────────────────────────────────
@@ -737,7 +766,7 @@ pub fn cron_run_hook(
     if hook.is_empty() {
         return Err(Error::Other("empty cron hook name".into()));
     }
-    wp_run(php_bin, wp_phar, docroot, &["cron", "event", "run", hook])
+    wp_run(php_bin, wp_phar, docroot, &["cron", "event", "run", "--", hook])
 }
 
 /// Result of `wp core verify-checksums` (Tools → Maintenance). A failed
@@ -1070,13 +1099,18 @@ pub fn search_replace(
     dry_run: bool,
     all_tables: bool,
 ) -> Result<u64> {
-    let mut args: Vec<&str> = vec!["search-replace", from, to, "--format=count"];
+    let mut args: Vec<&str> = vec!["search-replace", "--format=count"];
     if all_tables {
         args.push("--all-tables");
     }
     if dry_run {
         args.push("--dry-run");
     }
+    // `--` end-of-flags: from/to are positionals even if they start with `-`
+    // (so a term can't smuggle --all-tables / --network).
+    args.push("--");
+    args.push(from);
+    args.push(to);
     let out = wp_run(php_bin, wp_phar, docroot, &args)?;
     out.trim()
         .lines()
@@ -1929,6 +1963,43 @@ mod tests {
         assert!(
             a.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'),
             "valid identifier chars only: {a}"
+        );
+    }
+
+    #[test]
+    fn valid_slug_accepts_real_slugs_and_rejects_argv_and_source_smuggling() {
+        for ok in ["akismet", "wp-super-cache", "woocommerce", "jetpack", "classic-editor", "2fa"] {
+            assert!(valid_slug(ok), "{ok}");
+        }
+        for bad in [
+            "", "--all", "-akismet", "Akismet", "my_plugin", "a b",
+            "https://evil.example/x.zip", "/tmp/x.zip", "../x", "evil.zip", "a.b",
+        ] {
+            assert!(!valid_slug(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn plugin_install_refuses_a_url_or_flag_slug_before_any_wp_call() {
+        // Nonexistent binaries: reaching wp-cli would give an io error, NOT this
+        // message — proving the guard runs first (same shape as the locale test).
+        let run = |slug: &str| {
+            plugin_install(
+                Path::new("/nonexistent/php"),
+                Path::new("/nonexistent/wp.phar"),
+                Path::new("/nonexistent/docroot"),
+                &[slug.to_string()],
+                false,
+            )
+            .unwrap_err()
+            .to_string()
+        };
+        assert!(run("https://evil.example/x.zip").contains("invalid plugin slug"));
+        assert!(run("--activate").contains("invalid plugin slug"));
+        // A real slug passes validation and only THEN fails on the missing binary.
+        assert!(
+            !run("akismet").contains("invalid plugin slug"),
+            "a real slug must pass validation"
         );
     }
 
