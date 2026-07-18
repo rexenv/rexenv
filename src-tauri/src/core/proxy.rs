@@ -493,21 +493,81 @@ pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
     Ok(())
 }
 
-fn wait_ok(mut child: Child, what: &str) -> Result<()> {
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(crate::error::Error::Other(format!(
-            "{what} failed (exit {:?})",
-            status.code()
-        )))
+/// Upper bound for a `caddy reload`/`stop` admin CLI call. Healthy calls over the
+/// local unix socket return near-instantly; a wedged edge (socket accepts but
+/// never answers — the orphan-worker class) would otherwise hang forever.
+const ADMIN_CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+fn wait_ok(child: Child, what: &str) -> Result<()> {
+    wait_ok_within(child, what, ADMIN_CLI_TIMEOUT)
+}
+
+/// Wait for a `caddy` admin CLI child, BOUNDED. `admin_alive` only checks the
+/// socket *accepts*; a wedged edge accepts the reload/stop connection then never
+/// answers, and Go's admin HTTP client has no request timeout — so an unbounded
+/// `child.wait()` hangs forever, freezing the caller and any lock it holds (B5).
+/// Poll `try_wait` to a deadline (mirroring the file's `admin_alive` poll loops),
+/// then kill + reap. Timeout is a parameter so it's unit-testable.
+fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) -> Result<()> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait()? {
+            Some(status) if status.success() => return Ok(()),
+            Some(status) => {
+                return Err(crate::error::Error::Other(format!(
+                    "{what} failed (exit {:?})",
+                    status.code()
+                )))
+            }
+            None => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait(); // reap the killed child — no zombie
+                    return Err(crate::error::Error::Other(format!(
+                        "{what} timed out after {}s — the edge admin socket accepted the \
+                         connection but never answered.",
+                        timeout.as_secs()
+                    )));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wait_ok_within_times_out_and_kills_a_wedged_admin_cli() {
+        // A `caddy reload`/`stop` whose admin socket accepts but never answers must
+        // be bounded and killed, not waited on forever (B5). A `sleep 30` child
+        // stands in for the wedged CLI.
+        let child = std::process::Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .expect("spawn sleeper");
+        let start = std::time::Instant::now();
+        let e = wait_ok_within(child, "caddy reload", std::time::Duration::from_millis(300))
+            .unwrap_err();
+        assert!(e.to_string().contains("timed out"), "{e}");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "must not hang past the deadline: {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn wait_ok_within_reports_success_and_failure() {
+        let ok = std::process::Command::new("/bin/sh").args(["-c", "exit 0"]).spawn().unwrap();
+        assert!(wait_ok_within(ok, "caddy reload", std::time::Duration::from_secs(5)).is_ok());
+
+        let bad = std::process::Command::new("/bin/sh").args(["-c", "exit 3"]).spawn().unwrap();
+        let e = wait_ok_within(bad, "caddy stop", std::time::Duration::from_secs(5)).unwrap_err();
+        assert!(e.to_string().contains("failed"), "{e}");
+    }
 
     fn sample() -> CaddyConfig {
         CaddyConfig {
