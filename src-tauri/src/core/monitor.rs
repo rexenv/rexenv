@@ -12,6 +12,7 @@
 //! 100, so sums across processes/cores can exceed 100. Consumers normalize by
 //! [`Monitor::cpu_cores`] when they need a 0-100 machine share.
 
+use std::collections::HashSet;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
 const MB: u64 = 1024 * 1024;
@@ -60,17 +61,15 @@ impl Monitor {
     /// PIDs of `root` plus every live descendant (breadth-first parent-pid walk
     /// over the refreshed process table).
     pub fn tree_pids(&self, root: u32) -> Vec<u32> {
-        let mut out = vec![root];
-        let mut frontier = vec![Pid::from_u32(root)];
-        while let Some(parent) = frontier.pop() {
-            for (pid, p) in self.sys.processes() {
-                if p.parent() == Some(parent) {
-                    out.push(pid.as_u32());
-                    frontier.push(*pid);
-                }
-            }
-        }
-        out
+        walk_tree(root, |parent| {
+            let parent = Pid::from_u32(parent);
+            self.sys
+                .processes()
+                .iter()
+                .filter(|(_, p)| p.parent() == Some(parent))
+                .map(|(pid, _)| pid.as_u32())
+                .collect()
+        })
     }
 
     /// Metrics for a whole process TREE — `root` (a service's master) plus all
@@ -88,6 +87,27 @@ impl Monitor {
         }
         Some(ProcessMetrics { cpu_percent: cpu, ram_mb: ram })
     }
+}
+
+/// Breadth-first tree walk from `root`, collecting `root` plus every descendant.
+/// `children_of` yields a pid's direct children. A `visited` set bounds each pid
+/// to one visit, so a parent-pid **cycle** (possible under PID recycling, where a
+/// "child" is reported as an ancestor's parent) terminates instead of looping
+/// forever and can't double-count (B27). On a real acyclic tree every process has
+/// exactly one parent, so the guard never rejects anything — output is unchanged.
+fn walk_tree(root: u32, mut children_of: impl FnMut(u32) -> Vec<u32>) -> Vec<u32> {
+    let mut visited = HashSet::from([root]);
+    let mut out = vec![root];
+    let mut frontier = vec![root];
+    while let Some(parent) = frontier.pop() {
+        for child in children_of(parent) {
+            if visited.insert(child) {
+                out.push(child);
+                frontier.push(child);
+            }
+        }
+    }
+    out
 }
 
 impl Default for Monitor {
@@ -134,5 +154,32 @@ mod tests {
             let _ = k.kill();
             let _ = k.wait();
         }
+    }
+
+    #[test]
+    fn walk_tree_bounds_a_parent_pid_cycle() {
+        // A parent-pid cycle (1→2, 2→1 under PID recycling) must TERMINATE and
+        // visit each pid once — without the visited-set this loops forever.
+        let children = |p: u32| match p {
+            1 => vec![2],
+            2 => vec![1, 3], // 2 points back at the root (the cycle) + a leaf
+            _ => vec![],
+        };
+        let mut got = walk_tree(1, children);
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn walk_tree_covers_an_acyclic_tree_once() {
+        // Normal tree: 1 → {2,3}, 2 → {4}. Every pid exactly once, no change.
+        let children = |p: u32| match p {
+            1 => vec![2, 3],
+            2 => vec![4],
+            _ => vec![],
+        };
+        let mut got = walk_tree(1, children);
+        got.sort();
+        assert_eq!(got, vec![1, 2, 3, 4]);
     }
 }
