@@ -595,9 +595,16 @@ pub fn strip_ansi(s: &str) -> String {
 /// Streamed, cancellable `git clone` into `dest` (which must NOT exist — the
 /// collision is checked here, before any network traffic). On failure or
 /// cancel the partially-written `dest` is removed — but only because this fn
-/// created it; an existing dir is refused, never deleted. Full history +
-/// `--recurse-submodules`: this is a working checkout the developer will
-/// commit and push from, not an artifact download.
+/// created it; an existing dir is refused, never deleted. Full history, but
+/// `--no-recurse-submodules`: cloning an UNTRUSTED repo must not process its
+/// attacker-controlled `.gitmodules`, which can execute code at clone/checkout
+/// time via the `ext::` transport, a dash-leading submodule URL (option
+/// injection), OR the path/hook traversal class (incl. CVE-2024-32002, a 2024
+/// macOS clone-time RCE) — git blocks these only version-dependently, and we
+/// clone on arbitrary machines. The `.gitmodules` FILE is still written (inert
+/// text); submodule init is a deferred explicit opt-in step (B4-A-full), never
+/// implicit on clone. The explicit flag also overrides a user's
+/// `clone.recurseSubmodules=true` gitconfig.
 #[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs (apache::generate_config precedent)
 pub fn clone_repo(
     supervisor: &dyn ProcessSupervisor,
@@ -620,15 +627,7 @@ pub fn clone_repo(
         .parent()
         .ok_or_else(|| Error::Other(format!("invalid clone target {}", dest.display())))?;
     std::fs::create_dir_all(parent)?;
-    let mut args: Vec<String> =
-        vec!["clone".into(), "--progress".into(), "--recurse-submodules".into()];
-    if let Some(r) = git_ref {
-        args.push("--branch".into());
-        args.push(r.to_string());
-    }
-    args.push("--".into());
-    args.push(url.to_string());
-    args.push(dest.to_string_lossy().into_owned());
+    let args = clone_args(url, git_ref, dest);
     let env = with_git_env(env);
     on_line(&format!("$ git {}", args.join(" ")));
     let result = run_step_streamed(supervisor, git, &args, parent, &env, cancel, on_line)?;
@@ -645,6 +644,31 @@ pub fn clone_repo(
         return Err(Error::Other("clone cancelled".into()));
     }
     Err(map_git_error(&result.tail, url))
+}
+
+/// The `git` argv for [`clone_repo`] — factored out so the security-critical
+/// flags are unit-testable without spawning git. Global `-c` config (which MUST
+/// precede the subcommand) disables the dangerous transports as defense-in-depth;
+/// `--no-recurse-submodules` is the real guard (see [`clone_repo`]). The pinned
+/// URL/dest stay positional after `--` (git's own option-parser guard).
+fn clone_args(url: &str, git_ref: Option<&str>, dest: &Path) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "-c".into(),
+        "protocol.ext.allow=never".into(),
+        "-c".into(),
+        "protocol.file.allow=user".into(),
+        "clone".into(),
+        "--progress".into(),
+        "--no-recurse-submodules".into(),
+    ];
+    if let Some(r) = git_ref {
+        args.push("--branch".into());
+        args.push(r.to_string());
+    }
+    args.push("--".into());
+    args.push(url.to_string());
+    args.push(dest.to_string_lossy().into_owned());
+    args
 }
 
 /// Translate git's stderr tail into an honest, actionable error (ports.rs
@@ -1662,6 +1686,32 @@ mod tests {
         // Real private-repo forms still parse (the sibling test asserts the shapes).
         assert!(parse_source("git@github.com:acme/repo.git").is_ok());
         assert!(parse_source("ssh://git@git.corp:2222/team/widget.git").is_ok());
+    }
+
+    #[test]
+    fn clone_args_disable_submodule_recursion_and_harden_transports() {
+        let args = clone_args("https://github.com/acme/repo.git", None, Path::new("/tmp/repo"));
+        // The real guard: no submodule recursion, and the old flag is gone — an
+        // untrusted repo's .gitmodules is never processed at clone time (B4).
+        assert!(args.iter().any(|a| a == "--no-recurse-submodules"), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--recurse-submodules"), "{args:?}");
+        // Transport hardening via global -c, which MUST precede the subcommand.
+        let joined = args.join(" ");
+        assert!(joined.contains("-c protocol.ext.allow=never"), "{joined}");
+        assert!(joined.contains("-c protocol.file.allow=user"), "{joined}");
+        let clone_i = args.iter().position(|a| a == "clone").unwrap();
+        let ext_i = args.iter().position(|a| a == "protocol.ext.allow=never").unwrap();
+        assert!(ext_i < clone_i, "global -c must precede `clone`: {args:?}");
+        // URL/dest stay positional after `--`.
+        let dd = args.iter().position(|a| a == "--").unwrap();
+        assert_eq!(args[dd + 1], "https://github.com/acme/repo.git");
+        assert_eq!(args[dd + 2], "/tmp/repo");
+        // A branch lands as --branch's value, before `--`.
+        let with_ref =
+            clone_args("https://github.com/acme/repo.git", Some("develop"), Path::new("/tmp/repo"));
+        let bi = with_ref.iter().position(|a| a == "--branch").unwrap();
+        assert_eq!(with_ref[bi + 1], "develop");
+        assert!(bi < with_ref.iter().position(|a| a == "--").unwrap(), "--branch before --");
     }
 
     #[test]
