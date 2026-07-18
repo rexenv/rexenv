@@ -55,6 +55,16 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `a_failing_step_rolls_back_atomically_and_reruns_clean_not_bricked` drives a deliberately-failing step
   (same rollback path a crash takes) and proves the DB stays consistent + re-runnable. `cargo test --lib`
   322 passed / 0 failed; examples build clean. Full analysis retained under (B) B18.
+- **`cde896e`** — **B21** unique site database names: create now derives `db_name` via
+  `unique_db_name(conn, domain)` — the clean `db_name_for` base when unique and ≤64 chars (existing
+  sites + common case unchanged), else a hash-suffixed fallback (`db_name_disambiguated`: truncated base +
+  8-hex FNV-1a of the full domain) guarded against any stored name — so two domains that reduce to the
+  same slug (`my-shop.test` / `my.shop.test`) can never silently share one database, and long domains stay
+  within MySQL's 64-char limit. `db_name_for` left untouched (v6 backfill + existing rows intact);
+  deliberately NOT a schema `UNIQUE` index (that could brick on pre-existing collided data — the B18
+  class). Design choice flagged to + verified by you. Tests
+  `db_name_disambiguated_is_injective_and_bounded` + `create_gives_slug_colliding_domains_distinct_databases`.
+  `cargo test --lib` 324 passed / 0 failed; examples build clean. Full analysis retained under (B) B21.
 
 ---
 
@@ -393,6 +403,7 @@ Most users run nginx (no override) so exposure is limited, but for a multi-Frank
 it's a real data-bleed. Your call on priority vs. waiting for §4.
 
 ### B21 · 🟠 med · `db_name_for` isn't injective → two distinct domains share ONE MySQL database
+**✅ FIXED — commit `cde896e` (see (A)). Analysis kept for the record.**
 **Where:** `core/wordpress.rs:1618` (`db_name_for`), no `db_name` UNIQUE (`state/db.rs:22` domain-only),
 create guards domain only (`store::domain_exists`).
 **Verified:** me (derivation + missing-constraint; exact create() flow via agent).
