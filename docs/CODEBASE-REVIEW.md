@@ -75,6 +75,16 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `clean_datadir_on_init_failure_removes_only_a_failed_datadir`; per-engine wiring verified by inspection
   (real end-to-end needs the DB binaries — live-check territory). `cargo test --lib` 325 passed / 0 failed;
   examples build clean. Full analysis retained under (B) B22/B23.
+- **`e96636b`** — **B20 (data-safety hazard fixed via Option A)** per-site override port collision: the
+  cross-site-bleed + reap-a-live-sibling hazard is closed, though the collision itself remains until the
+  recorded-port allocator (follow-up B, designed below). `core::sites::override_port_conflict` refuses a
+  colliding override site at create / `set_web_server` / `set_domain` with a clear error naming the other
+  site (so a collision can't be persisted), and `spawn_override` refuses to reap a port a **different**
+  site's tracked backend holds (positive ID via the manager's `overrides` map, not a bare port match) —
+  both permanent invariants that stay after B lands. Tests
+  `override_port_conflict_only_flags_same_kind_same_slot` + `create_refuses_a_second_override_site_that_shares_a_backend_port`;
+  runtime reap-guard verified by inspection. `cargo test --lib` 327 passed / 0 failed; examples build clean.
+  Full analysis + follow-up B design under (B) B20.
 
 ---
 
@@ -392,6 +402,8 @@ spawns, but those are also covered by `plan_for_start`/`plan_for_override` in th
 a glance in the next pass.)
 
 ### B20 · 🟠 med · FrankenPHP/Apache per-site backend ports collide (`h % 100`) → cross-site content bleed + a live sibling gets reaped
+**◑ DATA-SAFETY HAZARD FIXED via Option A — commit `e96636b` (see (A)). The collision itself remains
+until follow-up B (the recorded-port allocator, designed at the end of this entry); publish is safe on A.**
 **Where:** `core/frankenphp.rs:30-37` (`site_port`), `core/apache.rs:42` (same shape), reaped at
 `core/service_manager.rs:890-913` (`spawn_override` self-heal).
 **Verified:** me.
@@ -411,6 +423,28 @@ assigning/adopting an override port, error clearly if another site already owns 
 domain — never reap a live sibling. A persisted per-site port (linear-probe on collision) closes it.
 Most users run nginx (no override) so exposure is limited, but for a multi-FrankenPHP/Apache setup
 it's a real data-bleed. Your call on priority vs. waiting for §4.
+
+**Follow-up B — recorded per-site port allocator (post-publish, build carefully):** removes the
+collision outright so override sites never need renaming. Design, ready to implement:
+- **Schema (v14):** add a nullable `sites.override_port INTEGER`. Migration is a plain `ADD COLUMN` with
+  NULL default → safe (and now atomic, per B18); NULL means "not an override site / not yet allocated".
+  No backfill in the migration.
+- **Allocation** (`core::sites`, at first spawn or at create/switch-to-override): read all sites'
+  `override_port` for the same kind, linear-probe from the kind's base (`8200`/`8300`) for the first free
+  slot in the 100-wide range, persist it on the row. Keep `override_port_conflict` (from A) as the guard.
+  A FrankenPHP↔Apache **kind switch** invalidates the stored port (different range) → clear it and
+  reallocate. **Exhaustion:** >100 same-kind override sites → clear "no free backend port; you have 100
+  <kind> sites" error (the honest cap, not a silent reuse).
+- **Read side:** replace every `site_port(domain)` call (the 6 sites mapped above — Caddyfile upstream,
+  `port_for`, status probe, `spawn_override`, config gen) with the stored `sites.override_port`, falling
+  back to the hash only for a not-yet-allocated row.
+- **Backfill (lazy, no migration risk):** existing override sites (none exist pre-release, but for
+  safety) get a port assigned on their next reconcile — assign the hash slot if free, else linear-probe.
+- **Adoption:** `adopt_startup` reads the stored port (authoritative) instead of re-deriving, so an
+  adopted running backend's port always matches what the manager routes to.
+- **Keep A's guards** — `override_port_conflict` at create/switch and the `spawn_override` reap-guard stay
+  as defense-in-depth (they can never fire once ports are collision-free, but catch any future allocator
+  bug). The `site_port` hash stays as the allocation *seed* + not-yet-allocated fallback.
 
 ### B21 · 🟠 med · `db_name_for` isn't injective → two distinct domains share ONE MySQL database
 **✅ FIXED — commit `cde896e` (see (A)). Analysis kept for the record.**
