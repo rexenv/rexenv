@@ -133,6 +133,19 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `ssh_scp_forms_reject_dash_authority_option_injection` (5 injection strings rejected; real forms still
   parse, and `ssh_and_scp_forms_pass_through_for_private_repos` still passes). `cargo test --lib` 332
   passed / 0 failed; examples build clean.
+- **`e1ec58b`** — **B4** submodule-clone RCE (pre-Homebrew, Option A-minimal): clone now uses
+  `--no-recurse-submodules` (+ global `-c protocol.ext.allow=never -c protocol.file.allow=user` as
+  defense-in-depth), so an untrusted repo's attacker-controlled `.gitmodules` is **never processed at
+  clone time** — closing all three RCE classes (transport `ext::`/`file:`, dash-URL option injection,
+  and the path/hook checkout-time class incl. **CVE-2024-32002** on macOS) **version-independently**,
+  which the hardened-transport-only Option B could not (it left the path/hook class to the user's git
+  version). The `.gitmodules` file is still written (inert); a submodule repo clones cleanly with empty
+  submodule dirs. Argv factored into `clone_args` + test `clone_args_disable_submodule_recursion_and_harden_transports`.
+  `cargo test --lib` 333 passed / 0 failed; examples build clean. **Follow-up (post-Homebrew, deferred):
+  A-full** — a first-class "Initialize submodules" opt-in step (detection surfaces "this repo has
+  submodules"; a UI button runs `git submodule update --init --recursive` with the hardened flags,
+  carrying the same disclosure as the composer/install/build steps) so a submodule repo can "just work"
+  via one disclosed click. It's a UX feature, not a security gate.
 
 ---
 
@@ -219,9 +232,11 @@ arbitrary git versions, and this module's stated contract is "URL+auth validated
 stated guarantee real. Security → your call.
 
 ### B4 · 🟠 security · `git clone --recurse-submodules` on an untrusted repo executes attacker-controlled `.gitmodules`
-**Where:** `core/repo.rs:595` (clone argv includes `--recurse-submodules`).
-**Verified:** agent (flag presence consistent with ARCHITECTURE §9's "full-history clone" design;
-I have not re-read the exact clone builder).
+**✅ FIXED — commit `e1ec58b` (pre-Homebrew, Option A-minimal; A-full deferred — see (A)). Analysis kept
+for the record.**
+**Where:** `core/repo.rs:595` (clone argv included `--recurse-submodules`).
+**Verified:** me (re-read the clone builder + confirmed the three RCE classes; the transport flags cover
+only 1-2, so `--no-recurse-submodules` is the version-independent close for class 3 / CVE-2024-32002).
 **Why it might be a bug:** submodule URLs/paths come from the cloned repo's `.gitmodules`, which
 the user never sees at paste time. A legit-looking repo can carry a submodule whose URL is
 `-oProxyCommand=…` or an `ext::sh -c …` transport; on clone, git recurses and executes it
