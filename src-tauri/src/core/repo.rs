@@ -826,6 +826,210 @@ pub fn read_remote_url(git: &Path, env: &[(String, String)], dir: &Path) -> Opti
 }
 
 // ---------------------------------------------------------------------------
+// Git ops (fetch / pull --ff-only / checkout / push) — phase B
+// ---------------------------------------------------------------------------
+
+/// Validate a branch/tag name before it reaches git argv (M7 class — comes
+/// from the UI's branch dropdown, but the IPC boundary re-validates).
+pub fn validate_ref(r: &str) -> Result<String> {
+    let ok = !r.is_empty()
+        && !r.starts_with('-')
+        && !r.starts_with('/')
+        && !r.ends_with('/')
+        && !r.contains("..")
+        && r.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'));
+    if !ok {
+        return Err(Error::Other(format!("\"{r}\" is not a valid branch or tag name")));
+    }
+    Ok(r.to_string())
+}
+
+#[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs (clone_repo precedent)
+fn run_git_op(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    op: &str,
+    args: &[String],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let env = with_git_env(env);
+    on_line(&format!("$ git {}", args.join(" ")));
+    let result = run_step_streamed(supervisor, git, args, dir, &env, cancel, on_line)?;
+    if result.ok {
+        return Ok(());
+    }
+    if result.cancelled {
+        return Err(Error::Other(format!("{op} cancelled")));
+    }
+    Err(map_git_op_error(op, &result.tail))
+}
+
+/// `git fetch --prune` (default remote) — refreshes the branch dropdown +
+/// ahead/behind counts.
+pub fn git_fetch(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let args = vec!["fetch".to_string(), "--prune".to_string()];
+    run_git_op(supervisor, git, env, dir, "fetch", &args, cancel, on_line)
+}
+
+/// `git pull --ff-only`: rexenv NEVER merges or rebases for the user — a
+/// diverged branch is an honest error pointing at their editor/terminal.
+pub fn git_pull_ff(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let args = vec!["pull".to_string(), "--ff-only".to_string()];
+    run_git_op(supervisor, git, env, dir, "pull", &args, cancel, on_line)
+}
+
+/// `git checkout <ref> --`. Plain checkout DWIMs a remote-tracking branch
+/// into a local tracking branch; a tag lands detached (the panel shows it).
+pub fn git_checkout(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    target: &str,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let target = validate_ref(target)?;
+    let args = vec!["checkout".to_string(), target, "--".to_string()];
+    run_git_op(supervisor, git, env, dir, "checkout", &args, cancel, on_line)
+}
+
+/// `git push` — with `--set-upstream origin <branch>` added automatically
+/// when the current branch has none (the approved auto-upstream default).
+/// Never force.
+pub fn git_push(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let status = read_git_status(git, env, dir)?;
+    let mut args = vec!["push".to_string()];
+    if status.upstream.is_none() {
+        let branch = status.branch.ok_or_else(|| {
+            Error::Other(
+                "can't push a detached HEAD — check out a branch first (or push \
+                 from your terminal with an explicit refspec)."
+                    .into(),
+            )
+        })?;
+        args = vec!["push".into(), "--set-upstream".into(), "origin".into(), branch];
+    }
+    run_git_op(supervisor, git, env, dir, "push", &args, cancel, on_line)
+}
+
+/// Op failures → honest messages; anything unrecognized falls through to the
+/// shared clone-era mapping (auth/host-key/offline) with the raw tail last.
+pub fn map_git_op_error(op: &str, tail: &[String]) -> Error {
+    let joined = tail.join("\n");
+    if joined.contains("Not possible to fast-forward")
+        || joined.contains("have diverged")
+        || joined.contains("Need to specify how to reconcile")
+    {
+        return Error::Other(
+            "Your branch and the remote have DIVERGED — rexenv never merges or \
+             rebases for you. Resolve it in your editor/terminal, then come back."
+                .into(),
+        );
+    }
+    if joined.contains("would be overwritten") {
+        return Error::Other(format!(
+            "{op} refused: you have local changes to files this would touch. \
+             Commit or stash them first, then retry."
+        ));
+    }
+    if joined.contains("did not match any file") || joined.contains("pathspec") {
+        return Error::Other(
+            "That branch/tag isn't known locally — hit Fetch first, then retry."
+                .into(),
+        );
+    }
+    if joined.contains("non-fast-forward")
+        || (joined.contains("rejected") && joined.contains("fetch first"))
+        || joined.contains("Updates were rejected")
+    {
+        return Error::Other(
+            "Push rejected: the remote has commits you don't have yet. Pull \
+             first, then push."
+                .into(),
+        );
+    }
+    map_git_error(tail, "the remote")
+}
+
+/// Run a short read-only git command in `dir`, returning trimmed non-empty
+/// stdout lines (branch listings for the checkout dropdown).
+pub fn run_git_lines(
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    args: &[&str],
+) -> Result<Vec<String>> {
+    let env = with_git_env(env);
+    let dir_s = dir.to_string_lossy().into_owned();
+    let mut full: Vec<&str> = vec!["-C", &dir_s];
+    full.extend_from_slice(args);
+    let out = run_captured_with_cap(git, &full, &env, Duration::from_secs(10))?;
+    if !out.ok {
+        return Err(Error::Other(format!(
+            "git {} failed:\n{}",
+            args.join(" "),
+            out.stderr_tail.join("\n")
+        )));
+    }
+    Ok(out
+        .stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect())
+}
+
+/// Fingerprint of the dependency lockfiles — compared before/after a
+/// pull/checkout so the panel can say "dependencies changed — run install".
+/// Non-cryptographic (change detection, not integrity).
+pub fn lockfile_fingerprint(dir: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for name in [
+        "composer.lock",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "bun.lock",
+        "bun.lockb",
+        // No lockfile committed? Manifest changes still mean "re-install".
+        "composer.json",
+        "package.json",
+    ] {
+        name.hash(&mut h);
+        if let Ok(bytes) = std::fs::read(dir.join(name)) {
+            bytes.hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
+// ---------------------------------------------------------------------------
 // Unmanaged-checkout scan (adopt flow)
 // ---------------------------------------------------------------------------
 
@@ -1509,6 +1713,62 @@ mod tests {
         // Unborn with untracked work: counted, no upstream caveat (meaningless).
         let un = loss_warning(&mk(0, 3, None, false, false, true)).unwrap();
         assert_eq!(un, "3 untracked files will be lost.");
+    }
+
+    #[test]
+    fn ref_validation_blocks_argv_tricks() {
+        for ok in ["main", "feat/fast-build", "v1.2.0", "release-2.x", "user/topic_1"] {
+            assert!(validate_ref(ok).is_ok(), "{ok}");
+        }
+        for bad in ["-f", "--force", "", "a b", "a;b", "../x", "a..b", "/abs", "trail/"] {
+            assert!(validate_ref(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn git_op_errors_map_to_actionable_messages() {
+        let cases: &[(&str, &str, &str)] = &[
+            ("pull", "fatal: Not possible to fast-forward, aborting.", "DIVERGED"),
+            ("pull", "hint: Need to specify how to reconcile divergent branches.", "DIVERGED"),
+            (
+                "pull",
+                "error: Your local changes to the following files would be overwritten by merge:",
+                "Commit or stash",
+            ),
+            ("checkout", "error: pathspec 'nope' did not match any file(s)", "Fetch first"),
+            (
+                "push",
+                "! [rejected] main -> main (non-fast-forward)",
+                "Pull first",
+            ),
+            ("push", "Updates were rejected because the remote contains work", "Pull first"),
+        ];
+        for (op, stderr, needle) in cases {
+            let err = map_git_op_error(op, &[stderr.to_string()]).to_string();
+            assert!(err.contains(needle), "{op}/{stderr}: {err}");
+        }
+        // Unknown op failures fall through to the shared mapping (raw tail kept).
+        let raw = map_git_op_error("fetch", &["weird explosion".into()]).to_string();
+        assert!(raw.contains("weird explosion"), "{raw}");
+    }
+
+    #[test]
+    fn lockfile_fingerprint_tracks_dependency_files_only() {
+        let d = fixture_dir("lockfp");
+        std::fs::write(d.join("package.json"), "{}").unwrap();
+        std::fs::write(d.join("package-lock.json"), "v1").unwrap();
+        let a = lockfile_fingerprint(&d);
+        // Unrelated file churn → no change.
+        std::fs::write(d.join("readme.md"), "hello").unwrap();
+        assert_eq!(a, lockfile_fingerprint(&d));
+        // Lockfile content change → change.
+        std::fs::write(d.join("package-lock.json"), "v2").unwrap();
+        let b = lockfile_fingerprint(&d);
+        assert_ne!(a, b);
+        // A lockfile APPEARING (branch adds composer) → change.
+        std::fs::write(d.join("composer.lock"), "x").unwrap();
+        assert_ne!(b, lockfile_fingerprint(&d));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

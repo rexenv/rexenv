@@ -415,6 +415,22 @@ pub fn upsert_git_asset(
     Ok(())
 }
 
+/// Update a git asset's recorded ref after a checkout (the row stays truthful).
+pub fn set_git_asset_ref(
+    conn: &Connection,
+    site_id: &str,
+    kind: &str,
+    dir_name: &str,
+    git_ref: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE site_git_assets SET git_ref = ?4 \
+         WHERE site_id = ?1 AND kind = ?2 AND dir_name = ?3",
+        params![site_id, kind, dir_name, git_ref],
+    )?;
+    Ok(())
+}
+
 // ── Site blueprints (Phase 3 §11.3) ────────────────────────────────────────────
 
 fn row_to_blueprint(row: &Row) -> Result<Blueprint> {

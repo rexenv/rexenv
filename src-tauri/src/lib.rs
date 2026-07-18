@@ -622,6 +622,8 @@ pub fn run() {
             commands::repo::repo_asset_status,
             commands::repo::repo_unmanaged,
             commands::repo::repo_adopt,
+            commands::repo::repo_git_op,
+            commands::repo::repo_branches,
             commands::repo::repo_tools,
         ])
         .build(tauri::generate_context!())

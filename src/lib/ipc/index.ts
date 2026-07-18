@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoJobState, RepoProbeResult, RepoToolStatus, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoProbeResult, RepoToolStatus, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1288,4 +1288,26 @@ export async function repoAdopt(
   dirName: string,
 ): Promise<void> {
   await invoke("repo_adopt", { siteId, kind, dirName });
+}
+
+/** Start one git op (fetch / pull --ff-only / checkout / push) as a streamed
+ *  job on a managed asset. Same events/cancel/one-job-per-dir as the add
+ *  flow; a pull/checkout that changes lockfiles OFFERS install steps. */
+export async function repoGitOp(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+  op: "fetch" | "pull" | "checkout" | "push",
+  targetRef: string | null,
+): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_git_op", { siteId, kind, dirName, op, targetRef });
+}
+
+/** Branch names for the checkout dropdown (local + remote-tracking). */
+export async function repoBranches(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+): Promise<RepoBranches> {
+  return invoke<RepoBranches>("repo_branches", { siteId, kind, dirName });
 }

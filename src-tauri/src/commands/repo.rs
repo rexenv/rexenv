@@ -66,6 +66,10 @@ pub struct RepoJobState {
     pub dir_name: String,
     pub url: String,
     pub git_ref: Option<String>,
+    /// "add" (clone+detect flow) or a git op: "fetch" | "pull" |
+    /// "checkout" | "push". The add panel adopts only "add" jobs; the
+    /// RepoPanel owns op jobs.
+    pub op: String,
     /// Flat log-file key under log_dir (`repo-<domain>-<dir>.log`) — the UI
     /// seeds its log pane from `tail_log` when it reconnects to a live job.
     pub log_key: String,
@@ -260,6 +264,7 @@ pub async fn repo_add(
             dir_name,
             url: src.url,
             git_ref,
+            op: "add".into(),
             log_key,
             steps: vec![step("clone", "Clone repository"), step("detect", "Detect dependencies")],
             inspection: None,
@@ -395,7 +400,12 @@ pub async fn repo_run_step(
 ) -> Result<()> {
     let entry = entry_of(&jobs, &job_id)?;
     let offered = snapshot(&entry).steps.iter().any(|s| s.key == step_key);
-    if !offered || matches!(step_key.as_str(), "clone" | "detect") {
+    if !offered
+        || matches!(
+            step_key.as_str(),
+            "clone" | "detect" | "fetch" | "pull" | "checkout" | "push"
+        )
+    {
         return Err(Error::Other(format!("step \"{step_key}\" is not runnable for this job")));
     }
     if entry.step_running.swap(true, Ordering::SeqCst) {
@@ -549,6 +559,215 @@ pub async fn repo_assets(
 ) -> Result<Vec<crate::state::models::GitAsset>> {
     let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
     store::get_git_assets(&conn, &site_id)
+}
+
+// ---------------------------------------------------------------------------
+// Git ops (phase B) — fetch / pull --ff-only / checkout / push as jobs
+// ---------------------------------------------------------------------------
+
+/// Start one git op as a streamed job on a managed asset. Same registry,
+/// events, cancel, and one-job-per-dest rule as the add flow. After a
+/// successful pull/checkout whose lockfiles changed, install/build steps are
+/// OFFERED on the job (explicit clicks — never auto-run).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // flat mirror of the IPC surface
+pub async fn repo_git_op(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    jobs: State<'_, RepoJobs>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+    op: String,
+    target_ref: Option<String>,
+) -> Result<RepoJobState> {
+    if !matches!(op.as_str(), "fetch" | "pull" | "checkout" | "push") {
+        return Err(Error::Other(format!("unknown git op \"{op}\"")));
+    }
+    let target_ref = match (op.as_str(), target_ref) {
+        ("checkout", Some(r)) => Some(repo::validate_ref(&r)?),
+        ("checkout", None) => {
+            return Err(Error::Other("checkout needs a branch or tag".into()));
+        }
+        (_, r) => r,
+    };
+    let site = site_of(&state, &site_id)?;
+    let dir_name = repo::validate_dir_name(&dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    if !dest.join(".git").exists() {
+        return Err(Error::Other(format!(
+            "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
+        )));
+    }
+    let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+    let log_path = state.platform.paths().log_dir()?.join(&log_key);
+
+    let label = match op.as_str() {
+        "fetch" => "git fetch".to_string(),
+        "pull" => "git pull --ff-only".to_string(),
+        "checkout" => format!("git checkout {}", target_ref.as_deref().unwrap_or("?")),
+        _ => "git push".to_string(),
+    };
+    let id = uuid::Uuid::new_v4().to_string();
+    let seq = jobs.next_seq.fetch_add(1, Ordering::SeqCst);
+    let entry = Arc::new(JobEntry {
+        id: id.clone(),
+        seq,
+        site_id: site_id.clone(),
+        kind: kind.clone(),
+        php_minor: php::minor_of(&site.php_version).to_string(),
+        dir_name: dir_name.clone(),
+        url: String::new(),
+        git_ref: target_ref.clone(),
+        dest: dest.clone(),
+        log_path,
+        cancel: repo::CancelToken::new(),
+        step_running: AtomicBool::new(true), // the worker below
+        state: Mutex::new(RepoJobState {
+            id: id.clone(),
+            site_id,
+            kind,
+            dir_name,
+            url: String::new(),
+            git_ref: target_ref.clone(),
+            op: op.clone(),
+            log_key,
+            steps: vec![step(&op, &label)],
+            inspection: None,
+            node_warning: None,
+            finished_ok: false,
+        }),
+    });
+    {
+        let mut map = jobs.jobs.lock().expect("jobs lock");
+        let busy = map
+            .values()
+            .any(|e| e.dest == dest && e.step_running.load(Ordering::SeqCst));
+        if busy {
+            return Err(Error::Other(format!(
+                "a job for {} is already running — wait for it (or cancel it) first.",
+                entry.state.lock().expect("job state lock").dir_name
+            )));
+        }
+        map.insert(id.clone(), entry.clone());
+    }
+    let _ = std::fs::write(&entry.log_path, ""); // fresh log per job
+
+    let worker = entry.clone();
+    let worker_app = app.clone();
+    let op_key = op.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_git_op_job(&worker_app, &worker, &op_key);
+        worker.step_running.store(false, Ordering::SeqCst);
+    });
+    Ok(snapshot(&entry))
+}
+
+fn run_git_op_job(app: &AppHandle, entry: &Arc<JobEntry>, op: &str) {
+    let state = app.state::<AppState>();
+    let jobs = app.state::<RepoJobs>();
+    set_step(app, entry, op, "running", None);
+    let mut sink = make_sink(app.clone(), entry.clone());
+    let before = repo::lockfile_fingerprint(&entry.dest);
+    let outcome = (|| -> Result<()> {
+        let env = shell_env(&state, &jobs, false)?;
+        let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
+        let sup = state.platform.supervisor();
+        match op {
+            "fetch" => repo::git_fetch(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
+            "pull" => repo::git_pull_ff(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
+            "checkout" => repo::git_checkout(
+                sup,
+                &git.path,
+                &env,
+                &entry.dest,
+                entry.git_ref.as_deref().unwrap_or_default(),
+                &entry.cancel,
+                &mut sink,
+            ),
+            _ => repo::git_push(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
+        }
+    })();
+    match outcome {
+        Err(e) if entry.cancel.is_cancelled() => {
+            sink(&format!("✕ {e}"));
+            set_step(app, entry, op, "cancelled", None);
+            return;
+        }
+        Err(e) => {
+            sink(&format!("✕ {e}"));
+            set_step(app, entry, op, "failed", Some(e.to_string()));
+            return;
+        }
+        Ok(()) => {}
+    }
+
+    // Checkout: the provenance row keeps saying the truth.
+    if op == "checkout" {
+        if let Some(r) = entry.git_ref.as_deref() {
+            let conn = state.db.lock().ok();
+            if let Some(conn) = conn.as_deref() {
+                let _ = store::set_git_asset_ref(conn, &entry.site_id, &entry.kind, &entry.dir_name, r);
+            }
+        }
+    }
+
+    // Dependencies changed under a pull/checkout? OFFER install/build steps
+    // on this job (explicit clicks — repo_run_step handles them as usual).
+    if matches!(op, "pull" | "checkout") && repo::lockfile_fingerprint(&entry.dest) != before {
+        let inspection = repo::inspect_repo(&entry.dest);
+        sink("! dependencies changed (lockfile) — run install below.");
+        let mut st = entry.state.lock().expect("job state lock");
+        if inspection.composer {
+            st.steps.push(step("composer", "composer install"));
+        }
+        if let Some(node) = &inspection.node {
+            st.steps.push(step("install", &format!("{} install", node.manager)));
+            if node.has_build {
+                st.steps.push(step("build", &format!("{} run build", node.manager)));
+            }
+        }
+        st.inspection = Some(inspection);
+    }
+    set_step(app, entry, op, "ok", None);
+}
+
+/// Local + remote-tracking branch names for the checkout dropdown.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoBranches {
+    pub current: Option<String>,
+    pub local: Vec<String>,
+    pub remote: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn repo_branches(
+    app: AppHandle,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<RepoBranches> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let jobs = app.state::<RepoJobs>();
+        let site = site_of(&state, &site_id)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        let env = shell_env(&state, &jobs, false)?;
+        let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
+        let status = repo::read_git_status(&git.path, &env, &dir)?;
+        let list = |args: &[&str]| -> Vec<String> {
+            repo::run_git_lines(&git.path, &env, &dir, args).unwrap_or_default()
+        };
+        let local = list(&["branch", "--format=%(refname:short)"]);
+        let remote = list(&["branch", "-r", "--format=%(refname:short)"])
+            .into_iter()
+            .filter(|b| !b.ends_with("/HEAD") && !b.contains(" -> "))
+            .collect();
+        Ok(RepoBranches { current: status.branch, local, remote })
+    })
+    .await
+    .map_err(|e| Error::Other(format!("branches task failed: {e}")))?
 }
 
 /// A checkout's live state for the RepoPanel + the delete-safety confirm.

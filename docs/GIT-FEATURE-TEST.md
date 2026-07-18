@@ -229,6 +229,34 @@ Also worth a glance: badge click toggles the panel; "Show last job log"
 appears only for assets that have a job log; a detached-HEAD checkout
 (`git checkout <sha>`) shows the amber "detached HEAD" chip.
 
+## 10. Phase B — git ops in the RepoPanel (added 18 Jul)
+
+Backend already machine-verified against a LOCAL bare origin (fetch, ff-pull
+with the file arriving, DIVERGED pull mapped, dirty-tree pull mapped
+"commit or stash", checkout with lockfile flip, push visible at origin,
+no-upstream push auto-setting upstream, non-ff push mapped "pull first").
+What's left for you = the panel in the packaged app + your real remotes:
+
+1. On an adopted/cloned asset: **Fetch** → ↑↓ counts refresh. **Pull** on a
+   branch that's behind → fast-forwards, log streams. Pull when you have
+   local commits AND the remote moved → the DIVERGED message (rexenv never
+   merges); pull with uncommitted changes to a file the remote touched →
+   "commit or stash first".
+2. **Checkout**: pick a remote branch from the dropdown → lands as a local
+   tracking branch; the panel branch chip + the provenance "added @" update.
+   Check out a branch whose lockfile differs → the op card OFFERS
+   composer/npm install with the disclosure line — run install and verify
+   vendor//node_modules update. Checkout with dirty files that conflict →
+   honest refusal.
+3. **Push**: commit something in a checkout → Push → arrives at the remote
+   (uses your agent). On a fresh local-only branch → Push sets upstream
+   automatically (panel stops saying "no upstream"). Push when the remote
+   is ahead → "pull first" message, never a force.
+4. Mid-op reconnect: start a slow op (fetch on a big repo), switch tabs,
+   return → the op card is still there streaming (same reconnect machinery
+   as §8). Ops are refused while an install/build job runs for the same
+   dir (one job per dir).
+
 ---
 
 ## Flagged: what I could NOT self-verify / am least sure about

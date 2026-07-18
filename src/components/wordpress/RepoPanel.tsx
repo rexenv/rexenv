@@ -1,14 +1,31 @@
-/** Per-asset repo panel (phase A): opened by clicking a row's git badge.
- *  Shows the checkout's live state — branch (or detached / no commits),
- *  working-tree summary, ahead/behind vs upstream, remote, provenance
- *  source — plus the last add-job log inline. Read-only in phase A; the
- *  git-ops buttons (fetch/pull/checkout/push) land in phase B on the row
- *  this layout reserves. */
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+/** Per-asset repo panel: live checkout state (phase A) + git ops (phase B —
+ *  Fetch / Pull --ff-only / Checkout / Push, each a streamed cancellable job
+ *  on the shared runner). Ops-glue, deliberately NOT a git client: no
+ *  commit/stage/merge UI — a diverged branch is an honest error pointing at
+ *  the editor/terminal. A pull/checkout that changes lockfiles OFFERS
+ *  install/build steps right here (explicit clicks, disclosure shown). */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
-import { repoAssetStatus, tailLog } from "@/lib/ipc";
-import type { GitAsset } from "@/types";
+import {
+  onRepoJobOutput,
+  onRepoJobState,
+  repoAssetStatus,
+  repoBranches,
+  repoCancel,
+  repoGitOp,
+  repoRunStep,
+  repoSiteJobs,
+  tailLog,
+} from "@/lib/ipc";
+import type { GitAsset, RepoJobState } from "@/types";
+import { toastBackendError } from "@/lib/toast";
+import { LogPane, mergeTailAndStreamed, REPO_SCRIPTS_DISCLOSURE, StepDot } from "./repoJobUi";
+
+const BTN =
+  "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
+
+const LOG_CAP = 500;
 
 function Chip({ children, tone }: { children: React.ReactNode; tone?: "warn" | "ok" }) {
   const color =
@@ -35,11 +52,27 @@ export function RepoPanel({
 }) {
   const qc = useQueryClient();
   const [logOpen, setLogOpen] = useState(false);
+  const [opJob, setOpJob] = useState<RepoJobState | null>(null);
+  const [opLines, setOpLines] = useState<string[]>([]);
+  const [opLogOpen, setOpLogOpen] = useState(false);
+  const [checkoutRef, setCheckoutRef] = useState("");
+  const opLogRef = useRef<HTMLDivElement | null>(null);
+  const adoptedRef = useRef(false);
+  const jobsKey = ["repo-jobs", siteId, kind] as const;
   const statusKey = ["repo-status", siteId, kind, asset.dirName] as const;
+  const branchesKey = ["repo-branches", siteId, kind, asset.dirName] as const;
+
   const status = useQuery({
     queryKey: statusKey,
     queryFn: () => repoAssetStatus(siteId, kind, asset.dirName),
     staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const branches = useQuery({
+    queryKey: branchesKey,
+    queryFn: () => repoBranches(siteId, kind, asset.dirName),
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -48,6 +81,81 @@ export function RepoPanel({
     queryFn: () => tailLog(status.data?.logKey ?? "", 200),
     enabled: logOpen && !!status.data?.logKey,
     staleTime: 0,
+  });
+
+  // Reconnect to a live/unfinished OP job for THIS dir after a remount (the
+  // add panel owns op === "add"; we own the rest). Same shared query cache.
+  const siteJobs = useQuery({
+    queryKey: jobsKey,
+    queryFn: () => repoSiteJobs(siteId, kind),
+    refetchOnWindowFocus: false,
+    staleTime: 5_000,
+  });
+  useEffect(() => {
+    if (adoptedRef.current || opJob !== null) return;
+    const candidate = [...(siteJobs.data ?? [])]
+      .reverse()
+      .find((j) => j.op !== "add" && j.dirName === asset.dirName && !j.finishedOk);
+    if (!candidate) return;
+    adoptedRef.current = true;
+    setOpJob(candidate);
+    setOpLogOpen(true);
+    void tailLog(candidate.logKey, 300)
+      .then((tail) => setOpLines((streamed) => mergeTailAndStreamed(tail, streamed)))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteJobs.data, opJob, asset.dirName]);
+
+  // Live subscriptions for the op job.
+  useEffect(() => {
+    if (!opJob?.id) return;
+    let dead = false;
+    const un: Array<() => void> = [];
+    void onRepoJobState(opJob.id, (s) => {
+      if (dead) return;
+      setOpJob(s);
+      qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+        old ? old.map((j) => (j.id === s.id ? s : j)) : old,
+      );
+      // Op settled → the panel header + provenance row may have changed.
+      if (s.steps.every((st) => st.status !== "running")) {
+        qc.invalidateQueries({ queryKey: statusKey });
+        qc.invalidateQueries({ queryKey: branchesKey });
+        qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
+      }
+    }).then((u) => un.push(u));
+    void onRepoJobOutput(opJob.id, (line) => {
+      if (!dead) setOpLines((l) => [...l.slice(-(LOG_CAP - 1)), line]);
+    }).then((u) => un.push(u));
+    return () => {
+      dead = true;
+      un.forEach((u) => u());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opJob?.id]);
+
+  useEffect(() => {
+    const el = opLogRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [opLines, opLogOpen]);
+
+  const runOp = useMutation({
+    mutationFn: (args: { op: "fetch" | "pull" | "checkout" | "push"; ref?: string }) =>
+      repoGitOp(siteId, kind, asset.dirName, args.op, args.ref ?? null),
+    onSuccess: (snap) => {
+      adoptedRef.current = true;
+      setOpJob(snap);
+      setOpLines([]);
+      setOpLogOpen(true);
+      qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+        old ? [...old.filter((j) => j.id !== snap.id), snap] : [snap],
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const runStep = useMutation({
+    mutationFn: (stepKey: string) => repoRunStep(opJob?.id ?? "", stepKey),
+    onError: (e) => toastBackendError(e),
   });
 
   const s = status.data;
@@ -59,6 +167,26 @@ export function RepoPanel({
         : (s.branch ?? "?")
     : null;
   const clean = s ? s.changed === 0 && s.untracked === 0 : false;
+  const opRunning = opJob?.steps.some((st) => st.status === "running") ?? false;
+  const opsDisabled = opRunning || runOp.isPending;
+  const offeredSteps = useMemo(
+    () =>
+      (opJob?.steps ?? []).filter(
+        (st) => !["fetch", "pull", "checkout", "push"].includes(st.key),
+      ),
+    [opJob],
+  );
+  const branchOptions = useMemo(() => {
+    const local = branches.data?.local ?? [];
+    const remoteShort = (branches.data?.remote ?? [])
+      .map((r) => r.replace(/^origin\//, ""))
+      .filter((r) => !local.includes(r));
+    return { local, remoteShort };
+  }, [branches.data]);
+
+  useEffect(() => {
+    if (checkoutRef === "" && branches.data?.current) setCheckoutRef(branches.data.current);
+  }, [branches.data, checkoutRef]);
 
   return (
     <div className="mx-3 mb-2.5 rounded-lg border border-rex-border bg-rex-surface-2/50 px-3 py-2.5">
@@ -94,7 +222,10 @@ export function RepoPanel({
             <Chip>{asset.source}</Chip>
             <button
               className="ml-auto flex items-center gap-1 text-[0.6875rem] text-rex-text-muted underline decoration-dotted hover:text-rex-text"
-              onClick={() => qc.invalidateQueries({ queryKey: statusKey })}
+              onClick={() => {
+                qc.invalidateQueries({ queryKey: statusKey });
+                qc.invalidateQueries({ queryKey: branchesKey });
+              }}
               title="Re-read git status"
             >
               <RefreshCw className="h-3 w-3" /> Refresh
@@ -104,6 +235,131 @@ export function RepoPanel({
             {s.remote ?? (asset.url || "(no remote)")}
             {asset.gitRef ? ` · added @ ${asset.gitRef}` : ""}
           </div>
+
+          {/* Git ops — jobs on the shared runner, one at a time per dir. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              className={BTN}
+              disabled={opsDisabled}
+              onClick={() => runOp.mutate({ op: "fetch" })}
+            >
+              Fetch
+            </button>
+            <button
+              className={BTN}
+              disabled={opsDisabled}
+              onClick={() => runOp.mutate({ op: "pull" })}
+              title="git pull --ff-only — never merges for you"
+            >
+              Pull
+            </button>
+            <button
+              className={BTN}
+              disabled={opsDisabled}
+              onClick={() => runOp.mutate({ op: "push" })}
+              title="git push (sets upstream automatically when missing; never force)"
+            >
+              Push
+            </button>
+            <select
+              value={checkoutRef}
+              onChange={(e) => setCheckoutRef(e.target.value)}
+              disabled={opsDisabled}
+              className="h-[28px] max-w-[200px] rounded border border-rex-border bg-rex-surface-2 px-1.5 font-mono text-[0.71875rem] text-rex-text outline-none focus:border-brand"
+              aria-label="Checkout target"
+            >
+              {branchOptions.local.map((b) => (
+                <option key={`l-${b}`} value={b}>
+                  {b}
+                  {b === branches.data?.current ? " (current)" : ""}
+                </option>
+              ))}
+              {branchOptions.remoteShort.length > 0 && (
+                <optgroup label="Remote">
+                  {branchOptions.remoteShort.map((b) => (
+                    <option key={`r-${b}`} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button
+              className={BTN}
+              disabled={
+                opsDisabled || checkoutRef === "" || checkoutRef === branches.data?.current
+              }
+              onClick={() => runOp.mutate({ op: "checkout", ref: checkoutRef })}
+            >
+              Checkout
+            </button>
+          </div>
+
+          {/* The op job: step(s) + offered install steps + streamed log. */}
+          {opJob && (
+            <div className="rounded-md border border-rex-border bg-rex-surface-1 px-2.5 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 space-y-1">
+                  {opJob.steps.map((st) => (
+                    <div key={st.key} className="flex items-center gap-2">
+                      <StepDot status={st.status} />
+                      <span className="font-mono text-[0.75rem] text-rex-text">{st.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-none items-center gap-2">
+                  {opRunning && (
+                    <button
+                      className={BTN}
+                      onClick={() => opJob && repoCancel(opJob.id).catch(toastBackendError)}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    className="text-[0.6875rem] text-rex-text-muted underline decoration-dotted hover:text-rex-text"
+                    onClick={() => setOpLogOpen((v) => !v)}
+                  >
+                    {opLogOpen ? "Hide log" : "Show log"}
+                  </button>
+                </div>
+              </div>
+              {opJob.steps
+                .filter((st) => st.status === "failed" && st.error)
+                .map((st) => (
+                  <div
+                    key={`err-${st.key}`}
+                    className="mt-2 whitespace-pre-line rounded-md border border-status-error-border bg-status-error-bg px-2.5 py-1.5 font-mono text-[0.6875rem] text-status-error-bright"
+                  >
+                    {st.error}
+                  </div>
+                ))}
+              {offeredSteps.length > 0 && (
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-[0.6875rem] text-status-warning-bright">
+                    Dependencies changed with this {opJob.op} — re-install below.
+                  </div>
+                  <div className="text-[0.6875rem] text-rex-text-muted">
+                    {REPO_SCRIPTS_DISCLOSURE}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {offeredSteps.map((st) => (
+                      <button
+                        key={`run-${st.key}`}
+                        className={BTN}
+                        disabled={opRunning || st.status === "ok"}
+                        onClick={() => runStep.mutate(st.key)}
+                      >
+                        {st.status === "ok" ? `✓ ${st.label}` : st.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {opLogOpen && <LogPane lines={opLines} innerRef={opLogRef} />}
+            </div>
+          )}
+
           {s.logKey && (
             <button
               className="text-[0.6875rem] text-rex-text-muted underline decoration-dotted hover:text-rex-text"

@@ -392,10 +392,27 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   harness `?panel=repo` ALL PASS + rehydrate/interactive re-run green.
   **Awaiting human verify — test-doc §9** (dirty+ahead delete confirm names
   the numbers; manual-clone adopt round-trip).
-- [ ] Phase B — git ops (fetch / pull --ff-only / checkout / push) as jobs
-  in the panel; branch dropdown; lockfile-change → "run install" hint;
-  git_ref provenance update on checkout; mapped errors (diverged, dirty,
-  non-ff, no-upstream push).
+- [x] **Phase B — git ops as jobs in the RepoPanel** (18 Jul, 1 commit).
+  core: validate_ref (argv-trick guard, tested), git_fetch/--prune,
+  git_pull_ff (--ff-only ONLY — diverged = honest error), git_checkout
+  (DWIM remote-tracking), git_push (auto --set-upstream when missing,
+  never force), map_git_op_error (diverged/dirty-overwrite/pathspec/
+  non-ff → house messages, else falls through to the clone-era auth/
+  offline mapping), lockfile_fingerprint (lock+manifest files only,
+  tested), run_git_lines (branch listings). commands: repo_git_op (same
+  registry/events/cancel/one-job-per-dest as add; checkout updates
+  provenance git_ref; changed fingerprint → install/build steps OFFERED
+  on the job — explicit clicks), repo_branches; op field on RepoJobState
+  (add panel adopts only op=="add"; RepoPanel reconnects to its own op
+  jobs with tail-seeded log). UI: ops row (Fetch/Pull/Push + branch
+  dropdown + Checkout), op-job card with mapped errors + deps-changed
+  offer + disclosure. ✓ 313 lib tests (+3), tsc, vite build; **live**
+  `examples/repo_git_ops_check` ALL PASS against a LOCAL bare origin
+  (ff-pull file arrival, DIVERGED + dirty + non-ff all mapped, checkout
+  lockfile flip, push seen at origin, auto-upstream stuck); WebKit
+  `?panel=repo` extended (ops row + Pull → op card + offer + disclosure)
+  ALL PASS, rehydrate/interactive re-run green. **Awaiting human verify —
+  test-doc §10** (real remotes/agent + packaged-app panel).
 - [ ] Phase C — scripts + watch (RepoWatches registry: process-group,
   die-with-app, Restart-not-auto; name heuristic dev/watch/start/serve/hot;
   global watcher chip).

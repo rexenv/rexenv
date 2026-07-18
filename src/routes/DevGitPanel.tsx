@@ -30,6 +30,7 @@ const JOB = {
   dirName: "my-plugin",
   url: "https://github.com/acme/my-plugin",
   gitRef: "develop",
+  op: "add",
   steps: [
     { key: "clone", label: "Clone repository", status: "ok", error: null },
     { key: "detect", label: "Detect dependencies", status: "ok", error: null },
@@ -93,6 +94,30 @@ const ASSET = {
   source: "cloned",
 };
 
+const OP_JOB = {
+  id: "dev-op",
+  siteId: "dev",
+  kind: "plugin",
+  dirName: "my-plugin",
+  url: "",
+  gitRef: null,
+  op: "pull",
+  logKey: "repo-dev.rex-my-plugin.log",
+  steps: [
+    { key: "pull", label: "git pull --ff-only", status: "ok", error: null },
+    { key: "composer", label: "composer install", status: "pending", error: null },
+    { key: "install", label: "pnpm install", status: "pending", error: null },
+  ],
+  inspection: {
+    composer: true,
+    node: { manager: "pnpm", pinnedBy: "lockfile", hasBuild: false },
+    wp: { kind: "plugin", name: "My Plugin" },
+    nodeWant: null,
+  },
+  nodeWarning: null,
+  finishedOk: false,
+};
+
 const ASSET_STATUS = {
   branch: "feat/x",
   detached: false,
@@ -119,6 +144,10 @@ export function DevGitPanel() {
           return rehydrate ? [RUNNING_JOB] : [];
         case "repo_asset_status":
           return ASSET_STATUS;
+        case "repo_branches":
+          return { current: "feat/x", local: ["feat/x", "main"], remote: ["origin/main", "origin/develop"] };
+        case "repo_git_op":
+          return OP_JOB;
         case "tail_log":
           return TAIL_LINES;
         case "repo_tools":

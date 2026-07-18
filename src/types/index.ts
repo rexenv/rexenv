@@ -568,6 +568,9 @@ export interface RepoJobState {
   dirName: string;
   url: string;
   gitRef: string | null;
+  /** "add" (clone+detect flow) or a git op ("fetch" | "pull" | "checkout"
+   *  | "push"). The add panel adopts only add-jobs; RepoPanel owns ops. */
+  op: string;
   /** Flat log-file key (`repo-<domain>-<dir>.log`) — seeds the log pane via
    *  `tailLog` when the panel reconnects to a live job after a remount. */
   logKey: string;
@@ -619,4 +622,11 @@ export interface RepoToolStatus {
   version: string | null;
   path: string | null;
   error: string | null;
+}
+
+/** Local + remote-tracking branches for the checkout dropdown. */
+export interface RepoBranches {
+  current: string | null;
+  local: string[];
+  remote: string[];
 }

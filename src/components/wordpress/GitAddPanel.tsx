@@ -22,8 +22,9 @@ import {
   wpPluginActivate,
   wpThemeActivate,
 } from "@/lib/ipc";
-import type { RepoJobState, RepoStepState } from "@/types";
+import type { RepoJobState } from "@/types";
 import { toast, toastBackendError } from "@/lib/toast";
+import { mergeTailAndStreamed, StepDot } from "./repoJobUi";
 
 /** Mirror of WordPressManager's BTN (kept local — importing it would create a
  *  module cycle with the panel embed). */
@@ -31,35 +32,6 @@ const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 const LOG_CAP = 500;
-
-/** Merge a log-file tail (authoritative up to its read moment) with lines that
- *  streamed in while the tail was being fetched: drop the streamed prefix that
- *  already appears at the tail's end (the sink writes the file BEFORE emitting,
- *  so an overlapping line is a duplicate, not new output). */
-function mergeTailAndStreamed(tail: string[], streamed: string[]): string[] {
-  const max = Math.min(tail.length, streamed.length, 50);
-  for (let k = max; k > 0; k--) {
-    if (tail.slice(-k).every((l, i) => l === streamed[i])) {
-      return [...tail, ...streamed.slice(k)];
-    }
-  }
-  return [...tail, ...streamed];
-}
-
-/** Step-status glyph — plain text + color, no animation surprises in WKWebView
- *  (only the running state spins, via the same Loader2 the app already uses). */
-function StepDot({ status }: { status: RepoStepState["status"] }) {
-  if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-rex-spin text-brand" />;
-  const glyph =
-    status === "ok" ? "✓" : status === "failed" ? "✕" : status === "cancelled" ? "–" : "○";
-  const color =
-    status === "ok"
-      ? "text-status-running-bright"
-      : status === "failed"
-        ? "text-status-error-bright"
-        : "text-rex-text-muted";
-  return <span className={`w-3.5 text-center font-mono text-[0.75rem] ${color}`}>{glyph}</span>;
-}
 
 export function GitAddPanel({
   siteId,
@@ -93,7 +65,9 @@ export function GitAddPanel({
   });
   useEffect(() => {
     if (adoptedRef.current || job !== null) return;
-    const candidate = [...(siteJobs.data ?? [])].reverse().find((j) => !j.finishedOk);
+    const candidate = [...(siteJobs.data ?? [])]
+      .reverse()
+      .find((j) => j.op === "add" && !j.finishedOk);
     if (!candidate) return;
     adoptedRef.current = true;
     setJob(candidate);
