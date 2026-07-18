@@ -21,6 +21,23 @@ pub const MARIADB_PORT: u16 = 13307;
 pub const POSTGRES_PORT: u16 = 15432;
 pub const REDIS_PORT: u16 = 16379;
 
+/// When an engine's datadir initialization fails, remove the half-written
+/// datadir so a marker the init tool creates EARLY (e.g. MySQL/MariaDB's
+/// `mysql/` system-schema dir, written before init completes) can't satisfy
+/// `is_initialized` on the next run and start the server on a corrupt,
+/// unrecoverable datadir. Returns the result unchanged. Every engine's
+/// `initialize` funnels its work through this so cleanup covers ALL failure
+/// paths — not just a nonzero exit (findings B22/B23).
+pub(crate) fn clean_datadir_on_init_failure(
+    datadir: &std::path::Path,
+    result: Result<()>,
+) -> Result<()> {
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(datadir);
+    }
+    result
+}
+
 /// A built-in database engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DbEngine {
@@ -286,6 +303,30 @@ impl DbEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clean_datadir_on_init_failure_removes_only_a_failed_datadir() {
+        let base =
+            std::env::temp_dir().join(format!("rexenv-initclean-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+
+        // Failure: a datadir carrying the early "mysql/" marker must be removed,
+        // so the lying marker can't survive to the next start (B22/B23).
+        let failed = base.join("failed");
+        std::fs::create_dir_all(failed.join("mysql")).unwrap();
+        let out = clean_datadir_on_init_failure(&failed, Err(Error::Other("boom".into())));
+        assert!(out.is_err(), "the error is passed through unchanged");
+        assert!(!failed.exists(), "a failed init must remove the half-written datadir");
+
+        // Success: the datadir is kept intact.
+        let ok = base.join("ok");
+        std::fs::create_dir_all(ok.join("mysql")).unwrap();
+        let out = clean_datadir_on_init_failure(&ok, Ok(()));
+        assert!(out.is_ok());
+        assert!(ok.exists(), "a successful init keeps the datadir");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn engines_have_distinct_ports_and_keys() {

@@ -81,7 +81,16 @@ pub fn initialize(_platform: &dyn Platform, basedir: &Path, datadir: &Path) -> R
         return Ok(());
     }
     std::fs::create_dir_all(datadir)?;
+    // Any failure below removes the half-written datadir so its early `mysql/`
+    // marker can't lie on the next run (B22/B23) — covers the SQL-read `?`, a
+    // stdin-write EPIPE, and a nonzero bootstrap exit alike.
+    let result = bootstrap(basedir, datadir);
+    crate::core::db::clean_datadir_on_init_failure(datadir, result)
+}
 
+/// Drive `mariadbd --bootstrap` to completion, feeding the system-schema SQL over
+/// stdin. Separated from [`initialize`] so the datadir cleanup wraps EVERY exit.
+fn bootstrap(basedir: &Path, datadir: &Path) -> Result<()> {
     // Same preamble mariadb-install-db's cat_sql() emits for "normal" root
     // auth, then the SQL files in its order.
     let mut sql = String::from(
@@ -115,19 +124,23 @@ pub fn initialize(_platform: &dyn Platform, basedir: &Path, datadir: &Path) -> R
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| Error::Other(format!("spawn mariadbd --bootstrap: {e}")))?;
-    child
+    // Feed the bootstrap SQL. If mariadbd died early the write hits EPIPE — reap
+    // the child before propagating so a crashed bootstrap can't leave a zombie
+    // (Child::drop neither kills nor waits).
+    let mut stdin = child
         .stdin
         .take()
-        .ok_or_else(|| Error::Other("mariadbd --bootstrap: no stdin".into()))?
-        .write_all(sql.as_bytes())?;
-    // stdin drops here (EOF) — bootstrap runs the fed SQL and exits.
+        .ok_or_else(|| Error::Other("mariadbd --bootstrap: no stdin".into()))?;
+    if let Err(e) = stdin.write_all(sql.as_bytes()) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(Error::from(e));
+    }
+    drop(stdin); // EOF — bootstrap runs the fed SQL and exits.
     let out = child.wait_with_output()?;
     if out.status.success() {
         Ok(())
     } else {
-        // A half-written datadir would satisfy is_initialized's marker on the
-        // next run — remove it so a retry bootstraps cleanly.
-        let _ = std::fs::remove_dir_all(datadir);
         Err(Error::Other(format!(
             "mariadbd --bootstrap failed (exit {:?}): {}",
             out.status.code(),

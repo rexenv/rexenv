@@ -47,25 +47,29 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
     if let Some(parent) = datadir.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let args = vec![
-        "-D".to_string(),
-        datadir.display().to_string(),
-        "-U".to_string(),
-        "postgres".to_string(),
-        "-A".to_string(),
-        "trust".to_string(),
-        "--no-instructions".to_string(),
-    ];
-    let mut child = platform.supervisor().spawn(&initdb_bin(basedir), &args)?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Other(format!(
-            "initdb failed (exit {:?})",
-            status.code()
-        )))
-    }
+    // initdb writes the PG_VERSION marker late and usually self-cleans on
+    // failure, but guard anyway so a partial cluster can't satisfy
+    // is_initialized and start Postgres on a corrupt datadir (B22,
+    // defense-in-depth).
+    let result = (|| -> Result<()> {
+        let args = vec![
+            "-D".to_string(),
+            datadir.display().to_string(),
+            "-U".to_string(),
+            "postgres".to_string(),
+            "-A".to_string(),
+            "trust".to_string(),
+            "--no-instructions".to_string(),
+        ];
+        let mut child = platform.supervisor().spawn(&initdb_bin(basedir), &args)?;
+        let status = child.wait()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("initdb failed (exit {:?})", status.code())))
+        }
+    })();
+    crate::core::db::clean_datadir_on_init_failure(datadir, result)
 }
 
 /// Start the shared PostgreSQL server (foreground, TCP-only) via `ProcessSupervisor`.

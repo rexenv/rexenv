@@ -48,27 +48,34 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
         return Ok(());
     }
     std::fs::create_dir_all(datadir)?;
-    let log = platform.paths().log_dir()?.join("mysql-init.log");
-    std::fs::create_dir_all(platform.paths().log_dir()?)?;
+    // Any failure below must remove the half-written datadir: mysqld creates the
+    // `mysql/` system-schema dir EARLY, before init completes, so a leftover
+    // would satisfy is_initialized on the next run and start the server on a
+    // corrupt datadir (B22). The wrapper covers the nonzero exit AND every `?`.
+    let result = (|| -> Result<()> {
+        let log = platform.paths().log_dir()?.join("mysql-init.log");
+        std::fs::create_dir_all(platform.paths().log_dir()?)?;
 
-    let args = vec![
-        "--no-defaults".to_string(),
-        "--initialize-insecure".to_string(),
-        format!("--basedir={}", basedir.display()),
-        format!("--datadir={}", datadir.display()),
-        format!("--log-error={}", log.display()),
-    ];
-    let mut child = platform.supervisor().spawn(&mysqld_bin(basedir), &args)?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Other(format!(
-            "mysqld --initialize-insecure failed (exit {:?}); see {}",
-            status.code(),
-            log.display()
-        )))
-    }
+        let args = vec![
+            "--no-defaults".to_string(),
+            "--initialize-insecure".to_string(),
+            format!("--basedir={}", basedir.display()),
+            format!("--datadir={}", datadir.display()),
+            format!("--log-error={}", log.display()),
+        ];
+        let mut child = platform.supervisor().spawn(&mysqld_bin(basedir), &args)?;
+        let status = child.wait()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!(
+                "mysqld --initialize-insecure failed (exit {:?}); see {}",
+                status.code(),
+                log.display()
+            )))
+        }
+    })();
+    crate::core::db::clean_datadir_on_init_failure(datadir, result)
 }
 
 /// Guard for identifiers we interpolate into SQL: DB names are derived from a
