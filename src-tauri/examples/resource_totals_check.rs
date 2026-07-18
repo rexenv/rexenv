@@ -8,7 +8,6 @@
 
 use rexenv_lib::core::monitor::Monitor;
 use rexenv_lib::platform;
-use rexenv_lib::platform::traits::Platform;
 
 /// All rexenv-owned (marker in cmdline) pids + the title-rewritten workers
 /// (php-fpm/nginx) whose PARENT is one of them.
