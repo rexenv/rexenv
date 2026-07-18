@@ -48,6 +48,13 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   isolated from every other finding, with a Homebrew publish imminent. Proven through real PHP
   (system 8.2 + bundled 8.3/8.5) over a 21-case accept/reject matrix; guarded by a lib unit test +
   the runnable `examples/adminer_login_gate_check`. Full analysis retained under (B) B1.
+- **`3a8e053`** — **B18** schema-migration atomicity: wrapped each migration's DDL **and** its
+  `user_version` bump in one transaction (factored into `migrate_with(conn, list)`), so a crash/error
+  mid-step rolls back cleanly and the step re-runs safely instead of bricking the DB on a re-run of a
+  non-idempotent `CREATE TABLE`/`ADD COLUMN`. First of the batched priority-fix pass. Test
+  `a_failing_step_rolls_back_atomically_and_reruns_clean_not_bricked` drives a deliberately-failing step
+  (same rollback path a crash takes) and proves the DB stays consistent + re-runnable. `cargo test --lib`
+  322 passed / 0 failed; examples build clean. Full analysis retained under (B) B18.
 
 ---
 
@@ -312,6 +319,7 @@ this is robustness/DoS-against-self, not a boundary crossing. Still a missing bo
 around the `read_line`. Cheap; low urgency.
 
 ### B18 · 🟠 bug (robustness) · Schema migrations aren't atomic with the `user_version` bump — a crash mid-migration bricks the DB
+**✅ FIXED — commit `3a8e053` (first of the batched fix pass; see (A)). Analysis kept for the record.**
 **Where:** `state/db.rs:167-179` (`migrate`).
 **Verified:** me.
 ```rust
