@@ -74,7 +74,17 @@ export function SiteTerminal({ siteId }: { siteId: string }) {
           return;
         }
         sessionId = id;
-        unlisten = await onTerminalOutput(id, (bytes) => term.write(bytes));
+        // Re-check after the await: if we unmounted DURING it, the cleanup
+        // already ran with `unlisten` still null (and closed the session), so
+        // unlisten the just-registered listener here — otherwise it leaks,
+        // writing into a disposed terminal (B37). Mirrors useDownloads.ts /
+        // StatusFooter.tsx.
+        const un = await onTerminalOutput(id, (bytes) => term.write(bytes));
+        if (disposed) {
+          un();
+          return;
+        }
+        unlisten = un;
       } catch (e) {
         setError(String(e));
       }
