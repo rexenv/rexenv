@@ -49,7 +49,25 @@ pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
 /// left behind pointing at nothing.
 pub fn run_system_teardown(platform: &dyn Platform) -> Result<()> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
-    dns::remove_all_resolvers(platform, dns::DEFAULT_DNS_PORT)?;
+    // ONE privileged prompt for every root change on the way out, run together so
+    // uninstall shows a single auth dialog:
+    //  - boot out + REMOVE the root edge LaunchDaemon (its plist, wrapper, and the
+    //    root-owned caddy copy). Without this, `stop_all` skips a `Daemon` edge and
+    //    the plist survives, so KeepAlive keeps a root Caddy serving :443 after
+    //    "Remove system changes" — a lingering root daemon that contradicts the
+    //    command's promise (finding B2);
+    //  - remove every rexenv `/etc/resolver/<tld>` file (+ DNS flush).
+    let mut root_cmds: Vec<String> = Vec::new();
+    if platform.edge().is_installed() {
+        root_cmds.push(platform.edge().uninstall_command());
+    }
+    let tlds = dns::installed_tlds(platform, dns::DEFAULT_DNS_PORT);
+    if !tlds.is_empty() {
+        root_cmds.push(platform.dns().uninstall_command(&tlds));
+    }
+    if !root_cmds.is_empty() {
+        platform.privileges().run_privileged(&root_cmds.join(" ; "))?;
+    }
     ssl::untrust_ca(platform, &ca)?;
     platform.dns_agent().uninstall()?;
     // The `rex` PATH symlink — ours only (content-checked), unprivileged

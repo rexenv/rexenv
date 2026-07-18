@@ -1751,6 +1751,28 @@ mod tests {
     }
 
     #[test]
+    fn edge_daemon_uninstall_boots_out_and_removes_plist_wrapper_and_binary() {
+        // "Remove system changes" must FULLY remove the daemon — bootout AND rm the
+        // plist, wrapper, and root-owned caddy copy — or KeepAlive keeps a root
+        // Caddy serving :443 after uninstall (B2). (stop_command only disables +
+        // boots out; it deliberately leaves the files for a temporary Stop-all.)
+        let d = MacosEdgeDaemon;
+        let cmd = d.uninstall_command();
+        assert!(
+            cmd.contains(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")),
+            "{cmd}"
+        );
+        assert!(cmd.contains("rm -f"), "must remove files, not just bootout: {cmd}");
+        for path in [d.plist_path(), d.wrapper_path(), d.daemon_binary_path()] {
+            assert!(
+                cmd.contains(&path.display().to_string()),
+                "must remove {}: {cmd}",
+                path.display()
+            );
+        }
+    }
+
+    #[test]
     fn edge_daemon_wrapper_chowns_socket_then_execs_caddy() {
         let w = MacosEdgeDaemon.wrapper_contents(
             Path::new("/root/bin/caddy"),

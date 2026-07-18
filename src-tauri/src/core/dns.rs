@@ -311,19 +311,6 @@ pub fn installed_tlds(platform: &dyn Platform, port: u16) -> Vec<String> {
     tlds_matching_signature(dir, &platform.dns().resolver_contents(port))
 }
 
-/// Remove ALL rexenv-owned OS resolver files (every TLD matching our
-/// signature) through `PrivilegeManager` — one prompt, one cache flush.
-/// No-op (no prompt) when none are installed.
-pub fn remove_all_resolvers(platform: &dyn Platform, port: u16) -> Result<()> {
-    let tlds = installed_tlds(platform, port);
-    if tlds.is_empty() {
-        return Ok(());
-    }
-    let cmd = platform.dns().uninstall_command(&tlds);
-    platform.privileges().run_privileged(&cmd)?;
-    Ok(())
-}
-
 /// Whether the resolver's loopback UDP `port` is already bound — a lightweight
 /// liveness proxy for the embedded DNS. The resolver binds UDP, so the TCP
 /// `ports::is_listening` check doesn't apply; instead we try to bind the port and
