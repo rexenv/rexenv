@@ -96,6 +96,18 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `plugin_install_refuses_a_url_or_flag_slug_before_any_wp_call`; the `--` reorders follow wp-cli's
   documented end-of-flags handling (verified by inspection of the built argv). `cargo test --lib`
   329 passed / 0 failed; examples build clean. Full analysis under (B) B24.
+- **`318f425`** — **B31** webview CSP (⚠️ BUILD-ONLY — NOT yet verified; needs a packaged smoke test):
+  replaced `"csp": null` with a strict policy grounded in what the webview actually loads (no inline
+  scripts, no external `fetch`, wp.org `<img>` icons, `rexdb:` Adminer frame, xterm inline styles, Tauri
+  IPC): `script-src 'self'` (the XSS win) · `style-src 'self' 'unsafe-inline'` (Radix/xterm) · `img-src
+  'self' data: https://*.w.org` (plugin/theme icons) · `connect-src 'self' ipc: http://ipc.localhost`
+  (IPC) · `frame-src rexdb:` (embedded Adminer) · `default-src 'self'` + `object-src 'none'`/`base-uri`/
+  `form-action`. A separate `devCsp` adds `'unsafe-eval'`/`'unsafe-inline'` + `ws://localhost:1420` so
+  `tauri dev` HMR is unaffected. A CSP only takes effect in a packaged build, so `cargo test`/`tsc` can't
+  exercise it — **this awaits your packaged-app smoke test.** Silent-break watch (console logs
+  `Refused to … violates CSP` naming the directive to widen): app loads + IPC works · Terminal (xterm) ·
+  Database browser (Adminer `rexdb:` iframe) · Plugins tab wp.org icons · **Git-feature UI (streamed log
+  pane + RepoPanel)** · **Mailpit**. Full analysis under (B) B31.
 
 ---
 
@@ -628,6 +640,8 @@ see (D)).
   noise/`._` buckets.
 
 ### B31 · 🟠 med · No Content-Security-Policy on the production webview
+**◑ WIRED — commit `318f425` (see (A)). BUILD-ONLY: awaits your packaged-app smoke test (not claimed
+verified — a CSP break is silent and only shows in a built app's console).**
 **Where:** `src-tauri/tauri.conf.json:26-28` (`"security": { "csp": null }`); no runtime CSP override
 either.
 **Verified:** me.
