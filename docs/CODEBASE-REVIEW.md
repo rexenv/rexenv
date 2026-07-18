@@ -113,6 +113,11 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   so a server that finishes the TLS handshake then never sends headers can't hang the download forever.
   Test `send_bounded_times_out_when_response_headers_never_arrive` (a TCP listener that accepts then
   sends nothing → transient "stalled" within the guard, no hang). `cargo test --lib` 330 passed / 0 failed.
+- **`41e73b0`** — **B35** `resolve_bundle` member assertion: `ensure_member_extracted` fails loud if the
+  pinned bundle `member` isn't in the extracted tree, before `publish` — so a bad `member`/`include` pin
+  errors (and the existing cleanup removes the staging) instead of publishing an incomplete bundle that
+  ENOENTs on spawn and re-downloads forever. Test `ensure_member_extracted_fails_loud_when_the_pinned_member_is_absent`;
+  full `resolve_bundle` end-to-end needs real bottles (live-check). `cargo test --lib` 331 passed / 0 failed.
 
 ---
 
@@ -716,6 +721,7 @@ send in `tokio::time::timeout(CHUNK_TIMEOUT, req.send())` and map elapsed → `T
 retry handles it.
 
 ### B35 · 🟡 low/med · `resolve_bundle` publishes without asserting the pinned `member` was actually extracted → incomplete tree + infinite re-download
+**✅ FIXED — commit `41e73b0` (see (A)). Analysis kept for the record.**
 **Where:** `core/binaries.rs:934-943` (`resolve_bundle`); contrast `resolve`'s loud
 `"member '{member}' not found in archive"` at `:1503`.
 **Verified:** agent (checksum spine I confirmed myself; this is the extract-completeness gap).
