@@ -143,6 +143,17 @@ fn parse_http_url(scheme: &str, rest: &str) -> Result<RepoSource> {
     })
 }
 
+/// A leading `-` in an ssh/scp URL's user or host would be handed to `ssh` as an
+/// option flag (`-oProxyCommand=…` → arbitrary command execution BEFORE any
+/// clone — the CVE-2017-1000117 class). The `--` before the git URL protects
+/// git's own parser, not the downstream ssh, so we refuse it at parse time.
+fn reject_dash_authority() -> Error {
+    other(
+        "that SSH URL's user or host starts with '-', which git would pass to ssh as an option. \
+         Use a normal git@host:owner/repo or ssh://git@host/owner/repo.",
+    )
+}
+
 /// `ssh://git@host[:port]/path/repo.git`.
 fn parse_ssh_url(rest: &str) -> Result<RepoSource> {
     let rest = rest.split(['#', '?']).next().unwrap_or(rest).trim_end_matches('/');
@@ -157,6 +168,17 @@ fn parse_ssh_url(rest: &str) -> Result<RepoSource> {
         .next()
         .unwrap_or(userhost)
         .to_ascii_lowercase();
+    // Reject a leading-`-` user/host before it can reach ssh as a flag, and pin
+    // the host charset (parse_scp_like's rule — ssh:// had none). See
+    // [`reject_dash_authority`].
+    let user = userhost.rsplit_once('@').map(|(u, _)| u).unwrap_or("");
+    if user.starts_with('-')
+        || host.is_empty()
+        || host.starts_with('-')
+        || !host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        return Err(reject_dash_authority());
+    }
     let last = path
         .rsplit('/')
         .next()
@@ -185,6 +207,13 @@ fn parse_scp_like(s: &str) -> Result<Option<RepoSource>> {
         || !host.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
     {
         return Ok(None);
+    }
+    // Same ssh-option-injection guard as parse_ssh_url: a leading `-` in the user
+    // or host would reach ssh as a flag (CVE-2017-1000117 class). See
+    // [`reject_dash_authority`]. This is a scp-shaped input, so refuse loudly
+    // rather than falling through to the shorthand parser.
+    if user.starts_with('-') || host.starts_with('-') {
+        return Err(reject_dash_authority());
     }
     let path = path.trim_end_matches('/');
     let last = path
@@ -1614,6 +1643,25 @@ mod tests {
         let port = parse("ssh://git@git.corp:2222/team/widget.git");
         assert_eq!(port.url, "ssh://git@git.corp:2222/team/widget.git");
         assert_eq!(port.host, "git.corp");
+    }
+
+    #[test]
+    fn ssh_scp_forms_reject_dash_authority_option_injection() {
+        // CVE-2017-1000117 class: a leading-`-` user or host would be handed to
+        // ssh as an option flag (e.g. -oProxyCommand=… → RCE) BEFORE any clone.
+        // $IFS (no literal whitespace) survives the earlier whitespace reject.
+        for bad in [
+            "-oProxyCommand=touch$IFS/tmp/x@github.com:acme/repo.git", // scp, dash USER
+            "git@-oProxyCommand:acme/repo.git",                        // scp, dash host
+            "git@-github.com:acme/repo.git",                           // scp, dash host (charset-clean)
+            "ssh://-oProxyCommand=x@github.com/acme/repo.git",         // ssh, dash user
+            "ssh://git@-github.com/acme/repo.git",                     // ssh, dash host
+        ] {
+            assert!(parse_source(bad).is_err(), "must reject option injection: {bad}");
+        }
+        // Real private-repo forms still parse (the sibling test asserts the shapes).
+        assert!(parse_source("git@github.com:acme/repo.git").is_ok());
+        assert!(parse_source("ssh://git@git.corp:2222/team/widget.git").is_ok());
     }
 
     #[test]
