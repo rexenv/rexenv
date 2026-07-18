@@ -207,6 +207,18 @@ pub fn domain_exists(conn: &Connection, domain: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
+/// True if a site already stores this database name. Backstop for the injective
+/// name derivation at create (`core::sites::unique_db_name`) — `db_name` derives
+/// from the domain but isn't a UNIQUE column, so create checks it explicitly.
+pub fn db_name_exists(conn: &Connection, db_name: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT count(*) FROM sites WHERE db_name = ?1",
+        [db_name],
+        |r| r.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 // ── PHP version registry (Phase 2 §1.2) ───────────────────────────────────────
 
 fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {

@@ -1623,6 +1623,35 @@ pub fn db_name_for(domain: &str) -> String {
     format!("wp_{safe}")
 }
 
+/// MySQL/MariaDB identifier limit — a database name may not exceed this.
+pub const DB_NAME_MAX: usize = 64;
+
+/// A hash-disambiguated database name for a domain: the [`db_name_for`] base
+/// truncated to fit, plus a stable FNV-1a hash of the FULL domain. Used at
+/// create ONLY when the clean base would collide with an existing site or exceed
+/// the 64-char identifier limit ([`crate::core::sites`] decides). `db_name_for`
+/// is NOT injective — it maps every non-alphanumeric char to `_`, so
+/// `a-b.test` and `a.b.test` both reduce to `wp_a_b_test`; the domain hash makes
+/// two such sites land in DISTINCT databases instead of silently sharing one.
+pub fn db_name_disambiguated(domain: &str) -> String {
+    let base = db_name_for(domain);
+    let suffix = format!("{:08x}", fnv1a(domain.as_bytes()));
+    let keep = DB_NAME_MAX - 1 - suffix.len(); // reserve "_" + the 8-hex suffix
+    let head: String = base.chars().take(keep).collect();
+    format!("{head}_{suffix}")
+}
+
+/// FNV-1a (32-bit) — a small, dependency-free stable hash (the same primitive
+/// the per-site override-port allocator uses).
+fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 2166136261;
+    for &b in bytes {
+        h ^= b as u32;
+        h = h.wrapping_mul(16777619);
+    }
+    h
+}
+
 /// Inputs for a one-click WordPress install. Phase 1 installs **single-site**.
 pub struct WpInstall<'a> {
     pub docroot: &'a Path,
@@ -1879,6 +1908,28 @@ mod tests {
         assert_eq!(db_name_for("blog.test"), "wp_blog_test");
         assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
         assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn db_name_disambiguated_is_injective_and_bounded() {
+        // The whole point: two domains that `db_name_for` reduces to the SAME
+        // slug get DISTINCT disambiguated names (the domain hash differs).
+        let a = db_name_disambiguated("my-shop.test");
+        let b = db_name_disambiguated("my.shop.test");
+        assert_ne!(a, b, "slug-colliding domains must not share a database");
+        assert!(a.starts_with("wp_my_shop_test_"), "{a}");
+        assert!(b.starts_with("wp_my_shop_test_"), "{b}");
+        // Deterministic (stored once at create; must be stable within a build).
+        assert_eq!(a, db_name_disambiguated("my-shop.test"));
+        // Always within MySQL's 64-char identifier limit, even for a long domain.
+        let long = format!("{}.test", "a".repeat(250));
+        let d = db_name_disambiguated(&long);
+        assert!(d.len() <= DB_NAME_MAX, "must fit the 64-char limit, got {}", d.len());
+        // Only valid identifier characters ([a-z0-9_]).
+        assert!(
+            a.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'),
+            "valid identifier chars only: {a}"
+        );
     }
 
     #[test]

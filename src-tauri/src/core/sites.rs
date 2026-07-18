@@ -72,6 +72,32 @@ fn ensure_server_available(server: WebServer) -> Result<()> {
     }
 }
 
+/// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
+/// [`wordpress::db_name_for`] base (what existing sites already store); falls
+/// back to a hash-suffixed form when that base would COLLIDE with an existing
+/// site or exceed MySQL's 64-char identifier limit. Without this, `db_name_for`
+/// (not injective — `a-b.test` and `a.b.test` both reduce to `wp_a_b_test`)
+/// would let two distinct domains silently share ONE database (data bleed, and
+/// deleting either drops both — finding B21). The check-then-use is atomic under
+/// the app-wide db lock that already serializes create (same as `domain_exists`).
+fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
+    let base = super::wordpress::db_name_for(domain);
+    if base.len() <= super::wordpress::DB_NAME_MAX && !store::db_name_exists(conn, &base)? {
+        return Ok(base);
+    }
+    // Base collides or overflows 64 chars — disambiguate with a hash of the full
+    // domain. A remaining collision here needs two distinct domains to share
+    // both the truncated slug AND the 32-bit hash (~1 in 4 billion): refuse
+    // rather than risk a silent shared database.
+    let disambiguated = super::wordpress::db_name_disambiguated(domain);
+    if store::db_name_exists(conn, &disambiguated)? {
+        return Err(Error::Other(format!(
+            "could not derive a unique database name for '{domain}' — rename the site slightly"
+        )));
+    }
+    Ok(disambiguated)
+}
+
 /// Create a site: assign an id, default to stopped + SSL on, persist, return it.
 /// Fails if the domain is invalid or already in use.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
@@ -84,8 +110,10 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         )));
     }
     // Derived from the domain ONCE, here — every later operation reads the
-    // stored value, so a domain change never re-points the database.
-    let db_name = super::wordpress::db_name_for(&new.domain);
+    // stored value, so a domain change never re-points the database. Unique per
+    // site: a slug collision or >64-char overflow falls back to a hash suffix
+    // (finding B21) so two domains can never share one database.
+    let db_name = unique_db_name(conn, &new.domain)?;
     let site = Site {
         id: Uuid::new_v4().to_string(),
         name: new.name,
@@ -957,6 +985,24 @@ mod tests {
         // stored value, not a fresh derivation from the current domain.
         assert_eq!(created.db_name, "wp_my_shop_test");
         assert_eq!(get(&conn, &created.id).unwrap().unwrap().db_name, "wp_my_shop_test");
+    }
+
+    #[test]
+    fn create_gives_slug_colliding_domains_distinct_databases() {
+        // `db_name_for` reduces both domains to `wp_my_shop_test`. Before B21 the
+        // second site would silently bind the FIRST site's database. Now the
+        // colliding one is disambiguated, so the two never share a database.
+        let conn = db::open_in_memory().unwrap();
+        let a = create(&conn, sample("A", "my-shop.test")).unwrap();
+        let b = create(&conn, sample("B", "my.shop.test")).unwrap();
+        assert_eq!(a.db_name, "wp_my_shop_test", "the first keeps the clean name");
+        assert_ne!(b.db_name, a.db_name, "the colliding second must NOT share the DB");
+        assert!(
+            b.db_name.starts_with("wp_my_shop_test_"),
+            "disambiguated by hash suffix: {}",
+            b.db_name
+        );
+        assert!(b.db_name.len() <= crate::core::wordpress::DB_NAME_MAX);
     }
 
     #[test]
