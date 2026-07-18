@@ -85,6 +85,17 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `override_port_conflict_only_flags_same_kind_same_slot` + `create_refuses_a_second_override_site_that_shares_a_backend_port`;
   runtime reap-guard verified by inspection. `cargo test --lib` 327 passed / 0 failed; examples build clean.
   Full analysis + follow-up B design under (B) B20.
+- **`ccc02c7`** — **B24** wp-cli argv hardening: `valid_slug` (`^[a-z0-9][a-z0-9-]*$`) + `ensure_slugs`
+  refuse a non-slug plugin/theme **install** source before `wp … install` runs (blocks the
+  URL/path/zip → arbitrary-code vector that an end-of-flags separator alone does NOT cover), and a `--`
+  end-of-flags separator now precedes every user-controlled **positional** (item_verb
+  activate/deactivate/update/delete, theme_activate, user_create login/email, search_replace from/to,
+  cron_run_hook, network_site_delete, super_admin_add) so a leading `-` can never become a flag
+  (`--all`, `--role=administrator`, …) — parity with the existing `valid_locale`/`parse_wp_version`
+  guards. Tests `valid_slug_accepts_real_slugs_and_rejects_argv_and_source_smuggling` +
+  `plugin_install_refuses_a_url_or_flag_slug_before_any_wp_call`; the `--` reorders follow wp-cli's
+  documented end-of-flags handling (verified by inspection of the built argv). `cargo test --lib`
+  329 passed / 0 failed; examples build clean. Full analysis under (B) B24.
 
 ---
 
@@ -503,6 +514,7 @@ closure + `.map_err(|e| { let _ = remove_dir_all(datadir); e })`), and reap on t
 (`let _ = child.kill(); let _ = child.wait();`) before returning.
 
 ### B24 · 🟠 med (defense-in-depth now; rises to high) · wp-cli slugs/names/hooks/search-terms reach argv unvalidated — flag & URL injection
+**✅ FIXED — commit `ccc02c7` (see (A)). Analysis kept for the record.**
 **Where:** `core/wordpress.rs:284-289` (`plugin_install`) and siblings (`theme_install`, `plugin_delete`,
 `theme_activate`, `network_site_delete:594`, `super_admin_add`, `cron_run_hook:730`, `search_replace
 from/to:1064`, `user_create login/email:442`).
