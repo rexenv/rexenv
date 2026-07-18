@@ -580,7 +580,9 @@ quarantine xattr (fragile, and a poor first-run experience). Proper public distr
 Flagging because your next step is a public Homebrew publish, where this becomes a hard gate.
 **Recommendation:** before the cask goes public, switch to a Developer ID identity and add notarization
 to the release build; verify a clean-Mac launch (the `docs/SMOKE-TEST.md` gate). Decision/logistics →
-yours; I can't do the signing.
+yours; I can't do the signing. **The exact mechanical steps are written up in `docs/SIGNING.md`** (the
+one `tauri.conf.json` change, the notarization env vars, why no entitlements are needed, the ad-hoc
+helper-binary gotchas, and the verification checklist) — build unchanged until you have the cert wired.
 
 ### B33 · 🟡 low · Debug-PHP download host is on a different domain (`dl.rexenv.dev`) than canonical `rexenv.rex.bd`
 **Where:** `src-tauri/src/core/binaries.rs:40` (`PHP_DEBUG_BASE_URL = "https://dl.rexenv.dev/php-debug"`).
