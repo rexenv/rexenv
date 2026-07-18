@@ -226,6 +226,157 @@ async fn main() {
         failures.push("missing-dir status did not error".into());
     }
 
+    // ── wave 2: job-shaped arms ──────────────────────────────────────────
+
+    // Local bare origin so pull/fetch/checkout/push run with ZERO network.
+    let origin = scratch.join("origin.git");
+    std::process::Command::new("git")
+        .args(["init", "--bare", "-q"])
+        .arg(&origin)
+        .status()
+        .expect("bare init");
+    git_in(&fx, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    git_in(&fx, &["add", "-A"]);
+    git_in(&fx, &["commit", "-qm", "wave2 base"]);
+    git_in(&fx, &["push", "-qu", "origin", "HEAD"]);
+    // A second clone advances the remote so pull has something to do.
+    let seed = scratch.join("seed");
+    git_in(&scratch, &["clone", "-q", origin.to_str().unwrap(), "seed"]);
+    std::fs::write(seed.join("advance.txt"), "x").unwrap();
+    git_in(&seed, &["add", "-A"]);
+    git_in(&seed, &["commit", "-qm", "advance"]);
+    git_in(&seed, &["push", "-q"]);
+
+    let cap = std::time::Duration::from_secs(120);
+    // fetch → pull (file arrives) → local commit → push (visible at origin).
+    for (op, extra) in [("fetch", json!({})), ("pull", json!({}))] {
+        let mut args = json!({ "id": site_id, "dir": "managed-fixture", "op": op });
+        args.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        let r = tokio::time::timeout(cap, ask("repo.op", args)).await.expect("op in time");
+        let d = expect_ok!(format!("repo.op {op}"), r);
+        let ok = d["job"]["steps"][0]["status"] == json!("ok");
+        if !ok {
+            failures.push(format!("{op} step not ok: {}", d["job"]));
+        }
+        if op == "pull" && !fx.join("advance.txt").is_file() {
+            failures.push("pull did not fast-forward the file in".into());
+        }
+        if d["log"].as_array().map(|l| l.is_empty()).unwrap_or(true) {
+            failures.push(format!("{op} reply carried no job log"));
+        }
+    }
+    std::fs::write(fx.join("pushed-from-cli.txt"), "x").unwrap();
+    git_in(&fx, &["add", "-A"]);
+    git_in(&fx, &["commit", "-qm", "from dispatch check"]);
+    let r = tokio::time::timeout(
+        cap,
+        ask("repo.op", json!({ "id": site_id, "dir": "managed-fixture", "op": "push" })),
+    )
+    .await
+    .expect("push in time");
+    let d = expect_ok!("repo.op push", r);
+    if d["job"]["steps"][0]["status"] != json!("ok") {
+        failures.push(format!("push step not ok: {}", d["job"]));
+    }
+    git_in(&seed, &["fetch", "-q"]);
+    let seen = std::process::Command::new("git")
+        .args(["-C", seed.to_str().unwrap(), "cat-file", "-e"])
+        .arg("origin/master:pushed-from-cli.txt")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !seen {
+        failures.push("pushed commit not visible at origin".into());
+    }
+    println!("ops: fetch/pull/push ok (pull file arrived, push seen at origin = {seen})");
+
+    // checkout the feat branch (created earlier).
+    let r = tokio::time::timeout(
+        cap,
+        ask(
+            "repo.op",
+            json!({ "id": site_id, "dir": "managed-fixture", "op": "checkout", "ref": "feat" }),
+        ),
+    )
+    .await
+    .expect("checkout in time");
+    let d = expect_ok!("repo.op checkout", r);
+    if d["job"]["steps"][0]["status"] != json!("ok") {
+        failures.push(format!("checkout step not ok: {}", d["job"]));
+    }
+    let st = expect_ok!(
+        "post-checkout status",
+        ask("repo.status", json!({ "id": site_id, "dir": "managed-fixture" })).await
+    );
+    if st["branch"] != json!("feat") {
+        failures.push(format!("checkout landed on {}", st["branch"]));
+    }
+    println!("checkout: branch now {}", st["branch"]);
+    git_in(&fx, &["checkout", "-q", "-"]); // back for the run test
+
+    // repo.run: one-shot script to completion with the log in the reply.
+    std::fs::write(
+        fx.join("package.json"),
+        r#"{"name":"fx","version":"1.0.0","scripts":{"watch":"node watch.js","oneshot":"node -e \"console.log('one-shot-ran')\""}}"#,
+    )
+    .unwrap();
+    let r = tokio::time::timeout(
+        cap,
+        ask(
+            "repo.run",
+            json!({ "id": site_id, "dir": "managed-fixture", "script": "oneshot" }),
+        ),
+    )
+    .await
+    .expect("run in time");
+    let d = expect_ok!("repo.run", r);
+    let log_hit = d["log"]
+        .as_array()
+        .map(|l| l.iter().any(|x| x.as_str().unwrap_or("").contains("one-shot-ran")))
+        .unwrap_or(false);
+    if d["job"]["steps"][0]["status"] != json!("ok") || !log_hit {
+        failures.push(format!("run wrong: {} log_hit={log_hit}", d["job"]));
+    }
+    println!("run: script output in completion log = {log_hit}");
+
+    // repo.add against a real (tiny) public repo — the one networked step.
+    let r = tokio::time::timeout(
+        std::time::Duration::from_secs(180),
+        ask(
+            "repo.add",
+            json!({
+                "id": site_id,
+                "url": "https://github.com/octocat/Hello-World.git",
+                "name": "hello-cli"
+            }),
+        ),
+    )
+    .await
+    .expect("add in time");
+    let d = expect_ok!("repo.add", r);
+    let detect_ok = d["job"]["steps"]
+        .as_array()
+        .map(|s| s.iter().any(|x| x["key"] == json!("detect") && x["status"] == json!("ok")))
+        .unwrap_or(false);
+    if !detect_ok || !plugins.join("hello-cli/.git").exists() {
+        failures.push(format!("add wrong: {}", d["job"]));
+    }
+    println!("add: cloned + detected (dir on disk = {})", plugins.join("hello-cli").exists());
+
+    // Linked delete THROUGH the guarded wp arm: unlink only, target intact.
+    let r = ask("wp.plugin.delete", json!({ "id": site_id, "names": ["linked-fx"] })).await;
+    if r["ok"] != json!(true) {
+        failures.push(format!("wp.plugin.delete over link failed: {}", r["error"]));
+    }
+    let link_gone = std::fs::symlink_metadata(plugins.join("linked-fx")).is_err();
+    let target_ok = ext.join("plugin.php").is_file() && ext.join(".git").exists();
+    if !link_gone || !target_ok {
+        failures.push(format!(
+            "GUARD VIOLATION: link_gone={link_gone} target_intact={target_ok}"
+        ));
+    }
+    println!("guarded delete: link gone = {link_gone}, target intact = {target_ok}");
+
     // Cleanup: site row + scratch.
     {
         let state = app.state::<AppState>();

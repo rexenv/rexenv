@@ -79,6 +79,18 @@ COMMANDS:
                 Symlink an external folder in (deleting later only unlinks)
   repo <domain> watch list | watch start <dir> <script> | watch stop <dir>
                 Dev watchers — run inside the app, stop when it quits
+  repo <domain> add <url> [--branch B] [--name N] [--theme] [--install]
+                Clone a repo in (public https/owner-repo, private via YOUR ssh
+                keys); --install also runs detected composer/npm/build steps.
+                Output appears at completion — live view is in the app panel
+  repo <domain> pull|fetch|push <dir> [--install]
+  repo <domain> checkout <dir> <branch> [--install]
+                Git ops on an asset (pull is --ff-only; push never forces;
+                --install re-installs when the op changed lockfiles)
+  repo <domain> run <dir> <script>     Run one package.json script to completion
+  repo <domain> delete <dir> [--theme] [--yes]
+                Delete with the loss-warning preview; symlinked assets are
+                UNLINKED only (your real folder is never touched)
   repo tools [--refresh]               Detected git/node (login-shell resolution)
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
@@ -666,6 +678,88 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
     print_site_update(&updated);
 }
 
+/// Long repo jobs hold the connection while the app runs them; the socket
+/// can't stream, so output arrives AT COMPLETION — say so up front and tick
+/// dots on stderr while waiting (live output is in the app panel / job log).
+fn request_long(cmd: &str, args: Value, doing: &str) -> Value {
+    eprintln!("{doing} — output appears when it finishes (watch live in the app panel)…");
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let s2 = stop.clone();
+    let ticker = std::thread::spawn(move || {
+        while !s2.load(std::sync::atomic::Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            if !s2.load(std::sync::atomic::Ordering::Relaxed) {
+                eprint!(".");
+            }
+        }
+    });
+    let data = request(cmd, args);
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _ = ticker.join();
+    eprintln!();
+    data
+}
+
+/// Print a settled repo job: step glyphs, the job log, and exit non-zero on
+/// any failed/cancelled step (after printing everything).
+fn print_repo_job(data: &Value, json_output: bool) {
+    if json_output {
+        print_json(data);
+    } else {
+        for st in data["job"]["steps"].as_array().unwrap_or(&vec![]) {
+            let glyph = match st["status"].as_str().unwrap_or("") {
+                "ok" => "✓",
+                "failed" => "✕",
+                "cancelled" => "–",
+                "running" => "…",
+                _ => "·",
+            };
+            println!("{glyph} {}", st["label"].as_str().unwrap_or("?"));
+            if let Some(e) = st["error"].as_str() {
+                for line in e.lines() {
+                    println!("    {line}");
+                }
+            }
+        }
+        let pending_offers: Vec<&str> = data["job"]["steps"]
+            .as_array()
+            .map(|steps| {
+                steps
+                    .iter()
+                    .filter(|st| st["status"] == json!("pending"))
+                    .filter_map(|st| st["label"].as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !pending_offers.is_empty() {
+            println!(
+                "! dependency steps offered, not run: {} — re-run with --install, or use the app panel",
+                pending_offers.join(", ")
+            );
+        }
+        if let Some(w) = data["job"]["nodeWarning"].as_str() {
+            println!("! {w}");
+        }
+        if let Some(log) = data["log"].as_array().filter(|l| !l.is_empty()) {
+            println!("── job output ──");
+            for l in log {
+                println!("{}", l.as_str().unwrap_or(""));
+            }
+        }
+    }
+    let failed = data["job"]["steps"]
+        .as_array()
+        .map(|steps| {
+            steps.iter().any(|st| {
+                matches!(st["status"].as_str().unwrap_or(""), "failed" | "cancelled")
+            })
+        })
+        .unwrap_or(false);
+    if failed {
+        exit(1);
+    }
+}
+
 const REPO_USAGE: &str =
     "rex repo <domain> list|status|branches|adopt|link|watch … (or: rex repo tools)";
 
@@ -908,6 +1002,96 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 exit(1);
             }
         },
+        Some("add") => {
+            let url = dir_arg("rex repo <domain> add <url> [--branch B] [--name N] [--theme] [--install]");
+            let flag_val = |flag: &str| {
+                words.windows(2).find(|w| w[0] == flag).map(|w| w[1].clone())
+            };
+            let install = words.iter().any(|w| w == "--install");
+            let data = request_long(
+                "repo.add",
+                json!({
+                    "id": id, "theme": theme, "url": url,
+                    "branch": flag_val("--branch"), "name": flag_val("--name"),
+                    "install": install,
+                }),
+                &format!("cloning {url}{}", if install { " + installing" } else { "" }),
+            );
+            print_repo_job(&data, json_output);
+        }
+        Some(op @ ("pull" | "fetch" | "checkout" | "push")) => {
+            let usage = format!("rex repo <domain> {op} <dir> {}[--theme]",
+                if op == "checkout" { "<branch> " } else { "" });
+            let dir = dir_arg(&usage);
+            let target_ref = if op == "checkout" {
+                match rest.get(1) {
+                    Some(r) => Some((*r).clone()),
+                    None => {
+                        eprintln!("rex: usage: {usage}");
+                        exit(1);
+                    }
+                }
+            } else {
+                None
+            };
+            let install = words.iter().any(|w| w == "--install");
+            let data = request_long(
+                "repo.op",
+                json!({
+                    "id": id, "theme": theme, "dir": dir, "op": op,
+                    "ref": target_ref, "install": install,
+                }),
+                &format!("git {op} in {dir}"),
+            );
+            print_repo_job(&data, json_output);
+        }
+        Some("run") => {
+            let usage = "rex repo <domain> run <dir> <script> [--theme]";
+            let dir = dir_arg(usage);
+            let Some(script) = rest.get(1) else {
+                eprintln!("rex: usage: {usage}");
+                exit(1);
+            };
+            let data = request_long(
+                "repo.run",
+                json!({ "id": id, "theme": theme, "dir": dir, "script": script }),
+                &format!("running {script} in {dir}"),
+            );
+            print_repo_job(&data, json_output);
+        }
+        Some("delete") => {
+            // Alias over the ALREADY-GUARDED wp delete (the same
+            // wp_plugin_delete/wp_theme_delete fns carrying the unlink-only
+            // symlink interception) — plus the UI's loss-warning preview.
+            let dir = dir_arg("rex repo <domain> delete <dir> [--theme] [--yes]");
+            let st = request("repo.status", json!({ "id": id, "dir": dir, "theme": theme }));
+            let preview = if st["linkTarget"].as_str().is_some() {
+                format!(
+                    "LINKED folder — removes only the link; {} stays untouched.",
+                    st["linkTarget"].as_str().unwrap_or("your folder")
+                )
+            } else if let Some(w) = st["lossWarning"].as_str() {
+                w.to_string()
+            } else {
+                "clean and pushed — nothing at risk.".to_string()
+            };
+            eprintln!("{dir}: {preview}");
+            if !words.iter().any(|w| w == "--yes") {
+                eprint!("delete this {}? [y/N] ", if theme { "theme" } else { "plugin" });
+                let mut a = String::new();
+                if std::io::stdin().read_line(&mut a).is_err()
+                    || !matches!(a.trim(), "y" | "Y" | "yes")
+                {
+                    eprintln!("aborted");
+                    exit(1);
+                }
+            }
+            let key = if theme { "wp.theme.delete" } else { "wp.plugin.delete" };
+            request(key, json!({ "id": id, "names": [dir] }));
+            if !json_output {
+                println!("deleted {dir}");
+            }
+        }
         _ => {
             eprintln!("rex: usage: {REPO_USAGE}");
             exit(1);
@@ -927,7 +1111,7 @@ fn cmd_completions(shell: Option<&str>) {
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
-    const REPO: &str = "list status branches adopt link watch";
+    const REPO: &str = "list status branches adopt link watch add pull fetch checkout push run delete";
     match shell {
         Some("zsh") => println!(
             "#compdef rex\n\

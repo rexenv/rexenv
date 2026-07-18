@@ -55,7 +55,17 @@ rex repo <domain> branches <dir>    rex repo <domain> adopt <dir>
 rex repo <domain> link <path> --name my-plugin
 rex repo <domain> watch start <dir> <script> · watch list · watch stop <dir>
 rex repo tools
+rex repo <domain> add <url> [--branch B] [--name N] [--install]
+rex repo <domain> pull|fetch|push <dir> · checkout <dir> <branch> [--install]
+rex repo <domain> run <dir> <script>
+rex repo <domain> delete <dir> [--yes]
 ```
+
+Job commands (add/pull/fetch/checkout/push/run) HOLD the connection and
+print output at COMPLETION (they say so and tick dots) — live output is in
+the app panel; that's by design, not a hang. `repo delete` prints the same
+loss-warning/linked preview the app confirm shows (even with `--yes`), then
+rides the exact same guarded delete the app uses.
 
 Expect: `adopt`/`link`/`status` mirror exactly what the app panel shows for
 the same asset (one code path); `watch start` says the watcher runs inside

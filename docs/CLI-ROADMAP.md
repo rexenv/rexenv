@@ -124,7 +124,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
 | `rex completions zsh\|bash` | — | ✓ | shipped 16 Jul — static tree, both syntax-checked |
 
-## Repo group (git/asset feature-set — wave 1 SHIPPED 18 Jul 2026; wave 2 = the 🟡 job-shaped rows)
+## Repo group (git/asset feature-set — waves 1+2 SHIPPED 18 Jul 2026; only `watch --tail` live streaming remains, with the 🔴 infra item)
 
 Every backing IPC below shipped with the add-from-Git/asset phases
 (`commands/repo.rs`) — the whole group is dispatch arms + subcommands, no
@@ -148,12 +148,12 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 | `repo adopt <domain> <dir> [--theme]` | `repo_adopt` | ✓ | shipped 18 Jul — prints branch/remote summary after |
 | `repo link <domain> <path> [--name --theme]` | `repo_link` | ✓ | shipped 18 Jul — path canonicalized client-side; symlink verified on disk in the live check |
 | `repo branches <domain> <dir>` | `repo_branches` | ✓ | shipped 18 Jul — current marked `*` |
-| `repo add <domain> <url> [--theme --branch --name]` | `repo_probe` + `repo_add` + poll `repo_job_state` + `logs.tail` | 🟡 | hold the connection (site-create convention); print step transitions + log tail on finish |
-| `repo fetch\|pull\|checkout\|push <domain> <dir> [ref]` | `repo_git_op` + poll + `logs.tail` | 🟡 | same job-poll shape; checkout requires ref |
-| `repo run <domain> <dir> <script>` | `repo_scripts` (validate) + `repo_script_job` + poll + `logs.tail` | 🟡 | one-shot scripts only |
-| `repo install <domain> <dir> [composer\|install\|build]` | `repo_run_step` on the latest job / or a fresh op job | 🟡 | needs a live job with offered steps — or fold into `repo add --install` (run offered steps after clone, still explicit via the flag) |
+| `repo add <domain> <url> [--branch --name --theme --install]` | `repo_add` + poll `repo_job_state` + `logs.tail`; `--install` chains offered steps via `repo_run_step` | ✓ | shipped 18 Jul (wave 2) — live: cloned octocat/Hello-World through dispatch, detect ok, dir on disk |
+| `repo fetch\|pull\|checkout\|push <domain> <dir> [ref] [--install]` | `repo_git_op` + poll + `logs.tail` (+ offered-step chain on `--install`) | ✓ | shipped 18 Jul — live vs a LOCAL bare origin: pull file arrived, push seen at origin, checkout landed on feat |
+| `repo run <domain> <dir> <script>` | `repo_script_job` + poll + `logs.tail` (script validated backend-side) | ✓ | shipped 18 Jul — live: one-shot output present in the completion log |
+| `repo install …` | — | ✓ | resolved as the `--install` flag on `add`/`pull`/`checkout` (explicit consent on the command line; offered steps chain via `repo_run_step`, first failure stops the chain) — no standalone command needed |
 | `repo watch start\|stop\|list <domain> [dir] [script]` | `repo_watch_start` / `repo_watch_stop` (stop resolves the id BY DIR via `repo_watches`) | ✓ | shipped 18 Jul — start prints the runs-inside-the-app/stops-on-quit note; live check proved start→list→stop with zero orphans; `--tail` stays 🔴 streaming |
-| `repo delete <domain> <dir> [--theme --yes]` | `repo_asset_status` (loss preview) + `wp_plugin_delete`/`wp_theme_delete` | 🟡 | alias over the ALREADY-GUARDED delete + the UI's status-driven confirm text; `--yes` prints the warning anyway |
+| `repo delete <domain> <dir> [--theme --yes]` | `repo_asset_status` (loss/linked preview, printed even with `--yes`) → the EXISTING `wp.plugin.delete`/`wp.theme.delete` arms | ✓ | shipped 18 Jul — pure client composition, zero new delete path; guard proven through dispatch (link gone, target byte-intact) |
 | `repo tools [--refresh]` | `repo_tools` | ✓ | shipped 18 Jul — plus a fixed line stating composer is the bundled phar |
 
 ## Infrastructure (enables the above, not user commands)

@@ -129,6 +129,107 @@ fn repo_kind(args: &Value) -> String {
     if args["theme"].as_bool().unwrap_or(false) { "theme".into() } else { "plugin".into() }
 }
 
+fn repo_jobs_state<R, M>(app: &M) -> Result<tauri::State<'_, commands::repo::RepoJobs>>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    app.try_state::<commands::repo::RepoJobs>()
+        .ok_or_else(|| Error::Other("repo job registry not ready".into()))
+}
+
+/// A repo job has SETTLED for CLI purposes: nothing runs and nothing the job
+/// itself would still run is pending. Offered install steps stay `pending`
+/// until the user asks — they never block settling (`--install` runs them as
+/// their own settled-waits).
+fn repo_job_settled(st: &commands::repo::RepoJobState, waiting_for: Option<&str>) -> bool {
+    let status_of = |k: &str| {
+        st.steps.iter().find(|x| x.key == k).map(|x| x.status.clone()).unwrap_or_default()
+    };
+    if let Some(key) = waiting_for {
+        return !matches!(status_of(key).as_str(), "pending" | "running");
+    }
+    match st.op.as_str() {
+        // add = clone → detect in ONE worker; detect settles the job (a
+        // failed/cancelled clone settles it early — detect never runs).
+        "add" => {
+            matches!(status_of("clone").as_str(), "failed" | "cancelled")
+                || !matches!(status_of("detect").as_str(), "pending" | "running")
+        }
+        op => !matches!(status_of(op).as_str(), "pending" | "running"),
+    }
+}
+
+/// Poll a job until settled (no cap — same philosophy as the UI: builds run
+/// long, the connection is held, a Ctrl-C'd client just abandons the reply
+/// while the job finishes independently).
+async fn repo_wait_settled<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+    job_id: &str,
+    waiting_for: Option<&str>,
+) -> Result<commands::repo::RepoJobState> {
+    loop {
+        let jobs = repo_jobs_state(app)?;
+        let st = commands::repo::repo_job_state(jobs, job_id.to_string()).await?;
+        if repo_job_settled(&st, waiting_for) {
+            return Ok(st);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    }
+}
+
+/// Run the job's OFFERED install steps (composer → install → build, in the
+/// job's own order) one at a time; stop at the first failure. The explicit
+/// `--install` consent arrived on the command line.
+async fn repo_run_offered<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+    handle: tauri::AppHandle<R>,
+    job_id: &str,
+) -> Result<commands::repo::RepoJobState> {
+    let mut st = repo_wait_settled(app, job_id, None).await?;
+    let offered: Vec<String> = st
+        .steps
+        .iter()
+        .filter(|x| matches!(x.key.as_str(), "composer" | "install" | "build"))
+        .filter(|x| x.status == "pending")
+        .map(|x| x.key.clone())
+        .collect();
+    for key in offered {
+        let state = app_state(app)?;
+        let jobs = repo_jobs_state(app)?;
+        commands::repo::repo_run_step(
+            handle.clone(),
+            state.clone(),
+            jobs,
+            job_id.to_string(),
+            key.clone(),
+        )
+        .await?;
+        st = repo_wait_settled(app, job_id, Some(&key)).await?;
+        let failed = st
+            .steps
+            .iter()
+            .any(|x| x.key == key && matches!(x.status.as_str(), "failed" | "cancelled"));
+        if failed {
+            break;
+        }
+    }
+    Ok(st)
+}
+
+/// Settled-job reply: final snapshot + the job's flat log (the socket can't
+/// stream events — output arrives at completion, stated honestly by the CLI).
+fn repo_job_reply<R, M>(app: &M, st: &commands::repo::RepoJobState) -> Result<Value>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    let state = app_state(app)?;
+    let log = crate::core::logs::tail(state.platform.as_ref(), &st.log_key, 200)
+        .unwrap_or_default();
+    Ok(json!({ "job": to_value(st)?, "log": log }))
+}
+
 fn repo_watches_state<R, M>(app: &M) -> Result<tauri::State<'_, commands::repo::RepoWatches>>
 where
     R: tauri::Runtime,
@@ -932,6 +1033,82 @@ where
                 .await?;
             Ok(Value::Null)
         }
+        // ── repo group wave 2: job-shaped commands (hold the connection,
+        // poll to terminal, reply with snapshot + the flat job log).
+        "repo.add" => {
+            let state = app_state(app)?;
+            let jobs = repo_jobs_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let url = need_str(&args, "url", cmd)?;
+            let branch = args["branch"].as_str().map(str::to_string);
+            let name = args["name"].as_str().map(str::to_string);
+            let install = args["install"].as_bool().unwrap_or(false);
+            let snap = commands::repo::repo_add(
+                app.app_handle().clone(),
+                state.clone(),
+                jobs,
+                id,
+                kind,
+                url,
+                branch,
+                name,
+            )
+            .await?;
+            let st = if install {
+                repo_run_offered(app, app.app_handle().clone(), &snap.id).await?
+            } else {
+                repo_wait_settled(app, &snap.id, None).await?
+            };
+            repo_job_reply(app, &st)
+        }
+        "repo.op" => {
+            let state = app_state(app)?;
+            let jobs = repo_jobs_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let op = need_str(&args, "op", cmd)?;
+            let target_ref = args["ref"].as_str().map(str::to_string);
+            let install = args["install"].as_bool().unwrap_or(false);
+            let snap = commands::repo::repo_git_op(
+                app.app_handle().clone(),
+                state.clone(),
+                jobs,
+                id,
+                kind,
+                dir,
+                op.clone(),
+                target_ref,
+            )
+            .await?;
+            let st = if install && matches!(op.as_str(), "pull" | "checkout") {
+                repo_run_offered(app, app.app_handle().clone(), &snap.id).await?
+            } else {
+                repo_wait_settled(app, &snap.id, None).await?
+            };
+            repo_job_reply(app, &st)
+        }
+        "repo.run" => {
+            let state = app_state(app)?;
+            let jobs = repo_jobs_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let script = need_str(&args, "script", cmd)?;
+            let snap = commands::repo::repo_script_job(
+                app.app_handle().clone(),
+                state.clone(),
+                jobs,
+                id,
+                kind,
+                dir,
+                script,
+            )
+            .await?;
+            let st = repo_wait_settled(app, &snap.id, Some("script")).await?;
+            repo_job_reply(app, &st)
+        }
         // Default TLD (new sites) — policy stays in core::tld.
         "tld.get" => {
             let state = app_state(app)?;
@@ -1100,7 +1277,8 @@ mod tests {
             "db.import", "php.list", "php.default", "php.installed", "site.php", "site.xdebug",
             "wp.plugins", "wp.plugin.install", "wp.plugin.activate", "wp.themes",
             "wp.theme.install", "wp.users", "wp.user.create", "wp.user.password", "wp.user.role",
-            "repo.list", "repo.watch.start", "repo.watch.stop",
+            "repo.list", "repo.watch.start", "repo.watch.stop", "repo.add", "repo.op",
+            "repo.run",
         ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;
