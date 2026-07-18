@@ -71,6 +71,15 @@ COMMANDS:
   wp <domain> search-replace <from> <to> [--dry-run] [--yes]
   wp <domain> cache-flush | cron run | maintenance [on|off] | core update
   wp <domain> core versions | core switch <version>
+  repo <domain> list [--status]        Git-backed plugins/themes (--status adds live state)
+  repo <domain> status <dir> [--theme] Branch, changes, ahead/behind, remote, link target
+  repo <domain> branches <dir> [--theme]   Local + remote branches
+  repo <domain> adopt <dir> [--theme]  Manage an existing checkout (metadata only)
+  repo <domain> link <path> [--name N] [--theme]
+                Symlink an external folder in (deleting later only unlinks)
+  repo <domain> watch list | watch start <dir> <script> | watch stop <dir>
+                Dev watchers — run inside the app, stop when it quits
+  repo tools [--refresh]               Detected git/node (login-shell resolution)
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
   mail          List caught messages (Mailpit)
@@ -213,6 +222,7 @@ fn main() {
         Some("doctor") => cmd_doctor(json_output),
         Some("php") => cmd_php(&words[1..], json_output),
         Some("wp") => cmd_wp(&words[1..], json_output),
+        Some("repo") => cmd_repo(&words[1..], json_output),
         Some("service") => cmd_service(&words[1..], json_output),
         Some("mail") => cmd_mail(&words[1..], json_output),
         Some("tunnel") => cmd_tunnel(&words[1..], json_output),
@@ -656,6 +666,255 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
     print_site_update(&updated);
 }
 
+const REPO_USAGE: &str =
+    "rex repo <domain> list|status|branches|adopt|link|watch … (or: rex repo tools)";
+
+/// Git/asset assets — wave 1: pure request/response commands. Every call
+/// rides the same commands::repo fns the app UI uses (one code path).
+fn cmd_repo(words: &[String], json_output: bool) {
+    // `rex repo tools` is app-wide, not site-scoped.
+    if words.first().map(String::as_str) == Some("tools") {
+        let refresh = words.iter().any(|w| w == "--refresh");
+        let data = request("repo.tools", json!({ "refresh": refresh }));
+        if json_output {
+            return print_json(&data);
+        }
+        if let Some(rows) = data["tools"].as_array() {
+            for t in rows {
+                if t["ok"] == json!(true) {
+                    println!(
+                        "{:<9} {:<28} {}",
+                        t["name"].as_str().unwrap_or("?"),
+                        t["version"].as_str().unwrap_or("?"),
+                        t["path"].as_str().unwrap_or(""),
+                    );
+                } else {
+                    println!("{:<9} MISSING", t["name"].as_str().unwrap_or("?"));
+                    for line in t["error"].as_str().unwrap_or("").lines() {
+                        println!("          {line}");
+                    }
+                }
+            }
+        }
+        println!("{:<9} bundled composer.phar (runs on each site's PHP)", "composer");
+        return;
+    }
+
+    let site = find_site(words, REPO_USAGE);
+    let id = site["id"].clone();
+    let theme = words.iter().any(|w| w == "--theme");
+    let sub = words.get(1).map(String::as_str);
+    let rest: Vec<&String> =
+        words.iter().skip(2).filter(|w| !w.starts_with("--")).collect();
+    let dir_arg = |usage: &str| -> String {
+        match rest.first() {
+            Some(d) => (*d).clone(),
+            None => {
+                eprintln!("rex: usage: {usage}");
+                exit(1);
+            }
+        }
+    };
+    match sub {
+        Some("list") | None => {
+            let with_status = words.iter().any(|w| w == "--status");
+            let data = request("repo.list", json!({ "id": id, "status": with_status }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(rows) = data["assets"].as_array().filter(|a| !a.is_empty()) else {
+                return println!(
+                    "no git-backed assets (add one in the app, or: rex repo <domain> adopt <dir>)"
+                );
+            };
+            for a in rows {
+                let key =
+                    format!("{}/{}", a["kind"].as_str().unwrap_or("?"), a["dirName"].as_str().unwrap_or("?"));
+                let st = &data["statuses"][&key];
+                let live = if st["error"].as_str().is_some() {
+                    " (status unavailable)".to_string()
+                } else if st.is_object() {
+                    let dirty = st["changed"].as_u64().unwrap_or(0) + st["untracked"].as_u64().unwrap_or(0);
+                    format!(
+                        " {} {}↑{}↓{}",
+                        st["branch"].as_str().unwrap_or("detached"),
+                        if dirty > 0 { format!("{dirty} dirty ") } else { "clean ".into() },
+                        st["ahead"].as_u64().unwrap_or(0),
+                        st["behind"].as_u64().unwrap_or(0),
+                    )
+                } else {
+                    String::new()
+                };
+                println!(
+                    "{:<7} {:<28} {:<8} {}{}",
+                    a["kind"].as_str().unwrap_or("?"),
+                    a["dirName"].as_str().unwrap_or("?"),
+                    a["source"].as_str().unwrap_or("?"),
+                    a["url"].as_str().filter(|u| !u.is_empty()).unwrap_or("(no remote)"),
+                    live,
+                );
+            }
+        }
+        Some("status") => {
+            let dir = dir_arg("rex repo <domain> status <dir> [--theme]");
+            let data = request("repo.status", json!({ "id": id, "dir": dir, "theme": theme }));
+            if json_output {
+                return print_json(&data);
+            }
+            let head = if data["unborn"] == json!(true) {
+                "no commits yet".to_string()
+            } else if data["detached"] == json!(true) {
+                "detached HEAD".to_string()
+            } else {
+                data["branch"].as_str().unwrap_or("?").to_string()
+            };
+            println!("branch     {head}");
+            let (ch, un) =
+                (data["changed"].as_u64().unwrap_or(0), data["untracked"].as_u64().unwrap_or(0));
+            println!(
+                "tree       {}",
+                if ch + un == 0 {
+                    "clean".to_string()
+                } else {
+                    format!("{ch} changed, {un} untracked")
+                }
+            );
+            match data["upstream"].as_str() {
+                Some(up) => println!(
+                    "upstream   {up} (↑{} ↓{})",
+                    data["ahead"].as_u64().unwrap_or(0),
+                    data["behind"].as_u64().unwrap_or(0)
+                ),
+                None => println!("upstream   (none)"),
+            }
+            if let Some(r) = data["remote"].as_str() {
+                println!("remote     {r}");
+            }
+            if let Some(t) = data["linkTarget"].as_str() {
+                println!("linked →   {t}");
+            }
+            if let Some(w) = data["lossWarning"].as_str() {
+                println!("at risk    {w}");
+            }
+        }
+        Some("branches") => {
+            let dir = dir_arg("rex repo <domain> branches <dir> [--theme]");
+            let data = request("repo.branches", json!({ "id": id, "dir": dir, "theme": theme }));
+            if json_output {
+                return print_json(&data);
+            }
+            let current = data["current"].as_str().unwrap_or("");
+            for b in data["local"].as_array().unwrap_or(&vec![]) {
+                let name = b.as_str().unwrap_or("?");
+                println!("{} {name}", if name == current { "*" } else { " " });
+            }
+            for b in data["remote"].as_array().unwrap_or(&vec![]) {
+                println!("  {}", b.as_str().unwrap_or("?"));
+            }
+        }
+        Some("adopt") => {
+            let dir = dir_arg("rex repo <domain> adopt <dir> [--theme]");
+            request("repo.adopt", json!({ "id": id, "dir": dir, "theme": theme }));
+            let st = request("repo.status", json!({ "id": id, "dir": dir, "theme": theme }));
+            if json_output {
+                return print_json(&st);
+            }
+            println!(
+                "adopted {dir} — branch {}, remote {} (metadata only; nothing on disk changed)",
+                st["branch"].as_str().unwrap_or("?"),
+                st["remote"].as_str().unwrap_or("(none)"),
+            );
+        }
+        Some("link") => {
+            let raw = dir_arg("rex repo <domain> link <path> [--name N] [--theme]");
+            let target = match std::fs::canonicalize(&raw) {
+                Ok(t) => t.to_string_lossy().into_owned(),
+                Err(e) => {
+                    eprintln!("rex: {raw}: {e}");
+                    exit(1);
+                }
+            };
+            let name = words
+                .windows(2)
+                .find(|w| w[0] == "--name")
+                .map(|w| w[1].clone());
+            let data = request(
+                "repo.link",
+                json!({ "id": id, "theme": theme, "target": target, "name": name }),
+            );
+            if json_output {
+                return print_json(&data);
+            }
+            println!(
+                "linked as {} ({})",
+                data["dirName"].as_str().unwrap_or("?"),
+                if data["isGit"] == json!(true) { "git checkout" } else { "not a git repo" },
+            );
+            if data["wp"]["kind"] == json!("none") {
+                println!("note: no plugin/theme header at the folder root — WordPress won't list it until one exists");
+            }
+            println!("deleting this asset later removes ONLY the link — the folder stays.");
+        }
+        Some("watch") => match words.get(2).map(String::as_str) {
+            Some("list") | None => {
+                let data = request("repo.watch.list", json!({ "id": id }));
+                if json_output {
+                    return print_json(&data);
+                }
+                match data["watchers"].as_array().filter(|w| !w.is_empty()) {
+                    None => println!("no watchers running"),
+                    Some(rows) => {
+                        for w in rows {
+                            println!(
+                                "{:<28} {:<12} {}{}",
+                                w["dirName"].as_str().unwrap_or("?"),
+                                w["script"].as_str().unwrap_or("?"),
+                                w["status"].as_str().unwrap_or("?"),
+                                w["exit"].as_i64().map(|c| format!(" (code {c})")).unwrap_or_default(),
+                            );
+                        }
+                    }
+                }
+            }
+            Some("start") => {
+                let (Some(dir), Some(script)) = (words.get(3), words.get(4)) else {
+                    eprintln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme]");
+                    exit(1);
+                };
+                let w = request(
+                    "repo.watch.start",
+                    json!({ "id": id, "dir": dir, "script": script, "theme": theme }),
+                );
+                if json_output {
+                    return print_json(&w);
+                }
+                println!(
+                    "watching {dir} — {script} (runs inside the app; output in the app panel \
+                     and logs/repo-*-watch.log; stops when the app quits, never auto-restarts)"
+                );
+            }
+            Some("stop") => {
+                let Some(dir) = words.get(3) else {
+                    eprintln!("rex: usage: rex repo <domain> watch stop <dir> [--theme]");
+                    exit(1);
+                };
+                request("repo.watch.stop", json!({ "id": id, "dir": dir, "theme": theme }));
+                if !json_output {
+                    println!("stopped watching {dir}");
+                }
+            }
+            _ => {
+                eprintln!("rex: usage: rex repo <domain> watch list|start <dir> <script>|stop <dir>");
+                exit(1);
+            }
+        },
+        _ => {
+            eprintln!("rex: usage: {REPO_USAGE}");
+            exit(1);
+        }
+    }
+}
+
 // ── shell completions ────────────────────────────────────────────────────────
 
 /// Static word completion (subcommand tree only — domains change too often to
@@ -663,11 +922,12 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
 /// zsh:  rex completions zsh  > ~/.zfunc/_rex   (with ~/.zfunc in $fpath)
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
-    const TOP: &str = "status start stop restart site wp php db service logs doctor mail tunnel tld blueprints version completions help";
+    const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints version completions help";
     const SITE: &str = "list create delete info open login logs php xdebug server rename domain move env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
+    const REPO: &str = "list status branches adopt link watch";
     match shell {
         Some("zsh") => println!(
             "#compdef rex\n\
@@ -682,8 +942,9 @@ fn cmd_completions(shell: Option<&str>) {
                 mail) compadd list open clear ;;\n\
                 tunnel) compadd list start stop ;;\n\
                 completions) compadd zsh bash ;;\n\
+                repo) compadd tools ;;\n\
                 esac ;;\n\
-             4) case $words[2] in wp) compadd {WPA} ;; esac ;;\n\
+             4) case $words[2] in wp) compadd {WPA} ;; repo) compadd {REPO} ;; esac ;;\n\
              esac"
         ),
         Some("bash") => println!(
@@ -699,8 +960,9 @@ fn cmd_completions(shell: Option<&str>) {
                 mail) COMPREPLY=($(compgen -W \"list open clear\" -- \"$cur\")) ;;\n\
                 tunnel) COMPREPLY=($(compgen -W \"list start stop\" -- \"$cur\")) ;;\n\
                 completions) COMPREPLY=($(compgen -W \"zsh bash\" -- \"$cur\")) ;;\n\
+                repo) COMPREPLY=($(compgen -W \"tools\" -- \"$cur\")) ;;\n\
                 esac ;;\n\
-             3) case ${{COMP_WORDS[1]}} in wp) COMPREPLY=($(compgen -W \"{WPA}\" -- \"$cur\")) ;; esac ;;\n\
+             3) case ${{COMP_WORDS[1]}} in wp) COMPREPLY=($(compgen -W \"{WPA}\" -- \"$cur\")) ;; repo) COMPREPLY=($(compgen -W \"{REPO}\" -- \"$cur\")) ;; esac ;;\n\
              esac\n\
              }}\n\
              complete -F _rex rex"

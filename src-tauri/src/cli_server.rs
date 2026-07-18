@@ -124,6 +124,20 @@ fn to_value<T: serde::Serialize>(v: &T) -> Result<Value> {
     serde_json::to_value(v).map_err(|e| Error::Other(format!("encode response: {e}")))
 }
 
+/// repo group: `--theme` flips the asset kind (plugin is the default).
+fn repo_kind(args: &Value) -> String {
+    if args["theme"].as_bool().unwrap_or(false) { "theme".into() } else { "plugin".into() }
+}
+
+fn repo_watches_state<R, M>(app: &M) -> Result<tauri::State<'_, commands::repo::RepoWatches>>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    app.try_state::<commands::repo::RepoWatches>()
+        .ok_or_else(|| Error::Other("watch registry not ready".into()))
+}
+
 fn need_str(args: &Value, key: &str, cmd: &str) -> Result<String> {
     args[key]
         .as_str()
@@ -804,6 +818,120 @@ where
                 Ok(Value::Null)
             }
         }
+        // ── repo group (git/asset assets) — wave 1: pure request/response.
+        // Every arm rides the SAME commands::repo fns the UI calls; `--theme`
+        // arrives as `theme: true` and flips the kind.
+        "repo.list" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let assets =
+                commands::repo::repo_assets(state.clone(), id.clone()).await?;
+            let mut statuses = serde_json::Map::new();
+            if args["status"].as_bool().unwrap_or(false) {
+                // Per-row live status (the 🟡 flag): N status calls, each the
+                // same fn `repo status` uses. Errors per row, never aborting
+                // the list (a broken checkout still lists).
+                for a in &assets {
+                    let key = format!("{}/{}", a.kind, a.dir_name);
+                    let st = commands::repo::repo_asset_status(
+                        app.app_handle().clone(),
+                        id.clone(),
+                        a.kind.clone(),
+                        a.dir_name.clone(),
+                    )
+                    .await;
+                    statuses.insert(
+                        key,
+                        match st {
+                            Ok(v) => to_value(&v)?,
+                            Err(e) => json!({ "error": e.to_string() }),
+                        },
+                    );
+                }
+            }
+            Ok(json!({ "assets": to_value(&assets)?, "statuses": statuses }))
+        }
+        "repo.status" => {
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let st = commands::repo::repo_asset_status(app.app_handle().clone(), id, kind, dir).await?;
+            Ok(to_value(&st)?)
+        }
+        "repo.branches" => {
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let b = commands::repo::repo_branches(app.app_handle().clone(), id, kind, dir).await?;
+            Ok(to_value(&b)?)
+        }
+        "repo.adopt" => {
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            commands::repo::repo_adopt(app.app_handle().clone(), id, kind, dir).await?;
+            Ok(Value::Null)
+        }
+        "repo.link" => {
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let target = need_str(&args, "target", cmd)?;
+            let name = args["name"].as_str().map(str::to_string);
+            let r = commands::repo::repo_link(app.app_handle().clone(), id, kind, name, target).await?;
+            Ok(to_value(&r)?)
+        }
+        "repo.tools" => {
+            let refresh = args["refresh"].as_bool().unwrap_or(false);
+            let t = commands::repo::repo_tools(app.app_handle().clone(), refresh).await?;
+            Ok(json!({ "tools": to_value(&t)? }))
+        }
+        "repo.watch.list" => {
+            let watches = repo_watches_state(app)?;
+            let id = args["id"].as_str().map(str::to_string);
+            let w = commands::repo::repo_watches(watches, id, None).await?;
+            Ok(json!({ "watchers": to_value(&w)? }))
+        }
+        "repo.watch.start" => {
+            let state = app_state(app)?;
+            let watches = repo_watches_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let script = need_str(&args, "script", cmd)?;
+            let w = commands::repo::repo_watch_start(
+                app.app_handle().clone(),
+                state.clone(),
+                watches,
+                id,
+                kind,
+                dir,
+                script,
+            )
+            .await?;
+            Ok(to_value(&w)?)
+        }
+        "repo.watch.stop" => {
+            // Stop BY DIR (the CLI-friendly key): resolve the watcher id via
+            // the same list fn, then the same stop fn the panel button calls.
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let watches = repo_watches_state(app)?;
+            let all = commands::repo::repo_watches(
+                watches,
+                Some(id.clone()),
+                Some(kind.clone()),
+            )
+            .await?;
+            let Some(w) = all.iter().find(|w| w.dir_name == dir) else {
+                return Err(Error::Other(format!("no watcher running for {dir}")));
+            };
+            let watches = repo_watches_state(app)?;
+            commands::repo::repo_watch_stop(app.app_handle().clone(), state.clone(), watches, w.id.clone())
+                .await?;
+            Ok(Value::Null)
+        }
         // Default TLD (new sites) — policy stays in core::tld.
         "tld.get" => {
             let state = app_state(app)?;
@@ -972,6 +1100,7 @@ mod tests {
             "db.import", "php.list", "php.default", "php.installed", "site.php", "site.xdebug",
             "wp.plugins", "wp.plugin.install", "wp.plugin.activate", "wp.themes",
             "wp.theme.install", "wp.users", "wp.user.create", "wp.user.password", "wp.user.role",
+            "repo.list", "repo.watch.start", "repo.watch.stop",
         ] {
             let reply =
                 handle_request(app.handle(), format!("{{\"cmd\":\"{cmd}\"}}")).await;

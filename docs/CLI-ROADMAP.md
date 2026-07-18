@@ -124,7 +124,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
 | `rex completions zsh\|bash` | — | ✓ | shipped 16 Jul — static tree, both syntax-checked |
 
-## Repo group (git/asset feature-set — recorded 18 Jul 2026, NOT built)
+## Repo group (git/asset feature-set — wave 1 SHIPPED 18 Jul 2026; wave 2 = the 🟡 job-shaped rows)
 
 Every backing IPC below shipped with the add-from-Git/asset phases
 (`commands/repo.rs`) — the whole group is dispatch arms + subcommands, no
@@ -143,18 +143,18 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `repo status <domain> <dir> [--theme]` | `repo_asset_status` | 🟢 | branch/dirty/↑↓/remote/lossWarning/linkTarget in one call |
-| `repo list <domain>` | `repo_assets` (+ `repo_asset_status` per row for a `--status` flag) | 🟢/🟡 | plain list 🟢; per-row status 🟡 (N status calls) |
-| `repo adopt <domain> <dir> [--theme]` | `repo_adopt` | 🟢 | metadata only, matches the "git?" chip |
-| `repo link <domain> <path> [--theme --name]` | `repo_link` | 🟢 | CLI passes an absolute path; all validation backend-side |
-| `repo branches <domain> <dir>` | `repo_branches` | 🟢 | feeds checkout |
+| `repo status <domain> <dir> [--theme]` | `repo_asset_status` | ✓ | shipped 18 Jul (wave 1) — live via `examples/cli_repo_check`: clean→dirty flip read back |
+| `repo list <domain> [--status]` | `repo_assets` (+ per-row `repo_asset_status`) | ✓ | shipped 18 Jul — per-row status errors never abort the list |
+| `repo adopt <domain> <dir> [--theme]` | `repo_adopt` | ✓ | shipped 18 Jul — prints branch/remote summary after |
+| `repo link <domain> <path> [--name --theme]` | `repo_link` | ✓ | shipped 18 Jul — path canonicalized client-side; symlink verified on disk in the live check |
+| `repo branches <domain> <dir>` | `repo_branches` | ✓ | shipped 18 Jul — current marked `*` |
 | `repo add <domain> <url> [--theme --branch --name]` | `repo_probe` + `repo_add` + poll `repo_job_state` + `logs.tail` | 🟡 | hold the connection (site-create convention); print step transitions + log tail on finish |
 | `repo fetch\|pull\|checkout\|push <domain> <dir> [ref]` | `repo_git_op` + poll + `logs.tail` | 🟡 | same job-poll shape; checkout requires ref |
 | `repo run <domain> <dir> <script>` | `repo_scripts` (validate) + `repo_script_job` + poll + `logs.tail` | 🟡 | one-shot scripts only |
 | `repo install <domain> <dir> [composer\|install\|build]` | `repo_run_step` on the latest job / or a fresh op job | 🟡 | needs a live job with offered steps — or fold into `repo add --install` (run offered steps after clone, still explicit via the flag) |
-| `repo watch start\|stop\|list <domain> [dir] [script]` | `repo_watch_start` / `repo_watch_stop` / `repo_watches` | 🟢 | watcher lives IN THE APP (dies with the app — CLI just starts/stops it); `--tail` live output = 🔴 streaming |
+| `repo watch start\|stop\|list <domain> [dir] [script]` | `repo_watch_start` / `repo_watch_stop` (stop resolves the id BY DIR via `repo_watches`) | ✓ | shipped 18 Jul — start prints the runs-inside-the-app/stops-on-quit note; live check proved start→list→stop with zero orphans; `--tail` stays 🔴 streaming |
 | `repo delete <domain> <dir> [--theme --yes]` | `repo_asset_status` (loss preview) + `wp_plugin_delete`/`wp_theme_delete` | 🟡 | alias over the ALREADY-GUARDED delete + the UI's status-driven confirm text; `--yes` prints the warning anyway |
-| `repo tools [--refresh]` | `repo_tools` | 🟢 | git/node resolution from the login-shell snapshot |
+| `repo tools [--refresh]` | `repo_tools` | ✓ | shipped 18 Jul — plus a fixed line stating composer is the bundled phar |
 
 ## Infrastructure (enables the above, not user commands)
 

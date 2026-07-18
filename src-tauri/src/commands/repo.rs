@@ -130,12 +130,12 @@ fn snapshot(entry: &JobEntry) -> RepoJobState {
     entry.state.lock().expect("job state lock").clone()
 }
 
-fn emit_state(app: &AppHandle, entry: &JobEntry) {
+fn emit_state<R: tauri::Runtime>(app: &AppHandle<R>, entry: &JobEntry) {
     let _ = app.emit(&state_event(&entry.id), snapshot(entry));
 }
 
 /// Mutate one step's status (+ optional error), recompute `finished_ok`, emit.
-fn set_step(app: &AppHandle, entry: &JobEntry, key: &str, status: &str, error: Option<String>) {
+fn set_step<R: tauri::Runtime>(app: &AppHandle<R>, entry: &JobEntry, key: &str, status: &str, error: Option<String>) {
     {
         let mut st = entry.state.lock().expect("job state lock");
         if let Some(s) = st.steps.iter_mut().find(|s| s.key == key) {
@@ -150,7 +150,7 @@ fn set_step(app: &AppHandle, entry: &JobEntry, key: &str, status: &str, error: O
 /// A log sink: append to the flat per-target log file + forward each line as
 /// an event. The file was truncated when the add-job started (one file = the
 /// last job's log; the existing log-tail IPC can read it).
-fn make_sink(app: AppHandle, entry: Arc<JobEntry>) -> impl FnMut(&str) {
+fn make_sink<R: tauri::Runtime>(app: AppHandle<R>, entry: Arc<JobEntry>) -> impl FnMut(&str) {
     let mut file =
         std::fs::OpenOptions::new().create(true).append(true).open(&entry.log_path).ok();
     move |line: &str| {
@@ -186,7 +186,7 @@ pub struct RepoProbeResult {
 /// Parse the pasted text + `git ls-remote` it: validates URL AND auth before
 /// any clone, and feeds the branch/tag picker.
 #[tauri::command]
-pub async fn repo_probe(app: AppHandle, url: String) -> Result<RepoProbeResult> {
+pub async fn repo_probe<R: tauri::Runtime>(app: AppHandle<R>, url: String) -> Result<RepoProbeResult> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
@@ -216,8 +216,8 @@ pub async fn repo_probe(app: AppHandle, url: String) -> Result<RepoProbeResult> 
 /// Returns the initial snapshot immediately; progress streams via events.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // flat mirror of the IPC surface
-pub async fn repo_add(
-    app: AppHandle,
+pub async fn repo_add<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     jobs: State<'_, RepoJobs>,
     site_id: String,
@@ -304,7 +304,7 @@ pub async fn repo_add(
     Ok(snapshot(&entry))
 }
 
-fn run_clone_and_detect(app: &AppHandle, entry: &Arc<JobEntry>) {
+fn run_clone_and_detect<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>) {
     let state = app.state::<AppState>();
     let jobs = app.state::<RepoJobs>();
     set_step(app, entry, "clone", "running", None);
@@ -394,8 +394,8 @@ fn run_clone_and_detect(app: &AppHandle, entry: &Arc<JobEntry>) {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn repo_run_step(
-    app: AppHandle,
+pub async fn repo_run_step<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     jobs: State<'_, RepoJobs>,
     job_id: String,
@@ -448,8 +448,8 @@ pub async fn repo_run_step(
     Ok(())
 }
 
-fn run_one_step(
-    app: &AppHandle,
+fn run_one_step<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     entry: &Arc<JobEntry>,
     step_key: &str,
     composer_tools: Option<(PathBuf, PathBuf)>,
@@ -571,8 +571,8 @@ pub async fn repo_assets(
 /// OFFERED on the job (explicit clicks — never auto-run).
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // flat mirror of the IPC surface
-pub async fn repo_git_op(
-    app: AppHandle,
+pub async fn repo_git_op<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     jobs: State<'_, RepoJobs>,
     site_id: String,
@@ -664,7 +664,7 @@ pub async fn repo_git_op(
     Ok(snapshot(&entry))
 }
 
-fn run_git_op_job(app: &AppHandle, entry: &Arc<JobEntry>, op: &str) {
+fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, op: &str) {
     let state = app.state::<AppState>();
     let jobs = app.state::<RepoJobs>();
     set_step(app, entry, op, "running", None);
@@ -743,8 +743,8 @@ pub struct RepoBranches {
 }
 
 #[tauri::command]
-pub async fn repo_branches(
-    app: AppHandle,
+pub async fn repo_branches<R: tauri::Runtime>(
+    app: AppHandle<R>,
     site_id: String,
     kind: String,
     dir_name: String,
@@ -802,8 +802,8 @@ pub async fn repo_scripts(
 /// Run one script ONCE as a streamed job (op == "script"). Watchy or not —
 /// this is the explicit-click "Run"; watching goes through repo_watch_start.
 #[tauri::command]
-pub async fn repo_script_job(
-    app: AppHandle,
+pub async fn repo_script_job<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     jobs: State<'_, RepoJobs>,
     site_id: String,
@@ -879,7 +879,7 @@ pub async fn repo_script_job(
     Ok(snapshot(&entry))
 }
 
-fn run_script_job(app: &AppHandle, entry: &Arc<JobEntry>) {
+fn run_script_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>) {
     let state = app.state::<AppState>();
     let jobs = app.state::<RepoJobs>();
     set_step(app, entry, "script", "running", None);
@@ -968,7 +968,7 @@ pub fn watch_output_event(id: &str) -> String {
 /// Global event: full watch list on every change (footer chip).
 pub const WATCH_GLOBAL_EVENT: &str = "repo-watch-global";
 
-fn emit_watch_global(app: &AppHandle) {
+fn emit_watch_global<R: tauri::Runtime>(app: &AppHandle<R>) {
     let Some(watches) = app.try_state::<RepoWatches>() else {
         return;
     };
@@ -986,8 +986,8 @@ fn emit_watch_global(app: &AppHandle) {
 /// ring + events + `repo-<domain>-<dir>-watch.log` (the Logs tab picks the
 /// flat name up automatically).
 #[tauri::command]
-pub async fn repo_watch_start(
-    app: AppHandle,
+pub async fn repo_watch_start<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     watches: State<'_, RepoWatches>,
     site_id: String,
@@ -1060,7 +1060,7 @@ fn snapshot_watch(entry: &WatchEntry) -> WatchState {
     entry.state.lock().expect("watch state").clone()
 }
 
-fn run_watch(app: &AppHandle, entry: &Arc<WatchEntry>, manager: &str, log_path: &std::path::Path) {
+fn run_watch<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<WatchEntry>, manager: &str, log_path: &std::path::Path) {
     let state = app.state::<AppState>();
     let jobs = app.state::<RepoJobs>();
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(log_path).ok();
@@ -1120,8 +1120,8 @@ fn run_watch(app: &AppHandle, entry: &Arc<WatchEntry>, manager: &str, log_path: 
 
 /// Stop a watcher (kills its whole process group) and drop it from the list.
 #[tauri::command]
-pub async fn repo_watch_stop(
-    app: AppHandle,
+pub async fn repo_watch_stop<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     watches: State<'_, RepoWatches>,
     id: String,
@@ -1194,8 +1194,8 @@ pub struct AssetStatusResult {
 /// Live git status for one managed (or about-to-be-adopted) asset dir.
 /// Local + fast, runs no repo code.
 #[tauri::command]
-pub async fn repo_asset_status(
-    app: AppHandle,
+pub async fn repo_asset_status<R: tauri::Runtime>(
+    app: AppHandle<R>,
     site_id: String,
     kind: String,
     dir_name: String,
@@ -1257,8 +1257,8 @@ pub async fn repo_unmanaged(
 /// Adopt a manually-cloned (or manually-linked) checkout: record provenance
 /// (origin remote + current branch) — metadata only, nothing on disk changes.
 #[tauri::command]
-pub async fn repo_adopt(
-    app: AppHandle,
+pub async fn repo_adopt<R: tauri::Runtime>(
+    app: AppHandle<R>,
     site_id: String,
     kind: String,
     dir_name: String,
@@ -1320,8 +1320,8 @@ pub struct RepoLinkResult {
 /// The folder stays where it is; deleting the asset later removes ONLY the
 /// link (the wp_*_delete interception guarantees that on fs truth).
 #[tauri::command]
-pub async fn repo_link(
-    app: AppHandle,
+pub async fn repo_link<R: tauri::Runtime>(
+    app: AppHandle<R>,
     site_id: String,
     kind: String,
     dir_name: Option<String>,
@@ -1369,7 +1369,7 @@ pub async fn repo_link(
 /// git + node availability for the Git add panel (composer is always the
 /// bundled phar — not listed). `refresh` re-resolves the shell env snapshot.
 #[tauri::command]
-pub async fn repo_tools(app: AppHandle, refresh: bool) -> Result<Vec<ToolStatus>> {
+pub async fn repo_tools<R: tauri::Runtime>(app: AppHandle<R>, refresh: bool) -> Result<Vec<ToolStatus>> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
@@ -1404,7 +1404,7 @@ fn tool_status(name: &str, resolved: Result<devtools::ToolInfo>) -> ToolStatus {
 /// App-exit hook: kill every live job's process group. Deliberately the
 /// OPPOSITE of services-outlive-the-app — an install/build is an interactive
 /// action, not infrastructure; a half-done install heals by re-running.
-pub fn cancel_all_on_exit(app: &AppHandle) {
+pub fn cancel_all_on_exit<R: tauri::Runtime>(app: &AppHandle<R>) {
     let (Some(jobs), Some(state)) = (app.try_state::<RepoJobs>(), app.try_state::<AppState>())
     else {
         return;

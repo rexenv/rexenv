@@ -46,6 +46,25 @@ rex db export qa1.rex                       rex doctor
 rex site delete qa1.rex --yes
 ```
 
+New in this build — the repo group (drives the same git/asset machinery as
+the UI; `--theme` switches from plugins to themes, `--json` everywhere):
+
+```
+rex repo <domain> list --status     rex repo <domain> status <dir>
+rex repo <domain> branches <dir>    rex repo <domain> adopt <dir>
+rex repo <domain> link <path> --name my-plugin
+rex repo <domain> watch start <dir> <script> · watch list · watch stop <dir>
+rex repo tools
+```
+
+Expect: `adopt`/`link`/`status` mirror exactly what the app panel shows for
+the same asset (one code path); `watch start` says the watcher runs inside
+the app and dies with it; a watcher started in the CLI shows up in the
+app's footer chip and vice versa. Deleting git assets from the CLI is the
+existing `rex wp <domain> plugin|theme delete` — it carries the SAME
+unlink-only symlink guard as the UI (worth one CLI delete of a linked
+plugin to confirm: link survives nowhere, folder survives everywhere).
+
 Expect: every command talks to the RUNNING app (quit the app → `rex status`
 must say "open the app first", exit 2 — never start anything itself).
 Destructive commands ask for confirmation; `db reset` makes you TYPE the
