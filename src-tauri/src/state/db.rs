@@ -164,15 +164,35 @@ fn configure(conn: &Connection) -> Result<()> {
 }
 
 /// Apply any migrations newer than the current `user_version`.
+///
+/// Each step's DDL **and** its `user_version` bump commit in ONE transaction, so
+/// a crash or error mid-step rolls back cleanly and the step re-runs safely on
+/// the next open. Several migrations are non-idempotent (`CREATE TABLE` /
+/// `ALTER TABLE ADD COLUMN`): a half-applied step — DDL on disk but the version
+/// not bumped — would otherwise re-run into "table already exists" / "duplicate
+/// column" and brick the database. SQLite has transactional DDL and
+/// `PRAGMA user_version` participates in the enclosing transaction, so the step
+/// is all-or-nothing.
 fn migrate(conn: &Connection) -> Result<()> {
-    let current: i64 =
-        conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    for (i, stmt) in MIGRATIONS.iter().enumerate() {
+    migrate_with(conn, MIGRATIONS)
+}
+
+/// Migration engine over an explicit list — factored out so tests can drive a
+/// deliberately-failing step. See [`migrate`] for the atomicity contract.
+fn migrate_with(conn: &Connection, migrations: &[&str]) -> Result<()> {
+    let current: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    for (i, stmt) in migrations.iter().enumerate() {
         let version = (i + 1) as i64;
         if version > current {
-            conn.execute_batch(stmt)?;
-            // user_version takes a literal, not a bound parameter.
-            conn.pragma_update(None, "user_version", version)?;
+            // Shared-ref transaction (the connection is behind `&`, not `&mut`) —
+            // same pattern as `state::store`. Dropping without `commit` ROLLBACKs,
+            // so any `?` below undoes this step entirely.
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(stmt)?;
+            // user_version takes a literal, not a bound parameter; this write is
+            // transactional and commits atomically with the DDL above.
+            tx.pragma_update(None, "user_version", version)?;
+            tx.commit()?;
         }
     }
     Ok(())
@@ -310,6 +330,51 @@ mod tests {
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .unwrap();
         assert_eq!(version, MIGRATIONS.len() as i64);
+    }
+
+    #[test]
+    fn a_failing_step_rolls_back_atomically_and_reruns_clean_not_bricked() {
+        // Models a crash BETWEEN a migration's DDL and its user_version bump: a
+        // step that errors partway must leave user_version at the PRIOR value
+        // with NONE of its DDL applied, so the next open re-runs the step from
+        // scratch instead of hitting "table already exists" on a half-applied
+        // schema (the brick this fix prevents). A mid-step failure takes the
+        // exact same atomic-rollback path a crash would (an uncommitted txn is
+        // rolled back).
+        let conn = Connection::open_in_memory().unwrap();
+        let has = |t: &str| -> bool {
+            conn.query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [t],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap()
+                > 0
+        };
+
+        // Step 1 is valid; step 2 creates a table THEN fails by re-creating the
+        // step-1 table — the very "already exists" class that would brick.
+        let broken: &[&str] = &[
+            "CREATE TABLE a (x INTEGER);",
+            "CREATE TABLE b (y INTEGER); CREATE TABLE a (dup INTEGER);",
+        ];
+        assert!(migrate_with(&conn, broken).is_err(), "the broken step must surface an error");
+
+        // Step 1 committed; step 2 rolled back ENTIRELY (no table b) and the
+        // version stayed at 1 — the DB is consistent, not half-migrated.
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, 1, "only the fully-applied step bumped the version");
+        assert!(has("a"), "step 1's table survived (its own committed txn)");
+        assert!(!has("b"), "step 2's partial DDL rolled back with the failed step");
+
+        // Recovery: re-running with a FIXED step 2 re-applies it from scratch
+        // (table b never persisted) and reaches version 2 — no manual surgery,
+        // no brick.
+        let fixed: &[&str] = &["CREATE TABLE a (x INTEGER);", "CREATE TABLE b (y INTEGER);"];
+        migrate_with(&conn, fixed).unwrap();
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, 2, "the corrected step re-ran cleanly — DB not bricked");
+        assert!(has("b"), "table b exists after the successful re-run");
     }
 
     #[test]
