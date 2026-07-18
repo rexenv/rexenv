@@ -146,6 +146,16 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   submodules"; a UI button runs `git submodule update --init --recursive` with the hardened flags,
   carrying the same disclosure as the composer/install/build steps) so a submodule repo can "just work"
   via one disclosed click. It's a UX feature, not a security gate.
+- **`542e0c9`** — **B2** uninstall leaves the root `:443` daemon (pre-Homebrew): `run_system_teardown`
+  now boots out **and removes** the edge LaunchDaemon (plist + wrapper + root caddy copy) via the
+  previously-uncalled `EdgeSupervisor::uninstall_command()`, combined with the resolver-file removal into
+  **one** privileged prompt — so "Remove system changes" no longer leaves a KeepAlive root Caddy serving
+  :443. Removed the now-dead `dns::remove_all_resolvers`. Unit test
+  `edge_daemon_uninstall_boots_out_and_removes_plist_wrapper_and_binary` (asserts bootout + `rm` of the
+  three paths). **Live check (needs root/launchd — not unit-testable):** after uninstall,
+  `launchctl print system/dev.rexenv.rexenv.edge` is gone and nothing answers :443
+  (`examples/system_teardown`/`teardown_check`). `cargo test --lib` 334 passed / 0 failed; examples build
+  clean.
 
 ---
 
@@ -181,6 +191,8 @@ port); reject anything with a trailing label. This is my top-priority item — c
 violation, trivial correct fix. I can implement + add a wrapper-content test on your word.
 
 ### B2 · 🟠 security/lifecycle · "Remove system changes" leaves the **root edge LaunchDaemon** installed and serving :443
+**✅ FIXED — commit `542e0c9` (pre-Homebrew; see (A)). Live-check target: `launchctl print system/…edge`
+gone + nothing on :443 after uninstall. Analysis kept for the record.**
 **Where:** `commands/system.rs:362-370` (`uninstall_system`) · `core/setup.rs:50-59`
 (`run_system_teardown`) · `EdgeSupervisor::uninstall_command()` at `platform/macos/mod.rs:995`.
 **Verified:** me (three independent checks).
