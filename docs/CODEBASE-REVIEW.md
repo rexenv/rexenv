@@ -307,6 +307,58 @@ this is robustness/DoS-against-self, not a boundary crossing. Still a missing bo
 **Recommendation:** wrap the reader in `.take(MAX_REQUEST_BYTES)` and put a `tokio::time::timeout`
 around the `read_line`. Cheap; low urgency.
 
+### B18 · 🟠 bug (robustness) · Schema migrations aren't atomic with the `user_version` bump — a crash mid-migration bricks the DB
+**Where:** `state/db.rs:167-179` (`migrate`).
+**Verified:** me.
+```rust
+for (i, stmt) in MIGRATIONS.iter().enumerate() {
+    let version = (i + 1) as i64;
+    if version > current {
+        conn.execute_batch(stmt)?;                       // DDL applied here …
+        conn.pragma_update(None, "user_version", version)?; // … version bumped SEPARATELY
+    }
+}
+```
+**Why it might be a bug:** the DDL and the `user_version` bump are two separate operations with no
+transaction around them, and several migrations are **non-idempotent** (`CREATE TABLE` without `IF
+NOT EXISTS` in v1/v2/v4/v5/v7/v12; `ALTER TABLE … ADD COLUMN` in v3/v6/v10/v11/v13; multi-statement
+batches in v1/v4/v6). If the process dies (power loss, OOM-kill, forced quit) in the window between
+`execute_batch` committing and the `user_version` write — or if a multi-statement batch fails
+partway — the migration's DDL is on disk but `user_version` is unchanged, so on the **next open** the
+same migration re-runs, hits "table already exists" / "duplicate column", `open()` returns Err, and
+the app shows its init-error screen with the DB effectively bricked (recovery needs manual SQLite
+surgery). Aggregated over a Homebrew user base on laptops that sleep/lose power, the tiny per-open
+window becomes a real tail risk.
+**Why it might be intentional:** none — ARCHITECTURE §8 documents `user_version` migrations but says
+nothing about skipping transactions; this reads as an oversight, not a decision.
+**Recommendation:** wrap each migration's `execute_batch` **and** its `user_version` bump in a single
+transaction (`user_version` writes participate in the enclosing transaction in SQLite, so
+commit/rollback is atomic) — either the whole step applies or none of it does, making re-run safe.
+Low-effort, high-value before publish. (I'd add a test that simulates a half-applied step.)
+
+### B19 · 🟡 low/med · `start_mail` resolves the Mailpit binary *under* the services lock (prefetch-before-lock gap)
+**Where:** `commands/mail.rs:36-42` (`start_mail`) → `core/service_manager.rs:624` (`spawn_mailpit` calls
+`binaries::resolve("mailpit", …).await` when `mailpit_bin` is None).
+**Verified:** me.
+**Why it might be a bug:** every other start-command prefetches its binaries UNLOCKED before taking
+`services.lock()` (Start-all, start_database, create/switch/delete site, php version — all confirmed).
+`start_mail` doesn't: it takes the lock, then `spawn_mailpit` resolves the mailpit binary inside it.
+On a **cold cache** — the user toggles the Mailpit row on the Services page before ever running
+Start-all, and the onboarding core-prefetch either didn't run, was dismissed, or failed offline —
+`resolve` DOWNLOADS mailpit while the lock is held, and since status polls need `try_lock` on that
+same lock, the whole UI's status reads freeze until the download finishes. That's the exact
+silent-hang class the prefetch-before-lock invariant (ARCHITECTURE §5) exists to prevent, and
+`start_mail` is absent from that invariant's command list. The `mail.rs:33` comment ("binary
+prefetch happens inside spawn (cache hit after first run)") acknowledges the cold-cache miss.
+**Why it might be intentional:** Mailpit IS in `plan_for_start`, which `prefetch_core_binaries`
+(first-run onboarding) reuses — so in the common path mailpit is already cached and this is a cache
+hit. The window is genuinely narrow. Mailpit is also small, so even a cold download is short-ish.
+**Recommendation:** mirror `start_database` — prefetch mailpit (unlocked) at the top of `start_mail`
+before `services.lock()`, and add `start_mail` to the §5 invariant list. Small, removes the window
+entirely. (Same shape likely applies to the standalone Adminer path and per-site override backend
+spawns, but those are also covered by `plan_for_start`/`plan_for_override` in the common path — worth
+a glance in the next pass.)
+
 ---
 
 ## (C) Cleanup done
@@ -352,6 +404,18 @@ around the `read_line`. Cheap; low urgency.
   symlink *and* hardlink targets to `dest` (absolute/root rejected, `..` allowed only if the result
   still `starts_with(dest)`), closing the write-through-a-planted-symlink path; `publish` (`1651`)
   stages then atomically renames with correct H4 un-poisoning of a crashed partial. No traversal.
+- **State layer is SQL-injection-clean** (verified by me): `state/store.rs` uses bound parameters
+  (`?N` / `params![]`) on every query; the only `format!`-into-SQL is the hardcoded `SITE_COLUMNS`
+  const (no user input). `replace_php_settings`/`replace_site_env` wrap delete+insert in
+  transactions; `set_default_php_version` flips the single default atomically. All `state/db.rs`
+  migrations are static literals. (The migration *atomicity* gap is B18 — a separate concern.)
+- **Lock-poisoning is handled gracefully on the shared state** (verified by me): `state/app.rs` and
+  the DB mutex in `commands/*` never `.lock().unwrap()` — they use `.lock().ok()` /
+  `.map_err(|_| "database lock poisoned")?` / `unwrap_or(default)`, so a panic-poisoned lock
+  degrades instead of cascading app-wide. (Minor inconsistency, ⚪: `commands/repo.rs`,
+  `core/wporg.rs`, `core/repo.rs` use `.lock().expect(...)` on small in-memory job/cache/pgid
+  mutexes — a poisoned one panics that handler; critical sections are panic-free in practice, so
+  low risk. Could adopt the graceful pattern for consistency.)
 
 **Canonical-URL check:** no reference to `https://rexenv.rex.bd` appears in any file reviewed so
 far (the reviewed layer is all internal hosts — `adminer.rexenv.rex`, the `.rex` backbone). The
@@ -378,9 +442,9 @@ build/packaging + docs + frontend still need the URL-consistency sweep (that age
 | binaries / downloads | `binaries` `downloads` | ◐ extraction+publish guards verified by me (zip-slip-safe); `downloads` + rest of `binaries` NOT reviewed |
 | service lifecycle | `service_manager` `services` `ports` `monitor` `stack_guard` `site_metrics` | ✗ agent died — NOT reviewed (only the env-emit line in `services` seen) |
 | sites / WP / env / tunnels | `sites` `site_env` `wordpress` `wp_login` `wp_tunnel` `tunnels` `wporg` `blueprints` | ◐ `site_env` fully verified by me (robust); URL parsing in `sites`; rest NOT reviewed |
-| CLI server + commands | `cli_server` + `commands/*` | ◐ `serve`/framing loop verified by me (B17); `dispatch` + `commands/*` NOT reviewed |
+| CLI server + commands | `cli_server` + `commands/*` | ◐ `cli_server` framing/parse/dispatch-routing verified by me (B17); prefetch-before-lock invariant checked across `commands/*` (B19 the one gap); `mail`/`downloads` read; other `commands/*` handler bodies NOT fully read |
 | DB engines + override servers | `db` `database` `mariadb` `postgres` `redis` `php` `apache` `frankenphp` `mail` | ◐ env-emit paths in `apache`/`frankenphp` verified by me; engines NOT reviewed |
-| state / migrations | `state/*` | ✗ agent died — NOT reviewed |
+| state / migrations | `state/*` | ✓ `db`/`store`/`app` verified by me (B18 migration atomicity; else clean); `models` skimmed |
 | frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ✗ agent died — NOT reviewed |
 | frontend (components/lib) | `components/*` `lib/*` | ✗ agent died — NOT reviewed |
 | CLI crate + build/packaging | `cli/*` `scripts` `build.rs` `tauri.conf.json` `capabilities` | ✗ agent died — NOT reviewed |
