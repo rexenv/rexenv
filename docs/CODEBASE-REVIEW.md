@@ -632,6 +632,17 @@ see (D)).
   (`a.trim() == domain`). The socket read has no timeout/size bound — intentional ("mutating commands
   run for minutes; the app closes the connection when done"), and it's the client reading its own
   same-user app's reply, so B17's concern doesn't really apply here.
+- **Frontend high-risk patterns are clean** (my spot-check, since the routes agent failed): **no
+  `dangerouslySetInnerHTML`/`innerHTML`/`eval`** anywhere (no XSS surface for backend/tunnel strings);
+  `mock.ts` is gated by `isTauri()` (`__TAURI_INTERNALS__` present in a real build → always real
+  `invoke`; mock never returns in prod); `DevGitPanel` is routed only under `import.meta.env.DEV`
+  (unreachable in prod); no `setInterval` leaks (polling is TanStack Query `refetchInterval`,
+  auto-cleaned); the Tauri event wrappers (`onServiceHealth`/`onTerminalOutput`/`onDownloadProgress`)
+  return unlisten fns and their consumers clean up correctly — `App.tsx`'s `HealthWatch` even handles
+  the async-listen-vs-unmount race (`disposed` flag + immediate unlisten). ⚪ nit: `mock.ts` +
+  `DevGitPanel` are imported unconditionally, so unless Rollup tree-shakes the dev-only branch they add
+  dead weight to the prod bundle. (Component-level query-invalidation / useEffect-dep review of the big
+  screens — WordPressManager/SiteDetail/Settings — is still pending; a reviewer agent is on it.)
 
 **Pass-2 nits / cleanup candidates** (NOT changed this pass — everything to (B)/(D) per your instruction):
 - **Dead-code candidates** (unused `pub fn`, defined + unit-tested, zero call sites — some may be reserved
@@ -676,7 +687,7 @@ build/packaging + docs + frontend still need the URL-consistency sweep (that age
 | CLI server + commands | `cli_server` + `commands/*` | ◐ `cli_server` framing/parse/dispatch-routing verified by me (B17); prefetch-before-lock invariant checked across `commands/*` (B19 gap); `mail`/`downloads` read; other `commands/*` handler bodies NOT fully read |
 | DB engines + override servers | `db` `database` `mariadb` `postgres` `redis` `php` `apache` `frankenphp` `mail` | ✓ reviewed (agent) + datadir-cleanup/bootstrap verified by me (B22/B23/B25/B26) |
 | state / migrations | `state/*` | ✓ `db`/`store`/`app` verified by me (B18 migration atomicity; else clean); `models` skimmed |
-| frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ✗ agent returned degenerate/injection output (0 tool-uses), discarded — NOT reviewed |
+| frontend (routes/ipc/types) | `lib/ipc` `types` `routes/*` `App` | ◐ high-risk patterns spot-checked by me (XSS/mock-gating/dev-panel/listener-cleanup all clean); `App`/`ipc` read; per-route query-invalidation NOT fully read (routes agent failed) |
 | frontend (components/lib) | `components/*` `lib/*` | ⧗ agent in progress |
 | CLI crate (`rex`) | `cli/src/main.rs` | ✓ verified by me (robust; matches contract — no new findings) |
 | build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ⧗ agent in progress |
