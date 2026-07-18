@@ -520,12 +520,35 @@ impl ProcessSupervisor for MacosSupervisor {
 ///    the last resort, aimed at the master we resolved, never a worker.
 fn free_port_command(app: Option<&str>, exe_path: &str, pid: u32) -> String {
     match app {
-        Some(app) if app != "rexenv" => format!("osascript -e 'quit app \"{app}\"'"),
-        _ => match brew_formula(exe_path) {
+        // Only build the "quit app" osascript when the name is a safe literal.
+        // The name is derived from the holder's OWN path segments (a same-user
+        // squatter can craft them) and this text is copy-pasted by the user, so
+        // an unsafe name must not reach the shell — it falls through to the
+        // brew/pid tiers, ending at `sudo kill <pid>` (pid is a u32, always safe).
+        Some(app) if app != "rexenv" && safe_cmd_token(app, true) => {
+            format!("osascript -e 'quit app \"{app}\"'")
+        }
+        _ => match brew_formula(exe_path).filter(|f| safe_cmd_token(f, false)) {
             Some(f) => format!("brew services stop {f} || sudo brew services stop {f}"),
             None => format!("sudo kill {pid}"),
         },
     }
+}
+
+/// True if `s` is safe to embed literally in a suggested copy-paste command — an
+/// allowlist, because the name comes from the port holder's path segments
+/// (attacker-influenceable for a same-user squatter) and lands in text the user
+/// is told to run (one tier includes `sudo`). `allow_space` is set for the
+/// AppleScript app name — it's inside `"…"` so spaces are legal ("Docker
+/// Desktop") — and clear for a brew formula, which is a bare shell token a space
+/// would split. Excludes the break-out chars (`"` `'` `` ` `` `$` `;` `\` …).
+fn safe_cmd_token(s: &str, allow_space: bool) -> bool {
+    !s.is_empty()
+        && s.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '.' | '_' | '+' | '@' | '-')
+                || (allow_space && c == ' ')
+        })
 }
 
 /// Homebrew formula name from an executable path, if it lives in a brew prefix:
@@ -1663,6 +1686,22 @@ mod tests {
         assert_eq!(free_port_command(None, "/usr/sbin/httpd", 99), "sudo kill 99");
         // A non-brew /opt path must not be mistaken for a formula.
         assert_eq!(free_port_command(None, "/opt/custom/opt/thing/bin/x", 3), "sudo kill 3");
+        // A legit spaced app name is still quoted safely in the AppleScript.
+        assert_eq!(
+            free_port_command(Some("Docker Desktop"), "/Applications/Docker.app/x", 8),
+            "osascript -e 'quit app \"Docker Desktop\"'"
+        );
+        // Injection guard: a crafted app name (quote/semicolon) must NOT reach the
+        // shell — it degrades to the safe `sudo kill <pid>` tier.
+        assert_eq!(
+            free_port_command(Some("evil\";reboot #"), "/Applications/Evil.app/x", 42),
+            "sudo kill 42"
+        );
+        // Same for a crafted brew-formula path segment.
+        assert_eq!(
+            free_port_command(None, "/opt/homebrew/Cellar/ev;il/1.0/bin/x", 43),
+            "sudo kill 43"
+        );
     }
 
     #[test]
