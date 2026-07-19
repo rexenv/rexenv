@@ -441,6 +441,9 @@ paths" isn't actually satisfied for the `'` case, and this is root context.
 `'` → `'\''`). Consistency + belt-and-suspenders on a root path.
 
 ### B13 · ⚪ nit · Fixed CA expiry cliff (2024→2034) while leaves are now-anchored
+**⏸ DEFERRED (by constraint).** Technically safe (affects only newly-minted CAs; existing installs
+untouched), but it lives in `core/ssl.rs` CA generation — the cert path under a standing "don't
+touch" rule. Left deferred at your direction; the 2034 cliff is years off and hits nobody near-term.
 **Where:** `core/ssl.rs:71-72` (`not_before/​not_after = date_time_ymd(2024/2034,1,1)`).
 **Verified:** me.
 A CA minted today still expires 2034-01-01, so leaves issued in late 2033 can outlive the CA, and
@@ -455,7 +458,11 @@ In a release build any local process on `:1420` could frame the passwordless Adm
 (clickjacking, local-only). **Recommendation:** emit the dev origin only under
 `#[cfg(debug_assertions)]`.
 
-### B15 · ⚪ nit · `edge_answers_as_ours` falls back to `Server: caddy`
+### B15 · ⚪ nit → 🟠 RECLASSIFIED design-sensitive · `edge_answers_as_ours` falls back to `Server: caddy`
+**↪ RECLASSIFIED to lifecycle/design-sensitive (Category 2).** Not a safe nit: it's edge-ownership
+detection (M1 invariant + adoption). Dropping the fallback trades a false-positive (mistaking a
+foreign Caddy) for a false-negative (failing to recognize a pre-marker surviving edge → double-edge
+/ port conflict). Gets the plan-first treatment, not a quick pass.
 **Where:** `core/proxy.rs:74-79`.
 **Verified:** agent.
 A developer's own Caddy on loopback:443 emits `Server: Caddy` and could be mis-identified as
@@ -798,6 +805,10 @@ one `tauri.conf.json` change, the notarization env vars, why no entitlements are
 helper-binary gotchas, and the verification checklist) — build unchanged until you have the cert wired.
 
 ### B33 · 🟡 low · Debug-PHP download host is on a different domain (`dl.rexenv.dev`) than canonical `rexenv.rex.bd`
+**⏸ DEFERRED (needs a decision, not a guess).** The constant is an inert placeholder ("filled at
+hosting time") — `manifest()` won't surface the debug-PHP spec until its checksums are pinned (when
+the Xdebug build ships). No safe consistency fix exists without the real host, so the host choice is
+deferred to hosting time at your direction.
 **Where:** `src-tauri/src/core/binaries.rs:40` (`PHP_DEBUG_BASE_URL = "https://dl.rexenv.dev/php-debug"`).
 **Verified:** agent (I confirmed the CSP/signing siblings; this one via the agent's line ref + the
 xdebug-build being a documented blocked item).
