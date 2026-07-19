@@ -23,11 +23,25 @@ use crate::state::app::AppState;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::Path;
+use std::time::Duration;
 use tauri::Manager;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 
 pub const SOCKET_FILE: &str = "rexenv-cli.sock";
+
+/// Cap on one request line. A CLI request is a single JSON command line whose
+/// fields are short strings (imports reference file PATHS, never inline blobs),
+/// so this is orders of magnitude above any real request — it only bounds a
+/// same-user client that streams bytes without a newline (memory). B17.
+const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
+
+/// Deadline for the request LINE to arrive. The client builds the JSON in memory
+/// and writes it in one `write_all` over a local unix socket (sub-ms), so this
+/// never cuts a legitimate request — it bounds a client that connects and never
+/// sends (a leaked task). The handler runs AFTER this, untimed, so long commands
+/// are unaffected. B17.
+const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// One request line.
 #[derive(Debug, Deserialize)]
@@ -92,15 +106,32 @@ where
         let handler = handler.clone();
         tokio::spawn(async move {
             let (read, mut write) = stream.into_split();
-            let mut line = String::new();
-            if BufReader::new(read).read_line(&mut line).await.is_ok()
-                && !line.trim().is_empty()
+            if let Some(line) =
+                read_request_line(read, MAX_REQUEST_BYTES, REQUEST_READ_TIMEOUT).await
             {
                 let response = handler(line).await;
                 let _ = write.write_all(response.as_bytes()).await;
                 let _ = write.write_all(b"\n").await;
             }
         });
+    }
+}
+
+/// Read one request line, bounded by `max_bytes` (memory) and `timeout` (a
+/// client that connects and never sends). Returns the line, or `None` when it's
+/// empty, over-timeout, or a read error — the handler is skipped in every case.
+/// Only the read is bounded; the handler runs afterwards untimed (B17).
+async fn read_request_line(
+    read: impl AsyncRead + Unpin,
+    max_bytes: u64,
+    timeout: Duration,
+) -> Option<String> {
+    let mut line = String::new();
+    let mut reader = BufReader::new(read.take(max_bytes));
+    let fut = reader.read_line(&mut line);
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(Ok(_)) if !line.trim().is_empty() => Some(line),
+        _ => None,
     }
 }
 
@@ -1262,6 +1293,25 @@ mod tests {
         BufReader::new(read).read_line(&mut line).await.expect("read");
         assert_eq!(line.trim(), "echo:{\"cmd\":\"x\"}");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn read_request_line_bounds_size_and_timeout() {
+        // A normal request fits well under the cap and round-trips intact.
+        let ok = read_request_line(&b"{\"cmd\":\"x\"}\n"[..], 1024, Duration::from_secs(5)).await;
+        assert_eq!(ok.as_deref().map(str::trim), Some("{\"cmd\":\"x\"}"));
+
+        // A long line with no newline is bounded to the cap (memory guard) — it
+        // never grows past max_bytes even though 100 bytes were offered.
+        let long = vec![b'a'; 100];
+        let capped = read_request_line(&long[..], 8, Duration::from_secs(5)).await;
+        assert_eq!(capped.as_deref().map(str::len), Some(8), "bounded to the cap");
+
+        // A peer that connects but never sends times out to None (no leaked
+        // task) — the handler is never reached.
+        let (a, _b) = tokio::net::UnixStream::pair().expect("pair");
+        let timed = read_request_line(a, 1024, Duration::from_millis(50)).await;
+        assert!(timed.is_none(), "idle connection times out to None");
     }
 
     #[tokio::test]
