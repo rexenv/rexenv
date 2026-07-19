@@ -81,6 +81,17 @@ fn syntax_error(tld: &str) -> Option<String> {
     None
 }
 
+/// True if `tld` is a syntactically valid TLD label (1–63 lowercase ASCII
+/// letters) — the exact shape every rexenv-created resolver filename has, since
+/// creation always passes [`ensure_allowed`] (→ [`syntax_error`]). Used to bound
+/// a filesystem sweep of `/etc/resolver` before the names reach a privileged
+/// `rm`: a scanned filename is untrusted for shell-safety, and this is the
+/// stable syntax property (independent of the shadow/block POLICY, which can
+/// change over time). See `core::dns::tlds_matching_signature`.
+pub fn is_valid_label(tld: &str) -> bool {
+    syntax_error(tld).is_none()
+}
+
 /// The refusal reason for `tld`, or `None` when it's allowed. Checks syntax,
 /// the 2-letter (country-code) rule, and the hard-block list. The safe set is
 /// never blocked — the backbone and `.test` must always stay usable.
@@ -134,6 +145,19 @@ mod tests {
             assert!(p.allowed, ".{t} must be allowed");
             assert!(!p.warn, ".{t} is in the safe set — no shadow warning");
             assert!(ensure_allowed(t).is_ok());
+        }
+    }
+
+    #[test]
+    fn is_valid_label_matches_the_resolver_filename_shape() {
+        // The exact shape rexenv ever writes as a resolver filename.
+        for ok in ["rex", "test", "a", &"a".repeat(63)] {
+            assert!(is_valid_label(ok), "{ok} must be a valid label");
+        }
+        // Anything a privileged `rm` sweep must NOT trust from a scanned name:
+        // empty, over-length, uppercase, digits, and shell metachars / space.
+        for bad in ["", &"a".repeat(64), "UP", "x9", "a b", "evil;reboot", "back`tick`", "a.b"] {
+            assert!(!is_valid_label(bad), "{bad:?} must be rejected");
         }
     }
 

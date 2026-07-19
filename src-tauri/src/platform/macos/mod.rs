@@ -83,7 +83,10 @@ impl DnsManager for MacosDns {
     fn uninstall_command(&self, tlds: &[String]) -> String {
         // Remove every listed resolver file, then ONE DNS-cache flush, so the
         // TLDs stop resolving immediately (mirror of install_command's flush).
-        // `tld` values are policy-validated labels ([a-z]+), never raw input.
+        // Every `tld` here is an [a-z]{1,63} label: install-time values pass
+        // `tld::ensure_allowed`, and the teardown sweep filters scanned filenames
+        // through `tld::is_valid_label` (core::dns::tlds_matching_signature), so
+        // no shell-metachar name can reach this root `rm` (B10).
         let files = tlds
             .iter()
             .map(|t| self.resolver_path(t).display().to_string())

@@ -286,6 +286,14 @@ pub fn ensure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<
 /// the same ownership test as service adoption's port+marker). Pure directory
 /// scan, factored out of [`installed_tlds`] for testability. Non-UTF8 names
 /// and unreadable/foreign files are skipped.
+///
+/// The name is ALSO required to be a syntactically valid TLD label
+/// (`tld::is_valid_label`, `[a-z]{1,63}`): every resolver file rexenv writes has
+/// that shape (creation passes `ensure_allowed`), so this excludes nothing of
+/// ours, but it means a scanned filename that ISN'T ours-by-construction can
+/// never reach the privileged `rm` in `uninstall_command` — a foreign file with
+/// a shell-metachar name + our signature is dropped here, not interpolated into
+/// a root shell (B10).
 fn tlds_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -294,6 +302,7 @@ fn tlds_matching_signature(dir: &std::path::Path, signature: &str) -> Vec<String
         .flatten()
         .filter(|e| std::fs::read_to_string(e.path()).ok().as_deref() == Some(signature))
         .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|name| crate::core::tld::is_valid_label(name))
         .collect();
     tlds.sort();
     tlds
@@ -447,7 +456,15 @@ mod tests {
         // same-nameserver file with extra options — neither is ours.
         std::fs::write(dir.join("docker"), "nameserver 127.0.0.1\nport 19999\n").unwrap();
         std::fs::write(dir.join("dev"), "nameserver 127.0.0.1\n").unwrap();
+        // Files with OUR signature but a name that isn't a valid TLD label
+        // ([a-z]{1,63}) can't be ours-by-construction — and must never reach the
+        // privileged `rm`. Shell-metachar / space / uppercase / digit names are
+        // dropped here (B10). rexenv could never have created any of these.
+        for bad in ["evil;reboot", "a b", "UP", "x9", "back`tick`"] {
+            std::fs::write(dir.join(bad), &sig).unwrap();
+        }
 
+        // Only the two valid-label files with our signature survive the sweep.
         assert_eq!(tlds_matching_signature(&dir, &sig), vec!["rex", "test"]);
         // Missing dir → empty, not an error (fresh machine, nothing installed).
         assert!(tlds_matching_signature(&dir.join("nope"), &sig).is_empty());
