@@ -164,6 +164,60 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `wait_ok_within_reports_success_and_failure`. `cargo test --lib` 336 passed / 0 failed; examples build
   clean. **This completes all four pre-Homebrew security/availability items (B3, B4, B2, B5).**
 
+### Bucket 2 — cheap-and-safe hardening (optional, post-security pass)
+
+After the four pre-Homebrew items, you triaged the remaining (B) findings: MUST-fix was empty
+(the exploitable set was B1/B3/B4/B2/B5, all done), and this cheap-and-safe batch — small,
+non-behavioral, no design decision — was done one-at-a-time (plan + diff + test + your verify),
+NOT batched, with four security-adjacent items given extra care. Group A (genuinely clean) first,
+then Group B (security/robustness-adjacent).
+
+- **`c030021`** — **B9** `repo_add` now runs `git_ref` through `repo::validate_ref` (matching the
+  checkout path), so everything reaching git argv is gated at parse time. `validate_ref` returns the
+  ref unchanged on success, so valid branch/tag names are untouched; not exploitable today (the ref
+  is `--branch`'s value and `clone_args` puts url/dest after `--`). Consistency + defense-in-depth;
+  covered by the existing `ref_validation_blocks_argv_tricks`.
+- **`e9f186d`** — **B11** allowlist app/formula names in the "free the port" copy-paste text via
+  `safe_cmd_token` (`[A-Za-z0-9._+@-]`, space only for the quoted AppleScript app name). rexenv never
+  executes these strings, but a crafted holder path could inject into a command the user pastes (one
+  tier has `sudo`); an unsafe name now degrades to the safe `sudo kill <pid>` (u32). Every real
+  holder passes unchanged. Tests extended.
+- **`a8007d3`** — **B14** the Vite dev origin (`http://localhost:1420`) is now a
+  `#[cfg(debug_assertions)]`-only frame-ancestor, rendered into the Adminer wrapper per build profile
+  (`wrapper_index_php`). Release builds omit it, so a shipped Adminer isn't frameable by a local
+  process on :1420. No regression: the packaged app frames from `tauri://localhost` (still allowed).
+  Test rewritten cfg-aware; verified under both `cargo test` and `cargo test --release`.
+- **`e3e822d`** — **B27** `tree_pids` factored into a pure `walk_tree(root, children_of)` guarded by
+  a `HashSet` visited-set, so a parent-pid cycle (PID recycling) terminates instead of hanging the
+  metrics thread. No change on real acyclic trees (one parent per process → guard never rejects).
+  Tests `walk_tree_bounds_a_parent_pid_cycle` + `walk_tree_covers_an_acyclic_tree_once`.
+- **`51b8b48`** — **B8** Adminer proxy URL build extracted to `proxy_url`, which refuses any
+  `path_and_query` not starting with `/` before constructing the request — closing the latent SSRF
+  where `@evil.com/` would parse the host as `evil.com` (with the cert-check-disabled, loopback-pinned
+  client). Not reachable today (path is the app's own `rexdb://` uri). Legit paths (incl. `//path`,
+  which stays on the pinned host) are unaffected. Test `proxy_url_requires_an_absolute_path_and_pins_the_host`.
+- **`663d7e3`** — **B10** teardown sweep now filters scanned `/etc/resolver` filenames through
+  `tld::is_valid_label` (`[a-z]{1,63}`, the stable syntax rule — not the mutable block policy) before
+  they reach the root `rm` in `uninstall_command` — making that function's previously-false "[a-z]+
+  validated" comment true. Every resolver file rexenv writes passes `ensure_allowed` → so nothing of
+  ours is excluded; only foreign/hand-planted metachar names (which need root to plant anyway) are
+  dropped. Root path — done with extra care (what's filtered / no legit TLD excluded / can't break
+  cleanup all proven). Tests: `is_valid_label` shape + the sweep dropping metachar names.
+- **`b70327e`** — **B17** CLI socket read bounded by size + timeout via `read_request_line`
+  (`take(1 MiB)` + 30s). Bounds a same-user client that streams without a newline (memory) or connects
+  and never sends (leaked task). The timeout wraps only the request-line read; the handler runs after,
+  untimed, so long commands are unaffected. Happy path unchanged (round-trip test still green). Test
+  `read_request_line_bounds_size_and_timeout`.
+- **`e1765a2`** — **B36** download loop now aborts once bytes written exceed a `download_ceiling`
+  (declared length +25% +8 MiB, or a 2 GiB cap when undeclared), so a mirror that lies about/omits
+  `Content-Length` can't fill the disk before the post-EOF checksum runs. The client does no
+  decompression, so an honest transfer streams exactly `Content-Length` and never approaches the
+  slack — no false-trip. Disk-safety valve only; the pinned checksum stays the authoritative integrity
+  gate. Test `download_ceiling_allows_slack_and_caps_unknown_length`.
+
+All eight: own commit, tests green throughout (`cargo test --lib` 336 → 342, examples build clean,
+zero warnings). None needed a design decision or risked intentional behavior.
+
 ---
 
 ## (B) Found but NOT fixed — needs your decision
@@ -318,6 +372,7 @@ when their pipe breaks).
 Behavioral (process lifecycle) → your call.
 
 ### B8 · 🟡 security (defense-in-depth) · Adminer proxy builds the upstream URL by string concat + accepts invalid certs
+**✅ FIXED — commit `51b8b48` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `core/adminer.rs:239` (`Url::parse(format!("https://{ADMINER_HOST}{path_and_query}"))`)
 with the client at `192-208` using `.danger_accept_invalid_certs(true)`.
 **Verified:** me (code shape) — **not currently reachable** (see below).
@@ -332,6 +387,7 @@ raw concat feeding a cert-check-disabled client.
 otherwise), or set path/query via `Url` setters instead of concatenation. Low urgency.
 
 ### B9 · 🟡 security (defense-in-depth) · `repo_add` stores/passes `git_ref` without `validate_ref`
+**✅ FIXED — commit `c030021` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `commands/repo.rs:226,258` (per agent) — the checkout path validates
 (`commands/repo.rs:588` + `repo.rs:909`), the add path does not.
 **Verified:** agent (I have not re-read `commands/repo.rs`).
@@ -343,6 +399,7 @@ is positional, so a `-`-leading ref can't become a flag), but it violates the mo
 the checkout path. Consistency + defense-in-depth.
 
 ### B10 · 🟡 security (defense-in-depth) · Filesystem-scanned TLD names reach a privileged `rm` unvalidated
+**✅ FIXED — commit `663d7e3` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `core/dns.rs:289-325` (`installed_tlds`/`tlds_matching_signature` →
 `remove_all_resolvers`) feeding `platform.dns().uninstall_command(&tlds)`; the macOS
 `uninstall_command` (`platform/macos/mod.rs:83`) interpolates names **unquoted** into a root
@@ -360,6 +417,7 @@ trusted.
 privileged uninstall, or single-quote them in `uninstall_command`. Makes the stated invariant real.
 
 ### B11 · 🟡 low · Copy-paste "free the port" commands embed attacker-influenceable names, including `sudo`
+**✅ FIXED — commit `e9f186d` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `platform/macos/mod.rs:521-543` (`free_port_command`, `brew_formula`, `attribute_holder`).
 **Verified:** agent.
 **Why it might be a bug:** the suggested-fix text builds `osascript -e 'quit app "{app}"'` and
@@ -390,6 +448,7 @@ everything breaks at the 2034 cliff regardless of install date. **Recommendation
 CA window (e.g. `now-1d … now+10y`) like the leaves.
 
 ### B14 · ⚪ nit · Prod Adminer CSP bakes in the Vite dev origin
+**✅ FIXED — commit `a8007d3` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `core/adminer.rs:134-135` — `frame-ancestors … http://localhost:1420`.
 **Verified:** me.
 In a release build any local process on `:1420` could frame the passwordless Adminer vhost
@@ -421,6 +480,7 @@ All `agent`-sourced, lower priority; listed so nothing's lost:
   theoretical; needs same-user attacker + a worth-stealing root socket.
 
 ### B17 · 🟡 low · CLI socket reads the request line unbounded, with no read timeout
+**✅ FIXED — commit `b70327e` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `cli_server.rs:88-104` (`serve`).
 **Verified:** me.
 Each connection is handled in its own `tokio::spawn` (good — a slow client can't block the accept
@@ -644,6 +704,7 @@ on emission the way `site_env::escape_value` does. The one config-bound field th
 defense-in-depth.
 
 ### B27 · 🟡 low · `monitor::tree_pids` has no visited-set/depth bound → a parent-pid cycle hangs the metrics thread
+**✅ FIXED — commit `e3e822d` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `core/monitor.rs:62-73`.
 **Verified:** me.
 **Why it might be a bug:** the BFS parent→child walk pushes every child onto the frontier with no
@@ -791,6 +852,7 @@ not) before `publish`; optionally make `extract_tar_gz_tree_filtered` error on a
 matched zero entries (also catches a silently-dropped httpd module `.so`).
 
 ### B36 · 🟡 low · Streamed download has no size ceiling — a lying `Content-Length` can exhaust disk before the checksum runs
+**✅ FIXED — commit `e1765a2` (cheap-and-safe pass, Bucket 2; see (A)). Analysis kept for the record.**
 **Where:** `core/binaries.rs:1394-1418` (chunk-append loop; checksum verified only after EOF at `:1419`).
 **Verified:** agent.
 **Why it might be a bug:** the loop appends every chunk with no bound relative to `Content-Length`, and
