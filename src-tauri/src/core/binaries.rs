@@ -1281,6 +1281,27 @@ fn status_is_transient(status: reqwest::StatusCode) -> bool {
 /// stall guard is what we actually want.
 const CHUNK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Absolute ceiling on a download whose length the server never declares — above
+/// the largest real artifact (the ~600 MB DB/PHP trees), so a legit download
+/// never reaches it.
+const DOWNLOAD_UNKNOWN_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024; // 2 GiB
+
+/// Hard ceiling on bytes written for one download, so a mirror that lies about
+/// (or omits) `Content-Length` can't fill the disk before the post-EOF checksum
+/// runs. A declared length is allowed plus generous slack (+25% +8 MiB): the
+/// client does no response decompression, so an honest transfer streams exactly
+/// `Content-Length` bytes and never approaches the slack — while a length that
+/// under-claims by a wide margin is still caught early. An undeclared length
+/// falls back to [`DOWNLOAD_UNKNOWN_MAX_BYTES`]. This is a disk-safety valve
+/// ONLY — the pinned checksum stays the authoritative integrity gate for any
+/// download that completes within the ceiling (B36).
+fn download_ceiling(total: Option<u64>) -> u64 {
+    match total {
+        Some(t) => t.saturating_add(t / 4).saturating_add(8 * 1024 * 1024),
+        None => DOWNLOAD_UNKNOWN_MAX_BYTES,
+    }
+}
+
 fn http_client() -> Result<reqwest::Client> {
     // Some CDNs (e.g. dev.mysql.com) reject the default reqwest User-Agent with
     // 403; present a browser-like UA so downloads are accepted everywhere. Bound
@@ -1422,6 +1443,7 @@ async fn fetch_to_file(
     // indeterminate bar. Report 0/total up front so a slow first chunk still
     // renders as an active download.
     let total = resp.content_length();
+    let ceiling = download_ceiling(total);
     if let Some(id) = item {
         downloads::hub().item_progress(id, 0, total);
     }
@@ -1450,6 +1472,16 @@ async fn fetch_to_file(
             h.update(&chunk);
         }
         downloaded += chunk.len() as u64;
+        // Disk-safety valve: a mirror that lies about (or omits) Content-Length
+        // can't stream past the ceiling and fill the disk before the post-EOF
+        // checksum runs. The checksum below stays the real integrity gate — this
+        // only kills a runaway (B36).
+        if downloaded > ceiling {
+            return Err(FetchError::Transient(format!(
+                "download {url} exceeded its expected size (>{ceiling} bytes) — \
+                 aborting before the disk fills"
+            )));
+        }
         if let Some(id) = item {
             downloads::hub().item_progress(id, downloaded, total);
         }
@@ -1707,6 +1739,21 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_ceiling_allows_slack_and_caps_unknown_length() {
+        let mb = 1024 * 1024;
+        // Declared length: allowed up to +25% +8 MiB. The client does no
+        // decompression, so an honest download arrives at ~total and never
+        // reaches this — no false-trip.
+        assert_eq!(download_ceiling(Some(100 * mb)), 100 * mb + 25 * mb + 8 * mb);
+        // The largest real artifact (~600 MB bundle) fits comfortably.
+        assert!(download_ceiling(Some(600 * mb)) > 600 * mb);
+        // Undeclared length falls back to the absolute cap.
+        assert_eq!(download_ceiling(None), DOWNLOAD_UNKNOWN_MAX_BYTES);
+        // A huge declared length saturates instead of overflowing.
+        assert_eq!(download_ceiling(Some(u64::MAX)), u64::MAX);
+    }
 
     #[tokio::test]
     async fn send_bounded_times_out_when_response_headers_never_arrive() {
