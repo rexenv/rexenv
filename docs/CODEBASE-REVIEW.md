@@ -508,6 +508,11 @@ in the narrow pre-`X-Rexenv-Edge`-marker window. **Recommendation:** drop the fa
 marker is universal, or gate it behind an extra rexenv signal.
 
 ### B16 · misc low/info (reported, batch for a second look)
+**⏸ DISPOSITIONED (folded into other items).** repo idle-timeout + `devtools::probe_version` timeout →
+folded into [[B25]] (timeout family, plan-first). `terminal.rs` quote-refusal → same reasoning as
+[[B12]] (paths never contain quotes; leave). `RepoJobs.jobs` never pruned + delete-guard TOCTOU +
+edge-wrapper hardlink chown → behavioral/single-user, deferred post-publish. `http://` accepted →
+INTENTIONAL (self-hosted forges; leave). Nothing here is a safe do-now nit.
 All `agent`-sourced, lower priority; listed so nothing's lost:
 - `core/repo.rs` `run_step_streamed` has **no idle timeout** — a network black-hole mid-clone hangs
   the job until the user cancels. Consider an idle-output watchdog.
@@ -858,6 +863,11 @@ img-src 'self' data:; style-src 'self' 'unsafe-inline'` (tune for xterm/Adminer)
 call, but cheap and appropriate for a shipping privileged app.
 
 ### B32 · 🟠 release-gate · Ad-hoc bundle signing → the `.app` can't be notarized → Gatekeeper blocks it on other Macs
+**✔ RESOLVED BY APPROACH (not a code fix).** You chose a custom Homebrew tap with a de-quarantine
+postflight (`xattr -r -d com.apple.quarantine`) + an honest un-notarized note, rather than paying for
+a Developer ID + notarization — so ad-hoc signing stays intentional and the tap bypasses Gatekeeper
+cleanly. The mechanical Developer-ID/notarization path (if ever taken) is written up in `docs/SIGNING.md`;
+the clean-Mac launch check is `docs/PUBLISH-TESTING.md` §A (the tap gate). No `tauri.conf.json` change.
 **Where:** `src-tauri/tauri.conf.json:41-43` (`"macOS": { "signingIdentity": "-" }`).
 **Verified:** me.
 **Why it matters (you're about to publish to Homebrew):** ad-hoc signing (`-`) is intentional for local
