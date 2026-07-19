@@ -218,6 +218,28 @@ then Group B (security/robustness-adjacent).
 All eight: own commit, tests green throughout (`cargo test --lib` 336 → 342, examples build clean,
 zero warnings). None needed a design decision or risked intentional behavior.
 
+### Category 2 — one green-lit lifecycle fix
+
+After the triage you green-lit exactly one design-sensitive item (the lock-hygiene one, which
+STRENGTHENS M4 rather than risking it) and deferred the other five as plan-first post-publish work.
+
+- **`f1a764e`** — **B19** `start_mail` now prefetches Mailpit's binary (unlocked) before taking the
+  services lock, mirroring `start_database` (`downloads::plan_for_mailpit`). A cold-cache Mailpit toggle
+  previously downloaded UNDER the lock, freezing every status read (which `try_lock`s the same lock) —
+  the §5 silent-hang. Warm cache is byte-identical (`prefetch` is a cache hit and sets no state, so the
+  locked `spawn_mailpit` resolve still hits cache); only a cold toggle now streams unlocked with hub
+  progress. Added `start_mail` to the §5 prefetch list (ARCHITECTURE.md) + `plan_for_mailpit` unit test.
+  `cargo test --lib` 343 passed / 0 failed; examples build clean. Full analysis under (B) B19.
+
+**Deferred Category 2 (plan-first, post-publish — invariant-at-risk recorded on each finding):** B7
+(process-group orphan — reader-drain deadlock), B15 (edge-ownership false-positive/negative — needs
+marker version-history first), B25 (timeout family — stall-not-wall-clock bound), B28 (adopt binary
+wiring — existence-check + offline-resolve), B29 (adopted-reap — bare-pid/recycle trap).
+
+**Category 3 (threat-model-guarded) — dispositions:** B6 deferred as the one item worth a post-publish
+cert-path pass (paired with B13); B26 leave-as-security / reconsider-as-robustness; B12 + B30 leave
+(complexity for unreachable paths).
+
 ---
 
 ## (B) Found but NOT fixed — needs your decision
@@ -340,6 +362,11 @@ request timeout, so nothing bounds this from rexenv's side.
 the bounded `admin_alive` poll loops already in this file. Behavioral (lifecycle) → your call.
 
 ### B6 · 🟡 security · CA / site private keys are written world-readable, then hardened
+**⏸ DEFERRED — the ONE Cat-3 item worth doing post-publish (once the cert-path freeze lifts).** Unreachable
+in the single-user model (no second user to race), but a REAL benefit on shared/lab Macs: the CA key
+is the crown jewel, and the fix (create the file `0600` atomically via `OpenOptions::new().mode(0o600)`
+before writing — no readable window) is cheap and non-behavioral. Blocked only by the standing
+"don't touch the cert path" rule (it's in `ssl.rs`). **Pair with [[B13]] for a future cert-path pass.**
 **Where:** `core/ssl.rs:96-97` (`fs::write(key_path, …)`) → perms hardened later at `108-113`
 (`perms.set_private`); site keys share the pattern.
 **Verified:** me.
@@ -354,6 +381,10 @@ chmod is the simple path.
 before writing — no readable window. Touches key material → your call.
 
 ### B7 · 🟡 leak/lifecycle · Repo probe runner has no process group; timeout orphans the ssh grandchild
+**⏸ DEFERRED — plan-first, post-publish.** Fix: spawn the probe in its own process group + `stop_group`
+on timeout (the `spawn_streamed` primitive), then join the reader threads. **Invariant at risk:** the
+reader-threads-drain-first design — a `wait`-then-read deadlocks into a *fake* timeout (gutenberg's
+thousands of refs overflow the pipe buffer). A wrong fix reintroduces that deadlock or races the drain.
 **Where:** `core/repo.rs:347-395` (`run_captured_with_cap`).
 **Verified:** me.
 **Why it might be a bug:** unlike `spawn_streamed` (which sets `.process_group(0)`), this captured
@@ -430,6 +461,9 @@ delta is a user-assisted `sudo` hop.
 `sudo kill {pid}` (u32) fallback. Low.
 
 ### B12 · 🟡 low · `sh_quote` single-quotes but doesn't escape an embedded `'` in root-context scripts
+**⏸ LEAVE — complexity for an unreachable path.** No reachable path: values are app-data/HOME-derived
+paths and a macOS short username can't contain `'`. Fixing adds a failure path for an input that can't
+occur; unlike `cli.rs` (which guards real IPC input) there's no boundary here. Documented, not fixed.
 **Where:** `core/proxy.rs:219-221` and `platform/macos/mod.rs:806-808` (vs the gold-standard
 refuse-pattern in `core/cli.rs:104-113`).
 **Verified:** me (proxy.rs) + agent (macos/mod.rs).
@@ -459,10 +493,13 @@ In a release build any local process on `:1420` could frame the passwordless Adm
 `#[cfg(debug_assertions)]`.
 
 ### B15 · ⚪ nit → 🟠 RECLASSIFIED design-sensitive · `edge_answers_as_ours` falls back to `Server: caddy`
-**↪ RECLASSIFIED to lifecycle/design-sensitive (Category 2).** Not a safe nit: it's edge-ownership
-detection (M1 invariant + adoption). Dropping the fallback trades a false-positive (mistaking a
-foreign Caddy) for a false-negative (failing to recognize a pre-marker surviving edge → double-edge
-/ port conflict). Gets the plan-first treatment, not a quick pass.
+**↪ RECLASSIFIED to lifecycle/design-sensitive (Category 2). ⏸ DEFERRED — plan-first, post-publish.**
+Not a safe nit: it's edge-ownership detection (M1 invariant + adoption). Dropping the fallback trades
+a false-positive (mistaking a foreign Caddy) for a false-negative (failing to recognize a pre-marker
+surviving edge → double-edge / port conflict). **Prerequisite before any fix:** establish whether the
+`X-Rexenv-Edge` marker is guaranteed on every edge-config version that could survive into a session.
+If yes → dropping the fallback is safe; if a pre-marker edge can survive → must gate behind a second
+rexenv signal instead. Do NOT drop the fallback on an assumption.
 **Where:** `core/proxy.rs:74-79`.
 **Verified:** agent.
 A developer's own Caddy on loopback:443 emits `Server: Caddy` and could be mis-identified as
@@ -530,6 +567,7 @@ commit/rollback is atomic) — either the whole step applies or none of it does,
 Low-effort, high-value before publish. (I'd add a test that simulates a half-applied step.)
 
 ### B19 · 🟡 low/med · `start_mail` resolves the Mailpit binary *under* the services lock (prefetch-before-lock gap)
+**✅ FIXED — commit `f1a764e` (Category 2, the one green-lit lifecycle item; see (A)). Analysis kept for the record.**
 **Where:** `commands/mail.rs:36-42` (`start_mail`) → `core/service_manager.rs:624` (`spawn_mailpit` calls
 `binaries::resolve("mailpit", …).await` when `mailpit_bin` is None).
 **Verified:** me.
@@ -677,6 +715,14 @@ insert a `--` separator before positional slugs/names/hooks/search terms — bri
 `valid_locale`/`parse_wp_version`.
 
 ### B25 · 🟡 low/med · Missing network/subprocess timeouts on several long ops (freeze with no error)
+**⏸ DEFERRED — plan-first, post-publish. This is a FAMILY, not one fix — split it.** Safe-and-easy:
+Mailpit HTTP (one shared timed `reqwest::Client`, also kills the per-call `Client::new()` churn) +
+DB client `--connect-timeout`. **Invariant at risk (the careful ones):** the download-capable wp-cli
+commands (`plugin_install`/`theme_install`/`core_update`/`core_reinstall`) legitimately run long on a
+slow link — the timeout must be a STALL guard, not a wall-clock cap, or it false-trips a real large
+install (the `CHUNK_TIMEOUT` lesson from B34/B36). The repo `run_step_streamed` idle-timeout and
+`devtools::probe_version` timeout (the B16 siblings) fold in here. Do NOT batch — do the easy two
+cleanly, treat the wp-cli-download + repo-idle bounds as their own careful items.
 **Where:** Mailpit HTTP calls `core/mail.rs:199-208,278-288,293-307` (default reqwest client, no
 timeout; also `Client::new()` rebuilt per call); download-capable wp-cli commands `plugin_install`/
 `theme_install`/`core_update`/`core_reinstall` + update-checking list calls (untimed `wp_run`, while
@@ -693,6 +739,11 @@ worth fixing (it already added `run_with_timeout` for language/core-switch).
 `--connect-timeout` on the DB clients.
 
 ### B26 · 🟡 low · Docroot path is quoted-but-not-escaped in generated nginx/Apache/FrankenPHP configs; site `path`/`sites_dir` stored without char validation
+**⏸ LEAVE as a security item — reconsider post-publish as ROBUSTNESS (not security).** Security-wise
+it's a self-inflicted footgun at the same privilege — no boundary crossing, no real security benefit.
+But there's a non-security angle: a `sites_dir`/path with a space, `$`, or `{}` currently produces a
+BROKEN config with a cryptic nginx/Caddy error. If ever done, do it for robustness (validate or escape
+on emission like `site_env::escape_value`) — it's behavioral (config generation), not a quick nit.
 **Where:** `core/services.rs:411` (nginx `root "{root}"`), `core/apache.rs:143` (`DocumentRoot`/`<Directory>`),
 `core/frankenphp.rs` `generate_config` (`root * "{root}"`); root cause `core/sites.rs:98` (site `path`
 stored raw) + `sites_dir` (user-configurable, `sites.rs:554`).
@@ -724,6 +775,12 @@ service, per poll).
 double-count). Cheap, removes the theoretical hang.
 
 ### B28 · 🟡 low · `adopt_startup` doesn't wire `frankenphp_bin`/`httpd_dir` → first override reconcile resolves under the services lock
+**⏸ DEFERRED — plan-first, post-publish.** Same family as B19: wire `frankenphp_bin`/`httpd_dir` from
+existence-checked cached paths in `adopt_startup` (as done for `bins`), or add the env/settings
+commands to the §5 prefetch list. **Invariant at risk:** M4 (no `resolve`/wait under the lock) +
+adoption correctness — the wired path MUST be existence-checked (the adopted process runs from it), or
+a stale/wrong path breaks the restart. Prerequisite: confirm `resolve_bundle` is truly offline-cheap
+on a warm cache.
 **Where:** `core/service_manager.rs:1259-1264,1333-1343` (adopt wires `bins`/`mailpit_bin` offline, not
 the override binaries).
 **Verified:** agent (consistent with the B19 pattern I confirmed).
@@ -739,6 +796,13 @@ in the §5 prefetch list, so this leans on `resolve*` being a pure cache hit **u
 `resolve_bundle` is truly offline-cheap on a warm cache. (Same family as B19/B25.)
 
 ### B29 · 🟡 low · Watchdog reaps an adopted service on a single probe-miss → restart-failed loop on the still-held port
+**⏸ DEFERRED — plan-first, post-publish. The most delicate of the set.** Options: (A) gate the adopted
+reap on `!proc.alive()`; (B) require two consecutive misses. **Invariant at risk:** "Running =
+ownership AND liveness, never a bare port/pid." Option (A) leans on `alive()` (bare pid) — a RECYCLED
+pid (alive, no longer ours) would then never be reaped → a stale adopted handle pointing at a foreign
+process, exactly the bare-pid trap the model forbids. (B) avoids the recycle trap but needs
+per-service miss-count state and delays reaping a genuinely-dead adopted service by one tick. A naive
+`!alive()` fix trades a flapping bug for a pid-recycle bug — do NOT take (A) without handling recycle.
 **Where:** `core/service_manager.rs:1427` (+ `core/proc.rs:50-55`, `within_grace` → `Adopted => false`).
 **Verified:** agent.
 **Why it might be a bug:** the "still starting" grace shield is always false for adopted handles, so one
@@ -752,6 +816,12 @@ adopted-never-in-grace is otherwise correct.
 service on a lone port miss), or require two consecutive misses.
 
 ### B30 · 🟡 info cluster · "Log in as" magic-link residue + minor hardening (all NOT bypasses)
+**⏸ LEAVE — all confirmed NOT bypasses.** The token `hash_equals` + unspoofable CF-* presence check is
+the real gate (loopback-only, never crosses the tunnel); query-string logging, non-atomic consume, and
+spoofable-XFF all reduce to negligible on a single-user loopback box, and fixing means reworking the
+login flow for no gain. Only non-security merit: the `verify-checksums` `._*.php` bucket weakens a
+DIAGNOSTIC's honesty (excluding `*.php` from the noise bucket is a cheap correctness nit if the doctor
+code is ever touched). No security benefit either way.
 **Where:** `core/wp_login.rs`. **Verified:** agent (crown-jewel token logic separately confirmed sound —
 see (D)).
 - **Token in the query string** (`:49,127`) → written to nginx/Caddy access logs + browser history.
