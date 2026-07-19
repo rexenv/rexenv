@@ -29,11 +29,19 @@ pub async fn mailpit_status(_state: State<'_, AppState>) -> Result<MailpitStatus
 
 /// Start Mailpit alone (Services-row toggle). Independent of the serving core:
 /// pools route mail to its FIXED SMTP port via the sendmail shim, so it can
-/// come and go without touching them. Spawn under the lock, await readiness
-/// with it released (M4); binary prefetch happens inside spawn (cache hit
-/// after first run).
+/// come and go without touching them.
+///
+/// Prefetch Mailpit's binary BEFORE taking the services lock (§5
+/// prefetch-before-lock): a cold-cache toggle (Mailpit switched on before any
+/// Start-all, onboarding prefetch skipped/failed/offline) would otherwise
+/// download INSIDE the lock, freezing every status read (which needs `try_lock`
+/// on the same lock). On a warm cache `prefetch` is a cache hit and sets no
+/// state, so the locked spawn below is unchanged. Spawn under the lock, await
+/// readiness with it released (M4).
 #[tauri::command]
 pub async fn start_mail(state: State<'_, AppState>) -> Result<()> {
+    let plan = crate::core::downloads::plan_for_mailpit(state.platform.as_ref());
+    crate::core::downloads::prefetch(state.platform.as_ref(), "Start Mailpit", &plan).await?;
     let check = {
         let mut mgr = state.services.lock().await;
         mgr.spawn_mailpit(state.platform.as_ref()).await?

@@ -259,6 +259,14 @@ pub fn plan_for_engine(
     vec![PlannedBinary::new(platform, engine.key(), version)]
 }
 
+/// Just Mailpit's binary — for the standalone `start_mail` toggle, whose
+/// `spawn_mailpit` resolves under the services lock and must hit cache
+/// (prefetch-before-lock, §5). Small binary, but a cold-cache toggle would
+/// otherwise download WHILE holding the lock and freeze every status read.
+pub fn plan_for_mailpit(platform: &dyn Platform) -> Vec<PlannedBinary> {
+    vec![PlannedBinary::new(platform, "mailpit", binaries::MAILPIT_VERSION)]
+}
+
 /// The binary set for installing a PHP version: its FPM build (the pool) plus
 /// its CLI build (WP-CLI operations). Empty if the minor has no pinned build.
 pub fn plan_for_php(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
@@ -768,6 +776,17 @@ mod tests {
             .collect();
         assert_eq!(names, vec![("php-fpm", patch), ("php", patch)]);
         assert!(plan_for_php(&*plat, "7.0").is_empty(), "unpinned minor → nothing to fetch");
+    }
+
+    #[test]
+    fn plan_for_mailpit_targets_the_pinned_binary() {
+        // start_mail prefetches exactly this before taking the services lock, so
+        // spawn_mailpit's resolve is a cache hit (§5 prefetch-before-lock, B19).
+        let plat = crate::platform::current();
+        let plan = plan_for_mailpit(&*plat);
+        let names: Vec<(&str, &str)> =
+            plan.iter().map(|p| (p.name.as_str(), p.version.as_str())).collect();
+        assert_eq!(names, vec![("mailpit", binaries::MAILPIT_VERSION)]);
     }
 
     #[test]
