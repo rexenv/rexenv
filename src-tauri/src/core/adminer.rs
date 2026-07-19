@@ -232,6 +232,24 @@ pub async fn ensure(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Build the upstream Adminer URL from a request's path+query. Guard: it MUST
+/// start with `/`. Otherwise a value like `@evil.com/` would parse the host as
+/// `evil.com` (with `ADMINER_HOST` demoted to userinfo), and because the proxy
+/// client pins ONLY `ADMINER_HOST` to loopback AND disables cert checks, that
+/// would be an SSRF to an arbitrary host. Requests always arrive as
+/// `rexdb://localhost/…`, so a legit path always starts with `/` — a `//path`
+/// still resolves to the pinned host (the authority ends at the first `/`). B8,
+/// defense-in-depth (not reachable today).
+fn proxy_url(path_and_query: &str) -> Result<reqwest::Url> {
+    if !path_and_query.starts_with('/') {
+        return Err(Error::Other(format!(
+            "adminer proxy: refusing non-absolute request path {path_and_query:?}"
+        )));
+    }
+    reqwest::Url::parse(&format!("https://{ADMINER_HOST}{path_and_query}"))
+        .map_err(|e| Error::Other(format!("adminer proxy: bad url: {e}")))
+}
+
 /// A response ready to hand back to the webview's custom-scheme responder.
 pub struct ProxiedResponse {
     pub status: u16,
@@ -295,8 +313,7 @@ pub async fn forward(
     content_type: Option<&str>,
     body: Vec<u8>,
 ) -> Result<ProxiedResponse> {
-    let mut url = reqwest::Url::parse(&format!("https://{ADMINER_HOST}{path_and_query}"))
-        .map_err(|e| Error::Other(format!("adminer proxy: bad url: {e}")))?;
+    let mut url = proxy_url(path_and_query)?;
     let mut method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| Error::Other(format!("adminer proxy: bad method: {e}")))?;
     let mut content_type = content_type.map(str::to_string);
@@ -459,6 +476,24 @@ mod tests {
         assert!(rendered.contains("http://localhost:1420"));
         #[cfg(not(debug_assertions))]
         assert!(!rendered.contains("http://localhost:1420"));
+    }
+
+    #[test]
+    fn proxy_url_requires_an_absolute_path_and_pins_the_host() {
+        // Legit paths always arrive as rexdb://localhost/… → host stays pinned.
+        assert_eq!(
+            proxy_url("/index.php?server=127.0.0.1").unwrap().host_str(),
+            Some(ADMINER_HOST)
+        );
+        assert_eq!(proxy_url("/").unwrap().host_str(), Some(ADMINER_HOST));
+        // A `//path` is still on the pinned host (authority ends at the first
+        // `/`) — a legit-looking shape the guard must NOT reject.
+        assert_eq!(proxy_url("//evil.com/x").unwrap().host_str(), Some(ADMINER_HOST));
+        // The SSRF shape (`@evil.com/` would smuggle a host via userinfo) and any
+        // other non-absolute lead are refused before a request is ever built.
+        assert!(proxy_url("@evil.com/").is_err());
+        assert!(proxy_url("evil.com").is_err());
+        assert!(proxy_url("*").is_err());
     }
 
     #[test]
