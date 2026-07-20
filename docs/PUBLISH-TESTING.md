@@ -16,7 +16,16 @@ matters**, and whether it's **🚧 publish-blocking** or **🟢 nice-to-have**.
 
 ---
 
-## A) 🚧 Apple-Silicon ad-hoc launch test — THE gate for the tap being real
+## A) ✅ PASSED (2026-07-20) — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
+
+**RESULT:** the universal `rexenv_0.1.0_universal.dmg` (sha256 `d48bc8ba…`, built 2026-07-20 with all
+review fixes + cleanup) launches **clean after `xattr -rd com.apple.quarantine`** on Apple Silicon.
+The ad-hoc tap approach is validated end-to-end — de-quarantine → launch works. Gate cleared; the tap
+is real. (Canonical cask sha256 still to be recomputed from the exact GitHub Release asset — see §D.)
+
+---
+
+## A-orig) 🚧 Apple-Silicon ad-hoc launch test — THE gate for the tap being real
 
 **Why:** the static checks prove the app is validly ad-hoc signed with an arm64 slice, so
 in theory it runs on Apple Silicon once de-quarantined. This confirms it **empirically** —
