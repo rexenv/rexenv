@@ -9,7 +9,7 @@
 use crate::core::downloads;
 use crate::error::{Error, Result};
 use crate::platform::traits::{Arch, Platform};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1256,8 +1256,65 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
 }
 
 /// How many times a transient download failure (network drop, timeout, 5xx) is
-/// retried before giving up. A 4xx (not-found / forbidden) is NOT retried.
-const DOWNLOAD_ATTEMPTS: usize = 3;
+/// retried before giving up. A 4xx (not-found / forbidden) is NOT retried. Each
+/// retry RESUMES from the partial on disk (HTTP Range), so the count bounds how
+/// many drops a single download tolerates, not how many times it re-fetches the
+/// whole file.
+const DOWNLOAD_ATTEMPTS: usize = 5;
+
+/// Exponential backoff (ms) before retry `attempt` (1-based), capped at 8s, plus
+/// a small jitter in `[0, base/4)` so repeated retries don't re-hit a
+/// rate-limiting mirror on an identical cadence. Pure (jitter is injected) so the
+/// growth/cap/bound are unit-testable; the caller passes a runtime seed.
+fn backoff_delay_ms(attempt: usize, jitter_seed: u64) -> u64 {
+    let shift = attempt.saturating_sub(1).min(4) as u32; // 0,1,2,3,4 → ×1,2,4,8,16
+    let base = 500u64.saturating_mul(1u64 << shift).min(8000);
+    base + jitter_seed % (base / 4 + 1)
+}
+
+/// The full size `Z` from a `Content-Range: bytes X-Y/Z` header (the response to
+/// a resumed range request), or `None` when absent/`*`/malformed.
+fn content_range_total(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::CONTENT_RANGE)?
+        .to_str()
+        .ok()?
+        .rsplit('/')
+        .next()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+}
+
+/// Re-hash an existing partial file from disk so a resumed download's running
+/// digest covers the bytes already written (sha2 mid-state isn't serializable).
+/// Returns the seeded hasher (`None` when there's no checksum to verify) AND the
+/// exact byte count read — the caller aligns the Range offset and `downloaded`
+/// counter to this so the file content, offset, and hash input never drift.
+/// Streamed in 64 KiB reads: re-hashing a 34 MB partial costs no extra RAM.
+fn rehash_partial(
+    dest: &Path,
+    checksum: Option<&Checksum>,
+) -> std::result::Result<(Option<StreamHasher>, u64), FetchError> {
+    let permanent = |e: std::io::Error| {
+        FetchError::Permanent(format!("can't read partial {}: {e}", dest.display()))
+    };
+    let mut file = std::fs::File::open(dest).map_err(permanent)?;
+    let mut hasher = checksum.map(StreamHasher::new);
+    let mut buf = [0u8; 64 * 1024];
+    let mut count: u64 = 0;
+    loop {
+        let n = file.read(&mut buf).map_err(permanent)?;
+        if n == 0 {
+            break;
+        }
+        if let Some(h) = hasher.as_mut() {
+            h.update(&buf[..n]);
+        }
+        count += n as u64;
+    }
+    Ok((hasher, count))
+}
 
 /// Append a plain-language hint when a download failure looks like a connectivity
 /// problem, so the UI message is understandable on a machine with no internet.
@@ -1359,26 +1416,54 @@ async fn download_with_headers(
 ) -> Result<()> {
     let client = http_client()?;
     let mut last_err = String::new();
+    // Resume state: on a transient failure we KEEP the partial and re-request
+    // `Range: bytes=<resume_from>-` next attempt, so a link that drops mid-body
+    // makes forward progress instead of re-fetching all 34 MB from byte 0. The
+    // offset is re-derived from the file on disk (ground truth) each time.
+    let mut resume_from: u64 = 0;
+    // Give up early if the link can't move even one chunk two attempts running —
+    // more waiting won't help. Bounded either way by DOWNLOAD_ATTEMPTS.
+    let mut zero_progress_streak: u32 = 0;
     for attempt in 1..=DOWNLOAD_ATTEMPTS {
-        match fetch_to_file(&client, url, dest, checksum, item, headers).await {
+        let mut wrote: u64 = 0;
+        match fetch_to_file(&client, url, dest, checksum, item, headers, resume_from, &mut wrote).await
+        {
             Ok(()) => return Ok(()),
             // A permanent failure (4xx / checksum mismatch / local write error)
-            // won't get better on retry — surface it immediately.
+            // won't get better on retry — surface it immediately, partial removed
+            // so the next run starts clean (a checksum mismatch fails closed).
             Err(FetchError::Permanent(msg)) => {
                 let _ = std::fs::remove_file(dest);
                 return Err(Error::Other(msg));
             }
             Err(FetchError::Transient(msg)) => {
-                let _ = std::fs::remove_file(dest);
                 last_err = msg;
-                log::warn!("rexenv: download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed: {last_err}");
+                // Keep the partial for resume; next offset = its real size.
+                resume_from = std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0);
+                zero_progress_streak = if wrote == 0 { zero_progress_streak + 1 } else { 0 };
+                log::warn!(
+                    "rexenv: download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed \
+                     (resume from {resume_from} bytes): {last_err}"
+                );
+                if zero_progress_streak >= 2 {
+                    last_err = format!("{last_err} — no data received across two attempts");
+                    break;
+                }
                 if attempt < DOWNLOAD_ATTEMPTS {
-                    // Linear backoff (0.4s, 0.8s) between attempts.
-                    tokio::time::sleep(std::time::Duration::from_millis(400 * attempt as u64)).await;
+                    let seed = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.subsec_nanos() as u64)
+                        .unwrap_or(0);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_delay_ms(
+                        attempt, seed,
+                    )))
+                    .await;
                 }
             }
         }
     }
+    // Gave up: drop the partial so the next run (or the UI retry) starts fresh.
+    let _ = std::fs::remove_file(dest);
     Err(Error::Other(format!(
         "{last_err} (gave up after {DOWNLOAD_ATTEMPTS} attempts)"
     )))
@@ -1386,6 +1471,7 @@ async fn download_with_headers(
 
 /// Outcome of a single download attempt: a permanent error short-circuits the
 /// retry loop; a transient one is retried.
+#[derive(Debug)]
 enum FetchError {
     Permanent(String),
     Transient(String),
@@ -1414,6 +1500,19 @@ async fn send_bounded(
     }
 }
 
+/// One download attempt. `resume_from > 0` requests `Range: bytes=<resume_from>-`
+/// and, if granted (206), APPENDS to the existing partial while re-hashing its
+/// prefix from disk so the running digest covers the whole assembled file. If the
+/// server ignores the range (200) or the partial is stale (416), it truncates and
+/// starts over. `*wrote` reports the bytes written THIS attempt (0 = the body
+/// never started), for the caller's zero-progress guard.
+///
+/// The pinned checksum stays the ONE integrity gate: every byte of the final file
+/// (re-hashed prefix + appended chunks) flows through a single hash compared to
+/// the pin unconditionally at the end — so a truncation, a corrupted partial, or
+/// a mirror swapping bytes across ranges all fail CLOSED, and no resume path can
+/// bypass it.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_to_file(
     client: &reqwest::Client,
     url: &str,
@@ -1421,36 +1520,58 @@ async fn fetch_to_file(
     checksum: Option<&Checksum>,
     item: Option<&str>,
     headers: &[(&str, &str)],
+    resume_from: u64,
+    wrote: &mut u64,
 ) -> std::result::Result<(), FetchError> {
+    *wrote = 0;
     let mut req = client.get(url);
     for (name, value) in headers {
         req = req.header(*name, *value);
     }
-    let resp = send_bounded(req, url, CHUNK_TIMEOUT).await?;
-    let mut resp = match resp.error_for_status() {
-        Ok(r) => r,
-        Err(e) => {
-            let msg = format!("download {url} failed: {e}");
-            // 5xx is a server-side blip → retry; 4xx (not found / forbidden) won't
-            // change → permanent.
-            return Err(match e.status() {
-                Some(s) if status_is_transient(s) => FetchError::Transient(msg),
-                _ => FetchError::Permanent(msg),
-            });
-        }
+    if resume_from > 0 {
+        req = req.header(reqwest::header::RANGE, format!("bytes={resume_from}-"));
+    }
+    let mut resp = send_bounded(req, url, CHUNK_TIMEOUT).await?;
+
+    // 206 → resume granted; 200 → full body (fresh, or the range was ignored);
+    // 416 → our partial is stale/complete, restart fresh. Any other non-2xx uses
+    // the retry-policy split (5xx transient, 4xx permanent).
+    let status = resp.status();
+    let resuming = resume_from > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
+    if !status.is_success() && status != reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        let msg = format!("download {url} failed: HTTP {status}");
+        return Err(if status_is_transient(status) {
+            FetchError::Transient(msg)
+        } else {
+            FetchError::Permanent(msg)
+        });
+    }
+
+    // Set up the sink + hasher + byte counter for this attempt's mode.
+    let (mut file, mut hasher, mut downloaded, total) = if resuming {
+        // Full size from Content-Range (`bytes X-Y/Z`), else offset + remaining.
+        let total = content_range_total(resp.headers())
+            .or_else(|| resp.content_length().map(|remaining| resume_from + remaining));
+        let file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(dest)
+            .map_err(|e| FetchError::Permanent(format!("can't open partial {}: {e}", dest.display())))?;
+        // Seed the digest from the bytes already on disk; `count` is ground truth
+        // for the offset (kept aligned with the file the append writes onto).
+        let (hasher, count) = rehash_partial(dest, checksum)?;
+        (file, hasher, count, total)
+    } else {
+        // Fresh: resume_from==0, or the server sent 200/416 — truncate & restart.
+        let total = resp.content_length();
+        let file = std::fs::File::create(dest)
+            .map_err(|e| FetchError::Permanent(format!("can't write {}: {e}", dest.display())))?;
+        (file, checksum.map(StreamHasher::new), 0u64, total)
     };
-    // Content-Length when the server sends one; `None` → the UI shows an
-    // indeterminate bar. Report 0/total up front so a slow first chunk still
-    // renders as an active download.
-    let total = resp.content_length();
+
     let ceiling = download_ceiling(total);
     if let Some(id) = item {
-        downloads::hub().item_progress(id, 0, total);
+        downloads::hub().item_progress(id, downloaded, total);
     }
-    let mut file = std::fs::File::create(dest)
-        .map_err(|e| FetchError::Permanent(format!("can't write {}: {e}", dest.display())))?;
-    let mut hasher = checksum.map(StreamHasher::new);
-    let mut downloaded: u64 = 0;
     loop {
         let chunk = match tokio::time::timeout(CHUNK_TIMEOUT, resp.chunk()).await {
             // No bytes for the whole guard window: a stalled transfer, not a
@@ -1472,10 +1593,12 @@ async fn fetch_to_file(
             h.update(&chunk);
         }
         downloaded += chunk.len() as u64;
-        // Disk-safety valve: a mirror that lies about (or omits) Content-Length
-        // can't stream past the ceiling and fill the disk before the post-EOF
-        // checksum runs. The checksum below stays the real integrity gate — this
-        // only kills a runaway (B36).
+        *wrote += chunk.len() as u64;
+        // Disk-safety valve on the TOTAL assembled size (offset + this attempt):
+        // a mirror that lies about (or omits) Content-Length can't stream past the
+        // ceiling and fill the disk before the post-EOF checksum runs. The
+        // checksum below stays the real integrity gate — this only kills a
+        // runaway (B36).
         if downloaded > ceiling {
             return Err(FetchError::Transient(format!(
                 "download {url} exceeded its expected size (>{ceiling} bytes) — \
@@ -1486,6 +1609,9 @@ async fn fetch_to_file(
             downloads::hub().item_progress(id, downloaded, total);
         }
     }
+    // Integrity gate: the digest covers the WHOLE assembled file. A mismatch is
+    // permanent (fail closed) — the caller removes the partial so the next run
+    // starts clean.
     if let (Some(h), Some(c)) = (hasher, checksum) {
         let got = h.finish();
         let expected = checksum_hex(c);
@@ -1787,6 +1913,198 @@ mod tests {
             "must not hang past the guard: {:?}",
             start.elapsed()
         );
+    }
+
+    // ---- A + B: resume + retry backoff ------------------------------------
+
+    #[test]
+    fn backoff_delay_ms_grows_exponentially_caps_and_bounds_jitter() {
+        // Zero jitter → the base 0.5/1/2/4/8s sequence, capped at 8s.
+        assert_eq!(backoff_delay_ms(1, 0), 500);
+        assert_eq!(backoff_delay_ms(2, 0), 1000);
+        assert_eq!(backoff_delay_ms(3, 0), 2000);
+        assert_eq!(backoff_delay_ms(4, 0), 4000);
+        assert_eq!(backoff_delay_ms(5, 0), 8000);
+        assert_eq!(backoff_delay_ms(9, 0), 8000, "capped at 8s");
+        // Jitter stays in [0, base/4] for any seed (base 2000 → [2000, 2500]).
+        for seed in [1u64, 7, 123, 999_999, u64::MAX] {
+            let d = backoff_delay_ms(3, seed);
+            assert!((2000..=2500).contains(&d), "seed {seed} → {d}");
+        }
+    }
+
+    #[test]
+    fn content_range_total_parses_the_full_size() {
+        use reqwest::header::{HeaderMap, HeaderValue, CONTENT_RANGE};
+        let mut h = HeaderMap::new();
+        h.insert(CONTENT_RANGE, HeaderValue::from_static("bytes 500-999/2000"));
+        assert_eq!(content_range_total(&h), Some(2000));
+        // Unknown total (`*`) and a missing header → None (fall back to offset+len).
+        h.insert(CONTENT_RANGE, HeaderValue::from_static("bytes 0-99/*"));
+        assert_eq!(content_range_total(&h), None);
+        assert_eq!(content_range_total(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn rehash_partial_reproduces_the_whole_file_hash_and_count() {
+        let dir = std::env::temp_dir().join(format!("rexenv-rehash-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("partial.bin");
+        let bytes: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&path, &bytes).unwrap();
+
+        // The re-hashed prefix must equal a fresh full hash of the same bytes, and
+        // the count must equal the file length — so offset, content and hash stay
+        // aligned on resume (the fail-closed guarantee rests on this).
+        let ck = Checksum::Sha256(String::new()); // variant selects the algorithm
+        let (hasher, count) = rehash_partial(&path, Some(&ck)).unwrap();
+        assert_eq!(count, bytes.len() as u64);
+        assert_eq!(hasher.unwrap().finish(), sha256_hex(&bytes));
+
+        // No checksum → no hasher, count still correct.
+        let (none_h, c2) = rehash_partial(&path, None).unwrap();
+        assert!(none_h.is_none());
+        assert_eq!(c2, bytes.len() as u64);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // A scripted raw-HTTP server: each closure handles ONE connection (= one
+    // download attempt), gets the request's Range offset (0 if none), and returns
+    // the raw bytes to send before the socket closes — so a test can simulate a
+    // mid-body drop, a 206 resume, a 200-ignoring-Range, or corruption.
+    async fn scripted_server(responses: Vec<Box<dyn Fn(u64) -> Vec<u8> + Send + Sync>>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for build in responses {
+                let Ok((mut stream, _)) = listener.accept().await else { break };
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 1024];
+                loop {
+                    match stream.read(&mut tmp).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            buf.extend_from_slice(&tmp[..n]);
+                            if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                                break;
+                            }
+                        }
+                    }
+                }
+                let req = String::from_utf8_lossy(&buf).to_ascii_lowercase();
+                let offset = req
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("range: bytes=")
+                            .and_then(|r| r.split('-').next())
+                            .and_then(|n| n.trim().parse::<u64>().ok())
+                    })
+                    .unwrap_or(0);
+                let _ = stream.write_all(&build(offset)).await;
+                let _ = stream.flush().await;
+            }
+        });
+        format!("http://{addr}/file")
+    }
+
+    fn sha256_hex(bytes: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(bytes);
+        hex_lower(&h.finalize())
+    }
+
+    /// `200 OK` claiming `total` bytes but sending only `body` (truncate `body`
+    /// short of `total` to simulate a mid-body drop).
+    fn http_200(total: usize, body: &[u8]) -> Vec<u8> {
+        let mut out =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {total}\r\nConnection: close\r\n\r\n")
+                .into_bytes();
+        out.extend_from_slice(body);
+        out
+    }
+
+    /// `206 Partial Content` from `offset` of a `total`-byte file, sending `body`.
+    fn http_206(offset: u64, total: usize, body: &[u8]) -> Vec<u8> {
+        let end = total as u64 - 1;
+        let mut out = format!(
+            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {offset}-{end}/{total}\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        out.extend_from_slice(body);
+        out
+    }
+
+    #[tokio::test]
+    async fn download_resumes_from_a_mid_body_drop_and_verifies() {
+        let payload: Vec<u8> = (0..2000u32).map(|i| (i % 251) as u8).collect();
+        let ck = Checksum::Sha256(sha256_hex(&payload));
+        let (p1, p2) = (payload.clone(), payload.clone());
+        let url = scripted_server(vec![
+            // Attempt 1: claim 2000 bytes, send only 1000, then drop.
+            Box::new(move |_off| http_200(2000, &p1[..1000])),
+            // Attempt 2: Range → 206 from the offset, send the remainder.
+            Box::new(move |off| http_206(off, 2000, &p2[off as usize..])),
+        ])
+        .await;
+
+        let dest = std::env::temp_dir().join(format!("rexenv-dl-resume-{}", std::process::id()));
+        let _ = std::fs::remove_file(&dest);
+        let r = download(&url, &dest, Some(&ck), None).await;
+        assert!(r.is_ok(), "resume should complete: {r:?}");
+        assert_eq!(std::fs::read(&dest).unwrap(), payload, "assembled file is byte-complete");
+        let _ = std::fs::remove_file(&dest);
+    }
+
+    #[tokio::test]
+    async fn download_resume_with_corrupted_bytes_fails_closed_and_removes_partial() {
+        // The safety-critical half: a resumed range that serves a corrupted byte
+        // must end in a checksum error with the partial removed — NEVER a silent
+        // pass. The final SHA-256 over the whole assembled file is the gate.
+        let payload: Vec<u8> = (0..2000u32).map(|i| (i % 251) as u8).collect();
+        let ck = Checksum::Sha256(sha256_hex(&payload));
+        let p1 = payload.clone();
+        let mut corrupt = payload.clone();
+        corrupt[1500] ^= 0xFF; // flip a byte inside the resumed range
+        let url = scripted_server(vec![
+            Box::new(move |_off| http_200(2000, &p1[..1000])),
+            Box::new(move |off| http_206(off, 2000, &corrupt[off as usize..])),
+        ])
+        .await;
+
+        let dest = std::env::temp_dir().join(format!("rexenv-dl-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_file(&dest);
+        let r = download(&url, &dest, Some(&ck), None).await;
+        assert!(r.is_err(), "a corrupted resume must NOT silently pass");
+        assert!(
+            r.unwrap_err().to_string().to_lowercase().contains("checksum"),
+            "must fail on the checksum"
+        );
+        assert!(!dest.exists(), "the bad partial must be removed (fail closed)");
+    }
+
+    #[tokio::test]
+    async fn download_restarts_when_the_server_ignores_range_with_200() {
+        // If the server answers a Range request with 200 (full body from 0), we
+        // must TRUNCATE and restart — appending would duplicate the prefix.
+        let payload: Vec<u8> = (0..2000u32).map(|i| (i % 251) as u8).collect();
+        let ck = Checksum::Sha256(sha256_hex(&payload));
+        let (p1, p2) = (payload.clone(), payload.clone());
+        let url = scripted_server(vec![
+            Box::new(move |_off| http_200(2000, &p1[..1000])), // drop → partial on disk
+            Box::new(move |_off| http_200(2000, &p2)),         // ignores Range → full 200
+        ])
+        .await;
+
+        let dest = std::env::temp_dir().join(format!("rexenv-dl-ignore-{}", std::process::id()));
+        let _ = std::fs::remove_file(&dest);
+        let r = download(&url, &dest, Some(&ck), None).await;
+        assert!(r.is_ok(), "a 200 to a Range request must restart cleanly: {r:?}");
+        assert_eq!(std::fs::read(&dest).unwrap(), payload, "no duplicated prefix");
+        let _ = std::fs::remove_file(&dest);
     }
 
     #[test]
