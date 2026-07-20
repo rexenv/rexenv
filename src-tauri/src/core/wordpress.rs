@@ -237,10 +237,19 @@ fn item_verb(
     if names.is_empty() {
         return Ok(String::new());
     }
-    // `--` end-of-flags: a name like "--all" is a positional, never a wp-cli flag.
-    let mut args: Vec<&str> = vec![noun, verb, "--"];
+    wp_run(php_bin, wp_phar, docroot, &item_verb_argv(noun, verb, names))
+}
+
+/// Argv for a plugin/theme verb over one-or-more items: `[noun, verb, ...names]`.
+/// NO `--` separator: WP-CLI does NOT honor the getopt end-of-flags convention —
+/// a bare `--` is passed through as a LITERAL positional (a phantom slug), which
+/// broke `plugin activate` ("The '--' plugin could not be found"). The names here
+/// are real installed slugs from the app's own listings; the arbitrary-source
+/// vector is closed separately by `ensure_slugs`/`valid_slug` on INSTALL.
+fn item_verb_argv<'a>(noun: &'a str, verb: &'a str, names: &'a [String]) -> Vec<&'a str> {
+    let mut args: Vec<&str> = vec![noun, verb];
     args.extend(names.iter().map(String::as_str));
-    wp_run(php_bin, wp_phar, docroot, &args)
+    args
 }
 
 fn plugin_verb(
@@ -374,7 +383,7 @@ pub fn theme_list(
 
 /// Activate a theme (`wp theme activate <name>`) — only one can be live.
 pub fn theme_activate(php_bin: &Path, wp_phar: &Path, docroot: &Path, name: &str) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["theme", "activate", "--", name])
+    wp_run(php_bin, wp_phar, docroot, &["theme", "activate", name])
 }
 /// Update one or more themes (`wp theme update …`).
 pub fn theme_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
@@ -486,7 +495,7 @@ pub fn user_create(
         php_bin,
         wp_phar,
         docroot,
-        &["user", "create", &role_arg, &pass_arg, "--porcelain", "--", login, email],
+        &["user", "create", &role_arg, &pass_arg, "--porcelain", login, email],
     )
 }
 
@@ -621,7 +630,7 @@ pub fn network_site_create(php_bin: &Path, wp_phar: &Path, docroot: &Path, slug:
 /// Delete a sub-site by `blog_id` (`wp site delete <id> --yes`). The main site
 /// (id 1) can't be deleted — WP-CLI rejects it.
 pub fn network_site_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, blog_id: &str) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["site", "delete", "--yes", "--", blog_id])
+    wp_run(php_bin, wp_phar, docroot, &["site", "delete", "--yes", blog_id])
 }
 
 /// Network-activate one or more plugins (`wp plugin activate … --network`) — they
@@ -666,7 +675,7 @@ pub fn super_admin_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Resul
 
 /// Grant super-admin to a user (`wp super-admin add <user>`).
 pub fn super_admin_add(php_bin: &Path, wp_phar: &Path, docroot: &Path, user: &str) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["super-admin", "add", "--", user])
+    wp_run(php_bin, wp_phar, docroot, &["super-admin", "add", user])
 }
 
 // ── Tools (§7.2) ─────────────────────────────────────────────────────────────
@@ -766,7 +775,15 @@ pub fn cron_run_hook(
     if hook.is_empty() {
         return Err(Error::Other("empty cron hook name".into()));
     }
-    wp_run(php_bin, wp_phar, docroot, &["cron", "event", "run", "--", hook])
+    wp_run(php_bin, wp_phar, docroot, &cron_run_hook_argv(hook))
+}
+
+/// Argv for running one cron hook: `[cron, event, run, hook]`. NO `--` — WP-CLI
+/// treats a bare `--` as a literal positional, so `["cron","event","run","--",h]`
+/// made WP-CLI see `--` as the hook name ("Invalid cron event '--'"). The hook
+/// passes as a single argv element, never through a shell.
+fn cron_run_hook_argv(hook: &str) -> [&str; 4] {
+    ["cron", "event", "run", hook]
 }
 
 /// Result of `wp core verify-checksums` (Tools → Maintenance). A failed
@@ -1106,9 +1123,10 @@ pub fn search_replace(
     if dry_run {
         args.push("--dry-run");
     }
-    // `--` end-of-flags: from/to are positionals even if they start with `-`
-    // (so a term can't smuggle --all-tables / --network).
-    args.push("--");
+    // NO `--` separator: WP-CLI doesn't honor getopt end-of-flags (a bare `--`
+    // becomes a literal positional). from/to follow the flags directly; a term
+    // that itself looks like a flag is a WP-CLI limitation, not something `--`
+    // could fix — and it's the user's own dev DB (same-privilege footgun).
     args.push(from);
     args.push(to);
     let out = wp_run(php_bin, wp_phar, docroot, &args)?;
@@ -2001,6 +2019,34 @@ mod tests {
             !run("akismet").contains("invalid plugin slug"),
             "a real slug must pass validation"
         );
+    }
+
+    #[test]
+    fn wp_positional_argv_has_no_stray_end_of_flags_separator() {
+        // Regression: B24 inserted a `--` "end-of-flags" token, but WP-CLI does
+        // NOT honor getopt `--` — it read the bare `--` as a literal positional,
+        // so `plugin activate` saw a phantom "--" slug and `cron event run` saw a
+        // "--" hook. The argv must carry the real positionals ONLY, no `--`.
+        let one = ["akismet".to_string()];
+        assert_eq!(
+            item_verb_argv("plugin", "activate", &one),
+            ["plugin", "activate", "akismet"],
+            "no stray -- before the plugin slug"
+        );
+        let two = ["akismet".to_string(), "jetpack".to_string()];
+        assert_eq!(
+            item_verb_argv("plugin", "activate", &two),
+            ["plugin", "activate", "akismet", "jetpack"],
+            "multiple slugs, still no --"
+        );
+        assert_eq!(
+            cron_run_hook_argv("my_cron_hook"),
+            ["cron", "event", "run", "my_cron_hook"],
+            "no stray -- as the cron hook name"
+        );
+        // Guard against the token creeping back into either builder.
+        assert!(!item_verb_argv("plugin", "activate", &one).contains(&"--"));
+        assert!(!cron_run_hook_argv("my_cron_hook").contains(&"--"));
     }
 
     #[test]
