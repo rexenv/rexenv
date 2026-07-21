@@ -607,8 +607,18 @@ spawns, but those are also covered by `plan_for_start`/`plan_for_override` in th
 a glance in the next pass.)
 
 ### B20 · 🟠 med · FrankenPHP/Apache per-site backend ports collide (`h % 100`) → cross-site content bleed + a live sibling gets reaped
-**◑ DATA-SAFETY HAZARD FIXED via Option A — commit `e96636b` (see (A)). The collision itself remains
-until follow-up B (the recorded-port allocator, designed at the end of this entry); publish is safe on A.**
+**✅ FULLY FIXED. Option A (hazard) — `e96636b`; follow-up B (recorded-port allocator + migration) —
+`3477760`.** The collision is now DESIGNED OUT: a nullable `override_port` column (v14) + a lowest-free
+allocator (create/set_web_server) records a collision-free port per site; a one-time idempotent Rust
+backfill (Phase B, at startup) preserves every existing non-colliding site's EXACT current derived port
+(zero disruption) and resolves any pre-existing collision (first-by-created_at keeps its port, second
+gets a free one — it was already broken). `set_domain` no longer re-derives → the domain-change orphan
+is fixed (same "derived once" shape as db_name). All prior lessons applied: B18 (Phase A atomic
+versioned step, Phase B idempotent single-transaction), B21 (plain nullable INTEGER, NO UNIQUE — the
+backfill resolves collisions, never bricks on existing data), and the B20-A guards KEPT
+reworked-not-removed (`recorded_port_conflict` belt on the allocator; the `spawn_override` reap-guard
+byte-for-byte unchanged). Load-bearing backfill test proves the first site's port is unchanged + the
+second is resolved to a distinct free port (neither NULL), idempotent. `cargo test --lib` 375.
 **Where:** `core/frankenphp.rs:30-37` (`site_port`), `core/apache.rs:42` (same shape), reaped at
 `core/service_manager.rs:890-913` (`spawn_override` self-heal).
 **Verified:** me.
