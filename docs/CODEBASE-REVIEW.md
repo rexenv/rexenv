@@ -508,11 +508,22 @@ in the narrow pre-`X-Rexenv-Edge`-marker window. **Recommendation:** drop the fa
 marker is universal, or gate it behind an extra rexenv signal.
 
 ### B16 · misc low/info (reported, batch for a second look)
-**⏸ DISPOSITIONED (folded into other items).** repo idle-timeout + `devtools::probe_version` timeout →
-folded into [[B25]] (timeout family, plan-first). `terminal.rs` quote-refusal → same reasoning as
-[[B12]] (paths never contain quotes; leave). `RepoJobs.jobs` never pruned + delete-guard TOCTOU +
-edge-wrapper hardlink chown → behavioral/single-user, deferred post-publish. `http://` accepted →
-INTENTIONAL (self-hosted forges; leave). Nothing here is a safe do-now nit.
+**⏸ DISPOSITIONED (all resolved).** repo idle-timeout + `devtools::probe_version` timeout → FIXED in
+[[B25]] stage 3 (`60066b5`). `terminal.rs` quote-refusal → FIXED (`d10dc95`, dq-escape for the PTY
+export). `http://` accepted → INTENTIONAL (self-hosted forges; leave). The three "remnants" were
+assessed one-at-a-time post-publish-pass:
+- **`RepoJobs.jobs` never pruned → LEAVE-documented.** Negligible, user-bounded growth (a `JobEntry` is
+  a few small strings + a cancel token, per manual repo action, cleared on restart). A prune adds a
+  real new failure mode — the UI reconnects to jobs BY ID (`repo_job_state`), so pruning a job it later
+  re-queries yields "no repo job". Fixing costs more than the bug.
+- **delete-guard TOCTOU (non-symlink path) → LEAVE-documented.** Same-user, not a boundary: an attacker
+  who can swap the dir mid-delete already has your uid and gains nothing from the race. Can't be fully
+  closed anyway (wp-cli does its own independent stat+walk = a second TOCTOU we don't control); the only
+  complete fix is a behavioral change to defend a non-boundary. Don't manufacture it.
+- **edge-wrapper hardlink chown → ✅ FIXED (`e1429d6`).** The one with a real (if gated) escalation on
+  a ROOT path, and the fix is byte-identical (a real socket has link count 1 → chown proceeds as today)
+  + cheap — so cost-free defense-in-depth was worth it here where it wasn't for the two leaves. Added a
+  `[ "$(stat -f %l "$SOCK")" = 1 ]` guard before the root chown so a hardlinked inode is never chowned.
 All `agent`-sourced, lower priority; listed so nothing's lost:
 - `core/repo.rs` `run_step_streamed` has **no idle timeout** — a network black-hole mid-clone hangs
   the job until the user cancels. Consider an idle-output watchdog.
