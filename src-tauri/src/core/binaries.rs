@@ -1000,6 +1000,27 @@ pub fn cached_bin(platform: &dyn Platform, name: &str, version: &str) -> Option<
     bin.exists().then_some(bin)
 }
 
+/// The cached bundle tree dir for `name`/`version` iff it's actually present —
+/// a bundle dir is valid ONLY when its `member` exists (the same gate
+/// [`resolve_bundle`] uses), so a half-extracted `<name>-<version>/` without the
+/// binary is correctly rejected. Lets `adopt_startup` wire `httpd_dir` from an
+/// existence-checked path with no resolve/download (B28).
+pub fn cached_bundle_dir(
+    platform: &dyn Platform,
+    name: &str,
+    version: &str,
+    member: &str,
+) -> Option<PathBuf> {
+    cached_bundle_dir_in(&platform.paths().bin_dir().ok()?, name, version, member)
+}
+
+/// Pure core of [`cached_bundle_dir`] (no `Platform`), so the "a bundle dir is
+/// valid iff its member exists" rule is unit-testable directly.
+fn cached_bundle_dir_in(bin_dir: &Path, name: &str, version: &str, member: &str) -> Option<PathBuf> {
+    let dir = bin_dir.join(format!("{name}-{version}"));
+    dir.join(member).exists().then_some(dir)
+}
+
 /// Whether a binary-cache dir name holds an OUTDATED patch of a pinned PHP
 /// minor — `php-8.3.30/` or `php-fpm-8.3.30/` once the pin moved to 8.3.31.
 /// Pure (name-only) so the GC rule is unit-testable. Deliberately narrow:
@@ -2105,6 +2126,32 @@ mod tests {
         assert!(r.is_ok(), "a 200 to a Range request must restart cleanly: {r:?}");
         assert_eq!(std::fs::read(&dest).unwrap(), payload, "no duplicated prefix");
         let _ = std::fs::remove_file(&dest);
+    }
+
+    #[test]
+    fn cached_bundle_dir_requires_the_member_present() {
+        // A bundle dir is only valid when its member exists — the same gate
+        // resolve_bundle uses, so adopt_startup never wires a half-extracted
+        // tree (B28). Mirrors cached_bin's existence check.
+        let base = std::env::temp_dir().join(format!("rexenv-cbd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+
+        // No dir at all → None.
+        assert_eq!(cached_bundle_dir_in(&base, "httpd", "2.4.68", "bin/httpd"), None);
+
+        // Dir exists but the member is missing (the half-extracted case) → None.
+        let dir = base.join("httpd-2.4.68");
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        assert_eq!(cached_bundle_dir_in(&base, "httpd", "2.4.68", "bin/httpd"), None);
+
+        // Member present → Some(the dir).
+        std::fs::write(dir.join("bin/httpd"), b"#!/bin/sh\n").unwrap();
+        assert_eq!(
+            cached_bundle_dir_in(&base, "httpd", "2.4.68", "bin/httpd"),
+            Some(dir.clone())
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

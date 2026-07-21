@@ -1346,18 +1346,38 @@ impl ServiceManager {
             };
             adopted += 1;
         }
-        // Adopted services imply cached binaries — wire up `bins` (stop_all's
-        // edge stop and `reload` need them) strictly offline: existence-checked
-        // paths, never a download at startup.
-        if adopted > 0 && self.bins.is_none() {
+        // Adopted services imply cached binaries — wire the resolved-once binary
+        // fields strictly offline: existence-checked paths, never a download at
+        // startup. This pre-populates the cache fields so the FIRST override
+        // reconcile that must restart an adopted FrankenPHP/Apache backend finds
+        // Some(p) and skips resolve*() entirely, instead of resolving under the
+        // services lock (B28). A wrong/stale path is impossible — the member must
+        // be on disk; if the cache is somehow absent the field stays None and the
+        // on-demand ensure_*() fallback runs exactly as today (no behavior change,
+        // just no pre-wiring win).
+        if adopted > 0 {
             if let Ok(bin_dir) = platform.paths().bin_dir() {
-                let nginx =
-                    bin_dir.join(format!("nginx-{}", binaries::NGINX_VERSION)).join("nginx");
-                let caddy =
-                    bin_dir.join(format!("caddy-{}", binaries::CADDY_VERSION)).join("caddy");
-                if nginx.exists() && caddy.exists() {
-                    self.bins = Some(Bins { nginx, caddy });
+                // stop_all's edge stop + `reload` need nginx/caddy.
+                if self.bins.is_none() {
+                    let nginx =
+                        bin_dir.join(format!("nginx-{}", binaries::NGINX_VERSION)).join("nginx");
+                    let caddy =
+                        bin_dir.join(format!("caddy-{}", binaries::CADDY_VERSION)).join("caddy");
+                    if nginx.exists() && caddy.exists() {
+                        self.bins = Some(Bins { nginx, caddy });
+                    }
                 }
+            }
+            // Per-site override backends: an adopted process runs FROM these, so
+            // the member is provably on disk → the warm-but-cold re-download path
+            // of resolve*() can't apply here.
+            if self.frankenphp_bin.is_none() {
+                self.frankenphp_bin =
+                    binaries::cached_bin(platform, "frankenphp", binaries::FRANKENPHP_VERSION);
+            }
+            if self.httpd_dir.is_none() {
+                self.httpd_dir =
+                    binaries::cached_bundle_dir(platform, "httpd", binaries::HTTPD_VERSION, "bin/httpd");
             }
         }
         adopted
