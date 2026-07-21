@@ -334,7 +334,22 @@ fn item_verb(
     if names.is_empty() {
         return Ok(String::new());
     }
-    wp_run(php_bin, wp_phar, docroot, &item_verb_argv(noun, verb, names))
+    let args = item_verb_argv(noun, verb, names);
+    match item_verb_timeout(verb, names.len()) {
+        // "update" downloads one archive per item from wp.org — the same wedge
+        // class as install, same scaled cap (B25). The other verbs
+        // (activate/deactivate/delete) are local ops, left untimed.
+        Some(t) => wp_run_timed(php_bin, wp_phar, docroot, &args, t),
+        None => wp_run(php_bin, wp_phar, docroot, &args),
+    }
+}
+
+/// The wall-clock cap for an item verb: `update` gets the scaled DOWNLOAD
+/// bound (it fetches an archive per item, exactly like install — NOT the flat
+/// list bound, which is for metadata-only calls); everything else is a local
+/// operation and stays unbounded.
+fn item_verb_timeout(verb: &str, items: usize) -> Option<Duration> {
+    (verb == "update").then(|| download_timeout(items))
 }
 
 /// Argv for a plugin/theme verb over one-or-more items: `[noun, verb, ...names]`.
@@ -2502,6 +2517,18 @@ Error: WordPress installation doesn't verify against checksums.";
         // List calls: WP's update-check request is internally capped at
         // 3s/30s (update.php), so 300s is ~10× the worst legit case.
         assert_eq!(WP_LIST_TIMEOUT, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn item_verb_update_gets_the_scaled_download_bound_local_verbs_stay_unbounded() {
+        // plugin/theme `update` downloads an archive per item (same wedge class
+        // as install) → the SCALED download cap, not the flat list bound.
+        assert_eq!(item_verb_timeout("update", 3), Some(download_timeout(3)));
+        assert_eq!(item_verb_timeout("update", 1), Some(Duration::from_secs(1020)));
+        // Local verbs never spawn a network wait — left untimed.
+        for local in ["activate", "deactivate", "delete"] {
+            assert_eq!(item_verb_timeout(local, 3), None, "{local}");
+        }
     }
 
     #[test]
