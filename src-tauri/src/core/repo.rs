@@ -316,10 +316,17 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
 /// `git ls-remote --symref <url>`: default branch (HEAD symref), branches,
 /// tags. `env` is the login-shell snapshot (SSH_AUTH_SOCK rides along for
 /// private repos).
-pub fn probe_remote(git: &Path, env: &[(String, String)], url: &str) -> Result<RemoteRefs> {
+pub fn probe_remote(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    url: &str,
+) -> Result<RemoteRefs> {
     let env = with_git_env(env);
     let args = ["ls-remote", "--symref", "--", url];
-    let out = run_captured_with_cap(git, &args, &env, PROBE_TIMEOUT)
+    // Network probe: no checkout dir — spawn_streamed needs a valid cwd, and one
+    // is irrelevant to `ls-remote`, so use the temp dir.
+    let out = run_captured_with_cap(supervisor, git, &args, &std::env::temp_dir(), &env, PROBE_TIMEOUT)
         .map_err(|e| Error::Other(format!("probing {url} failed: {e}")))?;
     if !out.ok {
         return Err(map_git_error(&out.stderr_tail, url));
@@ -367,29 +374,38 @@ fn with_git_env(env: &[(String, String)]) -> Vec<(String, String)> {
 /// Captured run with a wall-clock cap. Output is drained on reader THREADS —
 /// `ls-remote` on a big repo overflows a pipe buffer (gutenberg has thousands
 /// of refs), so a `wait`-then-read would deadlock into a fake timeout.
+#[derive(Debug)]
 struct CapturedRun {
     ok: bool,
     stdout: String,
     stderr_tail: Vec<String>,
 }
 
+/// Spawn through `spawn_streamed` (which sets `process_group(0)` — the child is
+/// its own group leader, `pgid = child.id()`) so that on timeout `stop_group`
+/// can kill the WHOLE group, not just the leader. `ls-remote` forks an ssh /
+/// git-remote-https grandchild that inherits the stdout pipe; the old leader-only
+/// `child.kill()` left it alive holding the pipe write-end, so the reader threads
+/// could never join (they'd block on `read_to_end` until ssh's own network
+/// timeout minutes later) — the exact orphan class `spawn_streamed` exists to
+/// prevent (B7). `cwd` is the checkout dir for local ops (they also pass `-C`);
+/// the network probe has no dir, so it passes a guaranteed-existing temp dir.
 fn run_captured_with_cap(
+    supervisor: &dyn ProcessSupervisor,
     program: &Path,
     args: &[&str],
+    cwd: &Path,
     env: &[(String, String)],
     cap: Duration,
 ) -> Result<CapturedRun> {
-    use std::process::Stdio;
-    let mut child = std::process::Command::new(program)
-        .args(args)
-        .env_clear()
-        .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    let mut stdout = child.stdout.take().expect("piped");
-    let mut stderr = child.stderr.take().expect("piped");
+    let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    let mut child = supervisor.spawn_streamed(program, &owned, cwd, env)?;
+    let pgid = child.id(); // == the group leader (process_group(0)) — positive ID
+    let mut stdout = child.stdout.take().expect("spawn_streamed pipes stdout");
+    let mut stderr = child.stderr.take().expect("spawn_streamed pipes stderr");
+    // Readers drain CONCURRENTLY with the wait loop below — this is what keeps
+    // the pipe from filling on the success path (the deadlock the doc warns of
+    // is `wait`-before-drain; we never do that).
     let out_t = std::thread::spawn(move || {
         let mut b = Vec::new();
         let _ = stdout.read_to_end(&mut b);
@@ -406,8 +422,14 @@ fn run_captured_with_cap(
             break s;
         }
         if start.elapsed() >= cap {
-            let _ = child.kill();
+            // Kill the whole group FIRST (leader + the ssh grandchild that holds
+            // the pipe), THEN join: once every group member is dead the pipe
+            // write-ends close, `read_to_end` hits EOF, and the joins return
+            // immediately instead of hanging on the orphan.
+            let _ = supervisor.stop_group(pgid);
             let _ = child.wait();
+            let _ = out_t.join();
+            let _ = err_t.join();
             return Err(Error::Other(format!(
                 "timed out after {}s (stalled network?)",
                 cap.as_secs()
@@ -894,11 +916,18 @@ pub fn loss_warning(st: &GitStatus) -> Option<String> {
 
 /// Run + parse git status for a checkout (local, fast, no network; runs no
 /// repo code). 10s cap is generous — gutenberg answers in ~100ms.
-pub fn read_git_status(git: &Path, env: &[(String, String)], dir: &Path) -> Result<GitStatus> {
+pub fn read_git_status(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+) -> Result<GitStatus> {
     let env = with_git_env(env);
     let out = run_captured_with_cap(
+        supervisor,
         git,
         &["-C", &dir.to_string_lossy(), "status", "--porcelain=v2", "--branch"],
+        dir,
         &env,
         Duration::from_secs(10),
     )?;
@@ -913,11 +942,18 @@ pub fn read_git_status(git: &Path, env: &[(String, String)], dir: &Path) -> Resu
 }
 
 /// The checkout's `origin` remote URL, if any (local read, no network).
-pub fn read_remote_url(git: &Path, env: &[(String, String)], dir: &Path) -> Option<String> {
+pub fn read_remote_url(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+) -> Option<String> {
     let env = with_git_env(env);
     let out = run_captured_with_cap(
+        supervisor,
         git,
         &["-C", &dir.to_string_lossy(), "remote", "get-url", "origin"],
+        dir,
         &env,
         Duration::from_secs(10),
     )
@@ -1028,7 +1064,7 @@ pub fn git_push(
     cancel: &CancelToken,
     on_line: &mut dyn FnMut(&str),
 ) -> Result<()> {
-    let status = read_git_status(git, env, dir)?;
+    let status = read_git_status(supervisor, git, env, dir)?;
     let mut args = vec!["push".to_string()];
     if status.upstream.is_none() {
         let branch = status.branch.ok_or_else(|| {
@@ -1085,6 +1121,7 @@ pub fn map_git_op_error(op: &str, tail: &[String]) -> Error {
 /// Run a short read-only git command in `dir`, returning trimmed non-empty
 /// stdout lines (branch listings for the checkout dropdown).
 pub fn run_git_lines(
+    supervisor: &dyn ProcessSupervisor,
     git: &Path,
     env: &[(String, String)],
     dir: &Path,
@@ -1094,7 +1131,7 @@ pub fn run_git_lines(
     let dir_s = dir.to_string_lossy().into_owned();
     let mut full: Vec<&str> = vec!["-C", &dir_s];
     full.extend_from_slice(args);
-    let out = run_captured_with_cap(git, &full, &env, Duration::from_secs(10))?;
+    let out = run_captured_with_cap(supervisor, git, &full, dir, &env, Duration::from_secs(10))?;
     if !out.ok {
         return Err(Error::Other(format!(
             "git {} failed:\n{}",
@@ -2230,6 +2267,33 @@ mod tests {
         // Unknown failures keep the tail.
         let raw = map_node_error(&["ERR_PNPM_SOMETHING went sideways".into()]);
         assert!(raw.to_string().contains("went sideways"), "{raw}");
+    }
+
+    #[test]
+    fn captured_cap_kills_the_whole_group_so_a_grandchild_cant_stall_the_join() {
+        // The B7 scenario: the leader backgrounds a grandchild that inherits the
+        // stdout pipe, then goes silent. The OLD leader-only child.kill() left
+        // the grandchild alive holding the pipe → read_to_end never hit EOF →
+        // the join hung ~30s. stop_group kills the WHOLE group (grandchild too),
+        // the pipe closes, and the join returns fast — so the timeout Err comes
+        // back in well under the grandchild's 30s lifetime.
+        let plat = crate::platform::current();
+        let start = std::time::Instant::now();
+        let r = run_captured_with_cap(
+            plat.supervisor(),
+            Path::new("/bin/sh"),
+            &["-c", "sleep 30 & echo started; wait"],
+            &std::env::temp_dir(),
+            &[],
+            Duration::from_millis(500),
+        );
+        assert!(r.is_err(), "a stalled probe must time out");
+        assert!(r.unwrap_err().to_string().contains("timed out"), "the timeout error");
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the group kill closed the pipe so the join returned fast (not ~30s): {:?}",
+            start.elapsed()
+        );
     }
 
     #[test]

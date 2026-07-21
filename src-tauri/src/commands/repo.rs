@@ -193,7 +193,7 @@ pub async fn repo_probe<R: tauri::Runtime>(app: AppHandle<R>, url: String) -> Re
         let src = repo::parse_source(&url)?;
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
-        let refs = repo::probe_remote(&git.path, &env, &src.url)?;
+        let refs = repo::probe_remote(state.platform.supervisor(), &git.path, &env, &src.url)?;
         Ok(RepoProbeResult {
             url: src.url,
             host: src.host,
@@ -761,9 +761,9 @@ pub async fn repo_branches<R: tauri::Runtime>(
         let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
-        let status = repo::read_git_status(&git.path, &env, &dir)?;
+        let status = repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dir)?;
         let list = |args: &[&str]| -> Vec<String> {
-            repo::run_git_lines(&git.path, &env, &dir, args).unwrap_or_default()
+            repo::run_git_lines(state.platform.supervisor(), &git.path, &env, &dir, args).unwrap_or_default()
         };
         let local = list(&["branch", "--format=%(refname:short)"]);
         let remote = list(&["branch", "-r", "--format=%(refname:short)"])
@@ -1217,8 +1217,8 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
         }
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
-        let status = repo::read_git_status(&git.path, &env, &dir)?;
-        let remote = repo::read_remote_url(&git.path, &env, &dir);
+        let status = repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dir)?;
+        let remote = repo::read_remote_url(state.platform.supervisor(), &git.path, &env, &dir);
         let loss_warning = repo::loss_warning(&status);
         let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
         let log_key = state
@@ -1284,8 +1284,8 @@ pub async fn repo_adopt<R: tauri::Runtime>(
             .unwrap_or(false);
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
-        let remote = repo::read_remote_url(&git.path, &env, &dir).unwrap_or_default();
-        let branch = repo::read_git_status(&git.path, &env, &dir).ok().and_then(|s| s.branch);
+        let remote = repo::read_remote_url(state.platform.supervisor(), &git.path, &env, &dir).unwrap_or_default();
+        let branch = repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dir).ok().and_then(|s| s.branch);
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         store::upsert_git_asset(
             &conn,
@@ -1355,8 +1355,8 @@ pub async fn repo_link<R: tauri::Runtime>(
             let (remote, branch) = match shell_env(&state, &jobs, false) {
                 Ok(env) => match devtools::resolve_git(state.platform.as_ref(), &env) {
                     Ok(git) => (
-                        repo::read_remote_url(&git.path, &env, &dest).unwrap_or_default(),
-                        repo::read_git_status(&git.path, &env, &dest).ok().and_then(|s| s.branch),
+                        repo::read_remote_url(state.platform.supervisor(), &git.path, &env, &dest).unwrap_or_default(),
+                        repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dest).ok().and_then(|s| s.branch),
                     ),
                     Err(_) => (String::new(), None),
                 },

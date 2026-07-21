@@ -41,7 +41,7 @@ fn main() {
 
     // 1. Probe a real public repo — default branch + refs.
     print!("probe {SMALL_REPO} … ");
-    match repo::probe_remote(&git, &env, SMALL_REPO) {
+    match repo::probe_remote(plat.supervisor(), &git, &env, SMALL_REPO) {
         Ok(refs) => {
             println!(
                 "ok: default={:?}, {} branches, {} tags",
@@ -59,7 +59,7 @@ fn main() {
     // 2. Probe a missing repo — mapped error, fast, no hang.
     print!("probe {MISSING_REPO} … ");
     let t = Instant::now();
-    match repo::probe_remote(&git, &env, MISSING_REPO) {
+    match repo::probe_remote(plat.supervisor(), &git, &env, MISSING_REPO) {
         Ok(_) => failures.push("missing repo probed Ok?!".into()),
         Err(e) => {
             println!("errored in {:.1}s (good):\n  {e}", t.elapsed().as_secs_f32());

@@ -60,7 +60,7 @@ fn main() {
     git_in(&seed, &["push", "-qu", "origin", "HEAD"]);
     let main_branch = {
         let env2 = env.clone();
-        repo::read_git_status(&git, &env2, &seed).unwrap().branch.unwrap()
+        repo::read_git_status(sup, &git, &env2, &seed).unwrap().branch.unwrap()
     };
     // A feature branch whose LOCKFILE differs (the deps-changed hint case).
     git_in(&seed, &["checkout", "-qb", "feat"]);
@@ -126,7 +126,7 @@ fn main() {
     let fp_before = repo::lockfile_fingerprint(&a);
     match repo::git_checkout(&*sup, &git, &env, &a, "feat", &cancel, &mut quiet) {
         Ok(()) => {
-            let st = repo::read_git_status(&git, &env, &a).unwrap();
+            let st = repo::read_git_status(sup, &git, &env, &a).unwrap();
             let fp_after = repo::lockfile_fingerprint(&a);
             println!(
                 "checkout ok: branch={:?}, lockfile changed={}",
@@ -167,7 +167,7 @@ fn main() {
     git_in(&a, &["checkout", "-qb", "local-only"]);
     match repo::git_push(&*sup, &git, &env, &a, &cancel, &mut quiet) {
         Ok(()) => {
-            let st = repo::read_git_status(&git, &env, &a).unwrap();
+            let st = repo::read_git_status(sup, &git, &env, &a).unwrap();
             println!("no-upstream push ok, upstream now = {:?}", st.upstream);
             if st.upstream.is_none() {
                 failures.push("auto --set-upstream did not stick".into());
