@@ -87,21 +87,36 @@ fn validate_db_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// The shared flag prefix for the bundled MySQL-protocol **interactive clients**
+/// (`mysql` / `mariadb`): loopback TCP, root/no password (the local-dev setup),
+/// plus a 10s `--connect-timeout` so a stalled-accept server errors out instead
+/// of hanging the calling command forever (B25). Connect-phase ONLY — run time
+/// stays unbounded on purpose: a big import legitimately runs for minutes, and a
+/// wall-clock cap here would be the B34 mistake.
+///
+/// NOT used by `export_to_downloads`: the dump tools (`mysqldump` 8.0/8.4,
+/// `mariadb-dump` 11.4/12.3) all REJECT `--connect-timeout` ("unknown variable",
+/// hard exit — verified against the bundled binaries), so the dump keeps its own
+/// unbounded-connect args rather than a flag that breaks every export.
+fn client_base_args(port: u16) -> [String; 6] {
+    [
+        "--no-defaults".into(),
+        "--protocol=TCP".into(),
+        "--host=127.0.0.1".into(),
+        format!("--port={port}"),
+        "--user=root".into(),
+        "--connect-timeout=10".into(),
+    ]
+}
+
 /// Run one SQL statement via a **bundled** MySQL-protocol client (TCP to the
 /// loopback server, root/no password — the local-dev setup). `client` is the
 /// client BINARY (`bin/mysql` from the MySQL tree, or `bin/mariadb` from the
 /// mariadb bundle — same protocol, same flags); `what` labels the error.
 fn mysql_exec(client: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
     let out = std::process::Command::new(client)
-        .args([
-            "--no-defaults",
-            "--protocol=TCP",
-            "--host=127.0.0.1",
-            &format!("--port={port}"),
-            "--user=root",
-            "-e",
-            sql,
-        ])
+        .args(client_base_args(port))
+        .args(["-e", sql])
         .output()?;
     if out.status.success() {
         Ok(())
@@ -134,6 +149,10 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
     }
     // --result-file (not shell redirection): no shell involved, so a Downloads
     // path with spaces can't break, and mysqldump writes the file itself.
+    // Deliberately NOT client_base_args: every bundled dump tool (mysqldump
+    // 8.0/8.4, mariadb-dump 11.4/12.3) hard-errors on --connect-timeout
+    // ("unknown variable"), so this one path keeps an unbounded connect — a
+    // dump with no connect bound beats a flag that breaks every export (B25).
     let out = std::process::Command::new(dump)
         .args([
             "--no-defaults",
@@ -174,14 +193,8 @@ pub fn import_from_file(client: &Path, port: u16, name: &str, file: &Path) -> Re
         )));
     }
     let out = std::process::Command::new(client)
-        .args([
-            "--no-defaults",
-            "--protocol=TCP",
-            "--host=127.0.0.1",
-            &format!("--port={port}"),
-            "--user=root",
-            name,
-        ])
+        .args(client_base_args(port))
+        .arg(name)
         .stdin(std::process::Stdio::from(f))
         .output()?;
     if !out.status.success() {
@@ -227,12 +240,8 @@ pub fn drop_database(client: &Path, port: u16, name: &str) -> Result<()> {
 /// share nginx + a php-fpm pool). Requires the server to be running.
 pub fn db_sizes(client: &Path, port: u16) -> Result<Vec<(String, u64)>> {
     let out = std::process::Command::new(client)
+        .args(client_base_args(port))
         .args([
-            "--no-defaults",
-            "--protocol=TCP",
-            "--host=127.0.0.1",
-            &format!("--port={port}"),
-            "--user=root",
             "-N", // no header
             "-B", // tab-separated batch mode
             "-e",
@@ -320,6 +329,25 @@ mod tests {
     #[test]
     fn mysql_running_false_on_closed_port() {
         assert!(!mysql_running(9));
+    }
+
+    #[test]
+    fn client_base_args_keep_the_flag_order_and_bound_the_connect() {
+        // The exact prefix all three interactive-client call sites pass: the
+        // original five flags in their original order, plus the connect bound
+        // appended LAST (B25). A reorder or a dropped flag here silently changes
+        // three subprocess invocations at once — pin the whole array.
+        assert_eq!(
+            client_base_args(13306),
+            [
+                "--no-defaults",
+                "--protocol=TCP",
+                "--host=127.0.0.1",
+                "--port=13306",
+                "--user=root",
+                "--connect-timeout=10",
+            ]
+        );
     }
 
     #[test]

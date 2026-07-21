@@ -33,6 +33,33 @@ pub fn api_base() -> String {
     format!("http://127.0.0.1:{MAILPIT_HTTP_PORT}")
 }
 
+/// Connect bound for the Mailpit API client — instant on a healthy loopback.
+const MAIL_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+/// Total-request bound. A WALL-CLOCK cap is correct here (unlike downloads,
+/// the B34 lesson): every Mailpit API response is small and bounded — the
+/// largest body is one raw email, sub-second on loopback — so no healthy
+/// request approaches this, while a wedged Mailpit (port bound, accept or
+/// response stalled) surfaces as an error instead of hanging the Mail screen
+/// forever (B25).
+const MAIL_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Build a Mailpit API client with the given total-request bound (separate from
+/// [`client`] so tests can prove the bound bites without waiting out 15s).
+fn build_client(total: std::time::Duration) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(MAIL_CONNECT_TIMEOUT)
+        .timeout(total)
+        .build()
+        .expect("mailpit http client")
+}
+
+/// The ONE shared Mailpit API client (connection pool reused across calls —
+/// previously every call built its own `Client::new()`), with both bounds applied.
+fn client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| build_client(MAIL_REQUEST_TIMEOUT))
+}
+
 /// The php-fpm `sendmail_path` shim that routes a site's PHP `mail()` into
 /// Mailpit's SMTP sink (§2.2): Mailpit's own `sendmail` subcommand aimed at the
 /// local SMTP port. The binary path is single-quoted (app-data paths contain
@@ -197,7 +224,9 @@ fn addrs(v: Option<Vec<WireAddr>>) -> Vec<MailAddress> {
 }
 
 async fn get_text(url: &str) -> Result<String> {
-    let resp = reqwest::get(url)
+    let resp = client()
+        .get(url)
+        .send()
         .await
         .map_err(|e| Error::Other(format!("mailpit GET {url}: {e}")))?
         .error_for_status()
@@ -277,7 +306,7 @@ pub async fn raw(id: &str) -> Result<String> {
 /// Delete every captured message (`DELETE /api/v1/messages`).
 pub async fn delete_all() -> Result<()> {
     let url = format!("{}/api/v1/messages", api_base());
-    reqwest::Client::new()
+    client()
         .delete(&url)
         .send()
         .await
@@ -295,7 +324,7 @@ pub async fn delete(ids: &[String]) -> Result<()> {
         return Err(Error::Other("mailpit delete: no message IDs given".into()));
     }
     let url = format!("{}/api/v1/messages", api_base());
-    reqwest::Client::new()
+    client()
         .delete(&url)
         .json(&serde_json::json!({ "IDs": ids }))
         .send()
@@ -349,5 +378,43 @@ mod tests {
         assert!(shim.starts_with("'/App Support/bin/mailpit' sendmail"));
         assert!(shim.contains("-t"));
         assert!(shim.contains("-S 127.0.0.1:11025"));
+    }
+
+    #[test]
+    fn mail_client_bounds_are_generous_but_finite() {
+        // The real bounds the shared client is built with (B25): a wall-clock
+        // total is correct for Mailpit's small bounded responses (the B34
+        // prohibition is on capping UNBOUNDED transfers), and no healthy
+        // loopback call comes near either value.
+        assert_eq!(MAIL_CONNECT_TIMEOUT.as_secs(), 3);
+        assert_eq!(MAIL_REQUEST_TIMEOUT.as_secs(), 15);
+    }
+
+    #[tokio::test]
+    async fn mail_client_times_out_against_a_wedged_server() {
+        // A Mailpit that accepts the connection then never answers (the wedged
+        // shape) must ERROR within the bound — previously reqwest::get with no
+        // timeout hung the Mail screen forever (B25). Built with a short bound
+        // via the same constructor the shared client uses, so the test proves
+        // the construction enforces the timeout without waiting out 15s.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                drop(stream);
+            }
+        });
+        let start = std::time::Instant::now();
+        let r = build_client(std::time::Duration::from_millis(300))
+            .get(format!("http://{addr}/api/v1/messages"))
+            .send()
+            .await;
+        assert!(r.is_err(), "a wedged server must error, not hang");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(3),
+            "bounded by the timeout, not the server: {:?}",
+            start.elapsed()
+        );
     }
 }
