@@ -136,6 +136,13 @@ pub struct ServiceManager {
     /// status row name). Reset when the service is seen healthy again and on
     /// manual start/stop, so a crash loop can't restart-storm forever.
     restart_attempts: HashMap<String, u32>,
+    /// Consecutive watchdog probe-MISSES for an ADOPTED service (keyed by label).
+    /// An adopted handle has no start-grace and its `alive()` is a bare-pid check
+    /// we must NOT trust (recycle trap), so we require several consecutive misses
+    /// of the positive-ID probe (a marked listener on our port) before reaping —
+    /// a single transient miss must not reap a live adopted service (B29). Reset
+    /// on any positive probe.
+    adopted_misses: HashMap<String, u32>,
     /// The edge PROCESS runs but a foreign proxy answers loopback `:443` in front
     /// of it (a specific `127.0.0.1:443` bind shadows our wildcard bind with no
     /// error anywhere — observed live with Herd). Set/cleared by the watchdog's
@@ -201,6 +208,32 @@ struct OverrideBackend {
     child: Proc,
 }
 
+/// Consecutive positive-ID misses before an ADOPTED service is declared dead.
+/// The watchdog ticks every 10s (`lib.rs`), so 2 = ~20s of a marked listener
+/// being absent — past any transient hiccup, still prompt for a genuinely-dead
+/// service (B29).
+const ADOPTED_MISS_LIMIT: u32 = 2;
+
+/// Decide an adopted service's fate from the positive-ID probe result and its
+/// running miss count. Returns `(new_miss_count, reap)`. Pure, so the
+/// flap-vs-recycle contract is unit-testable in isolation (B29):
+/// - `still_ours` (a marked listener holds our port) → reset to 0, never reap —
+///   a live-and-ours service can never accumulate misses.
+/// - a miss → increment; reap only once `limit` CONSECUTIVE misses accrue.
+///
+/// `still_ours` MUST come from `owned_master(port, app-data-marker)` (ownership
+/// AND liveness), never `proc.alive()`/`kill -0` (a bare pid a recycled process
+/// would satisfy — the trap). A recycled foreign pid carries no app-data marker,
+/// so it reads as a miss and is correctly reaped.
+fn adopted_reap_decision(still_ours: bool, misses: u32, limit: u32) -> (u32, bool) {
+    if still_ours {
+        (0, false)
+    } else {
+        let n = misses + 1;
+        (n, n >= limit)
+    }
+}
+
 impl ServiceManager {
     pub fn with_ports(ports: Ports) -> Self {
         Self {
@@ -216,6 +249,7 @@ impl ServiceManager {
             mailpit: None,
             mailpit_bin: None,
             restart_attempts: HashMap::new(),
+            adopted_misses: HashMap::new(),
             edge_blocked: false,
             edge_dead_polls: 0,
             php_settings: HashMap::new(),
@@ -557,6 +591,27 @@ impl ServiceManager {
     #[cfg(test)]
     pub(crate) fn set_bins_for_tests(&mut self, caddy: PathBuf) {
         self.bins = Some(Bins { nginx: caddy.clone(), caddy });
+    }
+
+    /// Insert an ADOPTED db handle (pid only) so the B29 watchdog path can be
+    /// exercised without a real DB process.
+    #[cfg(test)]
+    pub(crate) fn insert_adopted_db_for_test(&mut self, engine: DbEngine, pid: u32) {
+        self.dbs.insert(engine, Proc::Adopted(pid));
+    }
+    #[cfg(test)]
+    pub(crate) fn has_db_for_test(&self, engine: DbEngine) -> bool {
+        self.dbs.contains_key(&engine)
+    }
+    #[cfg(test)]
+    pub(crate) fn adopted_misses_for_test(&self, label: &str) -> u32 {
+        self.adopted_misses.get(label).copied().unwrap_or(0)
+    }
+    /// Preset the restart counter to the cap so a reap's `should_restart` gate
+    /// returns false → `spawn_db` is skipped (no real DB spawn in a unit test).
+    #[cfg(test)]
+    pub(crate) fn preset_restart_attempts_for_test(&mut self, label: &str, n: u32) {
+        self.restart_attempts.insert(label.to_string(), n);
     }
 
     /// Record the edge as running under the OS supervisor (LaunchDaemon KeepAlive),
@@ -1459,10 +1514,38 @@ impl ServiceManager {
         // within the start grace (the watchdog/Start-all race; a slow first
         // boot, e.g. MySQL initializing, must not be respawn-looped into
         // `gave-up`). A dead master is reaped regardless.
+        //
+        // ADOPTED handles are handled separately (B29): they have no start-grace
+        // and their `alive()` is a bare-pid check we must NOT trust (a recycled
+        // pid would read alive → never reaped = the trap). The positive-ID probe
+        // is `owned_master(port, app-data-marker)` — a listener on our port
+        // carrying our marker (ownership AND liveness) — and a single transient
+        // miss must not reap, so we require `ADOPTED_MISS_LIMIT` consecutive
+        // misses. If the marker can't be resolved we skip the adopted reap this
+        // tick (conservative — never reap on a marker we can't compute).
+        let marker = platform.paths().app_data_dir().ok().map(|p| p.display().to_string());
         let mut dead_dbs: Vec<DbEngine> = Vec::new();
         for (engine, proc_) in self.dbs.iter_mut() {
-            if engine.running() {
-                self.restart_attempts.remove(engine.label());
+            let label = engine.label();
+            if proc_.is_adopted() {
+                let Some(marker) = marker.as_deref().filter(|m| !m.is_empty()) else {
+                    continue; // no marker → don't reap this tick
+                };
+                let still_ours =
+                    platform.supervisor().owned_master(engine.port(), marker).is_some();
+                let misses = self.adopted_misses.get(label).copied().unwrap_or(0);
+                let (next, reap) = adopted_reap_decision(still_ours, misses, ADOPTED_MISS_LIMIT);
+                if still_ours {
+                    self.restart_attempts.remove(label);
+                    self.adopted_misses.remove(label);
+                } else if reap {
+                    self.adopted_misses.remove(label);
+                    dead_dbs.push(*engine);
+                } else {
+                    self.adopted_misses.insert(label.to_string(), next);
+                }
+            } else if engine.running() {
+                self.restart_attempts.remove(label);
             } else if !(proc_.alive() && proc_.starting()) {
                 dead_dbs.push(*engine);
             }
@@ -2296,6 +2379,140 @@ mod tests {
     /// A port that is actually free right now (bind :0, take the number).
     fn free_port() -> u16 {
         std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    }
+
+    // --- B29: adopted-service watchdog test rig -----------------------------
+
+    /// Supervisor whose positive-ID probe (`owned_master` via `owned_listeners`)
+    /// is switched per tick through a shared flag — `true` = a marked listener
+    /// holds our port (still ours), `false` = a miss. `spawn` must never be
+    /// reached (the reap's `should_restart` gate is preset off in the test).
+    struct ProbeSupervisor {
+        ours: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl ProcessSupervisor for ProbeSupervisor {
+        fn spawn(&self, _: &Path, _: &[String]) -> Result<std::process::Child> {
+            panic!("spawn must not be reached — should_restart gates it in this test")
+        }
+        fn spawn_logged(&self, _: &Path, _: &[String], _: &Path) -> Result<std::process::Child> {
+            panic!("spawn_logged must not be reached in this test")
+        }
+        fn stop(&self, _pid: u32) -> Result<()> {
+            Ok(())
+        }
+        fn owned_listeners(&self, _port: u16, _marker: &str) -> Vec<u32> {
+            if self.ours.load(std::sync::atomic::Ordering::SeqCst) {
+                vec![9999] // a marked listener on our port → owned_master = Some
+            } else {
+                vec![] // no marked listener → owned_master = None (a miss)
+            }
+        }
+    }
+    struct AdoptedTestPlatform {
+        paths: TestPaths,
+        sup: ProbeSupervisor,
+        edge: TestEdge,
+    }
+    impl Platform for AdoptedTestPlatform {
+        fn paths(&self) -> &dyn Paths {
+            &self.paths
+        }
+        fn supervisor(&self) -> &dyn ProcessSupervisor {
+            &self.sup
+        }
+        fn edge(&self) -> &dyn EdgeSupervisor {
+            &self.edge
+        }
+        fn dns(&self) -> &dyn DnsManager {
+            unimplemented!()
+        }
+        fn cert_trust(&self) -> &dyn CertTrustManager {
+            unimplemented!()
+        }
+        fn privileges(&self) -> &dyn PrivilegeManager {
+            unimplemented!()
+        }
+        fn autostart(&self) -> &dyn AutostartManager {
+            unimplemented!()
+        }
+        fn permissions(&self) -> &dyn PermissionManager {
+            unimplemented!()
+        }
+        fn shell(&self) -> &dyn ShellRunner {
+            unimplemented!()
+        }
+        fn binaries(&self) -> &dyn BinaryProvider {
+            unimplemented!()
+        }
+        fn dns_agent(&self) -> &dyn DnsAgentManager {
+            unimplemented!()
+        }
+    }
+    fn adopted_test_platform(
+        name: &str,
+        ours: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> AdoptedTestPlatform {
+        let dir = std::env::temp_dir().join(format!("rexenv-b29-{name}"));
+        let _ = std::fs::create_dir_all(&dir);
+        AdoptedTestPlatform {
+            paths: TestPaths(dir),
+            sup: ProbeSupervisor { ours },
+            edge: TestEdge { installed: false, enabled: false },
+        }
+    }
+
+    #[test]
+    fn adopted_reap_decision_resets_on_ours_and_reaps_at_the_limit() {
+        // still_ours → reset to 0, never reap (a live-and-ours service can never
+        // accumulate misses — this is the flap fix).
+        assert_eq!(adopted_reap_decision(true, 5, ADOPTED_MISS_LIMIT), (0, false));
+        // A single miss → wait, not reaped.
+        assert_eq!(adopted_reap_decision(false, 0, 2), (1, false));
+        // A second CONSECUTIVE miss → reap.
+        assert_eq!(adopted_reap_decision(false, 1, 2), (2, true));
+    }
+
+    #[tokio::test]
+    async fn watchdog_reaps_an_adopted_db_only_after_consecutive_positive_id_misses() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let ours = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let platform = adopted_test_platform("reap", ours.clone());
+        let dir = std::env::temp_dir().join("rexenv-b29-ca");
+        let ca = ssl::load_or_create_at(&dir.join("ca.pem"), &dir.join("ca.key"), None).unwrap();
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+
+        let engine = DbEngine::Mysql;
+        let label = engine.label().to_string();
+        mgr.insert_adopted_db_for_test(engine, 9999);
+        let engine_events =
+            |evts: &[HealthEvent]| evts.iter().filter(|e| e.service == label).count();
+
+        // Tick 1 — positive-ID present (a marked listener holds our port): still
+        // ours → NO reap, miss count reset, handle retained. This is the probe
+        // wiring proof: owned_master (not alive()) is what says "still ours".
+        ours.store(true, SeqCst);
+        let (e1, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        assert_eq!(engine_events(&e1), 0, "still-ours must not reap: {e1:?}");
+        assert_eq!(mgr.adopted_misses_for_test(&label), 0, "reset on a positive probe");
+        assert!(mgr.has_db_for_test(engine), "handle retained");
+
+        // Tick 2 — first miss: a single transient miss must NOT reap (the flap
+        // the current code gets wrong).
+        ours.store(false, SeqCst);
+        let (e2, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        assert_eq!(engine_events(&e2), 0, "one miss must not reap: {e2:?}");
+        assert_eq!(mgr.adopted_misses_for_test(&label), 1, "miss counted");
+        assert!(mgr.has_db_for_test(engine), "still retained after one miss");
+
+        // Gate spawn_db off so the reap doesn't try to start a real DB.
+        mgr.preset_restart_attempts_for_test(&label, MAX_RESTART_ATTEMPTS);
+
+        // Tick 3 — second CONSECUTIVE miss: reaped exactly once.
+        ours.store(false, SeqCst);
+        let (e3, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        assert_eq!(engine_events(&e3), 1, "second miss reaps exactly once: {e3:?}");
+        assert!(!mgr.has_db_for_test(engine), "reaped (removed) after two consecutive misses");
+        assert_eq!(mgr.adopted_misses_for_test(&label), 0, "miss count cleared on reap");
     }
 
     /// The live incident's stop half: the tracked pid was a stale adopted
