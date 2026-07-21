@@ -938,7 +938,10 @@ fn is_os_noise(path: &str) -> bool {
         ".localized",
     ];
     let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    NOISE.contains(&name) || name.starts_with("._")
+    // AppleDouble `._*` sidecars are benign clutter — EXCEPT an executable
+    // `._x.php`: a planted `wp-includes/._x.php` is real (PHP runs it), so it
+    // must surface as a finding, not hide in the noise bucket (B30).
+    NOISE.contains(&name) || (name.starts_with("._") && !name.ends_with(".php"))
 }
 
 /// Split WP-CLI's verify-checksums warnings into real vs benign (see
@@ -2198,6 +2201,15 @@ Error: WordPress installation doesn't verify against checksums.";
             "Warning: File doesn't verify against checksum: wp-admin/.DS_Store",
         );
         assert!(benign3.is_empty() && real3.len() == 1);
+        // B30: an AppleDouble `._x` sidecar is benign, but an executable
+        // `._x.php` is REAL (PHP would run it) — it must not hide in noise.
+        let (real4, benign4) = classify_checksum_output(
+            "Warning: File should not exist: wp-includes/._evil.php\n\
+             Warning: File should not exist: wp-includes/._blocks",
+        );
+        assert_eq!(benign4, vec!["wp-includes/._blocks"], "the non-php sidecar stays benign");
+        assert_eq!(real4.len(), 1, "the ._*.php is flagged as real: {real4:?}");
+        assert!(real4[0].contains("._evil.php"), "{real4:?}");
     }
 
     #[test]
