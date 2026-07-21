@@ -83,7 +83,12 @@ impl TerminalSession {
             .map_err(|e| Error::Other(format!("pty writer: {e}")))?;
         // Re-prepend our PATH after rc runs (macOS path_helper / user rc reorders it).
         if !cfg.path_prepend.is_empty() {
-            let _ = writeln!(writer, "export PATH=\"{}:$PATH\"", join_paths(&cfg.path_prepend));
+            // Escape the dirs for the DOUBLE-quoted context so a dir couldn't
+            // break the export (B16 — consistency with the cli.rs/sh_quote quote
+            // discipline). The trailing literal `:$PATH` stays outside the escape
+            // so it still interpolates. Identity for real bin dirs (no `\"$` `).
+            let dirs = dq_escape(&join_paths(&cfg.path_prepend));
+            let _ = writeln!(writer, "export PATH=\"{dirs}:$PATH\"");
             let _ = writer.flush();
         }
 
@@ -136,6 +141,17 @@ fn prepend_path(dirs: &[PathBuf]) -> String {
     parts
 }
 
+/// Escape a string for embedding in a DOUBLE-quoted shell string: neutralize the
+/// four chars active inside `"…"` (`\ " $ \``), backslash first so the escapes we
+/// add aren't re-escaped. Identity for strings without them (every real bin dir),
+/// so the exported PATH line is byte-identical for real inputs (B16).
+fn dq_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`")
+}
+
 /// Join dirs with the path separator (no trailing separator).
 fn join_paths(dirs: &[PathBuf]) -> String {
     dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join(":")
@@ -162,6 +178,18 @@ pub fn ensure_wp_wrapper(platform: &dyn Platform, php_bin: &Path, wp_phar: &Path
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dq_escape_is_identity_for_real_dirs_and_neutralizes_double_quote_chars() {
+        // Real bin dirs (incl. spaces) are unchanged → the export PATH line is
+        // byte-identical for every real input.
+        for p in ["/a b/bin", "/App Support/dev.rexenv.rexenv/bin", "/c/bin"] {
+            assert_eq!(dq_escape(p), p, "unchanged for real dirs");
+        }
+        // The four chars active inside "…" are neutralized so a crafted dir
+        // couldn't break the export (B16).
+        assert_eq!(dq_escape(r#"/x/a"b$c`d\e"#), r#"/x/a\"b\$c\`d\\e"#);
+    }
 
     #[test]
     fn join_and_prepend_paths() {
