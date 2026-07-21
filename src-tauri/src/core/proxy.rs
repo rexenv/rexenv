@@ -217,7 +217,12 @@ pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
 
 /// Single-quote a path for the /bin/sh command (app-data paths contain spaces).
 fn sh_quote(path: &Path) -> String {
-    format!("'{}'", path.display())
+    // Single-quote wrap for the shell (paths contain spaces), POSIX-escaping any
+    // embedded `'` as `'\''` so it can't break OUT of the quotes into the root
+    // command context. Identity for `'`-free paths (every rexenv path is), so
+    // real commands are byte-identical — belt-and-suspenders on the root path
+    // (B12), matching the cli.rs quote discipline.
+    format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
 /// Start Caddy on privileged ports (:80/:443) as root via `PrivilegeManager`
@@ -538,6 +543,16 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sh_quote_is_byte_identical_for_real_paths_and_escapes_a_quote() {
+        // Every real rexenv path is single-quote-free → byte-identical wrap.
+        for p in ["/usr/lib", "/App Support/dev.rexenv.rexenv/bin/caddy", "/a-b_c.d/e"] {
+            assert_eq!(sh_quote(Path::new(p)), format!("'{p}'"), "unchanged for real paths");
+        }
+        // A path containing `'` can't break out — it's POSIX-escaped to `'\''`.
+        assert_eq!(sh_quote(Path::new("/x/o'brien")), "'/x/o'\\''brien'");
+    }
 
     #[test]
     fn wait_ok_within_times_out_and_kills_a_wedged_admin_cli() {

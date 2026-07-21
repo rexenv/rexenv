@@ -830,7 +830,11 @@ impl DnsAgentManager for MacosDnsAgent {
 /// spaces). Mirrors `core::proxy::sh_quote`; kept local so the platform layer has no
 /// core dependency. Paths here are our own fixed locations, never user input.
 fn sh_quote(path: &Path) -> String {
-    format!("'{}'", path.display())
+    // POSIX-escape any embedded `'` as `'\''` so a path can't break out of the
+    // single quotes into the ROOT command context. Identity for `'`-free paths
+    // (every rexenv path is), so generated root commands are byte-identical
+    // (B12). Mirrors core::proxy::sh_quote + the cli.rs quote discipline.
+    format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
 pub struct MacosEdgeDaemon;
