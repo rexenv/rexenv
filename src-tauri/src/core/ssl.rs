@@ -7,8 +7,8 @@
 use crate::error::{Error, Result};
 use crate::platform::traits::{Paths, PermissionManager, Platform};
 use rcgen::{
-    date_time_ymd, BasicConstraints, CertificateParams, DistinguishedName, DnType,
-    ExtendedKeyUsagePurpose, IsCa, KeyPair, KeyUsagePurpose,
+    BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa,
+    KeyPair, KeyUsagePurpose,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -67,9 +67,18 @@ pub fn generate_ca() -> Result<(String, String)> {
         KeyUsagePurpose::CrlSign,
         KeyUsagePurpose::DigitalSignature,
     ];
-    // 10-year validity (local dev CA).
-    params.not_before = date_time_ymd(2024, 1, 1);
-    params.not_after = date_time_ymd(2034, 1, 1);
+    // Now-anchored 10-year validity (B13). The old fixed 2024→2034 window was a
+    // GLOBAL cliff: a CA minted in late 2033 lived months, and every install
+    // died at the same 2034 wall regardless of install date. Anchoring to the
+    // clock makes it install+10y (1-day back-date absorbs clock skew, like the
+    // leaves). Only reachable for NEW installs — an existing CA on disk is
+    // loaded, never regenerated, so its cert (and the keychain trust pinned to
+    // it) stays byte-identical. Honest residual: any finite CA still has an
+    // end-of-life; leaves (≤398d) can outlive the CA in an install's ninth
+    // year — de-globalized and pushed out, not eliminated.
+    let now = time::OffsetDateTime::now_utc();
+    params.not_before = now - time::Duration::days(1);
+    params.not_after = now + time::Duration::days(3650);
 
     let key_pair = KeyPair::generate().map_err(|e| Error::Other(format!("ca keygen: {e}")))?;
     let cert = params
@@ -385,6 +394,26 @@ mod tests {
         assert!(key_pem.contains("PRIVATE KEY"));
         // Re-loading as a CA proves it's a valid signing CA (the 3.2 path).
         CertificateParams::from_ca_cert_pem(&cert_pem).unwrap();
+    }
+
+    #[test]
+    fn ca_validity_is_now_anchored_ten_years_not_a_fixed_wall() {
+        // B13: the window must be install-relative (now-1d .. now+10y), killing
+        // any regression to the fixed 2024→2034 dates by construction — a fixed
+        // wall would fail these bounds as soon as the clock moved.
+        let (cert_pem, _) = generate_ca().unwrap();
+        let (_, pem) = x509_parser::pem::parse_x509_pem(cert_pem.as_bytes()).unwrap();
+        let (_, cert) = x509_parser::parse_x509_certificate(&pem.contents).unwrap();
+        let now = time::OffsetDateTime::now_utc();
+        let nb = cert.validity().not_before.to_datetime();
+        let na = cert.validity().not_after.to_datetime();
+        assert!(nb <= now, "not_before is back-dated for clock skew");
+        assert!(now - nb < time::Duration::days(2), "back-date is ~1 day, not a fixed 2024");
+        let days_out = (na - now).whole_days();
+        assert!(
+            (3648..=3651).contains(&days_out),
+            "expires ~10y from NOW (install-relative), got {days_out} days"
+        );
     }
 
     /// Mode bits (0o777 mask) of a path — unix-only test helper.
