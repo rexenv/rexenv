@@ -33,27 +33,50 @@ pub fn wp_cli(
 /// Run a command with a hard wall-clock cap: poll `try_wait`, SIGKILL on
 /// expiry. For wp-cli subcommands that download from the network — WP's
 /// `download_url` waits up to **300s per attempt**, which offline reads as a
-/// frozen spinner. Output is collected via pipes, so this is for SMALL-output
-/// commands only: a child that fills the ~64KB pipe buffer before exiting
-/// would block writing and read as a timeout (language install prints a few
-/// lines).
+/// frozen spinner. Output is drained on reader THREADS while the child runs
+/// (the `repo::run_captured_with_cap` lesson): a wait-then-read would deadlock
+/// once a chatty child fills the ~64KB pipe buffer and read as a FAKE timeout —
+/// a big `plugin list --format=json` must never trip the guard by being long.
 fn run_with_timeout(mut cmd: Command, timeout: Duration, what: &str) -> Result<Output> {
+    use std::io::Read;
     use std::process::Stdio;
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn()?;
+    let mut stdout = child.stdout.take().expect("piped");
+    let mut stderr = child.stderr.take().expect("piped");
+    let out_t = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        let _ = stdout.read_to_end(&mut b);
+        b
+    });
+    let err_t = std::thread::spawn(move || {
+        let mut b = Vec::new();
+        let _ = stderr.read_to_end(&mut b);
+        b
+    });
     let start = Instant::now();
-    while child.try_wait()?.is_none() {
+    let status = loop {
+        if let Some(s) = child.try_wait()? {
+            break s;
+        }
         if start.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait(); // reap — no zombie
+            // Deliberately no join here: the readers exit when the killed
+            // child's pipes close; blocking on them could hang the caller if
+            // anything else held a pipe end (the B7 lesson).
             return Err(Error::Other(format!(
                 "{what} timed out after {}s",
                 timeout.as_secs()
             )));
         }
         std::thread::sleep(Duration::from_millis(200));
-    }
-    Ok(child.wait_with_output()?)
+    };
+    Ok(Output {
+        status,
+        stdout: out_t.join().unwrap_or_default(),
+        stderr: err_t.join().unwrap_or_default(),
+    })
 }
 
 /// [`wp_cli`] with a wall-clock timeout (see [`run_with_timeout`]).
@@ -120,6 +143,80 @@ pub fn wp_json<T: serde::de::DeserializeOwned>(
     full.push(&path);
     full.push("--format=json");
     let out = wp_cli_checked(php_bin, wp_phar, &full, None)?;
+    serde_json::from_str(out.trim())
+        .map_err(|e| Error::Other(format!("wp {}: bad JSON: {e}", args.first().copied().unwrap_or(""))))
+}
+
+/// Fixed allowance for a download-capable command's non-download work (api
+/// lookups, unpack, install, DB writes).
+const WP_DOWNLOAD_TIMEOUT_BASE: Duration = Duration::from_secs(120);
+/// Per-download allowance. A GENEROUS WALL-CLOCK, deliberately not a stall
+/// guard: wp-cli is opaque mid-download under pipe capture (plugin/theme
+/// install print nothing between "Downloading…" and "Unpacking…"; core's
+/// progress bar is TTY-only), so watching output would read every legit
+/// download as a stall. The cap is safe because wp-cli is the TIGHTER bound in
+/// the stack: WP's `download_url` caps each plugin/theme download at 300s
+/// (verified: wp-admin/includes/file.php) and core's own request at ~600s — a
+/// too-slow link fails INSIDE wp-cli with its own error long before 900s, so
+/// this only ever catches a wedge outside wp-cli's bounds (hung DNS, a wedged
+/// PHP, stuck disk I/O). NOT the B34 mistake: B34's cap was tighter than legit
+/// transfers; this one is provably looser than anything wp-cli lets succeed.
+const WP_DOWNLOAD_TIMEOUT_PER_ITEM: Duration = Duration::from_secs(900);
+/// Bound for the update-checking list calls. WP's update-check request is
+/// internally capped at 3s interactive / 30s cron (verified:
+/// wp-includes/update.php `'timeout' => $doing_cron ? 30 : 3`), so 300s is
+/// ~10× looser than the worst legit case — it only catches a wedged child.
+const WP_LIST_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Wall-clock cap for a command that downloads `items` archives sequentially:
+/// scaled, because a multi-slug install legitimately runs N internally-capped
+/// downloads back to back — a fixed cap would false-trip exactly the slow-link
+/// user the bound must never hurt.
+fn download_timeout(items: usize) -> Duration {
+    WP_DOWNLOAD_TIMEOUT_BASE + WP_DOWNLOAD_TIMEOUT_PER_ITEM * items as u32
+}
+
+/// [`wp_run`] with a hard wall-clock cap (see [`run_with_timeout`]): same
+/// `--path` scoping and non-zero-exit mapping, for the network-capable
+/// commands a wedged child would otherwise hang forever (B25).
+fn wp_run_timed(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String> {
+    let path = format!("--path={}", docroot.display());
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 1);
+    full.extend_from_slice(args);
+    full.push(&path);
+    let out = wp_cli_timed(php_bin, wp_phar, &full, timeout)?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(Error::Other(format!(
+            "wp {} failed (exit {:?}): {}",
+            args.first().copied().unwrap_or(""),
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )))
+    }
+}
+
+/// [`wp_json`] with a hard wall-clock cap — for the update-checking list calls
+/// (`plugin list` / `theme list`), whose api.wordpress.org refresh hangs the
+/// whole listing when the child wedges (B25).
+fn wp_json_timed<T: serde::de::DeserializeOwned>(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<T> {
+    let mut full: Vec<&str> = Vec::with_capacity(args.len() + 1);
+    full.extend_from_slice(args);
+    full.push("--format=json");
+    let out = wp_run_timed(php_bin, wp_phar, docroot, &full, timeout)?;
     serde_json::from_str(out.trim())
         .map_err(|e| Error::Other(format!("wp {}: bad JSON: {e}", args.first().copied().unwrap_or(""))))
 }
@@ -221,7 +318,7 @@ pub fn plugin_list(
     if !check_updates {
         args.push("--skip-update-check");
     }
-    wp_json(php_bin, wp_phar, docroot, &args)
+    wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT)
 }
 
 /// Run `wp <noun> <verb> <names…>` (bulk-capable: one call for many items).
@@ -321,7 +418,8 @@ pub fn plugin_install(
     if activate {
         args.push("--activate");
     }
-    wp_run(php_bin, wp_phar, docroot, &args)
+    // Scaled cap: one internally-bounded download per slug (B25).
+    wp_run_timed(php_bin, wp_phar, docroot, &args, download_timeout(slugs.len()))
 }
 
 /// One theme row from `wp theme list --format=json` (§6.2). `status == "active"`
@@ -374,7 +472,8 @@ pub fn theme_list(
     if !check_updates {
         args.push("--skip-update-check");
     }
-    let mut themes: Vec<WpTheme> = wp_json(php_bin, wp_phar, docroot, &args)?;
+    let mut themes: Vec<WpTheme> =
+        wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT)?;
     for t in &mut themes {
         t.screenshot = theme_screenshot(docroot, &t.name);
     }
@@ -411,7 +510,8 @@ pub fn theme_install(
     if activate {
         args.push("--activate");
     }
-    wp_run(php_bin, wp_phar, docroot, &args)
+    // Scaled cap: one internally-bounded download per slug (B25).
+    wp_run_timed(php_bin, wp_phar, docroot, &args, download_timeout(slugs.len()))
 }
 
 /// A WordPress user for the Users sub-tab (§7.1).
@@ -1146,13 +1246,19 @@ pub fn rewrite_flush(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<S
 
 /// Update WordPress core to the latest release (`wp core update`).
 pub fn core_update(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["core", "update"])
+    wp_run_timed(php_bin, wp_phar, docroot, &["core", "update"], download_timeout(1))
 }
 
 /// Re-download core files of the current version (`wp core download --force`) —
 /// repairs a corrupt/modified core without touching the DB or wp-content.
 pub fn core_reinstall(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<String> {
-    wp_run(php_bin, wp_phar, docroot, &["core", "download", "--force", "--skip-content"])
+    wp_run_timed(
+        php_bin,
+        wp_phar,
+        docroot,
+        &["core", "download", "--force", "--skip-content"],
+        download_timeout(1),
+    )
 }
 
 /// Input/validation kind of a whitelisted option (drives the UI input AND the
@@ -2370,6 +2476,32 @@ Error: WordPress installation doesn't verify against checksums.";
         assert!(out.status.success());
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "out");
         assert_eq!(String::from_utf8_lossy(&out.stderr).trim(), "err");
+    }
+
+    #[test]
+    fn run_with_timeout_drains_a_chatty_child_without_a_fake_timeout() {
+        // A child that writes far past the ~64KB pipe buffer before exiting.
+        // The old wait-then-read shape deadlocked here (child blocked writing,
+        // try_wait never Some) and reported a FAKE timeout — a long
+        // `plugin list --format=json` must never trip the guard by being long.
+        let mut cmd = Command::new("/bin/sh");
+        cmd.args(["-c", "head -c 300000 /dev/zero | tr '\\0' 'x'; echo done"]);
+        let out = run_with_timeout(cmd, Duration::from_secs(10), "chatty-test").unwrap();
+        assert!(out.status.success());
+        assert!(out.stdout.len() > 300_000, "full output drained: {}", out.stdout.len());
+    }
+
+    #[test]
+    fn download_timeout_scales_with_item_count_and_stays_loose() {
+        // base 120s + 900s/item — 900 ≥ 1.5× WP's verified 300s per-download
+        // internal bound (download_url, file.php) and dominates core's ~600s,
+        // so a legit slow download always fails INSIDE wp-cli first; only a
+        // wedge outside wp-cli's own bounds can reach this cap.
+        assert_eq!(download_timeout(1), Duration::from_secs(1020));
+        assert_eq!(download_timeout(5), Duration::from_secs(4620));
+        // List calls: WP's update-check request is internally capped at
+        // 3s/30s (update.php), so 300s is ~10× the worst legit case.
+        assert_eq!(WP_LIST_TIMEOUT, Duration::from_secs(300));
     }
 
     #[test]
