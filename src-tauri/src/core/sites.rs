@@ -144,6 +144,7 @@ fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
 /// Fails if the domain is invalid or already in use.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
     validate_domain(&new.domain)?;
+    validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
@@ -369,10 +370,33 @@ fn verify_tree(src: &Path, dst: &Path) -> Result<()> {
 /// Persist a moved docroot's new path (files must already exist there) and
 /// return the updated site.
 pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>> {
-    if !store::set_site_path(conn, id, &path.display().to_string())? {
+    let path_s = path.display().to_string();
+    validate_docroot_path(&path_s)?;
+    if !store::set_site_path(conn, id, &path_s)? {
         return Ok(None);
     }
     get(conn, id)
+}
+
+/// Reject a docroot path containing a char that can't be safely emitted into the
+/// generated nginx / Caddy / Apache configs — `"` breaks the quoted string, `$`
+/// interpolates in nginx, `{`/`}` are Caddy placeholders, `\` escapes, and
+/// control chars (newline, …) break the directive. Escaping can't neutralize all
+/// of these across the three formats (nginx has no literal-`$` escape), so the
+/// path is validated at INPUT instead. Space is allowed — paths are quoted, so
+/// spaces (the common case) work. Enforced only where `site.path` is PERSISTED
+/// (`create`/`set_path`), never at emit, so existing sites are grandfathered and
+/// a stored path is never re-rejected on regenerate (B26).
+fn validate_docroot_path(path: &str) -> Result<()> {
+    if let Some(c) =
+        path.chars().find(|&c| matches!(c, '"' | '$' | '{' | '}' | '\\') || c.is_control())
+    {
+        return Err(Error::Other(format!(
+            "the site folder path contains {c:?}, which can't be used in the web-server \
+             config — pick a folder without any of \" $ {{ }} \\ or control characters"
+        )));
+    }
+    Ok(())
 }
 
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
@@ -865,6 +889,34 @@ mod tests {
             path: format!("~/Sites/{name}"),
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
         }
+    }
+
+    #[test]
+    fn validate_docroot_path_allows_spaces_but_rejects_config_breaking_chars() {
+        // Spaces (quoted in the config) and ordinary paths are fine — these are
+        // the real cases, so existing sites keep working.
+        for ok in ["/Sites/acme/public", "/Users/me/My Sites/blog", "~/Sites/a-b_1.test"] {
+            assert!(validate_docroot_path(ok).is_ok(), "{ok} must be allowed");
+        }
+        // The unescapable-across-nginx/Caddy/Apache set + control chars → rejected.
+        for bad in ["/a\"b", "/a$b", "/a{b", "/a}b", "/a\\b", "/a\nb", "/a\tb"] {
+            assert!(validate_docroot_path(bad).is_err(), "{bad:?} must be rejected");
+        }
+    }
+
+    #[test]
+    fn create_and_set_path_reject_a_config_breaking_docroot() {
+        // The two choke points that PERSIST site.path (== the emitted docroot).
+        let conn = db::open_in_memory().unwrap();
+        let mut bad = sample("Bad", "bad.test");
+        bad.path = "/Sites/ev$il".into();
+        assert!(create(&conn, bad).is_err(), "create must reject a config-breaking path");
+
+        // A clean site persists; moving it to a bad path is refused (set_path).
+        let ok = create(&conn, sample("Ok", "ok.test")).unwrap();
+        assert!(set_path(&conn, &ok.id, Path::new("/Sites/ok\"x")).is_err(), "set_path must reject");
+        // …and the stored path is untouched (rejected before the UPDATE).
+        assert_eq!(get(&conn, &ok.id).unwrap().unwrap().path, ok.path);
     }
 
     #[test]
