@@ -99,6 +99,13 @@ pub struct Site {
     /// instead of the shared pool. Only offerable on minors with a pinned
     /// Xdebug bottle (`binaries::xdebug_supported`).
     pub xdebug: bool,
+    /// Recorded loopback backend port for a FrankenPHP/Apache override site
+    /// (v13, B20 §4): allocated collision-free ONCE and stored, so a later domain
+    /// change never re-derives it (which would orphan the running backend). `None`
+    /// for nginx (no per-site port) and for pre-backfill rows — consumers fall
+    /// back to the derived `site_port(domain)` only in that transitional window.
+    #[serde(skip)]
+    pub override_port: Option<u16>,
 }
 
 /// Live per-site serving status (H1 follow-up). `serving` is true only when the edge

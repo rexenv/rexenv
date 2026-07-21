@@ -68,6 +68,7 @@ async fn main() {
             db_name: format!("wp_cli_repo_{}", std::process::id()),
             db_engine: SiteDbEngine::Mysql,
             xdebug: false,
+            override_port: None,
         },
     )
     .expect("insert site row");

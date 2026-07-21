@@ -337,6 +337,7 @@ mod tests {
             db_name: "wp_acme_test".into(),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
+            override_port: None,
         }
     }
 

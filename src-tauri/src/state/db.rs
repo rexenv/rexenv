@@ -128,6 +128,15 @@ const MIGRATIONS: &[&str] = &[
     // 'linked' (symlink into wp-content — deletes must UNLINK, never recurse
     // into the target). Every pre-v13 row came from the clone flow — exact.
     "ALTER TABLE site_git_assets ADD COLUMN source TEXT NOT NULL DEFAULT 'cloned';",
+    // v14 — recorded per-site override backend port (B20 §4). Schema-only here
+    // (Phase A): a PLAIN NULLABLE INTEGER, NO UNIQUE constraint — uniqueness is
+    // enforced by the allocator at write time, and pre-existing collisions are
+    // RESOLVED by the Rust backfill (`core::sites::backfill_override_ports`, Phase
+    // B, run once at startup), never rejected, so this can't brick on existing
+    // data (the B21 lesson). Existing rows are NULL until the backfill records
+    // each override site's CURRENT derived port (non-colliding sites unchanged);
+    // consumers fall back to the derived port for the between-phases window.
+    "ALTER TABLE sites ADD COLUMN override_port INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

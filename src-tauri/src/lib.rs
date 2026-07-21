@@ -193,6 +193,13 @@ pub fn run() {
                             Vec::new()
                         }
                     };
+                    // B20 §4 Phase B: record each existing override site's port
+                    // BEFORE any site is read or adopted. One-time + idempotent;
+                    // non-colliding sites keep their exact current port (the
+                    // consumer fallback covers the window if this ever fails).
+                    if let Err(e) = core::sites::backfill_override_ports(&conn) {
+                        log::error!("sites: override-port backfill failed (using derived fallback): {e}");
+                    }
                     // Services OUTLIVE the app: closing rexenv doesn't stop the
                     // stack, so adopt any rexenv-owned survivors into this session's
                     // manager — status shows them running, Stop all works, Start all

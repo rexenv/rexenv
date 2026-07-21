@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, Row};
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
-     created_at, multisite, db_name, db_engine, xdebug";
+     created_at, multisite, db_name, db_engine, xdebug, override_port";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -35,6 +35,9 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         db_name: row.get(11)?,
         db_engine: SiteDbEngine::parse_db(&db_engine).map_err(to_sqlite_err)?,
         xdebug: row.get::<_, i64>(13)? != 0,
+        // Nullable: the recorded per-site override backend port (B20 §4), NULL
+        // for nginx and for pre-backfill rows.
+        override_port: row.get::<_, Option<i64>>(14)?.map(|p| p as u16),
     })
 }
 
@@ -48,8 +51,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             site.id,
             site.name,
@@ -65,9 +68,19 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.db_name,
             site.db_engine.as_db(),
             site.xdebug as i64,
+            site.override_port.map(|p| p as i64),
         ],
     )?;
     Ok(())
+}
+
+/// Set (or clear, with `None`) a site's recorded override backend port (B20 §4).
+pub fn set_site_override_port(conn: &Connection, id: &str, port: Option<u16>) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE sites SET override_port = ?1 WHERE id = ?2",
+        params![port.map(|p| p as i64), id],
+    )?;
+    Ok(n > 0)
 }
 
 /// All sites, newest first.

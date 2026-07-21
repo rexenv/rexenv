@@ -745,12 +745,16 @@ impl ServiceManager {
             .iter()
             .filter_map(|s| {
                 let kind = OverrideKind::of(s.web_server)?;
+                // The RECORDED backend port (B20 §4), never re-derived — so the
+                // spawned backend and the edge route always agree, even after a
+                // domain change. None (only if a stale nginx row) skips the site.
+                let port = sites::recorded_override_port(s)?;
                 Some((
                     s.domain.clone(),
                     Desired {
                         kind,
                         docroot: PathBuf::from(&s.path),
-                        port: kind.port(&s.domain),
+                        port,
                         fpm_port: sites::pool_port_for_site(s),
                         rewrite: sites::rewrite_mode_for(s.multisite),
                         env: self.site_env.get(&s.id).cloned().unwrap_or_default(),
@@ -1379,7 +1383,8 @@ impl ServiceManager {
             .filter_map(|s| OverrideKind::of(s.web_server).map(|k| (s, k)))
         {
             if !self.overrides.contains_key(&site.domain) {
-                let port = kind.port(&site.domain);
+                // Adopt on the RECORDED port (B20 §4) — what the backend spawned on.
+                let port = sites::recorded_override_port(site).unwrap_or_else(|| kind.port(&site.domain));
                 if let Some(pid) = owned(port) {
                     self.overrides.insert(
                         site.domain.clone(),
@@ -1650,7 +1655,7 @@ impl ServiceManager {
                     kind,
                     &domain,
                     &PathBuf::from(&site.path),
-                    kind.port(&domain),
+                    sites::recorded_override_port(site).unwrap_or_else(|| kind.port(&domain)),
                     sites::pool_port_for_site(site),
                     sites::rewrite_mode_for(site.multisite),
                     &env,
@@ -2186,11 +2191,14 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
     sites
         .iter()
         .map(|s| {
+            // Read the RECORDED override port (B20 §4), never re-derive.
             let upstream_up = match s.web_server {
-                WebServer::Frankenphp => port_up(frankenphp::site_port(&s.domain)),
+                WebServer::Frankenphp => {
+                    sites::recorded_override_port(s).is_some_and(port_up)
+                }
                 // Apache serves through the shared pool too — both must be up.
                 WebServer::Apache => {
-                    port_up(apache::site_port(&s.domain))
+                    sites::recorded_override_port(s).is_some_and(port_up)
                         && port_up(sites::pool_port_for_site(s))
                 }
                 _ => nginx_up && port_up(sites::pool_port_for_site(s)),
@@ -2648,6 +2656,7 @@ mod tests {
             db_name: crate::core::wordpress::db_name_for(domain),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
+            override_port: None,
         };
 
         let sites = vec![

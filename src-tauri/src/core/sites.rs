@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, apache, frankenphp, php, proxy, services, ssl, tld, tunnels};
+use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{MultisiteMode, NewSite, ServiceStatus, Site, SiteType, WebServer};
@@ -84,26 +84,6 @@ fn override_port(domain: &str, server: WebServer) -> Option<u16> {
     }
 }
 
-/// If a site in `others` already claims `(domain, server)`'s override backend
-/// port, return that site's domain + the shared port. Two per-site backends
-/// (FrankenPHP/Apache) that hash to the same slot would share ONE loopback
-/// server — cross-site content bleed, and the spawn self-heal would reap the
-/// live sibling. Refused at create / web-server switch / domain change so the
-/// collision is a loud, actionable error, never a silent shared backend
-/// (finding B20). A recorded-port allocator (follow-up) will remove the
-/// collision outright; this guard is a permanent safety net regardless.
-pub fn override_port_conflict(
-    others: &[Site],
-    domain: &str,
-    server: WebServer,
-) -> Option<(String, u16)> {
-    let port = override_port(domain, server)?;
-    others
-        .iter()
-        .filter(|s| s.web_server == server && !s.domain.eq_ignore_ascii_case(domain))
-        .find(|s| override_port(&s.domain, server) == Some(port))
-        .map(|s| (s.domain.clone(), port))
-}
 
 /// Clear, actionable error for an override-port collision (B20).
 fn override_port_collision_error(domain: &str, other: &str, port: u16) -> Error {
@@ -112,6 +92,102 @@ fn override_port_collision_error(domain: &str, other: &str, port: u16) -> Error 
          \"{other}\", so the two sites would share one server. Rename this site or give it a \
          different web server."
     ))
+}
+
+/// The override backend port range for `server` (`base`, `count`), or `None` for
+/// nginx (no per-site port). FrankenPHP and Apache ranges are DISJOINT so the two
+/// types can never collide.
+fn override_range(server: WebServer) -> Option<(u16, u16)> {
+    match server {
+        WebServer::Frankenphp => Some((super::frankenphp::FRANKENPHP_BASE_PORT, 100)),
+        WebServer::Apache => Some((super::apache::APACHE_BASE_PORT, 100)),
+        _ => None,
+    }
+}
+
+/// The AUTHORITATIVE override backend port for a site: the RECORDED port once
+/// allocated (B20 §4 — never re-derived, so a domain change can't orphan the
+/// running backend), falling back to the derived `site_port(domain)` ONLY in the
+/// transitional window before the one-time backfill records it. For a
+/// non-colliding site the fallback value EQUALS the recorded value, so consumers
+/// see no change across the backfill. `None` for nginx. Every port consumer reads
+/// this — never `site_port` directly — so post-backfill the recorded port is
+/// authoritative and a later domain change cannot orphan the backend.
+pub fn recorded_override_port(site: &Site) -> Option<u16> {
+    site.override_port.or_else(|| override_port(&site.domain, site.web_server))
+}
+
+/// Allocate a collision-free override backend port for `server` given the other
+/// sites (their recorded/derived ports are the taken set) — the LOWEST free port
+/// in the range. `Ok(None)` for nginx; `Err` only if all 100 slots are in use.
+fn allocate_override_port(others: &[Site], server: WebServer) -> Result<Option<u16>> {
+    let Some((base, count)) = override_range(server) else {
+        return Ok(None); // nginx has no per-site port
+    };
+    let taken: std::collections::HashSet<u16> =
+        others.iter().filter_map(recorded_override_port).collect();
+    match (base..base + count).find(|p| !taken.contains(p)) {
+        Some(p) => Ok(Some(p)),
+        None => Err(Error::Other(format!(
+            "no free {} backend port — all {count} slots from {base} are in use",
+            server.as_db()
+        ))),
+    }
+}
+
+/// B20-A guard, KEPT and reworked to the recorded model: the domain of any site
+/// OTHER than `self_id` that already records `port`, or `None`. A belt on the
+/// allocator (which picks a free port, so this never fires) — the permanent
+/// safety net against two override sites sharing one backend.
+fn recorded_port_conflict(others: &[Site], self_id: &str, port: u16) -> Option<String> {
+    others
+        .iter()
+        .filter(|s| s.id != self_id)
+        .find(|s| recorded_override_port(s) == Some(port))
+        .map(|s| s.domain.clone())
+}
+
+/// One-time idempotent backfill (B20 §4, Phase B): record each override site's
+/// port. A non-colliding site gets its EXACT current derived port — zero
+/// disruption, since the running backend + edge route already use it. A
+/// pre-existing collision (two domains hashing to the same slot — already the B20
+/// bug, one bleeding into the other) is resolved by giving the SECOND site (by
+/// `created_at, id`) a free port while the FIRST keeps its derived port; the
+/// second was already broken, so its own backend on the next start is a FIX. Only
+/// touches rows with a NULL `override_port` and an override server, in ONE
+/// transaction (crash → rollback → clean re-run), run at startup before any
+/// backend spawns. No UNIQUE constraint (B21) — uniqueness is enforced HERE,
+/// collisions resolved not rejected, so it can't brick on existing data.
+pub fn backfill_override_ports(conn: &Connection) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    let mut sites = store::list_sites(&tx)?;
+    // Deterministic: oldest first keeps the derived port on a collision.
+    sites.sort_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.id.cmp(&b.id)));
+    // Seed with already-recorded ports so a re-run (idempotent) can't reassign
+    // one that's live, and earlier rows in THIS pass reserve theirs.
+    let mut taken: std::collections::HashSet<u16> =
+        sites.iter().filter_map(|s| s.override_port).collect();
+    for s in &sites {
+        if s.override_port.is_some() {
+            continue; // already recorded — idempotent skip
+        }
+        let Some((base, count)) = override_range(s.web_server) else {
+            continue; // nginx — no port to record
+        };
+        let derived =
+            override_port(&s.domain, s.web_server).expect("override server has a derived port");
+        let port = if !taken.contains(&derived) {
+            derived // non-colliding: preserve the EXACT current port (zero disruption)
+        } else {
+            (base..base + count).find(|p| !taken.contains(p)).ok_or_else(|| {
+                Error::Other(format!("no free {} backend port during backfill", s.web_server.as_db()))
+            })? // pre-existing collision: the later site moves to a free port
+        };
+        taken.insert(port);
+        store::set_site_override_port(&tx, &s.id, Some(port))?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 /// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
@@ -152,10 +228,17 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
             new.domain
         )));
     }
-    // Refuse a per-site override server whose hashed backend port already
-    // belongs to another site — the two would share one loopback server (B20).
-    if let Some((other, port)) = override_port_conflict(&list(conn)?, &new.domain, new.web_server) {
-        return Err(override_port_collision_error(&new.domain, &other, port));
+    // Allocate a COLLISION-FREE override backend port for the site's server
+    // (None for nginx) — recorded once and never re-derived (B20 §4).
+    let others = list(conn)?;
+    let override_port = allocate_override_port(&others, new.web_server)?;
+    // B20-A guard, kept as a belt on the allocator: the allocated port must not
+    // already be recorded by another site (the allocator guarantees this, so it
+    // never fires — permanent defense-in-depth against a shared backend).
+    if let Some(port) = override_port {
+        if let Some(other) = recorded_port_conflict(&others, "", port) {
+            return Err(override_port_collision_error(&new.domain, &other, port));
+        }
     }
     // Derived from the domain ONCE, here — every later operation reads the
     // stored value, so a domain change never re-points the database. Unique per
@@ -177,6 +260,7 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         db_name,
         db_engine: new.db_engine,
         xdebug: false,
+        override_port,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -252,13 +336,13 @@ pub fn check_domain_change(conn: &Connection, site: &Site, new_domain: &str) -> 
 pub fn set_domain(conn: &Connection, id: &str, new_domain: &str) -> Result<Option<Site>> {
     let Some(site) = get(conn, id)? else { return Ok(None) };
     check_domain_change(conn, &site, new_domain)?;
-    // An override site changing domain re-hashes its backend port — refuse if the
-    // NEW domain would collide with a DIFFERENT override site (B20). Exclude this
-    // site itself (its old domain would otherwise be compared against the new).
-    let others: Vec<Site> = list(conn)?.into_iter().filter(|s| s.id != id).collect();
-    if let Some((other, port)) = override_port_conflict(&others, new_domain, site.web_server) {
-        return Err(override_port_collision_error(new_domain, &other, port));
-    }
+    // The recorded override port is DELIBERATELY untouched here (B20 §4): it was
+    // allocated once and is authoritative, so a domain change no longer re-derives
+    // it — which is exactly what used to orphan the running backend and break the
+    // edge route. No collision check is needed (the port doesn't change, so it
+    // can't newly collide); the no-shared-port guarantee is held by the allocator
+    // + the create/set_web_server belts. Same "derived once, never re-derived"
+    // shape as `db_name`.
     store::set_site_domain(conn, id, new_domain)?;
     get(conn, id)
 }
@@ -405,16 +489,21 @@ fn validate_docroot_path(path: &str) -> Result<()> {
 /// backend up / old down and reloads the edge.
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
     ensure_server_available(server)?;
-    let Some(site) = get(conn, id)? else { return Ok(None) };
-    // Switching TO a per-site override server re-derives a backend port — refuse
-    // if it would collide with another override site (B20). `list` includes this
-    // site, but the conflict check skips its own domain.
-    if let Some((other, port)) = override_port_conflict(&list(conn)?, &site.domain, server) {
-        return Err(override_port_collision_error(&site.domain, &other, port));
+    let Some(_site) = get(conn, id)? else { return Ok(None) };
+    // Switching servers reallocates the recorded override port: a free port in
+    // the new server's range, or None when switching to nginx (B20 §4).
+    let others: Vec<Site> = list(conn)?.into_iter().filter(|s| s.id != id).collect();
+    let new_port = allocate_override_port(&others, server)?;
+    // B20-A guard, kept as a belt on the allocator.
+    if let Some(port) = new_port {
+        if let Some(other) = recorded_port_conflict(&others, id, port) {
+            return Err(override_port_collision_error(&get(conn, id)?.unwrap().domain, &other, port));
+        }
     }
     if !store::set_site_web_server(conn, id, server.as_db())? {
         return Ok(None);
     }
+    store::set_site_override_port(conn, id, new_port)?;
     get(conn, id)
 }
 
@@ -694,10 +783,12 @@ fn is_nginx_served(s: &Site) -> bool {
 /// The edge (Caddy) upstream for a site: an override site (FrankenPHP/Apache)
 /// points at its own backend port; every other site goes to the shared nginx.
 fn site_upstream(s: &Site, nginx_http_port: u16) -> String {
-    match s.web_server {
-        WebServer::Frankenphp => format!("127.0.0.1:{}", frankenphp::site_port(&s.domain)),
-        WebServer::Apache => format!("127.0.0.1:{}", apache::site_port(&s.domain)),
-        _ => format!("127.0.0.1:{nginx_http_port}"),
+    // Read the RECORDED override port (B20 §4), never re-derive — so the edge
+    // route always agrees with the backend's actual port even after a domain
+    // change. `None` ⇒ shared nginx.
+    match recorded_override_port(s) {
+        Some(port) => format!("127.0.0.1:{port}"),
+        None => format!("127.0.0.1:{nginx_http_port}"),
     }
 }
 
@@ -1149,56 +1240,134 @@ mod tests {
             db_name: format!("wp_{domain}"),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
+            override_port: None,
         }
     }
 
     #[test]
-    fn override_port_conflict_only_flags_same_kind_same_slot() {
-        let (da, db_) = colliding_frankenphp_domains();
-        let existing = [fp_site(&da)];
-
-        // db_ as FrankenPHP shares da's backend port → flagged, naming da + port.
+    fn allocate_override_port_picks_lowest_free_and_respects_the_range() {
+        // FrankenPHP: lowest free from 8200; a site already recording 8200 pushes
+        // the next to 8201; a DIFFERENT-range (Apache) recorded port never blocks.
+        let base = super::frankenphp::FRANKENPHP_BASE_PORT;
+        let mut s0 = fp_site("x.rex");
+        s0.override_port = Some(base);
+        assert_eq!(allocate_override_port(&[], WebServer::Frankenphp).unwrap(), Some(base));
         assert_eq!(
-            override_port_conflict(&existing, &db_, WebServer::Frankenphp),
-            Some((da.clone(), crate::core::frankenphp::site_port(&db_)))
+            allocate_override_port(&[s0.clone()], WebServer::Frankenphp).unwrap(),
+            Some(base + 1)
         );
-        // Nginx has no per-site port → never a conflict.
-        assert!(override_port_conflict(&existing, &db_, WebServer::Nginx).is_none());
-        // Apache uses a different port base → no conflict with a FrankenPHP site.
-        assert!(override_port_conflict(&existing, &db_, WebServer::Apache).is_none());
-        // A site is never flagged against its own domain.
-        assert!(override_port_conflict(&existing, &da, WebServer::Frankenphp).is_none());
+        // Apache allocates from its own (disjoint) range, ignoring the frankenphp port.
+        assert_eq!(
+            allocate_override_port(&[s0], WebServer::Apache).unwrap(),
+            Some(crate::core::apache::APACHE_BASE_PORT)
+        );
+        // Nginx has no per-site port.
+        assert_eq!(allocate_override_port(&[], WebServer::Nginx).unwrap(), None);
     }
 
     #[test]
-    fn create_refuses_a_second_override_site_that_shares_a_backend_port() {
+    fn recorded_port_conflict_is_the_kept_belt_on_the_allocator() {
+        // The B20-A guard, reworked to the recorded model (B20 §4): another site
+        // recording the same port is flagged, naming it; self and free ports are
+        // not. fp_site has no recorded port → recorded_override_port derives it,
+        // and the two colliding domains derive the SAME value.
+        let (da, db_) = colliding_frankenphp_domains();
+        let a = fp_site(&da);
+        let b = fp_site(&db_);
+        let port = recorded_override_port(&a).unwrap();
+        let others = [a.clone()];
+        // b (a different site) on a's port → flagged, naming a's domain.
+        assert_eq!(recorded_port_conflict(&others, &b.id, port), Some(da.clone()));
+        // Never flagged against itself.
+        assert!(recorded_port_conflict(&others, &a.id, port).is_none());
+        // A free port → no conflict.
+        assert!(recorded_port_conflict(&others, &b.id, port + 1).is_none());
+    }
+
+    #[test]
+    fn create_allocates_distinct_ports_for_would_be_colliding_domains() {
+        // The behavioral shift from B20-A → B20-B: two FrankenPHP sites whose
+        // domains hash to the SAME derived slot are no longer REFUSED — the
+        // allocator gives the second a DISTINCT free port, so BOTH create and
+        // neither shares a backend (the collision is designed out).
         let conn = db::open_in_memory().unwrap();
         let (da, db_) = colliding_frankenphp_domains();
 
-        // First FrankenPHP site — created fine.
         let mut a = sample("A", &da);
         a.web_server = WebServer::Frankenphp;
-        let created_a = create(&conn, a).unwrap();
+        let sa = create(&conn, a).unwrap();
 
-        // Second FrankenPHP site hashing to the SAME backend port is refused with
-        // a clear error naming the other site — never a silent shared backend.
         let mut b = sample("B", &db_);
         b.web_server = WebServer::Frankenphp;
-        let err = create(&conn, b).unwrap_err().to_string();
-        assert!(err.contains(&da), "error names the colliding site: {err}");
-        assert!(err.contains("collides"), "error is actionable: {err}");
+        let sb = create(&conn, b).expect("second colliding site is NOT refused anymore");
 
-        // The first site is untouched and still the only one — the guard refused
-        // BEFORE persisting the second (so nothing could reap the first).
-        let all = list(&conn).unwrap();
-        assert_eq!(all.len(), 1, "the refused site was not persisted");
-        assert_eq!(all[0].domain, da);
-        assert_eq!(all[0].path, created_a.path);
+        // Distinct, both in the FrankenPHP range — the allocator picks the lowest
+        // free (base, base+1), so they can't share a backend.
+        assert_eq!(sa.override_port, Some(super::frankenphp::FRANKENPHP_BASE_PORT));
+        assert_eq!(sb.override_port, Some(super::frankenphp::FRANKENPHP_BASE_PORT + 1));
+        assert_ne!(sa.override_port, sb.override_port);
 
-        // An nginx site at the same domain is fine — no per-site port to collide.
-        let mut c = sample("C", &db_);
+        // An nginx site records NO port (no per-site backend).
+        let mut c = sample("C", "c.rex");
         c.web_server = WebServer::Nginx;
-        assert!(create(&conn, c).is_ok(), "nginx has no per-site backend port");
+        assert_eq!(create(&conn, c).unwrap().override_port, None);
+    }
+
+    #[test]
+    fn backfill_preserves_the_first_sites_port_and_resolves_a_collision() {
+        // THE load-bearing migration test (B20 §4 Phase B + the B21 safety proof).
+        // Two FrankenPHP sites whose domains hash to the SAME derived slot, both
+        // with a NULL override_port (the pre-migration state), inserted directly.
+        let conn = db::open_in_memory().unwrap();
+        let (da, db_) = colliding_frankenphp_domains();
+        let derived = super::frankenphp::site_port(&da);
+        assert_eq!(derived, super::frankenphp::site_port(&db_), "domains must collide");
+
+        let mut a = fp_site(&da);
+        a.id = "id-a".into();
+        a.created_at = "2026-01-01T00:00:00Z".into(); // OLDER → keeps the derived port
+        let mut b = fp_site(&db_);
+        b.id = "id-b".into();
+        b.created_at = "2026-01-02T00:00:00Z".into();
+        store::insert_site(&conn, &a).unwrap();
+        store::insert_site(&conn, &b).unwrap();
+
+        backfill_override_ports(&conn).unwrap();
+        let ra = get(&conn, "id-a").unwrap().unwrap();
+        let rb = get(&conn, "id-b").unwrap().unwrap();
+
+        // ZERO-DISRUPTION HALF: the FIRST (oldest) site keeps its EXACT current
+        // derived port — its running backend + edge route are untouched.
+        assert_eq!(ra.override_port, Some(derived), "the first site's port is unchanged");
+        // RESOLUTION HALF (B21): the already-broken second site gets a DISTINCT
+        // free port — neither NULL, no crash, no UNIQUE-constraint brick.
+        assert!(rb.override_port.is_some(), "second site recorded a port");
+        assert_ne!(rb.override_port, Some(derived), "second resolved to a DIFFERENT port");
+        assert!((8200..8300).contains(&rb.override_port.unwrap()), "in the FrankenPHP range");
+
+        // IDEMPOTENT: a re-run touches nothing (both already recorded).
+        backfill_override_ports(&conn).unwrap();
+        assert_eq!(get(&conn, "id-a").unwrap().unwrap().override_port, Some(derived));
+        assert_eq!(get(&conn, "id-b").unwrap().unwrap().override_port, rb.override_port);
+    }
+
+    #[test]
+    fn set_domain_preserves_the_recorded_override_port() {
+        // The orphan fix: changing a site's domain must NOT re-derive/move its
+        // recorded backend port (which used to orphan the running backend).
+        let conn = db::open_in_memory().unwrap();
+        let mut a = sample("A", "old.rex");
+        a.web_server = WebServer::Frankenphp;
+        let created = create(&conn, a).unwrap();
+        let port = created.override_port.expect("frankenphp site has a recorded port");
+
+        let updated = set_domain(&conn, &created.id, "new.rex").unwrap().unwrap();
+        assert_eq!(updated.domain, "new.rex");
+        assert_eq!(
+            updated.override_port,
+            Some(port),
+            "a domain change must not re-derive or move the recorded port"
+        );
     }
 
     #[test]
@@ -1260,6 +1429,7 @@ mod tests {
             db_name: "wp_acme_test".into(),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
+            override_port: None,
         }
     }
 
@@ -1473,15 +1643,17 @@ mod tests {
         assert!(is_nginx_served(&ng));
         assert!(!is_nginx_served(&fp));
 
-        // Edge upstream: nginx site → shared nginx port; FrankenPHP site → its backend.
+        // Edge upstream: nginx site → shared nginx port; FrankenPHP site → its
+        // RECORDED backend port (allocated at create, B20 §4 — not re-derived).
         assert_eq!(site_upstream(&ng, 18088), "127.0.0.1:18088");
-        assert_eq!(
-            site_upstream(&fp, 18088),
-            format!("127.0.0.1:{}", frankenphp::site_port("fp.test"))
+        let fp_port = fp.override_port.expect("frankenphp site has a recorded port");
+        assert_eq!(site_upstream(&fp, 18088), format!("127.0.0.1:{fp_port}"));
+        // The recorded port is in the FrankenPHP override range, not the nginx port.
+        assert!(
+            (frankenphp::FRANKENPHP_BASE_PORT..frankenphp::FRANKENPHP_BASE_PORT + 100)
+                .contains(&fp_port)
         );
-        // The FrankenPHP backend port is in the override range, not the nginx port.
-        assert!(frankenphp::site_port("fp.test") >= frankenphp::FRANKENPHP_BASE_PORT);
-        assert_ne!(frankenphp::site_port("fp.test"), 18088);
+        assert_ne!(fp_port, 18088);
     }
 
     #[test]
