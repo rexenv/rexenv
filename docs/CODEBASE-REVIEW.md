@@ -801,7 +801,24 @@ in the §5 prefetch list, so this leans on `resolve*` being a pure cache hit **u
 `resolve_bundle` is truly offline-cheap on a warm cache. (Same family as B19/B25.)
 
 ### B29 · 🟡 low · Watchdog reaps an adopted service on a single probe-miss → restart-failed loop on the still-held port
-**⏸ DEFERRED — plan-first, post-publish. The most delicate of the set.** Options: (A) gate the adopted
+**✅ FIXED — commit `030a545` (Option B, post-publish deliberate pass; see (A)). Analysis kept for the record.**
+Fixed via Option B with the positive-ID `owned_master(port, app-data-marker)` (ownership AND liveness),
+NOT bare `alive()`: a recycled pid carries no marker → `owned_master` None → reaped, so the trap is
+avoided; reap only after `ADOPTED_MISS_LIMIT`=2 consecutive misses; `alive()` dropped from the adopted
+path. DB engines only. Pure `adopted_reap_decision` test + a stubbed-`owned_master` integration test.
+Original options analysis below.
+
+**↳ FOLLOW-UP B29b · 🟡 low · Pools share the same one-miss adopted-reap class.** `core/php.rs:526
+reap_dead`: for an adopted pool, `dead_now = !alive() || (!fpm_running && !starting())` — `starting()`
+is always false for adopted, so one transient `!fpm_running` reaps it. SAME class as B29, but a
+SEPARATE fix, not a rider: (a) milder mechanics — the reap's `owned_listeners(port,"php-fpm")` sweep
+actually kills the real workers → a brief blink + successful respawn, not the DB restart-failed loop;
+(b) a DIFFERENT positive-ID — pools identify via the **`php-fpm` title on the port** (workers rewrite
+their title, dropping the app-data path), not `owned_master`+app-data-marker. Scheduled plan-first
+AFTER B20 (milder → lower priority). When done: its own positive-ID (php-fpm-title check) + the same
+both-directions analysis (no false reap of a live pool on a transient miss; recycled one still reaped).
+
+**⏸ DEFERRED (original analysis) — plan-first, post-publish. The most delicate of the set.** Options: (A) gate the adopted
 reap on `!proc.alive()`; (B) require two consecutive misses. **Invariant at risk:** "Running =
 ownership AND liveness, never a bare port/pid." Option (A) leans on `alive()` (bare pid) — a RECYCLED
 pid (alive, no longer ours) would then never be reaped → a stale adopted handle pointing at a foreign
