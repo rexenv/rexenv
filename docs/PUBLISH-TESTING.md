@@ -16,12 +16,24 @@ matters**, and whether it's **🚧 publish-blocking** or **🟢 nice-to-have**.
 
 ---
 
-## A) ✅ PASSED (2026-07-20) — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
+## A) ✅ PASSED (re-verified 2026-07-21) — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
 
-**RESULT:** the universal `rexenv_0.1.0_universal.dmg` (sha256 `d48bc8ba…`, built 2026-07-20 with all
-review fixes + cleanup) launches **clean after `xattr -rd com.apple.quarantine`** on Apple Silicon.
-The ad-hoc tap approach is validated end-to-end — de-quarantine → launch works. Gate cleared; the tap
-is real. (Canonical cask sha256 still to be recomputed from the exact GitHub Release asset — see §D.)
+**RESULT:** the universal `rexenv_0.1.0_universal.dmg` (sha256 `8d201724…`, rebuilt 2026-07-21 with all
+review fixes + cleanup + the wp-cli `--` fix + the download-resume feature) launches **clean after
+`xattr -rd com.apple.quarantine`** on Apple Silicon. The ad-hoc tap approach is validated end-to-end —
+de-quarantine → launch works. Gate cleared; the tap is real. (Canonical cask sha256 still to be
+recomputed from the exact GitHub Release asset — see §D.)
+
+_(The earlier 2026-07-20 build, sha256 `d48bc8ba…`, also passed §A; superseded by this rebuild.)_
+
+## A2) ✅ PASSED (2026-07-21) — first-run PHP download resume on a real flaky link
+
+**RESULT:** on the reporter's new Mac (the link that originally failed with "error decoding response
+body … gave up after 3 attempts"), the first-run PHP download (`php-8.3.31-fpm-macos-aarch64`, 34 MB
+from `dl.static-php.dev` → DO Spaces fra1) **completed cleanly** against this build — the HTTP Range
+resume (commit `4c6bb63`) recovers from mid-body drops instead of restarting from byte 0. This is the
+real-world proof the unit/integration tests (happy-resume + corrupt-fails-closed + 200-restart) stand
+in for; first-run site creation is unblocked.
 
 ---
 
