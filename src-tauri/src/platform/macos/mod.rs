@@ -933,6 +933,16 @@ impl EdgeSupervisor for MacosEdgeDaemon {
     /// `exec` replaces the shell with caddy so launchd tracks the real edge PID (the
     /// loop is a separate child; launchd tears it down with the job). Paths quoted
     /// (spaces); the owner uid is read live from the user app-data dir.
+    ///
+    /// The chown is guarded by a LINK-COUNT check (`stat -f %l = 1`): a real unix
+    /// socket always has one link, so this is transparent in every legitimate case
+    /// (the loop chowns exactly as before). It refuses to chown a HARDLINKED inode
+    /// — a same-user attacker who replaced the socket path with a hardlink to
+    /// another root-owned socket could otherwise have this ROOT loop chown that
+    /// foreign inode to them (a privilege-escalation vector). macOS's own hardlink
+    /// restrictions already largely block it; this is cost-free defense-in-depth on
+    /// a root path (B16). Uses base-system `stat -f` (already used above for %u),
+    /// resolved before any PATH setup.
     fn wrapper_contents(
         &self,
         caddy_bin: &Path,
@@ -947,6 +957,7 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              OWNER=$(stat -f %u {appdata})\n\
              ( while :; do \
              [ -S \"$SOCK\" ] && [ \"$(stat -f %u \"$SOCK\" 2>/dev/null)\" != \"$OWNER\" ] \
+             && [ \"$(stat -f %l \"$SOCK\" 2>/dev/null)\" = 1 ] \
              && chown -h \"$OWNER\" \"$SOCK\" 2>/dev/null; sleep 1; done ) &\n\
              exec {caddy} run --config {cfg} --adapter caddyfile\n",
             sock = sh_quote(admin_sock),
@@ -1857,6 +1868,16 @@ mod tests {
         // must not be redirectable onto another daemon's socket (LPE).
         assert!(w.contains("chown -h \"$OWNER\" \"$SOCK\""));
         assert!(w.contains("while :; do"), "must loop, not run once: {w}");
+        // Link-count guard BEFORE the chown (B16): a real socket has one link, so
+        // this is transparent; it refuses to chown a HARDLINKED inode (a same-user
+        // hardlink to another root socket would otherwise get chowned by this root
+        // loop — LPE). Must sit in the `&&` chain ahead of the chown.
+        assert!(
+            w.contains(
+                "&& [ \"$(stat -f %l \"$SOCK\" 2>/dev/null)\" = 1 ] && chown -h \"$OWNER\" \"$SOCK\""
+            ),
+            "the link-count guard must precede the chown: {w}"
+        );
         // exec (not fork) so launchd's tracked PID is caddy itself.
         assert!(w.contains("exec '/root/bin/caddy' run --config '/u/Caddyfile'"));
     }
