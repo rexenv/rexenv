@@ -49,14 +49,25 @@ pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
 /// answered every site with its own 404 while our edge sat green.
 ///
 /// Probe: request [`EDGE_PROBE_PATH`] on `<host>` pinned to `127.0.0.1:443`
-/// (no DNS involved) and require the [`EDGE_MARKER_HEADER`] our config stamps
-/// on every site block (fallback: a `Server: Caddy` header — a pre-marker
-/// rexenv edge — still distinguishes us from Herd/Valet's nginx). Any HTTP
-/// status counts: a 502 from OUR edge still proves the wire is ours. A current
-/// edge answers the path itself (204 at the edge, no nginx round-trip); an
-/// older surviving edge just proxies it through as a 404 that still carries
+/// (no DNS involved) and require the [`EDGE_MARKER_HEADER`] our config stamps.
+/// Any HTTP status counts: a 502 from OUR edge still proves the wire is ours. A
+/// current edge answers the path itself (204 at the edge, no nginx round-trip);
+/// an older surviving edge just proxies it through as a 404 that still carries
 /// the marker — detection is config-version-independent. Connection failure or
-/// a foreign server → false.
+/// a server without the marker → false.
+///
+/// MARKER-ONLY, deliberately — do NOT re-add a `Server: Caddy` fallback:
+/// - It's a FALSE-POSITIVE: any foreign Caddy on loopback `:443` (a dev's own)
+///   sends `Server: Caddy` and would be mis-identified as OUR edge — the exact
+///   "never mistake a foreign Caddy for ours" (M1) violation this probe exists
+///   to catch. The marker is a POSITIVE ID only our config stamps.
+/// - It's unnecessary: our real edge always emits the marker on this exact
+///   response — the `respond @rexenv_probe 204` short-circuit carries
+///   `X-Rexenv-Edge: 1` because Caddy orders `header` before `respond`
+///   (verified on the bundled Caddy). A "pre-marker rexenv edge" can't reach a
+///   shipped user (the marker predates the first release), and adoption is keyed
+///   on the private admin socket — not this probe — and reloads the marker-
+///   bearing config, so nothing here gates an edge start on the result.
 pub async fn edge_answers_as_ours(host: &str, https_port: u16) -> bool {
     let url = format!("https://{host}:{https_port}{EDGE_PROBE_PATH}");
     let Ok(client) = reqwest::Client::builder()
@@ -70,16 +81,17 @@ pub async fn edge_answers_as_ours(host: &str, https_port: u16) -> bool {
         return false;
     };
     match client.get(&url).send().await {
-        Ok(resp) => {
-            resp.headers().contains_key(EDGE_MARKER_HEADER)
-                || resp
-                    .headers()
-                    .get("server")
-                    .and_then(|v| v.to_str().ok())
-                    .is_some_and(|s| s.eq_ignore_ascii_case("caddy"))
-        }
+        Ok(resp) => probe_response_is_ours(resp.headers()),
         Err(_) => false,
     }
+}
+
+/// A probe response is OUR edge iff it carries the marker header — the sole,
+/// positive authority. Pure so the marker-only contract (and the removal of the
+/// old `Server: Caddy` false-positive) is unit-testable without a TLS mock: a
+/// re-added Server-based branch would flip a foreign-Caddy case and fail the test.
+fn probe_response_is_ours(headers: &reqwest::header::HeaderMap) -> bool {
+    headers.contains_key(EDGE_MARKER_HEADER)
 }
 
 /// Caddy admin address for the CLI `--address` / Caddyfile `admin` directive.
@@ -543,6 +555,36 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn probe_identity_is_marker_only_not_server_caddy() {
+        use reqwest::header::{HeaderMap, HeaderValue, SERVER};
+        let marker = reqwest::header::HeaderName::from_static("x-rexenv-edge");
+
+        // Our edge: the marker is present → ours (the 204 short-circuit carries it).
+        let mut ours = HeaderMap::new();
+        ours.insert(&marker, HeaderValue::from_static("1"));
+        assert!(probe_response_is_ours(&ours), "marker present → ours");
+
+        // A foreign CADDY (Server: Caddy, NO marker): the false-positive the old
+        // fallback caused — must now read FALSE (M1: never mistake a foreign Caddy
+        // for ours). This is the regression guard for the dropped fallback.
+        let mut foreign_caddy = HeaderMap::new();
+        foreign_caddy.insert(SERVER, HeaderValue::from_static("Caddy"));
+        assert!(!probe_response_is_ours(&foreign_caddy), "foreign Caddy → NOT ours");
+
+        // Marker present with a NON-Caddy Server (e.g. reverse-proxied through
+        // nginx): still ours — the marker is the sole authority, independent of
+        // the Server line.
+        let mut marker_via_nginx = HeaderMap::new();
+        marker_via_nginx.insert(&marker, HeaderValue::from_static("1"));
+        marker_via_nginx.insert(SERVER, HeaderValue::from_static("nginx"));
+        assert!(probe_response_is_ours(&marker_via_nginx), "marker wins over Server: nginx");
+
+        // A foreign nginx shadow (Herd-class: no marker, no Server: Caddy) →
+        // false, matching the wire_probe_check example's shadow assertion.
+        assert!(!probe_response_is_ours(&HeaderMap::new()), "no marker → not ours");
+    }
 
     #[test]
     fn sh_quote_is_byte_identical_for_real_paths_and_escapes_a_quote() {
