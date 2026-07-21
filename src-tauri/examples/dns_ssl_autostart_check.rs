@@ -52,10 +52,10 @@ fn main() {
     let _ = std::fs::remove_dir_all(&dir);
     let cert_path = dir.join(ssl::SITE_CERT_FILE);
     let key_path = dir.join(ssl::SITE_KEY_FILE);
-    let first = ssl::ensure_site_cert_at(&cert_path, &key_path, &ca, "regen.test").expect("issue");
+    let first = ssl::ensure_site_cert_at(&cert_path, &key_path, &ca, "regen.test", None).expect("issue");
     // "Regenerate" = delete then re-issue (the idempotent path would otherwise reuse).
     std::fs::remove_dir_all(&dir).unwrap();
-    let second = ssl::ensure_site_cert_at(&cert_path, &key_path, &ca, "regen.test").expect("re-issue");
+    let second = ssl::ensure_site_cert_at(&cert_path, &key_path, &ca, "regen.test", None).expect("re-issue");
     assert_ne!(first.key_pem, second.key_pem, "regenerated cert must have fresh key material");
     println!("✓ regenerate re-issues fresh key material (key PEM changed)");
 

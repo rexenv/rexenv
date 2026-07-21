@@ -78,9 +78,25 @@ pub fn generate_ca() -> Result<(String, String)> {
     Ok((cert.pem(), key_pair.serialize_pem()))
 }
 
-/// Idempotent load-or-create at explicit paths (no OS perms applied — see
-/// [`load_or_create`] for the app-data variant that hardens the key file).
-pub fn load_or_create_at(cert_path: &Path, key_path: &Path) -> Result<LocalCa> {
+/// Write private-key bytes: with a `PermissionManager` the file is BORN 0600
+/// (`write_private` — no world-readable window, B6); without one (`None`, the
+/// test/example paths) a plain write. Cert files stay plain writes everywhere —
+/// they're public material.
+fn write_key(path: &Path, pem: &str, perms: Option<&dyn PermissionManager>) -> Result<()> {
+    match perms {
+        Some(p) => p.write_private(path, pem.as_bytes()),
+        None => Ok(fs::write(path, pem)?),
+    }
+}
+
+/// Idempotent load-or-create at explicit paths. `perms: Some` creates the key
+/// file atomically owner-only (B6); `None` (tests/examples) writes plainly —
+/// see [`load_or_create`] for the app-data variant.
+pub fn load_or_create_at(
+    cert_path: &Path,
+    key_path: &Path,
+    perms: Option<&dyn PermissionManager>,
+) -> Result<LocalCa> {
     if cert_path.exists() && key_path.exists() {
         return Ok(LocalCa {
             cert_pem: fs::read_to_string(cert_path)?,
@@ -94,7 +110,7 @@ pub fn load_or_create_at(cert_path: &Path, key_path: &Path) -> Result<LocalCa> {
     }
     let (cert_pem, key_pem) = generate_ca()?;
     fs::write(cert_path, &cert_pem)?;
-    fs::write(key_path, &key_pem)?;
+    write_key(key_path, &key_pem, perms)?;
     Ok(LocalCa {
         cert_pem,
         key_pem,
@@ -103,11 +119,12 @@ pub fn load_or_create_at(cert_path: &Path, key_path: &Path) -> Result<LocalCa> {
     })
 }
 
-/// Idempotent CA load-or-create under app-data; the private key file is hardened
-/// to owner-only via `PermissionManager`.
+/// Idempotent CA load-or-create under app-data; the private key file is BORN
+/// owner-only at create (B6), and `set_private` still runs on every load as the
+/// belt that heals any pre-existing key's perms.
 pub fn load_or_create(paths: &dyn Paths, perms: &dyn PermissionManager) -> Result<LocalCa> {
     let dir = ca_dir(paths)?;
-    let ca = load_or_create_at(&dir.join(CA_CERT_FILE), &dir.join(CA_KEY_FILE))?;
+    let ca = load_or_create_at(&dir.join(CA_CERT_FILE), &dir.join(CA_KEY_FILE), Some(perms))?;
     perms.set_private(&ca.key_path)?;
     Ok(ca)
 }
@@ -161,12 +178,14 @@ pub fn site_cert_dir(paths: &dyn Paths, domain: &str) -> Result<PathBuf> {
     Ok(paths.app_data_dir()?.join("certs").join(domain))
 }
 
-/// Idempotent per-site cert issue-or-reuse at explicit paths (no OS perms).
+/// Idempotent per-site cert issue-or-reuse at explicit paths. `perms: Some`
+/// creates the key atomically owner-only (B6); `None` writes plainly.
 pub fn ensure_site_cert_at(
     cert_path: &Path,
     key_path: &Path,
     ca: &LocalCa,
     domain: &str,
+    perms: Option<&dyn PermissionManager>,
 ) -> Result<SiteCert> {
     if cert_path.exists() && key_path.exists() {
         return Ok(SiteCert {
@@ -181,7 +200,7 @@ pub fn ensure_site_cert_at(
     }
     let (cert_pem, key_pem) = generate_site_cert(ca, domain)?;
     fs::write(cert_path, &cert_pem)?;
-    fs::write(key_path, &key_pem)?;
+    write_key(key_path, &key_pem, perms)?;
     Ok(SiteCert {
         cert_pem,
         key_pem,
@@ -190,7 +209,8 @@ pub fn ensure_site_cert_at(
     })
 }
 
-/// Issue (or reuse) a site cert under app-data; the key file is hardened 0600.
+/// Issue (or reuse) a site cert under app-data; the key file is born 0600 at
+/// create (B6), with the per-load `set_private` belt kept.
 pub fn ensure_site_cert(
     paths: &dyn Paths,
     perms: &dyn PermissionManager,
@@ -198,7 +218,13 @@ pub fn ensure_site_cert(
     domain: &str,
 ) -> Result<SiteCert> {
     let dir = site_cert_dir(paths, domain)?;
-    let cert = ensure_site_cert_at(&dir.join(SITE_CERT_FILE), &dir.join(SITE_KEY_FILE), ca, domain)?;
+    let cert = ensure_site_cert_at(
+        &dir.join(SITE_CERT_FILE),
+        &dir.join(SITE_KEY_FILE),
+        ca,
+        domain,
+        Some(perms),
+    )?;
     perms.set_private(&cert.key_path)?;
     Ok(cert)
 }
@@ -213,6 +239,7 @@ pub fn reissue_site_cert_at(
     key_path: &Path,
     ca: &LocalCa,
     domain: &str,
+    perms: Option<&dyn PermissionManager>,
 ) -> Result<SiteCert> {
     let (cert_pem, key_pem) = generate_site_cert(ca, domain)?;
     if let Some(parent) = cert_path.parent() {
@@ -222,7 +249,10 @@ pub fn reissue_site_cert_at(
     let key_tmp = key_path.with_extension("pem.tmp");
     let write_both = || -> Result<()> {
         fs::write(&cert_tmp, &cert_pem)?;
-        fs::write(&key_tmp, &key_pem)?;
+        // The TEMP key must be born 0600: rename preserves the SOURCE file's
+        // perms, so a umask-mode temp renamed over an existing 0600 key would
+        // DEGRADE the hardened key until the wrapper's re-harden (B6).
+        write_key(&key_tmp, &key_pem, perms)?;
         fs::rename(&key_tmp, key_path)?;
         fs::rename(&cert_tmp, cert_path)?;
         Ok(())
@@ -250,7 +280,13 @@ pub fn reissue_site_cert(
     domain: &str,
 ) -> Result<SiteCert> {
     let dir = site_cert_dir(paths, domain)?;
-    let cert = reissue_site_cert_at(&dir.join(SITE_CERT_FILE), &dir.join(SITE_KEY_FILE), ca, domain)?;
+    let cert = reissue_site_cert_at(
+        &dir.join(SITE_CERT_FILE),
+        &dir.join(SITE_KEY_FILE),
+        ca,
+        domain,
+        Some(perms),
+    )?;
     perms.set_private(&cert.key_path)?;
     Ok(cert)
 }
@@ -351,6 +387,66 @@ mod tests {
         CertificateParams::from_ca_cert_pem(&cert_pem).unwrap();
     }
 
+    /// Mode bits (0o777 mask) of a path — unix-only test helper.
+    #[cfg(unix)]
+    fn mode_of(p: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(p).unwrap().permissions().mode() & 0o777
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn keys_are_born_owner_only_without_the_wrapper_chmod() {
+        // With a PermissionManager the key file must be 0600 STRAIGHT from the
+        // _at fn — no wrapper set_private has run — proving there is no
+        // world-readable window between write and harden (B6).
+        let plat = crate::platform::current();
+        let perms = plat.permissions();
+        let dir = std::env::temp_dir().join(format!("rexenv-b6-born-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let ca =
+            load_or_create_at(&dir.join(CA_CERT_FILE), &dir.join(CA_KEY_FILE), Some(perms)).unwrap();
+        assert_eq!(mode_of(&ca.key_path), 0o600, "CA key born owner-only");
+
+        let cert = ensure_site_cert_at(
+            &dir.join(SITE_CERT_FILE),
+            &dir.join(SITE_KEY_FILE),
+            &ca,
+            "born.test",
+            Some(perms),
+        )
+        .unwrap();
+        assert_eq!(mode_of(&cert.key_path), 0o600, "site key born owner-only");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reissue_over_a_hardened_key_keeps_it_owner_only() {
+        // The degradation fix (B6): the OLD path wrote the temp key at umask and
+        // renamed it over the existing 0600 key — rename preserves the SOURCE's
+        // perms, so a hardened key went 0644 until the wrapper re-hardened it.
+        // With the temp born 0600, the key must be 0600 the moment the rename
+        // lands, with no wrapper chmod involved.
+        let plat = crate::platform::current();
+        let perms = plat.permissions();
+        let dir = std::env::temp_dir().join(format!("rexenv-b6-reissue-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let cert = dir.join(SITE_CERT_FILE);
+        let key = dir.join(SITE_KEY_FILE);
+
+        let ca = load_or_create_at(&dir.join(CA_CERT_FILE), &dir.join(CA_KEY_FILE), Some(perms)).unwrap();
+        ensure_site_cert_at(&cert, &key, &ca, "re.test", Some(perms)).unwrap();
+        assert_eq!(mode_of(&key), 0o600, "precondition: hardened key");
+
+        reissue_site_cert_at(&cert, &key, &ca, "re.test", Some(perms)).unwrap();
+        assert_eq!(mode_of(&key), 0o600, "reissued key stays owner-only after the rename");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn load_or_create_is_idempotent() {
         let dir = std::env::temp_dir().join("rexenv-ca-test");
@@ -358,10 +454,10 @@ mod tests {
         let cert = dir.join(CA_CERT_FILE);
         let key = dir.join(CA_KEY_FILE);
 
-        let a = load_or_create_at(&cert, &key).unwrap();
+        let a = load_or_create_at(&cert, &key, None).unwrap();
         assert!(cert.exists() && key.exists());
         // Second call returns the SAME stored material (not regenerated).
-        let b = load_or_create_at(&cert, &key).unwrap();
+        let b = load_or_create_at(&cert, &key, None).unwrap();
         assert_eq!(a.cert_pem, b.cert_pem);
         assert_eq!(a.key_pem, b.key_pem);
 
@@ -482,8 +578,8 @@ mod tests {
         let cert = dir.join(SITE_CERT_FILE);
         let key = dir.join(SITE_KEY_FILE);
 
-        let a = ensure_site_cert_at(&cert, &key, &ca, "mysite.test").unwrap();
-        let b = ensure_site_cert_at(&cert, &key, &ca, "mysite.test").unwrap();
+        let a = ensure_site_cert_at(&cert, &key, &ca, "mysite.test", None).unwrap();
+        let b = ensure_site_cert_at(&cert, &key, &ca, "mysite.test", None).unwrap();
         // Reused, not re-issued.
         assert_eq!(a.cert_pem, b.cert_pem);
         assert_eq!(a.key_pem, b.key_pem);
@@ -506,10 +602,10 @@ mod tests {
         let key = dir.join(SITE_KEY_FILE);
 
         // Works with no pre-existing files (deleted/corrupted-cert recovery)…
-        let a = reissue_site_cert_at(&cert, &key, &ca, "mysite.test").unwrap();
+        let a = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", None).unwrap();
         assert!(cert.exists() && key.exists());
         // …and ALWAYS re-issues over an existing pair (unlike ensure_site_cert).
-        let b = reissue_site_cert_at(&cert, &key, &ca, "mysite.test").unwrap();
+        let b = reissue_site_cert_at(&cert, &key, &ca, "mysite.test", None).unwrap();
         assert_ne!(a.cert_pem, b.cert_pem);
         assert_ne!(a.key_pem, b.key_pem);
         // On-disk pair is the NEW material (rename landed), still a valid signed leaf.

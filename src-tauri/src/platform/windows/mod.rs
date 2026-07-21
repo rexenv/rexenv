@@ -94,6 +94,9 @@ impl PermissionManager for WindowsPermissions {
     fn set_private(&self, _path: &Path) -> Result<()> {
         todo!("windows ACLs (owner-only)")
     }
+    fn write_private(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
+        todo!("windows owner-only create (ACLs)")
+    }
 }
 
 pub struct WindowsShell;

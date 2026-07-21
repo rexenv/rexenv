@@ -2336,7 +2336,7 @@ mod tests {
     async fn watchdog_bounds_edge_restarting_and_diagnoses_the_giveup() {
         let platform = edge_test_platform("watchdog-giveup", true, false);
         let dir = std::env::temp_dir().join("rexenv-edge-sm-watchdog-giveup");
-        let ca = ssl::load_or_create_at(&dir.join("ca.pem"), &dir.join("ca.key")).unwrap();
+        let ca = ssl::load_or_create_at(&dir.join("ca.pem"), &dir.join("ca.key"), None).unwrap();
         let mut mgr = ServiceManager::with_ports(Ports::default());
         mgr.set_edge_daemon(); // supervised edge; socket never exists → dead
 

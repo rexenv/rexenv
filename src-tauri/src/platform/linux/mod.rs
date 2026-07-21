@@ -93,6 +93,9 @@ impl PermissionManager for LinuxPermissions {
     fn set_private(&self, _path: &Path) -> Result<()> {
         todo!("linux chmod 0600")
     }
+    fn write_private(&self, _path: &Path, _contents: &[u8]) -> Result<()> {
+        todo!("linux owner-only create (OpenOptions mode 0600)")
+    }
 }
 
 pub struct LinuxShell;

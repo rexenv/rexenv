@@ -246,6 +246,11 @@ pub trait PermissionManager: Send + Sync {
     /// Restrict `path` to owner-only access (0600 on Unix; ACL on Windows).
     /// Used for private keys (e.g. the local CA key).
     fn set_private(&self, path: &std::path::Path) -> Result<()>;
+    /// Write `contents` to `path` with the file BORN owner-only (0600 on Unix:
+    /// `OpenOptions.mode(0o600)` at create) — no world-readable window between
+    /// write and a later chmod, unlike write-then-`set_private` (B6). Used for
+    /// private keys; also re-hardens `path` if it already exists.
+    fn write_private(&self, path: &std::path::Path, contents: &[u8]) -> Result<()>;
 }
 
 /// Runs shell commands and backs the built-in terminal. bash/zsh vs PowerShell.

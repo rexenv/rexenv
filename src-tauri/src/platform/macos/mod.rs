@@ -1046,6 +1046,29 @@ impl PermissionManager for MacosPermissions {
         std::fs::set_permissions(path, perms)?;
         Ok(())
     }
+
+    fn write_private(&self, path: &Path, contents: &[u8]) -> Result<()> {
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        // mode() applies ONLY at create — a brand-new key file is born 0600,
+        // with no world-readable window (B6).
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        // Overwriting an EXISTING file keeps its old mode — re-harden before
+        // writing the new secret into it, so a pre-existing 0644 file can't
+        // expose the fresh contents.
+        let mut perms = f.metadata()?.permissions();
+        if perms.mode() & 0o777 != 0o600 {
+            perms.set_mode(0o600);
+            f.set_permissions(perms)?;
+        }
+        f.write_all(contents)?;
+        Ok(())
+    }
 }
 
 pub struct MacosShell;
