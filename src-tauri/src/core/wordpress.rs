@@ -37,7 +37,7 @@ pub fn wp_cli(
 /// (the `repo::run_captured_with_cap` lesson): a wait-then-read would deadlock
 /// once a chatty child fills the ~64KB pipe buffer and read as a FAKE timeout —
 /// a big `plugin list --format=json` must never trip the guard by being long.
-fn run_with_timeout(mut cmd: Command, timeout: Duration, what: &str) -> Result<Output> {
+pub(crate) fn run_with_timeout(mut cmd: Command, timeout: Duration, what: &str) -> Result<Output> {
     use std::io::Read;
     use std::process::Stdio;
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());

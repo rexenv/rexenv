@@ -50,8 +50,24 @@ pub fn find_optional(env: &[(String, String)], name: &str) -> Option<ToolInfo> {
     Some(ToolInfo { version: probe_version(&path), path })
 }
 
+/// `--version` probes must return fast — a hung binary (dead network mount,
+/// broken shim) previously blocked `repo_tools`/`repo_probe` forever on a bare
+/// `.output()`. ~100× a legit probe; on timeout the tool reports `version:
+/// None` (present, version unknown) rather than a hard failure (B25).
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 fn probe_version(path: &Path) -> Option<String> {
-    let out = std::process::Command::new(path).arg("--version").output().ok()?;
+    probe_version_with(path, PROBE_TIMEOUT)
+}
+
+/// [`probe_version`] with an injectable bound (tests use a short one so the
+/// hung-binary case doesn't wait out the real 10s).
+fn probe_version_with(path: &Path, timeout: std::time::Duration) -> Option<String> {
+    let mut cmd = std::process::Command::new(path);
+    cmd.arg("--version");
+    // The drain-on-threads runner (B25 stage 2): kills on expiry, reaps, and a
+    // chatty tool can't fake-timeout on a full pipe.
+    let out = crate::core::wordpress::run_with_timeout(cmd, timeout, "version probe").ok()?;
     if !out.status.success() {
         return None;
     }
@@ -131,6 +147,34 @@ mod tests {
         // Defensive: no marker at all → still parses the buffer.
         let bare = parse_shell_env_output(b"A=1\0B=2\0");
         assert_eq!(env_var(&bare, "B"), Some("2"));
+    }
+
+    #[test]
+    fn probe_version_reports_a_tool_and_bounds_a_hung_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rexenv-probe-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        // A normal tool answers --version instantly → Some(first line).
+        let ok = dir.join("goodtool");
+        std::fs::write(&ok, "#!/bin/sh\necho tool 1.2.3\n").unwrap();
+        std::fs::set_permissions(&ok, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(probe_version(&ok).as_deref(), Some("tool 1.2.3"));
+
+        // A hung tool (dead mount / broken shim shape) must come back None
+        // within the bound — previously a bare .output() blocked repo_tools
+        // forever (B25). Short injectable bound so the test doesn't wait 10s.
+        let hung = dir.join("hungtool");
+        std::fs::write(&hung, "#!/bin/sh\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&hung, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let start = std::time::Instant::now();
+        assert_eq!(probe_version_with(&hung, std::time::Duration::from_millis(300)), None);
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "bounded, not blocked: {:?}",
+            start.elapsed()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

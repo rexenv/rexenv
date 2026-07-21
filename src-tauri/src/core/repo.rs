@@ -485,6 +485,17 @@ const TAIL_LINES: usize = 40;
 /// Run one child in its own process group, pumping stdout+stderr to `on_line`
 /// as they arrive (log pane + log file). Blocking — callers use
 /// `spawn_blocking` (the wp-cli convention).
+/// Idle bound for steps whose long TOTAL silence means a dead pipe, not a slow
+/// one: git ops stream `--progress` redraws continuously (every `\r` counts as
+/// a line via `pump_lines`) and package installers print per package, so five
+/// straight minutes of NOTHING is a black-holed connection (B25). User scripts
+/// (`run`, `build`, watch) are exempt by POLICY, not by a bigger number — a
+/// silent `tsc` or an idle watcher is legitimate there; pass `None`.
+pub const STEP_IDLE_LIMIT: Duration = Duration::from_secs(300);
+
+/// How often the receive loop wakes to check the idle clock.
+const IDLE_TICK: Duration = Duration::from_secs(1);
+
 pub fn run_step_streamed(
     supervisor: &dyn ProcessSupervisor,
     program: &Path,
@@ -493,6 +504,7 @@ pub fn run_step_streamed(
     env: &[(String, String)],
     cancel: &CancelToken,
     on_line: &mut dyn FnMut(&str),
+    idle_limit: Option<Duration>,
 ) -> Result<StepResult> {
     if cancel.is_cancelled() {
         return Ok(StepResult { ok: false, cancelled: true, exit: None, tail: Vec::new() });
@@ -512,20 +524,57 @@ pub fn run_step_streamed(
     let t1 = std::thread::spawn(move || pump_lines(stdout, tx));
     let t2 = std::thread::spawn(move || pump_lines(stderr, tx2));
     let mut tail: VecDeque<String> = VecDeque::with_capacity(TAIL_LINES);
-    for line in rx {
-        // recv ends when both pumps drop their senders (child closed pipes).
+    let mut deliver = |line: String, tail: &mut VecDeque<String>| {
         on_line(&line);
         if tail.len() == TAIL_LINES {
             tail.pop_front();
         }
         tail.push_back(line);
+    };
+    // Any line (stdout or stderr — git progress redraws count) resets the idle
+    // clock. On `idle_limit` of total silence: kill THIS step's process group
+    // (`pgid` — the group spawn_streamed created, the same positive ID the
+    // cancel path uses) so grandchildren die too and the pipes close, then fall
+    // through to the shared drain/join/wait path below.
+    let mut last_output = Instant::now();
+    let mut stalled = false;
+    loop {
+        match rx.recv_timeout(IDLE_TICK) {
+            Ok(line) => {
+                last_output = Instant::now();
+                deliver(line, &mut tail);
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                if let Some(limit) = idle_limit {
+                    if last_output.elapsed() >= limit {
+                        deliver(
+                            format!(
+                                "no output for {}s — killed as stalled (network black hole?)",
+                                limit.as_secs()
+                            ),
+                            &mut tail,
+                        );
+                        let _ = supervisor.stop_group(pgid);
+                        stalled = true;
+                        break;
+                    }
+                }
+            }
+            // Both pumps dropped their senders (child closed its pipes).
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    // Post-kill remnants (bounded: the group kill closes every pipe end,
+    // grandchildren included, so the pumps exit and this drains fast).
+    for line in rx {
+        deliver(line, &mut tail);
     }
     let _ = t1.join();
     let _ = t2.join();
     let status = child.wait()?;
     cancel.clear();
     Ok(StepResult {
-        ok: status.success() && !cancel.is_cancelled(),
+        ok: status.success() && !cancel.is_cancelled() && !stalled,
         cancelled: cancel.is_cancelled(),
         exit: status.code(),
         tail: tail.into(),
@@ -630,7 +679,9 @@ pub fn clone_repo(
     let args = clone_args(url, git_ref, dest);
     let env = with_git_env(env);
     on_line(&format!("$ git {}", args.join(" ")));
-    let result = run_step_streamed(supervisor, git, &args, parent, &env, cancel, on_line)?;
+    // Network op: total silence means a black hole, not a slow link (B25).
+    let result =
+        run_step_streamed(supervisor, git, &args, parent, &env, cancel, on_line, Some(STEP_IDLE_LIMIT))?;
     if result.ok {
         return Ok(());
     }
@@ -910,7 +961,9 @@ fn run_git_op(
 ) -> Result<()> {
     let env = with_git_env(env);
     on_line(&format!("$ git {}", args.join(" ")));
-    let result = run_step_streamed(supervisor, git, args, dir, &env, cancel, on_line)?;
+    // Git ops stream progress continuously — 300s of silence is a wedge (B25).
+    let result =
+        run_step_streamed(supervisor, git, args, dir, &env, cancel, on_line, Some(STEP_IDLE_LIMIT))?;
     if result.ok {
         return Ok(());
     }
@@ -1150,6 +1203,10 @@ pub fn node_run_script(
 ) -> Result<StepResult> {
     let name = tool_name(manager);
     on_line(&format!("$ {name} run {script}"));
+    // USER script (repo `run` + the watch runner both land here): long silence
+    // is legitimate (a quiet tsc, a watcher idling by design, forever) — exempt
+    // from the idle guard BY POLICY, not by a bigger number. Cancel is the
+    // user's tool here (B25).
     run_step_streamed(
         supervisor,
         manager,
@@ -1158,6 +1215,7 @@ pub fn node_run_script(
         env,
         cancel,
         on_line,
+        None,
     )
 }
 
@@ -1449,7 +1507,17 @@ pub fn composer_install(
         "--no-interaction".into(),
     ];
     on_line("$ composer install --no-interaction");
-    let result = run_step_streamed(supervisor, php, &args, dir, env, cancel, on_line)?;
+    // Package install: streams per package — total silence is a wedge (B25).
+    let result = run_step_streamed(
+        supervisor,
+        php,
+        &args,
+        dir,
+        env,
+        cancel,
+        on_line,
+        Some(STEP_IDLE_LIMIT),
+    )?;
     step_verdict(result, "composer install", map_composer_error)
 }
 
@@ -1464,8 +1532,17 @@ pub fn node_install(
 ) -> Result<()> {
     let name = tool_name(manager);
     on_line(&format!("$ {name} install"));
-    let result =
-        run_step_streamed(supervisor, manager, &["install".into()], dir, env, cancel, on_line)?;
+    // Package install: streams per package — total silence is a wedge (B25).
+    let result = run_step_streamed(
+        supervisor,
+        manager,
+        &["install".into()],
+        dir,
+        env,
+        cancel,
+        on_line,
+        Some(STEP_IDLE_LIMIT),
+    )?;
     step_verdict(result, &format!("{name} install"), map_node_error)
 }
 
@@ -1480,6 +1557,9 @@ pub fn node_build(
 ) -> Result<()> {
     let name = tool_name(manager);
     on_line(&format!("$ {name} run build"));
+    // Runs the repo's OWN "build" script — user code, where a silent tsc /
+    // webpack for many minutes is legitimate: exempt from the idle guard by
+    // policy, exactly like `run` (B25). Cancel is the user's tool.
     let result = run_step_streamed(
         supervisor,
         manager,
@@ -1488,6 +1568,7 @@ pub fn node_build(
         env,
         cancel,
         on_line,
+        None,
     )?;
     step_verdict(result, &format!("{name} run build"), map_node_error)
 }
@@ -2149,5 +2230,83 @@ mod tests {
         // Unknown failures keep the tail.
         let raw = map_node_error(&["ERR_PNPM_SOMETHING went sideways".into()]);
         assert!(raw.to_string().contains("went sideways"), "{raw}");
+    }
+
+    #[test]
+    fn idle_watchdog_kills_a_silent_step_and_reports_the_stall() {
+        // One line of output then total silence: with a short idle limit the
+        // step must come back non-ok FAST with the stall notice in the tail —
+        // previously a black-holed step hung until the user cancelled (B25).
+        let plat = crate::platform::current();
+        let cancel = CancelToken::new();
+        let mut lines = Vec::new();
+        let start = std::time::Instant::now();
+        let r = run_step_streamed(
+            plat.supervisor(),
+            Path::new("/bin/sh"),
+            &["-c".into(), "echo hello; sleep 30".into()],
+            &std::env::temp_dir(),
+            &[],
+            &cancel,
+            &mut |l| lines.push(l.to_string()),
+            Some(Duration::from_millis(500)),
+        )
+        .unwrap();
+        assert!(!r.ok, "a stalled step must not read as success");
+        assert!(!r.cancelled, "stall is not a user cancel");
+        assert!(
+            r.tail.iter().any(|l| l.contains("killed as stalled")),
+            "tail carries the stall notice: {:?}",
+            r.tail
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "bounded by the idle limit, not the child: {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn idle_watchdog_resets_on_every_line_so_streaming_steps_survive() {
+        // Emits a line every ~200ms for ~2s TOTAL — longer than the 1s idle
+        // limit. Each line resets the clock, so a slow-but-STREAMING step
+        // completes ok; only total silence trips the guard (the invariant).
+        let plat = crate::platform::current();
+        let cancel = CancelToken::new();
+        let mut n = 0u32;
+        let r = run_step_streamed(
+            plat.supervisor(),
+            Path::new("/bin/sh"),
+            &["-c".into(), "for i in 1 2 3 4 5 6 7 8; do echo tick; sleep 0.2; done".into()],
+            &std::env::temp_dir(),
+            &[],
+            &cancel,
+            &mut |_| n += 1,
+            Some(Duration::from_secs(1)),
+        )
+        .unwrap();
+        assert!(r.ok, "a streaming step outliving the idle window must succeed");
+        assert!(n >= 8, "all lines delivered: {n}");
+    }
+
+    #[test]
+    fn no_idle_limit_keeps_a_silent_step_alive() {
+        // The user-script exemption: None means silence never kills — a quiet
+        // step finishes on its own terms (here: 1s of silence, longer than the
+        // watchdog tests' limits, then a clean exit).
+        let plat = crate::platform::current();
+        let cancel = CancelToken::new();
+        let r = run_step_streamed(
+            plat.supervisor(),
+            Path::new("/bin/sh"),
+            &["-c".into(), "sleep 1; echo done".into()],
+            &std::env::temp_dir(),
+            &[],
+            &cancel,
+            &mut |_| {},
+            None,
+        )
+        .unwrap();
+        assert!(r.ok, "silence with no idle limit must not be killed");
     }
 }
