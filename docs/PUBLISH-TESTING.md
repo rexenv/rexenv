@@ -16,15 +16,17 @@ matters**, and whether it's **🚧 publish-blocking** or **🟢 nice-to-have**.
 
 ---
 
-## A) ✅ PASSED (re-verified 2026-07-21) — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
+## A) 🚧 RE-RUN NEEDED on the fresh dmg — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
 
-**RESULT:** the universal `rexenv_0.1.0_universal.dmg` (sha256 `8d201724…`, rebuilt 2026-07-21 with all
-review fixes + cleanup + the wp-cli `--` fix + the download-resume feature) launches **clean after
-`xattr -rd com.apple.quarantine`** on Apple Silicon. The ad-hoc tap approach is validated end-to-end —
-de-quarantine → launch works. Gate cleared; the tap is real. (Canonical cask sha256 still to be
-recomputed from the exact GitHub Release asset — see §D.)
+**STATUS:** §A passed twice before (2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`), but a **fresh build
+`rexenv_0.1.0_universal.dmg` sha256 `0e57f11c…` (2026-07-22)** now supersedes those — it adds the entire
+deferred pass (21 fixes: B25 timeout family, the cert pass B6/B13, B7/B15/B28/B29, B12/B16/B26/B30, and
+the B20 recorded-port allocator + migration). Ad-hoc signing is unchanged, so the launch behavior should
+hold, but **re-confirm §A on `0e57f11c…` before announcing the tap** (all 21 fixes post-date the last
+pass). Steps below (§A-orig) — use the `0e57f11c…` dmg. On pass, the tap approach is re-validated for the
+shipping artifact. (Canonical cask sha256 still recomputed from the uploaded Release asset — see §D.)
 
-_(The earlier 2026-07-20 build, sha256 `d48bc8ba…`, also passed §A; superseded by this rebuild.)_
+_(Prior passes: 2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…` — both superseded by the `0e57f11c…` rebuild.)_
 
 ## A2) ✅ PASSED (2026-07-21) — first-run PHP download resume on a real flaky link
 
@@ -141,6 +143,25 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
   - B24 wp-cli `--` — a plugin/theme operation still works (the argv reorder didn't break
     real wp-cli parsing).
   - B20 override-port reap-guard — the runtime refusal path (needs two override backends).
+- **🟢 Deferred-pass items verified only by inspection (all unit-tested; these exercise the
+  wiring end-to-end in a real running stack — POST-PUBLISH nice-to-have, NOT gates):**
+  - **B28** (`b1c8dfe`) adopt binary-wiring — with an adopted FrankenPHP or Apache override
+    backend running, make an env-var or PHP-settings change that forces a backend restart.
+    *Expected:* the backend restarts promptly — no resolve/download stall under the services
+    lock (the recorded `frankenphp_bin`/`httpd_dir` is used).
+  - **B29** (`030a545`) adopted-service reap — with an adopted DB engine running: (a) induce a
+    single transient probe miss → *the service is NOT reaped* (still shown running, no
+    restart-failed); (b) genuinely stop the adopted DB → *reaped after ~2 watchdog ticks
+    (~20s)* and respawned cleanly. Confirms `owned_master` (marker), not bare `alive()`, is the
+    probe.
+  - **B7** (`dc77f67`) probe group-kill — `examples/repo_clone_check` (or a `repo add`) against
+    a **slow / black-holed** git remote (e.g. a firewalled host, or add a 31s+ hang).
+    *Expected:* the probe times out promptly at the cap and returns an error — and `pgrep ssh`
+    shows **no orphaned ssh** left behind (the group kill took the grandchild).
+  - **B20** (`3477760`) override-port backfill — on a real install that ALREADY has ≥1 FrankenPHP
+    and/or Apache site created BEFORE this build, launch once. *Expected:* each existing override
+    site keeps its **exact current backend port** (compare `lsof -iTCP -sTCP:LISTEN` on 8200–8399
+    before/after, and the site still serves) — the migration preserves non-colliding ports.
 - **🟢 B32 signing/notarization** — N/A for the ad-hoc tap path you've chosen. If you ever
   want a Gatekeeper-clean, no-`xattr`-needed distribution, `docs/SIGNING.md` has the exact
   steps (one config change + notarization env vars).
@@ -151,8 +172,8 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
 
 | # | Check | Status |
 |---|---|---|
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) | 🚧 **do before announcing the tap** |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **re-run on the fresh `0e57f11c…` dmg** | 🚧 **do before announcing the tap** |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
-| E | Clean-Mac QA + example live-checks + (deferred) signing | 🟢 nice-to-have |
+| E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
