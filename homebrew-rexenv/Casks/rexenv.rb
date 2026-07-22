@@ -1,8 +1,11 @@
 cask "rexenv" do
   version "0.1.0"
-  # PROVISIONAL sha256 — computed from the LOCAL universal .dmg on 2026-07-19.
-  # It MUST be recomputed from the exact asset uploaded to the GitHub Release
-  # (rebuilding can change the bytes): `shasum -a 256 rexenv_0.1.0_universal.dmg`.
+  # ⚠️ STALE PLACEHOLDER sha256 — DO NOT SHIP AS-IS. This hash is from an early
+  # local build (2026-07-19) and NO LONGER matches any current dmg (the local
+  # build is now 0e57f11c…, and rebuilds change the bytes). Before publishing you
+  # MUST replace it with the hash of the EXACT asset you upload to the GitHub
+  # Release — not any local build:
+  #   shasum -a 256 rexenv_0.1.0_universal.dmg   # run on the uploaded/downloaded asset
   sha256 "9d6f489fd0b12d5c8124eef022c68ee75301d72682c1d079176dc2b0a183862c"
 
   url "https://github.com/rudlinkon/rexenv/releases/download/v#{version}/rexenv_#{version}_universal.dmg"
