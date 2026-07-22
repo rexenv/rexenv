@@ -72,11 +72,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
   today, OLS drops in later if a macOS artifact ever exists):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a
-    per-site port in 8200–8299 (`core/frankenphp.rs`, FNV-1a of the domain),
-    `auto_https off` + `admin off`.
+    per-site port in 8200–8299, `auto_https off` + `admin off`.
   - **Apache httpd** (`core/apache.rs`, bottle bundle): loopback backend on
-    8300–8399 (same FNV hash, distinct base — a FrankenPHP↔Apache switch on one site
-    can never collide with itself). NO embedded PHP: `.php` goes to the site's SHARED
+    8300–8399 (a disjoint range, so a FrankenPHP↔Apache switch on one site can never
+    collide with itself). NO embedded PHP: `.php` goes to the site's SHARED
     php-fpm pool via `mod_proxy_fcgi`, so per-version PHP settings apply identically.
     `AllowOverride All` — `.htaccess` works (the point of Apache); subdirectory
     multisite mirrors WP's canonical network rules in server context
@@ -85,6 +84,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
     bundled; the bottle's compiled-in default paths are `@@HOMEBREW_PREFIX@@`
     placeholders and are never trusted — every path (pidfile, runtime dir, logs,
     mime map) is explicit + quoted.
+  Each backend port is **recorded, not derived** (B20 §4): allocated collision-free
+  (lowest free in the range) at create / web-server switch, stored in `sites.override_port`,
+  and read verbatim by every consumer (edge route, spawn, adopt, status) — never
+  re-hashed, so a domain change can't orphan a running backend (same "derived once,
+  never re-derived" guarantee as `db_name`). FNV-1a of the domain survives ONLY as the
+  one-time migration-backfill basis (`sites::backfill_override_ports`), which records
+  each pre-existing site's exact current derived port (zero disruption) and resolves any
+  pre-existing collision. `override_port_conflict` (recorded) stays as a belt.
   Neither may EVER be the edge, bind `:443`, or expose an admin endpoint. The edge
   routes an override site's Host to its backend; all other sites stay on the shared
   Nginx. `ServiceManager::reconcile_overrides` keeps backends in sync on start/reload
@@ -310,13 +317,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 10:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 14:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
   v10 `sites.db_engine` (TEXT, default `mysql` — exact backfill, every pre-v10 site
-  lives in MySQL's datadir). Per-engine DB versions are settings-KV rows
-  (`db_version_<engine>`), not a migration.
+  lives in MySQL's datadir) · v11 `sites.xdebug` · v12 `site_git_assets` · v13
+  `site_git_assets.source` · v14 `sites.override_port` (nullable INTEGER, NO UNIQUE —
+  the recorded override backend port; uniqueness enforced by the allocator, existing
+  rows backfilled once at startup by `sites::backfill_override_ports`, B20 §4). Per-engine
+  DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
 - `AppState` (`state/app.rs`) = db + platform + monitor + CA + ServiceManager + Terminals/
   Tunnels registries, **field-level locks** (see §5 locking rule).
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding

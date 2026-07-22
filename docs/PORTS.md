@@ -15,8 +15,8 @@ binary, update THIS file in the same commit.
 | php-fpm pools | **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.0–8.5, one pool per installed minor) |
 | php-fpm DEBUG (Xdebug) pools | **9981–9985** | TCP | `core/php.rs` — `9900 + major*10 + minor` (8.1–8.5 only; started on demand for Xdebug-toggled sites) |
 | Xdebug DBGp (IDE listens) | **9003** | TCP | Xdebug default — outbound from PHP to the IDE, rexenv binds nothing |
-| FrankenPHP override backends | **8200–8299** (per-site, FNV-1a of domain) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT` |
-| Apache override backends | **8300–8399** (per-site, same FNV-1a) | TCP | `core/apache.rs` `APACHE_BASE_PORT` |
+| FrankenPHP override backends | **8200–8299** (per-site, RECORDED — allocated lowest-free, collision-free; never re-derived) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT`, `sites.override_port` |
+| Apache override backends | **8300–8399** (per-site, RECORDED — disjoint range) | TCP | `core/apache.rs` `APACHE_BASE_PORT`, `sites.override_port` |
 | MySQL | **13306** | TCP | `core/database.rs` `MYSQL_PORT` |
 | MariaDB | **13307** | TCP | `core/db.rs` `MARIADB_PORT` |
 | PostgreSQL | **15432** | TCP | `core/db.rs` `POSTGRES_PORT` |
