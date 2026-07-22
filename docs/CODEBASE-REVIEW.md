@@ -231,14 +231,44 @@ STRENGTHENS M4 rather than risking it) and deferred the other five as plan-first
   progress. Added `start_mail` to the §5 prefetch list (ARCHITECTURE.md) + `plan_for_mailpit` unit test.
   `cargo test --lib` 343 passed / 0 failed; examples build clean. Full analysis under (B) B19.
 
-**Deferred Category 2 (plan-first, post-publish — invariant-at-risk recorded on each finding):** B7
-(process-group orphan — reader-drain deadlock), B15 (edge-ownership false-positive/negative — needs
-marker version-history first), B25 (timeout family — stall-not-wall-clock bound), B28 (adopt binary
-wiring — existence-check + offline-resolve), B29 (adopted-reap — bare-pid/recycle trap).
+### Deferred pass — completed post-planning (Category 2/3 + remnants)
 
-**Category 3 (threat-model-guarded) — dispositions:** B6 deferred as the one item worth a post-publish
-cert-path pass (paired with B13); B26 leave-as-security / reconsider-as-robustness; B12 + B30 leave
-(complexity for unreachable paths).
+After the triage, the deferred items were worked one-at-a-time, plan-first, verify-each (each with its
+own commit + test, full suite green before every commit). All landed:
+
+- **`0f57bdc` / `22d8131` / `815a539` / `60066b5`** — **B25** timeout family, split as planned: stage 1
+  Mailpit shared timed client + DB `--connect-timeout` (dump tools reject the flag — verified, so kept
+  unbounded); stage 2 wp-cli download commands + update-check lists (generous SCALED wall-clock that's
+  looser than wp-cli's own 300s inner bound — not the B34 mistake) + the `run_with_timeout` drain-fix;
+  rider for `plugin/theme update`; stage 3 the streamed idle-output watchdog (per-caller policy — git/
+  install bounded, user scripts exempt) + `probe_version` bound.
+- **`ded539a` (B6) + `01b709b` (B13)** — the cert-path pass (freeze lifted deliberately): keys born
+  `0600` (no world-readable window; the reissue-degradation window closed too), CA now-anchored 10y.
+  New-material-only; existing installs byte-identical (idempotent-load test green).
+- **`dc77f67`** — **B7** captured-probe timeout kills the whole process group (`stop_group`), so the ssh
+  grandchild dies and the reader-thread join returns fast instead of hanging on the orphan.
+- **`b1c8dfe`** — **B28** `adopt_startup` wires `frankenphp_bin`/`httpd_dir` from existence-checked
+  cached paths (`cached_bundle_dir` gates on the member) — no resolve under the lock on the first
+  override reconcile.
+- **`3cfb83d` (B12) / `d10dc95` (B16 terminal) / `570a613` (B26) / `9523a39` (B30 nit)** — batch #7
+  contained hardening: `sh_quote` POSIX-escapes `'` in root commands; the PTY `export PATH` escapes its
+  dirs; the docroot is validated at persist (create/set_path) — recorded, not escaped-on-emission;
+  `verify-checksums` flags `._*.php` as real, not AppleDouble noise.
+- **`9ebbefa`** — **B15** dropped the `Server: caddy` wire-identity fallback → marker-only (closes the
+  foreign-Caddy M1 false-positive); verified the marker rides the probe's 204 and adoption is
+  socket-based so nothing starts an edge on a false result.
+- **`030a545`** — **B29** watchdog reaps an adopted service on 2 positive-ID misses (`owned_master` +
+  marker, never bare `alive()`) — fixes the flap AND dodges the pid-recycle trap. **Follow-up B29b
+  (pools) tracked open** — same class, different mechanics + positive-ID (see (B) B29).
+- **`e1429d6`** — **B16 remnant** the root edge-wrapper chown guards on link-count (a hardlinked socket
+  is never chowned). The other two remnants (`RepoJobs` prune, delete-guard TOCTOU) are LEAVE-documented
+  (same-user non-boundaries whose fixes cost more than the bug).
+- **`e96636b` (A) + `3477760` (B)** — **B20** fully fixed (see its (B) entry): the hazard guard plus the
+  recorded-port allocator + migration (existing sites keep their exact ports; collisions designed out).
+
+**Left-documented (assessed, not fixed — reasons under each (B) entry):** B12-adjacent terminal is done;
+the pure leaves are the `RepoJobs` prune + delete-guard TOCTOU (B16 remnants) and the non-`._php`
+sub-items of B30 — all same-user non-boundaries. B33 stays decision-pending (debug-PHP host, inert).
 
 ---
 
@@ -362,7 +392,7 @@ request timeout, so nothing bounds this from rexenv's side.
 the bounded `admin_alive` poll loops already in this file. Behavioral (lifecycle) → your call.
 
 ### B6 · 🟡 security · CA / site private keys are written world-readable, then hardened
-**⏸ DEFERRED — the ONE Cat-3 item worth doing post-publish (once the cert-path freeze lifts).** Unreachable
+**✅ FIXED — commit `ded539a` (cert-path pass, post-freeze-lift; see (A)). Analysis kept for the record.** Unreachable
 in the single-user model (no second user to race), but a REAL benefit on shared/lab Macs: the CA key
 is the crown jewel, and the fix (create the file `0600` atomically via `OpenOptions::new().mode(0o600)`
 before writing — no readable window) is cheap and non-behavioral. Blocked only by the standing
@@ -381,7 +411,7 @@ chmod is the simple path.
 before writing — no readable window. Touches key material → your call.
 
 ### B7 · 🟡 leak/lifecycle · Repo probe runner has no process group; timeout orphans the ssh grandchild
-**⏸ DEFERRED — plan-first, post-publish.** Fix: spawn the probe in its own process group + `stop_group`
+**✅ FIXED — commit `dc77f67` (plan-first, deferred pass; see (A)). Analysis kept for the record.** Fix: spawn the probe in its own process group + `stop_group`
 on timeout (the `spawn_streamed` primitive), then join the reader threads. **Invariant at risk:** the
 reader-threads-drain-first design — a `wait`-then-read deadlocks into a *fake* timeout (gutenberg's
 thousands of refs overflow the pipe buffer). A wrong fix reintroduces that deadlock or races the drain.
@@ -475,7 +505,7 @@ paths" isn't actually satisfied for the `'` case, and this is root context.
 `'` → `'\''`). Consistency + belt-and-suspenders on a root path.
 
 ### B13 · ⚪ nit · Fixed CA expiry cliff (2024→2034) while leaves are now-anchored
-**⏸ DEFERRED (by constraint).** Technically safe (affects only newly-minted CAs; existing installs
+**✅ FIXED — commit `01b709b` (cert-path pass, post-freeze-lift; see (A)). Analysis kept for the record.** Technically safe (affects only newly-minted CAs; existing installs
 untouched), but it lives in `core/ssl.rs` CA generation — the cert path under a standing "don't
 touch" rule. Left deferred at your direction; the 2034 cliff is years off and hits nobody near-term.
 **Where:** `core/ssl.rs:71-72` (`not_before/​not_after = date_time_ymd(2024/2034,1,1)`).
@@ -493,8 +523,8 @@ In a release build any local process on `:1420` could frame the passwordless Adm
 `#[cfg(debug_assertions)]`.
 
 ### B15 · ⚪ nit → 🟠 RECLASSIFIED design-sensitive · `edge_answers_as_ours` falls back to `Server: caddy`
-**↪ RECLASSIFIED to lifecycle/design-sensitive (Category 2). ⏸ DEFERRED — plan-first, post-publish.**
-Not a safe nit: it's edge-ownership detection (M1 invariant + adoption). Dropping the fallback trades
+**✅ FIXED — commit `9ebbefa` (Category 2, plan-first deferred pass; see (A)). Analysis kept for the record.**
+Reclassified from a nit to lifecycle/design-sensitive: it's edge-ownership detection (M1 invariant + adoption). Dropping the fallback trades
 a false-positive (mistaking a foreign Caddy) for a false-negative (failing to recognize a pre-marker
 surviving edge → double-edge / port conflict). **Prerequisite before any fix:** establish whether the
 `X-Rexenv-Edge` marker is guaranteed on every edge-config version that could survive into a session.
@@ -741,7 +771,7 @@ insert a `--` separator before positional slugs/names/hooks/search terms — bri
 `valid_locale`/`parse_wp_version`.
 
 ### B25 · 🟡 low/med · Missing network/subprocess timeouts on several long ops (freeze with no error)
-**⏸ DEFERRED — plan-first, post-publish. This is a FAMILY, not one fix — split it.** Safe-and-easy:
+**✅ FIXED — the whole family: stage 1 `0f57bdc` (Mailpit + DB connect), stage 2 `22d8131` (wp-cli downloads + lists) + rider `815a539` (update verbs), stage 3 `60066b5` (repo idle-watchdog + probe); see (A). Analysis kept for the record.** Split as planned — safe-and-easy:
 Mailpit HTTP (one shared timed `reqwest::Client`, also kills the per-call `Client::new()` churn) +
 DB client `--connect-timeout`. **Invariant at risk (the careful ones):** the download-capable wp-cli
 commands (`plugin_install`/`theme_install`/`core_update`/`core_reinstall`) legitimately run long on a
@@ -765,8 +795,9 @@ worth fixing (it already added `run_with_timeout` for language/core-switch).
 `--connect-timeout` on the DB clients.
 
 ### B26 · 🟡 low · Docroot path is quoted-but-not-escaped in generated nginx/Apache/FrankenPHP configs; site `path`/`sites_dir` stored without char validation
-**⏸ LEAVE as a security item — reconsider post-publish as ROBUSTNESS (not security).** Security-wise
-it's a self-inflicted footgun at the same privilege — no boundary crossing, no real security benefit.
+**✅ FIXED — commit `570a613` (validation-at-persist, batch #7; see (A)). Analysis kept for the record.** Security-wise
+it's a self-inflicted footgun at the same privilege — no boundary crossing, no real security benefit —
+so it was done as ROBUSTNESS: validate the docroot at persist (create/set_path), not escape on emission.
 But there's a non-security angle: a `sites_dir`/path with a space, `$`, or `{}` currently produces a
 BROKEN config with a cryptic nginx/Caddy error. If ever done, do it for robustness (validate or escape
 on emission like `site_env::escape_value`) — it's behavioral (config generation), not a quick nit.
@@ -801,7 +832,7 @@ service, per poll).
 double-count). Cheap, removes the theoretical hang.
 
 ### B28 · 🟡 low · `adopt_startup` doesn't wire `frankenphp_bin`/`httpd_dir` → first override reconcile resolves under the services lock
-**⏸ DEFERRED — plan-first, post-publish.** Same family as B19: wire `frankenphp_bin`/`httpd_dir` from
+**✅ FIXED — commit `b1c8dfe` (plan-first deferred pass; see (A)). Analysis kept for the record.** Same family as B19: wire `frankenphp_bin`/`httpd_dir` from
 existence-checked cached paths in `adopt_startup` (as done for `bins`), or add the env/settings
 commands to the §5 prefetch list. **Invariant at risk:** M4 (no `resolve`/wait under the lock) +
 adoption correctness — the wired path MUST be existence-checked (the adopted process runs from it), or
@@ -859,12 +890,13 @@ adopted-never-in-grace is otherwise correct.
 service on a lone port miss), or require two consecutive misses.
 
 ### B30 · 🟡 info cluster · "Log in as" magic-link residue + minor hardening (all NOT bypasses)
-**⏸ LEAVE — all confirmed NOT bypasses.** The token `hash_equals` + unspoofable CF-* presence check is
+**◑ PARTIALLY ADDRESSED — the `._*.php` diagnostic-honesty nit FIXED `9523a39`; the rest LEAVE (all confirmed NOT bypasses; see (A)).**
+The token `hash_equals` + unspoofable CF-* presence check is
 the real gate (loopback-only, never crosses the tunnel); query-string logging, non-atomic consume, and
 spoofable-XFF all reduce to negligible on a single-user loopback box, and fixing means reworking the
-login flow for no gain. Only non-security merit: the `verify-checksums` `._*.php` bucket weakens a
-DIAGNOSTIC's honesty (excluding `*.php` from the noise bucket is a cheap correctness nit if the doctor
-code is ever touched). No security benefit either way.
+login flow for no gain. The one non-security merit WAS done (`9523a39`): the `verify-checksums`
+`._*.php` bucket weakened a DIAGNOSTIC's honesty, so `*.php` is now excluded from the AppleDouble noise
+bucket (a planted `._x.php` reads as a real finding). No security benefit either way — the rest stays.
 **Where:** `core/wp_login.rs`. **Verified:** agent (crown-jewel token logic separately confirmed sound —
 see (D)).
 - **Token in the query string** (`:49,127`) → written to nginx/Caddy access logs + browser history.
