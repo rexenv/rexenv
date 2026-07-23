@@ -20,14 +20,24 @@
 > route files themselves weren't fully read (the routes agent returned injection-degenerate output and was
 > discarded — see Coverage log). Two reviewer agents returned 0-tool-use prompt-injection-style output;
 > both were **discarded** and I covered those areas myself. No fixes were applied in pass 2 — every
-> finding is in (B)/(D) for the batched priority-fix pass, per your instruction.
+> finding is in (B)/(D) for the batched priority-fix pass, per your instruction (that pass has since
+> run to completion — see the post-review state below).
+
+> ### Post-review state (2026-07-23) — review COMPLETE, fix passes RUN
+> Everything planned has landed: 27+ findings fixed across the pre-Homebrew security pass, the
+> cheap-and-safe pass, and the deferred plan-first pass (final suite: `cargo test --lib` 375 passed
+> / 0 failed; examples build clean). Each (B) entry's **banner** is the authoritative final
+> disposition. Open items: **B29b** (pools adopted-reap — the one scheduled follow-up), **B33**
+> (decision-pending at hosting time, inert until then), and the LEAVE-documented leaves listed at
+> the end of (A).
 
 ## How to read this
 
 - **(A) Fixed & committed** — clearly-safe, non-behavioral. Commit hash + why safe.
 - **(B) Found but NOT fixed — needs your decision** — behavioral / security / lifecycle /
   uncertain. Each: what · why-maybe-bug · why-maybe-intentional · recommendation.
-  **Per your rule, no security fix here has been applied — they await your go-ahead.**
+  **(Historical framing: at review time no security fix had been applied without your go-ahead.
+  The go-aheads came and the passes ran — each entry's banner records its final disposition.)**
 - **(C) Cleanup done** — removals, with commit hash.
 - **(D) Observations / questions** — smaller notes, confirmations of intentional design.
 
@@ -80,8 +90,10 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   recorded-port allocator (follow-up B, designed below). `core::sites::override_port_conflict` refuses a
   colliding override site at create / `set_web_server` / `set_domain` with a clear error naming the other
   site (so a collision can't be persisted), and `spawn_override` refuses to reap a port a **different**
-  site's tracked backend holds (positive ID via the manager's `overrides` map, not a bare port match) —
-  both permanent invariants that stay after B lands. Tests
+  site's tracked backend holds (positive ID via the manager's `overrides` map, not a bare port match).
+  *(After B landed the reap-guard stayed byte-for-byte; the create-time refusal was reworked into the
+  allocator's `recorded_port_conflict` belt — create now **allocates** a free port instead of refusing.)*
+  Tests
   `override_port_conflict_only_flags_same_kind_same_slot` + `create_refuses_a_second_override_site_that_shares_a_backend_port`;
   runtime reap-guard verified by inspection. `cargo test --lib` 327 passed / 0 failed; examples build clean.
   Full analysis + follow-up B design under (B) B20.
@@ -96,7 +108,14 @@ know the confidence level). Severity: 🔴 high · 🟠 medium · 🟡 low · �
   `plugin_install_refuses_a_url_or_flag_slug_before_any_wp_call`; the `--` reorders follow wp-cli's
   documented end-of-flags handling (verified by inspection of the built argv). `cargo test --lib`
   329 passed / 0 failed; examples build clean. Full analysis under (B) B24.
-- **`318f425`** — **B31** webview CSP (⚠️ BUILD-ONLY — NOT yet verified; needs a packaged smoke test):
+  **Superseded in part by `b745897`:** the `--` separators were REMOVED — WP-CLI does NOT honor the
+  getopt end-of-flags convention and passed the bare `--` through as a phantom positional
+  ("The '--' plugin could not be found" / "Invalid cron event '--'"), so it never protected anything.
+  The real B24 guard (`valid_slug`/`ensure_slugs` on the install source) is untouched; the non-install
+  positionals are real installed slugs from the app's own listings, and a regression test now asserts
+  the built argv carries no stray `--`.
+- **`318f425`** — **B31** webview CSP (⚠️ BUILD-ONLY at commit time — since verified; see the
+  **B31 UPDATE** bullet below):
   replaced `"csp": null` with a strict policy grounded in what the webview actually loads (no inline
   scripts, no external `fetch`, wp.org `<img>` icons, `rexdb:` Adminer frame, xterm inline styles, Tauri
   IPC): `script-src 'self'` (the XSS win) · `style-src 'self' 'unsafe-inline'` (Radix/xterm) · `img-src
@@ -274,6 +293,10 @@ sub-items of B30 — all same-user non-boundaries. B33 stays decision-pending (d
 
 ## (B) Found but NOT fixed — needs your decision
 
+> *Status (2026-07-23): historical section title — the decisions were made and the passes ran.
+> Each entry's banner is the authoritative final disposition (✅ FIXED / ⏸ LEAVE-documented /
+> ✔ RESOLVED BY APPROACH / B29b the one open follow-up); the analysis bodies are kept as records.*
+
 ### B1 · 🟠 security · Adminer passwordless-login gate is a *prefix* match, not loopback-only
 **✅ FIXED — commit `a9d4dbf` (landed now at your direction; see (A)). Analysis kept for the record.**
 **Where:** `src-tauri/src/core/adminer.rs:88-92` (the generated `WRAPPER_INDEX_PHP`).
@@ -395,8 +418,9 @@ the bounded `admin_alive` poll loops already in this file. Behavioral (lifecycle
 **✅ FIXED — commit `ded539a` (cert-path pass, post-freeze-lift; see (A)). Analysis kept for the record.** Unreachable
 in the single-user model (no second user to race), but a REAL benefit on shared/lab Macs: the CA key
 is the crown jewel, and the fix (create the file `0600` atomically via `OpenOptions::new().mode(0o600)`
-before writing — no readable window) is cheap and non-behavioral. Blocked only by the standing
-"don't touch the cert path" rule (it's in `ssl.rs`). **Pair with [[B13]] for a future cert-path pass.**
+before writing — no readable window) is cheap and non-behavioral. Was blocked only by the standing
+"don't touch the cert path" rule (it's in `ssl.rs`) until the freeze was deliberately lifted;
+**landed paired with [[B13]] as the cert-path pass.**
 **Where:** `core/ssl.rs:96-97` (`fs::write(key_path, …)`) → perms hardened later at `108-113`
 (`perms.set_private`); site keys share the pattern.
 **Verified:** me.
@@ -506,8 +530,9 @@ paths" isn't actually satisfied for the `'` case, and this is root context.
 
 ### B13 · ⚪ nit · Fixed CA expiry cliff (2024→2034) while leaves are now-anchored
 **✅ FIXED — commit `01b709b` (cert-path pass, post-freeze-lift; see (A)). Analysis kept for the record.** Technically safe (affects only newly-minted CAs; existing installs
-untouched), but it lives in `core/ssl.rs` CA generation — the cert path under a standing "don't
-touch" rule. Left deferred at your direction; the 2034 cliff is years off and hits nobody near-term.
+untouched), but it lives in `core/ssl.rs` CA generation — the cert path under the then-standing
+"don't touch" rule. Was deferred at your direction until the freeze was lifted; landed with [[B6]]
+as the cert-path pass (the 2034 cliff was years off, so no install was ever at near-term risk).
 **Where:** `core/ssl.rs:71-72` (`not_before/​not_after = date_time_ymd(2024/2034,1,1)`).
 **Verified:** me.
 A CA minted today still expires 2034-01-01, so leaves issued in late 2033 can outlive the CA, and
@@ -669,8 +694,10 @@ domain — never reap a live sibling. A persisted per-site port (linear-probe on
 Most users run nginx (no override) so exposure is limited, but for a multi-FrankenPHP/Apache setup
 it's a real data-bleed. Your call on priority vs. waiting for §4.
 
-**Follow-up B — recorded per-site port allocator (post-publish, build carefully):** removes the
-collision outright so override sites never need renaming. Design, ready to implement:
+**Follow-up B — recorded per-site port allocator — ✅ IMPLEMENTED (`3477760`; the banner above is the
+as-built record).** Design as planned, kept below for the record; as-built deltas: the backfill ran as a
+one-time idempotent **startup** phase (not lazy per-reconcile), and `override_port_conflict` was
+reworked into the allocator's `recorded_port_conflict` belt — create allocates instead of refusing:
 - **Schema (v14):** add a nullable `sites.override_port INTEGER`. Migration is a plain `ADD COLUMN` with
   NULL default → safe (and now atomic, per B18); NULL means "not an override site / not yet allocated".
   No backfill in the migration.
@@ -680,8 +707,8 @@ collision outright so override sites never need renaming. Design, ready to imple
   A FrankenPHP↔Apache **kind switch** invalidates the stored port (different range) → clear it and
   reallocate. **Exhaustion:** >100 same-kind override sites → clear "no free backend port; you have 100
   <kind> sites" error (the honest cap, not a silent reuse).
-- **Read side:** replace every `site_port(domain)` call (the 6 sites mapped above — Caddyfile upstream,
-  `port_for`, status probe, `spawn_override`, config gen) with the stored `sites.override_port`, falling
+- **Read side:** replace every `site_port(domain)` call (Caddyfile upstream, `port_for`, status probe,
+  `spawn_override`, config gen) with the stored `sites.override_port`, falling
   back to the hash only for a not-yet-allocated row.
 - **Backfill (lazy, no migration risk):** existing override sites (none exist pre-release, but for
   safety) get a port assigned on their next reconcile — assign the hash slot if free, else linear-probe.
@@ -748,7 +775,9 @@ closure + `.map_err(|e| { let _ = remove_dir_all(datadir); e })`), and reap on t
 (`let _ = child.kill(); let _ = child.wait();`) before returning.
 
 ### B24 · 🟠 med (defense-in-depth now; rises to high) · wp-cli slugs/names/hooks/search-terms reach argv unvalidated — flag & URL injection
-**✅ FIXED — commit `ccc02c7` (see (A)). Analysis kept for the record.**
+**✅ FIXED — commit `ccc02c7`; the `--` separator half was later REVERSED in `b745897` (WP-CLI treats
+a bare `--` as a literal positional, so it broke activate/cron and never protected anything — see the
+(A) entry). The standing fix is the `valid_slug`/`ensure_slugs` install gate. Analysis kept for the record.**
 **Where:** `core/wordpress.rs:284-289` (`plugin_install`) and siblings (`theme_install`, `plugin_delete`,
 `theme_activate`, `network_site_delete:594`, `super_admin_add`, `cron_run_hook:730`, `search_replace
 from/to:1064`, `user_create login/email:442`).
@@ -798,9 +827,11 @@ worth fixing (it already added `run_with_timeout` for language/core-switch).
 **✅ FIXED — commit `570a613` (validation-at-persist, batch #7; see (A)). Analysis kept for the record.** Security-wise
 it's a self-inflicted footgun at the same privilege — no boundary crossing, no real security benefit —
 so it was done as ROBUSTNESS: validate the docroot at persist (create/set_path), not escape on emission.
-But there's a non-security angle: a `sites_dir`/path with a space, `$`, or `{}` currently produces a
-BROKEN config with a cryptic nginx/Caddy error. If ever done, do it for robustness (validate or escape
-on emission like `site_env::escape_value`) — it's behavioral (config generation), not a quick nit.
+The non-security angle motivated it: a path with `" $ { } \` or a control char produced a BROKEN config
+with a cryptic nginx/Caddy error. **Note the divergence from the recommendation below:** the fix
+VALIDATES at persist (`validate_docroot_path` refuses that exact set; spaces stay allowed) rather than
+escaping on emission `site_env::escape_value`-style — bad chars never get stored, so no emitter needs
+escape logic.
 **Where:** `core/services.rs:411` (nginx `root "{root}"`), `core/apache.rs:143` (`DocumentRoot`/`<Directory>`),
 `core/frankenphp.rs` `generate_config` (`root * "{root}"`); root cause `core/sites.rs:98` (site `path`
 stored raw) + `sites_dir` (user-configurable, `sites.rs:554`).
@@ -938,6 +969,7 @@ postflight (`xattr -r -d com.apple.quarantine`) + an honest un-notarized note, r
 a Developer ID + notarization — so ad-hoc signing stays intentional and the tap bypasses Gatekeeper
 cleanly. The mechanical Developer-ID/notarization path (if ever taken) is written up in `docs/SIGNING.md`;
 the clean-Mac launch check is `docs/PUBLISH-TESTING.md` §A (the tap gate). No `tauri.conf.json` change.
+Analysis below kept for the record — it predates the tap decision.
 **Where:** `src-tauri/tauri.conf.json:41-43` (`"macOS": { "signingIdentity": "-" }`).
 **Verified:** me.
 **Why it matters (you're about to publish to Homebrew):** ad-hoc signing (`-`) is intentional for local
@@ -1134,7 +1166,8 @@ void closeTerminal(id); return; } unlisten = un;` — mirroring `useDownloads.ts
   the async-listen-vs-unmount race (`disposed` flag + immediate unlisten). ⚪ nit: `mock.ts` +
   `DevGitPanel` are imported unconditionally, so unless Rollup tree-shakes the dev-only branch they add
   dead weight to the prod bundle. (Component-level query-invalidation / useEffect-dep review of the big
-  screens — WordPressManager/SiteDetail/Settings — is still pending; a reviewer agent is on it.)
+  screens was subsequently completed by the components/lib agent — see the component-layer bullet below;
+  the residual gap is the *route files* themselves, per the Coverage log.)
 
 - **Build/packaging is clean** (agent + I confirmed tauri.conf.json): Tauri **capabilities are minimal**
   (`core:default` + two window perms + `dialog:allow-open` — no fs/shell/http/updater allowlist exposed
@@ -1210,23 +1243,27 @@ void closeTerminal(id); return; } unlisten = un;` — mirroring `useDownloads.ts
   asymmetric); `frankenphp::running(port)` is reused as the Apache readiness probe (correct, misleading
   name).
 
-**Canonical-URL check:** no reference to `https://rexenv.rex.bd` appears in any file reviewed so
-far (the reviewed layer is all internal hosts — `adminer.rexenv.rex`, the `.rex` backbone). The
-build/packaging + docs + frontend still need the URL-consistency sweep (that agent didn't finish).
+**Canonical-URL check: COMPLETE.** The sweep finished (build/packaging + frontend included) — final
+result in the **URL-consistency result** bullet above: the URL appears in no source/config/runtime
+file, internal hosts are correctly `.rex` and must stay so, and the only other domain is the dormant
+`dl.rexenv.dev` (B33).
 
-**Questions for you:**
+**Questions for you** *(all since resolved)*:
 1. B2 uninstall behavior — is leaving the root daemon a known trade-off, or a real gap to close
-   before Homebrew? (I read it as a gap.)
+   before Homebrew? (I read it as a gap.) → **Resolved: treated as a real gap; fixed pre-Homebrew
+   (`542e0c9`).**
 2. B1 Adminer gate — confirm you want the exact-match tightening; it's the one I'd prioritize.
+   → **Confirmed; landed immediately at your direction (`a9d4dbf`).**
 3. Do you want me to resume the killed agents after the limit resets, or keep reading the
-   uncovered areas myself?
+   uncovered areas myself? → **Resolved: covered by me + later pass-2 agents; the residual ◐ gaps
+   stand in the Coverage log.**
 
 ---
 
 ## Coverage log
 
 | Area | Files | Status |
-|---|---|---|
+| --- | --- | --- |
 | baseline | build / test / tsc | ✓ green (320 tests) |
 | edge / DNS / TLS / adminer | `proxy` `dns` `ssl` `adminer` `tld` `setup` `firefox` | ✓ reviewed + key findings verified by me |
 | macOS platform / privilege | `platform/macos/*` `traits.rs` `windows` `linux` | ✓ reviewed (agent) + uninstall verified by me |
@@ -1242,3 +1279,7 @@ build/packaging + docs + frontend still need the URL-consistency sweep (that age
 | frontend (components/lib) | `components/*` `lib/*` | ✓ reviewed (agent, deep read) — B37 (SiteTerminal listener leak) + nits; no query-key/mutation-stale gaps |
 | CLI crate (`rex`) | `cli/src/main.rs` | ✓ verified by me (robust; matches contract — no new findings) |
 | build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ✓ reviewed (agent) + tauri.conf verified by me (B31 CSP, B32 signing, B33 url); URL sweep done |
+
+*(Agent discards — the 0-tool-use prompt-injection-style reviewer agents and the injection-degenerate
+routes agent — are detailed in the coverage-status header at the top; the ◐ rows above are the
+residual gaps they left.)*
