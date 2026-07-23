@@ -5,8 +5,12 @@
 //!
 //! Honesty contract (B25: wp-cli is opaque mid-download — no byte signal):
 //! - the phase label is the last output line VERBATIM (WP-core-owned wording
-//!   is never parsed); only two wp-cli phar LITERALS are matched: the
-//!   per-item header (attempt cursor) and the Success:/Error: summary,
+//!   is never shown paraphrased); cursor + summary come from wp-cli phar
+//!   LITERALS (per-item header, Success:/Error: terminal), and the bar's
+//!   `pct` is PHASE-based observed progress ([`wordpress::InstallProgress`])
+//!   — discrete ticks from lines wp-cli actually printed, never a byte
+//!   estimate; loose milestone matching only ever costs granularity
+//!   (forward implication), it cannot lie forward,
 //! - NO idle watchdog — a 300s idle guard would tie-race wp-cli's own 300s
 //!   `download_url` bound. The B25 outer wall-clock (120s + 900s·N) survives
 //!   as a timer that records "timed_out" then cancels; Cancel is the escape,
@@ -70,6 +74,12 @@ pub struct WpInstallState {
     pub slugs: Vec<String>,
     pub items_total: usize,
     pub item_cursor: usize,
+    /// Phase-based determinate progress (0–100) — OBSERVED discrete progress
+    /// (every tick = a line wp-cli actually printed), NOT the byte-estimate
+    /// the B25 rule bans. Monotonic; 99-capped until the terminal summary;
+    /// frozen in place on failure/cancel/timeout. See
+    /// [`wordpress::InstallProgress`] for the full contract.
+    pub pct: u8,
     /// "running" | "ok" | "partial" | "failed" | "cancelled" | "timed_out".
     pub status: String,
     pub summary: Option<String>,
@@ -155,6 +165,7 @@ pub async fn wp_install_job<R: tauri::Runtime>(
             slugs: slugs.clone(),
             items_total: slugs.len(),
             item_cursor: 0,
+            pct: 0,
             status: "running".into(),
             summary: None,
             error: None,
@@ -244,16 +255,26 @@ fn run_install_job<R: tauri::Runtime>(
         std::fs::OpenOptions::new().create(true).append(true).open(&entry.log_path).ok();
     let sink_app = app.clone();
     let sink_entry = entry.clone();
+    // Phase-based bar: cursor and pct read the SAME lines (headers), so the
+    // "installing item k of N" text and the bar always tell one story.
+    let mut progress = wordpress::InstallProgress::new(snapshot(entry).items_total, activate);
     let mut on_line = move |line: &str| {
         if let Some(f) = file.as_mut() {
             let _ = writeln!(f, "{line}");
         }
         let _ = sink_app.emit(&output_event(&sink_entry.id), line.to_string());
-        if wordpress::is_install_item_header(line) {
-            {
-                let mut st = sink_entry.state.lock().expect("install state lock");
+        let header = wordpress::is_install_item_header(line);
+        let pct = progress.observe(line);
+        let changed = {
+            let mut st = sink_entry.state.lock().expect("install state lock");
+            if header {
                 st.item_cursor += 1;
             }
+            let moved = pct != st.pct;
+            st.pct = pct;
+            header || moved
+        };
+        if changed {
             emit_state(&sink_app, &sink_entry);
         }
     };
@@ -280,6 +301,7 @@ fn run_install_job<R: tauri::Runtime>(
                 // cancel/timeout landed in the ms exit window.
                 if sr.ok {
                     st.status = "ok".into();
+                    st.pct = 100; // exit-0 belt for a missed summary literal
                     st.summary = wordpress::install_summary_line(&sr.tail);
                 } else if sr.cancelled {
                     st.status = if entry.timed_out.load(Ordering::SeqCst) {

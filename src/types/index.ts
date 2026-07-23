@@ -614,6 +614,12 @@ export interface WpInstallState {
   slugs: string[];
   itemsTotal: number;
   itemCursor: number;
+  /** Phase-based determinate progress (0–100). OBSERVED discrete progress —
+   *  every tick corresponds to a line wp-cli actually printed — NOT the
+   *  byte-level estimate the B25 rule bans (do not "fix" back to
+   *  indeterminate). Monotonic; capped at 99 until the terminal summary;
+   *  frozen in place on failure/cancel/timeout. */
+  pct: number;
   status: "running" | "ok" | "partial" | "failed" | "cancelled" | "timed_out";
   summary: string | null;
   error: string | null;

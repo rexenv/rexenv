@@ -124,6 +124,19 @@ async fn main() {
         });
         lines
     };
+    // The phase-based bar as the FRONTEND sees it: every state event's pct.
+    let collect_pcts = |id: &str| {
+        let pcts = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let p2 = pcts.clone();
+        handle.listen(wp_install::state_event(id), move |ev| {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(ev.payload()) {
+                if let Some(p) = v.get("pct").and_then(|p| p.as_u64()) {
+                    p2.lock().unwrap().push(p as u8);
+                }
+            }
+        });
+        pcts
+    };
     let wait_settled = |id: String| {
         let handle = handle.clone();
         async move {
@@ -146,12 +159,29 @@ async fn main() {
         }
     };
 
-    // ── 1. Multi-slug streamed install: order + cursor + summary ─────────
+    // ── 1. Multi-slug streamed install: order + cursor + summary + pct ───
     let snap = start(vec!["hello-dolly".to_string(), "classic-editor".to_string()], false).await.expect("start job 1");
     let lines = collect_lines(&snap.id);
+    let pcts = collect_pcts(&snap.id);
     let fin = wait_settled(snap.id.clone()).await;
     let ls = lines.lock().unwrap().clone();
+    let ps = pcts.lock().unwrap().clone();
     println!("job1: status={} cursor={}/{} summary={:?}", fin.status, fin.item_cursor, fin.items_total, fin.summary);
+    println!("  pct stream: {ps:?} (final state pct={})", fin.pct);
+    // Phase-based bar honesty: monotonic, real intermediate steps, 100 only
+    // at the end (the terminal summary / ok settle).
+    if ps.windows(2).any(|w| w[1] < w[0]) {
+        failures.push(format!("job1 pct went BACKWARDS: {ps:?}"));
+    }
+    if !ps.iter().any(|p| (1..=99).contains(p)) {
+        failures.push(format!("job1 no intermediate pct observed: {ps:?}"));
+    }
+    // (100-only-at-the-summary is proven line-exactly by the pure tests;
+    // here monotonic + "ends at 100" pins the live stream's shape: the first
+    // 100 can only be the summary-line emit or the ok settle.)
+    if fin.pct != 100 {
+        failures.push(format!("job1 final pct {} (want 100)", fin.pct));
+    }
     for l in &ls {
         println!("  | {l}");
     }
@@ -224,9 +254,18 @@ async fn main() {
         }
     });
     let fin = wait_settled(snap.id.clone()).await;
-    println!("job3: status={} (cancel fired={})", fin.status, *cancelled_fired.lock().unwrap());
+    println!(
+        "job3: status={} pct={} (cancel fired={})",
+        fin.status,
+        fin.pct,
+        *cancelled_fired.lock().unwrap()
+    );
     if fin.status != "cancelled" {
         failures.push(format!("job3 status {} (want cancelled)", fin.status));
+    }
+    // E-rule: a cancelled bar FREEZES where it was — never snaps to done.
+    if fin.pct >= 100 {
+        failures.push(format!("job3 cancelled but pct {} (must stay <100)", fin.pct));
     }
 
     // Cleanup: site dir + row + throwaway db; stop MySQL only if we started

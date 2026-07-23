@@ -216,6 +216,117 @@ pub fn classify_install_exit(exit_ok: bool, tail: &[String]) -> &'static str {
     }
 }
 
+/// The batch-TERMINAL success literals (pinned-phar framework strings,
+/// utils.php `report_batch_operation_results`): "Success: Installed N of M
+/// plugins/themes[ (k skipped)]." and the single-item edge "Success: Plugin/
+/// Theme already installed.". Bare `Success:` is NOT the test — chained theme
+/// activation prints "Success: Switched to '…' theme." MID-batch (verified
+/// unguarded by `chained_command` in the 2.12.0 phar), and matching it would
+/// read "done" while items remain.
+fn is_install_terminal_success(line: &str) -> bool {
+    line.starts_with("Success: Installed ")
+        || (line.starts_with("Success:") && line.contains("already installed"))
+}
+
+/// Highest per-item milestone a line implies (1-based; None = not a phase
+/// line). Matchers are LOOSE on purpose: the wording of phases 1–4 is
+/// WP-core-owned and varies by WP version, and [`InstallProgress`]'s forward
+/// implication means a missed match costs one hop of granularity, never a
+/// stall.
+fn install_milestone(line: &str) -> Option<u8> {
+    if line.starts_with("Activating ")
+        || line.starts_with("Network-activating ")
+        || line.starts_with("Success: Switched to ")
+        || line.contains("' activated")
+    {
+        Some(5)
+    } else if line.contains("installed successfully") {
+        Some(4)
+    } else if line.starts_with("Installing the ") {
+        Some(3)
+    } else if line.starts_with("Unpacking") {
+        Some(2)
+    } else if line.contains("Downloading") || line.starts_with("Using cached file") {
+        Some(1)
+    } else {
+        None
+    }
+}
+
+/// PHASE-based determinate progress for the streamed install card.
+///
+/// NOT a violation of the B25 "no invented percentage" rule — read this
+/// before "fixing" it back to an indeterminate bar. That rule bars BYTE-level
+/// download estimates, where no signal exists (wp-cli is silent mid-transfer
+/// and WP-core's byte progress bar is TTY-only). This is OBSERVED DISCRETE
+/// progress: every tick corresponds to a line wp-cli actually printed —
+/// nothing is estimated, interpolated, or timed.
+///
+/// Rules (each load-bearing):
+/// - MONOTONIC — the percentage never decreases, ever.
+/// - FORWARD IMPLICATION — a later milestone implies all earlier ones, and a
+///   new item header implies every previous item is complete. So a line that
+///   never appears (cached file replaces "Downloading…"; no `--activate`
+///   means no "Activating…"; an already-installed slug prints NO header at
+///   all) can never stall the bar — the next observed line jumps it forward.
+///   Corollary: the bar may run BEHIND reality (headerless items are
+///   invisible until the summary) but never ahead of it.
+/// - NEVER 100 EARLY — capped at 99 until the batch-terminal summary literal
+///   ([`is_install_terminal_success`]). Failure summaries ("Error: Only
+///   installed …") advance nothing: on failure/cancel/timeout the bar stops
+///   exactly where it is.
+pub struct InstallProgress {
+    items_total: usize,
+    /// 5 with `--activate` (activation gets a slice), else 4 — a slice that
+    /// can never fill is never reserved.
+    phases_per_item: u8,
+    headers_seen: usize,
+    item_phase: u8,
+    pct: u8,
+}
+
+impl InstallProgress {
+    pub fn new(items_total: usize, activate: bool) -> Self {
+        Self {
+            items_total: items_total.max(1),
+            phases_per_item: if activate { 5 } else { 4 },
+            headers_seen: 0,
+            item_phase: 0,
+            pct: 0,
+        }
+    }
+
+    pub fn pct(&self) -> u8 {
+        self.pct
+    }
+
+    /// Feed one output line; returns the overall percentage (0–100).
+    pub fn observe(&mut self, line: &str) -> u8 {
+        if is_install_terminal_success(line) {
+            self.pct = 100;
+            return self.pct;
+        }
+        if is_install_item_header(line) {
+            // Header for item k ⇒ items 1..k-1 are done, item k starts.
+            self.headers_seen = (self.headers_seen + 1).min(self.items_total);
+            self.item_phase = 0;
+        } else if let Some(m) = install_milestone(line) {
+            let m = m.min(self.phases_per_item);
+            if m <= self.item_phase {
+                return self.pct;
+            }
+            self.item_phase = m;
+        } else {
+            return self.pct;
+        }
+        let done = self.headers_seen.saturating_sub(1) as f64
+            + f64::from(self.item_phase) / f64::from(self.phases_per_item);
+        let raw = (done / self.items_total as f64 * 100.0) as u8;
+        self.pct = self.pct.max(raw.min(99));
+        self.pct
+    }
+}
+
 /// [`wp_run`] with a hard wall-clock cap (see [`run_with_timeout`]): same
 /// `--path` scoping and non-zero-exit mapping, for the network-capable
 /// commands a wedged child would otherwise hang forever (B25).
@@ -2603,6 +2714,160 @@ Error: WordPress installation doesn't verify against checksums.";
         // Total failure → failed.
         let t = tail(&["Error: No plugins installed."]);
         assert_eq!(classify_install_exit(false, &t), "failed");
+    }
+
+    /// Feed a sequence, return the pct after each line.
+    fn observe_all(p: &mut InstallProgress, lines: &[&str]) -> Vec<u8> {
+        lines.iter().map(|l| p.observe(l)).collect()
+    }
+
+    #[test]
+    fn install_progress_full_sequence_hits_the_table_values() {
+        // N=1, no --activate: 4 slices of 25.
+        let mut p = InstallProgress::new(1, false);
+        let pcts = observe_all(
+            &mut p,
+            &[
+                "Installing Hello Dolly (1.7.2)",
+                "Downloading installation package from https://x...",
+                "Unpacking the package...",
+                "Installing the plugin...",
+                "Plugin installed successfully.", // raw 100 → capped: work continues
+                "Success: Installed 1 of 1 plugins.",
+            ],
+        );
+        assert_eq!(pcts, vec![0, 25, 50, 75, 99, 100]);
+
+        // N=1, --activate: 5 slices of 20; activation slice fills from the
+        // "Activating" line (wp-cli literal).
+        let mut p = InstallProgress::new(1, true);
+        let pcts = observe_all(
+            &mut p,
+            &[
+                "Installing bbPress (2.5.9)",
+                "Downloading installation package from https://x...",
+                "Unpacking the package...",
+                "Installing the plugin...",
+                "Plugin installed successfully.",
+                "Activating 'bbpress'...",
+                "Plugin 'bbpress' activated.",
+                "Success: Installed 1 of 1 plugins.",
+            ],
+        );
+        assert_eq!(pcts, vec![0, 20, 40, 60, 80, 99, 99, 100]);
+    }
+
+    #[test]
+    fn install_progress_cached_file_fills_the_download_slice() {
+        // "Using cached file" REPLACES "Downloading" — same slice, no stall.
+        let mut p = InstallProgress::new(1, false);
+        assert_eq!(p.observe("Installing Hello Dolly (1.7.2)"), 0);
+        assert_eq!(p.observe("Using cached file '/Users/x/.wp-cli/cache/…'..."), 25);
+    }
+
+    #[test]
+    fn install_progress_missing_lines_jump_forward_never_stall() {
+        // A later milestone implies the earlier ones: header → straight to
+        // "installed successfully" fills all four slices.
+        let mut p = InstallProgress::new(1, false);
+        assert_eq!(p.observe("Installing Hello Dolly (1.7.2)"), 0);
+        assert_eq!(p.observe("Plugin installed successfully."), 99);
+
+        // A new item header implies the previous item is COMPLETE, even if
+        // its last milestones were never seen (e.g. activation output miss).
+        let mut p = InstallProgress::new(2, true);
+        p.observe("Installing A (1.0)");
+        assert_eq!(p.observe("Unpacking the package..."), 20); // (0 + 2/5)/2
+        assert_eq!(p.observe("Installing B (2.0)"), 50); // item 1 done by implication
+    }
+
+    #[test]
+    fn install_progress_headerless_already_installed_slug_cannot_stall() {
+        // An already-installed slug prints NO header and NO phase lines —
+        // just a Warning — yet counts as a summary success. The bar simply
+        // stays put (behind reality, never ahead) until the next real signal.
+        let mut p = InstallProgress::new(2, false);
+        assert_eq!(p.observe("Warning: akismet: Plugin already installed."), 0);
+        assert_eq!(p.observe("Installing bbPress (2.5.9)"), 0);
+        assert_eq!(p.observe("Plugin installed successfully."), 50); // item "1" of 2 done
+        assert_eq!(p.observe("Success: Installed 2 of 2 plugins."), 100);
+
+        // ALL slugs already installed: zero observed progress, then done —
+        // honest (nothing was watched happening), the silence ticker covers
+        // the "not frozen" signal.
+        let mut p = InstallProgress::new(1, false);
+        assert_eq!(p.observe("Warning: akismet: Plugin already installed."), 0);
+        assert_eq!(p.observe("Success: Plugin already installed."), 100);
+    }
+
+    #[test]
+    fn install_progress_without_activate_reserves_no_unfillable_slice() {
+        // No --activate → 4 slices: the bar reaches 99 with no Activating
+        // line ever printed (the slice that can't fill doesn't exist).
+        let mut p = InstallProgress::new(1, false);
+        for l in [
+            "Installing A (1.0)",
+            "Downloading installation package from https://x...",
+            "Unpacking the package...",
+            "Installing the plugin...",
+        ] {
+            p.observe(l);
+        }
+        assert_eq!(p.observe("Plugin installed successfully."), 99);
+    }
+
+    #[test]
+    fn install_progress_is_monotonic_under_repeats_and_disorder() {
+        let mut p = InstallProgress::new(2, false);
+        let mut last = 0;
+        for l in [
+            "Installing A (1.0)",
+            "Installing the plugin...", // out of order: jumps to slice 3
+            "Downloading installation package from https://x...", // earlier slice — no move back
+            "Unpacking the package...",
+            "Plugin installed successfully.",
+            "Installing B (2.0)",
+            "Downloading installation package from https://x...",
+            "Downloading installation package from https://x...", // repeat
+            "Unpacking the package...",
+        ] {
+            let pct = p.observe(l);
+            assert!(pct >= last, "{l}: {pct} < {last}");
+            last = pct;
+        }
+    }
+
+    #[test]
+    fn install_progress_never_reads_done_before_the_terminal_summary() {
+        // Everything short of the summary caps at 99…
+        let mut p = InstallProgress::new(1, true);
+        for l in [
+            "Installing A (1.0)",
+            "Using cached file '/x'...",
+            "Unpacking the package...",
+            "Installing the plugin...",
+            "Plugin installed successfully.",
+            "Activating 'a'...",
+            "Plugin 'a' activated.",
+        ] {
+            assert!(p.observe(l) <= 99, "{l}");
+        }
+        // …including the mid-batch Success: line CHAINED THEME ACTIVATION
+        // prints (unguarded in the 2.12.0 phar) — it fills the activation
+        // slice, it is NOT the terminal summary.
+        let mut p = InstallProgress::new(2, true);
+        p.observe("Installing Twenty Sixteen (3.2)");
+        p.observe("Theme installed successfully.");
+        assert!(p.observe("Success: Switched to 'Twenty Sixteen' theme.") <= 99);
+
+        // Failure summaries advance NOTHING — the bar stops where it is.
+        let mut p = InstallProgress::new(2, false);
+        p.observe("Installing A (1.0)");
+        p.observe("Plugin installed successfully.");
+        p.observe("Installing B (2.0)");
+        let frozen = p.observe("Downloading installation package from https://x...");
+        assert_eq!(p.observe("Warning: b: Plugin not found."), frozen);
+        assert_eq!(p.observe("Error: Only installed 1 of 2 plugins."), frozen);
     }
 
     #[test]

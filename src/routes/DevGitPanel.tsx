@@ -217,12 +217,29 @@ const WPI_BASE = {
   logKey: "wp-install-dev.rex-wpi-dev.log",
   error: null,
 };
-const WPI_RUNNING = { ...WPI_BASE, itemCursor: 2, status: "running", summary: null };
+// pct mirrors WPI_LINES: item 1 complete, item 2 at the Downloading slice →
+// (1 + 1/4)/2 = 62 (phase-based observed progress, backend-computed).
+const WPI_RUNNING = { ...WPI_BASE, itemCursor: 2, pct: 62, status: "running", summary: null };
 const WPI_PARTIAL = {
   ...WPI_BASE,
   itemCursor: 2,
+  pct: 62, // FROZEN where the batch stopped — never 100, never 0
   status: "partial",
   summary: "Error: Only installed 1 of 2 plugins.",
+};
+const WPI_OK = {
+  ...WPI_BASE,
+  itemCursor: 2,
+  pct: 100,
+  status: "ok",
+  summary: "Success: Installed 2 of 2 plugins.",
+};
+const WPI_CANCELLED = {
+  ...WPI_BASE,
+  itemCursor: 1,
+  pct: 25, // cancelled mid-download of item 1 — bar stops exactly here
+  status: "cancelled",
+  summary: null,
 };
 const WPI_LINES = [
   "Installing Akismet Anti-spam (5.3)",
@@ -314,7 +331,11 @@ export function DevGitPanel() {
             ? WPI_RUNNING
             : params.get("install") === "partial"
               ? WPI_PARTIAL
-              : null;
+              : params.get("install") === "ok"
+                ? WPI_OK
+                : params.get("install") === "cancelled"
+                  ? WPI_CANCELLED
+                  : null;
         case "wp_install_job":
           return WPI_RUNNING;
         case "wp_install_cancel":

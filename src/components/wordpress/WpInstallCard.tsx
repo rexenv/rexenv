@@ -1,11 +1,18 @@
 /** Live install-progress card (wp.org add flow). Honesty rules (B25 —
  *  wp-cli is opaque mid-download, no byte signal exists):
- *  - indeterminate bar only, NEVER a percentage;
+ *  - the bar is PHASE-based (`job.pct`, computed backend-side): each tick is
+ *    a line wp-cli actually printed — observed discrete progress, NOT the
+ *    byte-level estimate the B25 rule bans (don't "fix" back to
+ *    indeterminate). Monotonic; 99-capped until the terminal summary; on
+ *    failure/cancel/timeout it FREEZES where it stopped — never snaps to
+ *    100, never resets;
  *  - phase label = wp-cli's last output line VERBATIM;
- *  - "installing item k of N" is an ATTEMPT cursor, never "k done";
- *  - silence is shown honestly ("no output for Ns" — wp-cli prints nothing
- *    mid-download by design) with Cancel as the escape, visible from the
- *    moment the job starts. */
+ *  - "installing item k of N" is an ATTEMPT cursor, never "k done" — bar and
+ *    cursor advance on the same header lines, one story;
+ *  - silence is shown honestly ("no output for Ns" — the download phase can
+ *    legitimately sit for minutes printing nothing, and a bar PARKED at a
+ *    percentage reads as frozen without it) with Cancel as the escape,
+ *    visible from the moment the job starts. */
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type { WpInstallState } from "@/types";
@@ -56,7 +63,9 @@ export function WpInstallCard({
     ? (lastLine ?? "starting wp-cli…")
     : (job.summary ?? job.error ?? END_COPY[job.status] ?? job.status);
   const failedish = job.status === "failed" || job.status === "timed_out";
-  const trackState = running ? "run" : job.status === "ok" ? "ok" : failedish ? "error" : "idle";
+  // Every non-ok settle FREEZES the bar where the work stopped ("stopped"
+  // renders a pct-width tint) — never full ("error"), never empty ("idle").
+  const trackState = running ? "run" : job.status === "ok" ? "ok" : "stopped";
 
   return (
     <div className="mt-2 rounded-md border border-rex-border bg-rex-surface-1 px-2.5 py-2">
@@ -100,7 +109,9 @@ export function WpInstallCard({
         </button>
       </div>
       <div className="mt-1.5">
-        <Track pct={job.status === "ok" ? 100 : null} state={trackState} />
+        {/* ok → 100 (exit-0 belt); every other settle shows pct FROZEN where
+            the job stopped — ended-early is the status', not the bar's, job. */}
+        <Track pct={job.status === "ok" ? 100 : job.pct} state={trackState} />
       </div>
       <div
         className={`mt-1.5 truncate font-mono text-[0.6875rem] ${

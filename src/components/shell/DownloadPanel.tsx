@@ -25,10 +25,21 @@ export function pctOf(item: DownloadItem): number | null {
  * known; a pulsing full-width fill for indeterminate (pre-headers bytes=0 /
  * total=null) and `preparing`; a quiet error tint when failed.
  */
-export function Track({ pct, state }: { pct: number | null; state: "run" | "ok" | "idle" | "error" }) {
+export function Track({
+  pct,
+  state,
+}: {
+  pct: number | null;
+  state: "run" | "ok" | "idle" | "error" | "stopped";
+}) {
   return (
     <div className="h-[5px] overflow-hidden rounded-full bg-rex-well">
-      {state === "error" ? (
+      {state === "stopped" ? (
+        // Ended-early fill FROZEN at pct (install card): never snaps to 100
+        // ("error"'s full tint), never resets to 0 ("idle") — the bar stops
+        // where the work stopped; the status text says why.
+        <div className="h-full rounded-full bg-status-error-bg" style={{ width: `${pct ?? 0}%` }} />
+      ) : state === "error" ? (
         <div className="h-full w-full rounded-full bg-status-error-bg" />
       ) : state === "idle" ? null : pct == null ? (
         <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-brand-strong to-brand-light opacity-60 motion-reduce:animate-none" />
