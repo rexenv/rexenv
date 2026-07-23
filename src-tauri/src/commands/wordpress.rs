@@ -109,22 +109,6 @@ pub async fn wp_org_plugin_icons(
     Ok(core::wporg::plugin_icons(&slugs).await)
 }
 
-/// Install one or more plugins by slug (optionally activating them) — a single
-/// WP-CLI run for the whole batch.
-#[tauri::command]
-pub async fn wp_plugin_install(
-    state: State<'_, AppState>,
-    id: String,
-    slugs: Vec<String>,
-    activate: bool,
-) -> Result<()> {
-    let (docroot, php, wp) = site_tools(&state, &id).await?;
-    wp_blocking(move || {
-        core::wordpress::plugin_install(&php, &wp, &docroot, &slugs, activate).map(|_| ())
-    })
-    .await
-}
-
 /// Activate one or more plugins.
 #[tauri::command]
 pub async fn wp_plugin_activate(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
@@ -191,22 +175,6 @@ pub async fn wp_themes(
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     wp_blocking(move || {
         core::wordpress::theme_list(&php, &wp, &docroot, check_updates.unwrap_or(false))
-    })
-    .await
-}
-
-/// Install one or more themes by slug (optionally activating; wp-cli
-/// activates the LAST one) — a single WP-CLI run for the whole batch.
-#[tauri::command]
-pub async fn wp_theme_install(
-    state: State<'_, AppState>,
-    id: String,
-    slugs: Vec<String>,
-    activate: bool,
-) -> Result<()> {
-    let (docroot, php, wp) = site_tools(&state, &id).await?;
-    wp_blocking(move || {
-        core::wordpress::theme_install(&php, &wp, &docroot, &slugs, activate).map(|_| ())
     })
     .await
 }

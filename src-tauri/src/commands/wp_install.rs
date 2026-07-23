@@ -290,9 +290,19 @@ fn run_install_job<R: tauri::Runtime>(
                 } else {
                     st.status = wordpress::classify_install_exit(false, &sr.tail).into();
                     st.summary = wordpress::install_summary_line(&sr.tail);
-                    if st.summary.is_none() {
-                        st.error = sr.tail.last().cloned();
-                    }
+                    // Diagnostics = the verbatim Warning:/Error: lines (the
+                    // "why" — e.g. "Plugin not found."); full log has the rest.
+                    let diag: Vec<String> = sr
+                        .tail
+                        .iter()
+                        .filter(|l| l.starts_with("Warning:") || l.starts_with("Error:"))
+                        .cloned()
+                        .collect();
+                    st.error = if diag.is_empty() {
+                        sr.tail.last().cloned()
+                    } else {
+                        Some(diag.join("\n"))
+                    };
                 }
             }
         }
@@ -320,6 +330,16 @@ pub async fn wp_install_cancel(
         .ok_or_else(|| Error::Other(format!("no install job {id}")))?;
     entry.cancel.cancel(state.platform.supervisor());
     Ok(())
+}
+
+/// One job's current snapshot by id (the CLI's settle-poll).
+pub fn state_of(jobs: &WpInstallJobs, id: &str) -> Result<WpInstallState> {
+    jobs.jobs
+        .lock()
+        .expect("install jobs lock")
+        .get(id)
+        .map(|e| snapshot(e))
+        .ok_or_else(|| Error::Other(format!("no install job {id}")))
 }
 
 /// The site's most recent install job (running or settled) — lets the panel

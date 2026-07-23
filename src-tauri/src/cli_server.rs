@@ -160,6 +160,17 @@ fn repo_kind(args: &Value) -> String {
     if args["theme"].as_bool().unwrap_or(false) { "theme".into() } else { "plugin".into() }
 }
 
+fn wp_install_jobs_state<R, M>(
+    app: &M,
+) -> Result<tauri::State<'_, commands::wp_install::WpInstallJobs>>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    app.try_state::<commands::wp_install::WpInstallJobs>()
+        .ok_or_else(|| Error::Other("install job registry not ready".into()))
+}
+
 fn repo_jobs_state<R, M>(app: &M) -> Result<tauri::State<'_, commands::repo::RepoJobs>>
 where
     R: tauri::Runtime,
@@ -642,12 +653,45 @@ where
                 commands::wordpress::wp_plugins(state.clone(), id, Some(true)).await?;
             Ok(json!({ "plugins": to_value(&plugins)? }))
         }
-        "wp.plugin.install" => {
+        // One execution path with the panel: the STREAMED install job (the
+        // socket can't stream — held connection, reply at completion, the
+        // repo.op precedent). Observable behavior unchanged: success replies
+        // exactly `null`; failure replies ok:false + the verbatim wp-cli
+        // Warning:/Error: lines (rex exits 1).
+        "wp.plugin.install" | "wp.theme.install" => {
             let state = app_state(app)?;
+            let repo_jobs = repo_jobs_state(app)?;
+            let wjobs = wp_install_jobs_state(app)?;
             let (id, slug) = (need_str(&args, "id", cmd)?, need_str(&args, "slug", cmd)?);
             let activate = args["activate"].as_bool().unwrap_or(false);
-            commands::wordpress::wp_plugin_install(state.clone(), id, vec![slug], activate).await?;
-            Ok(Value::Null)
+            let kind = if cmd == "wp.plugin.install" { "plugin" } else { "theme" };
+            let snap = commands::wp_install::wp_install_job(
+                app.app_handle().clone(),
+                state,
+                repo_jobs,
+                wjobs,
+                id,
+                kind.into(),
+                vec![slug],
+                activate,
+            )
+            .await?;
+            let st = loop {
+                let wjobs = wp_install_jobs_state(app)?;
+                let st = commands::wp_install::state_of(&wjobs, &snap.id)?;
+                if st.status != "running" {
+                    break st;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            };
+            if st.status == "ok" {
+                Ok(Value::Null)
+            } else {
+                Err(Error::Other(format!(
+                    "wp {kind} install failed: {}",
+                    st.error.or(st.summary).unwrap_or_else(|| st.status.clone())
+                )))
+            }
         }
         "wp.plugin.activate" | "wp.plugin.deactivate" | "wp.plugin.update" | "wp.plugin.delete" => {
             let state = app_state(app)?;
@@ -671,13 +715,6 @@ where
             let id = need_str(&args, "id", cmd)?;
             let themes = commands::wordpress::wp_themes(state.clone(), id, Some(true)).await?;
             Ok(json!({ "themes": to_value(&themes)? }))
-        }
-        "wp.theme.install" => {
-            let state = app_state(app)?;
-            let (id, slug) = (need_str(&args, "id", cmd)?, need_str(&args, "slug", cmd)?);
-            let activate = args["activate"].as_bool().unwrap_or(false);
-            commands::wordpress::wp_theme_install(state.clone(), id, vec![slug], activate).await?;
-            Ok(Value::Null)
         }
         "wp.theme.activate" => {
             let state = app_state(app)?;
