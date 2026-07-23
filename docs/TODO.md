@@ -486,6 +486,61 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   **Awaiting human verify** — packaged app on a real many-branch repo: tag +
   PR checkout land in the detached view, `rex repo prs`, Fetch on a repo
   with a moved rolling tag.
+- [x] **Deps: zero-exec "Check deps" + "Run all" steps** (23 Jul, 2 commits:
+  ae88c11 → cfce970). Check = detect-only job (op=check, own -check.log slot
+  so casual checks never wipe an op/build log): presence probes (vendor-dir
+  override honored) + stored per-manager fingerprints — pinned FNV-1a with
+  "fnv1a:1:" prefix (DefaultHasher unstable across toolchains; foreign
+  prefix → unverified, never false-stale), v15 migration two NULLABLE
+  columns, NULL = "present (unverified)" NOT stale (existing-user bar,
+  test-covered on a pre-v15 row); only Missing/Stale offer steps; mtime
+  staleness rejected (checkout rewrites mtimes). Run all = cli_server's
+  --install loop PROMOTED to run_offered_steps (one impl, panel + CLI;
+  old poll loop deleted): whole-sequence step_running hold closes the
+  between-step busy-guard races (sequence-start window remains, stated),
+  stop-at-first-failure, never-ran steps = NEW "skipped" status ("»",
+  distinct from pending/cancelled, still re-runnable), cancel → current
+  cancelled + rest skipped, cancelled flag persistence makes "nothing
+  else starts" structural. CLI `repo check [--install]`. ✓ 382 lib tests
+  (+7 across both), examples + cli build, tsc; **live**
+  `examples/repo_run_all_check` ALL PASS (composer ✓ / install ✕ / build
+  SKIPPED; cancel-mid-install → cancelled + skipped; failed install
+  records NO fingerprint); WebKit harness (check card offers/clean,
+  ✓✕» dots, honest suffix) ALL PASS. ✓ Human-verified 23 Jul (packaged):
+  fp write→up-to-date→stale live flip, ✓/✕/» card, cancel case.
+- [x] **wp.org add flow: chips above input + honest streamed installs**
+  (24 Jul, 3 commits: 5455ed0 → 52bd390 → dfcca77). Chips: SlugTag row
+  lifted ABOVE the search input (both panels; input keeps flex-1 width;
+  queue/remove refocus the input; dropdown anchor unchanged). Streamed
+  installs (B25 constraint: wp-cli opaque mid-download, NO byte signal →
+  NO percentage, no invented phases): thin WpInstallJobs registry (seq-
+  ordered) over the repo streaming primitives (run_step_streamed
+  idle=None — a 300s idle guard would tie-race wp-cli's own 300s
+  download_url bound; B25 outer cap 120s+900s·N survives as a record-
+  reason-then-cancel timer), per-JOB logs (keep 5/domain), events
+  wp-install://state|output. Honesty: phase label = last line VERBATIM
+  (only two pinned-phar literals parsed: per-item header → ATTEMPT
+  cursor "item k of N", and the Success:/Error: summary); exit1+"Only
+  installed" ⇒ partial (never flattened to failed); "ok" never claims
+  activation (chained --activate failures don't touch exit code — list
+  refresh is that truth); Cancel visible from start + "no output for Ns"
+  ticker (cancel SAFE: fresh installs place via atomic rename — verified
+  in WP's upgrader). Stage 3: CLI arms ride the same job (captured Tauri
+  cmds + wrappers retired; CORE fns stay — blueprints use them). ✓ 383
+  lib tests, examples + cli build, tsc; **live**
+  `examples/wp_install_stream_check` ALL PASS (real WP+MySQL: multi-slug
+  phases in order + cursor 2/2 + verbatim summary; delete+reinstall
+  printed "Using cached file" — HOME survives env_clear+snapshot; cancel
+  fired on the Downloading line → cancelled, nothing else ran);
+  `examples/cli_wp_install_check` BEFORE/AFTER envelope capture —
+  success `{"data":null,"ok":true}` identical, failure Warning/Error
+  lines verbatim-identical (prefix only: drops debug "Some(1)"), exit
+  codes + --json unchanged; WebKit 8/8 chips + 11/11 card states.
+  **Awaiting human verify (packaged)** — chip wrap above input, live
+  phases + Cancel-from-start on a real install, cancel-mid-download
+  honest copy, `rex wp plugin install` unchanged. Known latent, flagged
+  not fixed: wp_plugins_check passes the mysql BASE DIR as
+  install_for_site's db_client (client binary expected).
 
 ## QA round — add-from-Git (18 Jul 2026)
 
