@@ -373,6 +373,15 @@ export function RepoPanel({
                   label: "Remote",
                   items: branchOptions.remoteShort.map((b) => ({ value: b })),
                 },
+                {
+                  label: "Tags",
+                  // Full ref on purpose: unambiguous vs a same-named branch,
+                  // resolves exactly → detached (panel shows it honestly).
+                  items: (branches.data?.tags ?? []).map((t) => ({
+                    value: `refs/tags/${t}`,
+                    label: t,
+                  })),
+                },
               ]}
             />
             <button

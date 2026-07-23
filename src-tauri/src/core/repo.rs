@@ -1039,8 +1039,20 @@ fn run_git_op(
     Err(map_git_op_error(op, &result.tail))
 }
 
-/// `git fetch --prune` (default remote) — refreshes the branch dropdown +
-/// ahead/behind counts.
+/// Argv for the panel's Fetch — pure, unit-tested (clone_args precedent).
+///
+/// `--tags` fetches the FULL tag set (auto-follow only brings tags on fetched
+/// commits). `--force` is required with it: since git 2.20 a remote tag that
+/// MOVED (rolling `v1`/`latest`) is otherwise rejected and the whole fetch
+/// exits non-zero — every Fetch on that repo would fail forever. The branch
+/// refspec already carries `+`, so `--force` changes nothing else. NOT
+/// `--prune-tags` — that would delete tags the user created locally.
+pub fn fetch_args() -> Vec<String> {
+    ["fetch", "--prune", "--tags", "--force"].map(String::from).to_vec()
+}
+
+/// `git fetch --prune --tags --force` (default remote) — refreshes the
+/// branch/tag dropdown + ahead/behind counts.
 pub fn git_fetch(
     supervisor: &dyn ProcessSupervisor,
     git: &Path,
@@ -1049,8 +1061,7 @@ pub fn git_fetch(
     cancel: &CancelToken,
     on_line: &mut dyn FnMut(&str),
 ) -> Result<()> {
-    let args = vec!["fetch".to_string(), "--prune".to_string()];
-    run_git_op(supervisor, git, env, dir, "fetch", &args, cancel, on_line)
+    run_git_op(supervisor, git, env, dir, "fetch", &fetch_args(), cancel, on_line)
 }
 
 /// `git pull --ff-only`: rexenv NEVER merges or rebases for the user — a
@@ -2245,6 +2256,19 @@ mod tests {
         // Unknown op failures fall through to the shared mapping (raw tail kept).
         let raw = map_git_op_error("fetch", &["weird explosion".into()]).to_string();
         assert!(raw.contains("weird explosion"), "{raw}");
+    }
+
+    #[test]
+    fn fetch_args_bring_the_full_tag_set_and_survive_moved_tags() {
+        let args = fetch_args();
+        assert_eq!(args.first().map(String::as_str), Some("fetch"));
+        assert!(args.contains(&"--tags".to_string()));
+        // --force is load-bearing: a MOVED remote tag (rolling v1/latest) is
+        // rejected without it (git ≥2.20) and the whole fetch exits non-zero
+        // — every Fetch on that repo would fail forever.
+        assert!(args.contains(&"--force".to_string()));
+        // --prune-tags must never appear: it deletes local user-created tags.
+        assert!(!args.contains(&"--prune-tags".to_string()));
     }
 
     #[test]

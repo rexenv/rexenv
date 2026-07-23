@@ -639,6 +639,8 @@ export interface RepoBranches {
   current: string | null;
   local: string[];
   remote: string[];
+  /** Local tags, newest first. Checkout target is `refs/tags/<name>`. */
+  tags: string[];
 }
 
 /** One offerable package.json script (RepoPanel scripts row). */

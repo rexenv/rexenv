@@ -738,13 +738,15 @@ fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, 
     set_step(app, entry, op, "ok", None);
 }
 
-/// Local + remote-tracking branch names for the checkout dropdown.
+/// Local + remote-tracking branch names + local tags for the checkout picker.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoBranches {
     pub current: Option<String>,
     pub local: Vec<String>,
     pub remote: Vec<String>,
+    /// Local tags, newest first (creatordate covers lightweight tags too).
+    pub tags: Vec<String>,
 }
 
 #[tauri::command]
@@ -770,7 +772,9 @@ pub async fn repo_branches<R: tauri::Runtime>(
             .into_iter()
             .filter(|b| !b.ends_with("/HEAD") && !b.contains(" -> "))
             .collect();
-        Ok(RepoBranches { current: status.branch, local, remote })
+        let tags =
+            list(&["for-each-ref", "refs/tags", "--format=%(refname:short)", "--sort=-creatordate"]);
+        Ok(RepoBranches { current: status.branch, local, remote, tags })
     })
     .await
     .map_err(|e| Error::Other(format!("branches task failed: {e}")))?

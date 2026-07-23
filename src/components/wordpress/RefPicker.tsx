@@ -82,6 +82,11 @@ export function RefPicker({
     triggerRef.current?.focus();
   };
 
+  // Trigger shows the picked item's display label (a tag reads "v1.2.0",
+  // not "refs/tags/v1.2.0"); the raw value is what checkout receives.
+  const selected = groups.flatMap((g) => g.items).find((i) => i.value === value);
+  const display = selected?.label ?? value;
+
   return (
     <>
       <button
@@ -97,7 +102,7 @@ export function RefPicker({
         }}
         className="flex h-[28px] max-w-[200px] items-center gap-1.5 rounded border border-rex-border bg-rex-surface-2 px-1.5 font-mono text-[0.71875rem] text-rex-text outline-none focus:border-brand disabled:cursor-not-allowed disabled:opacity-40"
       >
-        <span className="truncate">{value || "select ref…"}</span>
+        <span className="truncate">{display || "select ref…"}</span>
         <ChevronsUpDown className="h-3 w-3 flex-none text-rex-text-muted" />
       </button>
       {open &&

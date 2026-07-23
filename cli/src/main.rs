@@ -84,7 +84,7 @@ COMMANDS:
                 keys); --install also runs detected composer/npm/build steps.
                 Output appears at completion — live view is in the app panel
   repo <domain> pull|fetch|push <dir> [--install]
-  repo <domain> checkout <dir> <branch> [--install]
+  repo <domain> checkout <dir> <ref> [--install]
                 Git ops on an asset (pull is --ff-only; push never forces;
                 --install re-installs when the op changed lockfiles)
   repo <domain> run <dir> <script>     Run one package.json script to completion
@@ -905,6 +905,13 @@ fn cmd_repo(words: &[String], json_output: bool) {
             for b in data["remote"].as_array().unwrap_or(&vec![]) {
                 println!("  {}", b.as_str().unwrap_or("?"));
             }
+            let tags = data["tags"].as_array().cloned().unwrap_or_default();
+            if !tags.is_empty() {
+                println!("tags:");
+                for t in &tags {
+                    println!("  {}", t.as_str().unwrap_or("?"));
+                }
+            }
         }
         Some("adopt") => {
             let dir = dir_arg("rex repo <domain> adopt <dir> [--theme]");
@@ -1021,7 +1028,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
         }
         Some(op @ ("pull" | "fetch" | "checkout" | "push")) => {
             let usage = format!("rex repo <domain> {op} <dir> {}[--theme]",
-                if op == "checkout" { "<branch> " } else { "" });
+                if op == "checkout" { "<ref> " } else { "" });
             let dir = dir_arg(&usage);
             let target_ref = if op == "checkout" {
                 match rest.get(1) {

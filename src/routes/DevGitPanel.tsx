@@ -201,6 +201,7 @@ export function DevGitPanel() {
               "origin/develop",
               ...Array.from({ length: 96 }, (_, i) => `origin/feat/topic-${i + 1}`),
             ],
+            tags: ["v1.2.0", "v1.1.0", "v1.0.0"],
           };
         case "repo_git_op":
           return OP_JOB;
