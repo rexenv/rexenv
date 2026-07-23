@@ -174,7 +174,17 @@ export function DevGitPanel() {
         case "repo_watch_log":
           return ["$ pnpm run start", "webpack 5.99 compiled successfully in 830 ms"];
         case "repo_branches":
-          return { current: "feat/x", local: ["feat/x", "main"], remote: ["origin/main", "origin/develop"] };
+          // Many branches on purpose — the RefPicker search must stay usable
+          // at the ~100-branch scale the plain <select> drowned in.
+          return {
+            current: "feat/x",
+            local: ["feat/x", "main"],
+            remote: [
+              "origin/main",
+              "origin/develop",
+              ...Array.from({ length: 96 }, (_, i) => `origin/feat/topic-${i + 1}`),
+            ],
+          };
         case "repo_git_op":
           return OP_JOB;
         case "tail_log":

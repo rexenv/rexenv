@@ -29,6 +29,7 @@ import {
 import type { GitAsset, RepoJobState } from "@/types";
 import { toastBackendError } from "@/lib/toast";
 import { LogPane, mergeTailAndStreamed, REPO_SCRIPTS_DISCLOSURE, StepDot } from "./repoJobUi";
+import { RefPicker } from "./RefPicker";
 
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
@@ -349,29 +350,25 @@ export function RepoPanel({
             >
               Push
             </button>
-            <select
+            <RefPicker
               value={checkoutRef}
-              onChange={(e) => setCheckoutRef(e.target.value)}
+              onChange={setCheckoutRef}
               disabled={opsDisabled}
-              className="h-[28px] max-w-[200px] rounded border border-rex-border bg-rex-surface-2 px-1.5 font-mono text-[0.71875rem] text-rex-text outline-none focus:border-brand"
-              aria-label="Checkout target"
-            >
-              {branchOptions.local.map((b) => (
-                <option key={`l-${b}`} value={b}>
-                  {b}
-                  {b === branches.data?.current ? " (current)" : ""}
-                </option>
-              ))}
-              {branchOptions.remoteShort.length > 0 && (
-                <optgroup label="Remote">
-                  {branchOptions.remoteShort.map((b) => (
-                    <option key={`r-${b}`} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              ariaLabel="Checkout target"
+              groups={[
+                {
+                  label: null,
+                  items: branchOptions.local.map((b) => ({
+                    value: b,
+                    hint: b === branches.data?.current ? "current" : undefined,
+                  })),
+                },
+                {
+                  label: "Remote",
+                  items: branchOptions.remoteShort.map((b) => ({ value: b })),
+                },
+              ]}
+            />
             <button
               className={BTN}
               disabled={
