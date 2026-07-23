@@ -10,6 +10,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
 import { RepoPanel } from "@/components/wordpress/RepoPanel";
 import { LinkFolderPanel } from "@/components/wordpress/LinkFolderPanel";
+import { PluginsPanel } from "@/components/wordpress/WordPressManager";
 
 const PROBE = {
   url: "https://github.com/acme/my-plugin",
@@ -275,6 +276,20 @@ export function DevGitPanel() {
           return String((args as { key?: string } | undefined)?.key ?? "").includes("-check")
             ? CHECK_LINES
             : TAIL_LINES;
+        // `?panel=wp-add` (chips-above-input layout check) mocks:
+        case "wp_plugins":
+          return [];
+        case "wp_org_plugin_icons":
+          return {};
+        case "repo_assets":
+        case "repo_unmanaged":
+          return [];
+        case "wp_org_search_plugins":
+          return [
+            { slug: "akismet", name: "Akismet Anti-spam", author: "Automattic", rating: 92, numRatings: 900, activeInstalls: 5000000, icon: null, shortDescription: "Spam protection" },
+            { slug: "wordpress-seo", name: "Yoast SEO", author: "Team Yoast", rating: 96, numRatings: 27000, activeInstalls: 10000000, icon: null, shortDescription: "SEO" },
+            { slug: "woocommerce", name: "WooCommerce", author: "Automattic", rating: 88, numRatings: 4000, activeInstalls: 7000000, icon: null, shortDescription: "Shop" },
+          ];
         case "repo_check":
           // `?check=clean` exercises the nothing-to-install card.
           return params.get("check") === "clean" ? CHECK_JOB_CLEAN : CHECK_JOB_NEEDED;
@@ -323,7 +338,11 @@ export function DevGitPanel() {
         <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
           DEV harness — GitAddPanel (mocked IPC)
         </h1>
-        {showLinkPanel ? (
+        {params.get("panel") === "wp-add" ? (
+          <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+            <PluginsPanel siteId="dev" />
+          </div>
+        ) : showLinkPanel ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
             <LinkFolderPanel siteId="dev" kind="plugin" onInstalled={() => {}} />
           </div>

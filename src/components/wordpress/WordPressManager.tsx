@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -2113,6 +2113,8 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   // wp.org live search — same tag-queue pattern as PluginsPanel (debounce,
   // fail fast, manual slug + Enter always works).
   const [pending, setPending] = useState<PendingInstall[]>([]);
+  // Queue/remove must never steal focus from the search box (type-to-search).
+  const addInputRef = useRef<HTMLInputElement | null>(null);
   const debouncedSlug = useDebounced(slug.trim(), 350);
   const search = useQuery({
     queryKey: ["wporg-themes", debouncedSlug],
@@ -2127,6 +2129,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
     if (!v) return;
     setPending((list) => addPending(list, { slug: v, icon }));
     setSlug("");
+    addInputRef.current?.focus();
   };
   const installSlugs = [
     ...pending.map((t) => t.slug),
@@ -2235,16 +2238,26 @@ function ThemesPanel({ siteId }: { siteId: string }) {
           <LinkFolderPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
         ) : (
         <>
+        {/* Selected items live ABOVE the input row — the input keeps its full
+            width no matter how many are queued (QA). */}
+        {pending.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {pending.map((t) => (
+              <SlugTag
+                key={t.slug}
+                slug={t.slug}
+                icon={t.icon}
+                onRemove={() => {
+                  setPending((l) => l.filter((x) => x.slug !== t.slug));
+                  addInputRef.current?.focus();
+                }}
+              />
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          {pending.map((t) => (
-            <SlugTag
-              key={t.slug}
-              slug={t.slug}
-              icon={t.icon}
-              onRemove={() => setPending((l) => l.filter((x) => x.slug !== t.slug))}
-            />
-          ))}
           <input {...TECH_INPUT}
+            ref={addInputRef}
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             onKeyDown={(e) => {
@@ -2564,7 +2577,8 @@ function WpOrgHit({ p, onPick }: { p: WpOrgPlugin; onPick: () => void }) {
   );
 }
 
-function PluginsPanel({ siteId }: { siteId: string }) {
+// Exported for the DEV WebKit harness (DevGitPanel `?panel=wp-add`) only.
+export function PluginsPanel({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [slug, setSlug] = useState("");
@@ -2575,6 +2589,8 @@ function PluginsPanel({ siteId }: { siteId: string }) {
   // style). Picked hits queue as tags (multi-install); typing a slug + Enter
   // queues it too, so non-wp.org slugs still work.
   const [pending, setPending] = useState<PendingInstall[]>([]);
+  // Queue/remove must never steal focus from the search box (type-to-search).
+  const addInputRef = useRef<HTMLInputElement | null>(null);
   const debouncedSlug = useDebounced(slug.trim(), 350);
   const search = useQuery({
     queryKey: ["wporg-plugins", debouncedSlug],
@@ -2589,6 +2605,7 @@ function PluginsPanel({ siteId }: { siteId: string }) {
     if (!v) return;
     setPending((list) => addPending(list, { slug: v, icon }));
     setSlug("");
+    addInputRef.current?.focus();
   };
   // Everything Install applies: queued tags + any un-queued typed slug.
   const installSlugs = [
@@ -2764,16 +2781,26 @@ function PluginsPanel({ siteId }: { siteId: string }) {
           <LinkFolderPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
         ) : (
         <>
+        {/* Selected items live ABOVE the input row — the input keeps its full
+            width no matter how many are queued (QA). */}
+        {pending.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {pending.map((t) => (
+              <SlugTag
+                key={t.slug}
+                slug={t.slug}
+                icon={t.icon}
+                onRemove={() => {
+                  setPending((l) => l.filter((x) => x.slug !== t.slug));
+                  addInputRef.current?.focus();
+                }}
+              />
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
-          {pending.map((t) => (
-            <SlugTag
-              key={t.slug}
-              slug={t.slug}
-              icon={t.icon}
-              onRemove={() => setPending((l) => l.filter((x) => x.slug !== t.slug))}
-            />
-          ))}
           <input {...TECH_INPUT}
+            ref={addInputRef}
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             onKeyDown={(e) => {
