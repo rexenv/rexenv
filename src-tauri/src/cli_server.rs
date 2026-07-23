@@ -1100,6 +1100,25 @@ where
             };
             repo_job_reply(app, &st)
         }
+        "repo.check" => {
+            let state = app_state(app)?;
+            let jobs = repo_jobs_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            // repo_check awaits its (instant, zero-exec) worker and returns
+            // the settled snapshot — no wait loop needed.
+            let st = commands::repo::repo_check(
+                app.app_handle().clone(),
+                state.clone(),
+                jobs,
+                id,
+                kind,
+                dir,
+            )
+            .await?;
+            repo_job_reply(app, &st)
+        }
         "repo.op" => {
             let state = app_state(app)?;
             let jobs = repo_jobs_state(app)?;

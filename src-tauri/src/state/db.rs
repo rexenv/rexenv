@@ -137,6 +137,16 @@ const MIGRATIONS: &[&str] = &[
     // each override site's CURRENT derived port (non-colliding sites unchanged);
     // consumers fall back to the derived port for the between-phases window.
     "ALTER TABLE sites ADD COLUMN override_port INTEGER;",
+    // v15 — per-manager installed-dependency fingerprints for the zero-exec
+    // "Check deps" feature. PLAIN NULLABLE TEXT, no constraints (the B21
+    // lesson: nothing existing rows could violate). Every pre-v15 asset is
+    // NULL = "present (unverified)" — NEVER "stale" — so existing users
+    // upgrade to a calm panel, not a wall of reinstall alarms. Written only
+    // after an install step succeeds through rexenv; values are algorithm-
+    // prefixed ("fnv1a:1:<hex>") so a future scheme change reads as foreign
+    // → unverified, not false-stale.
+    "ALTER TABLE site_git_assets ADD COLUMN composer_installed_fp TEXT;
+     ALTER TABLE site_git_assets ADD COLUMN node_installed_fp TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -257,6 +267,55 @@ mod tests {
         assert_eq!(name, "Acme");
         assert_eq!(domain, "acme.test");
         assert_eq!(ssl, 1); // schema default
+    }
+
+    #[test]
+    fn v15_existing_assets_read_null_fps_and_round_trip_after_install() {
+        // Bring schema to v14, insert an asset the way it existed BEFORE the
+        // fp columns, then migrate the rest — the pre-existing row must read
+        // (None, None) = "present (unverified)", never a false "stale".
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..14].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s1','A','a.rex','wordpress','8.3','/tmp/a')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO site_git_assets (site_id, kind, dir_name, url)
+             VALUES ('s1','plugin','my-plugin','https://x')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::state::store;
+        let fps = store::get_git_asset_fps(&conn, "s1", "plugin", "my-plugin").unwrap();
+        assert_eq!(fps, (None, None));
+
+        // Install success writes one family without touching the other.
+        store::set_git_asset_fp(&conn, "s1", "plugin", "my-plugin", "composer", "fnv1a:1:aa").unwrap();
+        let fps = store::get_git_asset_fps(&conn, "s1", "plugin", "my-plugin").unwrap();
+        assert_eq!(fps, (Some("fnv1a:1:aa".into()), None));
+        store::set_git_asset_fp(&conn, "s1", "plugin", "my-plugin", "node", "fnv1a:1:bb").unwrap();
+        let fps = store::get_git_asset_fps(&conn, "s1", "plugin", "my-plugin").unwrap();
+        assert_eq!(fps, (Some("fnv1a:1:aa".into()), Some("fnv1a:1:bb".into())));
+
+        // No provenance row → silent no-op write, (None, None) read.
+        store::set_git_asset_fp(&conn, "s1", "plugin", "ghost", "node", "fnv1a:1:cc").unwrap();
+        assert_eq!(store::get_git_asset_fps(&conn, "s1", "plugin", "ghost").unwrap(), (None, None));
+
+        // Re-add (INSERT OR REPLACE) resets fps — fresh checkout = unverified.
+        store::upsert_git_asset(&conn, "s1", "plugin", "my-plugin", "https://x", None, "cloned")
+            .unwrap();
+        assert_eq!(
+            store::get_git_asset_fps(&conn, "s1", "plugin", "my-plugin").unwrap(),
+            (None, None)
+        );
     }
 
     #[test]

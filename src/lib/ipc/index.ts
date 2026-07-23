@@ -1331,6 +1331,17 @@ export async function repoBranches(
   return invoke<RepoBranches>("repo_branches", { siteId, kind, dirName });
 }
 
+/** Zero-exec dependency check (pure fs reads + stored-fingerprint compare —
+ *  runs no repo code). Returns the SETTLED job snapshot; report lines live in
+ *  the job's own -check.log slot. */
+export async function repoCheck(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_check", { siteId, kind, dirName });
+}
+
 /** PR/MR head refs advertised by origin (network — call lazily). */
 export async function repoPullRefs(
   siteId: string,

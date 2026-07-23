@@ -15,6 +15,7 @@ import {
   repoAssetStatus,
   repoBranches,
   repoCancel,
+  repoCheck,
   repoGitOp,
   repoPullRefs,
   repoRunStep,
@@ -223,6 +224,24 @@ export function RepoPanel({
     mutationFn: (stepKey: string) => repoRunStep(opJob?.id ?? "", stepKey),
     onError: (e) => toastBackendError(e),
   });
+  const checkDeps = useMutation({
+    mutationFn: () => repoCheck(siteId, kind, asset.dirName),
+    onSuccess: (snap) => {
+      adoptedRef.current = true;
+      setOpJob(snap);
+      setOpLines([]);
+      setOpLogOpen(true);
+      qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+        old ? [...old.filter((j) => j.id !== snap.id), snap] : [snap],
+      );
+      // The check job settles BEFORE this returns (awaited backend) — no
+      // events will arrive, so seed the report from its log tail.
+      void tailLog(snap.logKey, 300)
+        .then((tail) => setOpLines((streamed) => mergeTailAndStreamed(tail, streamed)))
+        .catch(() => {});
+    },
+    onError: (e) => toastBackendError(e),
+  });
   const runScript = useMutation({
     mutationFn: (script: string) => repoScriptJob(siteId, kind, asset.dirName, script),
     onSuccess: (snap) => {
@@ -262,11 +281,14 @@ export function RepoPanel({
   const detachedReason = "Detached HEAD (tag or PR checkout) — check out a branch first";
   const clean = s ? s.changed === 0 && s.untracked === 0 : false;
   const opRunning = opJob?.steps.some((st) => st.status === "running") ?? false;
-  const opsDisabled = opRunning || runOp.isPending;
+  const opsDisabled = opRunning || runOp.isPending || checkDeps.isPending;
   const offeredSteps = useMemo(
     () =>
+      // Exclusion list = every job kind's own op step — only the dependency
+      // steps (composer/install/build) belong in the offered row. "check"
+      // and "script" were missing and rendered as dead buttons.
       (opJob?.steps ?? []).filter(
-        (st) => !["fetch", "pull", "checkout", "push"].includes(st.key),
+        (st) => !["fetch", "pull", "checkout", "push", "check", "script"].includes(st.key),
       ),
     [opJob],
   );
@@ -424,6 +446,14 @@ export function RepoPanel({
               onClick={() => runOp.mutate({ op: "checkout", ref: checkoutRef })}
             >
               Checkout
+            </button>
+            <button
+              className={BTN}
+              disabled={opsDisabled || checkDeps.isPending}
+              onClick={() => checkDeps.mutate()}
+              title="Zero-exec check: are composer/npm deps missing or stale? Runs no repo code — installs stay behind explicit clicks"
+            >
+              Check deps
             </button>
           </div>
 

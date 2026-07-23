@@ -149,6 +149,45 @@ const DETACHED_STATUS = {
     "This checkout can't be verified as pushed (detached HEAD — commits made here may not be on any branch).",
 };
 
+/** Settled zero-exec check jobs (`repo_check` returns AFTER the worker ran).
+ *  NEEDED: composer stale + node missing → steps offered. CLEAN: report only. */
+const CHECK_JOB_BASE = {
+  id: "dev-check",
+  siteId: "dev",
+  kind: "plugin",
+  dirName: "my-plugin",
+  url: "",
+  gitRef: null,
+  op: "check",
+  logKey: "repo-dev.rex-my-plugin-check.log",
+  inspection: {
+    composer: true,
+    node: { manager: "pnpm", pinnedBy: "lockfile", hasBuild: true },
+    wp: { kind: "plugin", name: "My Plugin" },
+    nodeWant: null,
+  },
+  nodeWarning: null,
+  finishedOk: false,
+};
+const CHECK_JOB_NEEDED = {
+  ...CHECK_JOB_BASE,
+  steps: [
+    { key: "check", label: "Check dependencies", status: "ok", error: null },
+    { key: "composer", label: "composer install", status: "pending", error: null },
+    { key: "install", label: "pnpm install", status: "pending", error: null },
+    { key: "build", label: "pnpm run build", status: "pending", error: null },
+  ],
+};
+const CHECK_JOB_CLEAN = {
+  ...CHECK_JOB_BASE,
+  steps: [{ key: "check", label: "Check dependencies", status: "ok", error: null }],
+};
+const CHECK_LINES = [
+  "composer: lockfile changed since last install — install recommended",
+  "node (pnpm): node_modules/ missing — install needed",
+  "! install steps offered below — nothing runs without a click.",
+];
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
@@ -158,7 +197,7 @@ export function DevGitPanel() {
   const watchMode = params.get("watch"); // "1" running | "exited"
   const detached = params.get("detached") === "1";
   useEffect(() => {
-    mockIPC(async (cmd) => {
+    mockIPC(async (cmd, args) => {
       switch (cmd) {
         case "repo_site_jobs":
           return rehydrate ? [RUNNING_JOB] : [];
@@ -216,7 +255,12 @@ export function DevGitPanel() {
         case "repo_git_op":
           return OP_JOB;
         case "tail_log":
-          return TAIL_LINES;
+          return String((args as { key?: string } | undefined)?.key ?? "").includes("-check")
+            ? CHECK_LINES
+            : TAIL_LINES;
+        case "repo_check":
+          // `?check=clean` exercises the nothing-to-install card.
+          return params.get("check") === "clean" ? CHECK_JOB_CLEAN : CHECK_JOB_NEEDED;
         case "repo_tools":
           return [
             {

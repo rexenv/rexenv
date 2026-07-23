@@ -1327,6 +1327,152 @@ pub fn lockfile_fingerprint(dir: &Path) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Dependency check ("Check deps") — ZERO-EXEC: pure fs reads + stored-
+// fingerprint compares. Never runs composer/npm/repo code.
+// ---------------------------------------------------------------------------
+
+/// Version/algorithm prefix on STORED dependency fingerprints. If the
+/// algorithm ever changes, bump this — a stored value with a foreign prefix
+/// reads as "unverified" (marker absent), NEVER as a false "stale" mismatch.
+/// (The DefaultHasher lesson, made structural.)
+const FP_PREFIX: &str = "fnv1a:1:";
+
+/// Pinned FNV-1a 64-bit. Stored fingerprints must be stable across app
+/// builds — `DefaultHasher` is documented as unstable across Rust releases
+/// (a toolchain bump would silently flip every asset to "stale"), so this is
+/// hand-pinned. The in-process [`lockfile_fingerprint`] keeps DefaultHasher —
+/// it never persists.
+fn fnv1a(bytes: &[u8], mut h: u64) -> u64 {
+    for b in bytes {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    h
+}
+
+fn dep_fingerprint(dir: &Path, files: &[&str]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for name in files {
+        h = fnv1a(name.as_bytes(), h);
+        if let Ok(bytes) = std::fs::read(dir.join(name)) {
+            h = fnv1a(&bytes, h);
+        }
+    }
+    format!("{FP_PREFIX}{h:016x}")
+}
+
+/// Stored-format fingerprint of the composer dependency inputs.
+pub fn composer_fingerprint(dir: &Path) -> String {
+    dep_fingerprint(dir, &["composer.lock", "composer.json"])
+}
+
+/// Stored-format fingerprint of the node dependency inputs.
+pub fn node_fingerprint(dir: &Path) -> String {
+    dep_fingerprint(
+        dir,
+        &["package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "package.json"],
+    )
+}
+
+/// One dependency family's verdict — only what the check can PROVE.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DepVerdict {
+    /// No manifest — nothing to install.
+    NotApplicable,
+    /// Manifest present, installed dir missing → install needed.
+    Missing,
+    /// Installed dir present + stored fingerprint matches current inputs.
+    UpToDate,
+    /// Installed dir present + stored fingerprint differs — the lockfile
+    /// changed since the last install that ran through rexenv.
+    Stale,
+    /// Installed dir present but no usable stored fingerprint (installed
+    /// outside rexenv, adopted checkout, or foreign fingerprint format).
+    /// An honest unknown — never an alarm.
+    Unverified,
+}
+
+/// Both families' verdicts (the "Check deps" report).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DepReport {
+    pub composer: DepVerdict,
+    pub node: DepVerdict,
+    /// Effective composer vendor dir (config.vendor-dir honored).
+    pub vendor_dir: String,
+}
+
+/// Composer's effective vendor dir: `config.vendor-dir` when it's a sane
+/// RELATIVE path (absolute / `..` / empty falls back — we only probe inside
+/// the checkout).
+fn composer_vendor_dir(dir: &Path) -> String {
+    let read = || -> Option<String> {
+        let raw = std::fs::read_to_string(dir.join("composer.json")).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+        let vd = v.get("config")?.get("vendor-dir")?.as_str()?.trim().to_string();
+        let ok = !vd.is_empty() && !vd.starts_with('/') && !vd.contains("..");
+        ok.then_some(vd)
+    };
+    read().unwrap_or_else(|| "vendor".to_string())
+}
+
+/// A stored fingerprint is usable only in the CURRENT format — anything else
+/// (old scheme, foreign writer) degrades to "unverified", never false-stale.
+fn usable_fp(stored: Option<&str>) -> Option<&str> {
+    stored.filter(|s| s.starts_with(FP_PREFIX))
+}
+
+fn family_verdict(installed: bool, stored: Option<&str>, current: &str) -> DepVerdict {
+    if !installed {
+        return DepVerdict::Missing;
+    }
+    match usable_fp(stored) {
+        None => DepVerdict::Unverified,
+        Some(s) if s == current => DepVerdict::UpToDate,
+        Some(_) => DepVerdict::Stale,
+    }
+}
+
+/// The zero-exec check. `stored_*_fp` come from the provenance row (NULL for
+/// every pre-v15 asset and for anything never installed through rexenv —
+/// those MUST read unverified, not stale: existing users upgrade to a calm
+/// panel, not a wall of false alarms). Known limit: Yarn PnP repos have no
+/// node_modules at all and read as "missing".
+pub fn check_deps(
+    dir: &Path,
+    inspection: &RepoInspection,
+    stored_composer_fp: Option<&str>,
+    stored_node_fp: Option<&str>,
+) -> DepReport {
+    let vendor_dir = composer_vendor_dir(dir);
+    let composer = if !inspection.composer {
+        DepVerdict::NotApplicable
+    } else {
+        family_verdict(
+            dir.join(&vendor_dir).is_dir(),
+            stored_composer_fp,
+            &composer_fingerprint(dir),
+        )
+    };
+    let node = if inspection.node.is_none() {
+        DepVerdict::NotApplicable
+    } else {
+        family_verdict(
+            dir.join("node_modules").is_dir(),
+            stored_node_fp,
+            &node_fingerprint(dir),
+        )
+    };
+    DepReport { composer, node, vendor_dir }
+}
+
+/// Does this verdict warrant OFFERING an install step? Only provable needs —
+/// unverified/up-to-date get a report line, not a button.
+pub fn needs_install(v: DepVerdict) -> bool {
+    matches!(v, DepVerdict::Missing | DepVerdict::Stale)
+}
+
+// ---------------------------------------------------------------------------
 // package.json scripts (phase C) — list + watch heuristic + runner
 // ---------------------------------------------------------------------------
 
@@ -2390,6 +2536,93 @@ mod tests {
         // And both patterns pass the argv-injection validator as-is.
         assert!(validate_ref("refs/pull/12/head").is_ok());
         assert!(validate_ref("refs/merge-requests/7/head").is_ok());
+    }
+
+    #[test]
+    fn dep_fingerprints_are_pinned_prefixed_and_input_sensitive() {
+        let d = fixture_dir("depfp");
+        std::fs::write(d.join("composer.json"), "{}").unwrap();
+        std::fs::write(d.join("composer.lock"), "v1").unwrap();
+        let a = composer_fingerprint(&d);
+        // Format contract: algorithm-prefixed so a future scheme change reads
+        // as FOREIGN (→ unverified), never as a silent mismatch (→ stale).
+        assert!(a.starts_with("fnv1a:1:"), "{a}");
+        // Deterministic + input-sensitive.
+        assert_eq!(a, composer_fingerprint(&d));
+        std::fs::write(d.join("composer.lock"), "v2").unwrap();
+        assert_ne!(a, composer_fingerprint(&d));
+        // Node inputs are independent of composer inputs.
+        let n1 = node_fingerprint(&d);
+        std::fs::write(d.join("package.json"), "{}").unwrap();
+        assert_ne!(n1, node_fingerprint(&d));
+        // Pinned algorithm: FNV-1a of a known input, locked to the exact
+        // value so a hasher swap can't slip through unnoticed.
+        assert_eq!(fnv1a(b"rexenv", 0xcbf2_9ce4_8422_2325), 0x57f4_61a6_df76_d9c7);
+    }
+
+    #[test]
+    fn check_deps_verdicts_are_honest_and_never_cry_wolf() {
+        let d = fixture_dir("depcheck");
+        let inspect = |d: &std::path::Path| inspect_repo(d);
+
+        // No manifests at all → both not-applicable.
+        let r = check_deps(&d, &inspect(&d), None, None);
+        assert_eq!((r.composer, r.node), (DepVerdict::NotApplicable, DepVerdict::NotApplicable));
+
+        // composer.json present, vendor/ missing → MISSING (needs install).
+        std::fs::write(d.join("composer.json"), "{}").unwrap();
+        let r = check_deps(&d, &inspect(&d), None, None);
+        assert_eq!(r.composer, DepVerdict::Missing);
+        assert!(needs_install(r.composer));
+
+        // vendor/ present + NO stored fp (pre-v15 rows, adopted checkouts,
+        // terminal installs) → UNVERIFIED, never stale. The existing-user
+        // upgrade bar: NULL must not scream "reinstall".
+        std::fs::create_dir_all(d.join("vendor")).unwrap();
+        let r = check_deps(&d, &inspect(&d), None, None);
+        assert_eq!(r.composer, DepVerdict::Unverified);
+        assert!(!needs_install(r.composer));
+
+        // Stored fp matches current inputs → up to date.
+        let fp = composer_fingerprint(&d);
+        let r = check_deps(&d, &inspect(&d), Some(&fp), None);
+        assert_eq!(r.composer, DepVerdict::UpToDate);
+
+        // Lockfile changes after install → STALE (provable, offer install).
+        std::fs::write(d.join("composer.lock"), "changed").unwrap();
+        let r = check_deps(&d, &inspect(&d), Some(&fp), None);
+        assert_eq!(r.composer, DepVerdict::Stale);
+        assert!(needs_install(r.composer));
+
+        // FOREIGN-format stored fp (future algorithm, old scheme) → treated
+        // as absent → unverified, not a wall of false "stale".
+        let r = check_deps(&d, &inspect(&d), Some("sha256:1:deadbeef"), None);
+        assert_eq!(r.composer, DepVerdict::Unverified);
+
+        // config.vendor-dir honored (sane relative only).
+        std::fs::write(
+            d.join("composer.json"),
+            r#"{"config":{"vendor-dir":"deps"}}"#,
+        )
+        .unwrap();
+        let r = check_deps(&d, &inspect(&d), None, None);
+        assert_eq!(r.vendor_dir, "deps");
+        assert_eq!(r.composer, DepVerdict::Missing); // deps/ doesn't exist
+        std::fs::write(
+            d.join("composer.json"),
+            r#"{"config":{"vendor-dir":"../escape"}}"#,
+        )
+        .unwrap();
+        assert_eq!(check_deps(&d, &inspect(&d), None, None).vendor_dir, "vendor");
+
+        // Node family: package.json + node_modules missing → missing;
+        // present + no marker → unverified.
+        std::fs::write(d.join("package.json"), "{}").unwrap();
+        let r = check_deps(&d, &inspect(&d), None, None);
+        assert_eq!(r.node, DepVerdict::Missing);
+        std::fs::create_dir_all(d.join("node_modules")).unwrap();
+        let r = check_deps(&d, &inspect(&d), None, None);
+        assert_eq!(r.node, DepVerdict::Unverified);
     }
 
     #[test]

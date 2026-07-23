@@ -149,6 +149,7 @@ line streaming is the same 🔴 "progress streaming" infra item as always.
 | `repo link <domain> <path> [--name --theme]` | `repo_link` | ✓ | shipped 18 Jul — path canonicalized client-side; symlink verified on disk in the live check |
 | `repo branches <domain> <dir>` | `repo_branches` | ✓ | shipped 18 Jul — current marked `*`; 23 Jul: also prints a `tags:` section (newest first) |
 | `repo prs <domain> <dir>` | `repo_pull_refs` | ✓ | shipped 23 Jul — PR/MR head refs via ls-remote (refs-only, no host API/token); checkout of a listed ref lands detached |
+| `repo check <domain> <dir>` | `repo_check` | ✓ | shipped 23 Jul — zero-exec dep check (presence + stored-fingerprint staleness); offers steps, runs nothing; `--install` chaining lands with the Run-all stage |
 | `repo add <domain> <url> [--branch --name --theme --install]` | `repo_add` + poll `repo_job_state` + `logs.tail`; `--install` chains offered steps via `repo_run_step` | ✓ | shipped 18 Jul (wave 2) — live: cloned octocat/Hello-World through dispatch, detect ok, dir on disk |
 | `repo fetch\|pull\|checkout\|push <domain> <dir> [ref] [--install]` | `repo_git_op` + poll + `logs.tail` (+ offered-step chain on `--install`) | ✓ | shipped 18 Jul — live vs a LOCAL bare origin: pull file arrived, push seen at origin, checkout landed on feat |
 | `repo run <domain> <dir> <script>` | `repo_script_job` + poll + `logs.tail` (script validated backend-side) | ✓ | shipped 18 Jul — live: one-shot output present in the completion log |

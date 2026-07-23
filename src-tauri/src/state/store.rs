@@ -470,6 +470,51 @@ pub fn set_git_asset_ref(
     Ok(())
 }
 
+/// Stored install fingerprints for one asset — NULL until the matching
+/// install step succeeds through rexenv. Reset to NULL by re-add/adopt
+/// (upsert_git_asset's INSERT OR REPLACE) — correct: a fresh checkout is
+/// unverified. Missing row → (None, None).
+pub fn get_git_asset_fps(
+    conn: &Connection,
+    site_id: &str,
+    kind: &str,
+    dir_name: &str,
+) -> Result<(Option<String>, Option<String>)> {
+    let mut stmt = conn.prepare(
+        "SELECT composer_installed_fp, node_installed_fp FROM site_git_assets \
+         WHERE site_id = ?1 AND kind = ?2 AND dir_name = ?3",
+    )?;
+    let mut rows = stmt.query_map(params![site_id, kind, dir_name], |r| {
+        Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?))
+    })?;
+    Ok(rows.next().transpose()?.unwrap_or((None, None)))
+}
+
+/// Record a family's install fingerprint after a successful install step.
+/// `family` is "composer" or "node" (column chosen here — never interpolated
+/// from caller input). 0 rows updated (no provenance row) is fine.
+pub fn set_git_asset_fp(
+    conn: &Connection,
+    site_id: &str,
+    kind: &str,
+    dir_name: &str,
+    family: &str,
+    fp: &str,
+) -> Result<()> {
+    let sql = match family {
+        "composer" => {
+            "UPDATE site_git_assets SET composer_installed_fp = ?4 \
+             WHERE site_id = ?1 AND kind = ?2 AND dir_name = ?3"
+        }
+        _ => {
+            "UPDATE site_git_assets SET node_installed_fp = ?4 \
+             WHERE site_id = ?1 AND kind = ?2 AND dir_name = ?3"
+        }
+    };
+    conn.execute(sql, params![site_id, kind, dir_name, fp])?;
+    Ok(())
+}
+
 // ── Site blueprints (Phase 3 §11.3) ────────────────────────────────────────────
 
 fn row_to_blueprint(row: &Row) -> Result<Blueprint> {

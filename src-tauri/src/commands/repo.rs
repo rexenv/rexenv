@@ -506,8 +506,181 @@ fn run_one_step<R: tauri::Runtime>(
             sink(&format!("✕ {e}"));
             set_step(app, entry, step_key, "failed", Some(e.to_string()));
         }
-        Ok(()) => set_step(app, entry, step_key, "ok", None),
+        Ok(()) => {
+            set_step(app, entry, step_key, "ok", None);
+            // Successful install: record the family's input fingerprint so
+            // "Check deps" can later prove up-to-date vs stale. Best-effort —
+            // no provenance row (or a poisoned lock) just leaves the marker
+            // NULL, which reads as "unverified", never as a false verdict.
+            if matches!(step_key, "composer" | "install") {
+                let (family, fp) = if step_key == "composer" {
+                    ("composer", repo::composer_fingerprint(&entry.dest))
+                } else {
+                    ("node", repo::node_fingerprint(&entry.dest))
+                };
+                if let Some(conn) = state.db.lock().ok().as_deref() {
+                    let _ = store::set_git_asset_fp(
+                        conn, &entry.site_id, &entry.kind, &entry.dir_name, family, &fp,
+                    );
+                }
+            }
+        }
     }
+}
+
+/// Zero-exec dependency check — pure fs reads + stored-fingerprint compares;
+/// NEVER runs composer/npm/repo code. Shaped as a job (op="check", step key
+/// "check" — the key MUST equal the op so the CLI settle detector sees it)
+/// so the report + offered install steps ride the existing card, events,
+/// busy guard, and consent flow. Two deliberate differences from git ops:
+/// - AWAITED: the worker is instant, and the UI subscribes to job events only
+///   after this command returns — fire-and-forget would emit the final state
+///   before any listener exists. Returning the SETTLED snapshot closes that.
+/// - OWN LOG SLOT (`repo-<domain>-<dir>-check.log`, the watch-log precedent):
+///   Check is meant to be pressed casually — it must not truncate the
+///   previous op/build log ("why did my build fail?" must survive a Check).
+#[tauri::command]
+pub async fn repo_check<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    jobs: State<'_, RepoJobs>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<RepoJobState> {
+    let site = site_of(&state, &site_id)?;
+    let dir_name = repo::validate_dir_name(&dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    if !dest.join(".git").exists() {
+        return Err(Error::Other(format!(
+            "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
+        )));
+    }
+    let log_key = format!("repo-{}-{}-check.log", site.domain, dir_name);
+    let log_path = state.platform.paths().log_dir()?.join(&log_key);
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let seq = jobs.next_seq.fetch_add(1, Ordering::SeqCst);
+    let entry = Arc::new(JobEntry {
+        id: id.clone(),
+        seq,
+        site_id: site_id.clone(),
+        kind: kind.clone(),
+        php_minor: php::minor_of(&site.php_version).to_string(),
+        dir_name: dir_name.clone(),
+        url: String::new(),
+        git_ref: None,
+        dest: dest.clone(),
+        log_path,
+        script: None,
+        cancel: repo::CancelToken::new(),
+        step_running: AtomicBool::new(true),
+        state: Mutex::new(RepoJobState {
+            id: id.clone(),
+            site_id,
+            kind,
+            dir_name,
+            url: String::new(),
+            git_ref: None,
+            op: "check".into(),
+            log_key,
+            steps: vec![step("check", "Check dependencies")],
+            inspection: None,
+            node_warning: None,
+            finished_ok: false,
+        }),
+    });
+    {
+        let mut map = jobs.jobs.lock().expect("jobs lock");
+        let busy = map
+            .values()
+            .any(|e| e.dest == dest && e.step_running.load(Ordering::SeqCst));
+        if busy {
+            return Err(Error::Other(format!(
+                "a job for {} is already running — wait for it (or cancel it) first.",
+                entry.state.lock().expect("job state lock").dir_name
+            )));
+        }
+        map.insert(id.clone(), entry.clone());
+    }
+    let _ = std::fs::write(&entry.log_path, "");
+
+    let worker = entry.clone();
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_check_job(&worker_app, &worker);
+        worker.step_running.store(false, Ordering::SeqCst);
+    })
+    .await
+    .map_err(|e| Error::Other(format!("check task failed: {e}")))?;
+    Ok(snapshot(&entry))
+}
+
+/// One human line per family. Only Missing/Stale earn a button — the rest is
+/// report, not alarm.
+fn dep_verdict_line(label: &str, v: repo::DepVerdict, installed_dir: &str) -> String {
+    match v {
+        repo::DepVerdict::NotApplicable => format!("{label}: not used (no manifest)"),
+        repo::DepVerdict::Missing => {
+            format!("{label}: {installed_dir}/ missing — install needed")
+        }
+        repo::DepVerdict::Stale => {
+            format!("{label}: lockfile changed since last install — install recommended")
+        }
+        repo::DepVerdict::UpToDate => format!("{label}: up to date (matches last install)"),
+        repo::DepVerdict::Unverified => format!(
+            "{label}: {installed_dir}/ present — installed outside rexenv, can't verify \
+             against the lockfile"
+        ),
+    }
+}
+
+fn run_check_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>) {
+    let state = app.state::<AppState>();
+    set_step(app, entry, "check", "running", None);
+    let mut sink = make_sink(app.clone(), entry.clone());
+
+    let inspection = repo::inspect_repo(&entry.dest);
+    let (c_fp, n_fp) = state
+        .db
+        .lock()
+        .ok()
+        .as_deref()
+        .and_then(|c| store::get_git_asset_fps(c, &entry.site_id, &entry.kind, &entry.dir_name).ok())
+        .unwrap_or((None, None));
+    let report = repo::check_deps(&entry.dest, &inspection, c_fp.as_deref(), n_fp.as_deref());
+
+    sink(&dep_verdict_line("composer", report.composer, &report.vendor_dir));
+    let node_label = inspection
+        .node
+        .as_ref()
+        .map(|n| format!("node ({})", n.manager))
+        .unwrap_or_else(|| "node".into());
+    sink(&dep_verdict_line(&node_label, report.node, "node_modules"));
+
+    let offer_composer = repo::needs_install(report.composer);
+    let offer_node = repo::needs_install(report.node);
+    if offer_composer || offer_node {
+        sink("! install steps offered below — nothing runs without a click.");
+    } else {
+        sink("✓ nothing to install.");
+    }
+    {
+        // Offered steps mirror the pull/checkout offer block; inspection MUST
+        // be stored — run_one_step reads it to resolve the node manager.
+        let mut st = entry.state.lock().expect("job state lock");
+        if offer_composer {
+            st.steps.push(step("composer", "composer install"));
+        }
+        if let (true, Some(node)) = (offer_node, &inspection.node) {
+            st.steps.push(step("install", &format!("{} install", node.manager)));
+            if node.has_build {
+                st.steps.push(step("build", &format!("{} run build", node.manager)));
+            }
+        }
+        st.inspection = Some(inspection);
+    }
+    set_step(app, entry, "check", "ok", None);
 }
 
 // ---------------------------------------------------------------------------

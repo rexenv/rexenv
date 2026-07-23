@@ -74,6 +74,8 @@ COMMANDS:
   repo <domain> list [--status]        Git-backed plugins/themes (--status adds live state)
   repo <domain> status <dir> [--theme] Branch, changes, ahead/behind, remote, link target
   repo <domain> branches <dir> [--theme]   Local + remote branches + tags
+  repo <domain> check <dir> [--theme]  Zero-exec dependency check (composer/npm
+                missing or stale?) — reports + offers steps, runs nothing itself
   repo <domain> prs <dir> [--theme]    PR/MR head refs from the remote (checkout
                 a listed ref lands detached — refs carry number + sha only)
   repo <domain> adopt <dir> [--theme]  Manage an existing checkout (metadata only)
@@ -915,6 +917,11 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 }
             }
         }
+        Some("check") => {
+            let dir = dir_arg("rex repo <domain> check <dir> [--theme]");
+            let data = request("repo.check", json!({ "id": id, "dir": dir, "theme": theme }));
+            print_repo_job(&data, json_output);
+        }
         Some("prs") => {
             let dir = dir_arg("rex repo <domain> prs <dir> [--theme]");
             let data = request("repo.prs", json!({ "id": id, "dir": dir, "theme": theme }));
@@ -1141,7 +1148,7 @@ fn cmd_completions(shell: Option<&str>) {
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
     const REPO: &str =
-        "list status branches prs adopt link watch add pull fetch checkout push run delete";
+        "list status branches prs check adopt link watch add pull fetch checkout push run delete";
     match shell {
         Some("zsh") => println!(
             "#compdef rex\n\

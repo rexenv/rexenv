@@ -558,7 +558,20 @@ export interface RepoInspection {
 }
 
 export interface RepoStepState {
-  key: "clone" | "detect" | "composer" | "install" | "build";
+  /** Dependency steps (composer/install/build) plus each job kind's own op
+   *  step (git ops use the op name, scripts "script", the dep check "check"). */
+  key:
+    | "clone"
+    | "detect"
+    | "composer"
+    | "install"
+    | "build"
+    | "fetch"
+    | "pull"
+    | "checkout"
+    | "push"
+    | "script"
+    | "check";
   label: string;
   status: "pending" | "running" | "ok" | "failed" | "cancelled";
   error: string | null;
