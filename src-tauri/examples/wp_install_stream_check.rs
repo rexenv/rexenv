@@ -238,7 +238,10 @@ async fn main() {
         let conn = state.db.lock().unwrap();
         let _ = rexenv_lib::state::store::delete_site(&conn, &sid);
     }
-    let _ = std::fs::remove_dir_all(docroot.parent().unwrap_or(&docroot));
+    // Delete ONLY this fixture's dir. NEVER the parent: provision puts the
+    // docroot DIRECTLY in the Sites folder, so parent() IS the user's
+    // Sites dir — an earlier version of this line deleted every site.
+    let _ = std::fs::remove_dir_all(&docroot);
     let _ = database::drop_database(
         &mysql_base.join("bin/mysql"),
         database::MYSQL_PORT,
