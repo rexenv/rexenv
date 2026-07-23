@@ -76,15 +76,24 @@ export function RefPicker({
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     const onMove = () => setOpen(false);
+    // Scroll-dismiss ONLY for scrolls outside the panel (the fixed-position
+    // popover would be orphaned by the page scrolling under it). Menu's
+    // unconditional version is wrong here: our own list scrolls — a wheel
+    // tick or cmdk's arrow-key scrollIntoView capture-propagates to window
+    // and must NOT close the picker.
+    const onScroll = (e: Event) => {
+      if (panelRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onMove);
-    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onMove);
-      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
