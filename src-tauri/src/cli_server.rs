@@ -211,41 +211,16 @@ async fn repo_wait_settled<R: tauri::Runtime, M: Manager<R>>(
 
 /// Run the job's OFFERED install steps (composer → install → build, in the
 /// job's own order) one at a time; stop at the first failure. The explicit
-/// `--install` consent arrived on the command line.
+/// `--install` consent arrived on the command line. Thin delegate — the loop
+/// was promoted to `commands::repo::run_offered_steps` (shared with the
+/// panel's "Run all"), which also holds the job's step_running flag for the
+/// whole sequence and marks never-ran steps "skipped".
 async fn repo_run_offered<R: tauri::Runtime, M: Manager<R>>(
-    app: &M,
+    _app: &M,
     handle: tauri::AppHandle<R>,
     job_id: &str,
 ) -> Result<commands::repo::RepoJobState> {
-    let mut st = repo_wait_settled(app, job_id, None).await?;
-    let offered: Vec<String> = st
-        .steps
-        .iter()
-        .filter(|x| matches!(x.key.as_str(), "composer" | "install" | "build"))
-        .filter(|x| x.status == "pending")
-        .map(|x| x.key.clone())
-        .collect();
-    for key in offered {
-        let state = app_state(app)?;
-        let jobs = repo_jobs_state(app)?;
-        commands::repo::repo_run_step(
-            handle.clone(),
-            state.clone(),
-            jobs,
-            job_id.to_string(),
-            key.clone(),
-        )
-        .await?;
-        st = repo_wait_settled(app, job_id, Some(&key)).await?;
-        let failed = st
-            .steps
-            .iter()
-            .any(|x| x.key == key && matches!(x.status.as_str(), "failed" | "cancelled"));
-        if failed {
-            break;
-        }
-    }
-    Ok(st)
+    commands::repo::run_offered_steps(handle, job_id.to_string()).await
 }
 
 /// Settled-job reply: final snapshot + the job's flat log (the socket can't
@@ -1108,6 +1083,7 @@ where
             let dir = need_str(&args, "dir", cmd)?;
             // repo_check awaits its (instant, zero-exec) worker and returns
             // the settled snapshot — no wait loop needed.
+            let install = args["install"].as_bool().unwrap_or(false);
             let st = commands::repo::repo_check(
                 app.app_handle().clone(),
                 state.clone(),
@@ -1117,6 +1093,11 @@ where
                 dir,
             )
             .await?;
+            let st = if install {
+                repo_run_offered(app, app.app_handle().clone(), &st.id).await?
+            } else {
+                st
+            };
             repo_job_reply(app, &st)
         }
         "repo.op" => {

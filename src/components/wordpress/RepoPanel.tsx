@@ -18,6 +18,7 @@ import {
   repoCheck,
   repoGitOp,
   repoPullRefs,
+  repoRunOfferedSteps,
   repoRunStep,
   repoScriptJob,
   repoScripts,
@@ -222,6 +223,16 @@ export function RepoPanel({
   });
   const runStep = useMutation({
     mutationFn: (stepKey: string) => repoRunStep(opJob?.id ?? "", stepKey),
+    onError: (e) => toastBackendError(e),
+  });
+  const runAll = useMutation({
+    mutationFn: () => repoRunOfferedSteps(opJob?.id ?? ""),
+    onSuccess: (snap) => {
+      setOpJob(snap);
+      qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+        old ? [...old.filter((j) => j.id !== snap.id), snap] : [snap],
+      );
+    },
     onError: (e) => toastBackendError(e),
   });
   const checkDeps = useMutation({
@@ -466,6 +477,11 @@ export function RepoPanel({
                     <div key={st.key} className="flex items-center gap-2">
                       <StepDot status={st.status} />
                       <span className="font-mono text-[0.75rem] text-rex-text">{st.label}</span>
+                      {st.status === "skipped" && (
+                        <span className="text-[0.6875rem] text-rex-text-muted">
+                          not run — earlier step failed
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -505,6 +521,16 @@ export function RepoPanel({
                     {REPO_SCRIPTS_DISCLOSURE}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    {offeredSteps.some((st) => st.status === "pending") && (
+                      <button
+                        className={BTN}
+                        disabled={opRunning || runAll.isPending}
+                        onClick={() => runAll.mutate()}
+                        title="Run the offered steps in order, one after another — stops at the first failure"
+                      >
+                        Run all
+                      </button>
+                    )}
                     {offeredSteps.map((st) => (
                       <button
                         key={`run-${st.key}`}

@@ -573,7 +573,10 @@ export interface RepoStepState {
     | "script"
     | "check";
   label: string;
-  status: "pending" | "running" | "ok" | "failed" | "cancelled";
+  /** "skipped" = never ran (an earlier Run-all step failed or the run was
+   *  cancelled) — distinct from pending (may still run) and cancelled
+   *  (killed mid-run); still individually re-runnable. */
+  status: "pending" | "running" | "ok" | "failed" | "cancelled" | "skipped";
   error: string | null;
 }
 

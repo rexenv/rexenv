@@ -182,6 +182,23 @@ const CHECK_JOB_CLEAN = {
   ...CHECK_JOB_BASE,
   steps: [{ key: "check", label: "Check dependencies", status: "ok", error: null }],
 };
+/** "Run all" outcome snapshot: stop-on-failure honesty — composer ran and
+ *  passed, install FAILED (mapped error), build never ran → "skipped". */
+const RUNALL_JOB_FAILED = {
+  ...CHECK_JOB_BASE,
+  steps: [
+    { key: "check", label: "Check dependencies", status: "ok", error: null },
+    { key: "composer", label: "composer install", status: "ok", error: null },
+    {
+      key: "install",
+      label: "pnpm install",
+      status: "failed",
+      error: "pnpm install failed (exit 1) — see the log below.",
+    },
+    { key: "build", label: "pnpm run build", status: "skipped", error: null },
+  ],
+};
+
 const CHECK_LINES = [
   "composer: lockfile changed since last install — install recommended",
   "node (pnpm): node_modules/ missing — install needed",
@@ -261,6 +278,10 @@ export function DevGitPanel() {
         case "repo_check":
           // `?check=clean` exercises the nothing-to-install card.
           return params.get("check") === "clean" ? CHECK_JOB_CLEAN : CHECK_JOB_NEEDED;
+        case "repo_run_offered_steps":
+          // Mock returns the FINAL state (no events in the harness) — the
+          // real backend returns the pre-run snapshot and streams updates.
+          return RUNALL_JOB_FAILED;
         case "repo_tools":
           return [
             {

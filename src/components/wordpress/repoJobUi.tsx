@@ -13,7 +13,15 @@ export const REPO_SCRIPTS_DISCLOSURE =
 export function StepDot({ status }: { status: RepoStepState["status"] }) {
   if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-rex-spin text-brand" />;
   const glyph =
-    status === "ok" ? "✓" : status === "failed" ? "✕" : status === "cancelled" ? "–" : "○";
+    status === "ok"
+      ? "✓"
+      : status === "failed"
+        ? "✕"
+        : status === "cancelled"
+          ? "–"
+          : status === "skipped" // never ran — earlier run-all step failed
+            ? "»"
+            : "○";
   const color =
     status === "ok"
       ? "text-status-running-bright"

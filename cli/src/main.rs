@@ -74,8 +74,10 @@ COMMANDS:
   repo <domain> list [--status]        Git-backed plugins/themes (--status adds live state)
   repo <domain> status <dir> [--theme] Branch, changes, ahead/behind, remote, link target
   repo <domain> branches <dir> [--theme]   Local + remote branches + tags
-  repo <domain> check <dir> [--theme]  Zero-exec dependency check (composer/npm
-                missing or stale?) — reports + offers steps, runs nothing itself
+  repo <domain> check <dir> [--theme] [--install]
+                Zero-exec dependency check (composer/npm missing or stale?) —
+                reports + offers steps, runs nothing itself; --install runs the
+                offered steps in order, stopping at the first failure
   repo <domain> prs <dir> [--theme]    PR/MR head refs from the remote (checkout
                 a listed ref lands detached — refs carry number + sha only)
   repo <domain> adopt <dir> [--theme]  Manage an existing checkout (metadata only)
@@ -715,6 +717,8 @@ fn print_repo_job(data: &Value, json_output: bool) {
                 "ok" => "✓",
                 "failed" => "✕",
                 "cancelled" => "–",
+                // Never ran — an earlier step in a run-all failed/cancelled.
+                "skipped" => "»",
                 "running" => "…",
                 _ => "·",
             };
@@ -918,8 +922,14 @@ fn cmd_repo(words: &[String], json_output: bool) {
             }
         }
         Some("check") => {
-            let dir = dir_arg("rex repo <domain> check <dir> [--theme]");
-            let data = request("repo.check", json!({ "id": id, "dir": dir, "theme": theme }));
+            let dir = dir_arg("rex repo <domain> check <dir> [--theme] [--install]");
+            let install = words.iter().any(|w| w == "--install");
+            let payload = json!({ "id": id, "dir": dir, "theme": theme, "install": install });
+            let data = if install {
+                request_long("repo.check", payload, "checking + installing what's needed")
+            } else {
+                request("repo.check", payload)
+            };
             print_repo_job(&data, json_output);
         }
         Some("prs") => {

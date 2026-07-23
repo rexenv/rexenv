@@ -1331,6 +1331,13 @@ export async function repoBranches(
   return invoke<RepoBranches>("repo_branches", { siteId, kind, dirName });
 }
 
+/** "Run all": run the job's offered dependency steps sequentially (composer →
+ *  install → build), stopping at the first failure; never-ran steps become
+ *  "skipped". Returns immediately — progress arrives via job events. */
+export async function repoRunOfferedSteps(jobId: string): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_run_offered_steps", { jobId });
+}
+
 /** Zero-exec dependency check (pure fs reads + stored-fingerprint compare —
  *  runs no repo code). Returns the SETTLED job snapshot; report lines live in
  *  the job's own -check.log slot. */

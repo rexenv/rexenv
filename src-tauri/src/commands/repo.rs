@@ -88,7 +88,9 @@ pub struct RepoStepState {
     /// "clone" | "detect" | "composer" | "install" | "build".
     pub key: String,
     pub label: String,
-    /// "pending" | "running" | "ok" | "failed" | "cancelled".
+    /// "pending" | "running" | "ok" | "failed" | "cancelled" | "skipped"
+    /// (skipped = never ran because an earlier step in a Run-all failed or
+    /// the run was cancelled; still individually re-runnable).
     pub status: String,
     pub error: Option<String>,
 }
@@ -526,6 +528,146 @@ fn run_one_step<R: tauri::Runtime>(
             }
         }
     }
+}
+
+/// The job's offered dependency steps still pending, in offer order
+/// (composer → install → build). Pure — unit-tested.
+fn offered_pending(steps: &[RepoStepState]) -> Vec<String> {
+    steps
+        .iter()
+        .filter(|s| matches!(s.key.as_str(), "composer" | "install" | "build"))
+        .filter(|s| s.status == "pending")
+        .map(|s| s.key.clone())
+        .collect()
+}
+
+/// Mark every still-pending offered step "skipped" — they never ran and,
+/// this run, won't (an earlier step failed or the run was cancelled).
+/// Distinct from "pending" (might still run) and "cancelled" (was killed
+/// mid-run). Pure — unit-tested; steps stay individually re-runnable.
+fn skip_pending_offered(steps: &mut [RepoStepState]) {
+    for s in steps.iter_mut() {
+        if matches!(s.key.as_str(), "composer" | "install" | "build") && s.status == "pending" {
+            s.status = "skipped".into();
+        }
+    }
+}
+
+fn mark_remaining_skipped<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>) {
+    {
+        let mut st = entry.state.lock().expect("job state lock");
+        skip_pending_offered(&mut st.steps);
+    }
+    emit_state(app, entry);
+}
+
+/// Run ALL of a job's offered dependency steps sequentially, STOPPING at the
+/// first failure ("Run all" in the panel; `--install` on the CLI — one
+/// implementation, promoted from cli_server's per-step polling loop).
+///
+/// Concurrency: acquires the job's `step_running` flag once and HOLDS it for
+/// the whole sequence — the old loop released it between steps, leaving
+/// ≥300ms windows where the one-job-per-dest scans admitted a concurrent git
+/// op on the same dir. A small window remains at sequence START (between the
+/// previous worker's release and this acquire poll); closing it would need
+/// job-worker chaining — accepted and stated, not claimed airtight.
+///
+/// Honesty: the failing step keeps its mapped error; steps that never ran
+/// are "skipped" (never "failed", never left "pending"). Cancel kills the
+/// current step (→ "cancelled" via run_one_step) and the rest are skipped —
+/// the cancelled flag persists, so nothing else can start.
+pub async fn run_offered_steps<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    job_id: String,
+) -> Result<RepoJobState> {
+    let entry = {
+        let jobs = app.state::<RepoJobs>();
+        entry_of(&jobs, &job_id)?
+    };
+    // Acquire: wait for the job's own worker (clone/op/check) to settle, then
+    // take the flag in the same swap that observes it free.
+    loop {
+        if !entry.step_running.swap(true, Ordering::SeqCst) {
+            break;
+        }
+        if entry.cancel.is_cancelled() {
+            return Ok(snapshot(&entry));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
+    // The flag is ours from here — release on every exit path.
+    let keys = offered_pending(&snapshot(&entry).steps);
+    if keys.is_empty() {
+        entry.step_running.store(false, Ordering::SeqCst);
+        return Ok(snapshot(&entry));
+    }
+    let composer_tools = if keys.iter().any(|k| k == "composer") {
+        let resolve = async {
+            let state = app.state::<AppState>();
+            let patch = php::patch_for_minor(&entry.php_minor).ok_or_else(|| {
+                Error::Other(format!("no pinned PHP build for {}", entry.php_minor))
+            })?;
+            let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+            let phar = binaries::resolve_file(
+                state.platform.as_ref(),
+                "composer",
+                binaries::COMPOSER_VERSION,
+            )
+            .await?;
+            Ok::<_, Error>(Some((php_bin, phar)))
+        };
+        match resolve.await {
+            Ok(t) => t,
+            Err(e) => {
+                entry.step_running.store(false, Ordering::SeqCst);
+                return Err(e);
+            }
+        }
+    } else {
+        None
+    };
+    let worker = entry.clone();
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        for key in &keys {
+            if worker.cancel.is_cancelled() {
+                mark_remaining_skipped(&worker_app, &worker);
+                break;
+            }
+            let tools = (key == "composer").then(|| composer_tools.clone()).flatten();
+            run_one_step(&worker_app, &worker, key, tools);
+            let ok = snapshot(&worker).steps.iter().any(|s| &s.key == key && s.status == "ok");
+            if !ok {
+                mark_remaining_skipped(&worker_app, &worker);
+                break;
+            }
+        }
+        worker.step_running.store(false, Ordering::SeqCst);
+    })
+    .await
+    .map_err(|e| Error::Other(format!("run-all task failed: {e}")))?;
+    Ok(snapshot(&entry))
+}
+
+/// "Run all" for the panel — fire-and-forget wrapper over
+/// [`run_offered_steps`]: the UI is event-driven, so this returns
+/// immediately; the CLI awaits the promoted fn directly instead.
+#[tauri::command]
+pub async fn repo_run_offered_steps<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    jobs: State<'_, RepoJobs>,
+    job_id: String,
+) -> Result<RepoJobState> {
+    let entry = entry_of(&jobs, &job_id)?;
+    let snap = snapshot(&entry);
+    if offered_pending(&snap.steps).is_empty() {
+        return Err(Error::Other("no pending dependency steps to run".into()));
+    }
+    let run_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = run_offered_steps(run_app, job_id).await;
+    });
+    Ok(snap)
 }
 
 /// Zero-exec dependency check — pure fs reads + stored-fingerprint compares;
@@ -1632,5 +1774,45 @@ pub fn cancel_all_on_exit<R: tauri::Runtime>(app: &AppHandle<R>) {
         for w in watches.watches.lock().expect("watches lock").values() {
             w.cancel.cancel(state.platform.supervisor());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn st(key: &str, status: &str) -> RepoStepState {
+        RepoStepState { key: key.into(), label: key.into(), status: status.into(), error: None }
+    }
+
+    #[test]
+    fn run_all_collects_only_pending_dep_steps_in_offer_order() {
+        let steps = vec![
+            st("check", "ok"),
+            st("composer", "pending"),
+            st("install", "ok"),      // already ran individually — not re-run
+            st("build", "pending"),
+            st("pull", "ok"),         // op steps never collected
+        ];
+        assert_eq!(offered_pending(&steps), vec!["composer", "build"]);
+        assert!(offered_pending(&[st("check", "ok")]).is_empty());
+    }
+
+    #[test]
+    fn skip_marks_only_pending_dep_steps_never_op_or_terminal_ones() {
+        let mut steps = vec![
+            st("checkout", "ok"),
+            st("composer", "ok"),      // completed before the failure — stays ok
+            st("install", "failed"),   // the failure itself — stays failed
+            st("build", "pending"),    // never ran → skipped
+            st("check", "pending"),    // op-ish step key — untouched
+        ];
+        skip_pending_offered(&mut steps);
+        let by_key = |k: &str| steps.iter().find(|s| s.key == k).unwrap().status.clone();
+        assert_eq!(by_key("composer"), "ok");
+        assert_eq!(by_key("install"), "failed");
+        assert_eq!(by_key("build"), "skipped");
+        assert_eq!(by_key("check"), "pending");
+        assert_eq!(by_key("checkout"), "ok");
     }
 }
