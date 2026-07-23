@@ -206,6 +206,34 @@ const CHECK_LINES = [
   "! install steps offered below — nothing runs without a click.",
 ];
 
+/** Streamed wp.org install-card states (`?panel=wp-add&install=…`). Lines
+ *  mirror the real wp-cli output shape (phase lines verbatim). */
+const WPI_BASE = {
+  id: "wpi-dev",
+  siteId: "dev",
+  kind: "plugin" as const,
+  slugs: ["akismet", "bbpress"],
+  itemsTotal: 2,
+  logKey: "wp-install-dev.rex-wpi-dev.log",
+  error: null,
+};
+const WPI_RUNNING = { ...WPI_BASE, itemCursor: 2, status: "running", summary: null };
+const WPI_PARTIAL = {
+  ...WPI_BASE,
+  itemCursor: 2,
+  status: "partial",
+  summary: "Error: Only installed 1 of 2 plugins.",
+};
+const WPI_LINES = [
+  "Installing Akismet Anti-spam (5.3)",
+  "Downloading installation package from https://downloads.wordpress.org/plugin/akismet.5.3.zip...",
+  "Unpacking the package...",
+  "Installing the plugin...",
+  "Plugin installed successfully.",
+  "Installing bbPress (2.6.11)",
+  "Downloading installation package from https://downloads.wordpress.org/plugin/bbpress.2.6.11.zip...",
+];
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
@@ -272,10 +300,25 @@ export function DevGitPanel() {
               ];
         case "repo_git_op":
           return OP_JOB;
-        case "tail_log":
-          return String((args as { key?: string } | undefined)?.key ?? "").includes("-check")
-            ? CHECK_LINES
-            : TAIL_LINES;
+        case "tail_log": {
+          const key = String((args as { key?: string } | undefined)?.key ?? "");
+          return key.includes("wp-install-")
+            ? WPI_LINES
+            : key.includes("-check")
+              ? CHECK_LINES
+              : TAIL_LINES;
+        }
+        // `?panel=wp-add` install-card mocks (`&install=running|partial`):
+        case "wp_install_active":
+          return params.get("install") === "running"
+            ? WPI_RUNNING
+            : params.get("install") === "partial"
+              ? WPI_PARTIAL
+              : null;
+        case "wp_install_job":
+          return WPI_RUNNING;
+        case "wp_install_cancel":
+          return null;
         // `?panel=wp-add` (chips-above-input layout check) mocks:
         case "wp_plugins":
           return [];

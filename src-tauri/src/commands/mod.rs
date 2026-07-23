@@ -15,3 +15,4 @@ pub mod system;
 pub mod terminal;
 pub mod tunnels;
 pub mod wordpress;
+pub mod wp_install;

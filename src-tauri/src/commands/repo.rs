@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// One resolved login-shell env snapshot, shared across jobs.
-type EnvSnapshot = Arc<Vec<(String, String)>>;
+pub(crate) type EnvSnapshot = Arc<Vec<(String, String)>>;
 
 /// Tauri-managed registry: this session's jobs + the cached login-shell env
 /// snapshot (expensive to resolve — a shell spawn; see `login_shell_env`).
@@ -108,7 +108,7 @@ pub fn output_event(id: &str) -> String {
 
 /// Resolve (and cache) the user's login-shell env. Blocking — call off the
 /// async runtime. `refresh` drops the cache (the UI's Re-detect).
-fn shell_env(state: &AppState, jobs: &RepoJobs, refresh: bool) -> Result<EnvSnapshot> {
+pub(crate) fn shell_env(state: &AppState, jobs: &RepoJobs, refresh: bool) -> Result<EnvSnapshot> {
     if !refresh {
         if let Some(env) = jobs.env.lock().expect("env lock").clone() {
             return Ok(env);

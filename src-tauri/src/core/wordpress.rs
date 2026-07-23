@@ -172,8 +172,48 @@ const WP_LIST_TIMEOUT: Duration = Duration::from_secs(300);
 /// scaled, because a multi-slug install legitimately runs N internally-capped
 /// downloads back to back — a fixed cap would false-trip exactly the slow-link
 /// user the bound must never hurt.
-fn download_timeout(items: usize) -> Duration {
+pub(crate) fn download_timeout(items: usize) -> Duration {
     WP_DOWNLOAD_TIMEOUT_BASE + WP_DOWNLOAD_TIMEOUT_PER_ITEM * items as u32
+}
+
+// ---------------------------------------------------------------------------
+// Streamed-install line semantics (the live-progress card). PURE — the only
+// parsing is of wp-cli FRAMEWORK literals from the pinned phar; the WP-core-
+// owned phase wording ("Downloading installation package…", varies by WP
+// version) is never parsed — it's displayed verbatim instead.
+// ---------------------------------------------------------------------------
+
+/// wp-cli's per-item install header ("Installing bbPress (2.5.9)") — a phar
+/// literal. The " (" requirement excludes WP-core's "Installing the
+/// plugin..."/"Installing the theme..." phase lines. Drives the honest
+/// ATTEMPT cursor ("installing item k of N" — never "k done": an
+/// already-installed slug prints NO header yet counts as a summary success).
+pub fn is_install_item_header(line: &str) -> bool {
+    line.starts_with("Installing ") && line.contains(" (")
+}
+
+/// The batch's terminal truth: the last verbatim `Success:`/`Error:` line
+/// ("Success: Installed 2 of 2 plugins." / "Error: Only installed 1 of 2
+/// plugins."). Shown as-is — never paraphrased.
+pub fn install_summary_line(tail: &[String]) -> Option<String> {
+    tail.iter().rev().find(|l| l.starts_with("Success:") || l.starts_with("Error:")).cloned()
+}
+
+/// Map a FINISHED (non-cancelled) install run to an honest status. A partial
+/// batch exits 1 with some slugs genuinely installed — wp-cli's
+/// framework-literal "Only installed X of N" (pinned phar) is the only
+/// distinguishing signal, and "partial" must never be flattened to "failed".
+/// NOTE exit 0 can still mean installed-but-NOT-activated (chained
+/// `--activate` failures don't touch the exit code) — callers must not claim
+/// activation from "ok"; the plugin/theme list refresh is that truth.
+pub fn classify_install_exit(exit_ok: bool, tail: &[String]) -> &'static str {
+    if exit_ok {
+        "ok"
+    } else if tail.iter().any(|l| l.contains("Only installed")) {
+        "partial"
+    } else {
+        "failed"
+    }
 }
 
 /// [`wp_run`] with a hard wall-clock cap (see [`run_with_timeout`]): same
@@ -403,7 +443,7 @@ fn valid_slug(slug: &str) -> bool {
 
 /// Refuse anything that isn't a bare wp.org slug BEFORE it reaches `wp … install`
 /// — where a URL/path/zip would install arbitrary code and a leading `-` a flag.
-fn ensure_slugs(kind: &str, slugs: &[String]) -> Result<()> {
+pub(crate) fn ensure_slugs(kind: &str, slugs: &[String]) -> Result<()> {
     for slug in slugs {
         if !valid_slug(slug) {
             return Err(Error::Other(format!(
@@ -2529,6 +2569,40 @@ Error: WordPress installation doesn't verify against checksums.";
         // List calls: WP's update-check request is internally capped at
         // 3s/30s (update.php), so 300s is ~10× the worst legit case.
         assert_eq!(WP_LIST_TIMEOUT, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn install_line_semantics_match_the_pinned_phar_literals() {
+        // Per-item header: wp-cli literal, WITH the " (" that excludes
+        // WP-core's phase lines.
+        assert!(is_install_item_header("Installing bbPress (2.5.9)"));
+        assert!(is_install_item_header("Installing Twenty Sixteen (1.2)"));
+        assert!(!is_install_item_header("Installing the plugin..."));
+        assert!(!is_install_item_header("Installing the theme..."));
+        assert!(!is_install_item_header("Downloading installation package from https://x..."));
+
+        let tail = |lines: &[&str]| lines.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+        // Terminal truth = last Success:/Error: line, verbatim.
+        let t = tail(&[
+            "Plugin installed successfully.",
+            "Success: Installed 2 of 2 plugins.",
+        ]);
+        assert_eq!(install_summary_line(&t).as_deref(), Some("Success: Installed 2 of 2 plugins."));
+
+        // All-success → ok (warnings never touch the exit code).
+        assert_eq!(classify_install_exit(true, &t), "ok");
+        // Partial batch: exit 1 but SOME slugs installed — must read
+        // "partial", never flattened to "failed".
+        let t = tail(&["Warning: akismet: latest already…", "Error: Only installed 1 of 2 plugins."]);
+        assert_eq!(classify_install_exit(false, &t), "partial");
+        assert_eq!(
+            install_summary_line(&t).as_deref(),
+            Some("Error: Only installed 1 of 2 plugins.")
+        );
+        // Total failure → failed.
+        let t = tail(&["Error: No plugins installed."]);
+        assert_eq!(classify_install_exit(false, &t), "failed");
     }
 
     #[test]

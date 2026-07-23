@@ -601,6 +601,25 @@ export interface RepoJobState {
   finishedOk: boolean;
 }
 
+/** One streamed wp.org install job — the `wp-install://state/<id>` payload.
+ *  Honesty contract: `itemCursor` is an ATTEMPT cursor ("installing item k
+ *  of N", never "k done" — an already-installed slug prints no header yet
+ *  counts as a summary success); `summary` is the verbatim terminal
+ *  Success:/Error: line; "ok" does NOT imply activation (chained --activate
+ *  failures don't touch the exit code — the list refresh is that truth). */
+export interface WpInstallState {
+  id: string;
+  siteId: string;
+  kind: "plugin" | "theme";
+  slugs: string[];
+  itemsTotal: number;
+  itemCursor: number;
+  status: "running" | "ok" | "partial" | "failed" | "cancelled" | "timed_out";
+  summary: string | null;
+  error: string | null;
+  logKey: string;
+}
+
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */
 export interface GitAsset {
   kind: "plugin" | "theme";

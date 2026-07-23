@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1278,6 +1278,51 @@ export async function onRepoJobOutput(
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   return listen<string>(`repo-job://output/${id}`, (e) => cb(e.payload));
+}
+
+/** Start a STREAMED wp.org install job (live phase lines, attempt cursor,
+ *  cancel). Returns the initial snapshot; progress via `onWpInstallState`/
+ *  `onWpInstallOutput`. */
+export async function wpInstallJob(
+  siteId: string,
+  kind: "plugin" | "theme",
+  slugs: string[],
+  activate: boolean,
+): Promise<WpInstallState> {
+  return invoke<WpInstallState>("wp_install_job", { siteId, kind, slugs, activate });
+}
+
+/** Cancel a running install (kills the wp-cli process group — safe; the UI
+ *  states the honest residuals). */
+export async function wpInstallCancel(id: string): Promise<void> {
+  return invoke<void>("wp_install_cancel", { id });
+}
+
+/** The site's most recent install job — card re-adoption after a remount. */
+export async function wpInstallActive(
+  siteId: string,
+  kind: "plugin" | "theme",
+): Promise<WpInstallState | null> {
+  if (!isTauri()) return null;
+  return invoke<WpInstallState | null>("wp_install_active", { siteId, kind });
+}
+
+export async function onWpInstallState(
+  id: string,
+  cb: (state: WpInstallState) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<WpInstallState>(`wp-install://state/${id}`, (e) => cb(e.payload));
+}
+
+export async function onWpInstallOutput(
+  id: string,
+  cb: (line: string) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<string>(`wp-install://output/${id}`, (e) => cb(e.payload));
 }
 
 /** Live git status for one managed asset dir (local, fast, runs no repo code). */

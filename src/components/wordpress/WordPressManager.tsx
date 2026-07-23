@@ -47,10 +47,15 @@ import {
   wpPluginActivate,
   wpPluginDeactivate,
   wpPluginDelete,
+  onWpInstallOutput,
+  onWpInstallState,
+  tailLog,
+  wpInstallActive,
+  wpInstallCancel,
+  wpInstallJob,
   wpOrgPluginIcons,
   wpOrgSearchPlugins,
   wpOrgSearchThemes,
-  wpPluginInstall,
   wpPluginUpdate,
   wpPlugins,
   wpPrimaryAdmin,
@@ -63,7 +68,6 @@ import {
   repoAssets,
   repoSiteJobs,
   repoUnmanaged,
-  wpThemeInstall,
   wpThemeUpdate,
   wpThemes,
   wpTransientDeleteAll,
@@ -77,7 +81,8 @@ import type { WpDebugFlag } from "@/lib/ipc";
 import { GitAddPanel } from "./GitAddPanel";
 import { RepoPanel } from "./RepoPanel";
 import { LinkFolderPanel } from "./LinkFolderPanel";
-import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpInstallState, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import { WpInstallCard } from "./WpInstallCard";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -103,6 +108,62 @@ const CHECK =
 /** One queued install target in the tag-style Add bar (plugins & themes).
  *  `icon` is wp.org art (plugin icon / theme screenshot); null → letter tile. */
 type PendingInstall = { slug: string; icon: string | null };
+
+/** Streamed-install card state shared by the plugin/theme panels: start a
+ *  job, subscribe to its `wp-install://` events, re-adopt after a remount,
+ *  refresh the list + clear the queue on settle. */
+function useWpInstall(
+  siteId: string,
+  kind: "plugin" | "theme",
+  onOk: () => void,
+) {
+  const qc = useQueryClient();
+  const listKey = kind === "plugin" ? ["wp-plugins", siteId] : ["wp-themes", siteId];
+  const [job, setJob] = useState<WpInstallState | null>(null);
+  const [lines, setLines] = useState<string[]>([]);
+  // Re-adopt a live/settled job after a tab switch (job survives unmount).
+  useEffect(() => {
+    void wpInstallActive(siteId, kind)
+      .then((j) => {
+        if (j) {
+          setJob(j);
+          void tailLog(j.logKey, 300).then(setLines).catch(() => {});
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId]);
+  useEffect(() => {
+    if (!job?.id) return;
+    let dead = false;
+    const un: Array<() => void> = [];
+    void onWpInstallState(job.id, (s) => {
+      if (dead) return;
+      setJob(s);
+      if (s.status !== "running") {
+        qc.invalidateQueries({ queryKey: listKey });
+        if (s.status === "ok") onOk();
+      }
+    }).then((u) => un.push(u));
+    void onWpInstallOutput(job.id, (l) => {
+      if (!dead) setLines((x) => [...x.slice(-499), l]);
+    }).then((u) => un.push(u));
+    return () => {
+      dead = true;
+      un.forEach((u) => u());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id]);
+  return {
+    job,
+    lines,
+    start: (snap: WpInstallState) => {
+      setJob(snap);
+      setLines([]);
+    },
+    running: job?.status === "running",
+  };
+}
 
 /** Queue an item, deduplicating by slug. */
 function addPending(list: PendingInstall[], item: PendingInstall): PendingInstall[] {
@@ -2115,6 +2176,10 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   const [pending, setPending] = useState<PendingInstall[]>([]);
   // Queue/remove must never steal focus from the search box (type-to-search).
   const addInputRef = useRef<HTMLInputElement | null>(null);
+  const install = useWpInstall(siteId, "theme", () => {
+    setPending([]);
+    setSlug("");
+  });
   const debouncedSlug = useDebounced(slug.trim(), 350);
   const search = useQuery({
     queryKey: ["wporg-themes", debouncedSlug],
@@ -2277,21 +2342,23 @@ function ThemesPanel({ siteId }: { siteId: string }) {
           </label>
           <button
             className={BTN + " flex items-center gap-1.5"}
-            disabled={busy || installSlugs.length === 0}
+            disabled={busy || install.running || installSlugs.length === 0}
             onClick={() => {
               const slugs = installSlugs;
-              run.mutate(() =>
-                wpThemeInstall(siteId, slugs, activateOnAdd).then(() => {
-                  setPending([]);
-                  setSlug("");
-                }),
-              );
+              run.mutate(() => wpInstallJob(siteId, "theme", slugs, activateOnAdd).then(install.start));
             }}
           >
             <Plus className="h-3.5 w-3.5" />
             Install{installSlugs.length > 1 ? ` (${installSlugs.length})` : ""}
           </button>
         </div>
+        {install.job && (
+          <WpInstallCard
+            job={install.job}
+            lines={install.lines}
+            onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
+          />
+        )}
         {showSearch && (
           <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
@@ -2591,6 +2658,10 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   const [pending, setPending] = useState<PendingInstall[]>([]);
   // Queue/remove must never steal focus from the search box (type-to-search).
   const addInputRef = useRef<HTMLInputElement | null>(null);
+  const install = useWpInstall(siteId, "plugin", () => {
+    setPending([]);
+    setSlug("");
+  });
   const debouncedSlug = useDebounced(slug.trim(), 350);
   const search = useQuery({
     queryKey: ["wporg-plugins", debouncedSlug],
@@ -2820,21 +2891,23 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           </label>
           <button
             className={BTN + " flex items-center gap-1.5"}
-            disabled={busy || installSlugs.length === 0}
+            disabled={busy || install.running || installSlugs.length === 0}
             onClick={() => {
               const slugs = installSlugs;
-              run.mutate(() =>
-                wpPluginInstall(siteId, slugs, activateOnAdd).then(() => {
-                  setPending([]);
-                  setSlug("");
-                }),
-              );
+              run.mutate(() => wpInstallJob(siteId, "plugin", slugs, activateOnAdd).then(install.start));
             }}
           >
             <Plus className="h-3.5 w-3.5" />
             Install{installSlugs.length > 1 ? ` (${installSlugs.length})` : ""}
           </button>
         </div>
+        {install.job && (
+          <WpInstallCard
+            job={install.job}
+            lines={install.lines}
+            onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
+          />
+        )}
         {showSearch && (
           <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
