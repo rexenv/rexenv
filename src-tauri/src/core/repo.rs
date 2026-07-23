@@ -361,6 +361,83 @@ fn parse_ls_remote(stdout: &str) -> RemoteRefs {
     refs
 }
 
+// ---------------------------------------------------------------------------
+// Pull-request refs (refs/pull/N/head — GitHub/Gitea; refs/merge-requests/N/
+// head — GitLab). Refs-only, NO host API and NO tokens: the number + sha is
+// all a ref carries (titles/authors would need the host API — deliberately
+// out of scope). Bitbucket advertises neither pattern → empty list.
+// ---------------------------------------------------------------------------
+
+/// One host-advertised PR/MR head ref.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRef {
+    pub number: u64,
+    pub sha: String,
+    /// Full ref name — the checkout target (`refs/pull/12/head`).
+    #[serde(rename = "ref")]
+    pub full_ref: String,
+}
+
+/// Both host patterns in ONE ls-remote call — they OR together and a
+/// non-matching pattern is silently empty, so no host detection is needed.
+const PULL_REF_PATTERNS: [&str; 2] = ["refs/pull/*/head", "refs/merge-requests/*/head"];
+
+/// Does this checkout target name a PR/MR head ref (⇒ fetch-then-detach flow)?
+pub fn is_pull_ref(r: &str) -> bool {
+    r.starts_with("refs/pull/") || r.starts_with("refs/merge-requests/")
+}
+
+/// Parse `ls-remote` output for PR/MR head refs. PURE. Sorted highest number
+/// first (newest, like tags) — ls-remote output is lexicographic (10, 100,
+/// 1000…), never trust its order.
+pub fn parse_pull_refs(stdout: &str) -> Vec<PullRef> {
+    let mut out: Vec<PullRef> = stdout
+        .lines()
+        .filter_map(|line| {
+            let (oid, name) = line.split_once('\t')?;
+            if name.ends_with("^{}") {
+                return None; // peeled duplicates
+            }
+            let number = name
+                .strip_prefix("refs/pull/")
+                .or_else(|| name.strip_prefix("refs/merge-requests/"))?
+                .strip_suffix("/head")?
+                .parse::<u64>()
+                .ok()?;
+            Some(PullRef { number, sha: oid.trim().to_string(), full_ref: name.to_string() })
+        })
+        .collect();
+    out.sort_by(|a, b| b.number.cmp(&a.number));
+    out
+}
+
+/// PR/MR head refs advertised by `origin` (network — one ls-remote round
+/// trip, PROBE_TIMEOUT cap; NOT `run_git_lines`, whose 10s local cap is too
+/// short for a network call).
+pub fn list_pull_refs(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+) -> Result<Vec<PullRef>> {
+    let env = with_git_env(env);
+    let dir_s = dir.to_string_lossy().into_owned();
+    let args = [
+        "-C",
+        dir_s.as_str(),
+        "ls-remote",
+        "origin",
+        PULL_REF_PATTERNS[0],
+        PULL_REF_PATTERNS[1],
+    ];
+    let out = run_captured_with_cap(supervisor, git, &args, dir, &env, PROBE_TIMEOUT)?;
+    if !out.ok {
+        return Err(map_git_error(&out.stderr_tail, "the remote"));
+    }
+    Ok(parse_pull_refs(&out.stdout))
+}
+
 /// The user's env + non-negotiable git overrides. `GIT_TERMINAL_PROMPT=0`:
 /// a credential prompt from a background process is an invisible hang — fail
 /// fast and map the error instead.
@@ -1094,6 +1171,35 @@ pub fn git_checkout(
     run_git_op(supervisor, git, env, dir, "checkout", &args, cancel, on_line)
 }
 
+/// Check out a host PR/MR ref — two commands in the checkout step (the
+/// `git_push` status-then-push precedent):
+///   1. `git fetch origin <ref>` — ONE-SHOT argv refspec, no config write.
+///      A permanent `refs/pull/*` refspec would drag thousands of refs into
+///      every fetch on big repos, so the ref is fetched only when needed.
+///      A single src-only refspec ⇒ FETCH_HEAD is overwritten with exactly
+///      one entry (no `+` needed — there is no destination ref to force).
+///   2. `git checkout --detach FETCH_HEAD` — lands detached (the panel shows
+///      it honestly). FETCH_HEAD is hardcoded HERE; it never crosses IPC as
+///      a user-selectable target.
+pub fn git_checkout_pull_ref(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    target: &str,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let target = validate_ref(target)?;
+    if !is_pull_ref(&target) {
+        return Err(Error::Other(format!("\"{target}\" is not a PR/MR ref")));
+    }
+    let fetch = vec!["fetch".to_string(), "origin".to_string(), target];
+    run_git_op(supervisor, git, env, dir, "checkout", &fetch, cancel, on_line)?;
+    let co = ["checkout", "--detach", "FETCH_HEAD", "--"].map(String::from).to_vec();
+    run_git_op(supervisor, git, env, dir, "checkout", &co, cancel, on_line)
+}
+
 /// `git push` — with `--set-upstream origin <branch>` added automatically
 /// when the current branch has none (the approved auto-upstream default).
 /// Never force.
@@ -1148,8 +1254,8 @@ pub fn map_git_op_error(op: &str, tail: &[String]) -> Error {
     }
     if joined.contains("not currently on a branch") {
         return Error::Other(
-            "You're on a detached HEAD (a tag checkout) — there is no branch \
-             for pull to update. Check out a branch first, then retry."
+            "You're on a detached HEAD (a tag or PR checkout) — there is no \
+             branch for pull to update. Check out a branch first, then retry."
                 .into(),
         );
     }
@@ -2256,6 +2362,34 @@ mod tests {
         // Unknown op failures fall through to the shared mapping (raw tail kept).
         let raw = map_git_op_error("fetch", &["weird explosion".into()]).to_string();
         assert!(raw.contains("weird explosion"), "{raw}");
+    }
+
+    #[test]
+    fn pull_ref_parse_reads_both_hosts_sorts_numerically_and_skips_noise() {
+        // Lexicographic ls-remote order + GitLab + peeled + junk, all mixed.
+        let out = "aaa1\trefs/pull/10/head\n\
+                   bbb2\trefs/pull/100/head\n\
+                   ccc3\trefs/pull/2/head\n\
+                   ddd4\trefs/pull/2/merge\n\
+                   eee5\trefs/merge-requests/7/head\n\
+                   fff6\trefs/pull/3/head^{}\n\
+                   ggg7\trefs/heads/main\n\
+                   hhh8\trefs/pull/notanumber/head\n";
+        let prs = parse_pull_refs(out);
+        // Highest (newest) first; /merge, peeled, non-PR, non-numeric all skipped.
+        assert_eq!(prs.iter().map(|p| p.number).collect::<Vec<_>>(), vec![100, 10, 7, 2]);
+        assert_eq!(prs[0].sha, "bbb2");
+        assert_eq!(prs[2].full_ref, "refs/merge-requests/7/head");
+
+        // Routing predicate: PR refs take the fetch-then-detach path, the
+        // rest (branches, tags) stay on plain checkout.
+        assert!(is_pull_ref("refs/pull/12/head"));
+        assert!(is_pull_ref("refs/merge-requests/7/head"));
+        assert!(!is_pull_ref("refs/tags/v1.2.0"));
+        assert!(!is_pull_ref("main"));
+        // And both patterns pass the argv-injection validator as-is.
+        assert!(validate_ref("refs/pull/12/head").is_ok());
+        assert!(validate_ref("refs/merge-requests/7/head").is_ok());
     }
 
     #[test]

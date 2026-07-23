@@ -73,7 +73,9 @@ COMMANDS:
   wp <domain> core versions | core switch <version>
   repo <domain> list [--status]        Git-backed plugins/themes (--status adds live state)
   repo <domain> status <dir> [--theme] Branch, changes, ahead/behind, remote, link target
-  repo <domain> branches <dir> [--theme]   Local + remote branches
+  repo <domain> branches <dir> [--theme]   Local + remote branches + tags
+  repo <domain> prs <dir> [--theme]    PR/MR head refs from the remote (checkout
+                a listed ref lands detached — refs carry number + sha only)
   repo <domain> adopt <dir> [--theme]  Manage an existing checkout (metadata only)
   repo <domain> link <path> [--name N] [--theme]
                 Symlink an external folder in (deleting later only unlinks)
@@ -761,7 +763,7 @@ fn print_repo_job(data: &Value, json_output: bool) {
 }
 
 const REPO_USAGE: &str =
-    "rex repo <domain> list|status|branches|adopt|link|watch … (or: rex repo tools)";
+    "rex repo <domain> list|status|branches|prs|adopt|link|watch … (or: rex repo tools)";
 
 /// Git/asset assets — wave 1: pure request/response commands. Every call
 /// rides the same commands::repo fns the app UI uses (one code path).
@@ -911,6 +913,26 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 for t in &tags {
                     println!("  {}", t.as_str().unwrap_or("?"));
                 }
+            }
+        }
+        Some("prs") => {
+            let dir = dir_arg("rex repo <domain> prs <dir> [--theme]");
+            let data = request("repo.prs", json!({ "id": id, "dir": dir, "theme": theme }));
+            if json_output {
+                return print_json(&data);
+            }
+            let prs = data.as_array().cloned().unwrap_or_default();
+            if prs.is_empty() {
+                println!("(no PR/MR refs advertised by the remote)");
+            }
+            for p in &prs {
+                let sha = p["sha"].as_str().unwrap_or("?");
+                println!(
+                    "#{:<6} {:.7}  {}",
+                    p["number"].as_u64().unwrap_or(0),
+                    sha,
+                    p["ref"].as_str().unwrap_or("?"),
+                );
             }
         }
         Some("adopt") => {
@@ -1118,7 +1140,8 @@ fn cmd_completions(shell: Option<&str>) {
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
-    const REPO: &str = "list status branches adopt link watch add pull fetch checkout push run delete";
+    const REPO: &str =
+        "list status branches prs adopt link watch add pull fetch checkout push run delete";
     match shell {
         Some("zsh") => println!(
             "#compdef rex\n\

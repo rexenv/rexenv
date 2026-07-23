@@ -16,6 +16,7 @@ import {
   repoBranches,
   repoCancel,
   repoGitOp,
+  repoPullRefs,
   repoRunStep,
   repoScriptJob,
   repoScripts,
@@ -82,6 +83,17 @@ export function RepoPanel({
     queryKey: branchesKey,
     queryFn: () => repoBranches(siteId, kind, asset.dirName),
     staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  // PR/MR refs are a NETWORK call (ls-remote) — fetched lazily, only after
+  // the picker has been opened at least once; never re-fired on focus.
+  const [pickerOpened, setPickerOpened] = useState(false);
+  const prs = useQuery({
+    queryKey: ["repo-prs", siteId, kind, asset.dirName],
+    queryFn: () => repoPullRefs(siteId, kind, asset.dirName),
+    enabled: pickerOpened,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -247,7 +259,7 @@ export function RepoPanel({
         ? `detached @ ${s.detachedAt ?? "?"}`
         : (s.branch ?? "?")
     : null;
-  const detachedReason = "Detached HEAD (tag checkout) — check out a branch first";
+  const detachedReason = "Detached HEAD (tag or PR checkout) — check out a branch first";
   const clean = s ? s.changed === 0 && s.untracked === 0 : false;
   const opRunning = opJob?.steps.some((st) => st.status === "running") ?? false;
   const opsDisabled = opRunning || runOp.isPending;
@@ -361,6 +373,7 @@ export function RepoPanel({
               onChange={setCheckoutRef}
               disabled={opsDisabled}
               ariaLabel="Checkout target"
+              onOpenChange={(o) => o && setPickerOpened(true)}
               groups={[
                 {
                   label: null,
@@ -381,6 +394,25 @@ export function RepoPanel({
                     value: `refs/tags/${t}`,
                     label: t,
                   })),
+                },
+                {
+                  label: "Pull Requests",
+                  // Number + sha is all a ref carries (no titles without the
+                  // host API). Checkout lands detached, same as tags.
+                  items: (prs.data ?? []).map((p) => ({
+                    value: p.ref,
+                    label: `PR #${p.number}`,
+                    hint: p.sha.slice(0, 7),
+                  })),
+                  note: !pickerOpened
+                    ? undefined
+                    : prs.isLoading
+                      ? "loading pull requests…"
+                      : prs.isError
+                        ? "PRs unavailable (network / unsupported host)"
+                        : prs.data?.length === 0
+                          ? "no PR/MR refs advertised by the remote"
+                          : undefined,
                 },
               ]}
             />

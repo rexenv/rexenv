@@ -643,6 +643,15 @@ export interface RepoBranches {
   tags: string[];
 }
 
+/** One PR/MR head ref the remote advertises (refs-only — number + sha is all
+ *  a ref carries; titles/authors would need the host API). Checkout of `ref`
+ *  lands detached. */
+export interface RepoPullRef {
+  number: number;
+  sha: string;
+  ref: string;
+}
+
 /** One offerable package.json script (RepoPanel scripts row). */
 export interface RepoScript {
   name: string;

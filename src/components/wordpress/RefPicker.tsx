@@ -22,6 +22,9 @@ export interface RefGroup {
   /** null = ungrouped section (local branches). */
   label: string | null;
   items: RefItem[];
+  /** Non-interactive status line under the group's items (e.g. "loading
+   *  pull requests…"). Keeps the group visible even with zero items. */
+  note?: string;
 }
 
 const PANEL_WIDTH = 280;
@@ -32,17 +35,26 @@ export function RefPicker({
   groups,
   disabled,
   ariaLabel,
+  onOpenChange,
 }: {
   value: string;
   onChange: (value: string) => void;
   groups: RefGroup[];
   disabled?: boolean;
   ariaLabel: string;
+  /** Fires on every open/close — lets the owner lazy-load network-backed
+   *  groups (PR refs) only once the picker is actually opened. */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const place = () => {
     const r = triggerRef.current?.getBoundingClientRect();
@@ -124,12 +136,15 @@ export function RefPicker({
                   No matching refs.
                 </Command.Empty>
                 {groups
-                  .filter((g) => g.items.length > 0)
+                  .filter((g) => g.items.length > 0 || g.note)
                   .map((g) => {
                     const items = g.items.map((item) => (
                       <Command.Item
                         key={item.value}
                         value={item.value}
+                        // Label as keywords so "PR #123" is findable even
+                        // though the value is refs/pull/123/head.
+                        keywords={item.label ? [item.label] : undefined}
                         // Close over item.value — cmdk normalizes its onSelect
                         // argument, and branch names are case-sensitive.
                         onSelect={() => select(item.value)}
@@ -152,14 +167,33 @@ export function RefPicker({
                         )}
                       </Command.Item>
                     ));
-                    return g.label ? (
-                      <Command.Group
-                        key={g.label}
-                        heading={g.label}
-                        className="[&_[cmdk-group-heading]]:px-[9px] [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:text-[0.625rem] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-rex-text-muted"
+                    // Note lives OUTSIDE Command.Group — cmdk hides a group
+                    // whose items are all filtered out, and a status line
+                    // ("loading pull requests…") must stay visible even when
+                    // the group has no items at all.
+                    const note = g.note && (
+                      <div
+                        key={`note-${g.label}`}
+                        className="px-[9px] pb-1.5 pt-0.5 font-mono text-[0.625rem] text-rex-text-muted"
                       >
-                        {items}
-                      </Command.Group>
+                        {g.label && g.items.length === 0 && (
+                          <div className="pb-1 pt-1 text-[0.625rem] uppercase tracking-wide">
+                            {g.label}
+                          </div>
+                        )}
+                        {g.note}
+                      </div>
+                    );
+                    return g.label ? (
+                      <div key={g.label}>
+                        <Command.Group
+                          heading={g.label}
+                          className="[&_[cmdk-group-heading]]:px-[9px] [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1.5 [&_[cmdk-group-heading]]:text-[0.625rem] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-rex-text-muted"
+                        >
+                          {items}
+                        </Command.Group>
+                        {note}
+                      </div>
                     ) : (
                       <Command.Group key="__ungrouped">{items}</Command.Group>
                     );

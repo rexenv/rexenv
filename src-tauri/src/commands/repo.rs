@@ -682,15 +682,20 @@ fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, 
         match op {
             "fetch" => repo::git_fetch(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
             "pull" => repo::git_pull_ff(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
-            "checkout" => repo::git_checkout(
-                sup,
-                &git.path,
-                &env,
-                &entry.dest,
-                entry.git_ref.as_deref().unwrap_or_default(),
-                &entry.cancel,
-                &mut sink,
-            ),
+            // PR/MR refs take the fetch-then-detach flow; everything else is
+            // a plain checkout (branch DWIM / tag detach).
+            "checkout" => {
+                let target = entry.git_ref.as_deref().unwrap_or_default();
+                if repo::is_pull_ref(target) {
+                    repo::git_checkout_pull_ref(
+                        sup, &git.path, &env, &entry.dest, target, &entry.cancel, &mut sink,
+                    )
+                } else {
+                    repo::git_checkout(
+                        sup, &git.path, &env, &entry.dest, target, &entry.cancel, &mut sink,
+                    )
+                }
+            }
             _ => repo::git_push(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
         }
     })();
@@ -778,6 +783,28 @@ pub async fn repo_branches<R: tauri::Runtime>(
     })
     .await
     .map_err(|e| Error::Other(format!("branches task failed: {e}")))?
+}
+
+/// PR/MR head refs advertised by `origin` — the picker's Pull Requests group.
+/// Network (one ls-remote round trip); the UI calls it lazily on picker open.
+#[tauri::command]
+pub async fn repo_pull_refs<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<Vec<repo::PullRef>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let jobs = app.state::<RepoJobs>();
+        let site = site_of(&state, &site_id)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        let env = shell_env(&state, &jobs, false)?;
+        let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
+        repo::list_pull_refs(state.platform.supervisor(), &git.path, &env, &dir)
+    })
+    .await
+    .map_err(|e| Error::Other(format!("pull-refs task failed: {e}")))?
 }
 
 // ---------------------------------------------------------------------------

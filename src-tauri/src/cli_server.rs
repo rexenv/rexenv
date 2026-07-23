@@ -997,6 +997,13 @@ where
             let b = commands::repo::repo_branches(app.app_handle().clone(), id, kind, dir).await?;
             Ok(to_value(&b)?)
         }
+        "repo.prs" => {
+            let id = need_str(&args, "id", cmd)?;
+            let kind = repo_kind(&args);
+            let dir = need_str(&args, "dir", cmd)?;
+            let p = commands::repo::repo_pull_refs(app.app_handle().clone(), id, kind, dir).await?;
+            Ok(to_value(&p)?)
+        }
         "repo.adopt" => {
             let id = need_str(&args, "id", cmd)?;
             let kind = repo_kind(&args);

@@ -203,6 +203,16 @@ export function DevGitPanel() {
             ],
             tags: ["v1.2.0", "v1.1.0", "v1.0.0"],
           };
+        case "repo_pull_refs":
+          // Highest first (backend contract). `?prs=none` exercises the
+          // empty-note path.
+          return params.get("prs") === "none"
+            ? []
+            : [
+                { number: 128, sha: "9b36e16aa02", ref: "refs/pull/128/head" },
+                { number: 97, sha: "821807eff31", ref: "refs/pull/97/head" },
+                { number: 42, sha: "5c0ffee4d2b", ref: "refs/pull/42/head" },
+              ];
         case "repo_git_op":
           return OP_JOB;
         case "tail_log":
