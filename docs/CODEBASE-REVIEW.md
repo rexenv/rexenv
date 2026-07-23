@@ -17,9 +17,10 @@
 > **Residual gaps (lighter):** the individual `commands/*` handler *bodies* beyond the prefetch-before-lock
 > invariant + `mail`/`downloads` (thin translators — the trust logic lives in `core/`, already reviewed);
 > the per-route query-invalidation in the biggest screens was covered at the *component* layer but the
-> route files themselves weren't fully read (the routes agent returned injection-degenerate output and was
-> discarded — see Coverage log). Two reviewer agents returned 0-tool-use prompt-injection-style output;
-> both were **discarded** and I covered those areas myself. No fixes were applied in pass 2 — every
+> route files themselves weren't fully read. Two pass-2 reviewer agents — **CLI-server dispatch** and
+> **frontend routes** — returned 0-tool-use prompt-injection-style output; both were **discarded** and I
+> covered both areas directly myself, the residual gap being the per-screen query-invalidation the
+> routes agent never finished (see Coverage log). No fixes were applied in pass 2 — every
 > finding is in (B)/(D) for the batched priority-fix pass, per your instruction (that pass has since
 > run to completion — see the post-review state below).
 
@@ -1280,6 +1281,6 @@ file, internal hosts are correctly `.rex` and must stay so, and the only other d
 | CLI crate (`rex`) | `cli/src/main.rs` | ✓ verified by me (robust; matches contract — no new findings) |
 | build / packaging + URL check | `tauri.conf.json` `build.rs` `build-cli.sh` `Cargo.toml` `capabilities` | ✓ reviewed (agent) + tauri.conf verified by me (B31 CSP, B32 signing, B33 url); URL sweep done |
 
-*(Agent discards — the 0-tool-use prompt-injection-style reviewer agents and the injection-degenerate
-routes agent — are detailed in the coverage-status header at the top; the ◐ rows above are the
-residual gaps they left.)*
+*(Agent discards: two pass-2 reviewer agents — CLI-server dispatch and frontend routes — returned
+0-tool-use prompt-injection-style output and were discarded; both areas were then covered directly
+by me. The ◐ rows above are the residual gaps they left.)*
