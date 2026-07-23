@@ -459,6 +459,33 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   validations refused; WebKit link scenario ALL PASS (+4 prior re-run
   green). **Awaiting human verify — test-doc §12** (the delete test through
   real WordPress, bulk path, active linked theme, serving on all three).
+- [x] **Ref picker — searchable branches + tags + PR refs, honest detached
+  HEAD** (23 Jul, 4 commits: 8477fca → 50ae273 → f2d0f62 → daa9d76). UI: the
+  ~100-branch `<select>` replaced by RefPicker (cmdk combobox in a Menu-style
+  portal — filter input, arrow/Enter/Esc, groups local/Remote/Tags/Pull
+  Requests; picking only SETS the target, Checkout still fires the op; cmdk
+  onSelect arg is normalized so handlers close over the case-sensitive name).
+  Detached honesty: `?? 0` ahead/behind false-zero → "?", Pull/Push disabled
+  when detached with reason, "no upstream" chip suppressed, "detached @
+  <tag|sha>" via read_detached_at (describe --tags --exact-match, NOT --all
+  — would name a branch while detached), pull's "not currently on a branch"
+  mapped honestly. Tags: repo_branches += for-each-ref -creatordate; fetch →
+  --prune --tags --force (moved rolling tag otherwise fails EVERY fetch,
+  git ≥2.20; never --prune-tags); checkout target refs/tags/<name> (exact,
+  no DWIM, detached). PRs: refs-only, NO host API/token — parse/list_pull_refs
+  (both refs/pull/*/head + refs/merge-requests/*/head in ONE ls-remote, 30s
+  probe cap, numeric sort); checkout = one-shot argv-refspec fetch (no config
+  write, plain fetch drags zero PR refs) + checkout --detach FETCH_HEAD
+  (hardcoded, never crosses IPC). CLI: branches prints tags:, new `rex repo
+  prs`, checkout <ref>; roadmap rows. ✓ 377 lib tests (+4: fetch_args,
+  pull-ref parser/routing, detached-pull mapping), tsc, examples + cli build;
+  real-git fixture (tag sort incl. lightweight, refs/tags checkout →
+  (detached) + describe names it, moved-tag reject/--force, PR-ref fetch →
+  FETCH_HEAD detached at PR sha); WebKit `?panel=repo` (+`&detached=1`,
+  `&prs=none`): filter/keyboard matrix, lazy PR load, honest notes ALL PASS.
+  **Awaiting human verify** — packaged app on a real many-branch repo: tag +
+  PR checkout land in the detached view, `rex repo prs`, Fetch on a repo
+  with a moved rolling tag.
 
 ## QA round — add-from-Git (18 Jul 2026)
 
