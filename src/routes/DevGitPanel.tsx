@@ -122,6 +122,7 @@ const OP_JOB = {
 const ASSET_STATUS = {
   branch: "feat/x",
   detached: false,
+  detachedAt: null,
   unborn: false,
   upstream: "origin/feat/x",
   ahead: 2,
@@ -134,6 +135,20 @@ const ASSET_STATUS = {
   linkTarget: null,
 };
 
+/** `?detached=1`: honest detached-HEAD rendering — "detached @ tag" chip,
+ *  Pull/Push disabled with a reason, no false ↑0 ↓0, no "no upstream" noise. */
+const DETACHED_STATUS = {
+  ...ASSET_STATUS,
+  branch: null,
+  detached: true,
+  detachedAt: "v1.2.0",
+  upstream: null,
+  ahead: null,
+  behind: null,
+  lossWarning:
+    "This checkout can't be verified as pushed (detached HEAD — commits made here may not be on any branch).",
+};
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
@@ -141,13 +156,14 @@ export function DevGitPanel() {
   const showRepoPanel = params.get("panel") === "repo";
   const showLinkPanel = params.get("panel") === "link";
   const watchMode = params.get("watch"); // "1" running | "exited"
+  const detached = params.get("detached") === "1";
   useEffect(() => {
     mockIPC(async (cmd) => {
       switch (cmd) {
         case "repo_site_jobs":
           return rehydrate ? [RUNNING_JOB] : [];
         case "repo_asset_status":
-          return ASSET_STATUS;
+          return detached ? DETACHED_STATUS : ASSET_STATUS;
         case "repo_scripts":
           return {
             manager: "pnpm",
@@ -177,7 +193,8 @@ export function DevGitPanel() {
           // Many branches on purpose — the RefPicker search must stay usable
           // at the ~100-branch scale the plain <select> drowned in.
           return {
-            current: "feat/x",
+            // Detached HEAD ⇒ no current branch (matches parse_status_v2).
+            current: detached ? null : "feat/x",
             local: ["feat/x", "main"],
             remote: [
               "origin/main",

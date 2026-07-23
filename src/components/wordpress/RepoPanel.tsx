@@ -244,9 +244,10 @@ export function RepoPanel({
     ? s.unborn
       ? "no commits yet"
       : s.detached
-        ? "detached HEAD"
+        ? `detached @ ${s.detachedAt ?? "?"}`
         : (s.branch ?? "?")
     : null;
+  const detachedReason = "Detached HEAD (tag checkout) — check out a branch first";
   const clean = s ? s.changed === 0 && s.untracked === 0 : false;
   const opRunning = opJob?.steps.some((st) => st.status === "running") ?? false;
   const opsDisabled = opRunning || runOp.isPending;
@@ -295,10 +296,11 @@ export function RepoPanel({
             </Chip>
             {s.upstream ? (
               <Chip>
-                ↑{s.ahead ?? 0} ↓{s.behind ?? 0} vs {s.upstream}
+                {/* null = UNKNOWN (upstream gone) — never render it as 0. */}
+                ↑{s.ahead ?? "?"} ↓{s.behind ?? "?"} vs {s.upstream}
               </Chip>
             ) : (
-              !s.unborn && <Chip tone="warn">no upstream</Chip>
+              !s.unborn && !s.detached && <Chip tone="warn">no upstream</Chip>
             )}
             <Chip>{asset.source}</Chip>
             <button
@@ -336,17 +338,21 @@ export function RepoPanel({
             </button>
             <button
               className={BTN}
-              disabled={opsDisabled}
+              disabled={opsDisabled || s.detached}
               onClick={() => runOp.mutate({ op: "pull" })}
-              title="git pull --ff-only — never merges for you"
+              title={s.detached ? detachedReason : "git pull --ff-only — never merges for you"}
             >
               Pull
             </button>
             <button
               className={BTN}
-              disabled={opsDisabled}
+              disabled={opsDisabled || s.detached}
               onClick={() => runOp.mutate({ op: "push" })}
-              title="git push (sets upstream automatically when missing; never force)"
+              title={
+                s.detached
+                  ? detachedReason
+                  : "git push (sets upstream automatically when missing; never force)"
+              }
             >
               Push
             </button>

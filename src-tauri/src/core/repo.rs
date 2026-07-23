@@ -965,6 +965,36 @@ pub fn read_remote_url(
     (!url.is_empty()).then(|| url.to_string())
 }
 
+/// Human label for a detached HEAD: the exact tag name when HEAD sits on one,
+/// else the short commit id (local read, no network). NOT `describe --all` —
+/// that would print `heads/main` when detached at a branch tip, which reads
+/// as if the branch were checked out. Call only when status says detached.
+pub fn read_detached_at(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+) -> Option<String> {
+    let env = with_git_env(env);
+    let dir_s = dir.to_string_lossy().into_owned();
+    for args in [
+        &["-C", dir_s.as_str(), "describe", "--tags", "--exact-match", "HEAD"][..],
+        &["-C", dir_s.as_str(), "rev-parse", "--short", "HEAD"][..],
+    ] {
+        if let Ok(out) =
+            run_captured_with_cap(supervisor, git, args, dir, &env, Duration::from_secs(10))
+        {
+            if out.ok {
+                let v = out.stdout.trim();
+                if !v.is_empty() {
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------
 // Git ops (fetch / pull --ff-only / checkout / push) — phase B
 // ---------------------------------------------------------------------------
@@ -1102,6 +1132,13 @@ pub fn map_git_op_error(op: &str, tail: &[String]) -> Error {
     if joined.contains("did not match any file") || joined.contains("pathspec") {
         return Error::Other(
             "That branch/tag isn't known locally — hit Fetch first, then retry."
+                .into(),
+        );
+    }
+    if joined.contains("not currently on a branch") {
+        return Error::Other(
+            "You're on a detached HEAD (a tag checkout) — there is no branch \
+             for pull to update. Check out a branch first, then retry."
                 .into(),
         );
     }
@@ -2189,6 +2226,11 @@ mod tests {
                 "Commit or stash",
             ),
             ("checkout", "error: pathspec 'nope' did not match any file(s)", "Fetch first"),
+            (
+                "pull",
+                "fatal: You are not currently on a branch.",
+                "detached HEAD",
+            ),
             (
                 "push",
                 "! [rejected] main -> main (non-fast-forward)",

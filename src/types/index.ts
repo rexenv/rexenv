@@ -599,6 +599,9 @@ export interface GitAsset {
 export interface RepoAssetStatus {
   branch: string | null;
   detached: boolean;
+  /** Where a detached HEAD sits (exact tag name, else short commit id).
+   *  Null unless detached. */
+  detachedAt: string | null;
   unborn: boolean;
   upstream: string | null;
   ahead: number | null;

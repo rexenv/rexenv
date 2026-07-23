@@ -1185,6 +1185,9 @@ pub async fn repo_watch_log(watches: State<'_, RepoWatches>, id: String) -> Resu
 pub struct AssetStatusResult {
     #[serde(flatten)]
     pub status: repo::GitStatus,
+    /// Where a detached HEAD sits (exact tag name, else short commit id).
+    /// None unless detached.
+    pub detached_at: Option<String>,
     /// `origin` remote URL, when set.
     pub remote: Option<String>,
     /// What deleting this checkout destroys — the confirm shows it verbatim.
@@ -1218,6 +1221,10 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
         let status = repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dir)?;
+        let detached_at = status
+            .detached
+            .then(|| repo::read_detached_at(state.platform.supervisor(), &git.path, &env, &dir))
+            .flatten();
         let remote = repo::read_remote_url(state.platform.supervisor(), &git.path, &env, &dir);
         let loss_warning = repo::loss_warning(&status);
         let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
@@ -1229,7 +1236,7 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
             .filter(|d| d.join(&log_key).is_file())
             .map(|_| log_key);
         let link_target = std::fs::read_link(&dir).ok().map(|t| t.display().to_string());
-        Ok(AssetStatusResult { status, remote, loss_warning, log_key, link_target })
+        Ok(AssetStatusResult { status, detached_at, remote, loss_warning, log_key, link_target })
     })
     .await
     .map_err(|e| Error::Other(format!("status task failed: {e}")))?
