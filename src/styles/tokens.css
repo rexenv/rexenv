@@ -28,11 +28,9 @@
   --rex-border-strong-hover: #3b404c; /* secondary-button hover border */
   --rex-well-border: #1e222a; /* hairline around deep wells / segmented tracks */
   --rex-panel-border: #23262f; /* services summary-panel + meter chrome */
-  --rex-crown-border: #2c303b; /* crown mark border */
-  --rex-crown-chip-from: #20232c; /* crown logo-chip gradient (sidebar / About) */
+  --rex-crown-border: #2c303b; /* brand-mark chip border */
+  --rex-crown-chip-from: #20232c; /* brand logo-chip gradient (sidebar / About) */
   --rex-crown-chip-to: #13151b;
-  --rex-crown-gem: #b9a6ff; /* crown side gems */
-  --rex-crown-gem-bright: #d7ccff; /* crown center gem (onboarding hero) */
 
   /* ── Interaction fills (ghost hover/active — flip polarity per theme) ── */
   --rex-hover: rgba(255, 255, 255, 0.05);
@@ -207,11 +205,9 @@
   --rex-border-subtle: #e3e5ea;
   --rex-border-strong: #c4c9d2;
   --rex-border-strong-hover: #aeb5c2; /* secondary-button hover border */
-  --rex-crown-border: #d6dae3; /* crown mark border */
-  --rex-crown-chip-from: #ffffff; /* crown logo-chip gradient */
+  --rex-crown-border: #d6dae3; /* brand-mark chip border */
+  --rex-crown-chip-from: #ffffff; /* brand logo-chip gradient */
   --rex-crown-chip-to: #eceef3;
-  --rex-crown-gem: #7c5cff; /* gems need saturation on a light chip */
-  --rex-crown-gem-bright: #6b4ae8;
 
   /* ── Interaction fills (dark ink over light surfaces) ── */
   --rex-hover: rgba(15, 18, 28, 0.05);
