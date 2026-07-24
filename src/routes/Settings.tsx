@@ -7,6 +7,7 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { RexLogo } from "@/components/common/RexLogo";
 import {
   applyPhpSettings,
   autostartStatus,
@@ -1048,24 +1049,14 @@ function UninstallSetting() {
   );
 }
 
-/** The violet crown medallion (used by About). */
+/** The violet brand medallion (used by About). */
 function CrownBadge({ size }: { size: number }) {
   return (
     <div
       className="flex flex-none items-center justify-center rounded-xl border border-[var(--rex-crown-border)] bg-gradient-to-br from-[var(--rex-crown-chip-from)] to-[var(--rex-crown-chip-to)] shadow-glow-crown"
       style={{ width: size, height: size }}
     >
-      <svg width={size * 0.5} height={size * 0.5} viewBox="0 0 24 24" className="block">
-        <path
-          d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
-          style={{ fill: "var(--rex-brand)", stroke: "var(--rex-brand)" }}
-          strokeWidth="1.1"
-          strokeLinejoin="round"
-        />
-        <circle cx="3" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
-        <circle cx="12" cy="5" r="1.6" style={{ fill: "var(--rex-brand-tint)" }} />
-        <circle cx="21" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
-      </svg>
+      <RexLogo className="block w-auto" style={{ height: size * 0.5 }} />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, syste
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { useDownloads } from "@/lib/useDownloads";
 import { Track, pctOf } from "@/components/shell/DownloadPanel";
+import { RexLogo } from "@/components/common/RexLogo";
 import type { DownloadItem, DownloadPhase, PlannedDownload } from "@/types";
 
 /**
@@ -116,17 +117,7 @@ function CrownHero() {
         className="pointer-events-none absolute -inset-[14px] rounded-full blur-[8px]"
         style={{ background: "radial-gradient(circle,rgba(124,92,255,.4),transparent 68%)" }}
       />
-      <svg width="48" height="48" viewBox="0 0 24 24" className="relative block">
-        <path
-          d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
-          style={{ fill: "var(--rex-brand)", stroke: "var(--rex-brand-hover)" }}
-          strokeWidth="0.8"
-          strokeLinejoin="round"
-        />
-        <circle cx="3" cy="8.4" r="1.5" style={{ fill: "var(--rex-crown-gem)" }} />
-        <circle cx="12" cy="5" r="1.8" style={{ fill: "var(--rex-crown-gem-bright)" }} />
-        <circle cx="21" cy="8.4" r="1.5" style={{ fill: "var(--rex-crown-gem)" }} />
-      </svg>
+      <RexLogo className="relative block h-[48px] w-auto" />
     </div>
   );
 }

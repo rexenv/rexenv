@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
+import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
@@ -532,17 +533,7 @@ export function Sites() {
         ) : sites.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
             <div className="flex h-[60px] w-[60px] items-center justify-center rounded-2xl border border-rex-crown-border bg-gradient-to-br from-rex-crown-chip-from to-rex-crown-chip-to shadow-glow-crown">
-              <svg width="28" height="28" viewBox="0 0 24 24" className="block">
-                <path
-                  d="M3 8.4 L8 12.6 L12 5 L16 12.6 L21 8.4 L19.1 18.7 L4.9 18.7 Z"
-                  style={{ fill: "var(--rex-brand)", stroke: "var(--rex-brand)" }}
-                  strokeWidth="1.1"
-                  strokeLinejoin="round"
-                />
-                <circle cx="3" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
-                <circle cx="12" cy="5" r="1.6" style={{ fill: "var(--rex-brand-tint)" }} />
-                <circle cx="21" cy="8.4" r="1.4" style={{ fill: "var(--rex-crown-gem)" }} />
-              </svg>
+              <RexLogo className="block h-[28px] w-auto" />
             </div>
             <div>
               <div className="text-[1.1875rem] font-semibold text-rex-text">No sites yet</div>
