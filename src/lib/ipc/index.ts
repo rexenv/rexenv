@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -158,6 +158,58 @@ export async function createSite(
 ): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("create_site", { site: input, wp, blueprintId });
+}
+
+/** Start a STREAMED site-provision job (the New Site card): prepare runs
+ *  inline (validation/duplicate/prompt errors reject HERE with nothing
+ *  created), then phases stream via `onSiteProvisionState`/`Output`. */
+export async function siteProvisionJob(
+  input: NewSiteInput,
+  wp?: WpInstallInput,
+  blueprintId?: string,
+): Promise<SiteProvisionState> {
+  return invoke<SiteProvisionState>("site_provision_job", { site: input, wp, blueprintId });
+}
+
+/** Re-enter provisioning for a "setup incomplete" site (provisioned=false):
+ *  prepare's artifacts are re-ENSURED, then the idempotent install steps
+ *  re-run. Refused for fully-provisioned sites. */
+export async function siteProvisionRetry(siteId: string): Promise<SiteProvisionState> {
+  return invoke<SiteProvisionState>("site_provision_retry", { siteId });
+}
+
+/** Cancel a running provision — only ever kills wp-cli children the job
+ *  itself spawned; a binary download in flight is NEVER aborted (other
+ *  consumers may wait on it; it completes into the cache for the retry). */
+export async function siteProvisionCancel(id: string): Promise<void> {
+  return invoke<void>("site_provision_cancel", { id });
+}
+
+/** The most recent provision job (optionally for one domain) — card
+ *  re-adoption after the dialog closes or the route remounts. */
+export async function siteProvisionActive(
+  domain?: string,
+): Promise<SiteProvisionState | null> {
+  if (!isTauri()) return null;
+  return invoke<SiteProvisionState | null>("site_provision_active", { domain: domain ?? null });
+}
+
+export async function onSiteProvisionState(
+  id: string,
+  cb: (state: SiteProvisionState) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<SiteProvisionState>(`site-provision://state/${id}`, (e) => cb(e.payload));
+}
+
+export async function onSiteProvisionOutput(
+  id: string,
+  cb: (line: string) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<string>(`site-provision://output/${id}`, (e) => cb(e.payload));
 }
 
 /** Switch a site's PHP version (DB + reload, no rebuild). Returns the updated site. */

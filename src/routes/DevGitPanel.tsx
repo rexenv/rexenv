@@ -11,6 +11,10 @@ import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
 import { RepoPanel } from "@/components/wordpress/RepoPanel";
 import { LinkFolderPanel } from "@/components/wordpress/LinkFolderPanel";
 import { PluginsPanel } from "@/components/wordpress/WordPressManager";
+import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
+import { SiteRow } from "@/routes/Sites";
+import { useDownloads } from "@/lib/useDownloads";
+import { siteProvisionRetry } from "@/lib/ipc";
 
 const PROBE = {
   url: "https://github.com/acme/my-plugin",
@@ -251,6 +255,142 @@ const WPI_LINES = [
   "Downloading installation package from https://downloads.wordpress.org/plugin/bbpress.2.6.11.zip...",
 ];
 
+/** Streamed site-provision card states (`?panel=provision&prov=…`). Phase
+ *  values mirror the real backend staircase (weights 3/27/5/35/5/10/10). */
+const PROV_PHASE = (key: string, label: string, status: string) => ({ key, label, status });
+const PROV_PHASES = (cur: string, curStatus: string) => {
+  const order: Array<[string, string]> = [
+    ["prepare", "preparing site (domain, certificate)"],
+    ["fetch", "downloading binaries"],
+    ["db", "starting database"],
+    ["core_download", "downloading WordPress core"],
+    ["configure", "writing wp-config + creating database"],
+    ["core_install", "installing WordPress"],
+    ["serve", "starting to serve"],
+  ];
+  const at = order.findIndex(([k]) => k === cur);
+  return order.map(([k, l], i) =>
+    PROV_PHASE(k, l, i < at ? "ok" : i === at ? curStatus : "pending"),
+  );
+};
+const PROV_BASE = {
+  id: "prov-dev",
+  domain: "shop.rex",
+  siteId: "sdev",
+  summary: null as string | null,
+  error: null as string | null,
+  logKey: "site-provision-shop.rex-provdev1.log",
+  downloadIds: [] as string[],
+};
+const PROV_RUNNING = {
+  ...PROV_BASE,
+  status: "running",
+  phaseCursor: 3,
+  pct: 36,
+  phases: PROV_PHASES("core_download", "running"),
+};
+const PROV_FETCH = {
+  ...PROV_BASE,
+  status: "running",
+  phaseCursor: 1,
+  pct: 12, // 3 (prepare) + 27 × byte-fraction — real bytes, folded
+  phases: PROV_PHASES("fetch", "running"),
+  downloadIds: ["php-fpm-8.3.31", "mysql-8.4.6"],
+};
+const PROV_OK = {
+  ...PROV_BASE,
+  status: "ok",
+  phaseCursor: 6,
+  pct: 100,
+  phases: PROV_PHASES("serve", "skipped"),
+  summary: "created — stack is stopped, shop.rex serves on next stack start",
+};
+const PROV_FAILED = {
+  ...PROV_BASE,
+  status: "failed",
+  phaseCursor: 3,
+  pct: 36, // FROZEN where the work stopped
+  phases: PROV_PHASES("core_download", "failed"),
+  error: "wp core download failed: Error: The requested locale (xx_XX) was not found.",
+};
+const PROV_CANCELLED = {
+  ...PROV_BASE,
+  status: "cancelled",
+  phaseCursor: 3,
+  pct: 36, // FROZEN — never snapped to 100, never reset
+  phases: PROV_PHASES("core_download", "cancelled"),
+};
+const PROV_LINES = [
+  "── preparing site (shop.rex) — done",
+  "── downloading binaries",
+  "binaries already cached",
+  "── starting database",
+  "── downloading WordPress core",
+  "Downloading WordPress 7.0.2 (en_US)...",
+];
+/** Fetch-phase Hub items: one mid-stream (real bytes), one queued with no
+ *  Content-Length (indeterminate). */
+const PROV_DL_ITEMS = [
+  { id: "php-fpm-8.3.31", name: "php-fpm", version: "8.3.31", label: "PHP 8.3 (FPM)", phase: "downloading", downloadedBytes: 13002342, totalBytes: 35651584, bytesPerSec: 2202009, error: null },
+  { id: "mysql-8.4.6", name: "mysql", version: "8.4.6", label: "MySQL 8.4", phase: "pending", downloadedBytes: 0, totalBytes: null, bytesPerSec: null, error: null },
+];
+/** A half-provisioned site (v16 provisioned=false) — the badge row. */
+const INCOMPLETE_SITE = {
+  id: "sdev",
+  name: "Shop",
+  domain: "shop.rex",
+  type: "wordpress" as const,
+  status: "stopped" as const,
+  phpVersion: "8.3",
+  webServer: "nginx" as const,
+  ssl: true,
+  path: "/tmp/shop.rex",
+  createdAt: "2026-07-24 00:00:00",
+  multisite: "none" as const,
+  dbName: "wp_shop_rex",
+  dbEngine: "mysql" as const,
+  xdebug: false,
+  provisioned: false,
+};
+
+/** `?panel=provision` host: adopts the mocked active job through the REAL
+ *  `useSiteProvision` hook (active → tailLog seed — the dialog-close/remount
+ *  re-adoption path), and renders the REAL SiteRow badge for a
+ *  `provisioned=false` site whose Retry starts a new job on the card. */
+function ProvisionHost() {
+  const downloads = useDownloads();
+  const prov = useSiteProvision();
+  useEffect(() => {
+    void prov.adopt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="flex flex-col gap-3">
+      {prov.job && (
+        <SiteProvisionCard
+          job={prov.job}
+          lines={prov.lines}
+          downloads={downloads}
+          onCancel={() => {}}
+        />
+      )}
+      <div className="rounded-lg border border-rex-border bg-rex-surface-1 px-2 py-1">
+        <SiteRow
+          site={INCOMPLETE_SITE}
+          status="stopped"
+          onOpen={() => {}}
+          onDelete={() => {}}
+          onOpenDatabase={() => {}}
+          onOpenWordpress={() => {}}
+          onRename={() => {}}
+          onDuplicate={() => {}}
+          onRetry={() => void siteProvisionRetry(INCOMPLETE_SITE.id).then(prov.start)}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
@@ -319,12 +459,42 @@ export function DevGitPanel() {
           return OP_JOB;
         case "tail_log": {
           const key = String((args as { key?: string } | undefined)?.key ?? "");
-          return key.includes("wp-install-")
-            ? WPI_LINES
-            : key.includes("-check")
-              ? CHECK_LINES
-              : TAIL_LINES;
+          return key.includes("site-provision-")
+            ? PROV_LINES
+            : key.includes("wp-install-")
+              ? WPI_LINES
+              : key.includes("-check")
+                ? CHECK_LINES
+                : TAIL_LINES;
         }
+        // `?panel=provision` (streamed site-create card + badge row) mocks:
+        case "site_provision_active": {
+          const p = params.get("prov");
+          return p === "running"
+            ? PROV_RUNNING
+            : p === "fetch"
+              ? PROV_FETCH
+              : p === "ok"
+                ? PROV_OK
+                : p === "failed"
+                  ? PROV_FAILED
+                  : p === "cancelled"
+                    ? PROV_CANCELLED
+                    : null;
+        }
+        case "site_provision_retry":
+          return { ...PROV_RUNNING, id: "prov-retry" };
+        // SiteRow (badge check) pulls the editor prefs:
+        case "list_editors":
+          return [];
+        case "get_setting":
+          return null;
+        case "site_provision_cancel":
+          return null;
+        case "downloads_state":
+          return params.get("prov") === "fetch"
+            ? { batch: { action: "Create site", done: 0, total: 2 }, items: PROV_DL_ITEMS }
+            : { batch: null, items: [] };
         // `?panel=wp-add` install-card mocks (`&install=running|partial`):
         case "wp_install_active":
           return params.get("install") === "running"
@@ -402,7 +572,9 @@ export function DevGitPanel() {
         <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
           DEV harness — GitAddPanel (mocked IPC)
         </h1>
-        {params.get("panel") === "wp-add" ? (
+        {params.get("panel") === "provision" ? (
+          <ProvisionHost />
+        ) : params.get("panel") === "wp-add" ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
             <PluginsPanel siteId="dev" />
           </div>

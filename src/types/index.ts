@@ -24,6 +24,11 @@ export interface Site {
   dbName: string; // database name — stored at creation, stable across domain changes
   dbEngine: SiteDbEngine; // SQL engine hosting that database (chosen at create)
   xdebug: boolean; // per-site Xdebug toggle (§8.2) — routes .php to the minor's debug pool
+  /** Provisioning completeness (v16): false = the streamed create job died or
+   *  was cancelled mid-provision — the list shows the honest "setup
+   *  incomplete" badge with Retry/Delete. Flipped to true only when a
+   *  provision job settles ok. */
+  provisioned: boolean;
 }
 
 /** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */
@@ -624,6 +629,36 @@ export interface WpInstallState {
   summary: string | null;
   error: string | null;
   logKey: string;
+}
+
+/** One phase of a streamed site-provision job. Phases are the BACKEND'S own
+ *  step boundaries (deterministic Rust code) — never parsed from subprocess
+ *  output; wp-cli's verbatim lines are display-only sub-detail. */
+export interface ProvisionPhase {
+  key: string; // "prepare" | "fetch" | "db" | "core_download" | "configure" | "core_install" | "blueprint" | "serve"
+  label: string;
+  status: "pending" | "running" | "ok" | "skipped" | "failed" | "cancelled";
+}
+
+/** One streamed site-provision job — the `site-provision://state/<id>`
+ *  payload. Honesty contract (mirrors the install card): `pct` is
+ *  phase-weighted OBSERVED progress (real phase completions + the download
+ *  Hub's real byte fraction during fetch — never a time estimate), monotonic,
+ *  ≤99 until the job settles ok, FROZEN in place on failure/cancel/timeout.
+ *  `downloadIds` are the Hub items the fetch phase waits on — filter the
+ *  app-wide downloads snapshot to these for the byte sub-row. */
+export interface SiteProvisionState {
+  id: string;
+  domain: string;
+  siteId: string | null;
+  phases: ProvisionPhase[];
+  phaseCursor: number;
+  pct: number;
+  status: "running" | "ok" | "failed" | "cancelled" | "timed_out";
+  summary: string | null;
+  error: string | null;
+  logKey: string;
+  downloadIds: string[];
 }
 
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */

@@ -27,6 +27,7 @@ export const mockSites: Site[] = [
     dbName: "wp_acme_test",
   dbEngine: "mysql",
     xdebug: false,
+    provisioned: true,
   },
   {
     id: "2",
@@ -43,6 +44,7 @@ export const mockSites: Site[] = [
     dbName: "wp_portfolio_test",
   dbEngine: "mysql",
     xdebug: false,
+    provisioned: true,
   },
   {
     id: "3",
@@ -59,6 +61,7 @@ export const mockSites: Site[] = [
     dbName: "wp_network_test",
   dbEngine: "mysql",
     xdebug: false,
+    provisioned: true,
   },
 ];
 

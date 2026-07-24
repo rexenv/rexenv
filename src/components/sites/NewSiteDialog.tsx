@@ -5,7 +5,9 @@ import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOf
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { createSite, defaultTld, listBlueprints, listPhpVersions, listSites, wpMultisiteConvert } from "@/lib/ipc";
+import { defaultTld, listBlueprints, listPhpVersions, listSites, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
+import { useDownloads } from "@/lib/useDownloads";
 import type { MultisiteMode, SiteDbEngine, SiteType, WebServer } from "@/types";
 
 function generatePassword(): string {
@@ -130,32 +132,46 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const effectiveDomain = domainBase ? `${domainBase}.${tld}` : "";
   const isWordpress = siteType === "wordpress";
 
+  // Streamed provision job: submit STARTS it (prepare runs inline — a bad or
+  // duplicate domain rejects here with nothing created), then the card below
+  // streams phases. Multisite conversion runs after the job settles ok
+  // (§10.1), then the dialog closes. On failure/cancel the dialog stays open
+  // with the frozen card; the Sites list carries the "setup incomplete"
+  // badge from here on. Closing the dialog mid-run abandons NOTHING — the
+  // job continues and the Sites route re-adopts its card.
+  const downloads = useDownloads();
+  const prov = useSiteProvision((settled) => {
+    if (settled.status !== "ok") return;
+    void (async () => {
+      if (settled.siteId && isWordpress && multisite !== "none") {
+        await wpMultisiteConvert(settled.siteId, multisite).catch(toastBackendError);
+      }
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      onClose();
+    })();
+  });
   const create = useMutation({
-    mutationFn: async () => {
-      const site = await createSite(
+    mutationFn: () =>
+      siteProvisionJob(
         { name: name.trim(), domain: effectiveDomain.trim(), type: siteType, phpVersion, webServer, path: "", dbEngine },
         isWordpress
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
           : undefined,
         blueprintId || undefined,
-      );
-      // Convert to multisite after the one-click install (§10.1).
-      if (site && isWordpress && multisite !== "none") await wpMultisiteConvert(site.id, multisite);
-      return site;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sites"] });
-      onClose();
-    },
+      ),
+    onSuccess: (snap) => prov.start(snap),
     onError: (e) => toastBackendError(e),
   });
+  const pending = create.isPending || prov.running;
 
-  // The backend persists the site row BEFORE the WordPress install finishes, and
-  // the sidebar's 2s poll refreshes ["sites"] — so while the install runs, the
-  // domain being created would flag itself as "already in use". Freeze the check
-  // during the mutation; it resumes if creation fails.
+  // The backend persists the site row at job START, and the sidebar's 2s poll
+  // refreshes ["sites"] — so while the job runs, the domain being created
+  // would flag itself as "already in use". Freeze the check while the job is
+  // live; after a failed job the row legitimately exists (setup incomplete —
+  // Retry lives on the Sites list, not on a resubmit of this form).
   const domainTaken =
-    !create.isPending &&
+    !pending &&
+    prov.job == null &&
     effectiveDomain !== "" &&
     sites.some((s) => s.domain.toLowerCase() === effectiveDomain.toLowerCase());
   const domainOk = effectiveDomain !== "" && !domainTaken;
@@ -164,7 +180,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
     name.trim() !== "" &&
     domainOk &&
     (!isWordpress || (adminUser.trim() !== "" && adminPassword !== "")) &&
-    !create.isPending;
+    !pending &&
+    prov.job == null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -245,10 +262,24 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           )}
         </div>
 
+        {/* Streamed provision card — replaces the old opaque disabled-button
+            wait. Stays after a failure/cancel (frozen bar + failing phase);
+            closing the dialog leaves the job running (Sites re-adopts it). */}
+        {prov.job && (
+          <div className="border-t border-rex-border-subtle px-5 py-3">
+            <SiteProvisionCard
+              job={prov.job}
+              lines={prov.lines}
+              downloads={downloads}
+              onCancel={() => void siteProvisionCancel(prov.job!.id).catch(toastBackendError)}
+            />
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 border-t border-rex-border-subtle px-5 py-[14px]">
           <div>
-            {step === 2 && (
+            {step === 2 && !prov.job && (
               <button
                 onClick={() => setStep(1)}
                 className="flex h-9 items-center gap-1.5 rounded-[9px] px-3 text-[0.8125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-hover"
@@ -260,7 +291,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           </div>
           <div className="flex items-center gap-2.5">
             <Button variant="secondary" onClick={onClose}>
-              Cancel
+              {prov.running ? "Close (keeps running)" : "Cancel"}
             </Button>
             {step === 1 ? (
               <Button variant="primary" onClick={() => setStep(2)}>
@@ -268,15 +299,15 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
                 <ChevronRight className="h-[15px] w-[15px]" strokeWidth={2} />
               </Button>
             ) : (
-              <Button variant="primary" disabled={!canSubmit} onClick={() => create.mutate()}>
-                {create.isPending
-                  ? isWordpress
-                    ? "Installing…"
-                    : "Creating…"
-                  : isWordpress
-                    ? "Install WordPress"
-                    : "Create site"}
-              </Button>
+              !prov.job && (
+                <Button variant="primary" disabled={!canSubmit} onClick={() => create.mutate()}>
+                  {create.isPending
+                    ? "Starting…"
+                    : isWordpress
+                      ? "Install WordPress"
+                      : "Create site"}
+                </Button>
+              )
             )}
           </div>
         </div>

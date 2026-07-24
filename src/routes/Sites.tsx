@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link } from "lucide-react";
+import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -13,7 +13,9 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources } from "@/lib/ipc";
+import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry } from "@/lib/ipc";
+import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
+import { useDownloads } from "@/lib/useDownloads";
 import type { Site, SiteResources } from "@/types";
 
 /** Compact bytes for the per-site DB size. */
@@ -158,7 +160,8 @@ function usePreferredEditor() {
   return editors.find((e) => e.id === preferred) ?? editors[0] ?? null;
 }
 
-function SiteRow({
+/** Exported for the dev harness (`?panel=provision` badge check). */
+export function SiteRow({
   site,
   status,
   resources,
@@ -168,6 +171,7 @@ function SiteRow({
   onOpenWordpress,
   onRename,
   onDuplicate,
+  onRetry,
 }: {
   site: Site;
   status: Site["status"];
@@ -178,6 +182,7 @@ function SiteRow({
   onOpenWordpress: () => void;
   onRename: () => void;
   onDuplicate: () => void;
+  onRetry?: () => void;
 }) {
   const t = siteTypeMeta(site.type);
   const [copied, setCopied] = useState(false);
@@ -269,7 +274,32 @@ function SiteRow({
       </span>
       <Badge>{site.phpVersion}</Badge>
       <Badge className="w-[84px] text-center">{site.webServer}</Badge>
-      <StatusPill status={status} className="min-w-[92px]" />
+      {site.provisioned ? (
+        <StatusPill status={status} className="min-w-[92px]" />
+      ) : (
+        /* Honest half-site marker (v16): provisioning died or was cancelled —
+           the site is NOT healthy-stopped. Retry re-runs the remaining
+           idempotent steps; Delete (menu) removes it. */
+        <span
+          className="flex min-w-[92px] items-center justify-center gap-1 rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
+          title="Provisioning did not finish — Retry re-runs the remaining steps; Delete removes the site."
+        >
+          setup incomplete
+        </span>
+      )}
+      {!site.provisioned && (
+        <div className="flex-none" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Retry setup"
+            title="Retry setup — re-runs the remaining provisioning steps"
+            onClick={onRetry}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
       <div className="flex-none" onClick={(e) => e.stopPropagation()}>
         <Menu
         trigger={
@@ -376,6 +406,24 @@ export function Sites() {
     onError: (e) => toastBackendError(e),
   });
 
+  // Streamed provision job (New Site / Retry) — re-adopted here so a create
+  // started in the dialog survives closing it. The banner shows while
+  // running and stays FROZEN after a failure/cancel (the row also carries
+  // the "setup incomplete" badge); a job that settled ok needs no banner.
+  const downloads = useDownloads();
+  const prov = useSiteProvision();
+  useEffect(() => {
+    void prov.adopt().then((j) => {
+      if (j && j.status === "ok") prov.clear();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const retry = useMutation({
+    mutationFn: (site: Site) => siteProvisionRetry(site.id),
+    onSuccess: (snap) => prov.start(snap),
+    onError: (e) => toastBackendError(e),
+  });
+
   const rename = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => renameSite(id, name),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
@@ -457,6 +505,24 @@ export function Sites() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]">
+        {prov.job && (prov.running || prov.job.status !== "ok") && (
+          <div className="mb-2 mt-1">
+            <SiteProvisionCard
+              job={prov.job}
+              lines={prov.lines}
+              downloads={downloads}
+              onCancel={() => void siteProvisionCancel(prov.job!.id).catch(toastBackendError)}
+            />
+            {!prov.running && (
+              <button
+                className="mt-1 text-[0.6875rem] text-rex-text-muted underline decoration-dotted hover:text-rex-text"
+                onClick={() => prov.clear()}
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        )}
         {isLoading ? (
           <Placeholder
             icon={<Globe className="h-[22px] w-[22px]" strokeWidth={1.6} />}
@@ -513,6 +579,7 @@ export function Sites() {
                 onOpenWordpress={() => navigate(`/sites/${site.id}/wordpress`)}
                 onRename={() => setRenameTarget(site)}
                 onDuplicate={() => setDupSource(site)}
+                onRetry={() => retry.mutate(site)}
               />
             ))}
           </div>
