@@ -558,7 +558,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   at 25; WebKit 19/19; packaged CLI installs streamed end-to-end.
   ✓ Human-verified 24 Jul (packaged, real multi-slug).
 - [x] **Streamed site provisioning: honest New Site progress + v16 +
-  retry** (24 Jul, 3 commits: dc5c7e9 → 8d2720d → bf3a4bc). create_site's
+  retry** (24 Jul, 3 commits: dc5c7e9 → 8d2720d → 7dcfcfe). create_site's
   opaque await became a job (site_provision.rs, wp_install pattern):
   phases = OUR step boundaries (prepare inline → fetch → db →
   core_download → configure → core_install → [blueprint] → serve), zero
