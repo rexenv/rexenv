@@ -210,9 +210,26 @@ pub async fn create_site<R: tauri::Runtime>(
         core::sites::get(&conn, id)?
             .ok_or_else(|| Error::Other(format!("created site vanished: {id}")))
     } else {
-        Err(Error::Other(settled.error.or(settled.summary).unwrap_or_else(|| {
-            format!("site create {}", settled.status)
-        })))
+        // Failure reply names the FAILING PHASE + points at the per-job log
+        // (CLI callers can't stream the events — this line is their whole
+        // diagnostic). The site row stays with provisioned=0: the reply says
+        // so, since a CLI user has no badge in front of them.
+        let phase = settled
+            .phases
+            .get(settled.phase_cursor)
+            .map(|p| p.label.clone())
+            .unwrap_or_else(|| "unknown step".into());
+        let detail = settled.error.or(settled.summary).unwrap_or_else(|| settled.status.clone());
+        let log = state
+            .platform
+            .paths()
+            .log_dir()
+            .map(|d| d.join(&settled.log_key).display().to_string())
+            .unwrap_or_else(|_| settled.log_key.clone());
+        Err(Error::Other(format!(
+            "site create {} at \"{phase}\": {detail}\n  the site stays listed as \"setup incomplete\" — Retry it from the app, or delete it\n  full log: {log}",
+            settled.status
+        )))
     }
 }
 

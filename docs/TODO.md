@@ -541,6 +541,58 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   honest copy, `rex wp plugin install` unchanged. Known latent, flagged
   not fixed: wp_plugins_check passes the mysql BASE DIR as
   install_for_site's db_client (client binary expected).
+- [x] **Phase-based install bar** (24 Jul, a7ebcec). The install card's
+  indeterminate bar became step-wise HONEST progress: per-item milestone
+  slices (fetched/unpacked/placing/installed/+activated only when
+  requested — 4 or 5 slices, no unfillable slice), observed DISCRETE
+  progress (every tick = a line wp-cli printed) — NOT the byte estimate
+  B25 bans, distinction documented at every layer. Monotonic; forward
+  implication (later milestone ⇒ earlier ones; new header ⇒ previous
+  item complete — cached files, headerless already-installed slugs,
+  missing activation lines JUMP the bar, never stall it); 100 ONLY on
+  the batch-terminal literal — bare "Success:" rejected because chained
+  THEME activation prints "Success: Switched to…" MID-batch (verified
+  unguarded in the 2.12.0 phar); failure/cancel FREEZE in place (new
+  Track "stopped" variant). ✓ 390 lib tests (7 new); **live** pct stream
+  [0,12,25,37,50,50,62,75,87,99,100,100] exactly per table, cancel froze
+  at 25; WebKit 19/19; packaged CLI installs streamed end-to-end.
+  ✓ Human-verified 24 Jul (packaged, real multi-slug).
+- [x] **Streamed site provisioning: honest New Site progress + v16 +
+  retry** (24 Jul, 3 commits: dc5c7e9 → 8d2720d → bf3a4bc). create_site's
+  opaque await became a job (site_provision.rs, wp_install pattern):
+  phases = OUR step boundaries (prepare inline → fetch → db →
+  core_download → configure → core_install → [blueprint] → serve), zero
+  output parsing, per-job logs (keep 4/domain). ProvisionProgress: FIXED
+  coarse weights 3/27/5/35/5/10/5/10 renormalized over applicable phases
+  (weights ≠ estimates: bar moves only on real completions + REAL Hub
+  bytes folded into the fetch slice); monotonic, ≤99 until settle-ok,
+  frozen on fail/cancel. Cancel never crosses jobs: prefetch DETACHED
+  (aborting a shared Hub download would truncate-restart the next
+  resolve — verified resume_from starts 0 per resolve), pgid kill only
+  on own wp-cli children, shared services boundary-checked. v16
+  sites.provisioned DEFAULT 1 (existing rows never badge); fail/cancel ⇒
+  0 + "setup incomplete" pill + Retry (re-ENSURES docroot/index.php-if-
+  missing/cert, re-enters idempotent steps) / Delete. B25 gap closed:
+  core download/install were captured with NO cap → streamed under
+  download_timeout(1) timers. Blueprint items stream per-item (captured
+  plugin_install/theme_install retired). create_site = thin start+await
+  wrapper (same blocking contract; failure reply names failing phase +
+  log path); CLI rides it output-unchanged. adopt_dbs = DB-only adoption
+  so fixtures never touch the edge. ✓ 396 lib tests (5 ProvisionProgress
+  + v16 existing-rows); **live** `examples/site_provision_check` ALL
+  PASS (staircase [0,31,36,73,78,89,99,100] per table; deterministic
+  locale failure froze at 36 + provisioned=0 → RETRY ok@100 →
+  provisioned=1, re-retry refused; cancel frozen 36); WebKit 27/27
+  (adopt/running, fetch byte rows 12.4/34.0 MB · 2.1 MB/s + no-length
+  item, ok stack-stopped summary, failed/cancelled frozen, badge+Retry→
+  card); **packaged** CLI create verbatim-identical output both paths
+  (success ✓ line + dup-domain "rex: domain already in use" exit 1),
+  site genuinely SERVED (curl 200 — full serve phase), job log all
+  phase markers, --json shape unchanged except additive "provisioned".
+  **Awaiting human verify (packaged GUI)** — New Site card phases live,
+  close-dialog→Sites re-adopt, cancel → badge → Retry.
+
+## QA round — add-from-Git (18 Jul 2026)
 
 ## QA round — add-from-Git (18 Jul 2026)
 

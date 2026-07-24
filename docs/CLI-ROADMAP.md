@@ -52,6 +52,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site env <domain> [set K=V \| unset K]` | `list_site_env` / `set_site_env` | ✓ | shipped 16 Jul — set→list→unset live (client-side merge; backend replaces the set) |
 | `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | ✓ | shipped 16 Jul — info live (SANs, days left) |
 | `site restart <domain>` (single-site backend bounce) | — | 🔴 | no single-site restart IPC (UI doesn't have it either); needs a manager seam |
+| `site retry <domain>` (finish a "setup incomplete" half-provision) | `site_provision_retry` (domain→id client-side) | 🟢 | IPC shipped 24 Jul with the streamed provision job; `site.create` failures name the failing phase + log path and point here |
 
 ## PHP
 
