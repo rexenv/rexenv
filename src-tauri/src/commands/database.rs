@@ -66,7 +66,7 @@ pub async fn databases_status(state: State<'_, AppState>) -> Result<Vec<DbStatus
 
 /// The engine's selected version from settings (default pin when unset) —
 /// what every command that resolves engine binaries must use.
-pub(crate) fn effective_db_version(state: &State<'_, AppState>, engine: DbEngine) -> Result<String> {
+pub(crate) fn effective_db_version(state: &AppState, engine: DbEngine) -> Result<String> {
     let conn = state
         .db
         .lock()

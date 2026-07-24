@@ -69,6 +69,7 @@ async fn main() {
             db_engine: SiteDbEngine::Mysql,
             xdebug: false,
             override_port: None,
+            provisioned: true,
         },
     )
     .expect("insert site row");

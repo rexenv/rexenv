@@ -112,8 +112,19 @@ async fn main() {
     )
     .expect("install wordpress");
 
-    // Apply the WP parts (plugins/themes/WP_DEBUG), then multisite (create_site order).
-    let applied = blueprints::apply_wordpress(&php, &wp, &docroot, &got.spec).expect("apply");
+    // Apply the WP parts (plugins/themes/WP_DEBUG), then multisite (create_site
+    // order) — STREAMED, the same runner the provision job's blueprint phase uses.
+    let cancel = rexenv_lib::core::repo::CancelToken::new();
+    let env: Vec<(String, String)> = std::env::vars().collect();
+    let stream =
+        wordpress::WpStream { sup: plat.supervisor(), env: &env, cancel: &cancel };
+    let mut on_line = |l: &str| println!("  | {l}");
+    let applied = match blueprints::apply_wordpress(&php, &wp, &docroot, &got.spec, &stream, &mut on_line)
+        .expect("apply")
+    {
+        blueprints::ApplyOutcome::Done(a) => a,
+        blueprints::ApplyOutcome::Cancelled(_) => panic!("unexpected blueprint cancel"),
+    };
     println!("applied: {applied:?}");
     assert_eq!(applied.plugins_installed, 1);
     assert!(applied.wp_debug_set);

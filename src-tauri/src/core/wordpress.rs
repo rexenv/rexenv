@@ -566,27 +566,10 @@ pub(crate) fn ensure_slugs(kind: &str, slugs: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Install plugins by slug (`wp plugin install <slugs…> [--activate]`) —
-/// bulk-capable: one WP-CLI boot installs (and optionally activates) them all.
-pub fn plugin_install(
-    php_bin: &Path,
-    wp_phar: &Path,
-    docroot: &Path,
-    slugs: &[String],
-    activate: bool,
-) -> Result<String> {
-    if slugs.is_empty() {
-        return Ok(String::new());
-    }
-    ensure_slugs("plugin", slugs)?;
-    let mut args: Vec<&str> = vec!["plugin", "install"];
-    args.extend(slugs.iter().map(String::as_str));
-    if activate {
-        args.push("--activate");
-    }
-    // Scaled cap: one internally-bounded download per slug (B25).
-    wp_run_timed(php_bin, wp_phar, docroot, &args, download_timeout(slugs.len()))
-}
+// NOTE: the captured `plugin_install`/`theme_install` fns are RETIRED — every
+// wp.org install now runs streamed: manual installs through
+// `commands::wp_install`, blueprint items through `blueprints::apply_wordpress`
+// (both `run_step_streamed` + CancelToken). One execution path.
 
 /// One theme row from `wp theme list --format=json` (§6.2). `status == "active"`
 /// marks the live theme. `screenshot` is filled AFTER parsing (it's not a WP-CLI
@@ -658,28 +641,6 @@ pub fn theme_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[Str
 pub fn theme_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
     item_verb(php_bin, wp_phar, docroot, "theme", "delete", names)
 }
-/// Install themes by slug (`wp theme install <slugs…> [--activate]`) —
-/// bulk-capable like [`plugin_install`]; `--activate` applies the LAST slug.
-pub fn theme_install(
-    php_bin: &Path,
-    wp_phar: &Path,
-    docroot: &Path,
-    slugs: &[String],
-    activate: bool,
-) -> Result<String> {
-    if slugs.is_empty() {
-        return Ok(String::new());
-    }
-    ensure_slugs("theme", slugs)?;
-    let mut args: Vec<&str> = vec!["theme", "install"];
-    args.extend(slugs.iter().map(String::as_str));
-    if activate {
-        args.push("--activate");
-    }
-    // Scaled cap: one internally-bounded download per slug (B25).
-    wp_run_timed(php_bin, wp_phar, docroot, &args, download_timeout(slugs.len()))
-}
-
 /// A WordPress user for the Users sub-tab (§7.1).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2099,22 +2060,7 @@ pub fn install_for_site(
     db_client: &Path,
     opts: &InstallOptions,
 ) -> Result<()> {
-    let nonempty = |s: &str| !s.trim().is_empty();
-    let title = if nonempty(&opts.title) { opts.title.trim().to_string() } else { name.to_string() };
-    let admin_user =
-        if nonempty(&opts.admin_user) { opts.admin_user.trim().to_string() } else { "admin".into() };
-    let admin_email = if nonempty(&opts.admin_email) {
-        opts.admin_email.trim().to_string()
-    } else {
-        format!("admin@{domain}")
-    };
-    let admin_password = if nonempty(&opts.admin_password) {
-        opts.admin_password.clone()
-    } else {
-        DEFAULT_ADMIN.into() // local-dev default, consistent with reset_site
-    };
-    let url = format!("https://{domain}");
-
+    let r = resolve_install_options(domain, name, opts);
     install_wordpress(
         php_bin,
         wp_phar,
@@ -2123,14 +2069,90 @@ pub fn install_for_site(
             db_name,
             db_host,
             db_client,
-            url: &url,
-            title: &title,
-            admin_user: &admin_user,
-            admin_password: &admin_password,
-            admin_email: &admin_email,
-            locale: opts.language.trim(),
+            url: &r.url,
+            title: &r.title,
+            admin_user: &r.admin_user,
+            admin_password: &r.admin_password,
+            admin_email: &r.admin_email,
+            locale: &r.locale,
         },
     )
+}
+
+/// Everything a STREAMED wp-cli step needs besides its own args — bundled so
+/// the provision job's step calls stay readable. Streamed steps run through
+/// `repo::run_step_streamed` (supervisor spawn, pgid CancelToken, ANSI-strip
+/// line splitting) with `idle_limit: None` — the B25 rule: wp-cli's silent
+/// mid-download stretch would tie-race a 300s idle guard; the outer
+/// wall-clock cap is the caller's timer.
+pub struct WpStream<'a> {
+    pub sup: &'a dyn crate::platform::traits::ProcessSupervisor,
+    pub env: &'a [(String, String)],
+    pub cancel: &'a super::repo::CancelToken,
+}
+
+/// Run one streamed wp-cli step in `docroot` (`--path=` single-token appended
+/// — a bare `--path <dir>` parses as a boolean + a positional "slug").
+pub fn wp_step_streamed(
+    stream: &WpStream,
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    args: &[&str],
+    on_line: &mut dyn FnMut(&str),
+) -> Result<super::repo::StepResult> {
+    let mut full: Vec<String> =
+        vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()];
+    full.extend(args.iter().map(|s| s.to_string()));
+    full.push(format!("--path={}", docroot.display()));
+    super::repo::run_step_streamed(
+        stream.sup, php_bin, &full, docroot, stream.env, stream.cancel, on_line, None,
+    )
+}
+
+/// Whether core is already installed in `docroot` (captured, instant —
+/// `wp core is-installed` exits 0/1 and prints nothing useful).
+pub fn core_is_installed(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> bool {
+    let path = format!("--path={}", docroot.display());
+    wp_cli(php_bin, wp_phar, &["core", "is-installed", &path], None)
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// The install field set with every default resolved (mirrors
+/// [`install_for_site`]'s rules — factored so the streamed provision job and
+/// the captured path share ONE defaulting truth).
+pub struct ResolvedInstall {
+    pub url: String,
+    pub title: String,
+    pub admin_user: String,
+    pub admin_password: String,
+    pub admin_email: String,
+    pub locale: String,
+}
+
+pub fn resolve_install_options(domain: &str, name: &str, opts: &InstallOptions) -> ResolvedInstall {
+    let nonempty = |s: &str| !s.trim().is_empty();
+    ResolvedInstall {
+        url: format!("https://{domain}"),
+        title: if nonempty(&opts.title) { opts.title.trim().into() } else { name.into() },
+        admin_user: if nonempty(&opts.admin_user) {
+            opts.admin_user.trim().into()
+        } else {
+            "admin".into()
+        },
+        admin_password: if nonempty(&opts.admin_password) {
+            opts.admin_password.clone()
+        } else {
+            DEFAULT_ADMIN.into() // local-dev default, consistent with reset_site
+        },
+        admin_email: if nonempty(&opts.admin_email) {
+            opts.admin_email.trim().into()
+        } else {
+            format!("admin@{domain}")
+        },
+        locale: opts.language.trim().into(),
+    }
 }
 
 /// Multisite constants `wp core multisite-convert` writes into wp-config.php.
@@ -2273,27 +2295,14 @@ mod tests {
     }
 
     #[test]
-    fn plugin_install_refuses_a_url_or_flag_slug_before_any_wp_call() {
-        // Nonexistent binaries: reaching wp-cli would give an io error, NOT this
-        // message — proving the guard runs first (same shape as the locale test).
-        let run = |slug: &str| {
-            plugin_install(
-                Path::new("/nonexistent/php"),
-                Path::new("/nonexistent/wp.phar"),
-                Path::new("/nonexistent/docroot"),
-                &[slug.to_string()],
-                false,
-            )
-            .unwrap_err()
-            .to_string()
-        };
-        assert!(run("https://evil.example/x.zip").contains("invalid plugin slug"));
-        assert!(run("--activate").contains("invalid plugin slug"));
-        // A real slug passes validation and only THEN fails on the missing binary.
-        assert!(
-            !run("akismet").contains("invalid plugin slug"),
-            "a real slug must pass validation"
-        );
+    fn install_slug_guard_refuses_a_url_or_flag_slug() {
+        // The wp.org-slugs-only guard every install path runs BEFORE any
+        // wp-cli spawn (wp_install job + blueprint apply both call it first —
+        // structural: it's their first statement per item).
+        let refuse = |slug: &str| ensure_slugs("plugin", &[slug.to_string()]).unwrap_err().to_string();
+        assert!(refuse("https://evil.example/x.zip").contains("invalid plugin slug"));
+        assert!(refuse("--activate").contains("invalid plugin slug"));
+        assert!(ensure_slugs("plugin", &["akismet".to_string()]).is_ok());
     }
 
     #[test]

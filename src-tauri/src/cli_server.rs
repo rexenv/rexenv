@@ -180,6 +180,17 @@ where
         .ok_or_else(|| Error::Other("repo job registry not ready".into()))
 }
 
+fn provision_jobs_state<R, M>(
+    app: &M,
+) -> Result<tauri::State<'_, commands::site_provision::ProvisionJobs>>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    app.try_state::<commands::site_provision::ProvisionJobs>()
+        .ok_or_else(|| Error::Other("provision job registry not ready".into()))
+}
+
 /// A repo job has SETTLED for CLI purposes: nothing runs and nothing the job
 /// itself would still run is pending. Offered install steps stay `pending`
 /// until the user asks — they never block settling (`--install` runs them as
@@ -379,8 +390,15 @@ where
             if multisite.is_some() && !is_wp {
                 return Err(Error::Other("--multisite needs a WordPress site".into()));
             }
-            let created =
-                commands::sites::create_site(state.clone(), site, None, blueprint_id).await?;
+            let created = commands::sites::create_site(
+                app.app_handle().clone(),
+                state.clone(),
+                provision_jobs_state(app)?,
+                site,
+                None,
+                blueprint_id,
+            )
+            .await?;
             // Convert-after-install — the blueprint flow's seam, reused.
             let created = match multisite {
                 Some(mode) => commands::wordpress::wp_multisite_convert(

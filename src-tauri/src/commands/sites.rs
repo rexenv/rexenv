@@ -2,11 +2,9 @@
 
 use crate::core;
 use crate::core::db::DbEngine;
-use crate::core::{binaries, php};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::models::{NewSite, Site, SiteServing, SiteType, WebServer};
-use std::path::Path;
 use tauri::State;
 
 fn lock<'a>(
@@ -184,118 +182,38 @@ pub async fn regenerate_site_cert(state: State<'_, AppState>, id: String) -> Res
 /// carries the dialog's WordPress fields (admin account, title, language) and is
 /// ignored for non-WordPress sites. Returns the new site.
 #[tauri::command]
-pub async fn create_site(
+pub async fn create_site<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     state: State<'_, AppState>,
+    jobs: State<'_, super::site_provision::ProvisionJobs>,
     site: NewSite,
     wp: Option<core::wordpress::InstallOptions>,
     blueprint_id: Option<String>,
 ) -> Result<Site> {
-    // The domain's TLD must resolve locally: install its OS resolver file on
-    // first use (one privileged prompt; no-op when already installed — `.test`
-    // lands during system setup). BEFORE provisioning, so a declined prompt or
-    // an invalid/blocked domain creates nothing. `domain_tld` fully validates
-    // the domain, so only a vetted label ever reaches the resolver command.
-    let site_tld = core::sites::domain_tld(&site.domain)?;
-    core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
-
-    let (created, mut sites, blueprint) = {
+    // ONE execution path: this is a thin blocking wrapper over the streamed
+    // provision job (`commands::site_provision`) that preserves the old
+    // contract exactly — prepare-phase errors (invalid/duplicate domain,
+    // declined resolver prompt) surface immediately with nothing created,
+    // the await returns only when the site is fully provisioned (and served,
+    // when the stack runs), and the fresh `Site` row comes back on success.
+    let snap = super::site_provision::start(&app, &state, &jobs, site, wp, blueprint_id)?;
+    let settled = loop {
+        let st = super::site_provision::state_of(&jobs, &snap.id)?;
+        if st.status != "running" {
+            break st;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    };
+    if settled.status == "ok" {
         let conn = lock(&state)?;
-        let created = core::sites::provision(&conn, state.platform.as_ref(), &state.ca, site)?;
-        // Resolve the blueprint up front (so we don't hold the lock across awaits).
-        let blueprint = match &blueprint_id {
-            Some(id) if !id.is_empty() => crate::state::store::get_blueprint(&conn, id)?,
-            _ => None,
-        };
-        (created, core::sites::list(&conn)?, blueprint)
-    };
-    let minor = php::minor_of(&created.php_version);
-
-    // Prefetch everything this create could need BEFORE any services-lock scope
-    // below — `spawn_db` / `ensure_php_pool` / the reload's override reconcile
-    // all run under the lock and must hit cache, or a cold cache would stream
-    // downloads while holding it. No-op (no batch) when everything's cached.
-    // FrankenPHP embeds its PHP; nginx/Apache sites ride a shared pool — and
-    // Apache additionally needs its own httpd bundle.
-    let mut plan = if matches!(created.web_server, WebServer::Frankenphp) {
-        core::downloads::plan_for_override(state.platform.as_ref(), created.web_server)
+        let id = settled.site_id.as_deref().unwrap_or_default();
+        core::sites::get(&conn, id)?
+            .ok_or_else(|| Error::Other(format!("created site vanished: {id}")))
     } else {
-        core::downloads::plan_for_pool(state.platform.as_ref(), &minor)
-    };
-    if matches!(created.web_server, WebServer::Apache) {
-        plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), created.web_server));
+        Err(Error::Other(settled.error.or(settled.summary).unwrap_or_else(|| {
+            format!("site create {}", settled.status)
+        })))
     }
-    let engine = DbEngine::from_site(created.db_engine);
-    let engine_version = super::database::effective_db_version(&state, engine)?;
-    if matches!(created.site_type, SiteType::Wordpress) {
-        plan.extend(core::downloads::plan_for_engine(
-            state.platform.as_ref(),
-            engine,
-            &engine_version,
-        ));
-        plan.extend(core::downloads::plan_for_wp_tooling(state.platform.as_ref(), &minor));
-    }
-    core::downloads::prefetch(state.platform.as_ref(), "Create site", &plan).await?;
-
-    // WordPress needs a database + a one-click install before it's browsable.
-    // The services lock is held only to SPAWN the site's engine; the readiness
-    // wait and the (long) installer run with it released (M4), so other
-    // commands and status stay responsive during a site create.
-    if matches!(created.site_type, SiteType::Wordpress) {
-        let check = {
-            let mut mgr = state.services.lock().await;
-            mgr.spawn_db(state.platform.as_ref(), engine).await?
-        };
-        core::service_manager::await_ready(check.into_iter().collect()).await?;
-        let patch = php::patch_for_minor(&minor)
-            .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
-        let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
-        let wp_phar =
-            binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION)
-                .await?;
-        let db_host = format!("127.0.0.1:{}", engine.port());
-        let (db_client, _) =
-            engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
-        let docroot = Path::new(&created.path);
-        core::wordpress::install_for_site(
-            &php_bin,
-            &wp_phar,
-            docroot,
-            &created.domain,
-            &created.name,
-            &created.db_name,
-            &db_host,
-            &db_client,
-            &wp.unwrap_or_default(),
-        )?;
-
-        // Apply a blueprint (§11.3): install/activate its plugins + themes, set
-        // WP_DEBUG, and convert to multisite — the reusable "site setup" automation.
-        if let Some(bp) = &blueprint {
-            core::blueprints::apply_wordpress(&php_bin, &wp_phar, docroot, &bp.spec)?;
-            if !matches!(bp.spec.multisite, crate::state::models::MultisiteMode::None) {
-                let conn = lock(&state)?;
-                core::sites::convert_multisite(
-                    &conn, &php_bin, &wp_phar, docroot, &created.id, bp.spec.multisite,
-                )?;
-                // Refresh so the reload below serves the new multisite rewrite.
-                sites = core::sites::list(&conn)?;
-            }
-        }
-    }
-
-    let checks = {
-        let mut mgr = state.services.lock().await;
-        if mgr.is_running() {
-            if !matches!(created.web_server, WebServer::Frankenphp) {
-                mgr.ensure_php_pool(state.platform.as_ref(), &minor).await?;
-            }
-            mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
-        } else {
-            Vec::new()
-        }
-    };
-    core::service_manager::await_ready(checks).await?;
-    Ok(created)
 }
 
 /// Switch a site's web server (§4.1): update the DB row, then — if the stack is

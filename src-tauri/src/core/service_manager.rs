@@ -1300,6 +1300,33 @@ impl ServiceManager {
         }
     }
 
+    /// Adopt ONLY rexenv-owned database engines (the DB slice of
+    /// [`Self::adopt_startup`], same ownership gate). Public for live-check
+    /// examples/fixtures that need `spawn_db` to recognize an already-running
+    /// engine WITHOUT adopting the edge/web tier — a fixture manager that
+    /// adopted nginx would report `is_running()` and rebuild the REAL stack's
+    /// vhosts from its throwaway database on the serve phase.
+    pub fn adopt_dbs(&mut self, platform: &dyn Platform) -> u32 {
+        let marker = match platform.paths().app_data_dir() {
+            Ok(p) => p.display().to_string(),
+            Err(_) => return 0,
+        };
+        if marker.is_empty() {
+            return 0;
+        }
+        let owned = |port: u16| platform.supervisor().owned_master(port, &marker);
+        let mut adopted = 0u32;
+        for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = self.dbs.entry(engine) {
+                if let Some(pid) = owned(engine.port()) {
+                    slot.insert(Proc::Adopted(pid));
+                    adopted += 1;
+                }
+            }
+        }
+        adopted
+    }
+
     /// On app launch, ADOPT rexenv-owned services surviving from a prior session
     /// instead of restarting or stopping them: closing the app is NOT a stop —
     /// the stack keeps serving until the user explicitly stops it, and the next
@@ -1364,14 +1391,7 @@ impl ServiceManager {
                 }
             }
         }
-        for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
-            if let std::collections::hash_map::Entry::Vacant(slot) = self.dbs.entry(engine) {
-                if let Some(pid) = owned(engine.port()) {
-                    slot.insert(Proc::Adopted(pid));
-                    adopted += 1;
-                }
-            }
-        }
+        adopted += self.adopt_dbs(platform);
         if self.mailpit.is_none() {
             if let Some(pid) = owned(mail::MAILPIT_SMTP_PORT) {
                 self.mailpit = Some(Proc::Adopted(pid));
@@ -2657,6 +2677,7 @@ mod tests {
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
             override_port: None,
+            provisioned: true,
         };
 
         let sites = vec![

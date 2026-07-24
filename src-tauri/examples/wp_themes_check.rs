@@ -73,8 +73,12 @@ async fn main() {
     };
     const NEW: &str = "twentytwenty";
 
-    // Install a theme by slug (not active yet).
-    wordpress::theme_install(&php, &wp, &docroot, &[NEW.to_string()], false).expect("install theme");
+    // Install a theme by slug (not active yet; fixture seeding — captured
+    // wp_cli; the app's install paths are all streamed jobs now).
+    let path_arg = format!("--path={}", docroot.display());
+    let out = wordpress::wp_cli(&php, &wp, &["theme", "install", NEW, &path_arg], None)
+        .expect("install theme");
+    assert!(out.status.success(), "install {NEW}: {}", String::from_utf8_lossy(&out.stderr));
     let list = wordpress::theme_list(&php, &wp, &docroot, false).expect("list");
     println!("after install: {NEW} status = {:?}", status(&list, NEW));
     assert_eq!(status(&list, NEW).as_deref(), Some("inactive"), "theme not installed/inactive");

@@ -72,8 +72,21 @@ async fn main() {
         list.iter().find(|p| p.name == name).map(|p| p.status.clone()).unwrap_or_default()
     };
 
-    // Install hello-dolly by slug + activate.
-    wordpress::plugin_install(&php, &wp, &docroot, &["hello-dolly".to_string()], true).expect("install hello-dolly");
+    // Install hello-dolly by slug + activate (fixture seeding — captured
+    // wp_cli; the app's install paths are all streamed jobs now).
+    let path_arg = format!("--path={}", docroot.display());
+    let out = wordpress::wp_cli(
+        &php,
+        &wp,
+        &["plugin", "install", "hello-dolly", "--activate", &path_arg],
+        None,
+    )
+    .expect("install hello-dolly");
+    assert!(
+        out.status.success(),
+        "install hello-dolly: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let list = wordpress::plugin_list(&php, &wp, &docroot, false).expect("list");
     println!("after install+activate: hello-dolly status = {}", status(&list, "hello-dolly"));
     assert!(has(&list, "hello-dolly"), "hello-dolly not installed");

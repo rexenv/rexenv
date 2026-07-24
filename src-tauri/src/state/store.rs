@@ -11,7 +11,7 @@ use rusqlite::{params, Connection, Row};
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
-     created_at, multisite, db_name, db_engine, xdebug, override_port";
+     created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -38,6 +38,7 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // Nullable: the recorded per-site override backend port (B20 §4), NULL
         // for nginx and for pre-backfill rows.
         override_port: row.get::<_, Option<i64>>(14)?.map(|p| p as u16),
+        provisioned: row.get::<_, i64>(15)? != 0,
     })
 }
 
@@ -51,8 +52,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             site.id,
             site.name,
@@ -69,9 +70,20 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.db_engine.as_db(),
             site.xdebug as i64,
             site.override_port.map(|p| p as i64),
+            site.provisioned as i64,
         ],
     )?;
     Ok(())
+}
+
+/// Flip a site's provisioning-completeness flag (v16, streamed create job:
+/// 0 right after insert, 1 only when the job settles ok).
+pub fn set_site_provisioned(conn: &Connection, id: &str, provisioned: bool) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET provisioned = ?1 WHERE id = ?2",
+        params![provisioned as i64, id],
+    )?;
+    Ok(affected > 0)
 }
 
 /// Set (or clear, with `None`) a site's recorded override backend port (B20 §4).

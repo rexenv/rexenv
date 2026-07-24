@@ -261,6 +261,11 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         db_engine: new.db_engine,
         xdebug: false,
         override_port,
+        // Inserted PROVISIONED: every non-job caller (tests, examples, future
+        // import paths) gets yesterday's semantics. The provision job — the
+        // only flow that can die half-done — flips this to 0 itself right
+        // after insert and back to 1 when it settles ok.
+        provisioned: true,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -774,6 +779,86 @@ pub fn provision(
     create(conn, new)
 }
 
+// ---------------------------------------------------------------------------
+// Streamed-provision progress (the create-site card). PURE — phases are OUR
+// step boundaries (deterministic Rust code), zero subprocess-output parsing.
+// ---------------------------------------------------------------------------
+
+/// Coarse fixed weights per provision phase — NOT time estimates. Equal slices
+/// lie in feel (the bar races through the instant phases then parks for
+/// minutes on the two network ones); these constants put the visual budget
+/// where wall-time actually lives. The bar still only moves on real phase
+/// completions and, within `fetch`, real downloaded bytes.
+pub const PROVISION_PHASE_WEIGHTS: &[(&str, u32)] = &[
+    ("prepare", 3),       // resolver + docroot + cert + row (ours, instant)
+    ("fetch", 27),        // binary prefetch — REAL byte progress folds in
+    ("db", 5),            // spawn engine + readiness probe
+    ("core_download", 35), // wp core download ~25MB — no byte signal (B25)
+    ("configure", 5),     // wp-config + CREATE DATABASE
+    ("core_install", 10), // wp core install
+    ("blueprint", 5),     // blueprint plugins/themes (when requested)
+    ("serve", 10),        // pool + edge reload + await_ready
+];
+
+fn provision_phase_weight(key: &str) -> u32 {
+    PROVISION_PHASE_WEIGHTS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, w)| *w)
+        .unwrap_or(5)
+}
+
+/// Phase-weighted determinate progress for the streamed site-create job.
+///
+/// Same honesty contract as [`crate::core::wordpress::InstallProgress`] (see its doc for
+/// the B25 "no invented percentage" distinction — this too is OBSERVED
+/// progress, never an estimate): the job's applicable phases are fixed at
+/// start (weights renormalize, so a phase that can't happen — no blueprint,
+/// non-WordPress — is never a slice that can't fill), the percentage is
+/// MONOTONIC, capped at 99 until the job settles ok ([`Self::finish`]), and
+/// simply stops moving on failure/cancel — the caller never rolls it back or
+/// snaps it forward. Within one phase, `fraction` carries the only real
+/// sub-signal we have: the download Hub's byte fraction during `fetch`
+/// (genuine bytes, not a guess); every other phase contributes 0 until done.
+pub struct ProvisionProgress {
+    weights: Vec<u32>,
+    total: u32,
+    pct: u8,
+}
+
+impl ProvisionProgress {
+    /// `keys` = the job's applicable phases, in execution order.
+    pub fn new(keys: &[&str]) -> Self {
+        let weights: Vec<u32> = keys.iter().map(|k| provision_phase_weight(k)).collect();
+        let total = weights.iter().sum::<u32>().max(1);
+        Self { weights, total, pct: 0 }
+    }
+
+    pub fn pct(&self) -> u8 {
+        self.pct
+    }
+
+    /// Phases `0..completed` are done; `fraction` (clamped 0..=1) is the
+    /// current phase's real sub-progress. Returns the monotonic overall pct.
+    pub fn advance(&mut self, completed: usize, fraction: f64) -> u8 {
+        let done: u32 = self.weights.iter().take(completed).sum();
+        let current = self
+            .weights
+            .get(completed)
+            .map(|w| f64::from(*w) * fraction.clamp(0.0, 1.0))
+            .unwrap_or(0.0);
+        let raw = ((f64::from(done) + current) / f64::from(self.total) * 100.0) as u8;
+        self.pct = self.pct.max(raw.min(99));
+        self.pct
+    }
+
+    /// The job settled ok — the ONLY way to 100.
+    pub fn finish(&mut self) -> u8 {
+        self.pct = 100;
+        self.pct
+    }
+}
+
 /// Whether a site is served by the shared nginx. Override servers (FrankenPHP,
 /// Apache) run their own backend process and are excluded.
 fn is_nginx_served(s: &Site) -> bool {
@@ -969,6 +1054,73 @@ mod tests {
     use super::*;
     use crate::state::db;
     use crate::state::models::{SiteType, WebServer};
+
+    const WP_PHASES: &[&str] =
+        &["prepare", "fetch", "db", "core_download", "configure", "core_install", "serve"];
+
+    #[test]
+    fn provision_progress_weights_land_where_wall_time_lives() {
+        // WP create without blueprint: total 95. Completing each phase in
+        // order gives the coarse-weighted staircase — the two network phases
+        // own the bulk of the bar.
+        let mut p = ProvisionProgress::new(WP_PHASES);
+        assert_eq!(p.advance(1, 0.0), 3); // prepare done → 3/95
+        assert_eq!(p.advance(2, 0.0), 31); // + fetch 27
+        assert_eq!(p.advance(3, 0.0), 36); // + db 5
+        assert_eq!(p.advance(4, 0.0), 73); // + core_download 35
+        assert_eq!(p.advance(5, 0.0), 78); // + configure 5
+        assert_eq!(p.advance(6, 0.0), 89); // + core_install 10
+        assert_eq!(p.advance(7, 0.0), 99); // all done — STILL capped: not settled
+        assert_eq!(p.finish(), 100);
+    }
+
+    #[test]
+    fn provision_progress_renormalizes_over_applicable_phases() {
+        // Non-WP: prepare/fetch/serve only (3+27+10 = 40). No reserved slice
+        // that can never fill — the applicable set IS the denominator.
+        let mut p = ProvisionProgress::new(&["prepare", "fetch", "serve"]);
+        assert_eq!(p.advance(1, 0.0), 7); // 3/40
+        assert_eq!(p.advance(2, 0.0), 75); // 30/40
+        assert_eq!(p.advance(3, 0.0), 99); // capped until finish
+        assert_eq!(p.finish(), 100);
+    }
+
+    #[test]
+    fn provision_progress_folds_real_bytes_into_the_fetch_slice() {
+        // During fetch (phase index 1), fraction = the Hub's Σbytes/Σtotal —
+        // genuine byte progress, scaled into fetch's 27-weight slice.
+        let mut p = ProvisionProgress::new(WP_PHASES);
+        p.advance(1, 0.0);
+        assert_eq!(p.advance(1, 0.5), 17); // (3 + 13.5)/95
+        assert_eq!(p.advance(1, 1.0), 31); // fetch bytes complete
+        // Phase completion agrees with bytes-done — no jump, no regression.
+        assert_eq!(p.advance(2, 0.0), 31);
+    }
+
+    #[test]
+    fn provision_progress_is_monotonic_even_if_a_fraction_regresses() {
+        // A Hub retry can reset an item's bytes to 0 (give-up path deletes
+        // the partial — honest). The OVERALL bar must never move backwards.
+        let mut p = ProvisionProgress::new(WP_PHASES);
+        p.advance(1, 0.9);
+        let high = p.pct();
+        assert_eq!(p.advance(1, 0.1), high);
+        // Out-of-range fractions clamp, never panic or overshoot.
+        assert_eq!(p.advance(1, 7.0), p.advance(1, 1.0));
+        assert!(p.advance(1, -3.0) >= high);
+    }
+
+    #[test]
+    fn provision_progress_freezes_where_it_stopped() {
+        // Failure/cancel = the caller simply stops advancing: the value
+        // holds; only finish() (settle ok) can produce 100.
+        let mut p = ProvisionProgress::new(WP_PHASES);
+        p.advance(3, 0.0); // died in core_download
+        let frozen = p.pct();
+        assert_eq!(frozen, 36);
+        assert_eq!(p.pct(), frozen);
+        assert!(frozen < 100);
+    }
 
     fn sample(name: &str, domain: &str) -> NewSite {
         NewSite {
@@ -1241,6 +1393,7 @@ mod tests {
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
             override_port: None,
+            provisioned: true,
         }
     }
 
@@ -1430,6 +1583,7 @@ mod tests {
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
             override_port: None,
+            provisioned: true,
         }
     }
 

@@ -731,6 +731,7 @@ mod tests {
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
             override_port: None,
+            provisioned: true,
         }
     }
 

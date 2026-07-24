@@ -106,6 +106,18 @@ pub struct Site {
     /// back to the derived `site_port(domain)` only in that transitional window.
     #[serde(skip)]
     pub override_port: Option<u16>,
+    /// Provisioning completeness (v16). `false` = the streamed create job
+    /// died/was cancelled mid-provision — the list shows an honest "setup
+    /// incomplete" badge with Retry/Delete. Existing rows migrated as `true`
+    /// (never alarm sites that were fine yesterday); the job sets 0 after
+    /// insert and 1 only when it settles ok. `#[serde(default)]` so payloads
+    /// without the field (blueprint specs, older callers) read provisioned.
+    #[serde(default = "default_true")]
+    pub provisioned: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Live per-site serving status (H1 follow-up). `serving` is true only when the edge

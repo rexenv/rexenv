@@ -167,6 +167,7 @@ pub fn run() {
             app.manage(commands::repo::RepoJobs::default());
             app.manage(commands::repo::RepoWatches::default());
             app.manage(commands::wp_install::WpInstallJobs::default());
+            app.manage(commands::site_provision::ProvisionJobs::default());
             // Registry of live per-site public tunnels (§9.1).
             app.manage(commands::tunnels::Tunnels::default());
 
@@ -639,6 +640,10 @@ pub fn run() {
             commands::wp_install::wp_install_job,
             commands::wp_install::wp_install_cancel,
             commands::wp_install::wp_install_active,
+            commands::site_provision::site_provision_job,
+            commands::site_provision::site_provision_retry,
+            commands::site_provision::site_provision_cancel,
+            commands::site_provision::site_provision_active,
             commands::repo::repo_scripts,
             commands::repo::repo_script_job,
             commands::repo::repo_watch_start,

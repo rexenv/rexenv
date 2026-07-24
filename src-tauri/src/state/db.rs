@@ -147,6 +147,13 @@ const MIGRATIONS: &[&str] = &[
     // → unverified, not false-stale.
     "ALTER TABLE site_git_assets ADD COLUMN composer_installed_fp TEXT;
      ALTER TABLE site_git_assets ADD COLUMN node_installed_fp TEXT;",
+    // v16 — provisioning-completeness flag for the streamed site-create job.
+    // DEFAULT 1: every EXISTING row reads "provisioned" (the v15 lesson —
+    // upgrades must never spray alarms over sites that were fine yesterday).
+    // The provision job flips a new row to 0 right after insert and back to 1
+    // only when the job settles ok; a 0 row renders the honest "setup
+    // incomplete" badge with Retry/Delete instead of masquerading as healthy.
+    "ALTER TABLE sites ADD COLUMN provisioned INTEGER NOT NULL DEFAULT 1;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -316,6 +323,38 @@ mod tests {
             store::get_git_asset_fps(&conn, "s1", "plugin", "my-plugin").unwrap(),
             (None, None)
         );
+    }
+
+    #[test]
+    fn v16_existing_sites_read_provisioned_and_flag_round_trips() {
+        // Bring schema to v15, insert a site the way it existed BEFORE the
+        // provisioned column, then migrate — the pre-existing row must read
+        // provisioned = true (an upgrade must never badge sites that were
+        // fine yesterday as "setup incomplete").
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..15].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s1','A','a.rex','wordpress','8.3','/tmp/a')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::state::store;
+        let site = store::get_site(&conn, "s1").unwrap().unwrap();
+        assert!(site.provisioned, "pre-v16 row must migrate as provisioned");
+
+        // The job lifecycle: 0 after insert, 1 at settle-ok.
+        assert!(store::set_site_provisioned(&conn, "s1", false).unwrap());
+        assert!(!store::get_site(&conn, "s1").unwrap().unwrap().provisioned);
+        assert!(store::set_site_provisioned(&conn, "s1", true).unwrap());
+        assert!(store::get_site(&conn, "s1").unwrap().unwrap().provisioned);
+        // Unknown id → no-op, reported.
+        assert!(!store::set_site_provisioned(&conn, "ghost", true).unwrap());
     }
 
     #[test]

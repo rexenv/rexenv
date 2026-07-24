@@ -8,7 +8,7 @@
 //! it also persists `sites.multisite` and reloads the edge.
 
 use crate::core::wordpress;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::state::models::BlueprintSpec;
 use std::path::Path;
 
@@ -20,39 +20,69 @@ pub struct Applied {
     pub wp_debug_set: bool,
 }
 
+/// How an apply ended: fully, or stopped between items by the job's
+/// CancelToken (the partial `Applied` says how far it got — items already
+/// installed are REAL installs, same partial-honesty rule as the install
+/// card).
+pub enum ApplyOutcome {
+    Done(Applied),
+    Cancelled(Applied),
+}
+
 /// Apply the WordPress parts of a blueprint to an installed site: install (and
-/// optionally activate) each plugin + theme, then set WP_DEBUG if requested. Best
-/// effort per item is NOT used — a failing install surfaces as an error so the user
-/// sees the blueprint didn't fully apply. Multisite is handled by the caller.
+/// optionally activate) each plugin + theme STREAMED through the provision
+/// job's runner (per-item pgid kill on cancel, verbatim lines to `on_line`),
+/// then set WP_DEBUG if requested. Best effort per item is NOT used — a
+/// failing install surfaces as an error so the user sees the blueprint didn't
+/// fully apply. Multisite is handled by the caller.
 pub fn apply_wordpress(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
     spec: &BlueprintSpec,
-) -> Result<Applied> {
+    stream: &wordpress::WpStream,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<ApplyOutcome> {
     let mut applied = Applied::default();
 
-    for p in &spec.plugins {
-        if p.slug.trim().is_empty() {
+    let items = spec
+        .plugins
+        .iter()
+        .map(|p| ("plugin", p))
+        .chain(spec.themes.iter().map(|t| ("theme", t)));
+    for (kind, item) in items {
+        let slug = item.slug.trim();
+        if slug.is_empty() {
             continue;
         }
+        // Slug guard BEFORE any wp-cli spawn (the wp.org-slugs-only rule).
+        wordpress::ensure_slugs(kind, std::slice::from_ref(&slug.to_string()))?;
         // One install per item: each blueprint entry has its own activate flag.
-        wordpress::plugin_install(php_bin, wp_phar, docroot, &[p.slug.trim().to_string()], p.activate)?;
-        applied.plugins_installed += 1;
-    }
-    for t in &spec.themes {
-        if t.slug.trim().is_empty() {
-            continue;
+        let mut args = vec![kind, "install", slug];
+        if item.activate {
+            args.push("--activate");
         }
-        wordpress::theme_install(php_bin, wp_phar, docroot, &[t.slug.trim().to_string()], t.activate)?;
-        applied.themes_installed += 1;
+        let sr = wordpress::wp_step_streamed(stream, php_bin, wp_phar, docroot, &args, on_line)?;
+        if sr.cancelled {
+            return Ok(ApplyOutcome::Cancelled(applied));
+        }
+        if !sr.ok {
+            return Err(Error::Other(format!(
+                "blueprint {kind} '{slug}' install failed: {}",
+                sr.tail.last().cloned().unwrap_or_else(|| "no output".into())
+            )));
+        }
+        match kind {
+            "plugin" => applied.plugins_installed += 1,
+            _ => applied.themes_installed += 1,
+        }
     }
     if spec.wp_debug {
         wordpress::wp_debug_set(php_bin, wp_phar, docroot, true)?;
         applied.wp_debug_set = true;
     }
 
-    Ok(applied)
+    Ok(ApplyOutcome::Done(applied))
 }
 
 #[cfg(test)]
