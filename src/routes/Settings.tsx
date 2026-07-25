@@ -1113,7 +1113,7 @@ function AboutSetting() {
           <FileText className="h-[17px] w-[17px]" strokeWidth={1.7} />,
           "var(--rex-accent-blue)",
           "Documentation",
-          "https://docs.rexenv.app",
+          "https://rexenv.rex.bd/docs",
         )}
         {linkRow(
           <Github className="h-[17px] w-[17px]" strokeWidth={1.7} />,
