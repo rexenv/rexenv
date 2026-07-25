@@ -20,6 +20,9 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
+mod common;
+use common::Reaped;
+
 const DOMAIN: &str = "apcheck.rex";
 const FPM_PORT: u16 = 9799;
 
@@ -103,12 +106,18 @@ async fn main() {
         ),
     )
     .unwrap();
-    let mut fpm = Command::new(&fpm_bin)
-        .args(["-y", &fpm_conf.display().to_string(), "-F"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .expect("spawn php-fpm");
+    // Drop-guarded: the HTTP checks below assert, and a leaked pool's workers
+    // keep :FPM_PORT (see examples/common).
+    let mut fpm = Reaped::new(
+        Command::new(&fpm_bin)
+            .args(["-y", &fpm_conf.display().to_string(), "-F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn php-fpm"),
+        FPM_PORT,
+        "php-fpm",
+    );
 
     println!("\n=== apache::start on the override port ===");
     let port = apache::site_port(DOMAIN);
@@ -136,7 +145,11 @@ async fn main() {
     );
     ok &= t.status.success();
 
-    let mut httpd = apache::start(&*plat, &basedir, DOMAIN, &conf).expect("start apache");
+    let mut httpd = Reaped::new(
+        apache::start(&*plat, &basedir, DOMAIN, &conf).expect("start apache"),
+        port,
+        "httpd",
+    );
     for _ in 0..40 {
         if apache::running(port) {
             break;
@@ -166,10 +179,12 @@ async fn main() {
 
     // Cleanup: children + docroot (the conf under app-data config dir stays —
     // same lifecycle as FrankenPHP override configs).
+    // `apache::stop` first (the production stop path is part of what this
+    // example exercises), then reap — explicit because the `exit(1)` below
+    // skips destructors. Both are idempotent; the Drop guards cover panics.
     let _ = apache::stop(&*plat, httpd.id());
-    let _ = httpd.wait();
-    let _ = fpm.kill();
-    let _ = fpm.wait();
+    httpd.reap();
+    fpm.reap();
     let _ = std::fs::remove_dir_all(&docroot);
 
     if ok {

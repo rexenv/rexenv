@@ -23,6 +23,9 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
+mod common;
+use common::Reaped;
+
 /// Probe port for the throwaway debug pool — NOT the real 99xx range, so a
 /// running stack's own debug pools are never contended.
 const POOL_PORT: u16 = 9998;
@@ -115,8 +118,13 @@ async fn main() {
         ),
     )
     .unwrap();
-    let mut pool =
-        services::start_fpm_xdebug(&*plat, &fpm_bin, &conf, &so).expect("spawn debug pool");
+    // Drop-guarded: every check below is an assert that could unwind, and a
+    // leaked pool's workers keep the port (see examples/common).
+    let mut pool = Reaped::new(
+        services::start_fpm_xdebug(&*plat, &fpm_bin, &conf, &so).expect("spawn debug pool"),
+        POOL_PORT,
+        "php-fpm",
+    );
     let mut accepting = false;
     for _ in 0..40 {
         if services::fpm_running(POOL_PORT) {
@@ -128,8 +136,9 @@ async fn main() {
     println!("  pid {} · accepting on :{POOL_PORT} = {accepting}", pool.id());
     ok &= accepting;
 
-    let _ = pool.kill();
-    let _ = pool.wait();
+    // Explicit: the `exit(1)` below skips destructors. Idempotent, so the Drop
+    // guard still covers the panicking paths.
+    pool.reap();
     let _ = std::fs::remove_dir_all(&workdir);
 
     if ok {
