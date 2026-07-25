@@ -75,6 +75,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |
 | Module/file map | `README.md` ("Project structure") |
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
+| Valet/Herd migration — research + staged design (parked) | `docs/PLAN-valet-herd-migration.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |
 | Design tokens, screen specs | `docs/archive/DESIGN_BRIEF.md` + `design/*.dc.html` |
