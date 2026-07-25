@@ -1,9 +1,13 @@
 # Migrate an existing Valet / Herd environment into rexenv
 
-**Status: RESEARCH COMPLETE — design not yet green-lit.** No code written. Three
-decisions still need an explicit go (§11). Researched 25–26 Jul 2026 against the code
-as of `f302996`, the live Valet 4.12.0 + Herd 1.29.0 install on the dev Mac, laravel/
-valet source at tag v4.12.0, herd.laravel.com docs, and the bundled DB binaries.
+**Status: APPROVED 26 Jul 2026 — all four stages ship BEFORE the release.** Research
+(Q0–Q7), the feature shape, and the staging in §10 are green-lit. One decision remains
+open (§11.3). Researched 25–26 Jul 2026 against the code as of `f302996`, the live Valet
+4.12.0 + Herd 1.29.0 install on the dev Mac, laravel/valet source at tag v4.12.0,
+herd.laravel.com docs, and the bundled DB binaries.
+
+The two pre-existing bugs in §12 are folded INTO this work, not handled separately —
+they sit directly in the migration path.
 
 ## Context
 
@@ -492,7 +496,8 @@ addition at the front:
 
 0. **Linked sites** — the §1 change set (+ delete-guard marker). Small, independently
    shippable, and the biggest non-migration ask in local dev tooling; migration then
-   reuses it instead of special-casing.
+   reuses it instead of special-casing. **Planned in detail: `docs/PLAN-linked-sites.md`**
+   (marker design, v17 migration + backfill, delete inventory, commit sequence).
 1. **Sites-only import** — detect + present + import, no databases. Includes the
    resolver-consent work, which subsumes fixing today's silent foreign-file overwrite
    (§3b) — worth shipping on its own merits.
@@ -506,26 +511,34 @@ addition at the front:
 Each stage verified per repo convention: `cargo test --lib` + `cargo build --examples`
 plus a live `examples/*.rs` check; commit per task; tick here with ✓ evidence.
 
-## 11. Open decisions (need an explicit go)
+## 11. Decisions
 
-1. **Q7 rewrite approach** — approve option (c) (opt-in, backup, diff, one-key change via
-   credential mirroring)? Recommended yes.
-2. **`.test` resolver takeover** — approve the consent-gated takeover with a backup of
-   their file (and the `.rex` re-home fallback when refused)?
-3. **`mysqli.default_socket` pool defaults** — approve adding them (helps only
-   `DB_HOST=localhost` sites, costs a php-fpm pool config change that affects ALL sites)?
+1. **Q7 rewrite approach — APPROVED 26 Jul 2026:** option (c), per-site opt-in with a
+   backup and a diff shown first, reduced to a one-key change by mirroring their
+   credentials into our engine (§7). Stage 3.
+2. **`.test` resolver takeover — APPROVED 26 Jul 2026**, and specified: detect foreign
+   ownership, show their content vs ours, back up on OUR side, explicit checkbox,
+   refusal path = re-home to `.rex`. **Never a silent overwrite, ever.** Stage 1.
+3. **`mysqli.default_socket` pool defaults — STILL OPEN.** Helps only `DB_HOST=localhost`
+   sites; costs a php-fpm pool config change that affects ALL sites. Decide before Stage 3.
 
-## 12. Fix independent of this feature
+## 12. Pre-existing bugs folded into this work
 
-Both were found during this research and are real today:
+Both were found during this research, are real today, and sit directly in the migration
+path — so they are fixed AS PART OF the stage that hits them, not separately:
 
-- `dns::ensure_resolver` silently overwrites a foreign `/etc/resolver/<tld>` (§3b) —
-  ROOT-op care class, needs a foreign-content check.
-- Provisioning reports "serving at …" while a shadow-binding Herd actually answers (§3a)
-  — the honest-status rule says the success line must be probe-gated.
+- **`dns::ensure_resolver` silently overwrites a foreign `/etc/resolver/<tld>` (§3b) →
+  Stage 1.** Importing a `.test` site is exactly what triggers it, and the migration flow
+  needs the full consent-gated version anyway (decision §11.2). ROOT-op care class.
+- **Provisioning reports "serving at …" while a shadow-binding Herd actually answers
+  (§3a) → wherever the import reports success.** Gate the success line on
+  `edge_answers_as_ours` and show "imported — serving paused until you quit Herd".
+  Implementation seam + the reason it must be a state FIELD rather than a new `status`
+  value: `docs/PLAN-linked-sites.md` §13.
 
-Adjacent, unrelated to migration: the New Site dialog's Laravel card promises an
-installer the backend doesn't implement (§4).
+Adjacent, genuinely unrelated to migration (still unowned): the New Site dialog's Laravel
+card promises an installer the backend doesn't implement (§4); `teardown` never removes
+the Apache per-site config/log (`docs/PLAN-linked-sites.md` §3).
 
 ## Appendix — verification status
 

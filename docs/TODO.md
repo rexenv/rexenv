@@ -6,6 +6,28 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [ ] **Migrate an existing Valet / Herd environment into rexenv** — APPROVED 26 Jul 2026,
+  all four stages ship BEFORE the release. Plan + research:
+  `docs/PLAN-valet-herd-migration.md` (Q0–Q7, verified against the live Valet 4.12.0 +
+  Herd 1.29.0 install on this Mac). Feasibility gate PASSED — the serving plane already
+  handles an arbitrary docroot end to end; only `provision()` (`core/sites.rs:761-778`)
+  and the create entry points overwrite the caller's path, so import-in-place needs no
+  copy. Two pre-existing bugs are folded IN, not handled separately (plan §12):
+  `ensure_resolver` silently overwrites a FOREIGN `/etc/resolver/<tld>` → Stage 1 with the
+  full consent-gated takeover (root-op care class, B2/B10 family); provisioning claims
+  "serving at …" while a shadow-binding Herd answers → wherever import reports success.
+  Still open: `mysqli.default_socket` pool defaults (plan §11.3), decide before Stage 3.
+  - [ ] **Stage 0 — Link an existing folder** (first-class feature, not migration
+    plumbing): serve a docroot outside `~/rexenv/Sites`. **Planned, awaiting 3 decisions:
+    `docs/PLAN-linked-sites.md`** — v17 `sites.docroot_managed` marker (NOT `linked`: it
+    must also cover docroots moved outside the sites dir, or `move_site_docroot`'s "kept —
+    not deleted" promise breaks) + Rust backfill recording today's guard answer once,
+    structural delete guard, linked-sites-never-provision, `$HOME`/`/` refused, 7 commits.
+    Prereq commit: the examples orphan-worker class fix (plan §9).
+  - [ ] Stage 1 — sites-only import + resolver consent
+  - [ ] Stage 2 — database import (dump artifact, then restore + credential mirroring)
+  - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)
+
 - [x] **Add plugin/theme from Git — clone → detect → install → build** ✓
   **HUMAN-VERIFIED 18 Jul 2026** — full docs/GIT-FEATURE-TEST.md pass (all
   sections incl. tunnel dotfile case, private-repo SSH, WKWebView streaming,
@@ -770,17 +792,6 @@ Each line = one feature, live-verified before its commit.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- [ ] **Migrate an existing Valet / Herd environment into rexenv** — research complete,
-  design NOT green-lit: `docs/PLAN-valet-herd-migration.md` (25–26 Jul 2026). Feasibility
-  gate PASSED — the serving plane already handles an arbitrary docroot end to end; only
-  `provision()` (`core/sites.rs:761-778`) and the create entry points overwrite the
-  caller's path, so import-in-place needs no copy. Staged: (0) linked sites + delete-guard
-  marker, (1) sites-only import + resolver consent, (2) database import, (3) opt-in
-  connection-config rewrite. **Three decisions need an explicit go** (plan §11): the Q7
-  rewrite approach, the `.test` resolver takeover, and `mysqli.default_socket` pool
-  defaults. Two bugs found en route are fixable independently (plan §12): `ensure_resolver`
-  silently overwrites a FOREIGN `/etc/resolver/<tld>` (root-op care class, B2/B10 family),
-  and provisioning claims "serving at …" while a shadow-binding Herd actually answers.
 - [x] **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
   and the DB name derives from the domain (L). ✓ **Done** in two commits:
   `688142a` (prerequisite) stores `db_name` on the site row (v6 migration backfills,
