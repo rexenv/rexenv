@@ -230,13 +230,21 @@ in two examples**, and it must be fixed before Stage 0 adds more examples:
 
 ## 10. Commit sequence
 
-1. `fix(examples)` — the §9 class fix, so new examples don't inherit the broken shape.
+1. ✓ **DONE** `2c1d59e` `fix(examples)` — the §9 class fix, so new examples don't inherit
+   the broken shape. `examples/common::Reaped` (Drop guard + `Proc::terminate` + port
+   sweep). Verified: `cargo build --examples` clean, `cargo test --lib` 396 passed, no new
+   clippy lints.
 2. `feat(db)` — v17 column, Rust backfill, migration + idempotency tests.
 3. `feat(core)` — `validate_linked_docroot`, `provision()` honors a caller path, teardown
-   switches to the marker and reports its outcome, both-direction teardown tests.
-4. `feat(sites)` — fs classifier, linked phase-set skip, move refusal/downgrade rules.
-5. `feat(ui)` — picker, disclosure, badge.
-6. `feat(cli)` — `--path`.
+   switches to the marker and reports its outcome, both-direction teardown tests. Also
+   rewrite teardown's doc comment (§14.13) and make `legacy_sites_dir` private to the
+   backfill (§14.5).
+4. `feat(sites)` — fs classifier, linked phase-set skip, **`move_site_docroot` refuses a
+   linked row (§14.2 — mandatory, not stylistic)**, 1→0 downgrade recorded in
+   `check_docroot_move` (§14.3).
+5. `feat(ui)` — picker, disclosure, badge, **and the three copy fixes** (§14.8, §14.9,
+   §14.12) in the same commit that flips teardown's behavior.
+6. `feat(cli)` — `--path`, plus the delete-prompt copy fix (§14.10).
 7. `docs` — ARCHITECTURE §, TODO tick with ✓ evidence, this doc updated.
 
 ## 11. Open decisions (blocking)
@@ -269,6 +277,85 @@ Recorded because it is easy to miss a spot (the compiler catches most, not all):
    `core/service_manager.rs:2664`, `core/logs.rs:325`, `examples/repo_run_all_check.rs:81`,
    `examples/cli_repo_check.rs:56`.
 9. `src/types/index.ts` — mirror if serde-exposed.
+
+## 14. Every other path-based ownership inference (audit, 26 Jul 2026)
+
+Swept core/, commands/, cli/, cli_server.rs and the frontend for anything that infers
+"is this ours / may we touch it" from a path's LOCATION rather than recorded state.
+Numbered by severity; §-refs above point back here.
+
+**14.2 — `move_site_docroot` deletes the old tree with NO ownership check at all.**
+`commands/sites.rs:446-452`: after a cross-volume copy it runs
+`std::fs::remove_dir_all(&old)` where `old` is the row's path, gated ONLY on `copied`.
+Verified by reading the code directly. This is strictly MORE permissive than teardown,
+which at least refuses paths outside the sites roots. **Consequence: shipping linked
+sites without refusing move would ship a same-day data-loss path** — a linked folder on
+another volume would be relocated AND its original deleted. Refusing `move_site_docroot`
+for `docroot_managed = 0` is therefore mandatory, not etiquette. (Same-volume moves are
+`fs::rename`, no delete — but the refusal must not depend on which path is taken.)
+
+**14.3 — `check_docroot_move` imposes no sites-dir constraint** (`core/sites.rs:359-390`):
+rejects only a missing source, a relative destination, a destination inside the source,
+`target == src`, and an existing target. This is where the 1→0 downgrade must be recorded.
+
+**14.4 — `sites_dir` is stored unvalidated** (`commands/settings.rs:27-35`, only
+`default_tld` is special-cased). The marker removes it as a DELETE-time input; validating
+at the setter is still worth doing since the value also flows into `provision`'s docroot
+and thence into generated configs (the B26 charset concern).
+
+**14.5 — `legacy_sites_dir` exists solely to widen the teardown guard** (its own doc
+comment says so, `core/sites.rs:715-720`). After the marker its only legitimate caller is
+the one-shot backfill → make it private to that, so the lexical test can't be resurrected.
+
+**14.6 — `provision`/`site_provision_retry` create and write into the docroot
+unconditionally** (`core/sites.rs:761-765`, `commands/site_provision.rs:646-650`). Not
+inference, but the same "may we populate this folder?" decision — must consult the marker
+once linked rows exist.
+
+**14.7 — `core/logs.rs` reads/writes outside the docroot** (`:250` wp-config in
+`docroot.parent()`, `:275`/`:299-305` honors and truncates an absolute `WP_DEBUG_LOG`).
+Sourced from the user's own wp-config, so defensible; **fine as-is**, listed so it isn't
+mistaken for a marker consumer later.
+
+### Copy whose truth depends on the path test
+
+**14.8 — `src/routes/SiteDetail.tsx:573-576`**, the move confirm: *"a folder outside the
+rexenv sites folder is kept — not deleted — if you ever delete the site."* True today ONLY
+because of the lexical guard. **Must be reworded in the same commit that flips teardown**,
+or it becomes false the instant the marker decides.
+
+**14.9 — `src/routes/Sites.tsx:613-618`**, the delete confirm: *"This permanently removes
+`<domain>`, its files… and its certificate."* Unconditional — **already a lie today** for a
+moved-out docroot, and would be one for every linked site. Drive it off the marker.
+
+**14.10 — `cli/src/main.rs:2155-2158`**, the CLI delete prompt: *"This drops its database
+and docroot."* Same unconditional promise, on the destructive-confirm line. The CLI already
+has the site JSON in hand, so it can key off a serde-exposed `docrootManaged`.
+
+**14.11 — `src/routes/Settings.tsx:237`** reset-to-default tooltip implies the setting is
+inert for existing sites, which is false today (14.4). The marker makes it fully true —
+fine as-is once the marker lands, wrong to leave if the marker is deferred.
+
+**14.12 — `src/types/index.ts:73`**: `// empty → core computes the docroot under the sites
+dir` is misleading — a NON-empty caller path is discarded too. Update with the provision
+change.
+
+**14.13 — `teardown`'s doc comment** (`core/sites.rs:603-609`) describes the lexical guard;
+rewrite it with the guard itself.
+
+### Confirmed clean (no path-based ownership inference)
+
+Git-asset handling in `core/repo.rs` — `validate_link_target` compares only against the
+site's OWN docroot in both directions, `partition_symlink_deletes` keys off filesystem
+truth, `clone_repo` proves it created the dir before removing a partial. WordPress
+checksum-cleanup guards (canonicalized, docroot-relative). Every other `site.path`
+consumer (terminal cwd, wp_login, wp_tunnel, tunnels, logs, wordpress, repo, service
+manager, nginx config) reads the row verbatim and joins relative to it — **none derives a
+path by joining `sites_dir`**. Backup/export/import all target `BaseDirs::download_dir()`.
+CLI canonicalizes only to resolve against the shell's cwd. Frontend: no TypeScript
+compares `site.path` against the sites folder, so there is no "managed vs external" UI
+state to migrate — only the copy above. `stack_guard`/`monitor`/`platform` path-position
+checks are PROCESS ownership for the ServiceManager, orthogonal to docroots.
 
 ## 13. Notes for later stages (found here, needed there)
 

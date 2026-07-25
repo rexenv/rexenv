@@ -23,7 +23,19 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     must also cover docroots moved outside the sites dir, or `move_site_docroot`'s "kept —
     not deleted" promise breaks) + Rust backfill recording today's guard answer once,
     structural delete guard, linked-sites-never-provision, `$HOME`/`/` refused, 7 commits.
-    Prereq commit: the examples orphan-worker class fix (plan §9).
+    All three design decisions approved 26 Jul 2026.
+    - [x] **Commit 1 — examples orphan-worker class fix** ✓ `2c1d59e`: `examples/common::Reaped`
+      (Drop guard owning the child + production `Proc::terminate` + fixture-port sweep
+      matching on the program NAME, since php-fpm workers rewrite their title). Both
+      leakers converted; explicit `reap()` on the `exit(1)` paths because
+      `std::process::exit` skips destructors. Reaped the 4 live orphans first (:9998,
+      :9799, SIGTERM sufficed; live stack untouched). ✓ `cargo build --examples` clean,
+      `cargo test --lib` 396 passed, no new clippy lints.
+    - [ ] Commits 2–7 — see plan §10. **Audit finding that raises the stakes on commit 4**
+      (plan §14.2): `move_site_docroot` deletes the old tree with NO ownership check
+      (`commands/sites.rs:446-452`, gated only on the cross-volume `copied` flag) — more
+      permissive than teardown, so refusing move for linked rows is mandatory or linked
+      sites ship a same-day data-loss path.
   - [ ] Stage 1 — sites-only import + resolver consent
   - [ ] Stage 2 — database import (dump artifact, then restore + credential mirroring)
   - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)
