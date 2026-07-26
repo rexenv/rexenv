@@ -117,7 +117,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         plist says `Status = started` for MySQL 8.0.27 on 3306 → reported as a
         claim in `silent`, never in `servers`, because nothing answered. Free
         Herd has no services config; that hint source degrades to nothing.
-      - [x] 4. `compat()` matrix + per-site verdict `<pending4>` —
+      - [x] 4. `compat()` matrix + per-site verdict `90aeafd` —
         `core::dbcompat`, pure over (vendor, version) × (vendor, version). Three
         TYPES, not three strings: `Proceed{cautions}` (runs; cautions inform and
         never block), `NeedsOverride{reason, consequence, better}` (refused by
