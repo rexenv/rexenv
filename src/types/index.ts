@@ -782,6 +782,11 @@ export interface SiteProvisionState {
   error: string | null;
   logKey: string;
   downloadIds: string[];
+  /** The site was created, but something else is answering :443 in front of our
+   *  edge (a running Herd shadow-binds 127.0.0.1:443), so it won't load yet.
+   *  A FIELD rather than a `status` value: status is read as ok-or-failure, so a
+   *  new variant would show the failure glyph on a job that actually succeeded. */
+  servingBlocked?: boolean;
 }
 
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */

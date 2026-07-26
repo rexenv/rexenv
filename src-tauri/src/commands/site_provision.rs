@@ -98,6 +98,15 @@ pub struct SiteProvisionState {
     /// Uncached Hub item ids this job's fetch phase waits on — the card
     /// filters the app-wide `download-progress` snapshot to these.
     pub download_ids: Vec<String>,
+    /// The site was created, but something else is answering :443 in front of
+    /// our edge (a running Herd shadow-binds 127.0.0.1:443), so it will not
+    /// actually load yet.
+    ///
+    /// A FIELD rather than a `status` value on purpose: `status` is a closed
+    /// set the card reads as ok-or-failure, so a new variant would render the
+    /// failure glyph and freeze the bar on a job that genuinely succeeded.
+    #[serde(default)]
+    pub serving_blocked: bool,
 }
 
 fn snapshot(entry: &ProvisionEntry) -> SiteProvisionState {
@@ -164,7 +173,13 @@ fn build_plan(
     if matches!(site.web_server, WebServer::Apache) {
         plan.extend(downloads::plan_for_override(state.platform.as_ref(), site.web_server));
     }
-    if matches!(site.site_type, SiteType::Wordpress) {
+    // A LINKED WordPress site is adopted, never installed into, so `phase_defs`
+    // omits its db/configure/core_install phases entirely — fetching the engine
+    // and wp-cli for them would download ~600 MB of MySQL that this job will
+    // never touch. On a dozen imported Valet sites that is the difference
+    // between a fast import and a long first-run download.
+    let linked = site.docroot_managed == Some(false);
+    if matches!(site.site_type, SiteType::Wordpress) && !linked {
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
         plan.extend(downloads::plan_for_wp_tooling(state.platform.as_ref(), minor));
     }
@@ -248,6 +263,7 @@ fn spawn_job<R: tauri::Runtime>(
             error: None,
             log_key,
             download_ids,
+            serving_blocked: false,
         }),
     });
     {
@@ -802,8 +818,13 @@ async fn drive<R: tauri::Runtime>(
             Err(e) => return JobEnd::Failed(e.to_string()),
         }
     };
+    // Read the edge's blocked state while we already hold the lock: the
+    // watchdog maintains it, so this costs nothing, where probing :443 per site
+    // would add seconds to every import.
+    let edge_blocked;
     let checks = {
         let mut mgr = state.services.lock().await;
+        edge_blocked = mgr.edge_blocked();
         if mgr.is_running() {
             if !matches!(site.web_server, WebServer::Frankenphp) {
                 if let Err(e) = mgr.ensure_php_pool(state.platform.as_ref(), &minor).await {
@@ -824,6 +845,16 @@ async fn drive<R: tauri::Runtime>(
                 return JobEnd::Failed(format!("site not answering after reload: {e}"));
             }
             finish_phase(app, entry, progress, ix, "ok", None);
+            if edge_blocked {
+                // The site really was created and the stack really did reload —
+                // but something else owns :443, so claiming it is serving would
+                // be a lie the user discovers by clicking the link.
+                entry.state.lock().expect("provision state lock").serving_blocked = true;
+                return JobEnd::Ok(format!(
+                    "created — but another app is answering port 443, so {} won't load until you quit it",
+                    site.domain
+                ));
+            }
             JobEnd::Ok(format!("created — serving at https://{}", site.domain))
         }
         None => {

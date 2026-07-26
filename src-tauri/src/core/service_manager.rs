@@ -645,6 +645,13 @@ impl ServiceManager {
 
     /// Whether the shared stack is currently started (so reloads / pool changes
     /// take effect). False before `start_all` / after `stop_all`.
+    /// Whether something else is answering :443 in front of our edge (a running
+    /// Herd shadow-binds 127.0.0.1:443). Maintained by the health watchdog, so
+    /// reading it costs nothing — no probe, no wait.
+    pub fn edge_blocked(&self) -> bool {
+        self.edge_blocked
+    }
+
     pub fn is_running(&self) -> bool {
         self.nginx.is_some()
     }
