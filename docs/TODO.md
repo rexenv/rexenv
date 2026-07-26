@@ -103,7 +103,20 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         defines, `${VAR}`, multi-line `.env` values. `DbConnection` redacts its
         password in `Debug` and the IPC shape has no password field to forget.
         `DbSiteStatus` keeps unreachable / refused / not-found apart. 444 tests.
-      - [ ] 3. engine discovery + handshake identification
+      - [x] 3. engine discovery + handshake identification `<pending3>` —
+        `core::dbsource`. "Plists label, listeners decide" is structural, not a
+        convention: `SourceServer` has a private `Answered` witness minted only
+        on the probe branch that got an answer, so no caller can turn a config
+        claim into a server. Same shape for vendor: `Identity::Declared` carries
+        a private `DeclarationGuard`, so `resolve_vendor` is the only way to
+        reach it — a declaration fills an unknown and is REFUSED when it
+        contradicts the wire. Greeting parser pinned to the captured bytes of
+        both live servers, plus MariaDB 10.x `5.5.5-`, MySQL derivatives, ERR
+        packets and silent (non-MySQL) servers. 455 tests.
+        ✓ **Live-verified** (`cargo run --example db_source_check`): DBngin's
+        plist says `Status = started` for MySQL 8.0.27 on 3306 → reported as a
+        claim in `silent`, never in `servers`, because nothing answered. Free
+        Herd has no services config; that hint source degrades to nothing.
       - [ ] 4. `compat()` matrix + per-site verdict
       - [ ] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
     - *Half B — restore into ours (+ credential mirroring)*

@@ -267,6 +267,13 @@ also fetches the size, and the dump itself runs with an **unbounded transfer**. 
 rule holds: bound the connect, never the transfer. A 20-minute dump of a large database
 is a success, not a hang.
 
+**Refuse importing from ourselves.** Discovery probes whatever host:port a site's config
+names, and after Stage 3 rewrites a site that will be *our* engine (13306/13307). The
+preflight must recognise our own ports and stop with "this site already uses rexenv's
+database — there's nothing to import", rather than dumping a database and restoring it
+over itself. Surfaced by the step 3 live check, which correctly listed only *their*
+candidates today but would happily probe ours if a config pointed there.
+
 **Disk preflight.** The same preflight query returns
 `SUM(data_length + index_length)` for the database. Compare against free space on the
 app-data volume and refuse honestly *before* dumping — "needs ~2.4 GB, 0.9 GB free" beats
