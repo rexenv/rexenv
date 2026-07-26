@@ -31,11 +31,27 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       `std::process::exit` skips destructors. Reaped the 4 live orphans first (:9998,
       :9799, SIGTERM sufficed; live stack untouched). ✓ `cargo build --examples` clean,
       `cargo test --lib` 396 passed, no new clippy lints.
-    - [ ] Commits 2–7 — see plan §10. **Audit finding that raises the stakes on commit 4**
-      (plan §14.2): `move_site_docroot` deletes the old tree with NO ownership check
-      (`commands/sites.rs:446-452`, gated only on the cross-volume `copied` flag) — more
-      permissive than teardown, so refusing move for linked rows is mandatory or linked
-      sites ship a same-day data-loss path.
+    - [x] **Commits 2–7 — SHIPPED 26 Jul 2026.** `cd5946c` v17 `sites.docroot_managed`
+      + startup backfill (nullable, no DEFAULT — a default would have to GUESS for
+      moved-out rows); `8579447` provision honors a caller path, `validate_linked_docroot`,
+      teardown reads the marker and returns `{existed, docroot_removed}`; `4338d21`
+      `detect_project` + linked phase-set skip + move refusal/downgrade; `7e34a14` New Site
+      "Existing folder" + disclosure + ownership-aware copy + `external` badge; `4df738a`
+      `rex site create --path` + honest delete prompt; `aa3c4ba` `linked_site_check`.
+      ✓ `cargo test --lib` 405 passed (11 new), `cargo build --examples` clean,
+      `tsc --noEmit` + `npm run build` clean, clippy at the 6 pre-existing lints.
+      ✓ **Live-verified on this machine with the stack running**
+      (`cargo run --example linked_site_check`): path stored as given,
+      `docroot_managed=false`, folder untouched by provisioning, move refused, their file
+      served through the vhost, and after delete the row + certificate are gone while the
+      folder and all its files remain. Stack pools 9780–9785 + nginx 18088 untouched.
+      Audit finding that made commit 4 mandatory (plan §14.2): `move_site_docroot` deletes
+      the old tree with NO ownership check (`commands/sites.rs:446-452`, gated only on the
+      cross-volume `copied` flag) — more permissive than teardown, so a linked folder on
+      another volume would have been relocated and its original deleted.
+      **Still open, deliberately:** "install WordPress into an empty linked folder" is out
+      of Stage 0 (own flow, own disclosure); `teardown` still never removes the Apache
+      per-site config/log (pre-existing, plan §3).
   - [ ] Stage 1 — sites-only import + resolver consent
   - [ ] Stage 2 — database import (dump artifact, then restore + credential mirroring)
   - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)

@@ -317,7 +317,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 14:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 17:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -325,8 +325,39 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   lives in MySQL's datadir) · v11 `sites.xdebug` · v12 `site_git_assets` · v13
   `site_git_assets.source` · v14 `sites.override_port` (nullable INTEGER, NO UNIQUE —
   the recorded override backend port; uniqueness enforced by the allocator, existing
-  rows backfilled once at startup by `sites::backfill_override_ports`, B20 §4). Per-engine
+  rows backfilled once at startup by `sites::backfill_override_ports`, B20 §4) · v15
+  `site_git_assets` install fingerprints · v16 `sites.provisioned` (DEFAULT 1) ·
+  v17 `sites.docroot_managed` (see below). Per-engine
   DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
+- **Docroot ownership is RECORDED, never inferred from the path** (v17
+  `sites.docroot_managed`): `true` = rexenv created the folder and teardown may
+  remove it; `false` = a folder the user LINKED, or one moved outside the sites
+  folder — never deleted. Decided where the fact is known (create / link / move)
+  and monotonic toward safety (only ever 1 → 0; linked sites refuse
+  `move_site_docroot` outright, since a cross-volume move copies then DELETES the
+  source). Nullable with NO default, because a default would have to guess for
+  moved-out rows whose confirm dialog promises they are kept; a Rust backfill
+  (`sites::backfill_docroot_managed`, the v14 pattern) evaluates the legacy
+  lexical sites-dir test ONCE per existing row and freezes it, so upgrades change
+  nothing. Deleting at delete time used to re-derive this from the MUTABLE
+  `sites_dir` setting — pointing the Sites folder at `~/code` silently made an
+  unrelated project deletable. `teardown` returns `{ existed, docroot_removed }`
+  so "your folder is still there" is never ambiguous.
+- **Linked sites are ADOPTED, never provisioned into.** A non-empty
+  `NewSite.path` means "serve this folder in place": `core::sites::provision`
+  validates it (`validate_linked_docroot` — canonicalized once so a later symlink
+  swap can't redirect what we serve; refuses overlap with another site, our own
+  app data, the sites folder, and blast-radius roots `/`, `/Users`, `$HOME`,
+  `~/Desktop|Documents|Downloads`, volume roots — a docroot can be published by
+  the tunnel feature) and creates nothing. `phase_defs` gives it
+  prepare/fetch/serve whatever its type: `configure` is only half idempotent
+  (skips `wp config create` when wp-config.php exists, then creates the database
+  unconditionally), so running the WordPress phases over an existing install
+  would leave a stray empty database. `core::sites::detect_project` classifies a
+  folder by filesystem probes ONLY — never by interpreting Valet's PHP drivers,
+  which would mean executing the user's code during a scan — and knows the
+  docroot is often a subfolder (Bedrock `web/`, Laravel/Symfony `public/`, Craft
+  `web/`, Magento `pub/`).
 - `AppState` (`state/app.rs`) = db + platform + monitor + CA + ServiceManager + Terminals/
   Tunnels registries, **field-level locks** (see §5 locking rule).
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding

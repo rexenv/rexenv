@@ -1,7 +1,7 @@
 # Link an existing folder — serve a site from anywhere on disk (Stage 0)
 
-**Status: PLANNED — awaiting three decisions (§11). No code written.** Planned 26 Jul
-2026 against `3b0c009`. Stage 0 of the Valet/Herd migration ladder
+**Status: SHIPPED 26 Jul 2026** (commits `2c1d59e` → `aa3c4ba`). All three decisions
+approved; the design below is what was built. Planned 26 Jul 2026 against `3b0c009`. Stage 0 of the Valet/Herd migration ladder
 (`docs/PLAN-valet-herd-migration.md`), but shipped as a **first-class feature**: linking
 an existing project is a top ask on its own, and migration merely reuses it.
 
@@ -247,14 +247,19 @@ in two examples**, and it must be fixed before Stage 0 adds more examples:
 6. `feat(cli)` — `--path`, plus the delete-prompt copy fix (§14.10).
 7. `docs` — ARCHITECTURE §, TODO tick with ✓ evidence, this doc updated.
 
-## 11. Open decisions (blocking)
+## 11. Decisions — all APPROVED 26 Jul 2026
 
-1. **Name `docroot_managed`** (authorizes deletion) rather than `linked` — it must cover
-   moved-out sites or the move dialog's promise breaks. Agree?
-2. **Linked sites never provision** — adopt existing WordPress, skip the phases. Also
-   want "install WordPress into this empty linked folder" as an explicit opt-in, or leave
-   it out of Stage 0?
-3. **Refuse linking inside the managed sites dir**, and **refuse `$HOME` and `/`**?
+1. **`docroot_managed`**, not `linked` — it must also cover docroots moved outside the
+   sites folder, or `move_site_docroot`'s "kept — not deleted" promise breaks. Built.
+2. **Linked sites never provision.** Existing WordPress is adopted, the phase set is
+   skipped. "Install WordPress into an empty linked folder" is deliberately OUT of
+   Stage 0: writing a full install into the user's own directory is a different
+   operation and deserves its own explicit flow with its own disclosure, not a checkbox
+   on a feature whose whole promise is that we don't touch their folder. Revisit later
+   as a deliberate action from the site page if people ask.
+3. **Refused**: inside the managed sites folder, `$HOME`, `/`, plus `/Users`, volume
+   roots, and `~/Desktop|Documents|Downloads` — the folders THEMSELVES only, so
+   `~/Desktop/myproject` still works (real Valet users keep sites there).
 
 ## 12. Threading a new `Site` column — the exact edit set
 
