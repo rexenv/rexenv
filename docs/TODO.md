@@ -103,7 +103,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         defines, `${VAR}`, multi-line `.env` values. `DbConnection` redacts its
         password in `Debug` and the IPC shape has no password field to forget.
         `DbSiteStatus` keeps unreachable / refused / not-found apart. 444 tests.
-      - [x] 3. engine discovery + handshake identification `<pending3>` —
+      - [x] 3. engine discovery + handshake identification `49a5bac` —
         `core::dbsource`. "Plists label, listeners decide" is structural, not a
         convention: `SourceServer` has a private `Answered` witness minted only
         on the probe branch that got an answer, so no caller can turn a config
