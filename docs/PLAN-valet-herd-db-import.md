@@ -74,8 +74,27 @@ Each candidate is then verified live, and identified **without authenticating**:
 > credentials, no client binary, and therefore no exposure to the client-pairing trap
 > (§3) at the identification step.
 
-*Verification status: reasoned from the protocol, NOT yet byte-verified against DBngin
-8.0.27. **Proving it live is the first task in Half A**, before anything is built on it.*
+**VERIFIED live (2026-07-26), both vendors, no authentication:**
+
+```
+127.0.0.1:13306  payload=73B seq=0 proto=10  version='8.4.6'           raw=b'\n8.4.6\x00'
+127.0.0.1:13307  payload=82B seq=0 proto=10  version='12.3.2-MariaDB'  raw=b'\n12.3.2-MariaDB\x00'
+127.0.0.1:3306   ConnectionRefusedError — DBngin stopped, refused instantly
+```
+
+So: 3-byte LE payload length, 1-byte sequence, then protocol byte `10` and the
+NUL-terminated version. **Family = `-MariaDB` present anywhere in the string**; version =
+the rest. The stopped case refuses instantly, confirming §2.2 needs no timeout tuning.
+
+Two caveats carried into the implementation:
+
+- **MariaDB 10.x prefixes `5.5.5-`** (`5.5.5-10.11.2-MariaDB`) — the old replication
+  compatibility hack. Our 12.3.2 sends no prefix (verified above); the 10.x form is
+  documented but **not verified here**, so the parser strips a leading `5.5.5-` when
+  present and a live 10.x sighting should be recorded back into this section.
+- **DBngin's MySQL 8.0.27 specifically is still unverified** — it was stopped. Protocol 10
+  is the same across the family, so the risk is low, but the live check (§8) confirms it
+  and this line stays until it does.
 
 **If it does not hold — a proxy in front, TLS required, an unusual configuration — the
 answer is to REPORT, not to work around it.** A quiet fallback to an authenticated probe
