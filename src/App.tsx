@@ -9,6 +9,7 @@ import { Services } from "@/routes/Services";
 import { Databases } from "@/routes/Databases";
 import { Mail } from "@/routes/Mail";
 import { Tunnels } from "@/routes/Tunnels";
+import { Import } from "@/routes/Import";
 import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
 import { DevGitPanel } from "@/routes/DevGitPanel";
@@ -110,6 +111,7 @@ export function App() {
           <Route path="/databases" element={<Databases />} />
           <Route path="/mail" element={<Mail />} />
           <Route path="/tunnels" element={<Tunnels />} />
+          <Route path="/import" element={<Import />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/sites" replace />} />

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw } from "lucide-react";
+import { FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -14,7 +14,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry } from "@/lib/ipc";
+import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { Site, SiteResources } from "@/types";
@@ -517,6 +517,7 @@ export function Sites() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]">
+        <ImportBanner />
         {prov.job && (prov.running || prov.job.status !== "ok") && (
           <div className="mb-2 mt-1">
             <SiteProvisionCard
@@ -648,3 +649,56 @@ export function Sites() {
     </>
   );
 }
+
+/**
+ * "Import from Valet or Herd" nudge.
+ *
+ * Only appears when a scan would ACTUALLY find something, so a user with
+ * neither tool never sees it, and it is dismissible so it can't nag someone who
+ * has already decided. Most useful on an empty site list — which is exactly
+ * when a Valet user is wondering where their sites are.
+ */
+function ImportBanner() {
+  const navigate = useNavigate();
+  const DISMISS_KEY = "rexenv.importBannerDismissed";
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(DISMISS_KEY) === "1",
+  );
+  const { data } = useQuery({
+    queryKey: ["valet-scan"],
+    queryFn: scanValetImport,
+    enabled: !dismissed,
+    staleTime: 60_000,
+  });
+  const ready = (data?.candidates ?? []).filter(
+    (c) => c.status.status === "importable",
+  ).length;
+  if (dismissed || ready === 0) return null;
+  return (
+    <div className="mb-2 mt-1 flex items-center gap-3 rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3">
+      <FolderInput className="h-4 w-4 flex-none text-brand" strokeWidth={1.7} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[0.8125rem] text-rex-text">
+          {ready} site{ready === 1 ? "" : "s"} found in Valet or Herd
+        </div>
+        <div className="text-[0.71875rem] text-rex-text-muted">
+          Import them where they already live — nothing is copied, and your Valet setup is left
+          untouched.
+        </div>
+      </div>
+      <Button variant="secondary" onClick={() => navigate("/import")}>
+        Review import
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          localStorage.setItem(DISMISS_KEY, "1");
+          setDismissed(true);
+        }}
+      >
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+

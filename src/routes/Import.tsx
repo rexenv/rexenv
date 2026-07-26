@@ -1,0 +1,453 @@
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, FolderInput, Loader2, RefreshCw } from "lucide-react";
+import { TopBar } from "@/components/shell/TopBar";
+import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/dialog";
+import { toast, toastBackendError } from "@/lib/toast";
+import { cn } from "@/lib/utils";
+import {
+  onValetImportRow,
+  resolverHandBack,
+  resolverTakeOver,
+  scanValetImport,
+  valetImportCancel,
+  valetImportRun,
+} from "@/lib/ipc";
+import type { ImportCandidate, ImportOutcome, ResolverTldStatus } from "@/types";
+
+const CHECK =
+  "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
+
+/** A row can be ticked only when importing it needs no further decision. */
+function selectable(c: ImportCandidate): boolean {
+  return c.status.status === "importable" && !!c.servePath;
+}
+
+function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
+  if (outcome) {
+    const tone =
+      outcome.status === "imported"
+        ? "border-status-running-border bg-status-running-bg text-status-running-bright"
+        : outcome.status === "failed"
+          ? "border-status-error-border bg-status-error-bg text-status-error-bright"
+          : "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted";
+    return { label: outcome.status, tone, title: outcome.reason ?? undefined };
+  }
+  switch (c.status.status) {
+    case "importable":
+      return {
+        label: "ready",
+        tone: "border-status-running-border bg-status-running-bg text-status-running-bright",
+        title: undefined,
+      };
+    case "needsAttention":
+      return {
+        label: "needs attention",
+        tone: "border-status-warning-border bg-status-warning-bg text-status-warning-bright",
+        title: c.status.reason,
+      };
+    case "alreadyImported":
+      return {
+        label: "already here",
+        tone: "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted",
+        title: undefined,
+      };
+    default:
+      return {
+        label: "can't import",
+        tone: "border-rex-border-strong bg-rex-surface-2 text-rex-text-dim",
+        title: c.status.reason,
+      };
+  }
+}
+
+/**
+ * Import sites from Valet or Herd.
+ *
+ * The scan is strictly read-only — their config, symlinks and per-site confs
+ * are read, nothing of theirs is written, started or stopped, and no file
+ * inside a project is opened. Everything the list can't import is still SHOWN
+ * with its reason, because a site the user can see in Herd but not here would
+ * make them doubt the whole list.
+ */
+export function Import() {
+  const qc = useQueryClient();
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ["valet-scan"],
+    queryFn: scanValetImport,
+  });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
+  const [running, setRunning] = useState(false);
+
+  const candidates = useMemo(() => data?.candidates ?? [], [data]);
+  const ready = useMemo(() => candidates.filter(selectable).map((c) => c.domain), [candidates]);
+
+  // Drop selections for rows a rescan removed, so the count can't lie.
+  useEffect(() => {
+    setPicked((prev) => {
+      const live = new Set(ready);
+      const next = new Set([...prev].filter((d) => live.has(d)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [ready]);
+
+  // Rows settle one at a time; show each as it lands rather than all at the end.
+  useEffect(() => {
+    let dead = false;
+    const un = onValetImportRow((row) => {
+      if (!dead) setOutcomes((o) => ({ ...o, [row.domain]: row }));
+    });
+    return () => {
+      dead = true;
+      void un.then((f) => f());
+    };
+  }, []);
+
+  const allPicked = ready.length > 0 && ready.every((d) => picked.has(d));
+  const run = useMutation({
+    mutationFn: () =>
+      valetImportRun({ domains: [...picked].sort(), php: {} }),
+    onMutate: () => {
+      setOutcomes({});
+      setRunning(true);
+    },
+    onSuccess: (r) => {
+      setRunning(false);
+      qc.invalidateQueries({ queryKey: ["sites"] });
+      void refetch();
+      const bits = [`${r.imported} imported`];
+      if (r.failed) bits.push(`${r.failed} failed`);
+      if (r.skipped) bits.push(`${r.skipped} skipped`);
+      if (r.failed) toast.error(bits.join(", "));
+      else toast.success(bits.join(", "));
+      if (r.servingBlocked) {
+        toast.error(
+          "Imported, but another app is answering port 443 — quit it and your sites load automatically.",
+        );
+      }
+    },
+    onError: (e) => {
+      setRunning(false);
+      toastBackendError(e);
+    },
+  });
+
+  const blocked = (data?.tlds ?? []).filter((t) => t.owner === "foreign" || t.owner === "drifted");
+
+  return (
+    <>
+      <TopBar
+        title="Import from Valet or Herd"
+        subtitle={
+          isLoading
+            ? "Scanning…"
+            : `${candidates.length} found · ${ready.length} ready to import`
+        }
+        showSearch={false}
+        action={
+          <Button variant="secondary" onClick={() => void refetch()} disabled={isFetching || running}>
+            <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isFetching && "animate-rex-spin")} />
+            Rescan
+          </Button>
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-auto p-[18px]">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-[0.8125rem] text-rex-text-muted">
+            <Loader2 className="h-4 w-4 animate-rex-spin" /> Reading your Valet and Herd setup…
+          </div>
+        ) : candidates.length === 0 ? (
+          <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-6 text-center">
+            <FolderInput className="mx-auto h-6 w-6 text-rex-text-dim" strokeWidth={1.6} />
+            <div className="mt-2 text-[0.875rem] text-rex-text">No Valet or Herd sites found</div>
+            <div className="mt-1 text-[0.75rem] text-rex-text-muted">
+              rexenv looked in <span className="font-mono">~/.config/valet</span> and Herd's
+              application-support folder. Nothing of theirs was changed.
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-[14px]">
+            {(data?.sources ?? []).map((s) => (
+              <div
+                key={s.home}
+                className="rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3"
+              >
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-[0.84375rem] font-medium text-rex-text">
+                    {s.kind === "herd" ? "Herd" : "Valet"}
+                  </span>
+                  <span className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+                    {s.home}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
+                  serving <span className="font-mono">.{s.tld}</span>
+                  {s.parked.length > 0 && ` · ${s.parked.length} parked folder(s)`}
+                </div>
+                {s.notes.map((n) => (
+                  <div key={n} className="mt-1 text-[0.6875rem] text-rex-text-dim">
+                    {n}
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {blocked.map((t) => (
+              <ResolverConsent key={t.tld} tld={t} onDone={() => void refetch()} />
+            ))}
+
+            <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
+              <div className="flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5">
+                <input
+                  type="checkbox"
+                  className={CHECK}
+                  checked={allPicked}
+                  disabled={ready.length === 0 || running}
+                  ref={(el) => {
+                    if (el) el.indeterminate = !allPicked && ready.some((d) => picked.has(d));
+                  }}
+                  onChange={() => setPicked(allPicked ? new Set() : new Set(ready))}
+                />
+                <span className="text-[0.75rem] text-rex-text-muted">
+                  {picked.size > 0 ? `${picked.size} selected` : "Select sites to import"}
+                </span>
+                <div className="ml-auto flex items-center gap-2">
+                  {running && (
+                    <Button variant="ghost" onClick={() => void valetImportCancel()}>
+                      Cancel after current
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary"
+                    disabled={picked.size === 0 || running}
+                    onClick={() => run.mutate()}
+                  >
+                    {running ? "Importing…" : `Import ${picked.size || ""}`.trim()}
+                  </Button>
+                </div>
+              </div>
+              {candidates.map((c) => {
+                const pill = statusPill(c, outcomes[c.domain]);
+                const can = selectable(c) && !running;
+                return (
+                  <div
+                    key={c.domain}
+                    className="flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5 last:border-b-0"
+                  >
+                    <input
+                      type="checkbox"
+                      className={CHECK}
+                      checked={picked.has(c.domain)}
+                      disabled={!can}
+                      title={selectable(c) ? undefined : pill.title}
+                      onChange={() =>
+                        setPicked((s) => {
+                          const n = new Set(s);
+                          if (n.has(c.domain)) n.delete(c.domain);
+                          else n.add(c.domain);
+                          return n;
+                        })
+                      }
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="truncate font-mono text-[0.78125rem] text-rex-text-bright">
+                          {c.domain}
+                        </span>
+                        {c.label && (
+                          <span className="flex-none text-[0.6875rem] text-rex-text-muted">
+                            {c.label}
+                          </span>
+                        )}
+                        {c.alsoIn && (
+                          <span className="flex-none text-[0.625rem] text-rex-text-dim">
+                            also in {c.alsoIn === "herd" ? "Herd" : "Valet"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+                        {c.servePath ?? c.path ?? "—"}
+                        {c.docrootRel ? ` (serving ${c.docrootRel}/)` : ""}
+                      </div>
+                      {pill.title && (
+                        <div className="mt-0.5 text-[0.6875rem] text-rex-text-muted">
+                          {pill.title}
+                        </div>
+                      )}
+                    </div>
+                    <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
+                      {c.phpTarget ? `PHP ${c.phpTarget}` : c.phpMinor ? `PHP ${c.phpMinor}` : ""}
+                    </span>
+                    <span
+                      className={cn(
+                        "flex-none rounded-full border px-2 py-1 font-mono text-[0.625rem]",
+                        pill.tone,
+                      )}
+                    >
+                      {pill.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-[0.6875rem] leading-[1.55] text-rex-text-muted">
+              Importing links each folder where it already is — nothing is copied or moved, and
+              deleting a site in rexenv never deletes your folder. Your Valet and Herd setup is
+              left exactly as it is, so you can go back at any time. Databases aren't brought
+              over yet: imported sites keep pointing at whatever they point at today.
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Consent before rexenv takes a TLD's resolver file from Valet/Herd.
+ *
+ * Their file is shown beside ours verbatim, the checkbox is unticked, and the
+ * alternative (import on .rex instead) is stated rather than buried — taking
+ * someone's system file is not something to slip past them.
+ */
+function ResolverConsent({ tld, onDone }: { tld: ResolverTldStatus; onDone: () => void }) {
+  const [agreed, setAgreed] = useState(false);
+  const take = useMutation({
+    mutationFn: () => resolverTakeOver(tld.tld),
+    onSuccess: () => {
+      toast.success(`rexenv now answers .${tld.tld} — Valet's file is backed up.`);
+      onDone();
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  const drifted = tld.owner === "drifted";
+  return (
+    <div className="rounded-xl border border-status-warning-border bg-status-warning-bg/40 p-4">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-status-warning-bright" />
+        <div className="min-w-0">
+          <div className="text-[0.84375rem] font-medium text-rex-text">
+            {drifted
+              ? `Valet or Herd took .${tld.tld} back`
+              : `.${tld.tld} is managed by Valet or Herd`}
+          </div>
+          <div className="mt-1 text-[0.75rem] leading-[1.55] text-rex-text-muted">
+            {drifted
+              ? `rexenv had taken over ${tld.path}, but it's theirs again — so rexenv .${tld.tld} sites won't resolve until you take it over again or move them to .rex.`
+              : `${tld.path} tells macOS where to send .${tld.tld} lookups. To serve these sites, rexenv needs to answer them instead.`}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div>
+          <div className="mb-1 text-[0.625rem] uppercase tracking-wide text-rex-text-dim">
+            Theirs now
+          </div>
+          <pre className="overflow-x-auto rounded-md border border-rex-border-strong bg-rex-well px-2.5 py-2 font-mono text-[0.6875rem] text-rex-text">
+            {tld.theirContent ?? "(couldn't read it)"}
+          </pre>
+        </div>
+        <div>
+          <div className="mb-1 text-[0.625rem] uppercase tracking-wide text-rex-text-dim">
+            rexenv would write
+          </div>
+          <pre className="overflow-x-auto rounded-md border border-rex-border-strong bg-rex-well px-2.5 py-2 font-mono text-[0.6875rem] text-rex-text">
+            {tld.ourContent}
+          </pre>
+        </div>
+      </div>
+
+      <label className="mt-3 flex cursor-pointer items-start gap-2 text-[0.75rem] text-rex-text">
+        <input
+          type="checkbox"
+          className={cn(CHECK, "mt-0.5")}
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+        />
+        <span>
+          Let rexenv answer <span className="font-mono">.{tld.tld}</span>. Their file is backed up
+          first and you can hand it back in one click. Valet and Herd will take it back themselves
+          whenever you run <span className="font-mono">valet install</span> or Herd's onboarding.
+        </span>
+      </label>
+
+      <div className="mt-3 flex items-center gap-2">
+        <Button variant="primary" disabled={!agreed || take.isPending} onClick={() => take.mutate()}>
+          {take.isPending ? "Taking over…" : `Take over .${tld.tld}`}
+        </Button>
+        <span className="text-[0.6875rem] text-rex-text-muted">
+          Or leave it alone and import these sites on <span className="font-mono">.rex</span>{" "}
+          instead — their URLs change, but nothing of Valet's is touched.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Hand it back" for a TLD rexenv borrowed — the return half of the borrow,
+ * one click rather than "uninstall rexenv".
+ */
+export function ResolverHandBackRow({ tld }: { tld: ResolverTldStatus }) {
+  const qc = useQueryClient();
+  const give = useMutation({
+    mutationFn: () => resolverHandBack(tld.tld),
+    onSuccess: (plan) => {
+      qc.invalidateQueries({ queryKey: ["valet-scan"] });
+      if (plan.backupMissing.length) {
+        toast.error(
+          `rexenv's copy of ${tld.path} was gone, so its own file was removed instead — run \`valet install\` to restore theirs.`,
+        );
+      } else {
+        toast.success(`.${tld.tld} handed back to Valet/Herd.`);
+      }
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-rex-border-subtle px-3 py-2.5">
+      <div className="min-w-0">
+        <div className="font-mono text-[0.78125rem] text-rex-text-bright">.{tld.tld}</div>
+        <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
+          rexenv answers this, borrowed from Valet/Herd. Their file is backed up.
+        </div>
+      </div>
+      <Button
+        variant="secondary"
+        disabled={give.isPending}
+        onClick={async () => {
+          const ok = await confirm({
+            title: `Hand .${tld.tld} back?`,
+            message: (
+              <>
+                Valet and Herd answer <span className="font-mono">.{tld.tld}</span> again, and their
+                original file is restored.
+                {tld.rexenvSites > 0 && (
+                  <>
+                    {" "}
+                    <span className="font-medium">
+                      Your {tld.rexenvSites} rexenv site
+                      {tld.rexenvSites === 1 ? "" : "s"} on this domain will stop resolving
+                    </span>{" "}
+                    until you take it over again or move them to{" "}
+                    <span className="font-mono">.rex</span>.
+                  </>
+                )}
+              </>
+            ),
+            confirmLabel: "Hand it back",
+          });
+          if (ok) give.mutate();
+        }}
+      >
+        {give.isPending ? "Handing back…" : "Hand back"}
+      </Button>
+    </div>
+  );
+}

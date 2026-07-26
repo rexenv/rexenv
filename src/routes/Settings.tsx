@@ -1,6 +1,8 @@
 import { useState, useSyncExternalStore } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
+import { ResolverHandBackRow } from "@/routes/Import";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
@@ -36,6 +38,7 @@ import {
   tldPolicy,
   trustCaInFirefox,
   trustLocalCa,
+  scanValetImport,
   uninstallSystem,
 } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
@@ -593,6 +596,7 @@ function DnsSslSetting() {
           }}
         />
       </div>
+      <BorrowedResolverCard />
       <FirefoxTrustCard />
       {msg && <Notice>{msg}</Notice>}
     </>
@@ -1226,3 +1230,41 @@ export function Settings() {
     </>
   );
 }
+
+/**
+ * Resolver files rexenv BORROWED from Valet/Herd, each with its return path.
+ *
+ * Shown here and not only in the importer because the borrow outlives the
+ * import: someone who took `.test` over months ago should be able to find the
+ * "hand it back" button without remembering which screen took it.
+ */
+function BorrowedResolverCard() {
+  const navigate = useNavigate();
+  const { data } = useQuery({ queryKey: ["valet-scan"], queryFn: scanValetImport });
+  const borrowed = (data?.tlds ?? []).filter((t) => t.owner === "borrowed" || t.owner === "drifted");
+  const importable = (data?.candidates ?? []).filter((c) => c.status.status === "importable").length;
+  if (borrowed.length === 0 && importable === 0) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {borrowed.map((t) => (
+        <ResolverHandBackRow key={t.tld} tld={t} />
+      ))}
+      {importable > 0 && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-rex-border-subtle px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-[0.78125rem] text-rex-text">
+              {importable} site{importable === 1 ? "" : "s"} in Valet or Herd can be imported
+            </div>
+            <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
+              Served where they already live; your Valet setup is left untouched.
+            </div>
+          </div>
+          <Button variant="secondary" onClick={() => navigate("/import")}>
+            Review import
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
