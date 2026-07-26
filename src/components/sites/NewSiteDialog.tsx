@@ -5,10 +5,10 @@ import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOf
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { defaultTld, listBlueprints, listPhpVersions, listSites, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, pickFolder, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
-import type { MultisiteMode, SiteDbEngine, SiteType, WebServer } from "@/types";
+import type { LinkedFolderInfo, MultisiteMode, SiteDbEngine, SiteType, WebServer } from "@/types";
 
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
@@ -102,6 +102,36 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const [wpTitle, setWpTitle] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  // Link an existing folder: rexenv serves it in place and never writes to,
+  // moves, or deletes it. `link` holds the inspected result; a rejected pick
+  // shows its reason inline rather than as a toast, next to the button.
+  const [useExisting, setUseExisting] = useState(false);
+  const [link, setLink] = useState<LinkedFolderInfo | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  // A linked folder that already holds an app is ADOPTED — we install nothing,
+  // so the WordPress install fields would be collecting credentials we'd never
+  // use. (The backend skips those phases regardless; this keeps the UI honest.)
+  const adopting = useExisting && !!link?.existingInstall;
+
+  const pickExisting = async () => {
+    const picked = await pickFolder("Choose the folder to serve");
+    if (!picked) return;
+    setLinking(true);
+    setLinkError(null);
+    try {
+      const info = await inspectLinkedFolder(picked);
+      setLink(info);
+      setSiteType(info.siteType);
+      if (!name.trim()) setName(info.root.split("/").filter(Boolean).pop() ?? "");
+    } catch (e) {
+      setLink(null);
+      setLinkError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLinking(false);
+    }
+  };
+
   const onPickBlueprint = (id: string) => {
     setBlueprintId(id);
     const bp = blueprints.find((b) => b.id === id);
@@ -131,6 +161,10 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const domainBase = domainEdited ? slug(domain) : slug(name);
   const effectiveDomain = domainBase ? `${domainBase}.${tld}` : "";
   const isWordpress = siteType === "wordpress";
+  // WordPress is INSTALLED only when we're making the folder ourselves. Adopting
+  // an existing install means we touch nothing inside it — no core download, no
+  // wp-config, no database.
+  const installingWp = isWordpress && !adopting;
 
   // Streamed provision job: submit STARTS it (prepare runs inline — a bad or
   // duplicate domain rejects here with nothing created), then the card below
@@ -143,7 +177,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const prov = useSiteProvision((settled) => {
     if (settled.status !== "ok") return;
     void (async () => {
-      if (settled.siteId && isWordpress && multisite !== "none") {
+      if (settled.siteId && installingWp && multisite !== "none") {
         await wpMultisiteConvert(settled.siteId, multisite).catch(toastBackendError);
       }
       qc.invalidateQueries({ queryKey: ["sites"] });
@@ -153,8 +187,18 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const create = useMutation({
     mutationFn: () =>
       siteProvisionJob(
-        { name: name.trim(), domain: effectiveDomain.trim(), type: siteType, phpVersion, webServer, path: "", dbEngine },
-        isWordpress
+        {
+          name: name.trim(),
+          domain: effectiveDomain.trim(),
+          type: siteType,
+          phpVersion,
+          webServer,
+          // Non-empty = link that folder in place. We send the SERVE path, which
+          // for a framework is the docroot subfolder, not the project root.
+          path: useExisting ? (link?.servePath ?? "") : "",
+          dbEngine,
+        },
+        installingWp
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
           : undefined,
         blueprintId || undefined,
@@ -179,7 +223,9 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const canSubmit =
     name.trim() !== "" &&
     domainOk &&
-    (!isWordpress || (adminUser.trim() !== "" && adminPassword !== "")) &&
+    (!installingWp || (adminUser.trim() !== "" && adminPassword !== "")) &&
+    // Linking is chosen but no usable folder picked yet.
+    (!useExisting || !!link) &&
     !pending &&
     prov.job == null;
 
@@ -238,8 +284,18 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setWebServer={setWebServer}
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
-              needsDb={siteType !== "php"}
-              isWordpress={isWordpress}
+              needsDb={siteType !== "php" && !adopting}
+              useExisting={useExisting}
+              setUseExisting={(v) => {
+                setUseExisting(v);
+                setLink(null);
+                setLinkError(null);
+              }}
+              link={link}
+              linkError={linkError}
+              linking={linking}
+              pickExisting={() => void pickExisting()}
+              isWordpress={installingWp}
               wpTitle={wpTitle}
               setWpTitle={setWpTitle}
               showPassword={showPassword}
@@ -303,9 +359,11 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
                 <Button variant="primary" disabled={!canSubmit} onClick={() => create.mutate()}>
                   {create.isPending
                     ? "Starting…"
-                    : isWordpress
+                    : installingWp
                       ? "Install WordPress"
-                      : "Create site"}
+                      : adopting
+                        ? "Link site"
+                        : "Create site"}
                 </Button>
               )
             )}
@@ -390,6 +448,12 @@ function Step2(p: {
   dbEngine: SiteDbEngine;
   setDbEngine: (v: SiteDbEngine) => void;
   needsDb: boolean;
+  useExisting: boolean;
+  setUseExisting: (v: boolean) => void;
+  link: LinkedFolderInfo | null;
+  linkError: string | null;
+  linking: boolean;
+  pickExisting: () => void;
   isWordpress: boolean;
   wpTitle: string;
   setWpTitle: (v: string) => void;
@@ -422,6 +486,80 @@ function Step2(p: {
           </select>
         </Field>
       )}
+
+      {/* Where the files live. Default: rexenv makes the folder and owns it.
+          Alternative: point at a project that already exists — served in place,
+          never written to, never deleted with the site. */}
+      <Field label="Files">
+        <div className="flex gap-[7px]">
+          {[
+            { v: false, label: "New folder" },
+            { v: true, label: "Existing folder" },
+          ].map((o) => (
+            <button
+              key={String(o.v)}
+              type="button"
+              onClick={() => p.setUseExisting(o.v)}
+              className={cn(
+                "h-9 flex-1 rounded-[9px] border text-[0.78125rem] font-medium transition-colors",
+                p.useExisting === o.v
+                  ? "border-brand bg-brand/10 text-rex-text-bright"
+                  : "border-rex-border-strong bg-rex-well text-rex-text-muted hover:text-rex-text",
+              )}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {p.useExisting && (
+          <div className="mt-[9px] space-y-[7px]">
+            <div className="flex items-center gap-[7px]">
+              <Button variant="secondary" size="sm" onClick={p.pickExisting} disabled={p.linking}>
+                {p.linking ? "Checking…" : p.link ? "Choose another…" : "Choose folder…"}
+              </Button>
+              {p.link && (
+                <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-rex-text-muted" title={p.link.root}>
+                  {p.link.root}
+                </span>
+              )}
+            </div>
+            {p.linkError && (
+              <div className="rounded-md border border-status-error-border bg-status-error-bg px-2.5 py-1.5 text-[0.6875rem] text-status-error-bright">
+                {p.linkError}
+              </div>
+            )}
+            {p.link && (
+              <>
+                <div className="rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 text-[0.6875rem] text-rex-text-muted">
+                  Detected <span className="text-rex-text-bright">{p.link.label}</span>
+                  {p.link.docrootRel && (
+                    <>
+                      {" "}· serving <span className="font-mono text-rex-text-bright">{p.link.docrootRel}/</span>
+                    </>
+                  )}
+                  {p.link.existingInstall
+                    ? " · adopted as-is, nothing is installed into it"
+                    : " · nothing to serve yet — add files and reload"}
+                </div>
+                {p.link.hasCustomValetDriver && (
+                  <div className="rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[0.6875rem] text-status-warning-bright">
+                    This project has a LocalValetDriver.php, which picks its document root by
+                    running PHP. rexenv detects folders without executing them, so check the
+                    served folder above matches what Valet used.
+                  </div>
+                )}
+                <div className="text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+                  The folder stays where it is — you keep your own git workflow, and deleting
+                  the site never deletes it. rexenv keeps its own certificate, server config and
+                  database outside it. WordPress features that write inside the folder still do:
+                  the mu-plugins for public sharing and one-click login, plugins or themes added
+                  from Git, and anything run through WP-CLI.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </Field>
 
       <div className="grid grid-cols-2 gap-[13px]">
         <Field label="Site name">

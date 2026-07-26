@@ -572,8 +572,8 @@ function SettingsTab({ site }: { site: Site }) {
           <span className="font-mono">{`${parent}/${folder}`}</span> and updates the server config
           (the site may blip for a moment). Files are verified at the destination before anything
           old is removed. Two caveats: plugins that stored absolute paths in the database won't
-          follow the move, and a folder outside the rexenv sites folder is kept — not deleted — if
-          you ever delete the site.
+          follow the move, and moving the folder outside your rexenv sites folder gives up
+          rexenv's claim on it — from then on deleting the site leaves the folder in place.
         </>
       ),
       confirmLabel: "Move folder",
@@ -685,17 +685,20 @@ function SettingsTab({ site }: { site: Site }) {
           <div className="min-w-0">
             <div className="truncate font-mono text-[0.78125rem] text-rex-text-bright">{site.path}</div>
             <div className="mt-1 text-[0.75rem] text-rex-text-dim">
-              Move the site's files to another folder — domain, database and certificate stay the
-              same.
+              {site.docrootManaged === false
+                ? "Your own folder — rexenv serves it in place and never moves or deletes it."
+                : "Move the site's files to another folder — domain, database and certificate stay the same."}
             </div>
           </div>
-          <Button
-            variant="secondary"
-            disabled={moveSite.isPending}
-            onClick={() => void askMove()}
-          >
-            {moveSite.isPending ? "Moving…" : "Move…"}
-          </Button>
+          {site.docrootManaged !== false && (
+            <Button
+              variant="secondary"
+              disabled={moveSite.isPending}
+              onClick={() => void askMove()}
+            >
+              {moveSite.isPending ? "Moving…" : "Move…"}
+            </Button>
+          )}
         </div>
       </SettingsCard>
         </div>

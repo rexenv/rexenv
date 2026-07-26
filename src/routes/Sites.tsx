@@ -275,6 +275,17 @@ export function SiteRow({
       </span>
       <Badge>{site.phpVersion}</Badge>
       <Badge className="w-[84px] text-center">{site.webServer}</Badge>
+      {site.docrootManaged === false && (
+        /* The folder is the user's own — served in place and never deleted with
+           the site. True for a linked folder and for one moved out of the sites
+           folder, which is why it reads "external" rather than "linked". */
+        <span
+          className="rounded-full border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.625rem] text-rex-text-muted"
+          title={`Served from your own folder (${site.path}) — deleting the site leaves it in place`}
+        >
+          external
+        </span>
+      )}
       {site.provisioned ? (
         <StatusPill status={status} className="min-w-[92px]" />
       ) : (
@@ -612,9 +623,17 @@ export function Sites() {
           title={`Delete "${deleteTarget.name}"?`}
           message={
             <>
-              This permanently removes <span className="font-mono text-rex-text">{deleteTarget.domain}</span>,
-              its files{deleteTarget.type === "wordpress" ? ", its database," : ""} and its
-              certificate. This can't be undone.
+              This permanently removes <span className="font-mono text-rex-text">{deleteTarget.domain}</span>
+              {deleteTarget.docrootManaged === false ? "" : ", its files"}
+              {deleteTarget.type === "wordpress" ? ", its database," : ""} and its certificate.
+              {deleteTarget.docrootManaged === false && (
+                <>
+                  {" "}Your folder at{" "}
+                  <span className="font-mono text-rex-text">{deleteTarget.path}</span> is left
+                  exactly where it is.
+                </>
+              )}{" "}
+              This can't be undone.
             </>
           }
           confirmLabel="Delete site"

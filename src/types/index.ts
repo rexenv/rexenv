@@ -70,6 +70,27 @@ export interface SiteCertInfo {
   certDir: string;
 }
 
+/** What linking a folder would do — from `inspectLinkedFolder`, shown before
+ *  anything is created. Detection is pure filesystem; nothing in the folder is
+ *  executed. */
+export interface LinkedFolderInfo {
+  /** The project folder, canonicalized. */
+  root: string;
+  /** The folder we'd actually serve — often a subfolder (Laravel `public/`,
+   *  Bedrock `web/`), since a docroot is rarely the project root. */
+  servePath: string;
+  /** That subfolder relative to the root ("" = the root itself). */
+  docrootRel: string;
+  siteType: SiteType;
+  /** Framework name for display ("WordPress", "Laravel", …). */
+  label: string;
+  /** The folder already holds an app — we adopt it and install nothing. */
+  existingInstall: boolean;
+  /** A LocalValetDriver.php picks this project's docroot by running PHP, so our
+   *  detection may disagree with what Valet served. */
+  hasCustomValetDriver: boolean;
+}
+
 /** Input for creating a site (mirrors the Rust NewSite). */
 export interface NewSiteInput {
   name: string;
@@ -77,7 +98,10 @@ export interface NewSiteInput {
   type: SiteType;
   phpVersion: string;
   webServer: WebServer;
-  path: string; // empty → core computes the docroot under the sites dir
+  /** Empty → rexenv creates the docroot under the sites folder and owns it.
+   *  Non-empty → LINK that existing folder: it is served in place, never
+   *  created or written into, and never deleted with the site. */
+  path: string;
   dbEngine?: SiteDbEngine; // omitted → mysql (serde default)
 }
 

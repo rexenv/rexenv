@@ -23,6 +23,66 @@ pub fn list_sites(state: State<'_, AppState>) -> Result<Vec<Site>> {
     core::sites::list(&conn)
 }
 
+/// What linking a folder would do, so the New Site dialog can show it BEFORE
+/// anything is created.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkedFolderInfo {
+    /// The project folder, canonicalized.
+    pub root: String,
+    /// The folder we would actually serve — often a subfolder, since a
+    /// framework's docroot is rarely its project root.
+    pub serve_path: String,
+    /// That subfolder relative to the root (`""` = the root itself).
+    pub docroot_rel: String,
+    pub site_type: SiteType,
+    /// Framework name for display ("WordPress", "Laravel", …).
+    pub label: String,
+    /// The folder already holds an app — we adopt it, install nothing.
+    pub existing_install: bool,
+    /// A `LocalValetDriver.php` decides this project's docroot by running PHP,
+    /// so our own detection may disagree with what Valet served.
+    pub has_custom_valet_driver: bool,
+}
+
+/// Inspect a folder the user picked, WITHOUT creating anything: classify it,
+/// resolve what we'd serve, and run the full link preflight so the dialog can
+/// refuse early with the real reason. Pure filesystem — nothing in the folder
+/// is executed.
+#[tauri::command]
+pub fn inspect_linked_folder(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<LinkedFolderInfo> {
+    let conn = lock(&state)?;
+    let platform = state.platform.as_ref();
+    // Validate the ROOT first so an unusable pick fails with the honest reason
+    // (too broad, overlaps another site, …) rather than a confusing miss on a
+    // subfolder we derived from it.
+    let root = core::sites::validate_linked_docroot(&conn, platform, &path)?;
+    let detected = core::sites::detect_project(&root);
+    let serve = if detected.docroot_rel.is_empty() {
+        root.clone()
+    } else {
+        root.join(&detected.docroot_rel)
+    };
+    // The served subfolder is what actually gets stored, so it must pass too.
+    let serve_path = core::sites::validate_linked_docroot(
+        &conn,
+        platform,
+        &serve.display().to_string(),
+    )?;
+    Ok(LinkedFolderInfo {
+        root: root.display().to_string(),
+        serve_path: serve_path.display().to_string(),
+        docroot_rel: detected.docroot_rel,
+        site_type: detected.site_type,
+        label: detected.label.to_string(),
+        existing_install: detected.existing_install,
+        has_custom_valet_driver: core::sites::has_custom_valet_driver(&root),
+    })
+}
+
 /// Live per-site serving status (H1 follow-up): whether each site is actually
 /// reachable (edge up AND its own upstream up), not just whether the stack is up.
 /// Derived from the non-blocking `service_infos()` snapshot, so it never blocks the
