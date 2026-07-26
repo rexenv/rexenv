@@ -4,10 +4,11 @@
 //! (validated against our local CA).
 
 use rexenv_lib::core::{binaries, database, proxy, services, sites, ssl, wordpress};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::net::SocketAddr;
+
+mod common;
 use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT;
@@ -16,7 +17,10 @@ const CADDY_HTTPS: u16 = 8443;
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("wp_install_serve");
     let domain = "wpdemo.test";
     let url = format!("https://{domain}:{CADDY_HTTPS}");
 

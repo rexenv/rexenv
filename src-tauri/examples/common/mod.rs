@@ -4,32 +4,223 @@
 //! `examples/*/main.rs`, so a `mod.rs` in a subdirectory is compiled only where
 //! it is declared (`mod common;`).
 //!
-//! ## Cleanup discipline (why this module exists)
+//! # THE INVARIANT — read this before writing an example
+//!
+//! **Examples run against REAL app data and REAL processes.** They link the app
+//! library, resolve the same binary cache, and (historically) wrote into the
+//! same `~/Library/Application Support/dev.rexenv.rexenv` tree the user's
+//! running stack lives in. So:
+//!
+//! > Anything an example WRITES, SPAWNS or DELETES must be inside
+//! > fixture-owned scope — a sandbox app-data root, a temp directory the
+//! > example created, a Drop-owned process guard. Never a derived path, never
+//! > the shared prefix, never a path computed from the real `Paths`.
+//!
+//! This has now bitten three times, each fixed per-instance until this note:
+//!
+//! 1. an example `rm -rf`'d `docroot.parent()` and took the user's whole Sites
+//!    folder with it;
+//! 2. examples SIGKILLed php-fpm masters and leaked title-rewritten workers
+//!    that squatted ports for days (fixed by [`Reaped`], below);
+//! 3. examples started nginx with the REAL `cfg.nginx_prefix`, so their nginx
+//!    wrote — and on exit cleared — the running stack's `nginx.pid`. The real
+//!    master stayed alive but became undiscoverable, and the user's very next
+//!    site import failed with `nginx -s reload` → `invalid PID number ""`.
+//!
+//! [`sandbox`] is the structural answer to (3): it hands back a `Platform`
+//! whose paths are all temporary, so an example never HOLDS the real config
+//! dir, prefix or pid path and cannot pass one by accident. Use it for anything
+//! that generates configs or spawns services. The deliberate exceptions are
+//! documented on [`sandbox`] itself.
+//!
+//! ## Cleanup discipline
 //!
 //! An example that spawns a service must reap it from a DROP GUARD, never from
 //! a statement at the end of `main`: everything in between is an `assert!` /
-//! `.expect()` that can unwind straight past that statement. Two examples got
-//! this wrong and left php-fpm workers holding :9998 and :9799 for eleven days.
+//! `.expect()` that can unwind straight past that statement.
 //!
-//! And a FORKING service (php-fpm, httpd) has to be stopped gracefully. SIGKILL
-//! to the master leaves its workers alive, reparented to pid 1, still holding
-//! the listen socket — the failure mode `Proc::alive`'s doc comment describes
-//! ("php-fpm workers outlive a SIGKILLed master and keep accepting"). Production
-//! solves this with [`Proc::terminate`] (SIGTERM → poll → SIGKILL as a last
-//! resort); examples get the same behavior here rather than a second
-//! implementation.
+//! And a FORKING service (php-fpm, httpd, nginx) has to be stopped gracefully.
+//! SIGKILL to the master leaves its workers alive, reparented to pid 1, still
+//! holding the listen socket — the failure mode `Proc::alive`'s doc comment
+//! describes. Production solves this with [`Proc::terminate`] (SIGTERM → poll →
+//! SIGKILL as a last resort); examples get the same behavior here rather than a
+//! second implementation.
 //!
 //! One caveat worth stating, because it is what made the leak invisible: php-fpm
 //! workers REWRITE their process title to `php-fpm: pool www`, which contains
 //! neither the binary path nor the config path. A sweep keyed on the executable
 //! would miss precisely the processes that leak, so [`Reaped`] matches on the
-//! program NAME (`php-fpm`, `httpd`).
+//! program NAME (`php-fpm`, `httpd`, `nginx`).
 
 #![allow(dead_code)] // each example uses a subset
 
+use rexenv_lib::error::Result as RexResult;
+use rexenv_lib::platform::traits::{
+    AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,
+    EdgeSupervisor, Paths, Platform, PermissionManager, PrivilegeManager, ProcessSupervisor,
+    ShellRunner,
+};
 use rexenv_lib::core::proc::Proc;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
+
+// ---------------------------------------------------------------------------
+// Sandboxed platform
+// ---------------------------------------------------------------------------
+
+/// `Paths` rooted in a throwaway directory.
+///
+/// Every service path the app computes — the config dir, the log dir, the nginx
+/// PREFIX and therefore `nginx.pid`, the `run/` sockets, the SQLite file, certs
+/// — is derived from these, so redirecting `Paths` redirects all of them at
+/// once. That is what makes the sandbox structural rather than a convention.
+struct SandboxPaths {
+    root: PathBuf,
+    /// The REAL binary cache: the one deliberate exception. It is
+    /// content-addressed, checksum-verified and atomically published, and not
+    /// sharing it would mean re-downloading ~600 MB of MySQL per example run.
+    /// Examples only ever add to it.
+    bin: PathBuf,
+    hosts: PathBuf,
+}
+
+fn ensure(p: PathBuf) -> RexResult<PathBuf> {
+    std::fs::create_dir_all(&p)?;
+    Ok(p)
+}
+
+impl Paths for SandboxPaths {
+    fn app_data_dir(&self) -> RexResult<PathBuf> {
+        ensure(self.root.clone())
+    }
+    fn config_dir(&self) -> RexResult<PathBuf> {
+        ensure(self.root.join("config"))
+    }
+    fn log_dir(&self) -> RexResult<PathBuf> {
+        ensure(self.root.join("logs"))
+    }
+    fn bin_dir(&self) -> RexResult<PathBuf> {
+        Ok(self.bin.clone())
+    }
+    fn hosts_file(&self) -> PathBuf {
+        self.hosts.clone()
+    }
+    fn cli_symlink_path(&self) -> RexResult<PathBuf> {
+        // An example must never install or remove the user's `rex` symlink.
+        Err(rexenv_lib::error::Error::Unsupported("CLI PATH install (sandboxed example)"))
+    }
+}
+
+/// The real platform with its paths swapped for [`SandboxPaths`]. Everything
+/// else (process supervision, privileges, DNS command builders) delegates
+/// unchanged, because those are what the example is usually there to exercise.
+struct SandboxPlatform {
+    inner: Box<dyn Platform>,
+    paths: SandboxPaths,
+}
+
+impl Platform for SandboxPlatform {
+    fn paths(&self) -> &dyn Paths {
+        &self.paths
+    }
+    fn dns(&self) -> &dyn DnsManager {
+        self.inner.dns()
+    }
+    fn cert_trust(&self) -> &dyn CertTrustManager {
+        self.inner.cert_trust()
+    }
+    fn privileges(&self) -> &dyn PrivilegeManager {
+        self.inner.privileges()
+    }
+    fn supervisor(&self) -> &dyn ProcessSupervisor {
+        self.inner.supervisor()
+    }
+    fn autostart(&self) -> &dyn AutostartManager {
+        self.inner.autostart()
+    }
+    fn permissions(&self) -> &dyn PermissionManager {
+        self.inner.permissions()
+    }
+    fn shell(&self) -> &dyn ShellRunner {
+        self.inner.shell()
+    }
+    fn binaries(&self) -> &dyn BinaryProvider {
+        self.inner.binaries()
+    }
+    fn edge(&self) -> &dyn EdgeSupervisor {
+        self.inner.edge()
+    }
+    fn dns_agent(&self) -> &dyn DnsAgentManager {
+        self.inner.dns_agent()
+    }
+}
+
+/// Removes the sandbox tree when the example ends, however it ends.
+pub struct SandboxGuard {
+    root: PathBuf,
+}
+
+impl SandboxGuard {
+    /// Where the sandbox lives — for printing, or for planting fixtures.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+}
+
+impl Drop for SandboxGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+/// A `Platform` whose app data is a throwaway directory.
+///
+/// Use this in ANY example that generates configs or spawns services. The
+/// example then never holds the real config dir, nginx prefix or pid path, so
+/// it cannot pass one by accident — the failure mode that broke a user's stack
+/// (see the module note). Keep the guard alive for the whole run; dropping it
+/// deletes the sandbox.
+///
+/// ```ignore
+/// let (plat, _sandbox) = common::sandbox("my_check");
+/// let cfg = sites::rebuild_configs(&conn, &*plat, &ca, PORT, 8081, 8444)?; // writes into the sandbox
+/// ```
+///
+/// Two deliberate exceptions, both read-mostly and both stated on the methods
+/// above: the binary cache is shared (re-downloading 600 MB per run is worse),
+/// and the hosts file is the real one (only ever read). Privileged operations
+/// and the DNS command builders also delegate to the real platform — an example
+/// that calls those is asking for a real system change and should say so.
+pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
+    let real = rexenv_lib::platform::current();
+    let bin = real.paths().bin_dir().expect("real binary cache");
+    let hosts = real.paths().hosts_file();
+    let root = std::env::temp_dir()
+        .join(format!("rexenv-sandbox-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("create the sandbox root");
+    let platform = SandboxPlatform {
+        inner: real,
+        paths: SandboxPaths { root: root.clone(), bin, hosts },
+    };
+    // Belt: prove the sandbox really is somewhere else before handing it out.
+    // If a future change ever makes these coincide, an example would start
+    // writing the user's stack again — and that failure is silent until their
+    // next reload breaks, which is exactly how this got shipped once already.
+    let real_data = rexenv_lib::platform::current()
+        .paths()
+        .app_data_dir()
+        .expect("real app data dir");
+    let sandboxed = platform.paths().app_data_dir().expect("sandbox app data dir");
+    assert!(
+        sandboxed != real_data && !sandboxed.starts_with(&real_data),
+        "sandbox root {} is inside the REAL app data {} — an example must never write there",
+        sandboxed.display(),
+        real_data.display()
+    );
+    (Box::new(platform), SandboxGuard { root })
+}
 
 /// A spawned check process that is reaped when it goes out of scope — including
 /// when an assertion panics and unwinds.

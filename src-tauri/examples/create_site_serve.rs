@@ -6,10 +6,11 @@
 //!   (issuer = rexenv Local CA; body = phpinfo HTML)
 
 use rexenv_lib::core::{binaries, proxy, services, sites, ssl};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::thread;
+
+mod common;
 use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT; // 18088
@@ -18,7 +19,10 @@ const CADDY_HTTPS: u16 = 8443;
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("create_site_serve");
     let domain = "blankphp.test";
 
     // Isolated temp DB so the example is repeatable.

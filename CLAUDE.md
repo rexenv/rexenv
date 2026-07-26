@@ -61,7 +61,10 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
   JetBrains Mono for ALL technical values; Space Grotesk hero/onboarding only; Inter body.
 - `src/routes/` map 1:1 to screens (Sites, SiteDetail, Services, Databases, Mail,
   Tunnels, Settings, Onboarding).
-- Verification: `cargo test --lib` + live-check `examples/*.rs`. Work in small verifiable
+- Verification: `cargo test --lib` + live-check `examples/*.rs` — examples run against
+  REAL app data and processes, so anything they write/spawn/delete MUST be
+  fixture-owned: `common::sandbox()` for a throwaway `Platform`, `common::Reaped`
+  for spawned services. Read the invariant in `examples/common/mod.rs` FIRST. Work in small verifiable
   steps, one task at a time; commit per task; tick finished items in `docs/TODO.md` with
   ✓ evidence. Surface assumptions before non-trivial work; keep changes surgical.
 

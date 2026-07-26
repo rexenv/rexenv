@@ -10,11 +10,12 @@
 
 use rexenv_lib::core::php::{self, PhpFpmPools};
 use rexenv_lib::core::{binaries, proxy, services, sites, ssl};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::process::Command;
 use std::thread;
+
+mod common;
 use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT; // 18088
@@ -23,7 +24,10 @@ const CADDY_HTTPS: u16 = 8443;
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("php_per_site_serve");
     // (domain, minor) pairs — two different PHP versions.
     let sites_spec = [("a.test", "8.1"), ("b.test", "8.3")];
     let minors: Vec<String> = sites_spec.iter().map(|(_, v)| v.to_string()).collect();

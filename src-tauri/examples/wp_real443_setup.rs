@@ -4,14 +4,18 @@
 //! separate foreground step can bind Caddy on :443 and verify.
 
 use rexenv_lib::core::{binaries, database, services, sites, ssl, wordpress};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
+
+mod common;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("wp_real443_setup");
     let domain = "wpdemo.test";
 
     let conn = {

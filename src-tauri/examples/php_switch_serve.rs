@@ -10,12 +10,13 @@
 
 use rexenv_lib::core::php::PhpFpmPools;
 use rexenv_lib::core::{binaries, proxy, services, sites, ssl};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+
+mod common;
 use std::time::{Duration, SystemTime};
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT; // 18088
@@ -54,7 +55,10 @@ fn mtime(p: &Path) -> SystemTime {
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("php_switch_serve");
     let db_path = std::env::temp_dir().join("rexenv-1_4.db");
     let _ = std::fs::remove_file(&db_path);
     let conn = db::open(&db_path).expect("open db");

@@ -15,12 +15,13 @@
 use rexenv_lib::core::services::RewriteMode;
 use rexenv_lib::core::php::PhpFpmPools;
 use rexenv_lib::core::{binaries, frankenphp, proxy, services, sites, ssl};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+
+mod common;
 use std::time::Duration;
 
 const NGINX_PORT: u16 = services::NGINX_HTTP_PORT;
@@ -45,7 +46,10 @@ fn fetch(domain: &str, ca_pem: &str) -> (String, String) {
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("frankenphp_edge_serve");
     let db_path = std::env::temp_dir().join("rexenv-2_3.db");
     let _ = std::fs::remove_file(&db_path);
     let conn = db::open(&db_path).expect("db");

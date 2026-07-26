@@ -14,7 +14,6 @@
 //!      while the row and the certificate do go away.
 
 use rexenv_lib::core::{binaries, services, sites, ssl};
-use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::time::Duration;
@@ -37,7 +36,10 @@ const MARKER: &str = "SERVED-FROM-THE-USERS-OWN-FOLDER";
 
 #[tokio::main]
 async fn main() {
-    let plat = platform::current();
+    // Sandboxed: every path the app derives (config dir, nginx PREFIX and
+    // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
+    // example cannot touch the running stack. See examples/common.
+    let (plat, _sandbox) = common::sandbox("linked_site_check");
     let mut ok = true;
 
     // A project living where the user keeps their code — outside the sites dir.
