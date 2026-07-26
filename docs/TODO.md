@@ -88,7 +88,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     `5.5.5-` prefix is handled but unverified here; DBngin 8.0.27 stays open until
     the live check.
     - *Half A — dump to artifact (their side, read-only)*
-      - [x] 1. v19 `sites.db_created` + teardown guard `0478dcc` — nullable, no
+      - [x] 1. v19 `sites.db_created` + teardown guard `bcf3a1f` — nullable, no
         DEFAULT (the v17 reasoning); `set_site_db_created` refuses `false`→`true`
         in SQL so a pre-existing database can never become ours to drop;
         `may_drop_database` also skips the engine bring-up for a linked site that
