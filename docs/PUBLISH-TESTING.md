@@ -167,6 +167,64 @@ at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
 10. Throughout: `/etc/resolver/rex` must be untouched, and no file we did not create may
     ever be removed.
 
+## G) 🚧 `/import` screen — packaged-app GUI pass
+
+The most complex screen we've built (per-row honest statuses, selection, the
+resolver consent panel) and it has only ever been type-checked. Everything below
+is reproducible against the dev Mac's real Valet + Herd install unless marked
+CLEAN-VM.
+
+**What a full import would CHANGE on this machine — read before clicking:**
+importing a `.test` site installs `/etc/resolver/test` (one admin prompt). That
+is a plain create, NOT a takeover — the file is absent today, so rexenv owns it
+outright and "Remove system changes" deletes it. It also creates real site rows
+pointing at real project folders and issues certs. Deleting those sites later
+leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.**
+
+1. **Populated list.** Sites → the "N sites found in Valet or Herd" banner
+   appears (19 importable today). Open it. Expect **32 rows, 19 ready**, header
+   count matching, and two source cards (Herd `.test`, Valet `.test`) with
+   Herd's "parked folder ~/Herd has no sites in it" note.
+2. **Dangling symlinks** — `back.test`, `bl.test`, `ealite.test`, `eatest.test`,
+   `front.test`, `learn-valet.test`, `learn-wp.test`, `storeware-reviews.test`,
+   `valet-wp-learn.test`, `wpdcd.test`. Each must read "can't import" AND name
+   its missing target (e.g. `/Users/wpdev/bl`). Checkbox disabled.
+3. **Leftover configs** — `abc.test`, `eatest.dev`, `wp-dev.test.test`: "leftover
+   config with no site folder". Note `eatest.dev` proves a conf on a TLD the
+   config never mentions still appears.
+4. **Dedupe** — 11 rows carry "also in Valet" (Herd's copy won). No domain
+   appears twice.
+5. **PHP pins** — `strata.test` 8.5, `srdi.test`/`tr.test`/`typingbcc.test` 8.4,
+   `pma.test` 8.2, `ea`/`eapro`/`adminer` 8.3 (both marker formats). Rows with no
+   marker show the default.
+6. **Docroot resolution** — a Laravel/Bedrock row must show `(serving public/)`
+   or `(serving web/)`, not the project root.
+7. **Selection** — select-all ticks only the 19 ready ones; the indeterminate
+   state shows on a partial selection; disabled rows can't be ticked; the count
+   in the bar matches; Rescan preserves nothing stale.
+8. **Import one site.** Pick a small static/PHP one (`shop.test`, `snpz.test`,
+   `rp.test`). Expect the admin prompt ONCE, up front, before any site is
+   created. Watch the row flip to `imported`. Then: it appears in Sites with the
+   **external** badge, `https://<domain>` loads THEIR files, and deleting it
+   leaves the folder on disk.
+9. **Continue-on-failure** — hard to force naturally; if you want it, rename a
+   project folder between the scan and the import so one row fails, and confirm
+   the rest still import and the summary names the failure.
+10. **Cancel** — with several selected, cancel mid-run: the current site
+    finishes, the rest report `skipped`, and no half-created site appears.
+11. **Settings → DNS & SSL** — the "N sites can be imported" row appears and
+    navigates to `/import`.
+12. **Banner dismissal** — Dismiss on Sites, reload the app, it stays dismissed.
+
+**CLEAN-VM only** (cannot be exercised here):
+- The **empty state** (no Valet or Herd at all) — the "No Valet or Herd sites
+  found" card. Most first-run users see this, so it matters as much as the
+  populated list. Do NOT fake it by moving the dev Mac's Valet/Herd folders.
+- The **resolver consent panel** — needs a foreign `/etc/resolver/test`; both
+  TLDs read "absent" here, so the panel never renders. Covered by §F.
+- **Hand-back row** in Settings — only appears for a BORROWED TLD, so it needs
+  §F's takeover first.
+
 ## E) Other live/GUI items from the review & publish
 
 - **🟢 Clean-Mac release QA** — `docs/SMOKE-TEST.md` on a fresh Mac / user account. The
