@@ -167,6 +167,26 @@ at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
 10. Throughout: `/etc/resolver/rex` must be untouched, and no file we did not create may
     ever be removed.
 
+## H) ⚠️ READING THE EVIDENCE — a 200 on an imported host proves nothing
+
+Burned us once during a real diagnosis, so it is written down rather than
+re-learned. When a reload FAILS, nginx keeps serving its previously loaded
+config. A request for a host that isn't in that config does not 404 — nginx
+falls back to the **default server**, the first `server` block for the listen
+address, and answers 200 from a DIFFERENT site's docroot.
+
+So `curl -H "Host: newsite.test" http://127.0.0.1:18088/` returning 200 is NOT
+evidence the site is served. Check the BODY:
+
+```sh
+curl -s -H "Host: newsite.test"  http://127.0.0.1:18088/ | head -c 80
+curl -s -H "Host: someothersite" http://127.0.0.1:18088/ | head -c 80
+```
+
+Byte-identical bodies mean you are looking at the fallback, not your site. The
+same applies to the UI: a green row is only meaningful once the site's own
+content comes back.
+
 ## G) 🚧 `/import` screen — packaged-app GUI pass
 
 The most complex screen we've built (per-row honest statuses, selection, the

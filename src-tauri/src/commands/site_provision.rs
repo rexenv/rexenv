@@ -367,9 +367,22 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
     let site_tld = sites::domain_tld(&site.domain)?;
     core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
     let docroot = PathBuf::from(&site.path);
-    std::fs::create_dir_all(&docroot)?;
-    if matches!(site.site_type, SiteType::Php) && !docroot.join("index.php").exists() {
-        std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
+    // Re-ensure prepare's artifacts — but ONLY for a docroot we own. A linked
+    // site's folder is the user's: creating it, or dropping our phpinfo probe
+    // into an empty one, would write into their project on a retry. The cert
+    // below is ours either way.
+    if site.docroot_managed != Some(false) {
+        std::fs::create_dir_all(&docroot)?;
+        if matches!(site.site_type, SiteType::Php) && !docroot.join("index.php").exists() {
+            std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
+        }
+    } else if !docroot.is_dir() {
+        return Err(Error::Other(format!(
+            "{} is linked to {}, which no longer exists — rexenv won't recreate a folder it \
+             doesn't own. Restore it (or delete the site) and try again.",
+            site.domain,
+            docroot.display()
+        )));
     }
     core::ssl::ensure_site_cert(
         state.platform.paths(),
@@ -833,7 +846,17 @@ async fn drive<R: tauri::Runtime>(
             }
             match mgr.reload(state.platform.as_ref(), &state.ca, &fresh_sites, false).await {
                 Ok(c) => Some(c),
-                Err(e) => return JobEnd::Failed(format!("edge reload failed: {e}")),
+                // The site EXISTS — row, folder, certificate — it just isn't
+                // being served yet. Say that, say what to do, and carry the
+                // underlying reason verbatim rather than an exit code. The row
+                // stays `provisioned = 0`, so the list shows "setup incomplete"
+                // with Retry, which re-runs exactly these steps.
+                Err(e) => {
+                    return JobEnd::Failed(format!(
+                        "created, but not being served yet — the web server wouldn't reload. \
+                         Fix the cause below, then Retry.\n{e}"
+                    ))
+                }
             }
         } else {
             None

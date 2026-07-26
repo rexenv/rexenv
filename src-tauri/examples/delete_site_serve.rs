@@ -79,7 +79,7 @@ async fn main() {
     // Delete del.test: DB row + cert + docroot, then rebuild configs + reload.
     let removed = sites::teardown(&conn, &*plat, &del.id).unwrap();
     let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
-    services::reload_nginx(&*plat, &nginx_bin, &cfg2.nginx_conf, &cfg2.nginx_prefix).unwrap();
+    services::reload_nginx(&*plat, &nginx_bin, &cfg2.nginx_conf, &cfg2.nginx_prefix, NGINX_PORT).unwrap();
     proxy::reload(&*plat, &caddy_bin, &cfg2.caddyfile, false).unwrap();
     tokio::time::sleep(Duration::from_millis(800)).await;
 

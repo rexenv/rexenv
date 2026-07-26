@@ -98,7 +98,7 @@ async fn main() {
     pools.ensure(&*plat, "8.3").await.expect("ensure 8.3 pool");
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     thread::sleep(Duration::from_millis(800));
-    services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).expect("reload");
+    services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, NGINX_PORT).expect("reload");
     thread::sleep(Duration::from_millis(800));
 
     let (code_after, ver_after) = fetch_version(&ca_pem);

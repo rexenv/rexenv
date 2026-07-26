@@ -556,24 +556,94 @@ pub fn start_nginx(
 
 /// Reload a running nginx's config (`nginx -s reload`) after the config changes
 /// (e.g. a site was added/removed).
+/// What a reload attempt actually found. The three possible situations are
+/// genuinely different and conflating them produced a real bug: a user's import
+/// failed with "nginx -s reload failed (exit Some(1))" when the config was
+/// perfectly valid and nginx was perfectly healthy — only its pid FILE was
+/// unreadable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReloadOutcome {
+    /// The running master was signalled; the new config is live.
+    Reloaded,
+    /// Nothing is running. NOT an error for a caller that is about to start
+    /// nginx — only for one that believed it was already up.
+    NotRunning,
+}
+
+/// Reload the shared nginx onto the current config.
+///
+/// Three things this does that the naive `-s reload` did not:
+///
+/// 1. **Validates first.** `-s reload` reports a bare exit code; `-t` names the
+///    file, line and reason. A caller can then show the user something they can
+///    act on instead of "exit Some(1)".
+/// 2. **Falls back to signalling the master directly** when the pid file is
+///    missing, empty or stale. That file is nginx's only way to find its own
+///    master, and anything that writes the same prefix can clobber it — but we
+///    can identify our master independently, so an unusable pid file should not
+///    fail a reload we are perfectly able to perform.
+/// 3. **Distinguishes "nothing to reload"** from a failure.
+///
+/// The fallback uses `owned_master`, which matches our app-data marker on the
+/// process command line — the same positive-identification discipline as
+/// adoption and the port gate. A foreign nginx on this port is never signalled;
+/// if one is there and none of it is ours, that is reported, not signalled.
 pub fn reload_nginx(
     platform: &dyn Platform,
     nginx_bin: &Path,
     conf: &Path,
     prefix: &Path,
-) -> Result<()> {
+    port: u16,
+) -> Result<ReloadOutcome> {
+    // 1) Validate — the diagnosis lives here, not in the reload's exit code.
+    let mut test_args = vec!["-t".to_string()];
+    test_args.extend(nginx_args(conf, prefix, None));
+    let test = std::process::Command::new(nginx_bin).args(&test_args).output()?;
+    if !test.status.success() {
+        return Err(Error::Other(format!(
+            "the generated nginx config is invalid, so it was NOT applied:\n{}",
+            String::from_utf8_lossy(&test.stderr).trim()
+        )));
+    }
+
+    // 2) The ordinary path.
     let mut args = vec!["-s".to_string(), "reload".to_string()];
     args.extend(nginx_args(conf, prefix, None));
-    let mut child = platform.supervisor().spawn(nginx_bin, &args)?;
-    let status = child.wait()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(Error::Other(format!(
-            "nginx -s reload failed (exit {:?})",
-            status.code()
-        )))
+    let out = std::process::Command::new(nginx_bin).args(&args).output()?;
+    if out.status.success() {
+        return Ok(ReloadOutcome::Reloaded);
     }
+    let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+
+    // 3) `-s reload` only failed because it couldn't FIND the master. If we can
+    //    identify ours, signal it ourselves.
+    let marker = platform
+        .paths()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.display().to_string())
+        .filter(|m| !m.is_empty());
+    if let Some(pid) = marker.and_then(|m| platform.supervisor().owned_master(port, &m)) {
+        let hup = std::process::Command::new("kill")
+            .args(["-HUP", &pid.to_string()])
+            .status();
+        if matches!(hup, Ok(s) if s.success()) {
+            log::warn!(
+                "nginx: the pid file was unusable ({why}) — signalled our master {pid} directly"
+            );
+            return Ok(ReloadOutcome::Reloaded);
+        }
+    }
+
+    // Nothing of ours is listening: there is simply nothing to reload.
+    if !nginx_running(port) {
+        return Ok(ReloadOutcome::NotRunning);
+    }
+    // Something holds the port but it isn't ours — never signal it.
+    Err(Error::Other(format!(
+        "nginx could not be reloaded: {why}. Something is listening on port {port} that \
+         rexenv doesn't own, so it was left alone — check what is using that port."
+    )))
 }
 
 /// True if the shared nginx is accepting connections on its loopback port.

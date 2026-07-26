@@ -1060,7 +1060,19 @@ impl ServiceManager {
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
         )?;
-        services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
+        if services::reload_nginx(
+            platform,
+            &bins.nginx,
+            &cfg.nginx_conf,
+            &cfg.nginx_prefix,
+            self.ports.nginx,
+        )? == services::ReloadOutcome::NotRunning
+        {
+            // We believed nginx was up. Not fatal — the config is on disk and
+            // the next start picks it up — but it means the manager's view and
+            // reality disagree, which the watchdog should be reconciling.
+            log::warn!("nginx: nothing to reload — no master was running");
+        }
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile, force)?;
         Ok(checks)
     }
@@ -1105,7 +1117,19 @@ impl ServiceManager {
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
         )?;
-        services::reload_nginx(platform, &bins.nginx, &cfg.nginx_conf, &cfg.nginx_prefix)?;
+        if services::reload_nginx(
+            platform,
+            &bins.nginx,
+            &cfg.nginx_conf,
+            &cfg.nginx_prefix,
+            self.ports.nginx,
+        )? == services::ReloadOutcome::NotRunning
+        {
+            // We believed nginx was up. Not fatal — the config is on disk and
+            // the next start picks it up — but it means the manager's view and
+            // reality disagree, which the watchdog should be reconciling.
+            log::warn!("nginx: nothing to reload — no master was running");
+        }
         Ok(checks)
     }
 

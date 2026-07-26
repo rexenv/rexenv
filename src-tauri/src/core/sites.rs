@@ -2359,6 +2359,27 @@ mod tests {
     }
 
     #[test]
+    fn a_linked_docroot_is_never_created_or_populated_by_us() {
+        // Retry re-ensures prepare's artifacts, and for a Blank-PHP site that
+        // means writing a phpinfo() index.php. For a LINKED site that folder is
+        // the user's, so the retry path branches on `docroot_managed !=
+        // Some(false)` — this pins the predicate it relies on.
+        let conn = db::open_in_memory().unwrap();
+        let (dir, new) = docroot_fixture("noretrywrite");
+        let linked = create_recording_ownership(&conn, new, false).unwrap();
+        assert_eq!(linked.docroot_managed, Some(false), "linked rows must be recognisable");
+
+        let (dir2, new2) = docroot_fixture("ourswrite");
+        let mut owned = new2;
+        owned.path = String::new();
+        let ours = create(&conn, owned).unwrap();
+        assert_eq!(ours.docroot_managed, Some(true), "our own rows stay writable");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&dir2);
+    }
+
+    #[test]
     fn teardown_never_removes_a_linked_docroot() {
         // THE guard. A linked folder lives wherever the user keeps it and is
         // never deleted — and critically, this holds even when the sites-dir

@@ -49,7 +49,7 @@ async fn main() {
         .unwrap()
         .join(format!("nginx-{}", binaries::NGINX_VERSION))
         .join("nginx");
-    services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
+    services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, services::NGINX_HTTP_PORT).unwrap();
     // Let the old worker drain — a request raced right at the signal still
     // logs in the old format and wouldn't be attributed.
     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
