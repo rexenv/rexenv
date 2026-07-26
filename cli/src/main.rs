@@ -1531,11 +1531,15 @@ fn cmd_version(json_output: bool) {
     if json_output {
         return print_json(&json!({ "app": data, "cli": env!("CARGO_PKG_VERSION") }));
     }
+    // The commit is the point: "is the running app the code I just changed?"
+    // should be one command, not a forensic exercise.
     println!(
-        "rexenv {} ({}) · rex {}",
+        "rexenv {} ({}) · rex {}\n  built {} from {}",
         data["version"].as_str().unwrap_or("?"),
         data["platform"].as_str().unwrap_or("?"),
         env!("CARGO_PKG_VERSION"),
+        data["builtAt"].as_str().unwrap_or("?"),
+        data["commit"].as_str().unwrap_or("?"),
     );
 }
 

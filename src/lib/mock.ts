@@ -8,6 +8,8 @@ export const mockAppInfo: AppInfo = {
   name: "rexenv",
   version: "0.1.0",
   tauriVersion: "2",
+  commit: "dev",
+  builtAt: "unknown",
   platform: "macOS · Apple silicon",
 };
 

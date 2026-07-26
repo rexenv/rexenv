@@ -1121,6 +1121,17 @@ function AboutSetting() {
           <div className="mt-1 font-mono text-[0.71875rem] text-rex-text-muted">
             {info && `v${info.version} · ${info.platform}`}
           </div>
+          {/* Which SOURCE this binary came from. Not decoration: a stale install
+              once looked exactly like a logic bug, and "is the app running the
+              code I just changed?" should be answerable at a glance. */}
+          {info && (
+            <div
+              className="mt-0.5 font-mono text-[0.6875rem] text-rex-text-dim"
+              title={`Built ${info.builtAt} from commit ${info.commit}`}
+            >
+              {info.commit} · built {info.builtAt.replace("T", " ").replace("Z", " UTC")}
+            </div>
+          )}
         </div>
         <div className="max-w-[380px] text-[0.78125rem] leading-[1.55] text-rex-text-muted">
           A calm, fast command room for your local kingdom — every server, site, and database in one place.

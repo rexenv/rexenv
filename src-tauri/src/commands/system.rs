@@ -16,6 +16,13 @@ pub struct AppInfo {
     /// Human-readable OS + CPU, e.g. `macOS · Apple silicon` — derived from the
     /// build target, not hardcoded, so it stays correct on Windows/Linux/Intel.
     pub platform: String,
+    /// Short git commit this binary was built from, `-dirty` when the tree had
+    /// uncommitted changes, `unknown` outside a checkout. Answers "is the app
+    /// I'm running the code I just fixed?" — which once cost a whole
+    /// misdiagnosis to work out by hand.
+    pub commit: String,
+    /// UTC build timestamp.
+    pub built_at: String,
 }
 
 /// A friendly "OS · CPU" label from the compile-time target (`std::env::consts`).
@@ -44,6 +51,8 @@ pub fn app_info() -> AppInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         tauri_version: tauri::VERSION.to_string(),
         platform: platform_label(),
+        commit: env!("REXENV_GIT_COMMIT").to_string(),
+        built_at: env!("REXENV_BUILT_AT").to_string(),
     }
 }
 

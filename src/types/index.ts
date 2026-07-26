@@ -297,6 +297,11 @@ export interface AppInfo {
   name: string;
   version: string;
   tauriVersion: string;
+  /** Git commit this binary was built from (`-dirty` if the tree had
+   *  uncommitted changes). Answers "am I running the code I just fixed?". */
+  commit: string;
+  /** UTC build timestamp. */
+  builtAt: string;
   /** Human-readable OS + CPU, e.g. "macOS · Apple silicon" (from the build target). */
   platform: string;
 }
