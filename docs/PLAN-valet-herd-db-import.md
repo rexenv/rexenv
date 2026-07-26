@@ -267,12 +267,42 @@ also fetches the size, and the dump itself runs with an **unbounded transfer**. 
 rule holds: bound the connect, never the transfer. A 20-minute dump of a large database
 is a success, not a hang.
 
-**Refuse importing from ourselves.** Discovery probes whatever host:port a site's config
-names, and after Stage 3 rewrites a site that will be *our* engine (13306/13307). The
-preflight must recognise our own ports and stop with "this site already uses rexenv's
-database — there's nothing to import", rather than dumping a database and restoring it
-over itself. Surfaced by the step 3 live check, which correctly listed only *their*
-candidates today but would happily probe ours if a config pointed there.
+**"Is this server us?" — positively identified, never a string match.** Discovery probes
+whatever host:port a site's config names, and after Stage 3 rewrites a site that will be
+*our* engine. Dumping our own database to restore over itself must be refused — but a
+`host == "127.0.0.1" && port == 13306` test is the wrong shape: it breaks on
+`localhost`, on a hostname that resolves to loopback, and the moment a port moves.
+
+The answer already exists in this codebase for exactly this question. Ownership is
+**positive identification** — our fixed port *plus* an app-data marker on the process
+cmdline (`owned_master`, `adopt_startup`) — and `ServiceManager` is the source of truth
+for what we own and whether it is live. So:
+
+```
+is_ours(port, handshake_version) =
+      ServiceManager reports a RUNNING rexenv-owned engine on that port
+  AND the handshake version equals that engine's effective version
+```
+
+Two independent facts, neither of them a name: we own the listener, and the thing that
+answered is the thing we own. Host spelling stops mattering, because `localhost` and
+`127.0.0.1` reach the same listener and the question is about the listener, not the
+string. (If our engine is stopped, the probe simply finds nothing — "database not
+reachable", whose fix is to start rexenv's MySQL. Also honest.)
+
+**And the more interesting neighbour: it's ours, but it's another site's database.**
+Once "is this server us?" is answered positively, the database name splits three ways,
+and only the first is "nothing to import":
+
+| what we find | state |
+|---|---|
+| our engine, and the name is THIS site's `db_name` | **already imported** — the site already uses rexenv's database; nothing to do |
+| our engine, and the name is ANOTHER site's `db_name` | **shared with `<domain>`** — two sites pointing at one database. Real (staging pairs, a duplicated config), and importing would either clobber that site's data or silently fork it. Name the other site and stop. |
+| our engine, and no site claims the name | a database on our engine that rexenv didn't create for a site — the user's own, via Adminer or a hand-run import. Treat as a collision, not a source. |
+
+None of these is a failure; all three are "there is nothing here to copy, and here's what
+you're actually looking at". Implemented in step 5 with the `sites` table as the
+authority for who owns a name — recorded, not derived, exactly like `db_created`.
 
 **Disk preflight.** The same preflight query returns
 `SUM(data_length + index_length)` for the database. Compare against free space on the

@@ -11,6 +11,7 @@ pub mod blueprints;
 pub mod cli;
 pub mod database;
 pub mod db;
+pub mod dbcompat;
 pub mod dbimport;
 pub mod dbsource;
 pub mod devtools;

@@ -117,7 +117,20 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         plist says `Status = started` for MySQL 8.0.27 on 3306 → reported as a
         claim in `silent`, never in `servers`, because nothing answered. Free
         Herd has no services config; that hint source degrades to nothing.
-      - [ ] 4. `compat()` matrix + per-site verdict
+      - [x] 4. `compat()` matrix + per-site verdict `<pending4>` —
+        `core::dbcompat`, pure over (vendor, version) × (vendor, version). Three
+        TYPES, not three strings: `Proceed{cautions}` (runs; cautions inform and
+        never block), `NeedsOverride{reason, consequence, better}` (refused by
+        default, user may accept the stated cost, safer route named when we ship
+        one), `Blocked{reason, fix}` (no override; a test asserts every block
+        carries a way forward). Exhaustive over 14 sources × all 4 targets we
+        ship, asserting each explains itself and none reads as blame. The two
+        cross-vendor directions differ on evidence: MariaDB→MySQL is Blocked
+        (verified Aria options fail on the first table) with a one-setting fix;
+        MySQL→MariaDB is NeedsOverride (drifts later, not immediately).
+        Unidentified vendor is Blocked-with-a-resolution, never overridable —
+        proceeding would pick client tools by coin flip. 464 tests; the printed
+        table is `cargo run --example db_compat_matrix`.
       - [ ] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
     - *Half B — restore into ours (+ credential mirroring)*
       - [ ] 6. collision + provenance + create + restore with real byte progress
