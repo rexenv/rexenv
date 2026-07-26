@@ -12,7 +12,7 @@
 //! to loopback, WordPress subdomain multisite (`*.mysite.rex`) works for
 //! free. Pointing the OS at this server is the per-OS `DnsManager` step.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use async_trait::async_trait;
 use hickory_proto::op::{Header, MessageType, OpCode, ResponseCode};
@@ -254,31 +254,97 @@ pub fn answers_as_ours(port: u16) -> bool {
 }
 
 /// Install the OS resolver file for `tld` (pointing at our resolver on `port`)
-/// through `PrivilegeManager` — one auth prompt. Standalone helper; the batched
-/// system-setup step (3.4) instead concatenates this with the CA-trust command
-/// to share a single prompt.
+/// through `PrivilegeManager` — one auth prompt.
+///
+/// Writes unconditionally: callers must have established that the file is ours
+/// or absent ([`ensure_resolver`]), or have taken it over deliberately with a
+/// recorded backup. `run_system_setup` calls this via `ensure_resolver` for the
+/// backbone TLD; CA trust is a SEPARATE prompt and cannot be batched with it
+/// (login-keychain trust needs a UI session a detached-root shell lacks — see
+/// `core::setup`'s module docs).
 pub fn configure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
     let cmd = platform.dns().install_command(tld, port);
     platform.privileges().run_privileged(&cmd)?;
     Ok(())
 }
 
+/// Who owns the OS resolver file for a TLD.
+///
+/// Ownership across this codebase is CONTENT equality — there is no marker and
+/// no provenance in the file itself (`resolver_contents` doubles as the
+/// signature). That makes "is this ours?" answerable, which is what keeps the
+/// teardown sweep from touching a foreign file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolverOwner {
+    /// No file at all — installing is a plain create, nothing to consent to.
+    Absent,
+    /// Exactly our signature — nothing to do.
+    Ours,
+    /// Someone else's file (Valet, Herd, hand-written). NEVER overwritten
+    /// without an explicit takeover that backs it up first. `content` is `None`
+    /// when the file exists but couldn't be read.
+    Foreign { content: Option<String> },
+}
+
+/// Classify the resolver file for `tld`.
+pub fn resolver_owner(platform: &dyn Platform, tld: &str, port: u16) -> ResolverOwner {
+    owner_of(
+        &platform.dns().resolver_path(tld),
+        &platform.dns().resolver_contents(port),
+    )
+}
+
+/// The classification itself, over a path + signature so it is unit-testable
+/// against fixture files (same reason [`tlds_matching_signature`] takes a dir):
+/// the dev machine has no foreign resolver file to exercise this against, and
+/// creating a root-owned one to test would be worse than a fixture.
+///
+/// A file we cannot READ counts as foreign, never absent — refusing to touch
+/// what we can't inspect is the safe direction.
+fn owner_of(path: &std::path::Path, signature: &str) -> ResolverOwner {
+    match std::fs::read_to_string(path) {
+        Ok(c) if c == signature => ResolverOwner::Ours,
+        Ok(content) => ResolverOwner::Foreign { content: Some(content) },
+        Err(_) if path.exists() => ResolverOwner::Foreign { content: None },
+        Err(_) => ResolverOwner::Absent,
+    }
+}
+
 /// Whether `tld`'s OS resolver file is installed with our expected content.
 /// Used to skip the privileged prompt when there's nothing to do.
 pub fn resolver_installed(platform: &dyn Platform, tld: &str, port: u16) -> bool {
-    let expected = platform.dns().resolver_contents(port);
-    std::fs::read_to_string(platform.dns().resolver_path(tld)).ok().as_deref() == Some(&expected)
+    resolver_owner(platform, tld, port) == ResolverOwner::Ours
 }
 
-/// Ensure `tld` resolves locally: install its OS resolver file unless it's
-/// already installed with our content — so each TLD costs at most ONE
-/// privileged prompt, on first use. TLDs coexist (one file each); the embedded
-/// server needs no restart (it answers any name — module docs).
+/// The refusal when another tool already owns a TLD's resolver file.
+fn foreign_resolver_error(path: &std::path::Path) -> Error {
+    Error::Other(format!(
+        "{} is managed by another tool (most likely Valet or Herd) — rexenv won't \
+         overwrite it. rexenv can take that TLD over, backing up the existing file first \
+         and restoring it if you hand it back, or you can use a different TLD for this site.",
+        path.display()
+    ))
+}
+
+/// Ensure `tld` resolves locally: install its OS resolver file unless it is
+/// already ours — so each TLD costs at most ONE privileged prompt, on first
+/// use. TLDs coexist (one file each); the embedded server needs no restart (it
+/// answers any name — module docs).
+///
+/// **Refuses a FOREIGN file.** Overwriting one used to be silent, and it is
+/// doubly destructive: the user loses their config, and because ownership is
+/// content equality the file then looks like ours, so teardown would delete it
+/// — leaving them with neither their file nor ours. Taking a TLD over is a
+/// deliberate, backed-up, consented operation; it does not happen as a side
+/// effect of creating a site.
 pub fn ensure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
-    if resolver_installed(platform, tld, port) {
-        return Ok(());
+    match resolver_owner(platform, tld, port) {
+        ResolverOwner::Ours => Ok(()),
+        ResolverOwner::Absent => configure_resolver(platform, tld, port),
+        ResolverOwner::Foreign { .. } => {
+            Err(foreign_resolver_error(&platform.dns().resolver_path(tld)))
+        }
     }
-    configure_resolver(platform, tld, port)
 }
 
 /// The TLDs whose resolver files under `dir` are OURS — file content equals
@@ -439,6 +505,66 @@ mod tests {
             assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST), "{host}");
         }
         handle.abort();
+    }
+
+    /// Ownership classification, against fixture files.
+    ///
+    /// Fixtures rather than a live check by necessity: the dev Mac has no
+    /// foreign `/etc/resolver/<tld>`, and creating a root-owned one to test
+    /// against would be a worse idea than this. The takeover/restore paths are
+    /// tracked as a clean-VM item in docs/PUBLISH-TESTING.md §F.
+    #[test]
+    fn owner_of_classifies_ours_foreign_and_absent() {
+        let dir = std::env::temp_dir().join(format!("rexenv-owner-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sig = "nameserver 127.0.0.1\nport 15353\n";
+
+        // Absent.
+        assert_eq!(owner_of(&dir.join("nothing"), sig), ResolverOwner::Absent);
+
+        // Ours — byte-exact.
+        let ours = dir.join("rex");
+        std::fs::write(&ours, sig).unwrap();
+        assert_eq!(owner_of(&ours, sig), ResolverOwner::Ours);
+
+        // Valet's real shape: same nameserver, NO port line. This is the one
+        // that used to be silently overwritten.
+        let valet = dir.join("test");
+        std::fs::write(&valet, "nameserver 127.0.0.1\n").unwrap();
+        assert_eq!(
+            owner_of(&valet, sig),
+            ResolverOwner::Foreign { content: Some("nameserver 127.0.0.1\n".into()) },
+            "a Valet resolver file must read as FOREIGN, never as ours"
+        );
+
+        // Our nameserver but a different port — still theirs.
+        let other = dir.join("dev");
+        std::fs::write(&other, "nameserver 127.0.0.1\nport 5333\n").unwrap();
+        assert!(matches!(owner_of(&other, sig), ResolverOwner::Foreign { .. }));
+
+        // Even a near-miss (trailing newline dropped) is foreign, not ours —
+        // equality is the whole ownership notion, so it must not be fuzzy.
+        let near = dir.join("near");
+        std::fs::write(&near, "nameserver 127.0.0.1\nport 15353").unwrap();
+        assert!(matches!(owner_of(&near, sig), ResolverOwner::Foreign { .. }));
+
+        // Present but unreadable counts as FOREIGN (never absent): refusing to
+        // touch what we can't inspect is the safe direction. Skipped when the
+        // test runs as a user who can read it anyway (e.g. root in CI).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let locked = dir.join("locked");
+            std::fs::write(&locked, "whatever\n").unwrap();
+            std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+            if std::fs::read_to_string(&locked).is_err() {
+                assert_eq!(owner_of(&locked, sig), ResolverOwner::Foreign { content: None });
+            }
+            let _ = std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644));
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Enumerating our resolver files: exact-content signature match — foreign
