@@ -262,9 +262,23 @@ fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
     Ok(disambiguated)
 }
 
-/// Create a site: assign an id, default to stopped + SSL on, persist, return it.
-/// Fails if the domain is invalid or already in use.
+/// Create a site whose docroot rexenv OWNS — the folder we just created under
+/// the sites dir, which teardown may remove.
+///
+/// Linking an existing folder goes through [`provision`], which records the
+/// ownership explicitly; the flag is never taken from IPC input, so no caller
+/// can claim ownership of a path it doesn't own and get it deleted later.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
+    create_recording_ownership(conn, new, true)
+}
+
+/// [`create`], with the docroot-ownership answer supplied by the caller that
+/// KNOWS it (see [`Site::docroot_managed`](crate::state::models::Site)).
+fn create_recording_ownership(
+    conn: &Connection,
+    new: NewSite,
+    docroot_managed: bool,
+) -> Result<Site> {
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
@@ -312,11 +326,7 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         // only flow that can die half-done — flips this to 0 itself right
         // after insert and back to 1 when it settles ok.
         provisioned: true,
-        // True by construction today: `provision` is the only production caller
-        // and it always creates the docroot itself under the sites folder.
-        // Linked sites (a folder the user chose, which we must never delete)
-        // thread an explicit value through here instead.
-        docroot_managed: Some(true),
+        docroot_managed: Some(docroot_managed),
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -527,6 +537,111 @@ pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>
 /// spaces (the common case) work. Enforced only where `site.path` is PERSISTED
 /// (`create`/`set_path`), never at emit, so existing sites are grandfathered and
 /// a stored path is never re-rejected on regenerate (B26).
+/// Preflight for LINKING an existing folder as a site's docroot (Stage 0).
+///
+/// The folder is the USER'S — we never created it and will never delete it — so
+/// every rejection happens here, before anything is created. Returns the
+/// CANONICAL path, which is what gets stored and what every consumer (vhost,
+/// php-fpm routing, git assets, terminal cwd) then uses, so a later symlink
+/// swap can't redirect what we serve.
+///
+/// Blast-radius refusals are deliberate: a docroot can be published with one
+/// click by the tunnel feature, and serving a home directory would leave
+/// `~/.ssh` one dotfile-guard bug from the internet. Only the directories
+/// THEMSELVES are refused — `~/Desktop/myproject` is a perfectly normal place
+/// to keep a site, and Valet users really do keep them there.
+pub fn validate_linked_docroot(
+    conn: &Connection,
+    platform: &dyn Platform,
+    path: &str,
+) -> Result<PathBuf> {
+    let raw = Path::new(path.trim());
+    if raw.as_os_str().is_empty() || !raw.is_absolute() {
+        return Err(Error::Other("pick a folder using an absolute path".into()));
+    }
+    if !raw.exists() {
+        return Err(Error::Other(format!("{} doesn't exist", raw.display())));
+    }
+    if !raw.is_dir() {
+        return Err(Error::Other(format!("{} isn't a folder", raw.display())));
+    }
+    // Resolve symlinks + `..` ONCE, here: everything downstream stores and
+    // serves this exact path.
+    let canon = raw
+        .canonicalize()
+        .map_err(|e| Error::Other(format!("could not resolve {}: {e}", raw.display())))?;
+    // The stored path is emitted into the generated server configs (B26).
+    validate_docroot_path(&canon.display().to_string())?;
+
+    let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
+    let mut blast_radius: Vec<PathBuf> = vec![PathBuf::from("/"), PathBuf::from("/Users")];
+    if let Some(home) = &home {
+        blast_radius.push(home.clone());
+        for dir in ["Desktop", "Documents", "Downloads"] {
+            blast_radius.push(home.join(dir));
+        }
+    }
+    // A volume root (`/Volumes/<name>`) is the same class as `/`.
+    if canon.parent() == Some(Path::new("/Volumes")) {
+        blast_radius.push(canon.clone());
+    }
+    if blast_radius.contains(&canon) {
+        return Err(Error::Other(format!(
+            "{} is too broad to serve — a site's folder can be shared publicly with one \
+             click, which would expose everything inside it. Pick the project folder itself.",
+            canon.display()
+        )));
+    }
+
+    // Our own app data holds the CA key, every site certificate and the app
+    // database — never serve it.
+    if let Ok(app_data) = platform.paths().app_data_dir() {
+        if canon == app_data || canon.starts_with(&app_data) {
+            return Err(Error::Other(
+                "that folder is rexenv's own application data — pick your project folder".into(),
+            ));
+        }
+    }
+
+    // Inside the managed sites folder there is nothing to link: that's a normal
+    // site, and linking would only opt its docroot out of cleanup.
+    let managed = sites_dir(conn, platform)?;
+    if canon.starts_with(&managed) {
+        return Err(Error::Other(format!(
+            "{} is inside your rexenv sites folder — create a site normally instead of \
+             linking it",
+            canon.display()
+        )));
+    }
+
+    // No overlap with an existing site, in EITHER direction (the same rule
+    // `repo::validate_link_target` applies to linked plugin/theme folders):
+    // nested docroots would serve one site's files under another's domain.
+    for other in list(conn)? {
+        if other.path.is_empty() {
+            continue;
+        }
+        let theirs = Path::new(&other.path);
+        if canon == theirs {
+            return Err(Error::Other(format!(
+                "{} is already served by {}",
+                canon.display(),
+                other.domain
+            )));
+        }
+        if canon.starts_with(theirs) || theirs.starts_with(&canon) {
+            return Err(Error::Other(format!(
+                "{} overlaps {}'s folder ({}) — pick a folder that doesn't contain, and \
+                 isn't inside, another site",
+                canon.display(),
+                other.domain,
+                theirs.display()
+            )));
+        }
+    }
+    Ok(canon)
+}
+
 fn validate_docroot_path(path: &str) -> Result<()> {
     if let Some(c) =
         path.chars().find(|&c| matches!(c, '"' | '$' | '{' | '}' | '\\') || c.is_control())
@@ -651,17 +766,35 @@ pub fn set_xdebug(conn: &Connection, id: &str, enabled: bool) -> Result<Option<S
     get(conn, id)
 }
 
+/// What a [`teardown`] actually did. The docroot half is REPORTED rather than
+/// silent: "your folder is still there" and "your folder is gone" are not
+/// details a delete may leave ambiguous.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Teardown {
+    /// Whether the site existed at all.
+    pub existed: bool,
+    /// Whether the docroot was removed. Always false for a folder rexenv does
+    /// not own — a linked one, or one moved outside the sites folder.
+    pub docroot_removed: bool,
+}
+
 /// Full teardown of a site: remove its DB row, cert material, per-site
-/// config/log artifacts, and docroot. Returns `false` if the site didn't exist.
+/// config/log artifacts, and — only if rexenv owns it — its docroot.
+///
 /// Does NOT rewrite the shared configs — call [`rebuild_configs`] + reload after
-/// so the site stops being served — and does NOT drop the site's MySQL database
-/// (that needs a running server + resolved binaries; `commands::delete_site`
-/// does it before calling here). (The docroot is only removed if it lives under
-/// our sites dir — a safety guard against deleting an arbitrary path.)
-pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<bool> {
+/// so the site stops being served — and does NOT drop the site's database (that
+/// needs a running server + resolved binaries; `commands::delete_site` does it
+/// before calling here).
+///
+/// **Docroot ownership is READ, never inferred from the path** (v17): a folder
+/// we didn't create is never removed, wherever it lives and whatever the
+/// sites-dir setting happens to say now. Only a pre-v17 row the startup
+/// backfill hasn't reached yet falls back to the legacy lexical test — which
+/// yields exactly the answer the backfill would have recorded.
+pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<Teardown> {
     let site = match get(conn, id)? {
         Some(s) => s,
-        None => return Ok(false),
+        None => return Ok(Teardown { existed: false, docroot_removed: false }),
     };
 
     store::delete_site(conn, id)?;
@@ -688,14 +821,21 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     // configured one, the current default, OR the legacy app-data default (so
     // neither changing the setting nor the default-change to ~/rexenv/Sites
     // strands teardown of pre-existing sites).
-    let configured = sites_dir(conn, platform)?;
-    let default_dir = default_sites_dir()?;
-    let legacy_dir = legacy_sites_dir(platform)?;
-    if docroot_under_managed_root(&site.path, &configured, &default_dir, &legacy_dir) {
-        let _ = std::fs::remove_dir_all(&site.path);
-    }
+    let owned = match site.docroot_managed {
+        Some(owned) => owned,
+        // Pre-v17 row, backfill hasn't run: the legacy answer, which is what
+        // the backfill records anyway.
+        None => docroot_under_managed_root(
+            &site.path,
+            &sites_dir(conn, platform)?,
+            &default_sites_dir()?,
+            &legacy_sites_dir(platform)?,
+        ),
+    };
+    let docroot_removed =
+        owned && !site.path.is_empty() && std::fs::remove_dir_all(&site.path).is_ok();
 
-    Ok(true)
+    Ok(Teardown { existed: true, docroot_removed })
 }
 
 /// Whether a site type needs a database provisioned (the pluggable DB stage —
@@ -785,8 +925,16 @@ pub fn ensure_sites_dir(conn: &Connection, platform: &dyn Platform) -> Result<Pa
     Ok(dir)
 }
 
-/// Provision a new site end-to-end (filesystem + cert + DB row). The docroot is
-/// `<sites_dir>/<domain>`; for Blank PHP a `phpinfo()` `index.php` is dropped in.
+/// Provision a new site end-to-end (filesystem + cert + DB row).
+///
+/// Two shapes, decided by whether the caller supplied a path:
+/// - **empty path — we create the site**: docroot is `<sites_dir>/<domain>`, and
+///   for Blank PHP a `phpinfo()` `index.php` is dropped in. Ours to delete.
+/// - **non-empty path — LINK an existing folder**: it is validated
+///   ([`validate_linked_docroot`]) and served in place. We never create it,
+///   never write into it here, and record that we don't own it, so deleting the
+///   site can never remove it.
+///
 /// The DB-provisioning step branches on [`needs_database`] (a hook for 9.2).
 /// Does NOT (re)write the shared server configs — call [`rebuild_configs`] +
 /// reload after, so one apply covers any number of changes.
@@ -804,11 +952,20 @@ pub fn provision(
         )));
     }
 
-    let docroot = sites_dir(conn, platform)?.join(&new.domain);
-    std::fs::create_dir_all(&docroot)?;
-    if matches!(new.site_type, SiteType::Php) {
-        std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
-    }
+    // A caller-supplied path means LINK: adopt the folder as-is. Nothing is
+    // created and nothing is written into it — not even the Blank-PHP probe
+    // file, which would land in the user's own project.
+    let linked = !new.path.trim().is_empty();
+    let docroot = if linked {
+        validate_linked_docroot(conn, platform, &new.path)?
+    } else {
+        let docroot = sites_dir(conn, platform)?.join(&new.domain);
+        std::fs::create_dir_all(&docroot)?;
+        if matches!(new.site_type, SiteType::Php) {
+            std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
+        }
+        docroot
+    };
 
     // Issue the per-site cert (wildcard SAN) signed by our CA.
     ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, &new.domain)?;
@@ -822,7 +979,7 @@ pub fn provision(
     }
 
     new.path = docroot.display().to_string();
-    create(conn, new)
+    create_recording_ownership(conn, new, !linked)
 }
 
 // ---------------------------------------------------------------------------
@@ -1848,13 +2005,149 @@ mod tests {
             std::fs::write(p, "x").unwrap();
         }
 
-        assert!(teardown(&conn, &*platform, &site.id).unwrap());
+        assert!(teardown(&conn, &*platform, &site.id).unwrap().existed);
         assert!(get(&conn, &site.id).unwrap().is_none());
         for p in &artifacts {
             assert!(!p.exists(), "orphaned artifact left behind: {}", p.display());
         }
         // Deleting again is a no-op.
-        assert!(!teardown(&conn, &*platform, &site.id).unwrap());
+        assert!(!teardown(&conn, &*platform, &site.id).unwrap().existed);
+    }
+
+    /// A real temp directory with a file in it, plus a site row pointing at it.
+    /// Scoped to THIS fixture — the tests below only ever delete what they made.
+    fn docroot_fixture(tag: &str) -> (std::path::PathBuf, NewSite) {
+        let dir = std::env::temp_dir()
+            .join(format!("rexenv-teardown-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.php"), "<?php // the user's file\n").unwrap();
+        let mut new = sample("Fixture", &format!("{tag}.test"));
+        new.path = dir.display().to_string();
+        (dir, new)
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn validate_linked_docroot_accepts_a_project_and_refuses_the_blast_radius() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let (dir, _) = docroot_fixture("validate");
+
+        // Happy path: a real project folder, returned CANONICAL (on macOS the
+        // temp dir is a symlink, so this is a real resolution, not a no-op).
+        let canon = validate_linked_docroot(&conn, &*platform, &dir.display().to_string()).unwrap();
+        assert_eq!(canon, dir.canonicalize().unwrap());
+        assert!(canon.is_absolute());
+
+        let refused = |p: &str| {
+            validate_linked_docroot(&conn, &*platform, p)
+                .expect_err(&format!("{p} must be refused"))
+                .to_string()
+        };
+        // Shape.
+        assert!(refused("relative/path").contains("absolute"));
+        assert!(refused(&dir.join("nope").display().to_string()).contains("doesn't exist"));
+        assert!(refused(&dir.join("index.php").display().to_string()).contains("isn't a folder"));
+        // Blast radius — a docroot can be published with one click.
+        let home = directories::BaseDirs::new().unwrap().home_dir().to_path_buf();
+        for broad in [PathBuf::from("/"), home.clone(), home.join("Desktop")] {
+            if broad.exists() {
+                assert!(
+                    refused(&broad.display().to_string()).contains("too broad"),
+                    "{} must be refused as too broad",
+                    broad.display()
+                );
+            }
+        }
+        // ...but a project INSIDE one of those is perfectly normal (real Valet
+        // users keep sites in ~/Desktop), so only the folder itself is refused.
+        assert!(validate_linked_docroot(&conn, &*platform, &dir.display().to_string()).is_ok());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_linked_docroot_refuses_overlap_with_an_existing_site() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let (dir, _) = docroot_fixture("overlap");
+        let canon = dir.canonicalize().unwrap();
+
+        let mut existing = sample("Existing", "existing.test");
+        existing.path = canon.display().to_string();
+        create(&conn, existing).unwrap();
+
+        // Exactly the same folder.
+        let err = validate_linked_docroot(&conn, &*platform, &canon.display().to_string())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already served by existing.test"), "{err}");
+        // A subfolder of it — would serve one site's files under another domain.
+        let sub = canon.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let err = validate_linked_docroot(&conn, &*platform, &sub.display().to_string())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("overlaps"), "{err}");
+        // And the containing direction is refused too.
+        let err = validate_linked_docroot(
+            &conn,
+            &*platform,
+            &canon.parent().unwrap().display().to_string(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("overlaps") || err.contains("too broad"), "{err}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn teardown_removes_a_docroot_we_own() {
+        // The direction that had NO test at all: when rexenv created the folder,
+        // deleting the site really does remove it.
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let (dir, new) = docroot_fixture("owned");
+        let site = create(&conn, new).unwrap(); // create() == we own it
+        assert_eq!(get(&conn, &site.id).unwrap().unwrap().docroot_managed, Some(true));
+
+        let out = teardown(&conn, &*platform, &site.id).unwrap();
+        assert!(out.existed);
+        assert!(out.docroot_removed, "an owned docroot must be removed");
+        assert!(!dir.exists(), "the folder should be gone");
+    }
+
+    #[test]
+    fn teardown_never_removes_a_linked_docroot() {
+        // THE guard. A linked folder lives wherever the user keeps it and is
+        // never deleted — and critically, this holds even when the sites-dir
+        // setting is pointed straight at it, which is exactly the case the old
+        // lexical prefix test got wrong.
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let (dir, mut new) = docroot_fixture("linked");
+        new.path = String::new();
+        let site = create_recording_ownership(
+            &conn,
+            NewSite { path: dir.display().to_string(), ..new },
+            false, // linked: we did not create this folder
+        )
+        .unwrap();
+
+        // The hostile setting: Sites folder now CONTAINS the linked project, so
+        // the legacy prefix test would happily delete it.
+        store::set_setting(&conn, SITES_DIR_KEY, &dir.display().to_string()).unwrap();
+
+        let out = teardown(&conn, &*platform, &site.id).unwrap();
+        assert!(out.existed);
+        assert!(!out.docroot_removed, "a linked docroot must never be removed");
+        assert!(dir.exists(), "the user's folder must survive");
+        assert!(dir.join("index.php").exists(), "and so must their files");
+        assert!(get(&conn, &site.id).unwrap().is_none(), "the row still goes away");
+
+        let _ = std::fs::remove_dir_all(&dir); // fixture cleanup, ours to remove
     }
 
     #[test]

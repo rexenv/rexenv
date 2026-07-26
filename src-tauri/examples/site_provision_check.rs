@@ -278,7 +278,10 @@ async fn main() {
             );
             let plat = rexenv_lib::platform::current();
             match sites::teardown(&conn, &*plat, &id) {
-                Ok(true) => println!("cleaned up {}", site.domain),
+                Ok(t) if t.existed => println!(
+                    "cleaned up {} (docroot removed = {})",
+                    site.domain, t.docroot_removed
+                ),
                 other => println!("teardown {} -> {other:?}", site.domain),
             }
         }

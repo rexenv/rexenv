@@ -79,7 +79,12 @@ async fn main() {
     proxy::reload(&*plat, &caddy_bin, &cfg2.caddyfile, false).unwrap();
     tokio::time::sleep(Duration::from_millis(800)).await;
 
-    println!("removed={removed}; remaining sites={:?}", sites::list(&conn).unwrap().iter().map(|s| s.domain.clone()).collect::<Vec<_>>());
+    println!(
+        "existed={} docroot_removed={}; remaining sites={:?}",
+        removed.existed,
+        removed.docroot_removed,
+        sites::list(&conn).unwrap().iter().map(|s| s.domain.clone()).collect::<Vec<_>>()
+    );
     println!("AFTER delete + reload:");
     println!("  del.test  -> {}", probe(&client, "del.test").await);
     println!("  keep.test -> {}", probe(&client, "keep.test").await);

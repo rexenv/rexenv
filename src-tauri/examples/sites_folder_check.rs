@@ -44,5 +44,10 @@ async fn main() {
 
     // Clean up the test site (teardown should remove the docroot under the custom dir).
     let removed = sites::teardown(&conn, &*plat, &site.id).unwrap();
-    println!("teardown removed = {removed}; docroot gone = {}", !path.exists());
+    println!(
+        "teardown existed = {}; reported docroot_removed = {}; docroot gone = {}",
+        removed.existed,
+        removed.docroot_removed,
+        !path.exists()
+    );
 }

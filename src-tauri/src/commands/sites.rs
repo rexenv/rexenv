@@ -733,15 +733,23 @@ pub async fn delete_site(
         core::database::drop_database(&db_client, engine.port(), &site.db_name)?;
     }
 
-    // 3) Row + cert + per-site configs/logs + docroot.
-    let (removed, sites) = {
+    // 3) Row + cert + per-site configs/logs + docroot (the last only if it's
+    //    ours — a linked folder is never touched).
+    let (outcome, sites) = {
         let conn = lock(&state)?;
-        let removed = core::sites::teardown(&conn, state.platform.as_ref(), &id)?;
-        (removed, core::sites::list(&conn)?)
+        let outcome = core::sites::teardown(&conn, state.platform.as_ref(), &id)?;
+        (outcome, core::sites::list(&conn)?)
     };
+    if outcome.existed && !outcome.docroot_removed {
+        log::info!(
+            "sites: deleted {} — its folder ({}) was left in place (not ours to remove)",
+            site.domain,
+            site.path
+        );
+    }
     // Best-effort reload (no-op if services aren't running). A delete only
     // REMOVES backends, so there are no readiness probes to await.
     let mut mgr = state.services.lock().await;
     let _ = mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await;
-    Ok(removed)
+    Ok(outcome.existed)
 }
