@@ -94,7 +94,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         `may_drop_database` also skips the engine bring-up for a linked site that
         never imported one. 419 lib tests.
       - [x] 2. `core::dbimport` config mapping (WP defines + conservative `.env`)
-        `<pending2>` — `core::phpconf` is the ONE wp-config reader: a real scan
+        `022c969` — `core::phpconf` is the ONE wp-config reader: a real scan
         (comments, strings, multi-line defines, heredoc stop) replacing the old
         line-local one in `core/logs.rs`, which now calls it. A password
         containing `)` or `;` survives whole — the old "find the next paren"
