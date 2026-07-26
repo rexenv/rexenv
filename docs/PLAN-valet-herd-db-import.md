@@ -75,8 +75,15 @@ Each candidate is then verified live, and identified **without authenticating**:
 > (§3) at the identification step.
 
 *Verification status: reasoned from the protocol, NOT yet byte-verified against DBngin
-8.0.27. First task in Half A is to prove it live; if it doesn't hold, fall back to the
-paired interactive client and `SELECT VERSION()`.*
+8.0.27. **Proving it live is the first task in Half A**, before anything is built on it.*
+
+**If it does not hold — a proxy in front, TLS required, an unusual configuration — the
+answer is to REPORT, not to work around it.** A quiet fallback to an authenticated probe
+would reintroduce the client-pairing trap at exactly the step this design removes it
+from: to authenticate we must already know the vendor, which is what we were trying to
+learn. The honest degraded state is "an engine is listening on 3306; rexenv can't tell
+which one" plus a way for the user to say. Whatever we find gets written back into this
+section as verified fact.
 
 Postgres has no pre-auth greeting; identify it with `psql -c "SHOW server_version"` plus
 `PGCONNECT_TIMEOUT`.
@@ -171,12 +178,27 @@ The verdict is computed per site and **shown before anything runs**, next to the
 not surfaced as a failure halfway through.
 
 **A finding that shapes the UI:** the target engine version is a **global setting**
-(`effective_db_version`), not per site. So a MySQL 5.7 source may produce
-"Refuse/Warn against your MySQL 8.4.6 — rexenv also ships 8.0.44, which is a closer
-match." Switching is a **global** action with its own consequence (each series keeps its
-own datadir, so databases created on 8.4.6 are not visible on 8.0.44). We therefore
-*offer* it as an explicit user action with that consequence stated, and never switch
-silently.
+(`effective_db_version`), not per site. So a MySQL 5.7 source may produce "Warn against
+your MySQL 8.4.6 — rexenv also ships 8.0.44, which is a closer match."
+
+**That offer must read as disruptive, because it is.** Each version series keeps its own
+datadir (never an in-place up/downgrade — the existing `set_db_engine_version` confirm
+already says so). Switching 8.4.6 → 8.0.44 therefore means **every database every other
+rexenv site uses becomes invisible**: not deleted, but sitting in the 8.4.6 datadir that
+is no longer mounted by a running server. Those sites break — WordPress shows its
+connection error — until the user either switches back (which restores them exactly, and
+then *this* import is the odd one out) or exports and re-imports each one into the new
+series.
+
+So the wording is a warning that happens to have a button, not a convenience:
+
+> rexenv also ships MySQL 8.0.44, a closer match for this 5.7 source. **Switching is
+> disruptive and usually the wrong choice:** your other N sites' databases live in the
+> 8.4.6 datadir and would stop being visible until you switch back. Importing into 8.4.6
+> normally works — the warning above is what to watch for.
+
+Never silent, never framed as the recommended fix, and the count of affected sites is
+real, not "other sites".
 
 Dump hygiene, carried from the research (all verified against the bundled binaries):
 `--set-gtid-purged=OFF`; single-database dumps (never the `mysql` schema);
@@ -219,6 +241,20 @@ contract: monotonic, ≤99 until settle, frozen on failure).
   completion: the client is still executing SQL after the last byte. The feed phase
   therefore tops out well below 100 and the job settles only on process exit.
 - Waiting is a ticker that says what it is waiting for. Never a fabricated bar.
+
+**The artifact is a copy of their database, and is treated as one.**
+`<app-data>/db-imports/<domain>.sql`, born 0600 (§3), one per domain by construction so
+the orphan set is bounded and enumerable — the same reasoning as the per-TLD resolver
+backups. Deleted when the job settles ok; **kept on failure**, because that is when
+someone needs to look at it.
+
+A kept artifact must be **visible and removable in the UI, not a file someone stumbles
+on months later**. So: the failed job's summary names the path and says plainly that it
+contains a full copy of the database; Settings grows a row alongside the borrowed-resolver
+card — "Leftover database dumps: 2 files, 340 MB" with a per-file delete and a delete-all
+— and the same enumeration backs a `sweep_orphan_dumps` on startup that reports (never
+auto-deletes: it's their data). Uninstall removes them, since we created them, and says
+so in the teardown report.
 
 **Collisions.** Generalize B21: check the intended name against **both**
 `store::db_name_exists` (site-owned) and a live `SHOW DATABASES` on our engine. On
@@ -268,14 +304,28 @@ one-key change.
 `root@localhost`; that is baked into `client_base_args` and every path that uses it.
 
 > **Hard rule: never create, alter, or set a password on `root`** (or `mysql.sys`,
-> `mysql.session`, `mysql.infoschema`, `postgres`). Setting a password on our root to
-> mirror theirs would break every rexenv database operation on the machine — Adminer, the
-> DB-size query, create/drop, WP-CLI. It is not a trade-off; it's a self-inflicted outage.
+> `mysql.session`, `mysql.infoschema`, `postgres`).
+
+The reasoning, recorded because the choice alone is not the useful part: every rexenv
+database operation authenticates as passwordless root through one shared flag array,
+`core/database.rs::client_base_args` — `--user=root` with no password, pinned by a unit
+test precisely so it can't drift. Adminer, the per-site DB-size query on the Sites page,
+`create_database`/`drop_database`, site teardown and every WP-CLI database call go through
+it or its equivalent. Setting a password on our root to mirror theirs would break **all of
+them at once**, on every site on the machine, in exchange for one imported site's
+convenience. That is not a trade-off to weigh; it is a hard stop.
 
 So for `root`-owned source configs, mirroring is impossible and the honest consequence is
 that Stage 3's rewrite for those sites touches three keys (`DB_HOST`, `DB_USER`,
 `DB_PASSWORD` → root / empty) rather than one. The interim message (§9) says exactly that.
-See §10 D2 for the alternative.
+
+**Recorded for Stage 3, deliberately not built now:** the alternative is a dedicated
+non-root user created with *their* password and granted only this database. The rewrite
+then becomes `DB_HOST` + `DB_USER` and **the password line never changes**, so no secret
+ever appears in a diff, a backup, or an editor buffer — which is the reason to prefer it
+once the rewrite is real and diffs are something the user reads. It is the wrong thing to
+build in Stage 2: it invents an account the user never asked for, to serve a rewrite that
+doesn't exist yet.
 
 ---
 
@@ -357,47 +407,56 @@ The settled job's summary, per site:
 > rexenv doesn't edit your project files. A one-click, backed-up, diff-first version of
 > this is coming.
 
+**The summary and the badge must read ONE fact, not two computations of it.** The failure
+mode to design out is the pair drifting — a badge saying "connected" beside a summary
+saying "not yet connected", each right by its own arithmetic. So the backend serializes a
+single `DbImportState` per site (`state`, `dbName`, `tableCount`, `sizeBytes`,
+`sourceLabel`, `artifactPath`); the summary sentence and the badge label are both rendered
+**from that one struct** and neither derives anything of its own. `state` is a closed enum
+whose "connected" variant **does not exist** until Stage 3 introduces the fact that proves
+it — so the UI cannot render "connected" by inference, only by being told.
+
 Copy-paste block per shape (wp-config define, Laravel `.env` keys), and for Laravel a
 note that `.env` edits are invisible under `php artisan config:cache` (`config:clear`
 fixes it; we never run their artisan). Sites page badge: **"DB imported · not connected"**
 — structural, from `db_created IS NOT NULL` plus a Stage-3 "connected" fact that doesn't
-exist yet, so the badge cannot lie by inference.
+exist yet, so the badge cannot lie by inference — and it renders the same `DbImportState`
+the summary does, so the two can never disagree.
 
 ---
 
-## 10. Decisions needed
+## 10. Decisions — SETTLED (2026-07-26)
 
-**D1 — the imported database's name.** *Recommend:* **keep theirs** (`ea`) when free,
-disambiguate only on collision. Their name in their config then needs no change, which is
-what keeps the Stage 3 rewrite to one key. The alternative (always our derived
-`wp_ea_test`) is tidier in our list but makes every rewrite two keys.
+**D1 — the imported database's name: keep theirs** (`ea`) when free; collisions stay the
+B21 pattern (`db_name_exists` + live `SHOW DATABASES` → `unique_db_name`'s disambiguated
+form). Their config's `DB_NAME` then needs no change, which is what keeps the Stage 3
+rewrite short.
 
-**D2 — `root`-owned source configs.** *Recommend:* never touch our root, and tell the
-user their interim change is 3 keys. Alternative: create a dedicated non-root user with
-**their** password and grant it the database, so the password line never changes and the
-rewrite is `DB_HOST` + `DB_USER` — one extra visible line, no secret in any diff. I lean
-to the recommendation for Stage 2 (less machinery, nothing invented) and would revisit
-when Stage 3 makes the rewrite real.
+**D2 — never touch our root; the interim is a 3-key change.** Reasoning recorded in §6,
+not just the choice. The dedicated-non-root-user alternative is recorded there too, as
+the **Stage 3 option** — likely preferable then precisely because it keeps secrets out of
+the diff, and the wrong thing to build now.
 
-**D3 — Postgres.** *Recommend:* discovery + an honest verdict in Stage 2 ("PostgreSQL
-source — importing PG databases isn't supported yet"), dump/restore deferred. Valet/Herd
-sources are overwhelmingly MySQL-family; the PG path needs its own `pg_dump` ≥ server and
-`\restrict` version dance (§6 of the research) and would double this stage.
+**D3 — Postgres: discovery + honest refusal.** A half-working PG path is worse than none.
+The wording must say **"not supported yet"** and never imply their setup is wrong:
 
-**D4 — where it's invoked.** *Recommend:* a standalone per-site job (SiteDetail →
-"Import database"), because the sites already imported in Stage 1 need it too; plus an
-opt-in "also import databases" checkbox on the `/import` batch that runs the same job
-after each site's provision settles. One implementation, two entry points.
+> PostgreSQL detected on 127.0.0.1:5432 (`sitedb`). rexenv can't import PostgreSQL
+> databases yet — MySQL and MariaDB only for now. Everything else about this site imports
+> normally.
 
-**D5 — artifact lifecycle.** *Recommend:* one artifact per domain
-(`<app-data>/db-imports/<domain>.sql`, 0600), **deleted when the job settles ok**, kept on
-failure so it is diagnosable and a Retry can be diagnosed against it. One-per-domain by
-construction means an orphan set is bounded and enumerable — the same reasoning as the
-per-TLD resolver backup. Relevant to the current disk situation: these are full database
-copies.
+**D4 — one implementation, two entry points:** a standalone per-site job (SiteDetail →
+"Import database", which the Stage 1 sites need) plus an opt-in "also import databases"
+checkbox on the `/import` batch that runs the same job after each site's provision
+settles.
 
-**D6 — the live check.** Needs the user to start DBngin's MySQL. Confirm before I write
-the step into `PUBLISH-TESTING.md`.
+**D5 — one artifact per domain**, `<app-data>/db-imports/<domain>.sql`, born 0600,
+deleted on success, kept on failure — and **discoverable and removable from the UI**, not
+a file found later. Full spec in §5; it holds a complete copy of their database and the
+copy says so.
+
+**D6 — the live check: confirmed.** The user starts DBngin's MySQL themselves; the check
+**refuses honestly if 3306 is silent** and never attempts to start anything. Written into
+`PUBLISH-TESTING.md` §I as an explicit precondition step, not an aside.
 
 ---
 
@@ -408,8 +467,9 @@ the step into `PUBLISH-TESTING.md`.
 1. v19 migration + `db_created` plumbing (store, teardown guard, backfill semantics).
 2. `core::dbimport` — config mapping (WP defines + `.env` parser), unit-tested against
    real-shaped fixtures including the Bedrock and duplicate-key refusals.
-3. Engine discovery + handshake identification; **first task: verify the pre-auth
-   handshake read against live DBngin 8.0.27.**
+3. Engine discovery + handshake identification. **Step 0 of the whole stage: prove the
+   pre-auth handshake read live — report if it doesn't hold, never fall back silently
+   (§2.1).**
 4. `compat()` matrix + per-site verdict, unit-tested exhaustively.
 5. Preflight (connect bound, size, disk) + dump to a 0600 artifact + manifest + hygiene
    scan. `db_dump_check` example against a sandbox source.
