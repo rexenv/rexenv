@@ -34,8 +34,11 @@ COMMANDS:
   site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
               [--server nginx|frankenphp|apache] [--db mysql|mariadb]
               [--blueprint <name>] [--multisite subdomain|subdirectory]
+              [--path <folder>]
                 Create a site (defaults mirror the app's New Site dialog;
-                WordPress sites get the one-click install)
+                WordPress sites get the one-click install). --path serves an
+                EXISTING folder in place: it is adopted as-is, never written
+                into, and never deleted with the site
   site delete <domain> [--yes]
                 Delete a site — drops its database and docroot (asks first)
   site logs <domain> [--source K] [--lines N] [--follow]
@@ -390,7 +393,7 @@ fn flag_value(words: &[String], flag: &str) -> Option<String> {
 
 fn cmd_site_create(words: &[String], json_output: bool) {
     let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site create <domain> [--name N] [--type T] [--php V] [--server S] [--db D]");
+        eprintln!("rex: usage: rex site create <domain> [--name N] [--type T] [--php V] [--server S] [--db D] [--path FOLDER]");
         exit(1);
     };
     let mut args = serde_json::Map::new();
@@ -403,6 +406,7 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         ("--db", "db"),
         ("--blueprint", "blueprint"),
         ("--multisite", "multisite"),
+        ("--path", "path"),
     ] {
         if let Some(v) = flag_value(words, flag) {
             args.insert(key.into(), json!(v));
@@ -2155,7 +2159,13 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
     // Destructive: database + docroot go away. Ask unless --yes (and always
     // require --yes when stdin isn't a terminal-driven human).
     if !words.iter().any(|w| w == "--yes") {
-        eprint!("delete {domain}? This drops its database and docroot. [y/N] ");
+        // The folder is only ours to delete when we created it — say which.
+        let folder = if site["docrootManaged"].as_bool() == Some(false) {
+            format!("Your folder at {} is left in place.", site["path"].as_str().unwrap_or("?"))
+        } else {
+            "This also removes its folder.".to_string()
+        };
+        eprint!("delete {domain}? This drops its database. {folder} [y/N] ");
         let mut answer = String::new();
         if std::io::stdin().read_line(&mut answer).is_err()
             || !matches!(answer.trim(), "y" | "Y" | "yes")

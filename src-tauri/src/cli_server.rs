@@ -69,6 +69,10 @@ struct SiteCreateArgs {
     /// Convert to multisite right after the install (`subdomain` /
     /// `subdirectory`) — the same convert-after-install flow blueprints use.
     multisite: Option<String>,
+    /// Serve an EXISTING folder in place instead of creating one under the
+    /// sites folder. Adopted as-is: never written into, never deleted with the
+    /// site. Validated by core exactly as the dialog's picker is.
+    path: Option<String>,
 }
 
 pub fn parse_request(line: &str) -> Result<Request> {
@@ -333,8 +337,9 @@ where
             let serving = commands::sites::sites_serving(state.clone())?;
             Ok(json!({ "sites": to_value(&sites)?, "serving": to_value(&serving)? }))
         }
-        // Site create: exactly what the New Site dialog submits — an empty
-        // `path` (the backend derives it under the sites folder), WordPress
+        // Site create: exactly what the New Site dialog submits — `path` empty
+        // (the backend derives it under the sites folder) or a folder to LINK,
+        // WordPress
         // install options falling back to their site-derived defaults, and the
         // dialog's own default choices for anything the flag set omits. All
         // validation stays where it lives (validate_domain, core checks).
@@ -366,7 +371,9 @@ where
                 site_type: a.site_type.unwrap_or(crate::state::models::SiteType::Wordpress),
                 php_version,
                 web_server: a.server.unwrap_or(crate::state::models::WebServer::Nginx),
-                path: String::new(),
+                // Empty = create the docroot under the sites folder (the
+                // dialog's default); a value = link that existing folder.
+                path: a.path.clone().unwrap_or_default(),
                 db_engine: a.db.unwrap_or(crate::state::models::SiteDbEngine::Mysql),
             };
             let blueprint_id = match &a.blueprint {
