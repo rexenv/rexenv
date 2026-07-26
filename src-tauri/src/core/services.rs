@@ -628,8 +628,17 @@ pub fn reload_nginx(
             .args(["-HUP", &pid.to_string()])
             .status();
         if matches!(hup, Ok(s) if s.success()) {
+            // HEAL the pid file. SIGHUP does not make nginx rewrite it, so
+            // without this every later reload keeps taking the fallback and the
+            // broken state persists invisibly until someone restarts nginx —
+            // exactly the trap that made a user's Retry look useless. The file
+            // is inside our own prefix and we are restoring the value nginx
+            // itself maintains.
+            let healed = std::fs::write(prefix.join("nginx.pid"), format!("{pid}\n"));
             log::warn!(
-                "nginx: the pid file was unusable ({why}) — signalled our master {pid} directly"
+                "nginx: the pid file was unusable ({why}) — signalled our master {pid} \
+                 directly and rewrote the pid file (healed: {})",
+                healed.is_ok()
             );
             return Ok(ReloadOutcome::Reloaded);
         }
