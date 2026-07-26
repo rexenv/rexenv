@@ -129,6 +129,44 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
 
 ---
 
+## F) 🚧 Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run)
+
+**Why this is here:** the dev Mac has no `/etc/resolver/test` (only `rex`, plus an
+unrelated `sb`), so the foreign-file paths of the Valet/Herd resolver takeover have never
+run against a real root-owned foreign file. Creating one on the dev machine to test was
+deliberately refused. The logic is unit-tested against fixture directories
+(`core::dns::owner_of`) and the ABSENT-file path is live-verified; these two paths are
+fixture-only. Plan: `docs/PLAN-valet-herd-import.md` §4.
+
+Needs a VM (or a spare macOS account/machine) with **Valet or Herd installed and started
+at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
+
+1. Confirm the starting state: `cat /etc/resolver/test` shows THEIR content
+   (`nameserver 127.0.0.1`, no `port` line), and `ls -l` shows it root-owned.
+2. Open rexenv → the Valet/Herd import screen. Expect the resolver card to report the file
+   as **not ours**, showing their content beside ours.
+3. Try to create a `.test` site WITHOUT consenting. Expect an honest refusal — and verify
+   `/etc/resolver/test` is byte-identical afterwards (`shasum` before/after). **This is
+   the regression guard for the silent-overwrite bug.**
+4. Tick the consent box, take it over. Verify: the file now holds our signature; a backup
+   exists at `<app-data>/resolver-backups/test` with mode `600`; exactly one row in
+   `resolver_takeovers`.
+5. Import a site on `.test`, confirm it resolves and serves.
+6. **Hand it back** from the resolver card. Verify: `/etc/resolver/test` is byte-identical
+   to step 1's `shasum`; the backup file is GONE; the record is GONE; the confirm warned
+   that rexenv `.test` sites stop resolving.
+7. Take it over again, then this time run **Settings → Remove system changes**. Verify the
+   same restore happened as part of the single privileged prompt.
+8. **Drift:** take it over, then run `valet install` (or relaunch Herd) so they reclaim the
+   file. Restart rexenv → expect the startup drift notice naming the TLD, and `rex doctor`
+   reporting it too. Then remove system changes and verify we left THEIR file alone and
+   dropped our record + backup.
+9. **Backup-missing path:** take it over, delete `<app-data>/resolver-backups/test` by
+   hand, then remove system changes. Expect our file removed and an honest message saying
+   the backup was gone and to run `valet install`.
+10. Throughout: `/etc/resolver/rex` must be untouched, and no file we did not create may
+    ever be removed.
+
 ## E) Other live/GUI items from the review & publish
 
 - **🟢 Clean-Mac release QA** — `docs/SMOKE-TEST.md` on a fresh Mac / user account. The

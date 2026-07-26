@@ -1,6 +1,6 @@
 # Stage 1 — import Valet/Herd sites (read-only scan → review → import)
 
-**Status: PLANNED — awaiting decisions (§11). No code written.** Planned 26 Jul 2026
+**Status: APPROVED 26 Jul 2026 — building.** All four decisions resolved (§11). Planned 26 Jul 2026
 against `5e8231f`, verified against the live Valet 4.12.0 + Herd 1.29.0 install on the dev
 Mac. Stage 1 of `docs/PLAN-valet-herd-migration.md`; builds directly on Stage 0
 (`docs/PLAN-linked-sites.md`).
@@ -178,7 +178,42 @@ Backups live in `<app-data>/resolver-backups/<tld>-<timestamp>` — a new direct
 existing "safety backup" precedent (DB dumps) targets Downloads, but that's for user
 artifacts and this is ours.
 
-### 4.6 Uninstall — the decision table
+### 4.6 The backup file's lifecycle — no orphans by construction
+
+The record is the **sole owner** of its backup file, and the backup is named per TLD, not
+per timestamp: `<app-data>/resolver-backups/<tld>`. The TLD is `[a-z]{1,63}`, so it is a
+safe filename, and **at most one backup per TLD can exist by construction** — a timestamped
+name is what would make an orphan representable, so we don't use one.
+
+Every transition creates or deletes the file in the same operation as the row:
+
+| Transition | Backup file |
+|---|---|
+| Takeover | written (`write_private`, 0600) before the row is inserted |
+| Takeover rolled back (privileged step failed/cancelled) | deleted with the row |
+| Restore (hand-back or uninstall) | deleted after a successful restore |
+| Drift — they took the file back, record dropped as moot | **deleted with the row** |
+| Re-takeover of the same TLD | same path, overwritten (`write_private` re-hardens an existing file to 0600 before writing) — the newest backup is the right one to restore, since it's what we actually replaced |
+| Backup missing at restore time | nothing to delete; we remove our file and say so |
+
+Belt for the crash window between writing the file and inserting the row: a startup sweep
+deletes any file in `resolver-backups/` with no matching record. Cheap (one `read_dir`
+against one query) and it makes accumulated litter unrepresentable rather than unlikely.
+
+### 4.7 Hand it back — one click, not "uninstall rexenv"
+
+If we borrow their file, the return path has to be visible, so the resolver card gets a
+per-TLD **"Hand `/etc/resolver/test` back to Valet"** action. It is the same operation as
+the uninstall restore (our content + record → restore the backup, drop the record, delete
+the backup), just wired to a button.
+
+Its confirm must state both consequences plainly:
+
+- their `.test` sites resolve through Valet/Herd again;
+- **any rexenv site on that TLD stops resolving** until they take it over again or re-home
+  it to `.rex` — with the count of affected sites shown, since we know it.
+
+### 4.8 Uninstall — the decision table
 
 Evaluated per TLD inside `run_system_teardown`, still one privileged prompt:
 
@@ -199,7 +234,7 @@ ours, and silence would be the worst option.
 **We never remove a file we didn't create.** Foreign files without a record are invisible
 to the sweep, exactly as today.
 
-### 4.7 Escaping
+### 4.9 Escaping
 
 Restore runs as root. Their content must never be interpolated into a shell string, so the
 command is `cp <sh_quote(backup_path)> /etc/resolver/<tld> && chmod 644 …` — `sh_quote`
@@ -207,15 +242,28 @@ already exists and takes a `&Path`; the app-data backup path contains spaces, an
 existing DNS commands set no quoting precedent (they're safe only via the `[a-z]{1,63}`
 label invariant, which still holds for the TLD half).
 
-### 4.8 Known limitation, stated not hidden
+### 4.10 Drift — the cheap check now, the watcher later
 
-The health watchdog only probes the wire, never the file. If Herd rewrites
-`/etc/resolver/test` back to port 53 after our takeover, our resolver still answers on
-15353, the watchdog stays green, and every site on that TLD goes dark with no event.
-Detecting that is new capability — see decision §11.3. Note also that
-`dns_status.resolverInstalled` is a bare `path.exists()` on `.rex` that gates
-`FirstRunGate` and the Onboarding step-2 lock, so its semantics must **not** change here;
-the migration screen gets its own per-TLD ownership query.
+The health watchdog only probes the wire, never the file, so if Valet or Herd takes
+`/etc/resolver/test` back while we own it, our resolver keeps answering on 15353, the
+watchdog stays green, and every rexenv site on that TLD goes dark with no explanation.
+That is exactly the honest-UI failure we keep designing away.
+
+**Now: the cheap check, at the two places we already look at environment truth** — app
+startup and `rex doctor`. Reading one small file per taken-over TLD is nearly free and
+needs no watcher. When a TLD we hold reads foreign:
+
+> the `.test` resolver is no longer ours — Valet or Herd took it back. Your rexenv `.test`
+> sites won't resolve until you take it over again or move them to `.rex`.
+
+with the take-over action right there.
+
+**Later (Stage 2): the continuous version.** Polling belongs with a watcher and can wait;
+nothing in Stage 1 depends on it.
+
+Note `dns_status.resolverInstalled` is a bare `path.exists()` on `.rex` that gates
+`FirstRunGate` and the Onboarding step-2 lock, so its semantics must **not** change here.
+Drift reporting is a separate per-TLD query.
 
 ## 5. The import loop
 
@@ -231,15 +279,26 @@ Per site: reuse `site_provision::start` + poll `state_of` — the exact drive lo
 `create_site` and the CLI already use. No parallel create path. Each row gets a live
 outcome (`StepDot` vocabulary) and, on failure, the failing phase plus its log key.
 
-A failed row never aborts the batch; the summary reports counts and every failure.
+**Failure semantics — continue, never abandon.** Each site is INDEPENDENT, unlike Run-all
+for repo assets where stopping is right because building after a failed install is
+pointless. Here a failure on site 3 must not cost sites 4–20. So: sequential,
+**continue-on-failure**, per-row terminal status (`imported` / `failed` + its reason and
+log key / `skipped` by choice), and an end-of-run summary naming exactly which succeeded
+and which did not.
+
+**Cancel stops after the current site.** The in-flight site finishes or fails on its own
+terms; the remainder are left un-attempted and clearly marked as such. We never abandon a
+site mid-import, because a half-created site is precisely the `provisioned=0` state we
+make users clean up by hand.
 
 ## 6. Two fixes that belong in this stage
 
 **`build_plan` over-fetches for linked sites.** It branches on `site_type == Wordpress`
 but lacks the `linked` check `phase_defs` right above it already has, so importing a
 linked WordPress site prefetches **MySQL (~600 MB) + PHP CLI + wp-cli** for phases the job
-will never run. On a 12-site Valet import that is a large, pointless first download. Give
-it the same `linked` awareness.
+will never run. On a 12-site Valet import that is a large, pointless first download — not a
+micro-optimisation but the difference between a fast import and a ~600 MB download during
+someone's first five minutes with the app. Give it the same `linked` awareness.
 
 **Q2a — "serving paused" instead of a false success.** The serve phase reports
 `created — serving at https://…` even when a shadow-binding Herd is answering :443. Ride
@@ -253,10 +312,14 @@ quit Herd" with the copy-paste quit command the existing detection already produ
 
 ## 7. UI
 
-**Route `/import`, no permanent nav item** — most users have no Valet or Herd, and the
-sidebar shouldn't carry a one-off. Entry points: a Sites-page affordance shown only when a
-background scan finds a source, and a Settings card (always available, honest when nothing
-is found).
+**Route `/import`, no permanent nav item** — migration is a near-one-time action and a
+permanent nav slot would misrepresent it. Entry points:
+
+- **A Sites-page affordance**, shown only when a scan would actually find something, and
+  most prominent where it is most useful — an empty or near-empty site list is exactly
+  when someone wants to import. **Dismissible**, and it stays dismissed, so it never nags
+  someone who has no Valet or Herd.
+- **A Settings card**, always available, honest when a scan finds nothing.
 
 Components to copy, all existing:
 - **`PluginsPanel`** (`WordPressManager.tsx:2648+`) — `Set<string>` selection, select-all
@@ -275,7 +338,7 @@ Components to copy, all existing:
    onboarding batches CA-trust with the resolver install (it doesn't and can't). Tests
    against fixture dirs. **Ships the bug fix on its own.**
 2. `feat(db)` — v18 `resolver_takeovers`, backup write via `write_private`,
-   restore-aware teardown (§4.6 table), `sh_quote`d restore command. Tests for every row
+   restore-aware teardown (§4.8 table), `sh_quote`d restore command. Tests for every row
    of the table.
 3. `feat(core)` — `core/valet.rs`: discovery + mess tolerance (§2), against fixture trees
    built by the tests.
@@ -310,16 +373,13 @@ Databases (Stage 2), connection-config rewriting (Stage 3), importing their cert
 (never — we always issue our own), touching their nginx/dnsmasq/services in any way, and
 any "clean up your old environment" affordance.
 
-## 11. Decisions needed
+## 11. Decisions — all resolved 26 Jul 2026
 
-1. **Entry points** — route + Sites affordance + Settings card, with no permanent nav
-   item. Agree?
-2. **Hand-back button** — besides restoring at "Remove system changes", offer a per-TLD
-   *"Hand `/etc/resolver/test` back to Valet"* action in the resolver card? Same code
-   path, cheap, and it makes the takeover visibly reversible. Recommended.
-3. **Drift detection** — add a periodic content check for the resolver files we own, so a
-   Herd relaunch stealing `.test` back surfaces instead of sites silently going dark? It
-   is new capability and touches the watchdog. Recommended as a small, separate step,
-   deferrable to Stage 2 without blocking anything.
-4. **Sequential import** — confirmed as the shape? (Recommended; parallel fights the hub,
-   the services lock and job adoption.)
+1. **Entry points** — route + dismissible Sites affordance (only when a scan would find
+   something) + Settings card. No permanent nav item. §7.
+2. **Hand-back button** — YES. If we borrow their file, returning it must be one click,
+   not "uninstall rexenv". §4.7.
+3. **Drift detection** — the cheap check now at startup and `rex doctor`; the continuous
+   watcher deferred to Stage 2. §4.10.
+4. **Sequential import** — yes, and continue-on-failure: each site is independent, so a
+   failure on site 3 must not cost sites 4–20. Cancel stops after the current site. §5.
