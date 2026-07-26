@@ -820,6 +820,31 @@ Each line = one feature, live-verified before its commit.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
+- [ ] **Install WordPress into an empty LINKED folder** — deliberately left out of Stage 0
+  (`docs/PLAN-linked-sites.md` §11.2). Linking today is adopt-only: we serve what's there
+  and write nothing. Installing a full WP core into the user's OWN directory is a
+  different operation and needs its own explicit flow with its own disclosure — not a
+  checkbox on a feature whose promise is "we don't touch your folder". Shape if picked
+  up: a deliberate action from the site page (not New Site), only offered when the linked
+  folder is EMPTY (`detect_project` → `existing_install == false`), with a confirm naming
+  exactly what gets written and where. The backend seam exists: `phase_defs`
+  (`commands/site_provision.rs:130`) currently omits the WP phases whenever
+  `docroot_managed == Some(false)`, so this would need an explicit opt-in flag rather than
+  the blanket `linked` check. **Trap to fix first if built:** the `configure` phase is only
+  half idempotent — it skips `wp config create` when wp-config.php exists but calls
+  `create_database` unconditionally (`site_provision.rs:691-700`).
+- [ ] **`teardown` never removes the Apache per-site config/log** — pre-existing gap found
+  while mapping the delete path for Stage 0 (`docs/PLAN-linked-sites.md` §3).
+  `core::sites::teardown` sweeps the FrankenPHP override config + log and the tunnel log
+  (`core/sites.rs:625-634`) but never `apache::config_path` / `apache::log_path`
+  (`core/apache.rs:168,177`), which exist and are written for every Apache override site.
+  `change_site_domain`'s old-artifact cleanup (`commands/sites.rs:671-681`) has the same
+  omission, so renaming an Apache site strands the old-domain conf too. Both are app-data
+  files (never the user's), so the fix is additive and low-risk: add the two paths to
+  teardown's best-effort sweep and to the domain-change cleanup, plus a test asserting an
+  Apache site's conf/log are gone after teardown (the existing FrankenPHP assertion in
+  `teardown_removes_row_and_per_site_artifacts` is the template).
+
 - [x] **Change domain** — cross-cutting: cert re-issue + config regen + WP search-replace,
   and the DB name derives from the domain (L). ✓ **Done** in two commits:
   `688142a` (prerequisite) stores `db_name` on the site row (v6 migration backfills,
