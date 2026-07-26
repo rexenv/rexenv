@@ -37,6 +37,7 @@ pub mod ssl;
 pub mod stack_guard;
 pub mod terminal;
 pub mod tld;
+pub mod valet;
 pub mod tunnels;
 pub mod wp_login;
 pub mod wporg;
