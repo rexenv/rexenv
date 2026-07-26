@@ -52,7 +52,15 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       **Still open, deliberately:** "install WordPress into an empty linked folder" is out
       of Stage 0 (own flow, own disclosure); `teardown` still never removes the Apache
       per-site config/log (pre-existing, plan §3).
-  - [ ] Stage 1 — sites-only import + resolver consent
+  - [ ] **Stage 1 — sites-only import + resolver consent.** Planned, awaiting 4 decisions:
+    `docs/PLAN-valet-herd-import.md` — read-only scan with a per-case mess table (verified
+    against the live trees: 29 sites, 13 dangling links, 2 conf-only orphans, a custom-TLD
+    conf, BOTH isolation-marker formats), consent-gated `/etc/resolver` takeover with a v18
+    record and a restore-vs-remove decision table for uninstall, sequential import reusing
+    `site_provision::start`. Folds in the two pre-existing bugs (silent foreign-resolver
+    overwrite; false "serving at …" under a shadow-binding Herd) plus `build_plan`
+    over-fetching ~600 MB of MySQL + wp-cli for linked WordPress sites it never installs
+    into. 9 commits.
   - [ ] Stage 2 — database import (dump artifact, then restore + credential mirroring)
   - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)
 

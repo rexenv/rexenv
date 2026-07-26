@@ -77,6 +77,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
 | Valet/Herd migration — research + staged design (parked) | `docs/PLAN-valet-herd-migration.md` |
 | Link an existing folder / serve a docroot outside the sites dir | `docs/PLAN-linked-sites.md` |
+| Valet/Herd import — scan, resolver consent, import loop (Stage 1) | `docs/PLAN-valet-herd-import.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |
 | Design tokens, screen specs | `docs/archive/DESIGN_BRIEF.md` + `design/*.dc.html` |
