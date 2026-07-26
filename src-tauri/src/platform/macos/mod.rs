@@ -98,6 +98,30 @@ impl DnsManager for MacosDns {
         }
         format!("rm -f {files} && dscacheutil -flushcache && killall -HUP mDNSResponder")
     }
+
+    fn restore_command(&self, restores: &[(String, PathBuf)]) -> String {
+        // `cp` the backup back into place — their file's bytes never enter this
+        // root shell string (see the trait doc). `chmod 644` because the copy
+        // inherits our 0600 backup's mode, and a resolver file the system can't
+        // read is worse than useless. One flush for the batch, like its siblings.
+        let cmds = restores
+            .iter()
+            .map(|(tld, backup)| {
+                let dest = self.resolver_path(tld);
+                format!(
+                    "cp {} {} && chmod 644 {}",
+                    sh_quote(backup),
+                    dest.display(),
+                    dest.display()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" && ");
+        if cmds.is_empty() {
+            return "dscacheutil -flushcache && killall -HUP mDNSResponder".into();
+        }
+        format!("{cmds} && dscacheutil -flushcache && killall -HUP mDNSResponder")
+    }
 }
 
 pub struct MacosCertTrust;

@@ -59,6 +59,14 @@ pub trait DnsManager: Send + Sync {
     /// Shell command(s) that remove the resolver files for `tlds` (one batch,
     /// one cache flush) — run via `PrivilegeManager`.
     fn uninstall_command(&self, tlds: &[String]) -> String;
+    /// Shell command(s) that put BORROWED resolver files back — one batch, one
+    /// cache flush. Each entry is `(tld, our 0600 backup of their file)`.
+    ///
+    /// Copies the backup rather than writing its contents inline: the bytes are
+    /// the USER'S file, arbitrary, and must never be interpolated into a root
+    /// shell string. The backup path lives under app-data (spaces) so it needs
+    /// quoting; the TLD is an `[a-z]{1,63}` label by construction.
+    fn restore_command(&self, restores: &[(String, PathBuf)]) -> String;
 }
 
 /// Installs / removes the local CA in the trust store.

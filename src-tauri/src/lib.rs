@@ -229,6 +229,14 @@ pub fn run() {
                     .flatten()
                     .as_deref()
                         == Some("true");
+                    // A resolver backup with no record can only come from a
+                    // crash between writing the file and inserting its row —
+                    // the row owns the file everywhere else. Sweep so litter
+                    // can't accumulate in app-data unnoticed.
+                    let swept = core::dns::sweep_orphan_backups(&conn, platform.as_ref());
+                    if swept > 0 {
+                        log::info!("dns: swept {swept} orphaned resolver backup(s)");
+                    }
                     // First run: create the sites root (~/rexenv/Sites, or the
                     // user's configured folder). Non-fatal — provision gives
                     // its own clear error if the folder still can't be made.

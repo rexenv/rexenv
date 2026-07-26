@@ -3,11 +3,24 @@
 
 use rexenv_lib::core::setup;
 use rexenv_lib::platform;
+use rexenv_lib::state::db;
 
 fn main() {
     let plat = platform::current();
-    match setup::run_system_teardown(&*plat) {
-        Ok(()) => println!("system teardown OK (resolver removed, CA untrusted)"),
+    // The real app database: teardown consults it for resolver files we
+    // BORROWED from Valet/Herd, which are restored rather than removed.
+    let conn = match db::open_for_platform(plat.paths()) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("could not open the app database: {e}");
+            return;
+        }
+    };
+    match setup::run_system_teardown(&conn, &*plat) {
+        Ok(r) => println!(
+            "system teardown OK — removed {:?}, restored {:?}, left alone {:?}, backup missing {:?}; CA untrusted",
+            r.removed, r.restored, r.left_alone, r.backup_missing
+        ),
         Err(e) => eprintln!("system teardown failed: {e}"),
     }
 }

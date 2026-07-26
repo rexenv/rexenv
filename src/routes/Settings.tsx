@@ -1008,8 +1008,23 @@ function UninstallSetting() {
   const [msg, setMsg] = useState<string | null>(null);
   const run = useMutation({
     mutationFn: uninstallSystem,
-    onSuccess: () =>
-      setMsg("System changes removed: services stopped, all rexenv DNS resolvers (.rex and any others) deleted, local CA untrusted. You can now quit and delete rexenv."),
+    onSuccess: (r) => {
+      // Say what actually happened to each resolver file. A file we BORROWED
+      // from Valet/Herd is handed back, not deleted — and if our backup of it
+      // was gone we must say so rather than imply a clean restore.
+      const parts = ["Services stopped, local CA untrusted."];
+      if (r.removed.length) parts.push(`Removed rexenv resolvers: ${r.removed.map((t) => `.${t}`).join(", ")}.`);
+      if (r.restored.length)
+        parts.push(`Handed back to Valet/Herd: ${r.restored.map((t) => `.${t}`).join(", ")}.`);
+      if (r.leftAlone.length)
+        parts.push(`Left alone (already reclaimed): ${r.leftAlone.map((t) => `.${t}`).join(", ")}.`);
+      if (r.backupMissing.length)
+        parts.push(
+          `Couldn't find our backup of ${r.backupMissing.map((t) => `/etc/resolver/${t}`).join(", ")}, so rexenv's version was removed — run \`valet install\` to restore theirs.`,
+        );
+      parts.push("You can now quit and delete rexenv.");
+      setMsg(parts.join(" "));
+    },
     onError: (e) => toastBackendError(e),
   });
 

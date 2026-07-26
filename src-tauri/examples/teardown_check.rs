@@ -12,6 +12,7 @@
 
 use rexenv_lib::core::setup;
 use rexenv_lib::platform;
+use rexenv_lib::state::db;
 use std::process::Command;
 
 fn resolver_present() -> bool {
@@ -56,8 +57,12 @@ fn main() {
         println!("\n(Already torn down — verifying the clean state is stable.)");
     } else {
         println!("\n── Running run_system_teardown (enter your macOS password if prompted) ──");
-        match setup::run_system_teardown(&*plat) {
-            Ok(()) => println!("teardown returned Ok"),
+        let conn = db::open_for_platform(plat.paths()).expect("app database");
+        match setup::run_system_teardown(&conn, &*plat) {
+            Ok(r) => println!(
+                "teardown returned Ok — removed {:?}, restored {:?}, left alone {:?}",
+                r.removed, r.restored, r.left_alone
+            ),
             Err(e) => {
                 eprintln!("teardown failed: {e}");
                 std::process::exit(1);

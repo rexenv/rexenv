@@ -70,6 +70,20 @@ export interface SiteCertInfo {
   certDir: string;
 }
 
+/** What "Remove system changes" actually did to the OS resolver files (mirrors
+ *  the Rust TeardownReport). Files rexenv BORROWED from Valet/Herd are handed
+ *  back rather than deleted, so a generic "removed everything" would be a lie. */
+export interface TeardownReport {
+  /** Ours outright — deleted. */
+  removed: string[];
+  /** Borrowed — their file put back from our backup. */
+  restored: string[];
+  /** They had already reclaimed these; rexenv touched nothing. */
+  leftAlone: string[];
+  /** Borrowed, but our backup was gone: ours removed, theirs unrecoverable. */
+  backupMissing: string[];
+}
+
 /** What linking a folder would do — from `inspectLinkedFolder`, shown before
  *  anything is created. Detection is pure filesystem; nothing in the folder is
  *  executed. */

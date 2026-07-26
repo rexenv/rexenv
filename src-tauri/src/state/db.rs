@@ -175,6 +175,27 @@ const MIGRATIONS: &[&str] = &[
     // the Sites folder at ~/code silently made an unrelated project's docroot
     // look deletable.
     "ALTER TABLE sites ADD COLUMN docroot_managed INTEGER;",
+    // v18 — resolver files we BORROWED from another tool (Valet/Herd).
+    //
+    // Ownership of `/etc/resolver/<tld>` is content equality, so the moment we
+    // take a foreign file over it becomes indistinguishable from one we
+    // created — and teardown would then delete it, leaving the user with
+    // neither their config nor ours. This row is what teardown consults to
+    // RESTORE instead of remove, so it must outlive the takeover; a settings
+    // string wouldn't carry the backup path and timestamp, and blueprints
+    // already set the precedent that structured state gets a table.
+    //
+    // `tld` is the PRIMARY KEY, and the backup file is named after it rather
+    // than a timestamp, so at most one backup per TLD exists BY CONSTRUCTION —
+    // a timestamped name is exactly what would make an orphaned backup
+    // representable. The row owns its file: both are written together and
+    // deleted together, including when drift drops the row as moot.
+    "CREATE TABLE resolver_takeovers (
+        tld         TEXT PRIMARY KEY,
+        original    TEXT NOT NULL,
+        backup_path TEXT NOT NULL,
+        taken_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

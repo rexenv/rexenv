@@ -40,6 +40,9 @@ impl DnsManager for WindowsDns {
     fn uninstall_command(&self, _tlds: &[String]) -> String {
         todo!("windows DNS")
     }
+    fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
+        todo!("windows DNS")
+    }
 }
 
 pub struct WindowsCertTrust;

@@ -40,6 +40,9 @@ impl DnsManager for LinuxDns {
     fn uninstall_command(&self, _tlds: &[String]) -> String {
         todo!("linux DNS")
     }
+    fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
+        todo!("linux DNS")
+    }
 }
 
 pub struct LinuxCertTrust;

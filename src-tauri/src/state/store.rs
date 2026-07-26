@@ -213,6 +213,71 @@ pub fn set_site_web_server(conn: &Connection, id: &str, server: &str) -> Result<
     Ok(affected > 0)
 }
 
+/// A resolver file we took over from another tool (v18).
+#[derive(Debug, Clone)]
+pub struct ResolverTakeover {
+    pub tld: String,
+    /// Their exact file content, as read at takeover time.
+    pub original: String,
+    /// Our 0600 copy of it under app-data.
+    pub backup_path: String,
+}
+
+fn row_to_takeover(row: &Row) -> rusqlite::Result<ResolverTakeover> {
+    Ok(ResolverTakeover {
+        tld: row.get(0)?,
+        original: row.get(1)?,
+        backup_path: row.get(2)?,
+    })
+}
+
+/// Record that we borrowed `tld`'s resolver file. Replaces any previous record
+/// for that TLD (a re-takeover after they reclaimed it): the newest backup is
+/// the right one to restore, since it is what we actually replaced.
+pub fn insert_resolver_takeover(
+    conn: &Connection,
+    tld: &str,
+    original: &str,
+    backup_path: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO resolver_takeovers (tld, original, backup_path)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(tld) DO UPDATE SET
+             original = excluded.original,
+             backup_path = excluded.backup_path,
+             taken_at = datetime('now')",
+        params![tld, original, backup_path],
+    )?;
+    Ok(())
+}
+
+/// The takeover record for `tld`, if we hold one.
+pub fn get_resolver_takeover(conn: &Connection, tld: &str) -> Result<Option<ResolverTakeover>> {
+    let mut stmt = conn
+        .prepare("SELECT tld, original, backup_path FROM resolver_takeovers WHERE tld = ?1")?;
+    let mut rows = stmt.query_map([tld], row_to_takeover)?;
+    match rows.next() {
+        Some(v) => Ok(Some(v?)),
+        None => Ok(None),
+    }
+}
+
+/// Every resolver file we currently hold, TLD-sorted.
+pub fn list_resolver_takeovers(conn: &Connection) -> Result<Vec<ResolverTakeover>> {
+    let mut stmt = conn.prepare(
+        "SELECT tld, original, backup_path FROM resolver_takeovers ORDER BY tld",
+    )?;
+    let rows = stmt.query_map([], row_to_takeover)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Forget a takeover — after restoring their file, or when they reclaimed it
+/// themselves. The caller deletes the backup file in the same operation.
+pub fn delete_resolver_takeover(conn: &Connection, tld: &str) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM resolver_takeovers WHERE tld = ?1", params![tld])? > 0)
+}
+
 /// Read a setting value by key, or `None` if unset.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;

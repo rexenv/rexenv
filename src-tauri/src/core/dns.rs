@@ -347,6 +347,180 @@ pub fn ensure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<
     }
 }
 
+/// Where we keep our copies of resolver files we borrowed.
+pub fn backup_dir(platform: &dyn Platform) -> Result<std::path::PathBuf> {
+    Ok(platform.paths().app_data_dir()?.join("resolver-backups"))
+}
+
+/// Our backup of `tld`'s original file. Named after the TLD, NOT timestamped:
+/// at most one backup per TLD can then exist by construction, which is what
+/// makes an orphaned backup unrepresentable rather than merely unlikely (the
+/// row and this file are created and deleted together).
+pub fn backup_path(platform: &dyn Platform, tld: &str) -> Result<std::path::PathBuf> {
+    Ok(backup_dir(platform)?.join(tld))
+}
+
+/// BORROW another tool's resolver file for `tld`: back up what's there, record
+/// it, then install ours (one privileged prompt).
+///
+/// Ordering is the safety property. The backup and the record land BEFORE the
+/// privileged write, so a cancelled password prompt can't leave us holding a
+/// file we can't give back; if that write fails, both are rolled back and
+/// nothing on disk changed. Refuses a file we can't read — we will not replace
+/// what we cannot restore.
+pub fn take_over_resolver(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    tld: &str,
+    port: u16,
+) -> Result<()> {
+    let original = match resolver_owner(platform, tld, port) {
+        ResolverOwner::Ours => return Ok(()), // already ours; nothing borrowed
+        ResolverOwner::Absent => return configure_resolver(platform, tld, port),
+        ResolverOwner::Foreign { content: None } => {
+            return Err(Error::Other(format!(
+                "{} can't be read, so rexenv can't back it up — and it won't replace a file \
+                 it couldn't give back.",
+                platform.dns().resolver_path(tld).display()
+            )))
+        }
+        ResolverOwner::Foreign { content: Some(c) } => c,
+    };
+
+    let backup = backup_path(platform, tld)?;
+    if let Some(dir) = backup.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    // Born 0600 (B6); re-hardens an existing file before overwriting, which is
+    // what a re-takeover after they reclaimed the TLD does.
+    platform.permissions().write_private(&backup, original.as_bytes())?;
+    crate::state::store::insert_resolver_takeover(
+        conn,
+        tld,
+        &original,
+        &backup.display().to_string(),
+    )?;
+
+    if let Err(e) = configure_resolver(platform, tld, port) {
+        // Roll back together — the row owns the file.
+        let _ = crate::state::store::delete_resolver_takeover(conn, tld);
+        let _ = std::fs::remove_file(&backup);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// What teardown (or a hand-back) should do about our resolver files, decided
+/// per TLD from the file's CURRENT owner and whether we hold a record.
+///
+/// | file now | record | action |
+/// |---|---|---|
+/// | ours | yes | restore their backup |
+/// | ours | no | remove (we created it) |
+/// | foreign | yes | leave alone — they reclaimed it; drop the moot record |
+/// | foreign | no | leave alone (never enumerated) |
+/// | absent | yes | drop the moot record |
+/// | absent | no | nothing |
+#[derive(Debug, Default, Clone)]
+pub struct ResolverPlan {
+    /// Ours outright — delete the file.
+    pub remove: Vec<String>,
+    /// Borrowed — put their file back from `(tld, backup)`.
+    pub restore: Vec<(String, std::path::PathBuf)>,
+    /// Records to forget afterwards (restored, or reclaimed by them).
+    pub drop_records: Vec<String>,
+    /// Borrowed, but our backup is gone: we remove ours and say so, rather
+    /// than leaving our file in place pretending to be theirs.
+    pub backup_missing: Vec<String>,
+    /// They took these back themselves — we touch nothing.
+    pub reclaimed: Vec<String>,
+}
+
+/// Build the plan across every resolver file we might be responsible for:
+/// the ones matching our signature, plus every TLD we hold a record for.
+pub fn plan_resolver_teardown(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    port: u16,
+) -> Result<ResolverPlan> {
+    let mut plan = ResolverPlan::default();
+    let records = crate::state::store::list_resolver_takeovers(conn)?;
+
+    for rec in &records {
+        match resolver_owner(platform, &rec.tld, port) {
+            ResolverOwner::Ours => {
+                let backup = std::path::PathBuf::from(&rec.backup_path);
+                if backup.is_file() {
+                    plan.restore.push((rec.tld.clone(), backup));
+                } else {
+                    // Can't give theirs back; removing ours is closer to their
+                    // pre-rexenv state than leaving it, and the caller says so.
+                    plan.remove.push(rec.tld.clone());
+                    plan.backup_missing.push(rec.tld.clone());
+                }
+                plan.drop_records.push(rec.tld.clone());
+            }
+            // They reclaimed it (a `valet install`, a Herd relaunch). Not ours
+            // to touch, and the record is moot.
+            ResolverOwner::Foreign { .. } => {
+                plan.reclaimed.push(rec.tld.clone());
+                plan.drop_records.push(rec.tld.clone());
+            }
+            ResolverOwner::Absent => plan.drop_records.push(rec.tld.clone()),
+        }
+    }
+
+    // Everything else carrying our signature is ours outright — today's sweep.
+    let borrowed: std::collections::HashSet<&str> =
+        records.iter().map(|r| r.tld.as_str()).collect();
+    for tld in installed_tlds(platform, port) {
+        if !borrowed.contains(tld.as_str()) {
+            plan.remove.push(tld);
+        }
+    }
+    plan.remove.sort();
+    plan.remove.dedup();
+    Ok(plan)
+}
+
+/// Forget the records the plan resolved, deleting each backup with its row —
+/// call AFTER the privileged step succeeded.
+pub fn finish_resolver_teardown(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    plan: &ResolverPlan,
+) -> Result<()> {
+    for tld in &plan.drop_records {
+        if let Ok(Some(rec)) = crate::state::store::get_resolver_takeover(conn, tld) {
+            let _ = std::fs::remove_file(&rec.backup_path);
+        }
+        crate::state::store::delete_resolver_takeover(conn, tld)?;
+    }
+    let _ = platform; // kept for symmetry with the rest of the module
+    Ok(())
+}
+
+/// Delete backups no record refers to — the belt for a crash between writing
+/// the backup and inserting its row. Returns how many were swept.
+pub fn sweep_orphan_backups(conn: &rusqlite::Connection, platform: &dyn Platform) -> usize {
+    let Ok(dir) = backup_dir(platform) else { return 0 };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return 0 };
+    let known: std::collections::HashSet<String> =
+        crate::state::store::list_resolver_takeovers(conn)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| r.tld)
+            .collect();
+    let mut swept = 0;
+    for e in entries.flatten() {
+        let Ok(name) = e.file_name().into_string() else { continue };
+        if !known.contains(&name) && std::fs::remove_file(e.path()).is_ok() {
+            swept += 1;
+        }
+    }
+    swept
+}
+
 /// The TLDs whose resolver files under `dir` are OURS — file content equals
 /// `signature` (`resolver_contents(port)`, i.e. loopback + our fixed port —
 /// the same ownership test as service adoption's port+marker). Pure directory
@@ -505,6 +679,83 @@ mod tests {
             assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST), "{host}");
         }
         handle.abort();
+    }
+
+    /// The teardown decision table (v18), row by row, against fixture files.
+    ///
+    /// Fixtures because this machine has no foreign `/etc/resolver/<tld>` and
+    /// creating a root-owned one to test against would be worse than a
+    /// fixture — the live paths are a clean-VM item (PUBLISH-TESTING §F). This
+    /// drives the pure planner over a fake resolver dir by classifying each
+    /// file the same way `plan_resolver_teardown` does.
+    #[test]
+    fn teardown_decision_table_restores_borrowed_and_never_touches_reclaimed() {
+        let dir = std::env::temp_dir().join(format!("rexenv-plan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sig = "nameserver 127.0.0.1\nport 15353\n";
+        let theirs = "nameserver 127.0.0.1\n";
+
+        // ours + no record  -> remove
+        std::fs::write(dir.join("rex"), sig).unwrap();
+        // ours + record     -> restore
+        std::fs::write(dir.join("test"), sig).unwrap();
+        // foreign + record  -> leave alone (they reclaimed it)
+        std::fs::write(dir.join("dev"), theirs).unwrap();
+        // foreign + no record -> invisible
+        std::fs::write(dir.join("other"), theirs).unwrap();
+        // absent + record   -> just forget the record ("gone")
+
+        assert_eq!(owner_of(&dir.join("rex"), sig), ResolverOwner::Ours);
+        assert_eq!(owner_of(&dir.join("test"), sig), ResolverOwner::Ours);
+        assert!(matches!(owner_of(&dir.join("dev"), sig), ResolverOwner::Foreign { .. }));
+        assert!(matches!(owner_of(&dir.join("other"), sig), ResolverOwner::Foreign { .. }));
+        assert_eq!(owner_of(&dir.join("gone"), sig), ResolverOwner::Absent);
+
+        // Only OUR files are ever enumerated for removal — a foreign file with
+        // no record can't reach the privileged `rm` at all.
+        let ours = tlds_matching_signature(&dir, sig);
+        assert_eq!(ours, vec!["rex", "test"], "foreign files must not be enumerated");
+        assert!(!ours.contains(&"dev".to_string()));
+        assert!(!ours.contains(&"other".to_string()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A backup with no record is litter from a crash between writing the file
+    /// and inserting its row — the row owns the file everywhere else.
+    #[test]
+    fn orphan_backup_sweep_keeps_recorded_and_deletes_the_rest() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        crate::state::store::insert_resolver_takeover(&conn, "test", "theirs\n", "/tmp/x")
+            .unwrap();
+        let known: std::collections::HashSet<String> =
+            crate::state::store::list_resolver_takeovers(&conn)
+                .unwrap()
+                .into_iter()
+                .map(|r| r.tld)
+                .collect();
+        assert!(known.contains("test"));
+        assert!(!known.contains("stray"), "an unrecorded backup is an orphan");
+
+        // The record round-trips and deleting it forgets the TLD.
+        let rec = crate::state::store::get_resolver_takeover(&conn, "test").unwrap().unwrap();
+        assert_eq!(rec.original, "theirs\n");
+        assert!(crate::state::store::delete_resolver_takeover(&conn, "test").unwrap());
+        assert!(crate::state::store::get_resolver_takeover(&conn, "test").unwrap().is_none());
+    }
+
+    /// Re-taking a TLD after they reclaimed it replaces the record in place —
+    /// one row and one backup per TLD, so no orphan can accumulate.
+    #[test]
+    fn re_takeover_replaces_the_record_rather_than_adding_one() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let store = crate::state::store::insert_resolver_takeover;
+        store(&conn, "test", "first\n", "/tmp/test").unwrap();
+        store(&conn, "test", "second\n", "/tmp/test").unwrap();
+        let all = crate::state::store::list_resolver_takeovers(&conn).unwrap();
+        assert_eq!(all.len(), 1, "one row per TLD");
+        assert_eq!(all[0].original, "second\n", "newest backup is what we replaced");
     }
 
     /// Ownership classification, against fixture files.

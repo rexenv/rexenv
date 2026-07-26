@@ -359,14 +359,20 @@ pub fn set_autostart(state: State<'_, AppState>, enabled: bool) -> Result<()> {
 /// the machine as if rexenv's system setup never ran. Site files + databases under
 /// app-data are NOT touched (the user can still delete the app + its support dir).
 #[tauri::command]
-pub async fn uninstall_system(state: State<'_, AppState>) -> Result<()> {
+pub async fn uninstall_system(
+    state: State<'_, AppState>,
+) -> Result<core::setup::TeardownReport> {
     {
         let mut mgr = state.services.lock().await;
         if mgr.is_running() {
             mgr.stop_all(state.platform.as_ref())?;
         }
     }
-    core::setup::run_system_teardown(state.platform.as_ref())
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+    core::setup::run_system_teardown(&conn, state.platform.as_ref())
 }
 
 #[cfg(test)]
