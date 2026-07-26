@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -116,6 +116,31 @@ export async function changeSiteDomain(id: string, domain: string): Promise<Doma
 export async function moveSiteDocroot(id: string, destParent: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site>("move_site_docroot", { id, destParent });
+}
+
+/** Import the selected Valet/Herd sites, one at a time.
+ *
+ *  Sequential and CONTINUE-ON-FAILURE: each site is independent, so a failure
+ *  on one never costs the rest. Every requested domain comes back with exactly
+ *  one terminal outcome. Rows stream via `onValetImportRow` as they settle. */
+export async function valetImportRun(request: ImportRequest): Promise<ImportResult> {
+  return invoke<ImportResult>("valet_import_run", { request });
+}
+
+/** Stop after the site currently being imported — never mid-site, which would
+ *  leave the half-provisioned state users have to clean up by hand. */
+export async function valetImportCancel(): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("valet_import_cancel");
+}
+
+/** Per-row outcomes as the import settles them. */
+export async function onValetImportRow(
+  cb: (row: ImportOutcome) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<ImportOutcome>("valet-import://row", (e) => cb(e.payload));
 }
 
 /** Scan for Valet/Herd sites. READ-ONLY: nothing of theirs is written, started

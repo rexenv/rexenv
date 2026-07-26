@@ -273,3 +273,316 @@ pub fn resolver_drift(state: State<'_, AppState>) -> Result<Vec<String>> {
         core::dns::DEFAULT_DNS_PORT,
     ))
 }
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+
+/// Cancel flag for a running import. One import at a time; the flag is checked
+/// BETWEEN sites, never mid-site.
+#[derive(Default)]
+pub struct ImportJobs {
+    running: std::sync::atomic::AtomicBool,
+    cancel: std::sync::atomic::AtomicBool,
+}
+
+/// What the user asked us to import.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRequest {
+    /// Domains to import, in the order the screen listed them.
+    pub domains: Vec<String>,
+    /// Per-domain PHP minor, for rows where the user had to choose because we
+    /// don't ship the version they pinned.
+    #[serde(default)]
+    pub php: std::collections::HashMap<String, String>,
+}
+
+/// What happened to one row. Terminal — every requested domain gets exactly one.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportOutcome {
+    pub domain: String,
+    /// `imported` · `failed` · `skipped` (not importable, or cancelled before
+    /// we reached it).
+    pub status: String,
+    pub reason: Option<String>,
+    pub site_id: Option<String>,
+    /// The job log, so a failure is diagnosable rather than just red.
+    pub log_key: Option<String>,
+}
+
+/// The end-of-run summary.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub outcomes: Vec<ImportOutcome>,
+    pub imported: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    /// Checked ONCE at the end: something else answers :443, so nothing
+    /// imported will load until it lets go.
+    pub serving_blocked: bool,
+}
+
+fn import_event() -> &'static str {
+    "valet-import://row"
+}
+
+/// Import the selected Valet/Herd sites, one at a time.
+///
+/// Sequential by design: the download hub has a single batch slot, each serve
+/// phase takes the services lock for a full edge reload, and job adoption only
+/// ever tracks the newest job — running these in parallel fights all three.
+///
+/// **Continue on failure.** Each site is independent, unlike a build that
+/// follows an install, so a failure on site 3 must not cost sites 4 through 20.
+/// Every requested domain gets exactly one terminal outcome, and the summary
+/// names which succeeded and which didn't.
+///
+/// **Cancel stops AFTER the current site**, never mid-site: abandoning a site
+/// halfway is what leaves the `provisioned=0` half-state users then clean up by
+/// hand. Remaining rows come back as `skipped`.
+#[tauri::command]
+pub async fn valet_import_run<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<'_, AppState>,
+    jobs: State<'_, ImportJobs>,
+    provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
+    request: ImportRequest,
+) -> Result<ImportResult> {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+
+    if jobs.running.swap(true, Ordering::SeqCst) {
+        return Err(Error::Other("an import is already running".into()));
+    }
+    jobs.cancel.store(false, Ordering::SeqCst);
+    let done = scopeguard(|| jobs.running.store(false, Ordering::SeqCst));
+
+    // Re-scan rather than trusting the list we were handed: the screen's rows
+    // are a suggestion, and the folders may have changed since it rendered.
+    let scan = scan_valet_import(state.clone())?;
+    let mut outcomes: Vec<ImportOutcome> = Vec::new();
+    let mut queue: Vec<(ImportCandidate, String)> = Vec::new();
+
+    for domain in &request.domains {
+        let Some(c) = scan.candidates.iter().find(|c| &c.domain == domain).cloned() else {
+            outcomes.push(skipped(domain, "it's no longer in Valet/Herd"));
+            continue;
+        };
+        match &c.status {
+            SiteStatus::Unsupported(r) | SiteStatus::NeedsAttention(r)
+                if c.serve_path.is_none() =>
+            {
+                outcomes.push(skipped(domain, r));
+                continue;
+            }
+            SiteStatus::AlreadyImported => {
+                outcomes.push(skipped(domain, "rexenv already serves it"));
+                continue;
+            }
+            _ => {}
+        }
+        let Some(serve) = c.serve_path.clone() else {
+            outcomes.push(skipped(domain, "its folder is missing"));
+            continue;
+        };
+        // The user's explicit choice wins for a version we don't ship.
+        let php = request
+            .php
+            .get(domain)
+            .cloned()
+            .or_else(|| c.php_target.clone())
+            .unwrap_or_else(|| core::php::minor_of(core::binaries::PHP_VERSION));
+        if !scan.available_php.contains(&php) {
+            outcomes.push(skipped(domain, &format!("PHP {php} isn't one rexenv ships")));
+            continue;
+        }
+        let _ = serve;
+        queue.push((c, php));
+    }
+
+    // Resolver files first, so any password prompt happens at ONE predictable
+    // moment instead of surprising the user midway through the batch.
+    let mut tlds: Vec<String> = queue
+        .iter()
+        .filter_map(|(c, _)| c.domain.rsplit_once('.').map(|(_, t)| t.to_string()))
+        .collect();
+    tlds.sort();
+    tlds.dedup();
+    for tld in &tlds {
+        match core::dns::resolver_owner(
+            state.platform.as_ref(),
+            tld,
+            core::dns::DEFAULT_DNS_PORT,
+        ) {
+            core::dns::ResolverOwner::Ours => {}
+            core::dns::ResolverOwner::Absent => {
+                core::dns::configure_resolver(
+                    state.platform.as_ref(),
+                    tld,
+                    core::dns::DEFAULT_DNS_PORT,
+                )?;
+            }
+            // The screen asks for consent before getting here; refusing beats
+            // quietly taking a file we were never given permission to take.
+            core::dns::ResolverOwner::Foreign { .. } => {
+                return Err(Error::Other(format!(
+                    ".{tld} is still managed by Valet or Herd. Hand that TLD to rexenv \
+                     (their file is backed up and can be handed back) or import these \
+                     sites on .rex instead."
+                )))
+            }
+        }
+    }
+
+    // PHP registry BEFORE any create: a site on a minor that isn't marked
+    // installed serves once and then dies at the next Start-all — and can't be
+    // cleaned up afterwards, because removal refuses a minor a site is using.
+    let mut minors: Vec<String> = queue.iter().map(|(_, p)| p.clone()).collect();
+    minors.sort();
+    minors.dedup();
+    {
+        let conn = lock(&state)?;
+        for m in &minors {
+            core::php::set_installed(&conn, m, true)?;
+        }
+    }
+    // Unlocked, before anything takes the services lock (the prefetch-before-lock
+    // invariant), and once per minor rather than per site.
+    for m in &minors {
+        let plan = core::downloads::plan_for_php(state.platform.as_ref(), m);
+        core::downloads::prefetch(state.platform.as_ref(), &format!("Import (PHP {m})"), &plan)
+            .await?;
+    }
+
+    for (c, php) in queue {
+        if jobs.cancel.load(Ordering::SeqCst) {
+            let row = skipped(&c.domain, "cancelled before this site was started");
+            let _ = app.emit(import_event(), row.clone());
+            outcomes.push(row);
+            continue;
+        }
+        let row = import_one(&app, &state, &provision, &c, &php).await;
+        let _ = app.emit(import_event(), row.clone());
+        outcomes.push(row);
+    }
+
+    // ONE probe for the whole batch: per-site would add seconds each.
+    let serving_blocked = !core::proxy::edge_answers_as_ours(
+        core::adminer::ADMINER_HOST,
+        core::proxy::DEFAULT_HTTPS_PORT,
+    )
+    .await;
+
+    drop(done);
+    let imported = outcomes.iter().filter(|o| o.status == "imported").count();
+    let failed = outcomes.iter().filter(|o| o.status == "failed").count();
+    let skipped_n = outcomes.iter().filter(|o| o.status == "skipped").count();
+    Ok(ImportResult {
+        outcomes,
+        imported,
+        failed,
+        skipped: skipped_n,
+        serving_blocked: serving_blocked && imported > 0,
+    })
+}
+
+/// Stop after the site currently being imported.
+#[tauri::command]
+pub fn valet_import_cancel(jobs: State<'_, ImportJobs>) {
+    jobs.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn skipped(domain: &str, reason: &str) -> ImportOutcome {
+    ImportOutcome {
+        domain: domain.to_string(),
+        status: "skipped".into(),
+        reason: Some(reason.to_string()),
+        site_id: None,
+        log_key: None,
+    }
+}
+
+/// Import ONE site through the ordinary create path — same job, same phases,
+/// same log. There is no parallel import implementation to drift.
+async fn import_one<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &State<'_, AppState>,
+    provision: &State<'_, crate::commands::site_provision::ProvisionJobs>,
+    c: &ImportCandidate,
+    php: &str,
+) -> ImportOutcome {
+    let site = crate::state::models::NewSite {
+        name: c.name.clone(),
+        domain: c.domain.clone(),
+        site_type: c.site_type.unwrap_or(SiteType::Php),
+        php_version: php.to_string(),
+        web_server: crate::state::models::WebServer::Nginx,
+        // Non-empty = LINK: served where it already lives, never written into,
+        // never deleted with the site.
+        path: c.serve_path.clone().unwrap_or_default(),
+        db_engine: crate::state::models::SiteDbEngine::Mysql,
+    };
+    let snap = match crate::commands::site_provision::start(app, state, provision, site, None, None)
+    {
+        Ok(s) => s,
+        Err(e) => {
+            return ImportOutcome {
+                domain: c.domain.clone(),
+                status: "failed".into(),
+                reason: Some(e.to_string()),
+                site_id: None,
+                log_key: None,
+            }
+        }
+    };
+    let settled = loop {
+        match crate::commands::site_provision::state_of(provision, &snap.id) {
+            Ok(st) if st.status != "running" => break st,
+            Ok(_) => tokio::time::sleep(std::time::Duration::from_millis(300)).await,
+            Err(e) => {
+                return ImportOutcome {
+                    domain: c.domain.clone(),
+                    status: "failed".into(),
+                    reason: Some(e.to_string()),
+                    site_id: None,
+                    log_key: Some(snap.log_key.clone()),
+                }
+            }
+        }
+    };
+    let ok = settled.status == "ok";
+    ImportOutcome {
+        domain: c.domain.clone(),
+        status: if ok { "imported".into() } else { "failed".into() },
+        reason: if ok {
+            None
+        } else {
+            Some(settled.error.clone().unwrap_or_else(|| {
+                let phase = settled
+                    .phases
+                    .get(settled.phase_cursor.min(settled.phases.len().saturating_sub(1)))
+                    .map(|p| p.label.clone())
+                    .unwrap_or_default();
+                format!("{} at: {phase}", settled.status)
+            }))
+        },
+        site_id: settled.site_id.clone(),
+        log_key: Some(settled.log_key.clone()),
+    }
+}
+
+/// Minimal RAII so the running flag clears on every exit path.
+fn scopeguard<F: FnOnce()>(f: F) -> impl Drop {
+    struct G<F: FnOnce()>(Option<F>);
+    impl<F: FnOnce()> Drop for G<F> {
+        fn drop(&mut self) {
+            if let Some(f) = self.0.take() {
+                f();
+            }
+        }
+    }
+    G(Some(f))
+}

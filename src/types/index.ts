@@ -162,6 +162,37 @@ export interface ResolverPlan {
   reclaimed: string[];
 }
 
+/** What the user asked the importer to bring over. */
+export interface ImportRequest {
+  /** Domains to import, in the order shown. */
+  domains: string[];
+  /** Per-domain PHP minor, for rows where they had to choose. */
+  php: Record<string, string>;
+}
+
+/** What happened to one row — terminal; every requested domain gets exactly one. */
+export interface ImportOutcome {
+  domain: string;
+  /** `imported` · `failed` · `skipped` (not importable, or cancelled before we
+   *  reached it). */
+  status: "imported" | "failed" | "skipped";
+  reason: string | null;
+  siteId: string | null;
+  /** The job log, so a failure is diagnosable rather than just red. */
+  logKey: string | null;
+}
+
+/** End-of-run summary: which succeeded, which didn't, and why. */
+export interface ImportResult {
+  outcomes: ImportOutcome[];
+  imported: number;
+  failed: number;
+  skipped: number;
+  /** Checked once at the end: something else answers :443, so nothing imported
+   *  will load until it lets go. */
+  servingBlocked: boolean;
+}
+
 /** What linking a folder would do — from `inspectLinkedFolder`, shown before
  *  anything is created. Detection is pure filesystem; nothing in the folder is
  *  executed. */
