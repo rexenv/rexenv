@@ -52,15 +52,27 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       **Still open, deliberately:** "install WordPress into an empty linked folder" is out
       of Stage 0 (own flow, own disclosure); `teardown` still never removes the Apache
       per-site config/log (pre-existing, plan §3).
-  - [ ] **Stage 1 — sites-only import + resolver consent.** Planned, awaiting 4 decisions:
-    `docs/PLAN-valet-herd-import.md` — read-only scan with a per-case mess table (verified
-    against the live trees: 29 sites, 13 dangling links, 2 conf-only orphans, a custom-TLD
-    conf, BOTH isolation-marker formats), consent-gated `/etc/resolver` takeover with a v18
-    record and a restore-vs-remove decision table for uninstall, sequential import reusing
-    `site_provision::start`. Folds in the two pre-existing bugs (silent foreign-resolver
-    overwrite; false "serving at …" under a shadow-binding Herd) plus `build_plan`
-    over-fetching ~600 MB of MySQL + wp-cli for linked WordPress sites it never installs
-    into. 9 commits.
+  - [x] **Stage 1 — sites-only import + resolver consent** ✓ SHIPPED 26 Jul 2026,
+    commits `42af4fc` → `7d7c340` (9). `42af4fc` ensure_resolver refuses a foreign file
+    (the silent-overwrite bug); `732d394` v18 `resolver_takeovers` + 0600 backup +
+    restore-aware teardown (all six decision rows) + startup orphan sweep; `159de11`
+    `core/valet.rs` read-only discovery; `37b1b4d` scan/takeover/hand-back/drift IPC;
+    `528e5ce` build_plan linked-awareness (~600 MB of MySQL + wp-cli no longer fetched for
+    phases a linked WP import never runs) + `servingBlocked` field; `8f3cf7a` sequential
+    continue-on-failure import reusing `site_provision::start`; `411cdc8` the `/import`
+    screen + consent panel + dismissible Sites banner + Settings hand-back; `7d7c340`
+    `valet_scan_check`; `aa789fc`/`b6f4190` the plan.
+    ✓ `cargo test --lib` 414 passed (13 new), examples build, tsc + `npm run build` clean,
+    clippy at the 6 pre-existing lints.
+    ✓ **Live-verified on this machine**: `cargo run --example valet_scan_check` — both
+    Valet and Herd trees BYTE-IDENTICAL after a full scan (fingerprinted path+size+mtime
+    before/after), 32 rows reconciled: 19 importable, 8 dangling links each naming their
+    missing target, 3 leftover confs, Herd winning 11 duplicate domains, `.dev` + `.test`
+    both surfaced, both marker formats read.
+    ⚠ **NOT live-verified — clean-VM items in `docs/PUBLISH-TESTING.md` §F**: resolver
+    TAKEOVER, hand-back, restore-on-uninstall and drift. This machine has no
+    `/etc/resolver/test`, and creating a root-owned foreign file to test against was
+    deliberately refused; those paths are fixture- and unit-tested only.
   - [ ] Stage 2 — database import (dump artifact, then restore + credential mirroring)
   - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)
 

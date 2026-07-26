@@ -1,6 +1,7 @@
 # Stage 1 — import Valet/Herd sites (read-only scan → review → import)
 
-**Status: APPROVED 26 Jul 2026 — building.** All four decisions resolved (§11). Planned 26 Jul 2026
+**Status: SHIPPED 26 Jul 2026** (commits `42af4fc` → `7d7c340`), except the
+clean-VM verification in §9. All four decisions resolved (§11). Planned 26 Jul 2026
 against `5e8231f`, verified against the live Valet 4.12.0 + Herd 1.29.0 install on the dev
 Mac. Stage 1 of `docs/PLAN-valet-herd-migration.md`; builds directly on Stage 0
 (`docs/PLAN-linked-sites.md`).

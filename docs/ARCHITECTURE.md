@@ -317,7 +317,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 17:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 18:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -327,7 +327,8 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   the recorded override backend port; uniqueness enforced by the allocator, existing
   rows backfilled once at startup by `sites::backfill_override_ports`, B20 §4) · v15
   `site_git_assets` install fingerprints · v16 `sites.provisioned` (DEFAULT 1) ·
-  v17 `sites.docroot_managed` (see below). Per-engine
+  v17 `sites.docroot_managed` (see below) · v18 `resolver_takeovers` (see
+  below). Per-engine
   DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
 - **Docroot ownership is RECORDED, never inferred from the path** (v17
   `sites.docroot_managed`): `true` = rexenv created the folder and teardown may
@@ -343,6 +344,36 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `sites_dir` setting — pointing the Sites folder at `~/code` silently made an
   unrelated project deletable. `teardown` returns `{ existed, docroot_removed }`
   so "your folder is still there" is never ambiguous.
+- **Resolver files can be BORROWED, and must be returnable** (v18
+  `resolver_takeovers`). Ownership of `/etc/resolver/<tld>` is content equality
+  (`resolver_contents` doubles as the signature), which has a sharp
+  consequence: overwriting Valet's file makes it indistinguishable from one we
+  created, so the teardown sweep would delete it and the user would be left with
+  neither their config nor ours. `ensure_resolver` therefore REFUSES a foreign
+  file outright; the only path that may replace one is `take_over_resolver`,
+  which writes a 0600 backup and its row BEFORE the privileged write (a
+  cancelled prompt rolls both back). Teardown then decides per TLD:
+  ours+record → restore theirs; ours+no record → remove; foreign+record → they
+  reclaimed it, touch nothing and drop the record; foreign+no record → invisible,
+  as always. Restore `cp`s the backup (their arbitrary bytes never enter a root
+  shell string) with the app-data path `sh_quote`d. Backups are named per TLD,
+  not per timestamp, so at most one can exist per TLD BY CONSTRUCTION; the row
+  owns its file and both die together, with a startup sweep covering a crash
+  between the two. `dns::drifted_takeovers` reports a borrowed file another tool
+  reclaimed — checked at startup and in `rex doctor`, because our resolver keeps
+  answering so every health probe stays green while those sites go dark.
+- **Valet/Herd import** (`core/valet.rs` + `commands/valet_import.rs`,
+  `/import`): a strictly read-only scan of their config, symlink farm and
+  per-site confs — nothing of theirs is written, started or stopped, and no file
+  inside a user project is opened. Deliberately tolerant of real installations
+  (dangling symlinks, confs with no site, proxies, a conf on a TLD the config
+  never mentions, the pre-2.1 `domain` key, duplicate parked paths, and all
+  three isolation-marker formats), surfacing every case as a row or a note
+  rather than dropping it. Herd wins a duplicate domain. Import reuses the
+  ORDINARY create path per site (`site_provision::start` + poll), sequentially
+  and CONTINUE-ON-FAILURE, with resolver consent and `php::set_installed` +
+  prefetch settled BEFORE the loop. `examples/valet_scan_check` fingerprints
+  their trees before and after to prove the scan wrote nothing.
 - **Linked sites are ADOPTED, never provisioned into.** A non-empty
   `NewSite.path` means "serve this folder in place": `core::sites::provision`
   validates it (`validate_linked_docroot` — canonicalized once so a later symlink
