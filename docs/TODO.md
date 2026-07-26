@@ -69,6 +69,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     before/after), 32 rows reconciled: 19 importable, 8 dangling links each naming their
     missing target, 3 leftover confs, Herd winning 11 duplicate domains, `.dev` + `.test`
     both surfaced, both marker formats read.
+    ✓ **Import chain live-verified** (`cargo run --example valet_import_check`, on `.rex`
+    against a fixture Valet tree so the machine's real `.test` setup is never involved):
+    bare-digit isolate marker read as 8.3, a Laravel project resolved to its `public/`
+    docroot (not the project root), imported as a LINK with `docroot_managed=false`, their
+    file served through the vhost, and after delete their project AND their Valet tree
+    byte-identical. Live stack untouched, no stray cert or fixture left behind.
     ⚠ **NOT live-verified — clean-VM items in `docs/PUBLISH-TESTING.md` §F**: resolver
     TAKEOVER, hand-back, restore-on-uninstall and drift. This machine has no
     `/etc/resolver/test`, and creating a root-owned foreign file to test against was
