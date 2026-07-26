@@ -205,81 +205,32 @@ pub struct WpDebugLogStatus {
     pub size_bytes: u64,
 }
 
-/// Extract the value token of `define('NAME', <value>)` from one line of
-/// wp-config.php. Static text scan (like WP-CLI's `config get`) — covers the
-/// standard single-line form; dynamically computed defines aren't detected.
-fn define_value(line: &str, name: &str) -> Option<String> {
-    let t = line.trim_start();
-    if t.starts_with("//") || t.starts_with('#') || t.starts_with('*') || t.starts_with("/*") {
-        return None;
-    }
-    let rest = t[t.find("define")? + "define".len()..].trim_start().strip_prefix('(')?;
-    let rest = rest.trim_start();
-    let quote = rest.chars().next().filter(|c| *c == '\'' || *c == '"')?;
-    let rest = &rest[1..];
-    let name_end = rest.find(quote)?;
-    if &rest[..name_end] != name {
-        return None;
-    }
-    let rest = rest[name_end + 1..].trim_start().strip_prefix(',')?;
-    let val = rest.trim_start();
-    let end = val.find(')')?;
-    Some(val[..end].trim().to_string())
-}
-
-/// Truthy for PHP-ish constant tokens: `true`, `1`, `'1'`, `"true"`, …
-fn is_truthy(v: &str) -> bool {
-    matches!(v.trim_matches(|c| c == '\'' || c == '"').to_ascii_lowercase().as_str(), "true" | "1")
-}
-
-/// A quoted string value ⇒ the unquoted path; bools/numbers ⇒ None.
-fn as_path(v: &str) -> Option<&str> {
-    let inner = v
-        .strip_prefix('\'')
-        .and_then(|s| s.strip_suffix('\''))
-        .or_else(|| v.strip_prefix('"').and_then(|s| s.strip_suffix('"')))?;
-    (!inner.is_empty() && !is_truthy(v)).then_some(inner)
-}
-
-/// WordPress supports wp-config.php in the docroot or one directory above.
-fn wp_config_text(docroot: &Path) -> Option<String> {
-    let in_root = docroot.join("wp-config.php");
-    if in_root.is_file() {
-        return std::fs::read_to_string(in_root).ok();
-    }
-    let above = docroot.parent()?.join("wp-config.php");
-    above.is_file().then(|| std::fs::read_to_string(above).ok())?
-}
-
 /// Resolve a site's WP debug-log status from its docroot. A missing / non-WP
 /// docroot just reports everything off (the UI hides the section for non-WP
 /// sites anyway).
 pub fn wp_debug_log_status(docroot: &Path) -> WpDebugLogStatus {
-    let config = wp_config_text(docroot).unwrap_or_default();
-    let mut debug = None;
-    let mut log_enabled = None;
+    // ONE wp-config reader, shared with the database import (`core::phpconf`) —
+    // a second copy here would agree today and drift later, and that one is read
+    // for credentials.
+    let config = crate::core::phpconf::wp_config_text(docroot).unwrap_or_default();
     let mut path = docroot.join("wp-content").join("debug.log");
     // First define wins, like PHP's `define()` — stock wp-config carries a
     // guarded `define('WP_DEBUG', false)` fallback BELOW where WP-CLI inserts.
-    for line in config.lines() {
-        if debug.is_none() {
-            if let Some(v) = define_value(line, "WP_DEBUG") {
-                debug = Some(is_truthy(&v));
+    let first = |name: &str| crate::core::phpconf::find_defines(&config, name).0.into_iter().next();
+    let debug = first("WP_DEBUG").is_some_and(|d| d.value.is_truthy());
+    let log_enabled = match first("WP_DEBUG_LOG") {
+        // A string value is a custom log PATH (and implies logging is on);
+        // anything else is a plain on/off.
+        Some(d) => match d.value.as_str().filter(|s| !s.is_empty() && *s != "1") {
+            Some(custom) => {
+                let p = Path::new(custom);
+                path = if p.is_absolute() { p.to_path_buf() } else { docroot.join(p) };
+                true
             }
-        }
-        if log_enabled.is_none() {
-            if let Some(v) = define_value(line, "WP_DEBUG_LOG") {
-                if let Some(custom) = as_path(&v) {
-                    log_enabled = Some(true);
-                    let p = Path::new(custom);
-                    path = if p.is_absolute() { p.to_path_buf() } else { docroot.join(p) };
-                } else {
-                    log_enabled = Some(is_truthy(&v));
-                }
-            }
-        }
-    }
-    let (debug, log_enabled) = (debug.unwrap_or(false), log_enabled.unwrap_or(false));
+            None => d.value.is_truthy(),
+        },
+        None => false,
+    };
     let meta = std::fs::metadata(&path).ok();
     WpDebugLogStatus {
         debug,
@@ -425,16 +376,31 @@ mod tests {
     }
 
     #[test]
-    fn define_value_parses_standard_forms() {
-        assert_eq!(define_value("define( 'WP_DEBUG', true );", "WP_DEBUG").as_deref(), Some("true"));
-        assert_eq!(define_value("define(\"WP_DEBUG\", false);", "WP_DEBUG").as_deref(), Some("false"));
-        assert_eq!(
-            define_value("define('WP_DEBUG_LOG', '/tmp/x.log');", "WP_DEBUG_LOG").as_deref(),
-            Some("'/tmp/x.log'")
-        );
-        // Comments and other constants don't match.
-        assert_eq!(define_value("// define('WP_DEBUG', true);", "WP_DEBUG"), None);
-        assert_eq!(define_value("define('WP_DEBUG_LOG', true);", "WP_DEBUG"), None);
+    fn the_debug_status_reads_through_the_shared_wp_config_parser() {
+        // Behavioural proof that there is ONE parser: the shapes the old
+        // line-local reader here handled still work, AND a define split across
+        // lines — which it could not see — now does. If a copy were ever
+        // reintroduced in this module, the multi-line case fails.
+        use crate::core::phpconf;
+        let (d, _) = phpconf::find_defines("<?php define( 'WP_DEBUG', true );", "WP_DEBUG");
+        assert!(d[0].value.is_truthy());
+        let (d, _) = phpconf::find_defines("<?php define(\"WP_DEBUG\", false);", "WP_DEBUG");
+        assert!(!d[0].value.is_truthy());
+        let (d, _) = phpconf::find_defines("<?php // define('WP_DEBUG', true);", "WP_DEBUG");
+        assert!(d.is_empty());
+
+        let dir = std::env::temp_dir().join("rexenv-wp-debug-shared-parser");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("wp-config.php"),
+            "<?php\ndefine(\n  'WP_DEBUG',\n  true\n);\ndefine('WP_DEBUG_LOG', '/tmp/split.log');\n",
+        )
+        .unwrap();
+        let status = wp_debug_log_status(&dir);
+        assert!(status.debug, "a define split across lines must be seen");
+        assert_eq!(status.path, "/tmp/split.log");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

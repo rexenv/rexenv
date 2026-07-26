@@ -137,6 +137,33 @@ We name the app when we can identify it (DBngin/Herd/unknown), and we do not off
 Every "needs attention" row states what was ambiguous, so it reads as a finding rather
 than a shrug.
 
+### 2.4 One vocabulary of states, and three that must not collapse
+
+`DbSiteStatus` is a closed set; the parse side produces some variants, the live preflight
+produces the rest, and both use the same words. Three of them look alike from a distance
+and are deliberately kept apart, because each has a different cause and a different fix:
+
+| state | what happened | what the user does |
+|---|---|---|
+| **database not reachable** | nothing is listening at the host:port their config names | start their server; we never do |
+| **sign-in refused** | something IS listening and rejected their own credentials | fix the credentials, or point us at the right server |
+| **database not found** | connected fine, signed in fine, and the named database isn't there | see below |
+
+**"Database not found" is the one worth designing.** It usually means one of two things:
+they dropped the database, or the site points at a different server than the one that is
+running. So the message doesn't stop at the negative — having authenticated, we can list
+what the server *does* hold, which turns it into a diagnosis:
+
+> The 8.0.27 server at 127.0.0.1:3306 is running and accepted the sign-in, but has no
+> database called `ea`. It does have: ea_old, wordpress, shop (+3 more). Either the
+> database was deleted, or this site points at a different server than the one running
+> here.
+
+And when the server is empty, that reads differently again — "no user databases at all"
+is nearly always a site pointed at the wrong server, and the copy says so. Collapsing any
+of this into "database error" would throw away the only information that tells the user
+which of the three problems they have.
+
 ---
 
 ## 3. Secrets — the handling, stated

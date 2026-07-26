@@ -93,7 +93,16 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         in SQL so a pre-existing database can never become ours to drop;
         `may_drop_database` also skips the engine bring-up for a linked site that
         never imported one. 419 lib tests.
-      - [ ] 2. `core::dbimport` config mapping (WP defines + conservative `.env`)
+      - [x] 2. `core::dbimport` config mapping (WP defines + conservative `.env`)
+        `<pending2>` — `core::phpconf` is the ONE wp-config reader: a real scan
+        (comments, strings, multi-line defines, heredoc stop) replacing the old
+        line-local one in `core/logs.rs`, which now calls it. A password
+        containing `)` or `;` survives whole — the old "find the next paren"
+        reader truncated it. Refusals are first-class (`Unreadable`, one sentence
+        each, asserted not to read as blame): conditional duplicates, computed
+        defines, `${VAR}`, multi-line `.env` values. `DbConnection` redacts its
+        password in `Debug` and the IPC shape has no password field to forget.
+        `DbSiteStatus` keeps unreachable / refused / not-found apart. 444 tests.
       - [ ] 3. engine discovery + handshake identification
       - [ ] 4. `compat()` matrix + per-site verdict
       - [ ] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
