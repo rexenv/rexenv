@@ -120,9 +120,20 @@ fn append_line<R: tauri::Runtime>(app: &AppHandle<R>, entry: &ProvisionEntry, li
 
 /// The job's applicable phases, in execution order. Weights renormalize over
 /// exactly this set (`ProvisionProgress`) — no reserved slice can fail to fill.
-fn phase_defs(site_type: SiteType, has_blueprint: bool) -> Vec<(&'static str, &'static str)> {
+///
+/// A LINKED site gets prepare/fetch/serve whatever its type: we adopt the
+/// folder exactly as it is and install nothing into it. That is not merely
+/// polite — `configure` is only half idempotent (it skips `wp config create`
+/// when wp-config.php exists, but creates the database unconditionally), so
+/// running the WordPress phases over someone's existing install would leave a
+/// stray empty database beside their real one.
+fn phase_defs(
+    site_type: SiteType,
+    has_blueprint: bool,
+    linked: bool,
+) -> Vec<(&'static str, &'static str)> {
     let mut v = vec![("prepare", "preparing site (domain, certificate)"), ("fetch", "downloading binaries")];
-    if matches!(site_type, SiteType::Wordpress) {
+    if matches!(site_type, SiteType::Wordpress) && !linked {
         v.push(("db", "starting database"));
         v.push(("core_download", "downloading WordPress core"));
         v.push(("configure", "writing wp-config + creating database"));
@@ -201,7 +212,8 @@ fn spawn_job<R: tauri::Runtime>(
     let log_key = format!("site-provision-{}-{}.log", site.domain, &id[..8]);
     let log_path = log_dir.join(&log_key);
 
-    let defs = phase_defs(site.site_type, blueprint.is_some());
+    let defs =
+        phase_defs(site.site_type, blueprint.is_some(), site.docroot_managed == Some(false));
     let mut phases: Vec<PhaseState> = defs
         .iter()
         .map(|(k, l)| PhaseState { key: (*k).into(), label: (*l).into(), status: "pending".into() })
@@ -596,7 +608,11 @@ async fn drive<R: tauri::Runtime>(
     bail_if_cancelled!();
 
     let state = app.state::<AppState>();
-    let is_wp = matches!(site.site_type, SiteType::Wordpress);
+    // A linked site is ADOPTED, never installed into — see `phase_defs`. The
+    // phase list already omits the WordPress phases; this keeps the driver in
+    // step so it can't run a step that has no phase to report into.
+    let linked = site.docroot_managed == Some(false);
+    let is_wp = matches!(site.site_type, SiteType::Wordpress) && !linked;
     let minor = core::php::minor_of(&site.php_version);
 
     if is_wp {

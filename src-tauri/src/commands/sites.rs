@@ -413,7 +413,7 @@ pub async fn move_site_docroot(
     // Files verifiably at the new location — only now flip the row.
     let (updated, sites) = {
         let conn = lock(&state)?;
-        let updated = core::sites::set_path(&conn, &id, &target)?
+        let updated = core::sites::set_path(&conn, state.platform.as_ref(), &id, &target)?
             .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
         (updated, core::sites::list(&conn)?)
     };

@@ -418,6 +418,16 @@ pub fn set_domain(conn: &Connection, id: &str, new_domain: &str) -> Result<Optio
 /// happens here, BEFORE any file is touched. Returns the resolved target path
 /// `<dest_parent>/<folder name>`.
 pub fn check_docroot_move(site: &Site, dest_parent: &Path) -> Result<PathBuf> {
+    // A folder we don't own is not ours to relocate — and a cross-volume move
+    // COPIES then deletes the source, so this would silently rewrite the user's
+    // own project layout. Refused in core, so no IPC path can reach it.
+    if site.docroot_managed == Some(false) {
+        return Err(Error::Other(format!(
+            "{} is your own folder — rexenv doesn't move it. Move it yourself, then link \
+             the site to its new location.",
+            site.path
+        )));
+    }
     let src = Path::new(&site.path);
     if site.path.is_empty() || !src.is_dir() {
         return Err(Error::Other(format!(
@@ -519,11 +529,30 @@ fn verify_tree(src: &Path, dst: &Path) -> Result<()> {
 
 /// Persist a moved docroot's new path (files must already exist there) and
 /// return the updated site.
-pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>> {
+pub fn set_path(
+    conn: &Connection,
+    platform: &dyn Platform,
+    id: &str,
+    path: &Path,
+) -> Result<Option<Site>> {
     let path_s = path.display().to_string();
     validate_docroot_path(&path_s)?;
     if !store::set_site_path(conn, id, &path_s)? {
         return Ok(None);
+    }
+    // Moving a docroot OUT of the sites folder gives up our claim on it — the
+    // move dialog promises such a folder is "kept, not deleted". Recorded HERE,
+    // the one choke point every moved path passes through, at the moment the
+    // fact changes; deletion later just reads it. Monotonic: this can only ever
+    // clear the flag, never re-claim a folder.
+    let managed = docroot_under_managed_root(
+        &path_s,
+        &sites_dir(conn, platform)?,
+        &default_sites_dir()?,
+        &legacy_sites_dir(platform)?,
+    );
+    if !managed {
+        store::set_site_docroot_managed(conn, id, false)?;
     }
     get(conn, id)
 }
@@ -537,6 +566,117 @@ pub fn set_path(conn: &Connection, id: &str, path: &Path) -> Result<Option<Site>
 /// spaces (the common case) work. Enforced only where `site.path` is PERSISTED
 /// (`create`/`set_path`), never at emit, so existing sites are grandfathered and
 /// a stored path is never re-rejected on regenerate (B26).
+/// What an existing project folder looks like, decided by reading the
+/// filesystem ONLY.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetectedProject {
+    /// The site type to create it as.
+    pub site_type: SiteType,
+    /// The folder to serve, relative to the linked root (`""` = the root
+    /// itself). Laravel/Symfony serve `public/`, Bedrock serves `web/`, and so
+    /// on — a docroot is not always the project root.
+    pub docroot_rel: String,
+    /// Human-readable framework name for the UI ("WordPress", "Laravel", …).
+    pub label: &'static str,
+    /// True when the folder already holds an installed app we must adopt
+    /// as-is rather than provision into.
+    pub existing_install: bool,
+}
+
+/// Classify an existing project folder by probing the filesystem — **never by
+/// executing anything in it**.
+///
+/// This deliberately does NOT interpret Valet's PHP "drivers": running a
+/// `LocalValetDriver.php` to learn a docroot would mean executing the user's
+/// code during a scan. The codebase's standing rule is detection = pure fs,
+/// execution = an explicit user action (`core::repo`'s clone/detect split), and
+/// the same rule holds here. Folders whose shape we can't place come back as
+/// `Php` serving the root, which the caller surfaces for confirmation rather
+/// than guessing silently.
+///
+/// Order matters: the most specific marker wins, mirroring what the shipped
+/// Valet drivers actually resolve to.
+pub fn detect_project(root: &Path) -> DetectedProject {
+    let has = |rel: &str| root.join(rel).exists();
+    let php = |rel: &str, label, existing| DetectedProject {
+        site_type: SiteType::Php,
+        docroot_rel: rel.to_string(),
+        label,
+        existing_install: existing,
+    };
+
+    // Bedrock/Radicle: WordPress, but wp-config.php is NOT at the served root —
+    // the naive "wp-config.php means serve here" probe gets these wrong.
+    if has("web/wp-config.php") && has("config/application.php") {
+        return DetectedProject {
+            site_type: SiteType::Wordpress,
+            docroot_rel: "web".into(),
+            label: "WordPress (Bedrock)",
+            existing_install: true,
+        };
+    }
+    if has("public/wp-config.php") && has("bedrock/application.php") {
+        return DetectedProject {
+            site_type: SiteType::Wordpress,
+            docroot_rel: "public".into(),
+            label: "WordPress (Radicle)",
+            existing_install: true,
+        };
+    }
+    // Plain WordPress. `wp-config-sample.php` counts: it's a downloaded core
+    // that hasn't been configured yet, and Valet's own driver accepts it.
+    if has("wp-config.php") || has("wp-config-sample.php") || has("wp-load.php") {
+        return DetectedProject {
+            site_type: SiteType::Wordpress,
+            docroot_rel: String::new(),
+            label: "WordPress",
+            existing_install: true,
+        };
+    }
+    if has("artisan") && has("public/index.php") {
+        return DetectedProject {
+            site_type: SiteType::Laravel,
+            docroot_rel: "public".into(),
+            label: "Laravel",
+            existing_install: true,
+        };
+    }
+    if has("craft") && has("web/index.php") {
+        return php("web", "Craft CMS", true);
+    }
+    if has("please") && has("public/index.php") {
+        return php("public", "Statamic", true);
+    }
+    if has("bin/console") && has("public/index.php") {
+        return php("public", "Symfony", true);
+    }
+    if has("pub/index.php") && has("app/etc/env.php") {
+        return php("pub", "Magento", true);
+    }
+    // Generic front-controller layouts.
+    for dir in ["public", "web", "www"] {
+        if has(&format!("{dir}/index.php")) || has(&format!("{dir}/index.html")) {
+            return php(dir, "PHP project", true);
+        }
+    }
+    if has("index.php") {
+        return php("", "PHP project", true);
+    }
+    if has("index.html") {
+        return php("", "Static site", true);
+    }
+    // Nothing recognisable — serve the root and let the user confirm. Empty
+    // folders land here too, which the caller reports honestly.
+    php("", "Unknown", root.read_dir().map(|mut d| d.next().is_some()).unwrap_or(false))
+}
+
+/// Whether a linked folder carries a marker meaning our own docroot detection
+/// could disagree with what Valet/Herd actually served it as — a per-project or
+/// machine-wide custom driver. The caller surfaces this instead of guessing.
+pub fn has_custom_valet_driver(root: &Path) -> bool {
+    root.join("LocalValetDriver.php").exists()
+}
+
 /// Preflight for LINKING an existing folder as a site's docroot (Stage 0).
 ///
 /// The folder is the USER'S — we never created it and will never delete it — so
@@ -1360,7 +1500,11 @@ mod tests {
 
         // A clean site persists; moving it to a bad path is refused (set_path).
         let ok = create(&conn, sample("Ok", "ok.test")).unwrap();
-        assert!(set_path(&conn, &ok.id, Path::new("/Sites/ok\"x")).is_err(), "set_path must reject");
+        assert!(
+            set_path(&conn, &*crate::platform::current(), &ok.id, Path::new("/Sites/ok\"x"))
+                .is_err(),
+            "set_path must reject"
+        );
         // …and the stored path is untouched (rejected before the UPDATE).
         assert_eq!(get(&conn, &ok.id).unwrap().unwrap().path, ok.path);
     }
@@ -1899,7 +2043,8 @@ mod tests {
             },
         )
         .unwrap();
-        let updated = set_path(&conn, &created.id, &target).unwrap().unwrap();
+        let updated =
+            set_path(&conn, &*crate::platform::current(), &created.id, &target).unwrap().unwrap();
         assert_eq!(updated.path, target.display().to_string());
         // Path-only: everything else untouched.
         assert_eq!(updated.domain, "acme.test");
@@ -2025,6 +2170,100 @@ mod tests {
         let mut new = sample("Fixture", &format!("{tag}.test"));
         new.path = dir.display().to_string();
         (dir, new)
+    }
+
+    /// Build a project tree from a list of files, each created with a parent.
+    fn project(tag: &str, files: &[&str]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("rexenv-detect-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in files {
+            let p = dir.join(f);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "x").unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn detect_project_places_the_common_layouts_and_their_docroots() {
+        // The docroot is NOT always the project root — getting this wrong
+        // serves the framework's source instead of its front controller.
+        let cases: &[(&str, &[&str], SiteType, &str, &str)] = &[
+            ("wp", &["wp-config.php", "wp-load.php"], SiteType::Wordpress, "", "WordPress"),
+            // Downloaded-but-unconfigured core still reads as WordPress.
+            ("wpsample", &["wp-config-sample.php"], SiteType::Wordpress, "", "WordPress"),
+            // Bedrock: wp-config.php exists but NOT at the served root.
+            (
+                "bedrock",
+                &["web/wp-config.php", "config/application.php", "web/app/mu-plugins/x.php"],
+                SiteType::Wordpress,
+                "web",
+                "WordPress (Bedrock)",
+            ),
+            ("laravel", &["artisan", "public/index.php"], SiteType::Laravel, "public", "Laravel"),
+            ("craft", &["craft", "web/index.php"], SiteType::Php, "web", "Craft CMS"),
+            ("symfony", &["bin/console", "public/index.php"], SiteType::Php, "public", "Symfony"),
+            ("plain", &["index.php"], SiteType::Php, "", "PHP project"),
+            ("static", &["index.html"], SiteType::Php, "", "Static site"),
+            ("frontctl", &["public/index.php"], SiteType::Php, "public", "PHP project"),
+        ];
+        for (tag, files, site_type, docroot, label) in cases {
+            let dir = project(tag, files);
+            let d = detect_project(&dir);
+            assert_eq!(d.site_type, *site_type, "{tag}: site type");
+            assert_eq!(d.docroot_rel, *docroot, "{tag}: docroot");
+            assert_eq!(d.label, *label, "{tag}: label");
+            assert!(d.existing_install, "{tag}: should read as an existing install");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        // An empty folder is honestly "nothing to serve yet", not a guess.
+        let empty = project("empty", &[]);
+        let d = detect_project(&empty);
+        assert_eq!(d.label, "Unknown");
+        assert!(!d.existing_install, "an empty folder holds no install");
+        let _ = std::fs::remove_dir_all(&empty);
+
+        // A per-project custom Valet driver can serve a docroot our probes
+        // can't predict — flagged, never silently guessed at.
+        let custom = project("driver", &["LocalValetDriver.php", "index.php"]);
+        assert!(has_custom_valet_driver(&custom));
+        let _ = std::fs::remove_dir_all(&custom);
+    }
+
+    #[test]
+    fn a_linked_site_refuses_to_be_moved_and_moving_out_gives_up_ownership() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+
+        // Linked: refused outright. A cross-volume move COPIES then deletes the
+        // source, so this would rewrite the user's own project layout.
+        let (dir, new) = docroot_fixture("nomove");
+        let linked = create_recording_ownership(&conn, new, false).unwrap();
+        let err = check_docroot_move(&linked, &std::env::temp_dir()).unwrap_err().to_string();
+        assert!(err.contains("your own folder"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // Owned, moved OUT of the sites folder: we give up the claim, so the
+        // move dialog's "kept — not deleted" promise stays true structurally.
+        let (outside, new2) = docroot_fixture("movedout");
+        let mut owned = new2;
+        owned.path = String::new();
+        let site = create(&conn, owned).unwrap();
+        assert_eq!(get(&conn, &site.id).unwrap().unwrap().docroot_managed, Some(true));
+        let moved = set_path(&conn, &*platform, &site.id, &outside).unwrap().unwrap();
+        assert_eq!(
+            moved.docroot_managed,
+            Some(false),
+            "a docroot moved outside the sites folder is no longer ours to delete"
+        );
+        // ...and that survives a delete: the folder stays.
+        let out = teardown(&conn, &*platform, &site.id).unwrap();
+        assert!(!out.docroot_removed);
+        assert!(outside.exists(), "the moved-out folder must survive deletion");
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     #[cfg(target_os = "macos")]
