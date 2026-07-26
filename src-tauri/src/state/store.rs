@@ -11,7 +11,8 @@ use rusqlite::{params, Connection, Row};
 /// Columns selected for a full `Site`, in struct order. Shared so every query
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
-     created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned";
+     created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
+     docroot_managed";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -39,6 +40,10 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // for nginx and for pre-backfill rows.
         override_port: row.get::<_, Option<i64>>(14)?.map(|p| p as u16),
         provisioned: row.get::<_, i64>(15)? != 0,
+        // Nullable by design (v17): NULL = a pre-v17 row the startup backfill
+        // hasn't recorded yet, NOT "unowned" — the legacy lexical test covers
+        // that window so the answer can never silently flip to deletable.
+        docroot_managed: row.get::<_, Option<i64>>(16)?.map(|v| v != 0),
     })
 }
 
@@ -52,8 +57,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             site.id,
             site.name,
@@ -71,9 +76,22 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.xdebug as i64,
             site.override_port.map(|p| p as i64),
             site.provisioned as i64,
+            site.docroot_managed.map(|m| m as i64),
         ],
     )?;
     Ok(())
+}
+
+/// Record whether rexenv owns a site's docroot (v17) — see
+/// [`crate::state::models::Site::docroot_managed`]. After creation this is only
+/// ever called with `false` (a move out of the sites folder): the flag is
+/// monotonic toward safety, never re-derived from the path.
+pub fn set_site_docroot_managed(conn: &Connection, id: &str, managed: bool) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET docroot_managed = ?1 WHERE id = ?2",
+        params![managed as i64, id],
+    )?;
+    Ok(affected > 0)
 }
 
 /// Flip a site's provisioning-completeness flag (v16, streamed create job:

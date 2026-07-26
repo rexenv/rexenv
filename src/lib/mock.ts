@@ -28,6 +28,7 @@ export const mockSites: Site[] = [
   dbEngine: "mysql",
     xdebug: false,
     provisioned: true,
+    docrootManaged: true,
   },
   {
     id: "2",
@@ -45,6 +46,7 @@ export const mockSites: Site[] = [
   dbEngine: "mysql",
     xdebug: false,
     provisioned: true,
+    docrootManaged: true,
   },
   {
     id: "3",
@@ -62,6 +64,7 @@ export const mockSites: Site[] = [
   dbEngine: "mysql",
     xdebug: false,
     provisioned: true,
+    docrootManaged: true,
   },
 ];
 

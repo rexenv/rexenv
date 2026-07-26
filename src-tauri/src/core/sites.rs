@@ -190,6 +190,52 @@ pub fn backfill_override_ports(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// The LEGACY lexical ownership test: is `path` under a managed sites root?
+///
+/// Factored out so the v17 backfill and the pre-backfill fallback can't drift
+/// apart. This is no longer a delete-time guard — reading it at delete time is
+/// exactly the bug v17 fixes, since `configured` comes from a setting the user
+/// can change after the site was created.
+fn docroot_under_managed_root(
+    path: &str,
+    configured: &Path,
+    default_dir: &Path,
+    legacy_dir: &Path,
+) -> bool {
+    let p = Path::new(path);
+    !path.is_empty()
+        && (p.starts_with(configured) || p.starts_with(default_dir) || p.starts_with(legacy_dir))
+}
+
+/// Record, ONCE, whether rexenv owns each existing site's docroot (v17 Phase B).
+///
+/// Evaluates the legacy lexical test — is the docroot under the configured
+/// sites dir, the `~/rexenv/Sites` default, or the legacy app-data one — and
+/// FREEZES its answer on the row, so deletion stops depending on a setting the
+/// user can change afterwards. Every pre-v17 row therefore keeps exactly
+/// today's behavior, including docroots moved outside the sites folder, which
+/// stay preserved as the move dialog promises.
+///
+/// Only touches NULL rows, in ONE transaction (crash → rollback → clean
+/// re-run), run at startup before any site is served. Idempotent: a recorded
+/// row is never revisited, so a later sites-dir change can't flip an answer.
+pub fn backfill_docroot_managed(conn: &Connection, platform: &dyn Platform) -> Result<()> {
+    let configured = sites_dir(conn, platform)?;
+    let default_dir = default_sites_dir()?;
+    let legacy_dir = legacy_sites_dir(platform)?;
+    let tx = conn.unchecked_transaction()?;
+    for s in store::list_sites(&tx)? {
+        if s.docroot_managed.is_some() {
+            continue; // already recorded — idempotent skip
+        }
+        let managed =
+            docroot_under_managed_root(&s.path, &configured, &default_dir, &legacy_dir);
+        store::set_site_docroot_managed(&tx, &s.id, managed)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 /// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
 /// [`wordpress::db_name_for`] base (what existing sites already store); falls
 /// back to a hash-suffixed form when that base would COLLIDE with an existing
@@ -266,6 +312,11 @@ pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
         // only flow that can die half-done — flips this to 0 itself right
         // after insert and back to 1 when it settles ok.
         provisioned: true,
+        // True by construction today: `provision` is the only production caller
+        // and it always creates the docroot itself under the sites folder.
+        // Linked sites (a folder the user chose, which we must never delete)
+        // thread an explicit value through here instead.
+        docroot_managed: Some(true),
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -640,13 +691,8 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     let configured = sites_dir(conn, platform)?;
     let default_dir = default_sites_dir()?;
     let legacy_dir = legacy_sites_dir(platform)?;
-    let path = Path::new(&site.path);
-    if !site.path.is_empty()
-        && (path.starts_with(&configured)
-            || path.starts_with(&default_dir)
-            || path.starts_with(&legacy_dir))
-    {
-        let _ = std::fs::remove_dir_all(path);
+    if docroot_under_managed_root(&site.path, &configured, &default_dir, &legacy_dir) {
+        let _ = std::fs::remove_dir_all(&site.path);
     }
 
     Ok(true)
@@ -1394,6 +1440,7 @@ mod tests {
             xdebug: false,
             override_port: None,
             provisioned: true,
+            docroot_managed: Some(true),
         }
     }
 
@@ -1505,6 +1552,59 @@ mod tests {
     }
 
     #[test]
+    fn backfill_freezes_todays_ownership_answer_including_moved_out_docroots() {
+        // THE v17 migration proof. Two pre-v17 rows (docroot_managed NULL): one
+        // under the CONFIGURED sites folder, one moved outside it — the case a
+        // plain DEFAULT could only have guessed at, and whose files today's
+        // lexical guard preserves ("kept — not deleted", the move dialog).
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let managed_root = std::env::temp_dir().join("rexenv-backfill-root");
+        store::set_setting(&conn, SITES_DIR_KEY, &managed_root.display().to_string()).unwrap();
+
+        let mut inside = fp_site("inside.test");
+        inside.id = "in".into();
+        inside.path = managed_root.join("inside.test").display().to_string();
+        inside.docroot_managed = None; // the pre-v17 shape
+        let mut outside = fp_site("outside.test");
+        outside.id = "out".into();
+        outside.path = std::env::temp_dir().join("someones-project").display().to_string();
+        outside.docroot_managed = None;
+        store::insert_site(&conn, &inside).unwrap();
+        store::insert_site(&conn, &outside).unwrap();
+
+        backfill_docroot_managed(&conn, &*platform).unwrap();
+
+        // Under the sites folder → still ours, still deletable: unchanged.
+        assert_eq!(get(&conn, "in").unwrap().unwrap().docroot_managed, Some(true));
+        // Moved out → frozen as NOT ours, so teardown keeps preserving it.
+        assert_eq!(get(&conn, "out").unwrap().unwrap().docroot_managed, Some(false));
+
+        // The whole point: re-pointing the Sites folder afterwards can no longer
+        // re-classify a recorded row (today that silently makes ~/code deletable).
+        store::set_setting(
+            &conn,
+            SITES_DIR_KEY,
+            &std::env::temp_dir().display().to_string(),
+        )
+        .unwrap();
+        backfill_docroot_managed(&conn, &*platform).unwrap(); // idempotent
+        assert_eq!(get(&conn, "in").unwrap().unwrap().docroot_managed, Some(true));
+        assert_eq!(
+            get(&conn, "out").unwrap().unwrap().docroot_managed,
+            Some(false),
+            "a recorded answer must never be revisited"
+        );
+    }
+
+    #[test]
+    fn created_sites_record_that_we_own_the_docroot() {
+        let conn = db::open_in_memory().unwrap();
+        let site = create(&conn, sample("Owned", "owned.test")).unwrap();
+        assert_eq!(get(&conn, &site.id).unwrap().unwrap().docroot_managed, Some(true));
+    }
+
+    #[test]
     fn set_domain_preserves_the_recorded_override_port() {
         // The orphan fix: changing a site's domain must NOT re-derive/move its
         // recorded backend port (which used to orphan the running backend).
@@ -1584,6 +1684,7 @@ mod tests {
             xdebug: false,
             override_port: None,
             provisioned: true,
+            docroot_managed: Some(true),
         }
     }
 

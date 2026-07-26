@@ -114,6 +114,19 @@ pub struct Site {
     /// without the field (blueprint specs, older callers) read provisioned.
     #[serde(default = "default_true")]
     pub provisioned: bool,
+    /// Does rexenv own this site's docroot — may [`crate::core::sites::teardown`]
+    /// remove it? (v17.)
+    ///
+    /// Recorded where the fact is KNOWN and never re-derived from the path at
+    /// delete time: `true` when provision created the directory, `false` for a
+    /// folder the user linked (we never made it) and for a docroot MOVED
+    /// outside the sites folder (whose move dialog promises it is kept). The
+    /// flag only ever goes `true` → `false` — monotonic toward safety.
+    ///
+    /// `None` = a pre-v17 row the startup backfill hasn't reached yet; only in
+    /// that window do consumers fall back to the legacy lexical sites-dir test.
+    #[serde(default)]
+    pub docroot_managed: Option<bool>,
 }
 
 fn default_true() -> bool {

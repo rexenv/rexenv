@@ -732,6 +732,7 @@ mod tests {
             xdebug: false,
             override_port: None,
             provisioned: true,
+            docroot_managed: Some(true),
         }
     }
 

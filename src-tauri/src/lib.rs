@@ -202,6 +202,17 @@ pub fn run() {
                     if let Err(e) = core::sites::backfill_override_ports(&conn) {
                         log::error!("sites: override-port backfill failed (using derived fallback): {e}");
                     }
+                    // v17 Phase B: freeze each existing site's docroot ownership
+                    // — the legacy lexical sites-dir test, evaluated ONCE — so
+                    // deleting a site stops depending on the mutable sites-dir
+                    // setting. Zero behavior change; moved-out docroots stay
+                    // preserved. One-time + idempotent; the legacy test remains
+                    // the fallback for any row this fails to record.
+                    if let Err(e) =
+                        core::sites::backfill_docroot_managed(&conn, platform.as_ref())
+                    {
+                        log::error!("sites: docroot-ownership backfill failed (using the legacy path test): {e}");
+                    }
                     // Services OUTLIVE the app: closing rexenv doesn't stop the
                     // stack, so adopt any rexenv-owned survivors into this session's
                     // manager — status shows them running, Stop all works, Start all

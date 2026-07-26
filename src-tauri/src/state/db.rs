@@ -154,6 +154,27 @@ const MIGRATIONS: &[&str] = &[
     // only when the job settles ok; a 0 row renders the honest "setup
     // incomplete" badge with Retry/Delete instead of masquerading as healthy.
     "ALTER TABLE sites ADD COLUMN provisioned INTEGER NOT NULL DEFAULT 1;",
+    // v17 — does rexenv OWN this site's docroot, i.e. may teardown delete it?
+    // PLAIN NULLABLE INTEGER, no default, no constraint (the B21 lesson —
+    // nothing existing rows could violate).
+    //
+    // A DEFAULT can't express this, unlike v16's: it would have to GUESS for
+    // rows whose docroot was MOVED outside the sites folder — which
+    // `move_site_docroot` allows for any destination, and whose confirm dialog
+    // PROMISES such a folder is "kept — not deleted". Defaulting those to
+    // deletable would destroy files today's code preserves. So the answer is
+    // recorded per row by the Rust backfill
+    // (`core::sites::backfill_docroot_managed`, run once at startup), which
+    // evaluates TODAY's lexical sites-dir test exactly once and freezes it —
+    // zero behavior change for every existing row (the v14 override-port
+    // pattern). NULL = not yet backfilled: consumers fall back to the legacy
+    // lexical test for that window only.
+    //
+    // This replaces inferring ownership from the path at DELETE time, which
+    // read the MUTABLE `sites_dir` setting (stored unvalidated): re-pointing
+    // the Sites folder at ~/code silently made an unrelated project's docroot
+    // look deletable.
+    "ALTER TABLE sites ADD COLUMN docroot_managed INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -426,6 +447,47 @@ mod tests {
             .query_row("SELECT value FROM settings WHERE key='default_tld'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(v, "banana", "a custom value must survive v8+v9");
+    }
+
+    #[test]
+    fn v17_leaves_existing_rows_unrecorded_for_the_legacy_fallback() {
+        // Bring the schema to v16, insert two sites the pre-v17 way — one under
+        // a sites folder, one moved outside it — then migrate. BOTH must read
+        // NULL: v17 deliberately has no DEFAULT, because any default would have
+        // to guess for the moved-out row, and guessing "deletable" would destroy
+        // files today's code preserves. The startup backfill records the answer;
+        // until it runs the legacy lexical test is the fallback, i.e. exactly
+        // today's behavior.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..16].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s1','In','in.rex','wordpress','8.3','/Users/x/rexenv/Sites/in.rex')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s2','Out','out.rex','wordpress','8.3','/Users/x/code/out')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::state::store;
+        assert_eq!(store::get_site(&conn, "s1").unwrap().unwrap().docroot_managed, None);
+        assert_eq!(store::get_site(&conn, "s2").unwrap().unwrap().docroot_managed, None);
+
+        // The setter round-trips and reports an unknown id, like its siblings.
+        assert!(store::set_site_docroot_managed(&conn, "s2", false).unwrap());
+        assert_eq!(
+            store::get_site(&conn, "s2").unwrap().unwrap().docroot_managed,
+            Some(false)
+        );
+        assert!(!store::set_site_docroot_managed(&conn, "ghost", true).unwrap());
     }
 
     #[test]

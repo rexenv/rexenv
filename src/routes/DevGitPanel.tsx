@@ -351,6 +351,7 @@ const INCOMPLETE_SITE = {
   dbEngine: "mysql" as const,
   xdebug: false,
   provisioned: false,
+  docrootManaged: true,
 };
 
 /** `?panel=provision` host: adopts the mocked active job through the REAL

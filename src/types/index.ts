@@ -29,6 +29,13 @@ export interface Site {
    *  incomplete" badge with Retry/Delete. Flipped to true only when a
    *  provision job settles ok. */
   provisioned: boolean;
+  /** Does rexenv own this site's docroot — may deleting the site remove the
+   *  folder? (v17, mirrors the Rust Site.) `true` = we created it under the
+   *  sites folder; `false` = a folder you linked, or one moved outside the
+   *  sites folder — either way rexenv never deletes it. `null` = a pre-v17 row
+   *  the startup backfill hasn't recorded yet. Drives the "external folder"
+   *  badge and the delete-confirm copy. */
+  docrootManaged: boolean | null;
 }
 
 /** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */

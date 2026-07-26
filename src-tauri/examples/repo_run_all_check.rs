@@ -95,6 +95,7 @@ async fn main() {
             xdebug: false,
             override_port: None,
             provisioned: true,
+            docroot_managed: Some(true),
         },
     )
     .expect("insert site row");
