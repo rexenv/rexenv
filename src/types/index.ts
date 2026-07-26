@@ -84,6 +84,84 @@ export interface TeardownReport {
   backupMissing: string[];
 }
 
+/** Which tool a discovered site came from. */
+export type ImportSource = "valet" | "herd";
+
+/** Why a discovered row can or can't be imported (mirrors the Rust SiteStatus,
+ *  an internally-tagged enum). */
+export type ImportStatus =
+  | { status: "importable" }
+  | { status: "needsAttention"; reason: string }
+  | { status: "unsupported"; reason: string }
+  | { status: "alreadyImported" };
+
+/** One reviewable row of the Valet/Herd migration list. */
+export interface ImportCandidate {
+  source: ImportSource;
+  name: string;
+  domain: string;
+  /** Their project folder — null when the target is missing. */
+  path: string | null;
+  /** The folder we'd actually SERVE (often a framework subfolder). */
+  servePath: string | null;
+  docrootRel: string | null;
+  siteType: SiteType | null;
+  label: string | null;
+  /** The PHP minor they pinned, as their config writes it. */
+  phpMinor: string | null;
+  /** The minor we'd use — null when theirs isn't one we ship and the user must
+   *  choose. We never substitute silently. */
+  phpTarget: string | null;
+  secured: boolean;
+  proxyTo: string | null;
+  /** The same domain also exists in the other tool. */
+  alsoIn: ImportSource | null;
+  hasCustomValetDriver: boolean;
+  status: ImportStatus;
+}
+
+/** Whether a TLD's OS resolver file is ours, theirs, or missing. */
+export interface ResolverTldStatus {
+  tld: string;
+  /** `absent` · `ours` · `borrowed` (ours, taken from them) · `foreign`
+   *  (theirs) · `drifted` (we borrowed it, they took it back). */
+  owner: "absent" | "ours" | "borrowed" | "foreign" | "drifted";
+  path: string;
+  /** Their file verbatim, to show beside ours before asking for consent. */
+  theirContent: string | null;
+  ourContent: string;
+  /** rexenv sites already on this TLD — the hand-back warning needs it. */
+  rexenvSites: number;
+}
+
+/** One discovered Valet/Herd environment. */
+export interface ImportSourceInfo {
+  kind: ImportSource;
+  home: string;
+  tld: string;
+  loopback: string;
+  parked: string[];
+  /** Anything odd worth showing rather than leaving the user to wonder. */
+  notes: string[];
+}
+
+/** Everything the migration screen needs, from one read-only call. */
+export interface ImportScan {
+  sources: ImportSourceInfo[];
+  candidates: ImportCandidate[];
+  tlds: ResolverTldStatus[];
+  availablePhp: string[];
+}
+
+/** What handing a resolver file back actually did (mirrors ResolverPlan). */
+export interface ResolverPlan {
+  remove: string[];
+  restore: [string, string][];
+  dropRecords: string[];
+  backupMissing: string[];
+  reclaimed: string[];
+}
+
 /** What linking a folder would do — from `inspectLinkedFolder`, shown before
  *  anything is created. Detection is pure filesystem; nothing in the folder is
  *  executed. */

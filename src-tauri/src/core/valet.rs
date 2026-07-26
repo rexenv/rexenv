@@ -77,6 +77,9 @@ pub enum SiteStatus {
     Importable,
     NeedsAttention(String),
     Unsupported(String),
+    /// rexenv already serves this domain. Shown so the list reconciles with
+    /// what they see in Valet/Herd, but never offered again.
+    AlreadyImported,
 }
 
 /// One row of the migration list.

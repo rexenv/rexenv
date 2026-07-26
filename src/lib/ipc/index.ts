@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -116,6 +116,29 @@ export async function changeSiteDomain(id: string, domain: string): Promise<Doma
 export async function moveSiteDocroot(id: string, destParent: string): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site>("move_site_docroot", { id, destParent });
+}
+
+/** Scan for Valet/Herd sites. READ-ONLY: nothing of theirs is written, started
+ *  or stopped, and no file inside a project is opened. */
+export async function scanValetImport(): Promise<ImportScan> {
+  return invoke<ImportScan>("scan_valet_import");
+}
+
+/** Take a TLD's /etc/resolver file over from Valet/Herd, backing theirs up
+ *  first. Consent belongs to the UI; this performs what it authorised. */
+export async function resolverTakeOver(tld: string): Promise<void> {
+  return invoke<void>("resolver_take_over", { tld });
+}
+
+/** Give a borrowed resolver file back — the return path for the borrow. */
+export async function resolverHandBack(tld: string): Promise<ResolverPlan> {
+  return invoke<ResolverPlan>("resolver_hand_back", { tld });
+}
+
+/** TLDs we borrowed whose file another tool has since reclaimed. */
+export async function resolverDrift(): Promise<string[]> {
+  if (!isTauri()) return [];
+  return invoke<string[]>("resolver_drift");
 }
 
 /** Inspect a folder the user picked for linking, WITHOUT creating anything:

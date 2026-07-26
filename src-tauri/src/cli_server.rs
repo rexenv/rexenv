@@ -1275,6 +1275,19 @@ where
                     "fix": help.free_command,
                 }));
             }
+            // Borrowed resolver files another tool reclaimed — invisible to
+            // every other probe, because our resolver keeps answering.
+            let resolver_drift = {
+                let conn = state
+                    .db
+                    .lock()
+                    .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                crate::core::dns::drifted_takeovers(
+                    &conn,
+                    state.platform.as_ref(),
+                    crate::core::dns::DEFAULT_DNS_PORT,
+                )
+            };
             Ok(json!({
                 "app": to_value(&commands::system::app_info())?,
                 "dns": to_value(&dns)?,
@@ -1282,6 +1295,9 @@ where
                 "edge": { "running": caddy_running, "wireOurs": wire_ours, "conflict": edge_conflict },
                 "portConflicts": port_conflicts,
                 "cli": to_value(&cli)?,
+                // Borrowed resolver files another tool reclaimed — invisible to
+                // every other probe, because our resolver keeps answering.
+                "resolverDrift": to_value(&resolver_drift)?,
             }))
         }
         other => Err(Error::Other(format!(

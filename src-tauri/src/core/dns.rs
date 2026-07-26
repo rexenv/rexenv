@@ -421,7 +421,8 @@ pub fn take_over_resolver(
 /// | foreign | no | leave alone (never enumerated) |
 /// | absent | yes | drop the moot record |
 /// | absent | no | nothing |
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResolverPlan {
     /// Ours outright — delete the file.
     pub remove: Vec<String>,
@@ -498,6 +499,71 @@ pub fn finish_resolver_teardown(
     }
     let _ = platform; // kept for symmetry with the rest of the module
     Ok(())
+}
+
+/// Give ONE borrowed resolver file back to whoever we took it from.
+///
+/// The same operation teardown performs, wired to a button: borrowing someone's
+/// file is only honest if the return path is one click rather than "uninstall
+/// rexenv". Refuses a TLD we never borrowed — handing back a file we created
+/// ourselves would just be deleting it under a friendlier name.
+pub fn hand_back_resolver(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    tld: &str,
+    port: u16,
+) -> Result<ResolverPlan> {
+    if crate::state::store::get_resolver_takeover(conn, tld)?.is_none() {
+        return Err(Error::Other(format!(
+            "rexenv didn't take .{tld} over from anything, so there's nothing to hand back."
+        )));
+    }
+    let full = plan_resolver_teardown(conn, platform, port)?;
+    // Narrow the whole-system plan to this one TLD.
+    let only = |v: &[String]| -> Vec<String> {
+        if v.iter().any(|t| t == tld) { vec![tld.to_string()] } else { Vec::new() }
+    };
+    let plan = ResolverPlan {
+        remove: only(&full.remove),
+        restore: full.restore.into_iter().filter(|(t, _)| t == tld).collect(),
+        drop_records: vec![tld.to_string()],
+        backup_missing: only(&full.backup_missing),
+        reclaimed: only(&full.reclaimed),
+    };
+
+    let mut cmds = Vec::new();
+    if !plan.remove.is_empty() {
+        cmds.push(platform.dns().uninstall_command(&plan.remove));
+    }
+    if !plan.restore.is_empty() {
+        cmds.push(platform.dns().restore_command(&plan.restore));
+    }
+    if !cmds.is_empty() {
+        platform.privileges().run_privileged(&cmds.join(" ; "))?;
+    }
+    finish_resolver_teardown(conn, platform, &plan)?;
+    Ok(plan)
+}
+
+/// TLDs we hold a record for whose file is no longer ours — Valet or Herd took
+/// it back (a `valet install`, a Herd relaunch).
+///
+/// Worth surfacing because the failure is otherwise silent and baffling: our
+/// resolver still answers on its own port so the health watchdog stays green,
+/// while every rexenv site on that TLD stops resolving. Checked where we
+/// already look at environment truth (startup, `rex doctor`) rather than by a
+/// watcher — reading one small file per borrowed TLD is nearly free.
+pub fn drifted_takeovers(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    port: u16,
+) -> Vec<String> {
+    crate::state::store::list_resolver_takeovers(conn)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| matches!(resolver_owner(platform, &r.tld, port), ResolverOwner::Foreign { .. }))
+        .map(|r| r.tld)
+        .collect()
 }
 
 /// Delete backups no record refers to — the belt for a crash between writing

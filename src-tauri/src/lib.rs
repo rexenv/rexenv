@@ -229,6 +229,22 @@ pub fn run() {
                     .flatten()
                     .as_deref()
                         == Some("true");
+                    // Drift: a resolver file we BORROWED that Valet/Herd has
+                    // since taken back. Checked here because it is otherwise
+                    // silent — our resolver still answers on its own port, so
+                    // every health probe stays green while sites on that TLD
+                    // stop resolving. One small file read per borrowed TLD.
+                    for tld in core::dns::drifted_takeovers(
+                        &conn,
+                        platform.as_ref(),
+                        core::dns::DEFAULT_DNS_PORT,
+                    ) {
+                        log::warn!(
+                            "dns: the .{tld} resolver is no longer ours — Valet or Herd took it \
+                             back. rexenv .{tld} sites won't resolve until you take it over \
+                             again or move them to .rex"
+                        );
+                    }
                     // A resolver backup with no record can only come from a
                     // crash between writing the file and inserting its row —
                     // the row owns the file everywhere else. Sweep so litter
@@ -528,6 +544,10 @@ pub fn run() {
             commands::sites::change_site_domain,
             commands::sites::move_site_docroot,
             commands::sites::inspect_linked_folder,
+            commands::valet_import::scan_valet_import,
+            commands::valet_import::resolver_take_over,
+            commands::valet_import::resolver_hand_back,
+            commands::valet_import::resolver_drift,
             commands::sites::list_site_env,
             commands::sites::set_site_env,
             commands::sites::site_cert_info,
