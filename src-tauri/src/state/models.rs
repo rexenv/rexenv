@@ -127,6 +127,21 @@ pub struct Site {
     /// that window do consumers fall back to the legacy lexical sites-dir test.
     #[serde(default)]
     pub docroot_managed: Option<bool>,
+    /// Did rexenv CREATE this site's database — may deleting the site drop it?
+    /// (v19, database import.)
+    ///
+    /// `Some(true)` = a database import created it. `Some(false)` = the name
+    /// already existed on our engine and we restored into it with the user's
+    /// typed confirmation — **never dropped, by any path**. `None` = legacy:
+    /// created by rexenv's own provisioning, which is the only way a database
+    /// could exist before v19, so today's teardown behaviour is unchanged.
+    ///
+    /// Written BEFORE `CREATE DATABASE`, never after: a crash between the write
+    /// and the create leaves a claim on a database that doesn't exist, which
+    /// `DROP DATABASE IF EXISTS` shrugs off. The reverse order is the one that
+    /// loses data.
+    #[serde(default)]
+    pub db_created: Option<bool>,
 }
 
 fn default_true() -> bool {

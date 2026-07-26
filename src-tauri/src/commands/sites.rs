@@ -743,6 +743,29 @@ pub async fn change_site_domain(
     Ok(DomainChange { site: updated, backup_path, replacements })
 }
 
+/// May deleting `site` drop the database its row names? (v19.)
+///
+/// Two ways the answer is no, and the second one is why the column exists:
+///
+/// - `db_created == Some(false)` — the database import restored into a name that
+///   ALREADY existed on our engine. That database is not ours, whatever the
+///   site row says about it, and no path may drop it.
+/// - a LINKED site that never imported one (`db_created` still NULL) — its
+///   provision job skips the `configure` phase entirely, so the derived
+///   `db_name` on the row names a database that was never created. Dropping it
+///   is a no-op today, but reaching it means booting MySQL (and possibly
+///   downloading it) to drop nothing.
+///
+/// Everything else keeps yesterday's behaviour: NULL on a rexenv-created site
+/// means our own provisioning made it, and `Some(true)` means an import did.
+fn may_drop_database(site: &crate::state::models::Site) -> bool {
+    match site.db_created {
+        Some(false) => false,
+        Some(true) => true,
+        None => site.docroot_managed != Some(false),
+    }
+}
+
 /// Delete a site — complete cleanup: stop its public tunnel, drop its MySQL
 /// database, then tear down the DB row + cert + per-site configs/logs + docroot,
 /// and reload the running stack so it stops being served. Returns whether it
@@ -774,6 +797,7 @@ pub async fn delete_site(
     let engine = DbEngine::from_site(site.db_engine);
     let engine_version = super::database::effective_db_version(&state, engine)?;
     if matches!(site.site_type, SiteType::Wordpress)
+        && may_drop_database(&site)
         && engine.datadir_initialized(state.platform.as_ref(), &engine_version)
     {
         // Engine binaries cached before the locked spawn below (an initialized
@@ -812,4 +836,61 @@ pub async fn delete_site(
     let mut mgr = state.services.lock().await;
     let _ = mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await;
     Ok(outcome.existed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteDbEngine, SiteType, WebServer};
+
+    fn site(docroot_managed: Option<bool>, db_created: Option<bool>) -> Site {
+        Site {
+            id: "s1".into(),
+            name: "S".into(),
+            domain: "s.rex".into(),
+            site_type: SiteType::Wordpress,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: WebServer::Nginx,
+            ssl: true,
+            path: "/tmp/s".into(),
+            created_at: "2026-07-26 00:00:00".into(),
+            multisite: MultisiteMode::None,
+            db_name: "wp_s_rex".into(),
+            db_engine: SiteDbEngine::Mysql,
+            xdebug: false,
+            override_port: None,
+            provisioned: true,
+            docroot_managed,
+            db_created,
+        }
+    }
+
+    #[test]
+    fn a_pre_existing_database_is_never_dropped() {
+        // The whole reason v19 exists: the import restored into a name that was
+        // already on our engine. No combination of the other flags may make it
+        // droppable.
+        for docroot in [None, Some(true), Some(false)] {
+            assert!(!may_drop_database(&site(docroot, Some(false))));
+        }
+    }
+
+    #[test]
+    fn our_own_databases_stay_droppable() {
+        // Legacy rows (NULL) on a site we created keep yesterday's behaviour,
+        // and a database this import created is ours to drop.
+        assert!(may_drop_database(&site(None, None)));
+        assert!(may_drop_database(&site(Some(true), None)));
+        assert!(may_drop_database(&site(Some(true), Some(true))));
+        assert!(may_drop_database(&site(Some(false), Some(true))));
+    }
+
+    #[test]
+    fn a_linked_site_with_no_import_has_no_database_to_drop() {
+        // Its provision job skips `configure` entirely, so the derived db_name
+        // on the row names a database that was never created — reaching it only
+        // boots (or downloads) MySQL to drop nothing.
+        assert!(!may_drop_database(&site(Some(false), None)));
+    }
 }

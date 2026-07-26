@@ -36,6 +36,12 @@ export interface Site {
    *  the startup backfill hasn't recorded yet. Drives the "external folder"
    *  badge and the delete-confirm copy. */
   docrootManaged: boolean | null;
+  /** Did rexenv CREATE this site's database — may deleting the site drop it?
+   *  (v19, mirrors the Rust Site.) `true` = a database import created it;
+   *  `false` = the name already existed on our engine and we restored into it,
+   *  so it is never dropped; `null` = created by rexenv's own provisioning (or
+   *  no database at all). Optional so payloads written before v19 still parse. */
+  dbCreated?: boolean | null;
 }
 
 /** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */

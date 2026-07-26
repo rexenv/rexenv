@@ -196,6 +196,26 @@ const MIGRATIONS: &[&str] = &[
         backup_path TEXT NOT NULL,
         taken_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    // v19 — did rexenv CREATE this site's database? (Stage 2, database import.)
+    //
+    // The third instance of "recorded, not derived" (db_name v6, override_port
+    // v14, docroot_managed v17), and for the same reason: importing a Valet/Herd
+    // database may restore into a name that ALREADY EXISTED on our engine — a
+    // database the user made themselves, or one an earlier import left. Deleting
+    // the site must never drop that. Ownership is a fact known only at the moment
+    // we look, so it is written down then rather than re-guessed at delete time.
+    //
+    // NULL     = legacy: created by rexenv's own provisioning (`configure`
+    //            phase). Today's teardown behaviour, unchanged — a nullable
+    //            column with no DEFAULT touches no existing row.
+    // 1        = this import created it. May be dropped.
+    // 0        = the name PRE-EXISTED and we restored into it after typed
+    //            confirmation. NEVER dropped, by any path.
+    //
+    // No DEFAULT for the v17 reason: a default would have to invent an answer
+    // for rows whose truth we don't know, and the wrong invention here destroys
+    // a database the user created.
+    "ALTER TABLE sites ADD COLUMN db_created INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -509,6 +529,46 @@ mod tests {
             Some(false)
         );
         assert!(!store::set_site_docroot_managed(&conn, "ghost", true).unwrap());
+    }
+
+    #[test]
+    fn v19_db_created_is_null_for_existing_rows_and_never_climbs_back_to_ours() {
+        // Same shape as v17: an existing row must migrate to NULL, because NULL
+        // is what preserves today's teardown behaviour. A DEFAULT of either
+        // value would invent an answer, and inventing "ours" drops a database
+        // the user created.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..18].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s1','Old','old.rex','wordpress','8.3','/Users/x/rexenv/Sites/old.rex')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::state::store;
+        assert_eq!(store::get_site(&conn, "s1").unwrap().unwrap().db_created, None);
+
+        // NULL → Some(true): an import created it.
+        assert!(store::set_site_db_created(&conn, "s1", true).unwrap());
+        assert_eq!(store::get_site(&conn, "s1").unwrap().unwrap().db_created, Some(true));
+
+        // Some(true) → Some(false): downgrade toward safety is allowed.
+        assert!(store::set_site_db_created(&conn, "s1", false).unwrap());
+        assert_eq!(store::get_site(&conn, "s1").unwrap().unwrap().db_created, Some(false));
+
+        // Some(false) → Some(true) is REFUSED in SQL, not by convention: a
+        // second import into the same pre-existing name is still not ours to
+        // drop, and a caller that forgets must not be able to make it ours.
+        assert!(!store::set_site_db_created(&conn, "s1", true).unwrap());
+        assert_eq!(store::get_site(&conn, "s1").unwrap().unwrap().db_created, Some(false));
+
+        assert!(!store::set_site_db_created(&conn, "ghost", true).unwrap());
+        assert!(!store::set_site_db_name(&conn, "ghost", "whatever").unwrap());
     }
 
     #[test]

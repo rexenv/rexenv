@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, Row};
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
-     docroot_managed";
+     docroot_managed, db_created";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -44,6 +44,10 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // hasn't recorded yet, NOT "unowned" — the legacy lexical test covers
         // that window so the answer can never silently flip to deletable.
         docroot_managed: row.get::<_, Option<i64>>(16)?.map(|v| v != 0),
+        // Nullable by design (v19): NULL = created by our own provisioning
+        // (legacy — droppable), Some(false) = the name pre-existed and is never
+        // dropped. See `Site::db_created`.
+        db_created: row.get::<_, Option<i64>>(17)?.map(|v| v != 0),
     })
 }
 
@@ -57,8 +61,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         params![
             site.id,
             site.name,
@@ -77,9 +81,38 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.override_port.map(|p| p as i64),
             site.provisioned as i64,
             site.docroot_managed.map(|m| m as i64),
+            site.db_created.map(|c| c as i64),
         ],
     )?;
     Ok(())
+}
+
+/// Record whether rexenv created this site's database (v19) — see
+/// [`crate::state::models::Site::db_created`].
+///
+/// Called by the database-import job **before** `CREATE DATABASE`, with
+/// `false` for a name that already existed on our engine. Once `false` it must
+/// never be raised to `true`: a later import into the same pre-existing name is
+/// still not ours to drop, so the flag is monotonic toward safety exactly like
+/// `docroot_managed`, and this function enforces that rather than trusting
+/// callers.
+pub fn set_site_db_created(conn: &Connection, id: &str, created: bool) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET db_created = ?1 WHERE id = ?2 \
+         AND (db_created IS NULL OR db_created = 1 OR ?1 = 0)",
+        params![created as i64, id],
+    )?;
+    Ok(affected > 0)
+}
+
+/// Point a site row at the database it actually uses (v19). The import restores
+/// into THEIR name where it's free, so the derived name assigned at creation is
+/// no longer the truth — and every later consumer (teardown, DB size, Adminer)
+/// reads this column.
+pub fn set_site_db_name(conn: &Connection, id: &str, db_name: &str) -> Result<bool> {
+    let affected =
+        conn.execute("UPDATE sites SET db_name = ?1 WHERE id = ?2", params![db_name, id])?;
+    Ok(affected > 0)
 }
 
 /// Record whether rexenv owns a site's docroot (v17) — see

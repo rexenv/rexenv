@@ -79,7 +79,31 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     TAKEOVER, hand-back, restore-on-uninstall and drift. This machine has no
     `/etc/resolver/test`, and creating a root-owned foreign file to test against was
     deliberately refused; those paths are fixture- and unit-tested only.
-  - [ ] Stage 2 — database import (dump artifact, then restore + credential mirroring)
+  - [ ] **Stage 2 — database import** — plan `docs/PLAN-valet-herd-db-import.md`
+    (APPROVED 26 Jul 2026, D1–D6 settled). Two halves, each verifiable alone.
+    ✓ **Step 0 — the pre-auth handshake read is VERIFIED live** (`cabc749`): MySQL
+    8.4.6 → `proto=10 version='8.4.6'`, MariaDB 12.3.2 → `'12.3.2-MariaDB'`, both
+    without authenticating, so engine identification never touches the
+    client-pairing trap; a stopped server refuses instantly. MariaDB 10.x's
+    `5.5.5-` prefix is handled but unverified here; DBngin 8.0.27 stays open until
+    the live check.
+    - *Half A — dump to artifact (their side, read-only)*
+      - [x] 1. v19 `sites.db_created` + teardown guard `0478dcc` — nullable, no
+        DEFAULT (the v17 reasoning); `set_site_db_created` refuses `false`→`true`
+        in SQL so a pre-existing database can never become ours to drop;
+        `may_drop_database` also skips the engine bring-up for a linked site that
+        never imported one. 419 lib tests.
+      - [ ] 2. `core::dbimport` config mapping (WP defines + conservative `.env`)
+      - [ ] 3. engine discovery + handshake identification
+      - [ ] 4. `compat()` matrix + per-site verdict
+      - [ ] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
+    - *Half B — restore into ours (+ credential mirroring)*
+      - [ ] 6. collision + provenance + create + restore with real byte progress
+      - [ ] 7. credential mirroring, reserved names refused (never our `root`)
+      - [ ] 8. job wiring + both entry points (SiteDetail, `/import` checkbox)
+      - [ ] 9. interim state — "imported, not yet connected" from ONE fact
+      - [ ] 10. `db_import_check` + `db_import_recovery_check` cases 1–4
+      - [ ] 11. `PUBLISH-TESTING.md` §I incl. the DBngin precondition step
   - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)
 
 - [x] **Add plugin/theme from Git — clone → detect → install → build** ✓

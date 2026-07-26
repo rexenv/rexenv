@@ -340,6 +340,7 @@ mod tests {
             override_port: None,
             provisioned: true,
             docroot_managed: Some(true),
+            db_created: None,
         }
     }
 

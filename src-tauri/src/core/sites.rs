@@ -327,6 +327,10 @@ fn create_recording_ownership(
         // after insert and back to 1 when it settles ok.
         provisioned: true,
         docroot_managed: Some(docroot_managed),
+        // No database exists yet at insert time. NULL keeps legacy semantics
+        // (whatever the provision job creates is ours); the import job records
+        // the real answer before it creates anything.
+        db_created: None,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -1742,6 +1746,7 @@ mod tests {
             override_port: None,
             provisioned: true,
             docroot_managed: Some(true),
+            db_created: None,
         }
     }
 
@@ -1986,6 +1991,7 @@ mod tests {
             override_port: None,
             provisioned: true,
             docroot_managed: Some(true),
+            db_created: None,
         }
     }
 
