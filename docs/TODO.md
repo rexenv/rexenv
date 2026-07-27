@@ -247,8 +247,15 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       mirror, backup→row→write order, named revert states incl. BackupMissing
       keeping `connected`, cross-guards both ways via `rewrite_active`,
       teardown cleans rewrite rows+backups, boot-to-drop comment).
-    - [ ] 6. UI: diff/consent card, revert, badge flip, tell-only floor, §5 cache
-      warning
+    - [x] 6. UI ✓ `9285d91` — consent card (diff from the written bytes,
+      consent voided on fingerprint change, backup note carries the
+      password-in-backup limit), fileChanged as a normal state, verifyFailed
+      distinct from write-failure, Verify-connection for already-pointing
+      configs, tell-only floor with the reason, D5 MariaDB note in the site's
+      panel, §5 cache warning leads, connected panel + revert (+force), D2
+      delete confirm naming both outcomes with revert-then-delete default.
+      Pending HIS ruling: collision-rename tell-only permanence, Laravel DB
+      survival at delete (writeups delivered in session).
     - [ ] 7. `mysqli.default_socket`/`pdo_mysql.default_socket` pool addition + live
       check
     - [ ] 8. examples: `config_rewrite_check` + failed-write recovery assertion
