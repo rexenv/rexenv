@@ -539,9 +539,11 @@ async fn run<R: tauri::Runtime>(
     let record = {
         let conn = lock(state)?;
         dbrestore::finish(&conn, &site.id, &name, &verified)?;
-        let record = DbImportRecord {
+        // The write shape has no state field: an import can only land
+        // 'imported' — 'connected' is minted solely by the Stage 3 rewrite
+        // job's verification. The upsert returns the stored row.
+        let new = crate::state::store::NewDbImport {
             site_id: site.id.clone(),
-            state: "imported".into(),
             db_name: name.clone(),
             table_count: verified.tables,
             size_bytes: preflight.size.total_bytes,
@@ -553,10 +555,8 @@ async fn run<R: tauri::Runtime>(
                 MirrorOutcome::Mirrored { user } => Some(user.clone()),
                 MirrorOutcome::RefusedReserved { .. } => None,
             },
-            imported_at: String::new(), // set by SQLite
         };
-        crate::state::store::upsert_db_import(&conn, &record)?;
-        crate::state::store::get_db_import(&conn, &site.id)?.unwrap_or(record)
+        crate::state::store::upsert_db_import(&conn, &new)?
     };
     // D5: the artifact is deleted when the job settles ok.
     let _ = std::fs::remove_file(&artifact);

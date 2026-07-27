@@ -237,6 +237,34 @@ const MIGRATIONS: &[&str] = &[
         mirrored_user TEXT,
         imported_at   TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    // v21 — Stage 3, the connection rewrite's two facts.
+    //
+    // `db_imports.verified` — HOW a 'connected' state was proven: 'signin'
+    // (the rewritten settings sign in to the rexenv copy) or 'signin+http'
+    // (plus the supplementary HTTP probe). Nullable, no DEFAULT: every
+    // existing row is 'imported', for which verification does not exist —
+    // NULL is the truth, not a guess. 'connected' joins the closed set here,
+    // but its ONLY writer is `store::set_db_import_connected`, which demands
+    // a witness type (`ConnectedVerified`) with no production constructor
+    // until the rewrite job's verification path exists — the value comes
+    // from something we proved, never from "the write succeeded" (plan §6).
+    //
+    // `config_rewrites` — the whole-file backup taken before the ONE write
+    // rexenv ever makes inside a user's project. (site_id, file) is the
+    // PRIMARY KEY and rows are INSERTed, never upserted: FIRST BACKUP WINS
+    // by construction. A second rewrite overwriting the backup with
+    // already-rewritten content would silently turn revert into a lie — the
+    // PK makes that unrepresentable rather than merely avoided. The row and
+    // its backup file are created together and removed together (the v18
+    // resolver-takeover pattern; the sweep reports, never auto-deletes).
+    "ALTER TABLE db_imports ADD COLUMN verified TEXT;
+     CREATE TABLE config_rewrites (
+        site_id     TEXT NOT NULL,
+        file        TEXT NOT NULL,
+        backup_path TEXT NOT NULL,
+        written_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (site_id, file)
+     );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -590,6 +618,142 @@ mod tests {
 
         assert!(!store::set_site_db_created(&conn, "ghost", true).unwrap());
         assert!(!store::set_site_db_name(&conn, "ghost", "whatever").unwrap());
+    }
+
+    #[test]
+    fn v21_existing_imports_read_imported_and_connected_needs_the_witness() {
+        // Build the schema at v20, insert a db_imports row the way Stage 2
+        // wrote it (no verified column), migrate — the row must read as it
+        // behaved yesterday: state Imported, no verification.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..20].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s1','Ea','ea.test','wordpress','8.3','/Users/x/code/ea')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label)
+             VALUES ('s1','imported','ea',48,25165824,'MySQL 8.0.27 at 127.0.0.1:3306')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::state::store::{self, ConnectedVerified, DbImportState};
+        let rec = store::get_db_import(&conn, "s1").unwrap().unwrap();
+        assert_eq!(rec.state, DbImportState::Imported);
+
+        // The ONE connected writer, with the test-only witness (production
+        // minting doesn't exist until the rewrite job's verification does).
+        store::set_db_import_connected(&conn, "s1", ConnectedVerified::test_signin()).unwrap();
+        let rec = store::get_db_import(&conn, "s1").unwrap().unwrap();
+        assert_eq!(rec.state, DbImportState::Connected(ConnectedVerified::test_signin()));
+
+        // The HTTP probe upgrades the verification; the record carries HOW.
+        store::set_db_import_connected(&conn, "s1", ConnectedVerified::test_signin_http()).unwrap();
+        let rec = store::get_db_import(&conn, "s1").unwrap().unwrap();
+        assert_eq!(
+            rec.state,
+            DbImportState::Connected(ConnectedVerified::test_signin_http())
+        );
+
+        // A re-import resets to imported and CLEARS the verification — the
+        // fresh copy has not been re-verified.
+        let back = store::upsert_db_import(
+            &conn,
+            &store::NewDbImport {
+                site_id: "s1".into(),
+                db_name: "ea".into(),
+                table_count: 50,
+                size_bytes: 1,
+                source_label: "MySQL 8.0.27 at 127.0.0.1:3306".into(),
+                mirrored_user: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(back.state, DbImportState::Imported);
+        let verified: Option<String> = conn
+            .query_row("SELECT verified FROM db_imports WHERE site_id='s1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(verified, None);
+
+        // connected without an import is not a state.
+        assert!(store::set_db_import_connected(&conn, "ghost", ConnectedVerified::test_signin())
+            .is_err());
+    }
+
+    #[test]
+    fn v21_db_import_record_serializes_the_exact_ts_contract() {
+        // Pins the wire shape the TS union types: an imported record has NO
+        // verified key; a connected one carries exactly "signin"/"signin+http".
+        // A new field or renamed variant is a conscious decision, not drift.
+        let conn = memory_db();
+        use crate::state::store::{self, ConnectedVerified};
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('s1','Ea','ea.test','wordpress','8.3','/x')",
+            [],
+        )
+        .unwrap();
+        let rec = store::upsert_db_import(
+            &conn,
+            &store::NewDbImport {
+                site_id: "s1".into(),
+                db_name: "ea".into(),
+                table_count: 1,
+                size_bytes: 2,
+                source_label: "src".into(),
+                mirrored_user: Some("wp".into()),
+            },
+        )
+        .unwrap();
+        let v = serde_json::to_value(&rec).unwrap();
+        assert_eq!(v["state"], "imported");
+        assert!(v.get("verified").is_none(), "imported must not carry a verified key");
+
+        store::set_db_import_connected(&conn, "s1", ConnectedVerified::test_signin_http()).unwrap();
+        let rec = store::get_db_import(&conn, "s1").unwrap().unwrap();
+        let v = serde_json::to_value(&rec).unwrap();
+        assert_eq!(v["state"], "connected");
+        assert_eq!(v["verified"], "signin+http");
+        assert_eq!(
+            v.as_object().unwrap().keys().collect::<Vec<_>>(),
+            ["dbName", "importedAt", "mirroredUser", "siteId", "sizeBytes", "sourceLabel", "state", "tableCount", "verified"]
+                .iter()
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn v21_config_rewrites_first_backup_wins_by_primary_key() {
+        let conn = memory_db();
+        use crate::state::store;
+
+        store::insert_config_rewrite(&conn, "s1", "/p/wp-config.php", "/appdata/b1").unwrap();
+        let row = store::get_config_rewrite(&conn, "s1", "/p/wp-config.php").unwrap().unwrap();
+        assert_eq!(row.backup_path, "/appdata/b1");
+        assert!(!row.written_at.is_empty());
+
+        // FIRST BACKUP WINS is the PK, not a convention: a second insert for
+        // the same site+file errors and the original backup path survives.
+        assert!(store::insert_config_rewrite(&conn, "s1", "/p/wp-config.php", "/appdata/b2")
+            .is_err());
+        let row = store::get_config_rewrite(&conn, "s1", "/p/wp-config.php").unwrap().unwrap();
+        assert_eq!(row.backup_path, "/appdata/b1");
+
+        // A different file for the same site is its own record.
+        store::insert_config_rewrite(&conn, "s1", "/p/.env", "/appdata/b3").unwrap();
+        assert_eq!(store::config_rewrites_for_site(&conn, "s1").unwrap().len(), 2);
+        assert_eq!(store::list_config_rewrites(&conn).unwrap().len(), 2);
+
+        store::delete_config_rewrite(&conn, "s1", "/p/.env").unwrap();
+        assert!(store::get_config_rewrite(&conn, "s1", "/p/.env").unwrap().is_none());
+        assert_eq!(store::config_rewrites_for_site(&conn, "s1").unwrap().len(), 1);
     }
 
     #[test]

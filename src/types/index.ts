@@ -207,15 +207,14 @@ export interface ImportResult {
   servingBlocked: boolean;
 }
 
-/** The settled outcome of a site's database import — the ONE fact the badge,
- *  the summary sentence and the detail panel all render from, so they can
- *  never disagree. `state` is a closed set whose only value today is
- *  `imported`: the copy exists on rexenv's engine and the site still reads
- *  and writes the OLD database. A `connected` value does not exist until
- *  Stage 3 introduces the fact that proves it. */
-export interface DbImportRecord {
+/** How a `connected` state was proven (Stage 3 §6). `signin` = the rewritten
+ *  settings sign in to the rexenv copy — the gate for `connected`;
+ *  `signin+http` adds the supplementary HTTP probe, which can only ever
+ *  upgrade `signin`, never gate and never un-set. */
+export type DbConnectedVerified = "signin" | "signin+http";
+
+interface DbImportRecordCommon {
   siteId: string;
-  state: "imported";
   dbName: string;
   tableCount: number;
   sizeBytes: number;
@@ -225,6 +224,19 @@ export interface DbImportRecord {
   mirroredUser: string | null;
   importedAt: string;
 }
+
+/** The settled outcome of a site's database import — the ONE fact the badge,
+ *  the summary sentence and the detail panel all render from, so they can
+ *  never disagree. `state` is a closed set: `imported` (the copy exists on
+ *  rexenv's engine and the site still reads the OLD database) or `connected`
+ *  (the Stage 3 rewrite job VERIFIED the rewritten settings — only its
+ *  verification path can write this value, so it always carries HOW it was
+ *  proven). */
+export type DbImportRecord = DbImportRecordCommon &
+  (
+    | { state: "imported" }
+    | { state: "connected"; verified: DbConnectedVerified }
+  );
 
 /** One phase of a running database-import job. */
 export interface DbImportPhase {

@@ -360,15 +360,76 @@ pub fn db_name_exists(conn: &Connection, db_name: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
-/// The settled outcome of a site's database import (v20) — the ONE fact the
-/// summary, badge and detail panel all render from. `state` is a closed set;
-/// today's only value is `imported` (copy on our engine, site still reading
-/// the old database). See the v20 migration comment.
+/// Witness that a connection verification actually RAN (Stage 3 plan §6).
+///
+/// The field is private and there is **no production constructor**: the
+/// rewrite job's sign-in verification (Stage 3 step 5) becomes the only
+/// minting site when it exists. Until then nothing in the crate can build
+/// one, so nothing can write `connected` from "the write succeeded" — the
+/// door is closed before anything can walk through it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConnectedVerified {
+    kind: VerifiedKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VerifiedKind {
+    /// The rewritten settings sign in to the rexenv copy (`USE <db>`), the
+    /// gate for `connected`.
+    Signin,
+    /// Sign-in plus the supplementary HTTP probe. The probe can only ever
+    /// UPGRADE `signin` — never gate, never un-set (D4).
+    SigninHttp,
+}
+
+impl ConnectedVerified {
+    /// The serialized form — also the `db_imports.verified` column value.
+    pub fn as_str(self) -> &'static str {
+        match self.kind {
+            VerifiedKind::Signin => "signin",
+            VerifiedKind::SigninHttp => "signin+http",
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_signin() -> Self {
+        Self { kind: VerifiedKind::Signin }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_signin_http() -> Self {
+        Self { kind: VerifiedKind::SigninHttp }
+    }
+}
+
+impl serde::Serialize for ConnectedVerified {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+/// The `db_imports.state` closed set. `Connected` cannot be built without a
+/// [`ConnectedVerified`] witness, so the type itself enforces "connected is
+/// something we proved": serialized as `{"state":"imported"}` or
+/// `{"state":"connected","verified":"signin"|"signin+http"}` (flattened into
+/// [`DbImportRecord`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", content = "verified", rename_all = "lowercase")]
+pub enum DbImportState {
+    Imported,
+    Connected(ConnectedVerified),
+}
+
+/// The settled outcome of a site's database import (v20/v21) — the ONE fact
+/// the summary, badge and detail panel all render from. This is the READ
+/// shape: writes go through [`upsert_db_import`] (which can only land
+/// `imported`) or [`set_db_import_connected`] (the sole `connected` writer).
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbImportRecord {
     pub site_id: String,
-    pub state: String,
+    #[serde(flatten)]
+    pub state: DbImportState,
     pub db_name: String,
     pub table_count: u64,
     pub size_bytes: u64,
@@ -380,17 +441,34 @@ pub struct DbImportRecord {
     pub imported_at: String,
 }
 
-/// Upsert the settled import outcome for a site (a re-import replaces it).
-pub fn upsert_db_import(conn: &Connection, r: &DbImportRecord) -> Result<()> {
+/// What the import job records when it settles ok — the WRITE shape of
+/// [`DbImportRecord`]. It has no state field on purpose: an import's only
+/// legitimate outcome is `imported`, so the upsert writes that (and clears
+/// `verified`) unconditionally. A re-import of a `connected` site therefore
+/// honestly resets to `imported` — the fresh copy has not been re-verified.
+#[derive(Debug, Clone)]
+pub struct NewDbImport {
+    pub site_id: String,
+    pub db_name: String,
+    pub table_count: u64,
+    pub size_bytes: u64,
+    pub source_label: String,
+    pub mirrored_user: Option<String>,
+}
+
+/// Upsert the settled import outcome for a site (a re-import replaces it)
+/// and return the stored row — callers render what was written, not what
+/// they meant to write.
+pub fn upsert_db_import(conn: &Connection, r: &NewDbImport) -> Result<DbImportRecord> {
     conn.execute(
-        "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, verified)
+         VALUES (?1, 'imported', ?2, ?3, ?4, ?5, ?6, NULL)
          ON CONFLICT(site_id) DO UPDATE SET
-           state = ?2, db_name = ?3, table_count = ?4, size_bytes = ?5,
-           source_label = ?6, mirrored_user = ?7, imported_at = datetime('now')",
+           state = 'imported', db_name = ?2, table_count = ?3, size_bytes = ?4,
+           source_label = ?5, mirrored_user = ?6, verified = NULL,
+           imported_at = datetime('now')",
         params![
             r.site_id,
-            r.state,
             r.db_name,
             r.table_count as i64,
             r.size_bytes as i64,
@@ -398,13 +476,63 @@ pub fn upsert_db_import(conn: &Connection, r: &DbImportRecord) -> Result<()> {
             r.mirrored_user,
         ],
     )?;
+    get_db_import(conn, &r.site_id)?
+        .ok_or_else(|| Error::Other(format!("db_imports row for {} vanished after upsert", r.site_id)))
+}
+
+/// The ONE writer of `state='connected'` (Stage 3 plan §6). Callable only
+/// with a [`ConnectedVerified`] witness, and refuses when no import record
+/// exists — "connected" without an import is not a state.
+pub fn set_db_import_connected(
+    conn: &Connection,
+    site_id: &str,
+    verified: ConnectedVerified,
+) -> Result<()> {
+    let n = conn.execute(
+        "UPDATE db_imports SET state = 'connected', verified = ?2 WHERE site_id = ?1",
+        params![site_id, verified.as_str()],
+    )?;
+    if n == 0 {
+        return Err(Error::Other(format!("no database import is recorded for site {site_id}")));
+    }
+    Ok(())
+}
+
+/// Revert's half of the closed set: back to `imported`, verification cleared.
+/// Writing the FLOOR state needs no witness — only claiming `connected` does.
+pub fn clear_db_import_connected(conn: &Connection, site_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE db_imports SET state = 'imported', verified = NULL WHERE site_id = ?1",
+        [site_id],
+    )?;
     Ok(())
 }
 
 fn row_to_db_import(row: &Row) -> rusqlite::Result<DbImportRecord> {
+    let state_txt: String = row.get(1)?;
+    let verified_txt: Option<String> = row.get(8)?;
+    // Strict: the writers above can only produce these three shapes, so
+    // anything else is corruption and fails loudly rather than rendering a
+    // guessed badge.
+    let state = match (state_txt.as_str(), verified_txt.as_deref()) {
+        ("imported", None) => DbImportState::Imported,
+        ("connected", Some("signin")) => {
+            DbImportState::Connected(ConnectedVerified { kind: VerifiedKind::Signin })
+        }
+        ("connected", Some("signin+http")) => {
+            DbImportState::Connected(ConnectedVerified { kind: VerifiedKind::SigninHttp })
+        }
+        (s, v) => {
+            return Err(rusqlite::Error::FromSqlConversionFailure(
+                1,
+                rusqlite::types::Type::Text,
+                format!("db_imports state '{s}' / verified {v:?} is outside the closed set").into(),
+            ))
+        }
+    };
     Ok(DbImportRecord {
         site_id: row.get(0)?,
-        state: row.get(1)?,
+        state,
         db_name: row.get(2)?,
         table_count: row.get::<_, i64>(3)? as u64,
         size_bytes: row.get::<_, i64>(4)? as u64,
@@ -416,7 +544,7 @@ fn row_to_db_import(row: &Row) -> rusqlite::Result<DbImportRecord> {
 
 pub fn get_db_import(conn: &Connection, site_id: &str) -> Result<Option<DbImportRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at
+        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at, verified
          FROM db_imports WHERE site_id = ?1",
     )?;
     let mut rows = stmt.query_map([site_id], row_to_db_import)?;
@@ -425,7 +553,7 @@ pub fn get_db_import(conn: &Connection, site_id: &str) -> Result<Option<DbImport
 
 pub fn list_db_imports(conn: &Connection) -> Result<Vec<DbImportRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at
+        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at, verified
          FROM db_imports",
     )?;
     let rows = stmt.query_map([], row_to_db_import)?;
@@ -435,6 +563,88 @@ pub fn list_db_imports(conn: &Connection) -> Result<Vec<DbImportRecord>> {
 /// Remove a site's import record (site deletion).
 pub fn delete_db_import(conn: &Connection, site_id: &str) -> Result<()> {
     conn.execute("DELETE FROM db_imports WHERE site_id = ?1", [site_id])?;
+    Ok(())
+}
+
+/// A connection-config rewrite's backup record (v21) — the row is the sole
+/// owner of its backup file; both are created together and removed together
+/// (the v18 resolver-takeover pattern).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigRewrite {
+    pub site_id: String,
+    /// The rewritten file's path inside the user's project, as written.
+    pub file: String,
+    /// Our 0600 copy of the file AS IT WAS BEFORE rexenv ever touched it.
+    pub backup_path: String,
+    pub written_at: String,
+}
+
+/// Record a rewrite's backup. INSERT, never upsert — FIRST BACKUP WINS: a
+/// second rewrite of the same file must reuse the existing record (and its
+/// backup), because overwriting the backup with already-rewritten content
+/// would silently turn revert into a lie. The (site_id, file) PRIMARY KEY
+/// is the backstop; callers check [`get_config_rewrite`] first.
+pub fn insert_config_rewrite(
+    conn: &Connection,
+    site_id: &str,
+    file: &str,
+    backup_path: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO config_rewrites (site_id, file, backup_path) VALUES (?1, ?2, ?3)",
+        params![site_id, file, backup_path],
+    )?;
+    Ok(())
+}
+
+fn row_to_config_rewrite(row: &Row) -> rusqlite::Result<ConfigRewrite> {
+    Ok(ConfigRewrite {
+        site_id: row.get(0)?,
+        file: row.get(1)?,
+        backup_path: row.get(2)?,
+        written_at: row.get(3)?,
+    })
+}
+
+pub fn get_config_rewrite(
+    conn: &Connection,
+    site_id: &str,
+    file: &str,
+) -> Result<Option<ConfigRewrite>> {
+    let mut stmt = conn.prepare(
+        "SELECT site_id, file, backup_path, written_at FROM config_rewrites
+         WHERE site_id = ?1 AND file = ?2",
+    )?;
+    let mut rows = stmt.query_map(params![site_id, file], row_to_config_rewrite)?;
+    Ok(rows.next().transpose()?)
+}
+
+/// All rewrite records for one site — site delete restores/cleans these.
+pub fn config_rewrites_for_site(conn: &Connection, site_id: &str) -> Result<Vec<ConfigRewrite>> {
+    let mut stmt = conn.prepare(
+        "SELECT site_id, file, backup_path, written_at FROM config_rewrites WHERE site_id = ?1",
+    )?;
+    let rows = stmt.query_map([site_id], row_to_config_rewrite)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+/// Every rewrite record — the orphan sweep enumerates against this
+/// (reports, never auto-deletes).
+pub fn list_config_rewrites(conn: &Connection) -> Result<Vec<ConfigRewrite>> {
+    let mut stmt = conn
+        .prepare("SELECT site_id, file, backup_path, written_at FROM config_rewrites")?;
+    let rows = stmt.query_map([], row_to_config_rewrite)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+/// Remove a rewrite record (revert, or site delete) — the caller deletes the
+/// backup file in the same operation.
+pub fn delete_config_rewrite(conn: &Connection, site_id: &str, file: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM config_rewrites WHERE site_id = ?1 AND file = ?2",
+        params![site_id, file],
+    )?;
     Ok(())
 }
 

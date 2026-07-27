@@ -171,7 +171,22 @@ export function DbImportCard({ site }: { site: Site }) {
         </div>
       )}
 
-      {record && !running && (
+      {record?.state === "connected" && !running && (
+        /* Minimal until the Stage 3 diff/consent card (step 6) replaces this.
+           The wording is exactly what was proven (§6): the rewritten settings
+           sign in — not "the site is now using this database". */
+        <div className="mt-3 rounded-lg border border-status-running-border bg-status-running-bg/30 p-3 text-sm">
+          <p className="font-medium">Connected.</p>
+          <p>
+            This site's connection settings were rewritten and verified: they sign in to{" "}
+            <span className="font-mono text-[0.78125rem]">{record.dbName}</span> on rexenv's
+            engine{record.verified === "signin+http" &&
+              ", and the site answered over HTTP without a database error"}.
+          </p>
+        </div>
+      )}
+
+      {record?.state === "imported" && !running && (
         <div className="mt-3 space-y-3">
           <div
             className={cn(

@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
-import type { Site, SiteResources } from "@/types";
+import type { DbImportRecord, Site, SiteResources } from "@/types";
 
 /** Compact bytes for the per-site DB size. */
 function fmtBytes(b: number): string {
@@ -166,7 +166,7 @@ export function SiteRow({
   site,
   status,
   resources,
-  dbImported = false,
+  dbState,
   onOpen,
   onDelete,
   onOpenDatabase,
@@ -178,9 +178,9 @@ export function SiteRow({
   site: Site;
   status: Site["status"];
   resources?: SiteResources;
-  /** This site has an imported database the site isn't reading yet (the ONE
-   *  serialized DbImportRecord fact — see the badge comment). */
-  dbImported?: boolean;
+  /** This site's database-import state (the ONE serialized DbImportRecord
+   *  fact — see the badge comment). Undefined = no import. */
+  dbState?: DbImportRecord["state"];
   onOpen: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
@@ -290,16 +290,26 @@ export function SiteRow({
           external
         </span>
       )}
-      {dbImported && (
+      {dbState === "imported" && (
         /* Renders the SAME serialized fact as the SiteDetail summary
-           (DbImportRecord, whose state set has no "connected" value until
-           Stage 3 introduces the fact that proves it) — the badge and the
-           summary cannot disagree, because neither computes anything. */
+           (DbImportRecord, whose "connected" value only the rewrite job's
+           verification can write) — the badge and the summary cannot
+           disagree, because neither computes anything. */
         <span
           className="rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
           title="A copy of this site's database is on rexenv's engine, but the site still reads and writes the old one — they drift apart until you switch it over (see the site's Database tab)."
         >
           DB imported · not connected
+        </span>
+      )}
+      {dbState === "connected" && (
+        /* Wording matches what was PROVEN: the rewritten settings sign in to
+           the rexenv copy — not "the site is now using this database". */
+        <span
+          className="rounded-full border border-status-running-border bg-status-running-bg px-2 py-1 font-mono text-[0.625rem] text-status-running-bright"
+          title="This site's connection settings were rewritten and verified: they sign in to the rexenv copy (see the site's Database tab)."
+        >
+          DB connected
         </span>
       )}
       {site.provisioned ? (
@@ -423,8 +433,8 @@ export function Sites() {
     queryKey: ["db-import-records"],
     queryFn: dbImportRecords,
   });
-  const dbImportedIds = useMemo(
-    () => new Set(dbRecords.filter((r) => r.state === "imported").map((r) => r.siteId)),
+  const dbStates = useMemo(
+    () => new Map(dbRecords.map((r) => [r.siteId, r.state])),
     [dbRecords],
   );
   const resourcesMap = useMemo(
@@ -602,7 +612,7 @@ export function Sites() {
                 site={site}
                 status={statusOf(site)}
                 resources={resourcesMap.get(site.id)}
-                dbImported={dbImportedIds.has(site.id)}
+                dbState={dbStates.get(site.id)}
                 onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
