@@ -149,8 +149,31 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         mysqldump truncates in place, the plan §3 open question) → cancel leaves
         nothing → `.partial`/tampered artifact refused.
     - *Half B — restore into ours (+ credential mirroring)*
-      - [ ] 6. collision + provenance + create + restore with real byte progress
-      - [ ] 7. credential mirroring, reserved names refused (never our `root`)
+      - [x] 6. collision + provenance + create + restore `4141e9d` —
+        `core::dbrestore`. Three orderings structural: provenance-before-create
+        (`Recorded` witness, minted only by `record_provenance` which writes
+        `db_created` FIRST); recorded-truth-outranks-rederivation on Retry (a
+        crash between create and feed would otherwise demote our half-made db
+        to "pre-existing" and strand it); and settle-through-`Verified`-only
+        (`verify_complete` checks MEMBERSHIP of the manifest's table names —
+        not count equality, which a pre-existing target's extra tables would
+        break — and `finish` won't compile without its proof). Retry is
+        drop-and-refeed, never resume (a dump's INSERTs aren't idempotent);
+        `prepare_target` IS the retry path. Manifest now carries table names
+        read from the artifact by the scan. 481 tests.
+      - [x] 7. credential mirroring `590e997` — `core::dbmirror`. Reserved
+        accounts refused as an OUTCOME before any spawn; loopback-only by
+        construction (SQL built from a two-host list, `'%'` in no statement,
+        grant on the one db); idempotent because Retry reruns it (IF NOT
+        EXISTS + ALTER + GRANT); password inside SQL over stdin, never argv.
+        ✓ **Live-verified in the sandbox** (`cargo run --example
+        db_restore_check`, own mysqld :13398): restore asserted as ROW COUNTS
+        (500/20); crafted mid-dump failure names its missing table and cannot
+        verify; **Retry recovers unaided through the same code path to full
+        row counts**; a pre-existing database's extra table survives failure
+        AND retry; mirrored user connects with a quote-and-backslash password,
+        hosts = {localhost, 127.0.0.1} only; root → RefusedReserved; our root
+        still passwordless after everything.
       - [ ] 8. job wiring + both entry points (SiteDetail, `/import` checkbox)
       - [ ] 9. interim state — "imported, not yet connected" from ONE fact
       - [ ] 10. `db_import_check` + `db_import_recovery_check` cases 1–4
