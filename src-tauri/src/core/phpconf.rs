@@ -39,6 +39,14 @@ pub enum Unreadable {
     /// Its body can contain anything, including text that looks like a
     /// `define()`, so we stop there rather than risk reading the wrong thing.
     UnsupportedSyntax { detail: String },
+    /// The key exists only as a comment (`# DB_PORT=3306`) — usually a
+    /// deliberate off-switch, so an edit neither uncomments it nor adds a
+    /// live copy beside it (writes only; reads treat comments as absent).
+    CommentedOut { key: String, line: usize },
+    /// The editor's own self-check: after preparing an edit, the key didn't
+    /// read back with the new value. Never the file's shape — our bug — but
+    /// the downgrade is the same: tell-only, never a blind write.
+    EditUnverified { key: String },
 }
 
 impl Unreadable {
@@ -51,8 +59,8 @@ impl Unreadable {
                  settings from.".into()
             }
             Unreadable::DuplicateKey { key, first_line, second_line } => format!(
-                "{key} is set twice (lines {first_line} and {second_line}) with different \
-                 values, so rexenv can't tell which one this site actually uses."
+                "{key} is set more than once (lines {first_line} and {second_line}), so \
+                 rexenv can't tell which one this site actually uses."
             ),
             Unreadable::NonLiteral { key, saw } => format!(
                 "{key} is computed rather than written out ({saw}), and rexenv reads these \
@@ -69,6 +77,15 @@ impl Unreadable {
                 "rexenv stopped reading this config at {detail} — it can't be sure what \
                  comes after it means."
             ),
+            Unreadable::CommentedOut { key, line } => format!(
+                "{key} appears only commented out (line {line}), which usually means it \
+                 was switched off on purpose — rexenv won't uncomment it or add a live \
+                 copy beside it."
+            ),
+            Unreadable::EditUnverified { key } => format!(
+                "after preparing the change, {key} didn't read back with the new value, \
+                 so rexenv didn't stage this edit — copy the change in by hand instead."
+            ),
         }
     }
 }
@@ -82,6 +99,10 @@ impl Unreadable {
 pub struct Define {
     pub value: Value,
     pub line: usize,
+    /// For a literal string value: the byte span of its contents INSIDE the
+    /// quotes — what `core::confedit` replaces to edit the value while
+    /// preserving every other byte of the file. `None` for non-string shapes.
+    pub value_span: Option<(usize, usize)>,
 }
 
 /// A define's value as written.
@@ -213,9 +234,9 @@ pub fn find_defines(text: &str, name: &str) -> (Vec<Define>, Option<Unreadable>)
             && !text[i + 6..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
         {
             let at_line = line;
-            if let Some((found_name, value, end)) = parse_define(text, i) {
+            if let Some((found_name, value, value_span, end)) = parse_define(text, i) {
                 if found_name == name {
-                    out.push(Define { value, line: at_line });
+                    out.push(Define { value, line: at_line, value_span });
                 }
                 bump!(end - i);
                 continue;
@@ -274,9 +295,12 @@ pub fn wp_table_prefix(text: &str) -> Option<String> {
     None
 }
 
+/// name, value, the value's inside-the-quotes byte span (literal strings
+/// only), and the index just past the closing paren.
+type ParsedDefine = (String, Value, Option<(usize, usize)>, usize);
+
 /// Parse `define ( 'NAME' , VALUE )` starting at the `define` keyword.
-/// Returns the name, the value, and the index just past the closing paren.
-fn parse_define(text: &str, start: usize) -> Option<(String, Value, usize)> {
+fn parse_define(text: &str, start: usize) -> Option<ParsedDefine> {
     let b = text.as_bytes();
     let mut i = start + "define".len();
     i = skip_ws(text, i)?;
@@ -303,15 +327,15 @@ fn parse_define(text: &str, start: usize) -> Option<(String, Value, usize)> {
             skip_ws(text, *next).is_some_and(|k| b[k] == b',' || b[k] == b')')
         });
 
-    let (value, mut end) = match quoted {
+    let (value, span, mut end) = match quoted {
         Some((s, next)) => {
             // A double-quoted string interpolates: "$db" or "{$cfg['db']}" is
             // not a literal, whatever it looks like.
             let raw = &text[i..next];
             if b[i] == b'"' && (raw.contains('$') || raw.contains('{')) {
-                (Value::NonLiteral(raw.to_string()), next)
+                (Value::NonLiteral(raw.to_string()), None, next)
             } else {
-                (Value::Str(s), next)
+                (Value::Str(s), Some((i + 1, next - 1)), next)
             }
         }
         None => {
@@ -327,7 +351,7 @@ fn parse_define(text: &str, start: usize) -> Option<(String, Value, usize)> {
                 }
                 _ => Value::NonLiteral(raw.to_string()),
             };
-            (v, j)
+            (v, None, j)
         }
     };
 
@@ -340,7 +364,7 @@ fn parse_define(text: &str, start: usize) -> Option<(String, Value, usize)> {
     if b.get(end)? != &b')' {
         return None;
     }
-    Some((name, value, end + 1))
+    Some((name, value, span, end + 1))
 }
 
 /// Index of the `)` that closes the call whose arguments start at `i`, stepping
@@ -457,6 +481,148 @@ fn scan_string(text: &str, i: usize) -> Option<(String, usize)> {
 // .env
 // ---------------------------------------------------------------------------
 
+/// One physical `.env` line, classified, with byte offsets into the original
+/// text — THE parser both the reader ([`dotenv_value`]) and the editor
+/// (`core::confedit`) consume, so the two can't drift. Lines are classified
+/// independently (exactly the reader's historical behaviour); the editor
+/// refuses the whole file when any line opens a quote it doesn't close,
+/// because past that point the line structure itself is untrustworthy.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EnvLine {
+    /// 1-based, for messages.
+    pub line_no: usize,
+    /// Byte offset of the line's first byte in the original text.
+    pub start: usize,
+    /// Byte offset just past the line's content, EXCLUDING its terminator.
+    pub content_end: usize,
+    /// The line's terminator as written (`"\n"`, `"\r\n"`, or `""` at EOF).
+    pub terminator: &'static str,
+    pub kind: EnvLineKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum EnvLineKind {
+    /// Blank, or a comment that doesn't look like a switched-off entry.
+    Other,
+    /// `# DB_PORT=3306` — a commented-out entry. Reads treat it as absent;
+    /// the editor refuses to guess at it ([`Unreadable::CommentedOut`]).
+    CommentedEntry { key: String },
+    /// A live `KEY=value` line.
+    Entry {
+        key: String,
+        /// The value as the reader resolves it (unquoted, comment-stripped).
+        value: String,
+        /// Byte span of the value in the original text: inside the quotes
+        /// for a quoted value, the trimmed value text for an unquoted one.
+        /// Replacing exactly this span edits the value and nothing else.
+        value_span: (usize, usize),
+        /// Contains `${` — refused for target keys, tolerated elsewhere.
+        interpolates: bool,
+    },
+    /// A quoted value that never closes on its line.
+    UnterminatedQuote { key: String },
+}
+
+/// Split `text` into classified lines. Pure and total: every byte of the
+/// input is inside exactly one line's `start..content_end + terminator`.
+pub(crate) fn dotenv_lines(text: &str) -> Vec<EnvLine> {
+    let mut out = Vec::new();
+    let mut offset = 0usize;
+    let mut line_no = 0usize;
+    while offset < text.len() || (offset == 0 && text.is_empty()) {
+        line_no += 1;
+        let rest = &text[offset..];
+        let (content, terminator) = match rest.find('\n') {
+            Some(nl) if nl > 0 && rest.as_bytes()[nl - 1] == b'\r' => {
+                (&rest[..nl - 1], "\r\n")
+            }
+            Some(nl) => (&rest[..nl], "\n"),
+            None => (rest, ""),
+        };
+        let start = offset;
+        let content_end = start + content.len();
+        out.push(EnvLine {
+            line_no,
+            start,
+            content_end,
+            terminator,
+            kind: classify_env_line(content, start),
+        });
+        offset = content_end + terminator.len();
+        if terminator.is_empty() {
+            break;
+        }
+    }
+    out
+}
+
+/// Classify one line's content (`start` = its byte offset in the file, so
+/// value spans are file-absolute).
+fn classify_env_line(content: &str, start: usize) -> EnvLineKind {
+    // Mirror the reader's historical tolerances exactly: leading BOM(s)
+    // stripped, then whitespace-trimmed, then an optional `export ` prefix.
+    let after_bom = content.trim_start_matches('\u{feff}');
+    let trimmed = after_bom.trim();
+    if trimmed.is_empty() {
+        return EnvLineKind::Other;
+    }
+    if let Some(after_hash) = trimmed.strip_prefix('#') {
+        // A comment. Does it look like a switched-off entry?
+        let t = after_hash.trim_start();
+        let t = t.strip_prefix("export ").unwrap_or(t).trim_start();
+        if let Some((k, _)) = t.split_once('=') {
+            let k = k.trim();
+            if !k.is_empty()
+                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !k.chars().next().is_some_and(|c| c.is_ascii_digit())
+            {
+                return EnvLineKind::CommentedEntry { key: k.to_string() };
+            }
+        }
+        return EnvLineKind::Other;
+    }
+    let line = trimmed.strip_prefix("export ").unwrap_or(trimmed).trim_start();
+    let Some((k, _)) = line.split_once('=') else {
+        return EnvLineKind::Other;
+    };
+    let key = k.trim().to_string();
+    // Byte offsets: find the value's position in the ORIGINAL content. The
+    // `=` we split at is the first one at or after `line`'s position.
+    let line_off = start + (line.as_ptr() as usize - content.as_ptr() as usize);
+    let eq_off = line_off + line.find('=').expect("split_once found one");
+    let v_raw = &content[(eq_off + 1 - start)..];
+    let v = v_raw.trim_start();
+    let v_off = eq_off + 1 + (v_raw.len() - v.len());
+    if v.starts_with('"') || v.starts_with('\'') {
+        let quote = v.as_bytes()[0];
+        let body = &v[1..];
+        let Some(close) = body.find(quote as char) else {
+            return EnvLineKind::UnterminatedQuote { key };
+        };
+        let value = body[..close].to_string();
+        let interpolates = value.contains("${");
+        EnvLineKind::Entry {
+            key,
+            value,
+            value_span: (v_off + 1, v_off + 1 + close),
+            interpolates,
+        }
+    } else {
+        // Unquoted: an inline comment ends the value, per dotenv.
+        let val_text = match v.find(" #") {
+            Some(p) => v[..p].trim_end(),
+            None => v.trim_end(),
+        };
+        let interpolates = val_text.contains("${");
+        EnvLineKind::Entry {
+            key,
+            value: val_text.to_string(),
+            value_span: (v_off, v_off + val_text.len()),
+            interpolates,
+        }
+    }
+}
+
 /// Read one key from a `.env`, conservatively.
 ///
 /// Refuses rather than guesses on: a duplicate key, a value whose quote doesn't
@@ -464,45 +630,28 @@ fn scan_string(text: &str, i: usize) -> Option<(String, usize)> {
 /// `#` comments, CRLF, blank lines and unquoted values.
 pub fn dotenv_value(text: &str, key: &str) -> Result<String, Unreadable> {
     let mut found: Option<(String, usize)> = None;
-    for (idx, raw) in text.lines().enumerate() {
-        let line_no = idx + 1;
-        let line = raw.trim_start_matches('\u{feff}').trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        let line = line.strip_prefix("export ").unwrap_or(line).trim_start();
-        let Some((k, v)) = line.split_once('=') else { continue };
-        if k.trim() != key {
-            continue;
-        }
-        let v = v.trim_start();
-        let value = if v.starts_with('"') || v.starts_with('\'') {
-            let quote = v.as_bytes()[0];
-            let body = &v[1..];
-            // The closing quote must be on this line, or we are looking at a
-            // value that spans lines and we don't guess at those.
-            let Some(close) = body.find(quote as char) else {
-                return Err(Unreadable::MultiLineValue { key: key.into(), line: line_no });
-            };
-            body[..close].to_string()
-        } else {
-            // Unquoted: an inline comment ends the value, per dotenv.
-            match v.find(" #") {
-                Some(p) => v[..p].trim_end().to_string(),
-                None => v.trim_end().to_string(),
+    for line in dotenv_lines(text) {
+        match line.kind {
+            EnvLineKind::UnterminatedQuote { key: k } if k == key => {
+                // The closing quote must be on this line, or we are looking at
+                // a value that spans lines and we don't guess at those.
+                return Err(Unreadable::MultiLineValue { key: key.into(), line: line.line_no });
             }
-        };
-        if value.contains("${") {
-            return Err(Unreadable::NonLiteral { key: key.into(), saw: value });
+            EnvLineKind::Entry { key: k, value, interpolates, .. } if k == key => {
+                if interpolates {
+                    return Err(Unreadable::NonLiteral { key: key.into(), saw: value });
+                }
+                if let Some((_, first_line)) = &found {
+                    return Err(Unreadable::DuplicateKey {
+                        key: key.into(),
+                        first_line: *first_line,
+                        second_line: line.line_no,
+                    });
+                }
+                found = Some((value, line.line_no));
+            }
+            _ => {}
         }
-        if let Some((_, first_line)) = &found {
-            return Err(Unreadable::DuplicateKey {
-                key: key.into(),
-                first_line: *first_line,
-                second_line: line_no,
-            });
-        }
-        found = Some((value, line_no));
     }
     found.map(|(v, _)| v).ok_or(Unreadable::MissingKey { key: key.into() })
 }
@@ -685,6 +834,8 @@ define('SCRIPT_DEBUG', 0);
             Unreadable::MultiLineValue { key: "DB_PASSWORD".into(), line: 4 },
             Unreadable::MissingKey { key: "DB_NAME".into() },
             Unreadable::UnsupportedSyntax { detail: "a heredoc on line 3".into() },
+            Unreadable::CommentedOut { key: "DB_PORT".into(), line: 7 },
+            Unreadable::EditUnverified { key: "DB_HOST".into() },
         ];
         for c in cases {
             let m = c.message();
