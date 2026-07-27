@@ -284,6 +284,54 @@ leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.
 
 ---
 
+## I) 🚧 Database import (Stage 2) — live DBngin source check + packaged GUI pass
+
+The sandbox proves the machinery (`db_dump_check`, `db_restore_check`); this pass proves
+it against a REAL source and the packaged UI. **The user's side of the bargain (D6): rexenv
+never starts or stops their database server, so step 2 is yours.**
+
+**Preconditions — in this order:**
+
+1. Rebuild + reinstall; confirm the commit via Settings → About or `rex version`.
+2. **Start DBngin's MySQL 8.0.27 yourself** (DBngin.app → start the engine). rexenv will
+   refuse honestly if 3306 is silent — that refusal is itself checkable (step 4).
+3. Have `ea.test` imported as a site (Stage 1) or import it now.
+
+**The pass:**
+
+4. WITH DBNGIN STILL STOPPED first: SiteDetail → ea.test → Database → **Import database**.
+   Expect the honest per-site refusal naming host, port and what to do ("start it in
+   DBngin, then re-scan") — NOT a timeout, NOT a generic error. The plist claims
+   `started`; the UI must not believe it.
+5. Start DBngin's MySQL. Import again. Expect phases check → copy → start → restore →
+   finish, progress monotonic, ≤99 until the settle.
+6. **The interim state (§9 — the state users actually live in).** After success:
+   - the summary reads "Imported — not yet connected", names `ea`, the table count, size
+     and source, and says the site STILL reads the old database and the two DRIFT;
+   - the Sites page shows the "DB imported · not connected" badge on ea.test — same
+     wording as the summary implies, because both render one `DbImportRecord`;
+   - `DB_USER` in ea's wp-config is root, so the copy must state the 3-key change
+     (host + user + empty password), not just DB_HOST.
+7. Verify the copy is real: SiteDetail → Database (Adminer) → the `ea` database exists
+   on rexenv's MySQL with the expected tables. The SITE meanwhile still serves from the
+   old database (edit a post title via the site, confirm it does NOT appear in rexenv's
+   copy — that's the drift, demonstrated).
+8. **Their side untouched:** DBngin still runs, `ea` on 3306 intact (`shasum` of their
+   datadir is overkill — check table counts via any client, or just that the site still
+   works when pointed at it).
+9. Cancel path: start an import, cancel during the copy. Expect "cancelled", no artifact
+   left (Settings shows no leftover), site row unchanged, DBngin untouched.
+10. Failure keep: stop DBngin's MySQL MID-copy (this is the one legitimate way to kill a
+    dump). Expect a frozen failed state naming the kept dump file; Settings →
+    "Leftover database dumps" lists it with a working Delete.
+11. Batch: `/import` → tick "also copy databases" → import a small WP site. Expect the
+    per-row "DB copied" chip, and a site with no database config to read "DB skipped"
+    with the reason — never a failure.
+12. Concurrency guard: while a database import runs, Retry/provision for the same site
+    must refuse with "a database import is running for …", and vice versa.
+
+---
+
 ## Publish-blocking summary
 
 | # | Check | Status |
@@ -293,3 +341,4 @@ leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
+| I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | 🚧 ready to run |

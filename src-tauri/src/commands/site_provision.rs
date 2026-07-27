@@ -52,6 +52,19 @@ pub struct ProvisionJobs {
     next_seq: AtomicU64,
 }
 
+impl ProvisionJobs {
+    /// Is a provision job currently RUNNING for `domain`? The database import
+    /// consults this before starting: the two jobs would otherwise race on the
+    /// same site's database and edge reload.
+    pub(crate) fn busy_for(&self, domain: &str) -> bool {
+        self.jobs
+            .lock()
+            .expect("provision jobs lock")
+            .values()
+            .any(|e| e.domain == domain && e.running.load(Ordering::SeqCst))
+    }
+}
+
 struct ProvisionEntry {
     id: String,
     seq: u64,
@@ -303,6 +316,17 @@ pub(crate) fn start<R: tauri::Runtime>(
     wp: Option<wordpress::InstallOptions>,
     blueprint_id: Option<String>,
 ) -> Result<SiteProvisionState> {
+    // The mirror of ProvisionJobs::busy_for: a database import mid-run for this
+    // domain owns the site's database (it may be mid-DROP on a retry) — a
+    // provision alongside it would race that.
+    if let Ok(active) = state.db_import_active.lock() {
+        if active.as_deref() == Some(site.domain.as_str()) {
+            return Err(Error::Other(format!(
+                "a database import is running for {} — wait for it (or cancel it) first.",
+                site.domain
+            )));
+        }
+    }
     let site_tld = sites::domain_tld(&site.domain)?;
     core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
 
@@ -363,6 +387,17 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
             "{} is already fully provisioned — nothing to retry.",
             site.domain
         )));
+    }
+    // The mirror of ProvisionJobs::busy_for: a database import mid-run for this
+    // domain owns the site's database (it may be mid-DROP on a retry) — a
+    // provision alongside it would race that.
+    if let Ok(active) = state.db_import_active.lock() {
+        if active.as_deref() == Some(site.domain.as_str()) {
+            return Err(Error::Other(format!(
+                "a database import is running for {} — wait for it (or cancel it) first.",
+                site.domain
+            )));
+        }
     }
     let site_tld = sites::domain_tld(&site.domain)?;
     core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;

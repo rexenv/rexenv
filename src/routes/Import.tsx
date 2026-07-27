@@ -32,7 +32,16 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
         : outcome.status === "failed"
           ? "border-status-error-border bg-status-error-bg text-status-error-bright"
           : "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted";
-    return { label: outcome.status, tone, title: outcome.reason ?? undefined };
+    // The database's own outcome, when databases were requested — the honest
+    // reason travels in the string after the colon.
+    const db = outcome.db
+      ? outcome.db === "imported"
+        ? { label: "DB copied", title: "The database was copied — the site still reads the old one until you switch it (Database tab)." }
+        : outcome.db.startsWith("failed")
+          ? { label: "DB failed", title: outcome.db }
+          : { label: "DB skipped", title: outcome.db }
+      : null;
+    return { label: outcome.status, tone, title: outcome.reason ?? undefined, db };
   }
   switch (c.status.status) {
     case "importable":
@@ -80,6 +89,7 @@ export function Import() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [running, setRunning] = useState(false);
+  const [withDatabases, setWithDatabases] = useState(false);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const ready = useMemo(() => candidates.filter(selectable).map((c) => c.domain), [candidates]);
@@ -108,7 +118,11 @@ export function Import() {
   const allPicked = ready.length > 0 && ready.every((d) => picked.has(d));
   const run = useMutation({
     mutationFn: () =>
-      valetImportRun({ domains: [...picked].sort(), php: {} }),
+      valetImportRun({
+        domains: [...picked].sort(),
+        php: {},
+        importDatabases: withDatabases,
+      }),
     onMutate: () => {
       setOutcomes({});
       setRunning(true);
@@ -120,6 +134,10 @@ export function Import() {
       const bits = [`${r.imported} imported`];
       if (r.failed) bits.push(`${r.failed} failed`);
       if (r.skipped) bits.push(`${r.skipped} skipped`);
+      if (r.dbImported || r.dbFailed) {
+        bits.push(`${r.dbImported} database${r.dbImported === 1 ? "" : "s"} copied`);
+        if (r.dbFailed) bits.push(`${r.dbFailed} database${r.dbFailed === 1 ? "" : "s"} failed`);
+      }
       if (r.failed) toast.error(bits.join(", "));
       else toast.success(bits.join(", "));
       if (r.servingBlocked) {
@@ -213,7 +231,23 @@ export function Import() {
                 <span className="text-[0.75rem] text-rex-text-muted">
                   {picked.size > 0 ? `${picked.size} selected` : "Select sites to import"}
                 </span>
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex items-center gap-3">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+                    <input
+                      type="checkbox"
+                      className={CHECK}
+                      checked={withDatabases}
+                      disabled={running}
+                      onChange={(e) => setWithDatabases(e.target.checked)}
+                    />
+                    also copy databases
+                    <span
+                      className="cursor-help"
+                      title="After each site imports, rexenv copies its database too (a read — the old database is never touched). The site keeps using the OLD database until you switch it over; each site's Database tab shows the exact change."
+                    >
+                      ⓘ
+                    </span>
+                  </label>
                   {running && (
                     <Button variant="ghost" onClick={() => void valetImportCancel()}>
                       Cancel after current
@@ -280,6 +314,21 @@ export function Import() {
                     <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
                       {c.phpTarget ? `PHP ${c.phpTarget}` : c.phpMinor ? `PHP ${c.phpMinor}` : ""}
                     </span>
+                    {"db" in pill && pill.db && (
+                      <span
+                        className={cn(
+                          "flex-none rounded-full border px-2 py-1 font-mono text-[0.625rem]",
+                          pill.db.label === "DB copied"
+                            ? "border-status-warning-border bg-status-warning-bg text-status-warning-bright"
+                            : pill.db.label === "DB failed"
+                              ? "border-status-error-border bg-status-error-bg text-status-error-bright"
+                              : "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted",
+                        )}
+                        title={pill.db.title}
+                      >
+                        {pill.db.label}
+                      </span>
+                    )}
                     <span
                       className={cn(
                         "flex-none rounded-full border px-2 py-1 font-mono text-[0.625rem]",

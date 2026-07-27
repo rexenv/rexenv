@@ -296,6 +296,10 @@ pub struct ImportRequest {
     /// don't ship the version they pinned.
     #[serde(default)]
     pub php: std::collections::HashMap<String, String>,
+    /// Opt-in (D4): after each site imports, run the SAME per-site database
+    /// import job for it. Off by default — the checkbox is the consent.
+    #[serde(default)]
+    pub import_databases: bool,
 }
 
 /// What happened to one row. Terminal — every requested domain gets exactly one.
@@ -310,6 +314,10 @@ pub struct ImportOutcome {
     pub site_id: Option<String>,
     /// The job log, so a failure is diagnosable rather than just red.
     pub log_key: Option<String>,
+    /// Database outcome when `import_databases` was on: `imported` · `failed` ·
+    /// `skipped` (site import failed, or the site has no database to read).
+    /// Carries the honest reason after a colon.
+    pub db: Option<String>,
 }
 
 /// The end-of-run summary.
@@ -320,6 +328,9 @@ pub struct ImportResult {
     pub imported: usize,
     pub failed: usize,
     pub skipped: usize,
+    /// Databases that came over / didn't, when `import_databases` was on.
+    pub db_imported: usize,
+    pub db_failed: usize,
     /// Checked ONCE at the end: something else answers :443, so nothing
     /// imported will load until it lets go.
     pub serving_blocked: bool,
@@ -349,6 +360,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     state: State<'_, AppState>,
     jobs: State<'_, ImportJobs>,
     provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
+    db_jobs: State<'_, crate::commands::db_import::DbImportJobs>,
     request: ImportRequest,
 ) -> Result<ImportResult> {
     use std::sync::atomic::Ordering;
@@ -464,7 +476,19 @@ pub async fn valet_import_run<R: tauri::Runtime>(
             outcomes.push(row);
             continue;
         }
-        let row = import_one(&app, &state, &provision, &c, &php).await;
+        let mut row = import_one(&app, &state, &provision, &c, &php).await;
+        // Opt-in database import, per site, CONTINUE ON FAILURE exactly like
+        // the sites themselves: a database that won't come over must not cost
+        // the rest of the batch, and every row states what happened to its
+        // database by name.
+        if request.import_databases {
+            row.db = Some(match (&row.status[..], &row.site_id) {
+                ("imported", Some(site_id)) => {
+                    import_db_for(&app, &state, &db_jobs, &provision, site_id).await
+                }
+                _ => "skipped: the site itself didn't import".to_string(),
+            });
+        }
         let _ = app.emit(import_event(), row.clone());
         outcomes.push(row);
     }
@@ -480,13 +504,83 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     let imported = outcomes.iter().filter(|o| o.status == "imported").count();
     let failed = outcomes.iter().filter(|o| o.status == "failed").count();
     let skipped_n = outcomes.iter().filter(|o| o.status == "skipped").count();
+    let db_imported = outcomes
+        .iter()
+        .filter(|o| o.db.as_deref().is_some_and(|d| d == "imported"))
+        .count();
+    let db_failed = outcomes
+        .iter()
+        .filter(|o| o.db.as_deref().is_some_and(|d| d.starts_with("failed")))
+        .count();
     Ok(ImportResult {
         outcomes,
         imported,
         failed,
         skipped: skipped_n,
+        db_imported,
+        db_failed,
         serving_blocked: serving_blocked && imported > 0,
     })
+}
+
+/// Run the ONE database-import job for a freshly imported site and wait for it
+/// to settle. The same job the SiteDetail button starts — no parallel
+/// implementation to drift (the import_one rule, applied again).
+async fn import_db_for<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &State<'_, AppState>,
+    db_jobs: &State<'_, crate::commands::db_import::DbImportJobs>,
+    provision: &State<'_, crate::commands::site_provision::ProvisionJobs>,
+    site_id: &str,
+) -> String {
+    // A site with no database config is the common non-WP case — an honest
+    // skip, not a failure.
+    let site = {
+        let Ok(conn) = state.db.lock() else { return "failed: database lock".into() };
+        match crate::core::sites::get(&conn, site_id) {
+            Ok(Some(s)) => s,
+            _ => return "failed: site not found".into(),
+        }
+    };
+    if let Err((reason, _)) =
+        crate::core::dbimport::read_connection(std::path::Path::new(&site.path))
+    {
+        return format!("skipped: {}", crate::core::dbimport::DbSiteStatus::NeedsAttention {
+            reason,
+            source: None,
+        }
+        .message());
+    }
+    let start = crate::commands::db_import::db_import_start(
+        app.clone(),
+        state.clone(),
+        db_jobs.clone(),
+        provision.clone(),
+        site_id.to_string(),
+        None,
+    )
+    .await;
+    let snap = match start {
+        Ok(s) => s,
+        Err(e) => return format!("failed: {e}"),
+    };
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        match crate::commands::db_import::db_import_state(db_jobs.clone(), site_id.to_string()) {
+            Ok(Some(st)) if st.id == snap.id && st.status != "running" => {
+                return match st.status.as_str() {
+                    "ok" => "imported".into(),
+                    "cancelled" => "failed: cancelled".into(),
+                    _ => format!(
+                        "failed: {}",
+                        st.error.unwrap_or_else(|| "see the job log".into())
+                    ),
+                };
+            }
+            Ok(_) => continue,
+            Err(e) => return format!("failed: {e}"),
+        }
+    }
 }
 
 /// Stop after the site currently being imported.
@@ -502,6 +596,7 @@ fn skipped(domain: &str, reason: &str) -> ImportOutcome {
         reason: Some(reason.to_string()),
         site_id: None,
         log_key: None,
+        db: None,
     }
 }
 
@@ -535,6 +630,7 @@ async fn import_one<R: tauri::Runtime>(
                 reason: Some(e.to_string()),
                 site_id: None,
                 log_key: None,
+                db: None,
             }
         }
     };
@@ -549,6 +645,7 @@ async fn import_one<R: tauri::Runtime>(
                     reason: Some(e.to_string()),
                     site_id: None,
                     log_key: Some(snap.log_key.clone()),
+                    db: None,
                 }
             }
         }
@@ -571,6 +668,7 @@ async fn import_one<R: tauri::Runtime>(
         },
         site_id: settled.site_id.clone(),
         log_key: Some(settled.log_key.clone()),
+        db: None,
     }
 }
 

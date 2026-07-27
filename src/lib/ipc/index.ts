@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbImportJobState, DbImportRecord, LeftoverDump, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -147,6 +147,63 @@ export async function onValetImportRow(
  *  or stopped, and no file inside a project is opened. */
 export async function scanValetImport(): Promise<ImportScan> {
   return invoke<ImportScan>("scan_valet_import");
+}
+
+/** Start importing a site's database (one at a time; refuses while a provision
+ *  job runs for the same site). `confirmOverwrite` is the typed database name,
+ *  required only when an unclaimed database of that name already exists. */
+export async function dbImportStart(
+  siteId: string,
+  confirmOverwrite?: string,
+): Promise<DbImportJobState> {
+  return invoke<DbImportJobState>("db_import_start", { siteId, confirmOverwrite: confirmOverwrite ?? null });
+}
+
+/** Latest database-import job state for a site (re-attach on mount). */
+export async function dbImportState(siteId: string): Promise<DbImportJobState | null> {
+  if (!isTauri()) return null;
+  return invoke<DbImportJobState | null>("db_import_state", { siteId });
+}
+
+/** Cancel the running database import. During the dump this stops a read;
+ *  during the restore, rexenv's own partial copy is dropped (only if it was
+ *  created by this import). */
+export async function dbImportCancel(id: string): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>("db_import_cancel", { id });
+}
+
+/** Live job snapshots for a database import. */
+export async function onDbImportState(
+  id: string,
+  cb: (s: DbImportJobState) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<DbImportJobState>(`db-import://state/${id}`, (e) => cb(e.payload));
+}
+
+/** The settled §9 record for one site — the one fact the UI renders. */
+export async function dbImportRecord(siteId: string): Promise<DbImportRecord | null> {
+  if (!isTauri()) return null;
+  return invoke<DbImportRecord | null>("db_import_record", { siteId });
+}
+
+/** All settled records (Sites page badges, one query). */
+export async function dbImportRecords(): Promise<DbImportRecord[]> {
+  if (!isTauri()) return [];
+  return invoke<DbImportRecord[]>("db_import_records");
+}
+
+/** Leftover dumps kept by failed imports (their data — listed, never hidden). */
+export async function dbImportLeftovers(): Promise<LeftoverDump[]> {
+  if (!isTauri()) return [];
+  return invoke<LeftoverDump[]>("db_import_leftovers");
+}
+
+/** Delete one leftover dump (and its manifest). */
+export async function dbImportDeleteLeftover(file: string): Promise<void> {
+  return invoke<void>("db_import_delete_leftover", { file });
 }
 
 /** Take a TLD's /etc/resolver file over from Valet/Herd, backing theirs up

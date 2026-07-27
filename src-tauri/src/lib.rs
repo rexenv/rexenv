@@ -169,6 +169,7 @@ pub fn run() {
             app.manage(commands::wp_install::WpInstallJobs::default());
             app.manage(commands::site_provision::ProvisionJobs::default());
             app.manage(commands::valet_import::ImportJobs::default());
+            app.manage(commands::db_import::DbImportJobs::default());
             // Registry of live per-site public tunnels (§9.1).
             app.manage(commands::tunnels::Tunnels::default());
 
@@ -551,6 +552,13 @@ pub fn run() {
             commands::valet_import::resolver_drift,
             commands::valet_import::valet_import_run,
             commands::valet_import::valet_import_cancel,
+            commands::db_import::db_import_start,
+            commands::db_import::db_import_state,
+            commands::db_import::db_import_cancel,
+            commands::db_import::db_import_record,
+            commands::db_import::db_import_records,
+            commands::db_import::db_import_leftovers,
+            commands::db_import::db_import_delete_leftover,
             commands::sites::list_site_env,
             commands::sites::set_site_env,
             commands::sites::site_cert_info,

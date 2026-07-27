@@ -14,7 +14,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport } from "@/lib/ipc";
+import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { Site, SiteResources } from "@/types";
@@ -166,6 +166,7 @@ export function SiteRow({
   site,
   status,
   resources,
+  dbImported = false,
   onOpen,
   onDelete,
   onOpenDatabase,
@@ -177,6 +178,9 @@ export function SiteRow({
   site: Site;
   status: Site["status"];
   resources?: SiteResources;
+  /** This site has an imported database the site isn't reading yet (the ONE
+   *  serialized DbImportRecord fact — see the badge comment). */
+  dbImported?: boolean;
   onOpen: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
@@ -284,6 +288,18 @@ export function SiteRow({
           title={`Served from your own folder (${site.path}) — deleting the site leaves it in place`}
         >
           external
+        </span>
+      )}
+      {dbImported && (
+        /* Renders the SAME serialized fact as the SiteDetail summary
+           (DbImportRecord, whose state set has no "connected" value until
+           Stage 3 introduces the fact that proves it) — the badge and the
+           summary cannot disagree, because neither computes anything. */
+        <span
+          className="rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
+          title="A copy of this site's database is on rexenv's engine, but the site still reads and writes the old one — they drift apart until you switch it over (see the site's Database tab)."
+        >
+          DB imported · not connected
         </span>
       )}
       {site.provisioned ? (
@@ -401,6 +417,16 @@ export function Sites() {
     queryFn: sitesResources,
     refetchInterval: 5000,
   });
+  // Settled DB-import facts (v20) — drives the "DB imported · not connected"
+  // badge. One query for the whole page.
+  const { data: dbRecords = [] } = useQuery({
+    queryKey: ["db-import-records"],
+    queryFn: dbImportRecords,
+  });
+  const dbImportedIds = useMemo(
+    () => new Set(dbRecords.filter((r) => r.state === "imported").map((r) => r.siteId)),
+    [dbRecords],
+  );
   const resourcesMap = useMemo(
     () => new Map((resources ?? []).map((r) => [r.id, r])),
     [resources],
@@ -576,6 +602,7 @@ export function Sites() {
                 site={site}
                 status={statusOf(site)}
                 resources={resourcesMap.get(site.id)}
+                dbImported={dbImportedIds.has(site.id)}
                 onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}

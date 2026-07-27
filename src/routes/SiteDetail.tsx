@@ -27,6 +27,7 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
+import { DbImportCard } from "@/components/sites/DbImportCard";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
@@ -238,19 +239,23 @@ export function SiteDetail() {
           {active === "wordpress" && (
             <WordPressManager siteId={site.id} multisite={site.multisite} domain={site.domain} />
           )}
-          {active === "database" &&
-            (site.type === "php" ? (
-              <Placeholder
-                icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-                label="No database"
-                hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
-              />
-            ) : (
-              <AdminerFrame
-                src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })}
-                externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
-              />
-            ))}
+          {active === "database" && (
+            <div className="space-y-4">
+              {site.docrootManaged === false && <DbImportCard site={site} />}
+              {site.type === "php" ? (
+                <Placeholder
+                  icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
+                  label="No database"
+                  hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
+                />
+              ) : (
+                <AdminerFrame
+                  src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })}
+                  externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
+                />
+              )}
+            </div>
+          )}
           {active === "logs" && (
             <SiteLogs site={site} isWordpress={isWordpress} wpResolved={wpResolved} />
           )}

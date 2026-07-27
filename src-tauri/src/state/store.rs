@@ -360,6 +360,84 @@ pub fn db_name_exists(conn: &Connection, db_name: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
+/// The settled outcome of a site's database import (v20) — the ONE fact the
+/// summary, badge and detail panel all render from. `state` is a closed set;
+/// today's only value is `imported` (copy on our engine, site still reading
+/// the old database). See the v20 migration comment.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbImportRecord {
+    pub site_id: String,
+    pub state: String,
+    pub db_name: String,
+    pub table_count: u64,
+    pub size_bytes: u64,
+    /// e.g. "MySQL 8.0.27 at 127.0.0.1:3306".
+    pub source_label: String,
+    /// `None` = their config connects as a reserved account (root): the
+    /// interim change is three keys, and the copy must say so.
+    pub mirrored_user: Option<String>,
+    pub imported_at: String,
+}
+
+/// Upsert the settled import outcome for a site (a re-import replaces it).
+pub fn upsert_db_import(conn: &Connection, r: &DbImportRecord) -> Result<()> {
+    conn.execute(
+        "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(site_id) DO UPDATE SET
+           state = ?2, db_name = ?3, table_count = ?4, size_bytes = ?5,
+           source_label = ?6, mirrored_user = ?7, imported_at = datetime('now')",
+        params![
+            r.site_id,
+            r.state,
+            r.db_name,
+            r.table_count as i64,
+            r.size_bytes as i64,
+            r.source_label,
+            r.mirrored_user,
+        ],
+    )?;
+    Ok(())
+}
+
+fn row_to_db_import(row: &Row) -> rusqlite::Result<DbImportRecord> {
+    Ok(DbImportRecord {
+        site_id: row.get(0)?,
+        state: row.get(1)?,
+        db_name: row.get(2)?,
+        table_count: row.get::<_, i64>(3)? as u64,
+        size_bytes: row.get::<_, i64>(4)? as u64,
+        source_label: row.get(5)?,
+        mirrored_user: row.get(6)?,
+        imported_at: row.get(7)?,
+    })
+}
+
+pub fn get_db_import(conn: &Connection, site_id: &str) -> Result<Option<DbImportRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at
+         FROM db_imports WHERE site_id = ?1",
+    )?;
+    let mut rows = stmt.query_map([site_id], row_to_db_import)?;
+    Ok(rows.next().transpose()?)
+}
+
+pub fn list_db_imports(conn: &Connection) -> Result<Vec<DbImportRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at
+         FROM db_imports",
+    )?;
+    let rows = stmt.query_map([], row_to_db_import)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+/// Remove a site's import record (site deletion).
+pub fn delete_db_import(conn: &Connection, site_id: &str) -> Result<()> {
+    conn.execute("DELETE FROM db_imports WHERE site_id = ?1", [site_id])?;
+    Ok(())
+}
+
 /// The site that owns `db_name`, if any — the database import's "whose is
 /// this?" question (Stage 2). Same authority as [`db_name_exists`], but the
 /// import needs WHICH site, to name it in the shared-database refusal.

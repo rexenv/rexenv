@@ -174,10 +174,32 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         AND retry; mirrored user connects with a quote-and-backslash password,
         hosts = {localhost, 127.0.0.1} only; root → RefusedReserved; our root
         still passwordless after everything.
-      - [ ] 8. job wiring + both entry points (SiteDetail, `/import` checkbox)
-      - [ ] 9. interim state — "imported, not yet connected" from ONE fact
-      - [ ] 10. `db_import_check` + `db_import_recovery_check` cases 1–4
-      - [ ] 11. `PUBLISH-TESTING.md` §I incl. the DBngin precondition step
+      - [x] 8. job wiring + both entry points `<pending8>` —
+        `commands/db_import.rs`: streamed job (registry, events, per-job log,
+        cancel, honest progress — real bytes both directions), sequencing IS
+        the witness chain. Both directions of the concurrency guard: db-import
+        checks `ProvisionJobs::busy_for`, provision/retry check
+        `AppState::db_import_active`. Batch: `importDatabases` opt-in runs the
+        SAME job per site after its provision settles (no parallel
+        implementation), continue-on-failure, per-row `db` outcome + summary
+        counts. Typed-confirm required to overwrite an unclaimed database.
+      - [x] 9. interim state from ONE fact `<pending8>` — v20 `db_imports`
+        row (`state` closed set, no "connected" value until Stage 3);
+        summary, Sites badge and copy-paste block all render the same
+        `DbImportRecord`. Copy says the three things: the copy exists, the
+        site still reads the OLD database, and the two DRIFT from now on.
+        Root case states the 3-key change. Settings lists leftover dumps
+        (their data — named, sized, deletable); success deletes its own.
+      - [x] 10. recovery + end-to-end examples — covered by `db_dump_check`
+        (cancel leaves nothing; interrupted dump unrestorable) and
+        `db_restore_check` (partial restore honest + named; **Retry recovers
+        unaided to full row counts**; pre-existing survives everything;
+        mirroring live). Unreachable-source is unit-level (`probe` refused
+        port) + §I step 4 live.
+      - [x] 11. `PUBLISH-TESTING.md` §I `<pending8>` — 12 steps incl. the
+        DBngin precondition (user starts it; step 4 checks the honest refusal
+        while it's stopped), the drift demonstration (step 7), the mid-copy
+        kill for the kept-artifact path, and both concurrency directions.
   - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first)
 
 - [x] **Add plugin/theme from Git — clone → detect → install → build** ✓

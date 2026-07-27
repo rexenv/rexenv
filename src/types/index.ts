@@ -174,6 +174,8 @@ export interface ImportRequest {
   domains: string[];
   /** Per-domain PHP minor, for rows where they had to choose. */
   php: Record<string, string>;
+  /** Opt-in: after each site imports, also run its database import. */
+  importDatabases?: boolean;
 }
 
 /** What happened to one row — terminal; every requested domain gets exactly one. */
@@ -186,6 +188,9 @@ export interface ImportOutcome {
   siteId: string | null;
   /** The job log, so a failure is diagnosable rather than just red. */
   logKey: string | null;
+  /** Database outcome when importDatabases was on: `imported` · `failed: …` ·
+   *  `skipped: …`. Null when databases weren't requested. */
+  db: string | null;
 }
 
 /** End-of-run summary: which succeeded, which didn't, and why. */
@@ -194,9 +199,64 @@ export interface ImportResult {
   imported: number;
   failed: number;
   skipped: number;
+  /** Databases that came over / didn't, when importDatabases was on. */
+  dbImported: number;
+  dbFailed: number;
   /** Checked once at the end: something else answers :443, so nothing imported
    *  will load until it lets go. */
   servingBlocked: boolean;
+}
+
+/** The settled outcome of a site's database import — the ONE fact the badge,
+ *  the summary sentence and the detail panel all render from, so they can
+ *  never disagree. `state` is a closed set whose only value today is
+ *  `imported`: the copy exists on rexenv's engine and the site still reads
+ *  and writes the OLD database. A `connected` value does not exist until
+ *  Stage 3 introduces the fact that proves it. */
+export interface DbImportRecord {
+  siteId: string;
+  state: "imported";
+  dbName: string;
+  tableCount: number;
+  sizeBytes: number;
+  /** e.g. "MySQL 8.0.27 at 127.0.0.1:3306". */
+  sourceLabel: string;
+  /** Null = their config connects as root: the interim change is three keys. */
+  mirroredUser: string | null;
+  importedAt: string;
+}
+
+/** One phase of a running database-import job. */
+export interface DbImportPhase {
+  key: string;
+  label: string;
+  status: "pending" | "running" | "ok" | "failed" | "cancelled" | "skipped";
+}
+
+/** A database-import job's whole truth (honest-progress contract: monotonic,
+ *  ≤99 until settle, frozen on failure/cancel). */
+export interface DbImportJobState {
+  id: string;
+  siteId: string;
+  domain: string;
+  phases: DbImportPhase[];
+  phaseCursor: number;
+  pct: number;
+  status: "running" | "ok" | "failed" | "cancelled";
+  error: string | null;
+  logKey: string;
+  /** On failure: the kept dump file — it contains the database's data, so it
+   *  is named rather than left for someone to find. */
+  keptArtifact: string | null;
+  result: DbImportRecord | null;
+}
+
+/** A leftover dump kept by a failed import — their data, so it is visible and
+ *  removable, never a file someone finds later. */
+export interface LeftoverDump {
+  file: string;
+  path: string;
+  sizeBytes: number;
 }
 
 /** What linking a folder would do — from `inspectLinkedFolder`, shown before

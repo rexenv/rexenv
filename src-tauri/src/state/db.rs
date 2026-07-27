@@ -216,6 +216,27 @@ const MIGRATIONS: &[&str] = &[
     // for rows whose truth we don't know, and the wrong invention here destroys
     // a database the user created.
     "ALTER TABLE sites ADD COLUMN db_created INTEGER;",
+    // v20 — the settled outcome of a site's database import (Stage 2 step 9).
+    //
+    // ONE serialized fact per site: the summary sentence, the Sites badge and
+    // the SiteDetail panel all render from this row, so they can never
+    // disagree — the failure mode being designed out is a badge and a summary
+    // each right by its own arithmetic.
+    //
+    // `state` is a CLOSED set with one value today: 'imported' — the copy
+    // exists on rexenv's engine and the site still reads the OLD database.
+    // The 'connected' value does not exist until Stage 3 introduces the fact
+    // that proves it, so no UI can render "connected" by inference.
+    "CREATE TABLE db_imports (
+        site_id       TEXT PRIMARY KEY,
+        state         TEXT NOT NULL,
+        db_name       TEXT NOT NULL,
+        table_count   INTEGER NOT NULL,
+        size_bytes    INTEGER NOT NULL,
+        source_label  TEXT NOT NULL,
+        mirrored_user TEXT,
+        imported_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

@@ -39,6 +39,8 @@ import {
   trustCaInFirefox,
   trustLocalCa,
   scanValetImport,
+  dbImportLeftovers,
+  dbImportDeleteLeftover,
   uninstallSystem,
 } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
@@ -597,6 +599,7 @@ function DnsSslSetting() {
         />
       </div>
       <BorrowedResolverCard />
+      <LeftoverDumpsCard />
       <FirefoxTrustCard />
       {msg && <Notice>{msg}</Notice>}
     </>
@@ -1249,6 +1252,49 @@ export function Settings() {
  * import: someone who took `.test` over months ago should be able to find the
  * "hand it back" button without remembering which screen took it.
  */
+/** Dumps kept by failed database imports. They contain a full copy of a
+ *  database, so they are LISTED here and deletable — never a file someone
+ *  finds later. A successful import deletes its own dump. */
+function LeftoverDumpsCard() {
+  const qc = useQueryClient();
+  const { data: dumps = [] } = useQuery({
+    queryKey: ["db-import-leftovers"],
+    queryFn: dbImportLeftovers,
+  });
+  const remove = useMutation({
+    mutationFn: (file: string) => dbImportDeleteLeftover(file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["db-import-leftovers"] }),
+    onError: (e) => toastBackendError(e),
+  });
+  if (dumps.length === 0) return null;
+  const total = dumps.reduce((n, d) => n + d.sizeBytes, 0);
+  return (
+    <div className="mt-3 rounded-lg border border-rex-border-subtle px-3 py-2.5">
+      <div className="text-[0.78125rem] text-rex-text">
+        Leftover database dumps: {dumps.length} file{dumps.length === 1 ? "" : "s"},{" "}
+        {(total / (1024 * 1024)).toFixed(1)} MB
+      </div>
+      <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
+        Kept by database imports that didn't finish, so the copy stays diagnosable.
+        Each contains a full copy of a database. Retrying an import replaces its file;
+        delete them here when you're done with them.
+      </div>
+      <div className="mt-2 flex flex-col gap-1">
+        {dumps.map((d) => (
+          <div key={d.file} className="flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate font-mono text-[0.71875rem] text-rex-text-muted">
+              {d.file} · {(d.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+            </span>
+            <Button size="sm" variant="ghost" onClick={() => remove.mutate(d.file)}>
+              Delete
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BorrowedResolverCard() {
   const navigate = useNavigate();
   const { data } = useQuery({ queryKey: ["valet-scan"], queryFn: scanValetImport });

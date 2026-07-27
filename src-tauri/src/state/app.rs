@@ -76,6 +76,11 @@ pub struct AppState {
     /// long start/stop so status polls never block the UI (try_lock fallback).
     pub service_status_cache: Mutex<Vec<ServiceInfo>>,
     pub db_status_cache: Mutex<Vec<DbInfo>>,
+    /// Domain of the database import currently running, if any (one at a time).
+    /// Lives HERE rather than in the job registry so `site_provision::start`
+    /// can refuse a provision/retry for a site whose database is mid-import —
+    /// the two jobs would otherwise race on the same site's database and edge.
+    pub db_import_active: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -119,6 +124,7 @@ impl AppState {
             services: tauri::async_runtime::Mutex::new(ServiceManager::default()),
             service_status_cache: Mutex::new(Vec::new()),
             db_status_cache: Mutex::new(Vec::new()),
+            db_import_active: Mutex::new(None),
         }
     }
 }
