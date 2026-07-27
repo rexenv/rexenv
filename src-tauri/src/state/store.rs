@@ -578,6 +578,10 @@ pub struct ConfigRewrite {
     /// Our 0600 copy of the file AS IT WAS BEFORE rexenv ever touched it.
     pub backup_path: String,
     pub written_at: String,
+    /// sha256 hex of the content the rewrite wrote (v22), recorded AFTER the
+    /// rename succeeds. `None` = can't prove the file is unchanged — revert
+    /// treats it as the conservative edited-since branch, never as a match.
+    pub written_digest: Option<String>,
 }
 
 /// Record a rewrite's backup. INSERT, never upsert — FIRST BACKUP WINS: a
@@ -604,6 +608,7 @@ fn row_to_config_rewrite(row: &Row) -> rusqlite::Result<ConfigRewrite> {
         file: row.get(1)?,
         backup_path: row.get(2)?,
         written_at: row.get(3)?,
+        written_digest: row.get(4)?,
     })
 }
 
@@ -613,7 +618,7 @@ pub fn get_config_rewrite(
     file: &str,
 ) -> Result<Option<ConfigRewrite>> {
     let mut stmt = conn.prepare(
-        "SELECT site_id, file, backup_path, written_at FROM config_rewrites
+        "SELECT site_id, file, backup_path, written_at, written_digest FROM config_rewrites
          WHERE site_id = ?1 AND file = ?2",
     )?;
     let mut rows = stmt.query_map(params![site_id, file], row_to_config_rewrite)?;
@@ -623,7 +628,8 @@ pub fn get_config_rewrite(
 /// All rewrite records for one site — site delete restores/cleans these.
 pub fn config_rewrites_for_site(conn: &Connection, site_id: &str) -> Result<Vec<ConfigRewrite>> {
     let mut stmt = conn.prepare(
-        "SELECT site_id, file, backup_path, written_at FROM config_rewrites WHERE site_id = ?1",
+        "SELECT site_id, file, backup_path, written_at, written_digest FROM config_rewrites
+         WHERE site_id = ?1",
     )?;
     let rows = stmt.query_map([site_id], row_to_config_rewrite)?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
@@ -632,10 +638,27 @@ pub fn config_rewrites_for_site(conn: &Connection, site_id: &str) -> Result<Vec<
 /// Every rewrite record — the orphan sweep enumerates against this
 /// (reports, never auto-deletes).
 pub fn list_config_rewrites(conn: &Connection) -> Result<Vec<ConfigRewrite>> {
-    let mut stmt = conn
-        .prepare("SELECT site_id, file, backup_path, written_at FROM config_rewrites")?;
+    let mut stmt = conn.prepare(
+        "SELECT site_id, file, backup_path, written_at, written_digest FROM config_rewrites",
+    )?;
     let rows = stmt.query_map([], row_to_config_rewrite)?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+/// Record what a successful write actually put on disk — called AFTER the
+/// rename, so a crash before it leaves NULL, which revert reads as the
+/// conservative "can't prove unchanged" branch.
+pub fn set_config_rewrite_digest(
+    conn: &Connection,
+    site_id: &str,
+    file: &str,
+    digest: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE config_rewrites SET written_digest = ?3 WHERE site_id = ?1 AND file = ?2",
+        params![site_id, file, digest],
+    )?;
+    Ok(())
 }
 
 /// Remove a rewrite record (revert, or site delete) — the caller deletes the

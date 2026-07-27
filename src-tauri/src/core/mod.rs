@@ -10,6 +10,7 @@ pub mod binaries;
 pub mod blueprints;
 pub mod cli;
 pub mod confedit;
+pub mod confrewrite;
 pub mod database;
 pub mod db;
 pub mod dbcompat;

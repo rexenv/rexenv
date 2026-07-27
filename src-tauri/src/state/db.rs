@@ -265,6 +265,19 @@ const MIGRATIONS: &[&str] = &[
         written_at  TEXT NOT NULL DEFAULT (datetime('now')),
         PRIMARY KEY (site_id, file)
      );",
+    // v22 — Stage 3 step 5: what the rewrite actually WROTE (sha256 hex of
+    // the file content the job renamed into place, refreshed on every
+    // successful write). This is what makes "the file changed since the
+    // rewrite" a NAMED revert state instead of a vague always-on warning:
+    // digest matches the file → clean restore; differs → the conservative
+    // FileEdited branch with an explicit their-edits-will-be-lost choice.
+    //
+    // Nullable, no DEFAULT (the v17/v19/v21 bar). NULL reads as
+    // "can't prove the file is unchanged" and lands in the conservative
+    // branch — NEVER as "matches". The row is inserted with NULL and the
+    // digest is recorded only AFTER the rename succeeds, so every crash
+    // window fails toward the safe branch.
+    "ALTER TABLE config_rewrites ADD COLUMN written_digest TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -754,6 +767,41 @@ mod tests {
         store::delete_config_rewrite(&conn, "s1", "/p/.env").unwrap();
         assert!(store::get_config_rewrite(&conn, "s1", "/p/.env").unwrap().is_none());
         assert_eq!(store::config_rewrites_for_site(&conn, "s1").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn v22_existing_rewrites_read_unknown_digest_and_land_conservative() {
+        // Build at v21, insert a rewrite row the way it existed before the
+        // digest column, migrate: the row must read written_digest = None —
+        // which the revert classifier treats as "can't prove unchanged"
+        // (the FileEdited/force branch), NEVER as a match.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..21].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO config_rewrites (site_id, file, backup_path)
+             VALUES ('s1','/p/wp-config.php','/appdata/b1')",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::core::confrewrite::{classify_revert, FileEditedReason, RevertCheck};
+        use crate::state::store;
+        let row = store::get_config_rewrite(&conn, "s1", "/p/wp-config.php").unwrap().unwrap();
+        assert_eq!(row.written_digest, None);
+        assert_eq!(
+            classify_revert(Some("what we wrote"), Some("the original"), row.written_digest.as_deref()),
+            RevertCheck::FileEdited { reason: FileEditedReason::UnknownDigest }
+        );
+
+        // The digest is recorded only after a successful rename; the update
+        // round-trips.
+        store::set_config_rewrite_digest(&conn, "s1", "/p/wp-config.php", "abc123").unwrap();
+        let row = store::get_config_rewrite(&conn, "s1", "/p/wp-config.php").unwrap().unwrap();
+        assert_eq!(row.written_digest.as_deref(), Some("abc123"));
     }
 
     #[test]
