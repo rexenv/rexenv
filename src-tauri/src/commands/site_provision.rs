@@ -327,6 +327,16 @@ pub(crate) fn start<R: tauri::Runtime>(
             )));
         }
     }
+    // Same shape for a connection rewrite mid-apply/revert: it holds the
+    // site's config file and the imported-state row.
+    if let Ok(active) = state.rewrite_active.lock() {
+        if active.as_deref() == Some(site.domain.as_str()) {
+            return Err(Error::Other(format!(
+                "a connection rewrite is running for {} — wait for it to finish first.",
+                site.domain
+            )));
+        }
+    }
     let site_tld = sites::domain_tld(&site.domain)?;
     core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
 
@@ -395,6 +405,16 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
         if active.as_deref() == Some(site.domain.as_str()) {
             return Err(Error::Other(format!(
                 "a database import is running for {} — wait for it (or cancel it) first.",
+                site.domain
+            )));
+        }
+    }
+    // Same shape for a connection rewrite mid-apply/revert: it holds the
+    // site's config file and the imported-state row.
+    if let Ok(active) = state.rewrite_active.lock() {
+        if active.as_deref() == Some(site.domain.as_str()) {
+            return Err(Error::Other(format!(
+                "a connection rewrite is running for {} — wait for it to finish first.",
                 site.domain
             )));
         }

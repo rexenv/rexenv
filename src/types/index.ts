@@ -238,6 +238,67 @@ export type DbImportRecord = DbImportRecordCommon &
     | { state: "connected"; verified: DbConnectedVerified }
   );
 
+/** One line of a rewrite diff, derived from the bytes that will be written —
+ *  never from intent — so what it shows is provably what changes. */
+export interface RewriteDiffLine {
+  /** "-" (a line of the original) or "+" (a line of the new content). */
+  sign: string;
+  /** 1-based line number in its own file version. */
+  line: number;
+  text: string;
+}
+
+/** The rewrite preview (Stage 3). `ready`'s diff IS the write: apply writes
+ *  exactly the bytes the diff was derived from, or refuses. */
+export type RewritePreview =
+  | {
+      status: "ready";
+      file: string;
+      diff: RewriteDiffLine[];
+      /** sha256 of the WHOLE file at preview time — apply refuses on drift. */
+      fingerprint: string;
+      /** Non-null = the root case: this dedicated account (holding the
+       *  config's existing password) will be created on apply. */
+      createsUser: string | null;
+      /** An earlier rewrite's backup exists and is kept — first backup wins. */
+      backupExists: boolean;
+      /** .env shape with bootstrap/cache/config.php present: the cached-config
+       *  warning must lead the panel. */
+      laravelCacheWarning: boolean;
+      /** Where the site will connect, e.g. "127.0.0.1:13306". */
+      target: string;
+    }
+  | { status: "refused"; reason: string; file: string | null };
+
+/** The apply outcome. Only `applied` flips the record to connected — and it
+ *  carries the updated record rather than asking the UI to infer. */
+export type RewriteApplied =
+  | { status: "applied"; record: DbImportRecord; message: string }
+  | { status: "fileChanged"; message: string }
+  | { status: "engineStopped"; message: string }
+  | { status: "verifyFailed"; reason: string; message: string }
+  | { status: "refused"; reason: string; file: string | null };
+
+/** Why a revert refused without force. */
+export type RewriteFileEditedReason =
+  | "editedSinceRewrite"
+  | "unknownDigest"
+  | "fileMissing";
+
+/** The revert outcome — every ugly case is a named state, not a generic
+ *  failure. `backupMissing` leaves the site connected (still true) and their
+ *  file untouched; only OUR copy of the original is gone. */
+export type RewriteRevertOutcome =
+  | { status: "reverted"; file: string; message: string }
+  | {
+      status: "refusedEdited";
+      file: string;
+      reason: RewriteFileEditedReason;
+      message: string;
+    }
+  | { status: "backupMissing"; file: string; message: string }
+  | { status: "noRewrite"; message: string };
+
 /** One phase of a running database-import job. */
 export interface DbImportPhase {
   key: string;

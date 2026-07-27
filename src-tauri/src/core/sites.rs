@@ -949,6 +949,15 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     // row outlived its site as an orphan.
     store::delete_db_import(conn, id)?;
 
+    // D2's plain-delete leg: the rewrite records and OUR backups go with the
+    // site. Their config file itself is never touched here — reverting first
+    // is a choice the delete confirm offers (the default button), never a
+    // silent side effect.
+    for r in store::config_rewrites_for_site(conn, id)? {
+        let _ = std::fs::remove_file(&r.backup_path);
+        store::delete_config_rewrite(conn, id, &r.file)?;
+    }
+
     // Remove the per-site cert dir (best-effort).
     let cert_dir = ssl::site_cert_dir(platform.paths(), &site.domain)?;
     let _ = std::fs::remove_dir_all(&cert_dir);
@@ -2177,17 +2186,38 @@ mod tests {
         )
         .unwrap();
 
+        // And a rewrite record with a real backup file: both must go with the
+        // site (D2's plain-delete leg — their config file is never touched).
+        let backup_dir = std::env::temp_dir()
+            .join(format!("rexenv-teardown-backup-{}", std::process::id()));
+        std::fs::create_dir_all(&backup_dir).unwrap();
+        let backup_file = backup_dir.join("wp-config.php");
+        std::fs::write(&backup_file, "original").unwrap();
+        store::insert_config_rewrite(
+            &conn,
+            &site.id,
+            "/their/project/wp-config.php",
+            &backup_file.display().to_string(),
+        )
+        .unwrap();
+
         assert!(teardown(&conn, &*platform, &site.id).unwrap().existed);
         assert!(get(&conn, &site.id).unwrap().is_none());
         assert!(
             store::get_db_import(&conn, &site.id).unwrap().is_none(),
             "db_imports row must not outlive its site"
         );
+        assert!(
+            store::config_rewrites_for_site(&conn, &site.id).unwrap().is_empty(),
+            "config_rewrites rows must not outlive their site"
+        );
+        assert!(!backup_file.exists(), "the backup file must go with its row");
         for p in &artifacts {
             assert!(!p.exists(), "orphaned artifact left behind: {}", p.display());
         }
         // Deleting again is a no-op.
         assert!(!teardown(&conn, &*platform, &site.id).unwrap().existed);
+        let _ = std::fs::remove_dir_all(&backup_dir);
     }
 
     /// A real temp directory with a file in it, plus a site row pointing at it.

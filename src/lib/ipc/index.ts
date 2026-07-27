@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbImportJobState, DbImportRecord, LeftoverDump, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, Blueprint, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -193,6 +193,30 @@ export async function dbImportRecord(siteId: string): Promise<DbImportRecord | n
 export async function dbImportRecords(): Promise<DbImportRecord[]> {
   if (!isTauri()) return [];
   return invoke<DbImportRecord[]>("db_import_records");
+}
+
+/** The rewrite preview (Stage 3): the diff derived from the exact bytes an
+ *  apply would write, plus the whole-file fingerprint apply demands. */
+export async function rewritePreview(siteId: string): Promise<RewritePreview> {
+  return invoke<RewritePreview>("rewrite_preview", { siteId });
+}
+
+/** Apply the previewed rewrite. `fingerprint` is the preview's — apply
+ *  refuses if the file changed since the diff was shown. */
+export async function rewriteApply(
+  siteId: string,
+  fingerprint: string,
+): Promise<RewriteApplied> {
+  return invoke<RewriteApplied>("rewrite_apply", { siteId, fingerprint });
+}
+
+/** Revert the rewrite: restore the backup, clear the connected fact. `force`
+ *  confirms restoring over a file edited since the rewrite. */
+export async function rewriteRevert(
+  siteId: string,
+  force: boolean,
+): Promise<RewriteRevertOutcome> {
+  return invoke<RewriteRevertOutcome>("rewrite_revert", { siteId, force });
 }
 
 /** Leftover dumps kept by failed imports (their data — listed, never hidden). */

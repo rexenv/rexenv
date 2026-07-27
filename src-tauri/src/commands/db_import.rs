@@ -173,6 +173,17 @@ pub async fn db_import_start<R: tauri::Runtime>(
             site.domain
         )));
     }
+    // The rewrite holds this site's config file and imported-state row; an
+    // import alongside it would race both (same guard the rewrite honours in
+    // the other direction).
+    if let Ok(active) = state.rewrite_active.lock() {
+        if active.as_deref() == Some(site.domain.as_str()) {
+            return Err(Error::Other(format!(
+                "a connection rewrite is running for {} — wait for it to finish first.",
+                site.domain
+            )));
+        }
+    }
     {
         let mut active = state
             .db_import_active

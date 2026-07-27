@@ -4,6 +4,7 @@
 pub mod blueprints;
 pub mod database;
 pub mod db_import;
+pub mod rewrite;
 pub mod downloads;
 pub mod logs;
 pub mod mail;

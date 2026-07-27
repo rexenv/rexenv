@@ -522,6 +522,22 @@ pub fn clear_db_import_connected(conn: &Connection, site_id: &str) -> Result<()>
     Ok(())
 }
 
+/// Record which user the rewrite job mirrors (the dedicated `rex_<slug>` for
+/// root configs) — written BEFORE the account is created, the provenance-first
+/// order (`db_created`'s shape): a crash between the record and the create
+/// leaves a name `DROP USER IF EXISTS` shrugs at; the reverse order leaks an
+/// account nothing will ever drop.
+pub fn set_db_import_mirrored_user(conn: &Connection, site_id: &str, user: &str) -> Result<()> {
+    let n = conn.execute(
+        "UPDATE db_imports SET mirrored_user = ?2 WHERE site_id = ?1",
+        params![site_id, user],
+    )?;
+    if n == 0 {
+        return Err(Error::Other(format!("no database import is recorded for site {site_id}")));
+    }
+    Ok(())
+}
+
 fn row_to_db_import(row: &Row) -> rusqlite::Result<DbImportRecord> {
     let state_txt: String = row.get(1)?;
     let verified_txt: Option<String> = row.get(8)?;

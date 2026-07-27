@@ -805,6 +805,14 @@ pub async fn delete_site(
     let engine_version = super::database::effective_db_version(&state, engine)?;
     let want_db_drop =
         matches!(site.site_type, SiteType::Wordpress) && may_drop_database(&site);
+    // Booting a STOPPED engine just to drop one account is deliberate
+    // (settled 28 Jul 2026), not the linked-site over-fetch mistake
+    // repeating: the drop genuinely runs, and skipping it is not harmless —
+    // the account holds GRANT ALL on a database NAME, and names collide by
+    // construction (wp_<slug>), so a future site under that name would
+    // inherit a stale account with an old password over it.
+    // `datadir_initialized` already skips fresh installs, where neither the
+    // database nor the user can exist.
     if (want_db_drop || mirrored_user.is_some())
         && engine.datadir_initialized(state.platform.as_ref(), &engine_version)
     {

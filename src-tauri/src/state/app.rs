@@ -81,6 +81,11 @@ pub struct AppState {
     /// can refuse a provision/retry for a site whose database is mid-import —
     /// the two jobs would otherwise race on the same site's database and edge.
     pub db_import_active: Mutex<Option<String>>,
+    /// Domain of the connection rewrite currently applying/reverting, if any
+    /// (one at a time) — the same cross-guard shape as `db_import_active`:
+    /// provision and db-import refuse while a rewrite holds the site's config
+    /// file, and the rewrite refuses while they run.
+    pub rewrite_active: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -125,6 +130,7 @@ impl AppState {
             service_status_cache: Mutex::new(Vec::new()),
             db_status_cache: Mutex::new(Vec::new()),
             db_import_active: Mutex::new(None),
+            rewrite_active: Mutex::new(None),
         }
     }
 }
