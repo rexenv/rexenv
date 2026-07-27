@@ -80,7 +80,13 @@ pub fn atomic_write_preserving_mode(path: &Path, content: &str) -> Result<()> {
     }
     if let Err(e) = std::fs::rename(&tmp, path) {
         let _ = std::fs::remove_file(&tmp);
-        return Err(Error::Other(format!("replacing {} atomically: {e}", path.display())));
+        // "Couldn't write" and "wrote but couldn't verify" are different
+        // states that both end with a site not working — the copy must carry
+        // the difference, so the write failure says the file is untouched.
+        return Err(Error::Other(format!(
+            "replacing {} atomically: {e} — the file was left as it was.",
+            path.display()
+        )));
     }
     Ok(())
 }

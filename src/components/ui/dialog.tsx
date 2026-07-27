@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { TECH_INPUT } from "@/lib/utils";
 
 /** Shared overlay + centered card for in-app modals. WKWebView (Tauri) doesn't
- *  reliably support window.alert/confirm/prompt, so we use these instead. */
-function Overlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+ *  reliably support window.alert/confirm/prompt, so we use these instead.
+ *  Exported for dialogs whose shape ConfirmDialog can't express (e.g. the
+ *  connected-site delete, which needs two consequence-naming actions). */
+export function Overlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();

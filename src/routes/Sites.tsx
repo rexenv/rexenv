@@ -8,13 +8,13 @@ import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
-import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
+import { ConfirmDialog, Overlay, PromptDialog } from "@/components/ui/dialog";
 import { siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords } from "@/lib/ipc";
+import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, Site, SiteResources } from "@/types";
@@ -454,6 +454,29 @@ export function Sites() {
     onError: (e) => toastBackendError(e),
   });
 
+  // D2's default leg for a CONNECTED site: revert the connection change,
+  // then delete. If the revert can't run cleanly (file edited since, backup
+  // missing), stop and say so — never delete on the back of a revert that
+  // didn't happen.
+  const revertThenRemove = useMutation({
+    mutationFn: async (site: Site) => {
+      const out = await rewriteRevert(site.id, false);
+      if (out.status === "reverted" || out.status === "noRewrite") {
+        await deleteSite(site.id);
+        return null;
+      }
+      return out.message;
+    },
+    onSuccess: (blocked) => {
+      if (blocked) {
+        toast.info(`Not deleted — ${blocked} Resolve it on the site's Database tab, or delete without reverting.`);
+      }
+      void qc.invalidateQueries({ queryKey: ["sites"] });
+      void qc.invalidateQueries({ queryKey: ["db-import-records"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   // Streamed provision job (New Site / Retry) — re-adopted here so a create
   // started in the dialog survives closing it. The banner shows while
   // running and stays FROZEN after a failure/cancel (the row also carries
@@ -656,7 +679,7 @@ export function Sites() {
           onCancel={() => setRenameTarget(null)}
         />
       )}
-      {deleteTarget && (
+      {deleteTarget && dbStates.get(deleteTarget.id) !== "connected" && (
         <ConfirmDialog
           title={`Delete "${deleteTarget.name}"?`}
           message={
@@ -682,6 +705,69 @@ export function Sites() {
           }}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+      {deleteTarget && dbStates.get(deleteTarget.id) === "connected" && (
+        /* D2: a connected site's config points at the rexenv copy, which is
+           dropped with the site — so the confirm NAMES both outcomes, and
+           revert-then-delete is the default. Never a silent auto-revert. */
+        <Overlay onClose={() => setDeleteTarget(null)}>
+          <div className="text-[0.9375rem] font-semibold text-rex-text">
+            Delete "{deleteTarget.name}"?
+          </div>
+          <div className="mt-2 space-y-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
+            <p>
+              This site's config was rewritten to use rexenv's database copy — and deleting
+              the site drops that copy. Two ways to proceed:
+            </p>
+            <p>
+              <strong className="text-rex-text">Revert, then delete</strong> — the config
+              file is first restored to point back at the old database, then the site and
+              rexenv's copy are removed. The site keeps working against its old database.
+            </p>
+            <p>
+              <strong className="text-rex-text">Delete without reverting</strong> — the
+              config keeps pointing at rexenv's copy, which no longer exists after the
+              delete: <strong className="text-rex-text">the site breaks on next load</strong>{" "}
+              until you change its connection settings yourself.
+            </p>
+            <p>
+              {deleteTarget.docrootManaged === false ? (
+                <>
+                  Your folder at{" "}
+                  <span className="font-mono text-rex-text">{deleteTarget.path}</span> is
+                  left exactly where it is.{" "}
+                </>
+              ) : (
+                <>The site's files are removed. </>
+              )}
+              This can't be undone.
+            </p>
+          </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                remove.mutate(deleteTarget);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete without reverting
+            </Button>
+            <Button
+              variant="primary"
+              autoFocus
+              onClick={() => {
+                revertThenRemove.mutate(deleteTarget);
+                setDeleteTarget(null);
+              }}
+            >
+              Revert, then delete
+            </Button>
+          </div>
+        </Overlay>
       )}
     </>
   );
