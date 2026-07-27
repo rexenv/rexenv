@@ -1,6 +1,6 @@
 # Stage 2 — import a Valet/Herd site's database
 
-**Status:** BUILT through step 11 (steps 1–9 shipped, examples live-verified in the sandbox); remaining: the §I packaged pass against live DBngin (docs/PUBLISH-TESTING.md §I — user starts DBngin). Stages 0 and 1 shipped
+**Status:** SHIPPED — §I passed 27 Jul 2026 (all 12 steps, live DBngin source, packaged app; the honest-refusal and drift steps both behaved). Stages 0 and 1 shipped
 (`PLAN-linked-sites.md`, `PLAN-valet-herd-import.md`); the research this rests on is
 `PLAN-valet-herd-migration.md` §5–§7.
 
@@ -92,9 +92,8 @@ Two caveats carried into the implementation:
   compatibility hack. Our 12.3.2 sends no prefix (verified above); the 10.x form is
   documented but **not verified here**, so the parser strips a leading `5.5.5-` when
   present and a live 10.x sighting should be recorded back into this section.
-- **DBngin's MySQL 8.0.27 specifically is still unverified** — it was stopped. Protocol 10
-  is the same across the family, so the risk is low, but the live check (§8) confirms it
-  and this line stays until it does.
+- ~~DBngin's MySQL 8.0.27 specifically is still unverified~~ **VERIFIED in the §I pass
+  (27 Jul 2026)**: identified pre-auth as MySQL 8.0.27 once started.
 
 **If it does not hold — a proxy in front, TLS required, an unusual configuration — the
 answer is to REPORT, not to work around it.** A quiet fallback to an authenticated probe

@@ -196,6 +196,10 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         unaided to full row counts**; pre-existing survives everything;
         mirroring live). Unreachable-source is unit-level (`probe` refused
         port) + §I step 4 live.
+      ✓ **§I PASSED 27 Jul 2026** — all 12 steps on the packaged app against
+        live DBngin: the stopped-engine refusal contradicted the plist, the
+        drift step demonstrated itself, and DBngin's 8.0.27 handshake closed
+        the last open identification case. **Stage 2 SHIPPED.**
       - [x] 11. `PUBLISH-TESTING.md` §I `2aebe8e` — 12 steps incl. the
         DBngin precondition (user starts it; step 4 checks the honest refusal
         while it's stopped), the drift demonstration (step 7), the mid-copy

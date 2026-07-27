@@ -284,7 +284,14 @@ leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.
 
 ---
 
-## I) 🚧 Database import (Stage 2) — live DBngin source check + packaged GUI pass
+## I) ✅ Database import (Stage 2) — live DBngin source check + packaged GUI pass
+
+**PASSED 27 Jul 2026 — all 12 steps, human-verified on the packaged app.** The two
+load-bearing steps behaved: with DBngin stopped, the UI contradicted the plist's
+`Status = started` and refused naming host, port and the fix (step 4); and the drift
+demonstrated itself — an edit made through the site did not appear in rexenv's copy
+(step 7). DBngin's MySQL 8.0.27 handshake also confirmed the last open pre-auth
+identification case (plan §2.1).
 
 The sandbox proves the machinery (`db_dump_check`, `db_restore_check`); this pass proves
 it against a REAL source and the packaged UI. **The user's side of the bargain (D6): rexenv
@@ -341,4 +348,4 @@ never starts or stops their database server, so step 2 is yours.**
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
-| I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | 🚧 ready to run |
+| I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
