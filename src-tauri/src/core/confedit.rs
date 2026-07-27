@@ -14,13 +14,23 @@
 //!    [`Rewrite::new_content`] verbatim (after checking the on-disk file still
 //!    equals [`Rewrite::original`]). There is no second rendering path that
 //!    could drift from the preview.
-//! 3. **Refusing is a feature.** Anything ambiguous — duplicate keys, values
-//!    spanning lines, `${VAR}` interpolation, keys that exist only commented
-//!    out — downgrades to tell-only with the reason
-//!    ([`phpconf::Unreadable`]), never a guess. Reads tolerate more than
-//!    writes: the reader shrugs at a stranger's multi-line value elsewhere in
-//!    the file; the editor refuses the whole file, because past an unclosed
-//!    quote the line structure itself is untrustworthy.
+//! 3. **Refusing is a feature, and WRITES REFUSE MORE THAN READS — that is
+//!    the rule here, not an incidental behaviour.** A wrong read costs one
+//!    bad fact; a wrong write costs the user's file. So anything ambiguous —
+//!    duplicate keys (even with equal values), values spanning lines,
+//!    `${VAR}` interpolation, keys that exist only commented out, a heredoc
+//!    anywhere in a wp-config — downgrades to tell-only with the reason
+//!    ([`phpconf::Unreadable`]), never a guess. The sharpest instance: one
+//!    unclosed quote refuses the WHOLE `.env`, whichever key it belongs to,
+//!    because everything after that point may not be lines at all — the
+//!    reader may shrug at it for an unrelated key; the editor must not.
+//!
+//! WordPress edits are OUR span editor, not `wp config set` — settled 28 Jul
+//! 2026: wp-cli would make the preview a reconstruction while the written
+//! bytes carry wp-cli's formatting (exactly the approved-vs-written gap rule
+//! 2 exists to close), the parser already refuses every shape wp-cli would
+//! have hedged for, and one fewer subprocess is one fewer place to reason
+//! about argv and secrets.
 //!
 //! Byte-preserving means byte-preserving: everything except the edited value
 //! spans (and one optionally appended `DB_PORT` line) comes out identical —

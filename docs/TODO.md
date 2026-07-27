@@ -227,9 +227,9 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       rebuilt on it, Stage 2 tests unchanged), wp value-span edits, writes
       refuse more than reads (whole-file on unclosed quote, equal-value dups,
       heredoc, commented-out keys), DB_PORT append copies the DB_HOST line's
-      conventions. 19 new tests incl. the no-secret-in-any-diff pin. NOTE:
-      wp-config edits are OUR span editor, not `wp config set` — plan §3
-      deviation, rationale in the session report, reversible in step 5.
+      conventions. 19 new tests incl. the no-secret-in-any-diff pin.
+      wp-config edits are OUR span editor, not `wp config set` — SETTLED
+      28 Jul 2026 (plan §3): wp-cli would reopen the approved-vs-written gap.
     - [ ] 4. dedicated-user creation (per-SITE name) + drop-on-site-delete for
       recorded mirrored users
     - [ ] 5. the rewrite job: backup-first-wins → temp+rename → sign-in verification

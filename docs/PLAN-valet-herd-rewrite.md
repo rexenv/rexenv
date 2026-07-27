@@ -127,11 +127,15 @@ is **host/port only** — the best case, one or two keys, no user change at all.
 password change. The root case is handled by creating the dedicated account to match
 the config, never by editing the config's password to match an account.
 
-- **WordPress** → `wp config set DB_HOST '127.0.0.1:13306'` (and `DB_USER` for the
-  root case) via bundled WP-CLI. Verified in the research: runs `before_wp_load`, a
-  string transform on the file — **it does not load WordPress or execute the site's
-  code**. Refusal path: if `wp config set` errors (exotic config shapes), downgrade to
-  tell-only with the error shown.
+- **WordPress** → **our own value-span editor, NOT `wp config set` — settled 28 Jul
+  2026** (superseding the wp-cli choice above, approved on review of step 3): wp-cli
+  would make the preview a reconstruction while the written bytes carry wp-cli's own
+  formatting — exactly the approved-vs-written gap the diff contract exists to close.
+  The parser already refuses every shape wp-cli would have hedged for (non-literals,
+  conditional duplicates, heredocs), so what remains is literal defines, where
+  replacing the span inside the quotes is byte-exact and previewable. Bonus: one
+  fewer subprocess, one fewer place to reason about argv and secrets. Refusal path
+  unchanged: exotic shapes downgrade to tell-only with the reason.
 - **Laravel/`.env`** → our conservative key-level editor: byte-preserves every other
   line (including line endings), rewrites only the value of an existing literal key,
   appends `DB_PORT` if absent. **Refuses** — to tell-only, with the reason — on:
