@@ -360,6 +360,17 @@ pub fn db_name_exists(conn: &Connection, db_name: &str) -> Result<bool> {
     Ok(count > 0)
 }
 
+/// The site that owns `db_name`, if any — the database import's "whose is
+/// this?" question (Stage 2). Same authority as [`db_name_exists`], but the
+/// import needs WHICH site, to name it in the shared-database refusal.
+pub fn site_with_db_name(conn: &Connection, db_name: &str) -> Result<Option<Site>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SITE_COLUMNS} FROM sites WHERE db_name = ?1 LIMIT 1"
+    ))?;
+    let mut rows = stmt.query_map([db_name], row_to_site)?;
+    Ok(rows.next().transpose()?)
+}
+
 // ── PHP version registry (Phase 2 §1.2) ───────────────────────────────────────
 
 fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {

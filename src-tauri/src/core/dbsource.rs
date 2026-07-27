@@ -38,7 +38,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(700);
 const READ_TIMEOUT: Duration = Duration::from_millis(700);
 
 /// Which MySQL-protocol server we are talking to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Vendor {
     Mysql,

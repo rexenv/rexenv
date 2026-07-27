@@ -131,7 +131,23 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         Unidentified vendor is Blocked-with-a-resolution, never overridable —
         proceeding would pick client tools by coin flip. 464 tests; the printed
         table is `cargo run --example db_compat_matrix`.
-      - [ ] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
+      - [x] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
+        `<pending5>` — `core::dbdump`. Preflight order is STRUCTURAL: the
+        no-connection gate (is-this-us via `server_is_ours` two-facts check +
+        `classify_self_import` three-way split + the verdict) is the only mint
+        of the `Cleared` witness that `preflight_live` and `dump` require, and
+        `dump` also requires the `Preflight` only `check_disk` produces. A
+        partial dump is unrepresentable: `.partial` → rename on exit 0 →
+        manifest last; `load_manifest` (Half B's only door) refuses no-manifest
+        and size-mismatch. Manifest type has no credential fields; test pins the
+        exact key set. Disk estimate 2×data+16MB, stated as an estimate. Cancel
+        = SIGTERM the client, delete `.partial` — a read that stopped
+        (`--single-transaction`, never FTWRL/`--master-data`). 472 tests.
+        ✓ **Live-verified in the sandbox** (`cargo run --example db_dump_check`,
+        own mysqld on :13399): pre-auth identify → gate refusals → missing-vs-
+        present preflight → dump (artifact AND manifest mode 600 — proves
+        mysqldump truncates in place, the plan §3 open question) → cancel leaves
+        nothing → `.partial`/tampered artifact refused.
     - *Half B — restore into ours (+ credential mirroring)*
       - [ ] 6. collision + provenance + create + restore with real byte progress
       - [ ] 7. credential mirroring, reserved names refused (never our `root`)

@@ -12,6 +12,7 @@ pub mod cli;
 pub mod database;
 pub mod db;
 pub mod dbcompat;
+pub mod dbdump;
 pub mod dbimport;
 pub mod dbsource;
 pub mod devtools;

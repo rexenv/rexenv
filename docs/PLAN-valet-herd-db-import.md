@@ -188,10 +188,9 @@ Reading wp-config/.env means reading secrets. The rules, in force for both halve
   them via argv or env; and dump *content* is never streamed — it goes to
   `--result-file` on the way out and over stdin on the way in.
 - **The artifact is 0600 too.** Pre-create the empty result file with `write_private`,
-  then let `--result-file` write into it: `O_TRUNC` on an existing path preserves the
-  inode's mode. *Verify in Half A that the tool truncates rather than unlink+recreates;
-  if it recreates, chmod immediately after and accept the narrow window, or dump to a
-  0600 file via stdout redirection instead.*
+  then let `--result-file` write into it: the tool truncates in place, so the inode's
+  mode survives. **VERIFIED (db_dump_check, 2026-07-27):** the artifact reads mode 600
+  after the real mysqldump 8.4.6 wrote into it — no chmod window, no fallback needed.
 
 **Client pairing is a hard invariant, not a preference.** Our bundled MariaDB clients
 **cannot authenticate to MySQL 8 at all** — `caching_sha2_password` is a dynamic plugin
@@ -258,6 +257,38 @@ warnings, and no dump tool has a `--skip-definer`).
 ---
 
 ## 5. Mechanics
+
+**The preflight refuses in cost order, and the order is structural (built, step 5).**
+is-this-us → compatibility verdict → live checks (sign-in / database-exists / size) →
+disk. Not a convention: `preflight_live` and `dump` require the `Cleared` witness only
+`gate` (the no-connection checks) can mint, and `dump` additionally requires the
+`Preflight` only `check_disk` produces — a caller physically cannot reach a connection
+attempt for a pairing that was refusable from the start, nor skip the disk answer.
+
+**A partial dump is unrepresentable as an artifact (built, step 5).** Three layers, each
+sufficient alone: the dump writes to `<domain>.sql.partial` and renames only on exit 0
+(a crash leaves a wrong-named file nothing restores); the manifest is written only after
+the rename (rename-then-manifest, so a manifest's existence implies a whole artifact —
+the reverse order could describe a file that isn't there); and Half B loads exclusively
+through `load_manifest`, which refuses a missing manifest and an artifact whose byte
+size differs from the recorded one. Cancel/crash/disk-full all land in one of those.
+
+**The manifest** records: domain, database, source host/port/vendor/handshake-version,
+the target engine+version the verdict was computed against (Half B re-checks it —
+restoring into a different engine would silently skip the gate), exact artifact bytes,
+table count, dump tool, unix timestamp, and the hygiene findings (sandbox line to skip,
+definer count, `mysql_native_password`, `NO_AUTO_CREATE_USER`). **No credential fields
+exist on the type** — the restore re-reads the site's own config live, so it never
+needed them — and a test pins the exact serialized key set so a new field is a conscious
+decision.
+
+**Cancelling a dump is a read that stopped (verified reasoning, step 5).**
+`--single-transaction` opens a consistent-snapshot READ transaction; killing the client
+drops the connection, and session teardown rolls the snapshot back and releases metadata
+locks. We never use `FLUSH TABLES WITH READ LOCK`, `--master-data`, or
+`--lock-all-tables` — the flags that take locks an ordinary session death wouldn't
+already release. Cancel = SIGTERM → poll → SIGKILL on the *client*, delete the
+`.partial`; their server just sees a connection drop.
 
 **Preflight, then dump.** `--connect-timeout` is accepted **nowhere** by the dump tools
 (argv, `[client]`, `[mysqldump]` — all hard-error `unknown variable`, exit 7, verified on
