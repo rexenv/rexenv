@@ -787,17 +787,25 @@ pub async fn delete_site(
     //    (registry keyed by domain; the mu-plugin goes away with the docroot).
     tunnels.stop_for_domain(state.platform.as_ref(), &site.domain);
 
-    // 2) Drop the site's database. Only WordPress sites get one (the stored
+    // 2) Drop the site's database, and any RECORDED mirrored user (D3). Only
+    //    WordPress sites get a provisioned database (the stored
     //    `Site::db_name`, derived from the validated domain at creation —
     //    `drop_database` re-validates the name, so nothing else can be named).
-    //    No per-site DB user exists to
-    //    remove (local-dev connects as passwordless root). Skipped entirely when
-    //    the MySQL datadir was never initialized (then no database can exist);
-    //    otherwise MySQL is brought up first, exactly like site creation does.
+    //    The mirrored user comes from `db_imports.mirrored_user` — the RECORD,
+    //    never re-derived from the domain: a domain change between import and
+    //    delete would compute a user we never created and leave the real one
+    //    behind. Skipped entirely when the engine's datadir was never
+    //    initialized (then neither the database nor the user can exist);
+    //    otherwise the engine is brought up first, exactly like site creation.
+    let mirrored_user = {
+        let conn = lock(&state)?;
+        crate::state::store::get_db_import(&conn, &id)?.and_then(|r| r.mirrored_user)
+    };
     let engine = DbEngine::from_site(site.db_engine);
     let engine_version = super::database::effective_db_version(&state, engine)?;
-    if matches!(site.site_type, SiteType::Wordpress)
-        && may_drop_database(&site)
+    let want_db_drop =
+        matches!(site.site_type, SiteType::Wordpress) && may_drop_database(&site);
+    if (want_db_drop || mirrored_user.is_some())
         && engine.datadir_initialized(state.platform.as_ref(), &engine_version)
     {
         // Engine binaries cached before the locked spawn below (an initialized
@@ -814,7 +822,12 @@ pub async fn delete_site(
         core::service_manager::await_ready(check.into_iter().collect()).await?;
         let (db_client, _) =
             engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
-        core::database::drop_database(&db_client, engine.port(), &site.db_name)?;
+        if want_db_drop {
+            core::database::drop_database(&db_client, engine.port(), &site.db_name)?;
+        }
+        if let Some(user) = &mirrored_user {
+            core::dbmirror::drop_mirrored(&db_client, engine.port(), user)?;
+        }
     }
 
     // 3) Row + cert + per-site configs/logs + docroot (the last only if it's

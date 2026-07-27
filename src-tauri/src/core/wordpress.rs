@@ -1930,8 +1930,10 @@ pub fn db_name_disambiguated(domain: &str) -> String {
 }
 
 /// FNV-1a (32-bit) — a small, dependency-free stable hash (the same primitive
-/// the per-site override-port allocator uses).
-fn fnv1a(bytes: &[u8]) -> u32 {
+/// the per-site override-port allocator uses). Shared with
+/// `core::dbmirror::dedicated_user_name`, which caps at MySQL's 32-char USER
+/// limit with the same disambiguation reasoning.
+pub(crate) fn fnv1a(bytes: &[u8]) -> u32 {
     let mut h: u32 = 2166136261;
     for &b in bytes {
         h ^= b as u32;

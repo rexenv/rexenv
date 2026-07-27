@@ -943,6 +943,12 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
 
     store::delete_site(conn, id)?;
 
+    // The settled import fact goes with the site (its mirrored user, if any,
+    // was dropped by the delete command BEFORE teardown, reading this row —
+    // recorded, not derived). Also closes a Stage 2 gap: without this, the
+    // row outlived its site as an orphan.
+    store::delete_db_import(conn, id)?;
+
     // Remove the per-site cert dir (best-effort).
     let cert_dir = ssl::site_cert_dir(platform.paths(), &site.domain)?;
     let _ = std::fs::remove_dir_all(&cert_dir);
@@ -2156,8 +2162,27 @@ mod tests {
             std::fs::write(p, "x").unwrap();
         }
 
+        // A settled db-import fact rides the site row (its mirrored user is
+        // dropped by the delete COMMAND before teardown, reading this record).
+        store::upsert_db_import(
+            &conn,
+            &store::NewDbImport {
+                site_id: site.id.clone(),
+                db_name: "ea".into(),
+                table_count: 1,
+                size_bytes: 1,
+                source_label: "src".into(),
+                mirrored_user: Some("rex_teardown_test".into()),
+            },
+        )
+        .unwrap();
+
         assert!(teardown(&conn, &*platform, &site.id).unwrap().existed);
         assert!(get(&conn, &site.id).unwrap().is_none());
+        assert!(
+            store::get_db_import(&conn, &site.id).unwrap().is_none(),
+            "db_imports row must not outlive its site"
+        );
         for p in &artifacts {
             assert!(!p.exists(), "orphaned artifact left behind: {}", p.display());
         }
