@@ -221,8 +221,15 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       with no production constructor until the verification path exists.
       Migration test in the v15/v17/v19 shape + a serde pin of the TS wire
       contract. 484 lib tests, tsc clean, examples build.
-    - [ ] 3. `core::confedit` — `RewritePlan` (no password field), byte-preserving
-      `.env` editor with the refusal vocabulary, diff builder
+    - [x] 3. `core::confedit` ✓ `359e69f` — closed `RewriteKey` enum + private
+      plan fields (password/Port-in-wp unrepresentable), diff derived from the
+      produced bytes, `.env` editor on a shared `dotenv_lines` scanner (reader
+      rebuilt on it, Stage 2 tests unchanged), wp value-span edits, writes
+      refuse more than reads (whole-file on unclosed quote, equal-value dups,
+      heredoc, commented-out keys), DB_PORT append copies the DB_HOST line's
+      conventions. 19 new tests incl. the no-secret-in-any-diff pin. NOTE:
+      wp-config edits are OUR span editor, not `wp config set` — plan §3
+      deviation, rationale in the session report, reversible in step 5.
     - [ ] 4. dedicated-user creation (per-SITE name) + drop-on-site-delete for
       recorded mirrored users
     - [ ] 5. the rewrite job: backup-first-wins → temp+rename → sign-in verification
