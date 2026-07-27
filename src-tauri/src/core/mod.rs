@@ -11,6 +11,7 @@ pub mod blueprints;
 pub mod cli;
 pub mod confedit;
 pub mod confrewrite;
+pub mod confverify;
 pub mod database;
 pub mod db;
 pub mod dbcompat;

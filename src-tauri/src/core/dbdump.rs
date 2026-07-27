@@ -284,8 +284,13 @@ pub fn preflight_live(
 
 /// One `-e` query through the interactive client. Batch mode, no header, and
 /// `--connect-timeout=10` on argv (B25: bound the connect, never the transfer —
-/// and only this tool accepts the flag at all).
-fn client_query(client: &Path, defaults: &DefaultsFile, sql: &str) -> std::result::Result<String, String> {
+/// and only this tool accepts the flag at all). Shared with
+/// `core::confverify`'s sign-in check, which authenticates the same way.
+pub(crate) fn client_query(
+    client: &Path,
+    defaults: &DefaultsFile,
+    sql: &str,
+) -> std::result::Result<String, String> {
     let out = std::process::Command::new(client)
         .arg(format!("--defaults-extra-file={}", defaults.path().display())) // MUST be first
         .args(["--connect-timeout=10", "-N", "-B", "-e", sql])

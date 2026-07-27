@@ -362,11 +362,11 @@ pub fn db_name_exists(conn: &Connection, db_name: &str) -> Result<bool> {
 
 /// Witness that a connection verification actually RAN (Stage 3 plan §6).
 ///
-/// The field is private and there is **no production constructor**: the
-/// rewrite job's sign-in verification (Stage 3 step 5) becomes the only
-/// minting site when it exists. Until then nothing in the crate can build
-/// one, so nothing can write `connected` from "the write succeeded" — the
-/// door is closed before anything can walk through it.
+/// The field is private and the only production constructor is
+/// [`ConnectedVerified::from_verification`], which demands
+/// `confverify::Verified` — itself mintable only by a sign-in that
+/// succeeded against the rewritten file as re-read from disk. Nothing can
+/// write `connected` from "the write succeeded".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConnectedVerified {
     kind: VerifiedKind,
@@ -383,6 +383,20 @@ enum VerifiedKind {
 }
 
 impl ConnectedVerified {
+    /// The ONE production mint. It demands `confverify::Verified` — a proof
+    /// type whose only non-test constructor is `verify_signin`'s success
+    /// path — so the chain is closed end to end: connected fact ⇐ witness ⇐
+    /// proof ⇐ an actual sign-in with the rewritten file as re-read.
+    pub fn from_verification(v: &crate::core::confverify::Verified) -> Self {
+        Self {
+            kind: if v.http_confirmed() {
+                VerifiedKind::SigninHttp
+            } else {
+                VerifiedKind::Signin
+            },
+        }
+    }
+
     /// The serialized form — also the `db_imports.verified` column value.
     pub fn as_str(self) -> &'static str {
         match self.kind {
