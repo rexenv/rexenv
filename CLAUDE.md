@@ -82,6 +82,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Link an existing folder / serve a docroot outside the sites dir | `docs/PLAN-linked-sites.md` |
 | Valet/Herd import — scan, resolver consent, import loop (Stage 1) | `docs/PLAN-valet-herd-import.md` |
 | Valet/Herd database import — dump/restore, provenance, credentials (Stage 2) | `docs/PLAN-valet-herd-db-import.md` |
+| Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |
 | Design tokens, screen specs | `docs/archive/DESIGN_BRIEF.md` + `design/*.dc.html` |
