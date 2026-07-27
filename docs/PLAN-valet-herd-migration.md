@@ -1,8 +1,8 @@
 # Migrate an existing Valet / Herd environment into rexenv
 
 **Status: APPROVED 26 Jul 2026 — all four stages ship BEFORE the release.** Research
-(Q0–Q7), the feature shape, and the staging in §10 are green-lit. One decision remains
-open (§11.3). Researched 25–26 Jul 2026 against the code as of `f302996`, the live Valet
+(Q0–Q7), the feature shape, and the staging in §10 are green-lit. All decisions settled
+(the last, §11.3, on 27 Jul 2026). Researched 25–26 Jul 2026 against the code as of `f302996`, the live Valet
 4.12.0 + Herd 1.29.0 install on the dev Mac, laravel/valet source at tag v4.12.0,
 herd.laravel.com docs, and the bundled DB binaries.
 
@@ -519,8 +519,12 @@ plus a live `examples/*.rs` check; commit per task; tick here with ✓ evidence.
 2. **`.test` resolver takeover — APPROVED 26 Jul 2026**, and specified: detect foreign
    ownership, show their content vs ours, back up on OUR side, explicit checkbox,
    refusal path = re-home to `.rex`. **Never a silent overwrite, ever.** Stage 1.
-3. **`mysqli.default_socket` pool defaults — STILL OPEN.** Helps only `DB_HOST=localhost`
-   sites; costs a php-fpm pool config change that affects ALL sites. Decide before Stage 3.
+3. **`mysqli.default_socket` pool defaults — DECIDED 27 Jul 2026 (Stage 3 D5):** ship it,
+   pointed at MySQL's socket on every pool (the default engine); per-pool-majority
+   rejected as derived, mutable state deciding runtime behaviour. Strictly additive for
+   existing rexenv sites (our provisioning writes `host:port`, never `localhost`). The
+   MariaDB-on-localhost limitation surfaces in that site's own rewrite panel as the
+   tell-only instruction. `docs/PLAN-valet-herd-rewrite.md` §2, §9.
 
 ## 12. Pre-existing bugs folded into this work
 

@@ -1,8 +1,8 @@
 # Stage 3 — the opt-in connection rewrite
 
-**Status:** PLAN — awaiting decisions (§9). Stages 0–2 shipped; the research is
-`PLAN-valet-herd-migration.md` §8 (Q7, decided as option (c)), the interim state this
-replaces is `PLAN-valet-herd-db-import.md` §9.
+**Status:** APPROVED 27 Jul 2026 — all five decisions settled (§9). Stages 0–2 shipped;
+the research is `PLAN-valet-herd-migration.md` §8 (Q7, decided as option (c)), the
+interim state this replaces is `PLAN-valet-herd-db-import.md` §9.
 
 **Scope:** after a database import, change the site's own connection config — per-site,
 opt-in, backed up, diff shown first — so the site actually reads the rexenv copy. This
@@ -264,35 +264,40 @@ re-import must land in the right branch:
 
 ---
 
-## 9. Decisions needed
+## 9. Decisions — SETTLED (27 Jul 2026)
 
-**D1 — the root case.** *Recommend:* **dedicated per-SITE user** (`rex_<slug>`,
-32-char capped) holding their config's password — the 2-key rewrite; no secret can
-appear in any diff (unrepresentable, not just avoided). The per-site naming avoids the
-shared-database password fight (§1). Alternative (3-key) rejected for the display
-problem unless you see it differently.
+**D1 — the root case: dedicated per-SITE user** (`rex_<domain-slug>`, 32-char capped)
+holding their config's password — the 2-key rewrite. Per-site, NOT per-database,
+because per-database naming would let two sites sharing one database break each
+other's sign-in via the `ALTER USER` converge (§1) — the one real trap in the
+analysis. `RewritePlan` carries no password field, so the writer physically cannot
+emit a password change: no secret can appear in any diff, unrepresentable rather than
+avoided. The whole-file backup still contains their original password — that limit is
+stated plainly in the UI wherever the backup is mentioned, not glossed.
 
-**D2 — site delete vs a rewritten config.** Deleting a site whose `db_created=1`
-drops the database its (rewritten) config now points at — the site's files survive but
-point at nothing. *Recommend:* the delete confirm, for connected sites, states it and
-offers **"revert the connection change, then delete"** as the default button; plain
-delete remains available. Never a silent auto-revert.
+**D2 — site delete vs a rewritten config: offer "revert the connection change, then
+delete" as the DEFAULT button, never a silent auto-revert.** Plain delete stays
+available. The confirm must NAME both outcomes, not just label the buttons: reverting
+first means their config points back at the old database and our copy is dropped;
+deleting without reverting means their config points at a database that no longer
+exists and the site breaks on next load.
 
-**D3 — does revert also un-mirror?** Reverting the config restores their original
-credentials; the dedicated user (or Stage 2's mirrored user) stays on our engine,
-inert. *Recommend:* leave it (it's harmless, loopback-scoped, and re-connecting later
-reuses it); it is dropped at site delete via the recorded `mirrored_user`. Alternative:
-drop on revert — cleaner ledger, but makes revert-then-reconnect create it twice for
-no gain.
+**D3 — revert does NOT un-mirror.** The dedicated user (or Stage 2's mirrored user)
+stays on our engine: inert, loopback-scoped, and re-connecting later reuses it. It is
+dropped at site delete via the recorded `mirrored_user` — recorded, not derived.
+(Stage 2's dangling non-root-user cleanup ships with this.)
 
-**D4 — the HTTP supplementary check (§6 level 3).** *Recommend:* include it (it's one
-loopback request through our own edge, and it upgrades `verified` to `signin+http`
-when it passes), with the stated never-required / never-un-sets semantics. Drop it if
-you'd rather ship without the heuristic.
+**D4 — the HTTP supplementary check: INCLUDED**, with these exact semantics:
+supplementary, never required, never able to un-set a signin verification, and a
+failed probe reads as "couldn't confirm over HTTP" — never as "not connected".
+Passing upgrades `verified` to `signin+http`.
 
-**D5 — the socket win's engine choice.** *Recommend:* MySQL's socket on every pool
-(the default engine), MariaDB-on-localhost documented as "use 127.0.0.1:13307".
-Alternative: per-pool choice keyed to the majority engine of the pool's sites —
-rejected as derived, mutable state deciding runtime behaviour.
+**D5 — the socket win: MySQL's socket on every pool** (the default engine).
+Per-pool-majority rejected — mutable derived state deciding runtime behaviour. The
+MariaDB-on-localhost limitation surfaces in that site's OWN rewrite panel as the
+tell-only instruction ("use 127.0.0.1:13307"), not only in this plan.
 
-Plan first, per instruction — awaiting the five.
+**Also agreed:** `connected { verified: "signin" | "signin+http" }` carries its own
+limit in the record, and the UI wording matches what was actually proven — "the
+rewritten settings sign in to the rexenv copy" is true; "the site is now using this
+database" is not something we verified (§6).
