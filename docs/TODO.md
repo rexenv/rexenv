@@ -213,8 +213,14 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     supplementary-only, D5 MySQL's socket on every pool.
     - [x] 1. Decisions recorded (§8 step 1) ✓ 27 Jul 2026, plan §9 rewritten from
       "needed" to "settled" in the same commit as this tick
-    - [ ] 2. v21 `config_rewrites` + `connected` in the `db_imports.state` closed set
-      + `verified` column + store fns; badge/summary/TS types read the extended set
+    - [x] 2. v21 + the closed-set extension ✓ `e179439` — `config_rewrites`
+      (site_id+file PK; INSERT-only so FIRST BACKUP WINS is the PK, not a
+      convention), `db_imports.verified` (nullable, no DEFAULT), and the door
+      closed: `NewDbImport` has no state field, `set_db_import_connected` is
+      the sole 'connected' writer and demands a `ConnectedVerified` witness
+      with no production constructor until the verification path exists.
+      Migration test in the v15/v17/v19 shape + a serde pin of the TS wire
+      contract. 484 lib tests, tsc clean, examples build.
     - [ ] 3. `core::confedit` — `RewritePlan` (no password field), byte-preserving
       `.env` editor with the refusal vocabulary, diff builder
     - [ ] 4. dedicated-user creation (per-SITE name) + drop-on-site-delete for
