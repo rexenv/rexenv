@@ -230,8 +230,13 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       conventions. 19 new tests incl. the no-secret-in-any-diff pin.
       wp-config edits are OUR span editor, not `wp config set` — SETTLED
       28 Jul 2026 (plan §3): wp-cli would reopen the approved-vs-written gap.
-    - [ ] 4. dedicated-user creation (per-SITE name) + drop-on-site-delete for
-      recorded mirrored users
+    - [x] 4. dedicated user + drop-by-record ✓ `a4c7eb3` — `rex_<slug>` capped
+      at 32 with full-domain FNV disambiguation (two same-truncation domains
+      proven distinct), `rex_` prefix structurally never reserved; delete
+      drops `db_imports.mirrored_user` (the record, never re-derived),
+      `DROP USER IF EXISTS` over exactly the two loopback scopes, reserved
+      hard-refused even on a corrupt record; teardown removes the db_imports
+      row (closes Stage 2's orphan + dangling-cleanup gap). 507 lib tests.
     - [ ] 5. the rewrite job: backup-first-wins → temp+rename → sign-in verification
       → `connected` → revert path
     - [ ] 6. UI: diff/consent card, revert, badge flip, tell-only floor, §5 cache
