@@ -132,7 +132,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         proceeding would pick client tools by coin flip. 464 tests; the printed
         table is `cargo run --example db_compat_matrix`.
       - [x] 5. preflight (connect bound, size, disk) + dump to a 0600 artifact
-        `<pending5>` — `core::dbdump`. Preflight order is STRUCTURAL: the
+        `62101e3` — `core::dbdump`. Preflight order is STRUCTURAL: the
         no-connection gate (is-this-us via `server_is_ours` two-facts check +
         `classify_self_import` three-way split + the verdict) is the only mint
         of the `Cleared` witness that `preflight_live` and `dump` require, and
