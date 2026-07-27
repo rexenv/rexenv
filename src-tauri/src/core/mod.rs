@@ -14,6 +14,8 @@ pub mod db;
 pub mod dbcompat;
 pub mod dbdump;
 pub mod dbimport;
+pub mod dbmirror;
+pub mod dbrestore;
 pub mod dbsource;
 pub mod devtools;
 pub mod dns;

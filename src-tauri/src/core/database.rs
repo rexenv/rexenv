@@ -80,7 +80,7 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
 
 /// Guard for identifiers we interpolate into SQL: DB names are derived from a
 /// validated site domain (`wordpress::db_name_for`), and this is the backstop.
-fn validate_db_name(name: &str) -> Result<()> {
+pub(crate) fn validate_db_name(name: &str) -> Result<()> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
         return Err(Error::Other(format!("invalid database name {name:?}")));
     }
@@ -98,7 +98,7 @@ fn validate_db_name(name: &str) -> Result<()> {
 /// `mariadb-dump` 11.4/12.3) all REJECT `--connect-timeout` ("unknown variable",
 /// hard exit — verified against the bundled binaries), so the dump keeps its own
 /// unbounded-connect args rather than a flag that breaks every export.
-fn client_base_args(port: u16) -> [String; 6] {
+pub(crate) fn client_base_args(port: u16) -> [String; 6] {
     [
         "--no-defaults".into(),
         "--protocol=TCP".into(),

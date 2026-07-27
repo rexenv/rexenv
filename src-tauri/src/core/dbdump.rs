@@ -406,6 +406,11 @@ pub struct Manifest {
     pub dump_tool: String,
     /// Unix seconds. A number, not a formatted date — nothing parses it back.
     pub created_at_unix: u64,
+    /// Every table the copy CREATEs, read from the artifact itself. Half B
+    /// verifies completeness by MEMBERSHIP — each of these must exist in the
+    /// restored database — not by count equality, because a pre-existing
+    /// target legitimately holds tables the dump never mentioned.
+    pub tables: Vec<String>,
     pub findings: Findings,
 }
 
@@ -426,15 +431,30 @@ pub struct Findings {
     pub no_auto_create_user: bool,
 }
 
+/// What one streaming pass over the artifact learned.
+#[derive(Debug, Clone, Default)]
+pub struct ScanReport {
+    pub findings: Findings,
+    /// The tables the dump CREATEs, in dump order.
+    pub tables: Vec<String>,
+}
+
 /// Scan the artifact once, streaming — it can be gigabytes.
-pub fn scan_artifact(path: &Path) -> Result<Findings> {
+pub fn scan_artifact(path: &Path) -> Result<ScanReport> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let mut f = Findings::default();
+    let mut tables = Vec::new();
     for (i, line) in reader.lines().enumerate() {
         let line = line?;
         if i == 0 && line.starts_with("/*!999999\\-") {
             f.skip_sandbox_line = true;
+        }
+        // mysqldump/mariadb-dump always backtick: CREATE TABLE `name` (
+        if let Some(rest) = line.strip_prefix("CREATE TABLE `") {
+            if let Some(end) = rest.find('`') {
+                tables.push(rest[..end].to_string());
+            }
         }
         f.definer_count += line.matches("DEFINER=").count() as u64;
         if line.contains("IDENTIFIED WITH mysql_native_password")
@@ -446,7 +466,7 @@ pub fn scan_artifact(path: &Path) -> Result<Findings> {
             f.no_auto_create_user = true;
         }
     }
-    Ok(f)
+    Ok(ScanReport { findings: f, tables })
 }
 
 /// Where a domain's artifact and manifest live. One per domain BY NAME, so the
@@ -621,7 +641,7 @@ pub fn dump(
 
     let bytes = std::fs::metadata(&partial)?.len();
     progress(bytes);
-    let findings = scan_artifact(&partial)?;
+    let scan = scan_artifact(&partial)?;
 
     // Order matters: rename first, manifest second. A crash between the two
     // leaves an artifact with no manifest, which load_manifest refuses; the
@@ -644,7 +664,8 @@ pub fn dump(
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0),
-        findings,
+        tables: scan.tables,
+        findings: scan.findings,
     };
     platform
         .permissions()
@@ -761,6 +782,7 @@ mod tests {
             table_count: 7,
             dump_tool: "mysqldump 8.4.6".into(),
             created_at_unix: 1_753_000_000,
+            tables: vec!["wp_posts".into()],
             findings: Findings::default(),
         };
         let json: serde_json::Value = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
@@ -771,7 +793,7 @@ mod tests {
             vec![
                 "artifactBytes", "createdAtUnix", "database", "domain", "dumpTool",
                 "findings", "sourceHost", "sourcePort", "sourceVendor", "sourceVersion",
-                "tableCount", "targetEngine", "targetVersion",
+                "tableCount", "tables", "targetEngine", "targetVersion",
             ],
             "a new manifest field must be added here knowingly — and never a credential"
         );
@@ -805,6 +827,7 @@ mod tests {
             table_count: 1,
             dump_tool: "mysqldump".into(),
             created_at_unix: 0,
+            tables: vec![],
             findings: Findings::default(),
         };
         std::fs::write(manifest_path(&dir, "ea.test"), serde_json::to_string(&m).unwrap()).unwrap();
@@ -829,16 +852,20 @@ mod tests {
              SET sql_mode='NO_AUTO_CREATE_USER';\n",
         )
         .unwrap();
-        let f = scan_artifact(&p).unwrap();
-        assert!(f.skip_sandbox_line);
-        assert_eq!(f.definer_count, 1);
-        assert!(f.native_password);
-        assert!(f.no_auto_create_user);
+        let r = scan_artifact(&p).unwrap();
+        assert!(r.findings.skip_sandbox_line);
+        assert_eq!(r.findings.definer_count, 1);
+        assert!(r.findings.native_password);
+        assert!(r.findings.no_auto_create_user);
 
         // The CURRENT form (`/*M!`) is a plain comment to MySQL — not flagged.
         std::fs::write(&p, "/*M!999999\\- enable the sandbox mode */\nSELECT 1;\n").unwrap();
-        let f = scan_artifact(&p).unwrap();
-        assert!(!f.skip_sandbox_line, "the /*M! form parses fine; only /*! must be skipped");
+        let r = scan_artifact(&p).unwrap();
+        assert!(!r.findings.skip_sandbox_line, "the /*M! form parses fine; only /*! must be skipped");
+
+        // Table names are read from the artifact itself.
+        std::fs::write(&p, "CREATE TABLE `wp_posts` (\n  `id` int\n);\nCREATE TABLE `wp_options` (x int);\n-- CREATE TABLE `commented` (x int);\n").unwrap();
+        assert_eq!(scan_artifact(&p).unwrap().tables, vec!["wp_posts", "wp_options"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
