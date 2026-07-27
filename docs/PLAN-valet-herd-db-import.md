@@ -1,6 +1,6 @@
 # Stage 2 — import a Valet/Herd site's database
 
-**Status:** PLAN — awaiting decisions (§10). Stages 0 and 1 shipped
+**Status:** BUILT through step 11 (steps 1–9 shipped, examples live-verified in the sandbox); remaining: the §I packaged pass against live DBngin (docs/PUBLISH-TESTING.md §I — user starts DBngin). Stages 0 and 1 shipped
 (`PLAN-linked-sites.md`, `PLAN-valet-herd-import.md`); the research this rests on is
 `PLAN-valet-herd-migration.md` §5–§7.
 
