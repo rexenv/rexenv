@@ -237,8 +237,16 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       `DROP USER IF EXISTS` over exactly the two loopback scopes, reserved
       hard-refused even on a corrupt record; teardown removes the db_imports
       row (closes Stage 2's orphan + dangling-cleanup gap). 507 lib tests.
-    - [ ] 5. the rewrite job: backup-first-wins → temp+rename → sign-in verification
-      → `connected` → revert path
+    - [x] 5. the rewrite job ✓ `f72b2b7` (5a: v22 `written_digest`, nullable/
+      no-default, NULL = conservative FileEdited branch; `core::confrewrite`
+      file mechanics, mode-preserving atomic write, revert classifier),
+      `1f1fb6d` (5b: `core::confverify` — the proof's ONLY production mint is
+      verify_signin's success path against the re-read file; HTTP probe can
+      only upgrade a proof, never create one), `e0df48f` (5c: preview/apply/
+      revert commands, whole-file fingerprint, record-first always-converge
+      mirror, backup→row→write order, named revert states incl. BackupMissing
+      keeping `connected`, cross-guards both ways via `rewrite_active`,
+      teardown cleans rewrite rows+backups, boot-to-drop comment).
     - [ ] 6. UI: diff/consent card, revert, badge flip, tell-only floor, §5 cache
       warning
     - [ ] 7. `mysqli.default_socket`/`pdo_mysql.default_socket` pool addition + live
