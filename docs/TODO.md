@@ -174,7 +174,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         AND retry; mirrored user connects with a quote-and-backslash password,
         hosts = {localhost, 127.0.0.1} only; root → RefusedReserved; our root
         still passwordless after everything.
-      - [x] 8. job wiring + both entry points `<pending8>` —
+      - [x] 8. job wiring + both entry points `2aebe8e` —
         `commands/db_import.rs`: streamed job (registry, events, per-job log,
         cancel, honest progress — real bytes both directions), sequencing IS
         the witness chain. Both directions of the concurrency guard: db-import
@@ -183,7 +183,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         SAME job per site after its provision settles (no parallel
         implementation), continue-on-failure, per-row `db` outcome + summary
         counts. Typed-confirm required to overwrite an unclaimed database.
-      - [x] 9. interim state from ONE fact `<pending8>` — v20 `db_imports`
+      - [x] 9. interim state from ONE fact `2aebe8e` — v20 `db_imports`
         row (`state` closed set, no "connected" value until Stage 3);
         summary, Sites badge and copy-paste block all render the same
         `DbImportRecord`. Copy says the three things: the copy exists, the
@@ -196,7 +196,7 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         unaided to full row counts**; pre-existing survives everything;
         mirroring live). Unreachable-source is unit-level (`probe` refused
         port) + §I step 4 live.
-      - [x] 11. `PUBLISH-TESTING.md` §I `<pending8>` — 12 steps incl. the
+      - [x] 11. `PUBLISH-TESTING.md` §I `2aebe8e` — 12 steps incl. the
         DBngin precondition (user starts it; step 4 checks the honest refusal
         while it's stopped), the drift demonstration (step 7), the mid-copy
         kill for the kept-artifact path, and both concurrency directions.
