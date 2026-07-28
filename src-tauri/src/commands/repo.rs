@@ -241,7 +241,7 @@ pub async fn repo_add<R: tauri::Runtime>(
         Some(n) => repo::validate_dir_name(&n)?,
         None => src.dir_name.clone(),
     };
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
     if dest.exists() {
         return Err(Error::Other(format!(
             "wp-content/{kind}s/{dir_name} already exists in this site — pick \
@@ -692,7 +692,7 @@ pub async fn repo_check<R: tauri::Runtime>(
 ) -> Result<RepoJobState> {
     let site = site_of(&state, &site_id)?;
     let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
     if !dest.join(".git").exists() {
         return Err(Error::Other(format!(
             "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
@@ -913,7 +913,7 @@ pub async fn repo_git_op<R: tauri::Runtime>(
     };
     let site = site_of(&state, &site_id)?;
     let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
     if !dest.join(".git").exists() {
         return Err(Error::Other(format!(
             "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
@@ -1080,7 +1080,7 @@ pub async fn repo_branches<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
         let status = repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dir)?;
@@ -1113,7 +1113,7 @@ pub async fn repo_pull_refs<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
         repo::list_pull_refs(state.platform.supervisor(), &git.path, &env, &dir)
@@ -1142,7 +1142,7 @@ pub async fn repo_scripts(
     dir_name: String,
 ) -> Result<RepoScriptsInfo> {
     let site = site_of(&state, &site_id)?;
-    let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
     let inspection = repo::inspect_repo(&dir);
     Ok(RepoScriptsInfo {
         manager: inspection.node.map(|n| n.manager),
@@ -1164,7 +1164,7 @@ pub async fn repo_script_job<R: tauri::Runtime>(
 ) -> Result<RepoJobState> {
     let site = site_of(&state, &site_id)?;
     let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
     let inspection = repo::inspect_repo(&dest);
     let manager = inspection
         .node
@@ -1348,7 +1348,7 @@ pub async fn repo_watch_start<R: tauri::Runtime>(
 ) -> Result<WatchState> {
     let site = site_of(&state, &site_id)?;
     let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
     let inspection = repo::inspect_repo(&dest);
     let manager = inspection
         .node
@@ -1438,7 +1438,7 @@ fn run_watch<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<WatchEntry>, man
         let dest = {
             let st = snapshot_watch(entry);
             let site = site_of(&state, &st.site_id)?;
-            repo::asset_dest(std::path::Path::new(&site.path), &st.kind, &st.dir_name)?
+            repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &st.kind, &st.dir_name)?
         };
         repo::node_run_script(
             state.platform.supervisor(),
@@ -1558,7 +1558,7 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
         if !dir.join(".git").exists() {
             return Err(Error::Other(format!(
                 "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
@@ -1597,7 +1597,7 @@ pub async fn repo_unmanaged(
     kind: String,
 ) -> Result<Vec<repo::UnmanagedRepo>> {
     let site = site_of(&state, &site_id)?;
-    let content = repo::asset_dest(std::path::Path::new(&site.path), &kind, "probe")?
+    let content = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, "probe")?
         .parent()
         .map(|p| p.to_path_buf())
         .ok_or_else(|| Error::Other("no content dir".into()))?;
@@ -1626,7 +1626,7 @@ pub async fn repo_adopt<R: tauri::Runtime>(
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
         let dir_name = repo::validate_dir_name(&dir_name)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), &kind, &dir_name)?;
+        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
         if !dir.join(".git").exists() {
             return Err(Error::Other(format!(
                 "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
@@ -1695,7 +1695,7 @@ pub async fn repo_link<R: tauri::Runtime>(
             .map(|f| f.to_string_lossy().into_owned())
             .unwrap_or_default();
         let name = repo::validate_dir_name(&dir_name.unwrap_or(fallback))?;
-        let dest = repo::asset_dest(&docroot, &kind, &name)?;
+        let dest = repo::asset_dest(&docroot, site.content_dir_rel(), &kind, &name)?;
         let canonical = repo::validate_link_target(&docroot, &dest, std::path::Path::new(&target))?;
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;

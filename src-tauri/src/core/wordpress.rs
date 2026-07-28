@@ -588,11 +588,13 @@ pub struct WpTheme {
 }
 
 /// A theme's `screenshot.*` preview as a `data:` URL. WP-CLI's `name` field is
-/// the stylesheet slug — the theme's directory under `wp-content/themes/`.
+/// the stylesheet slug — the theme's directory under `<content_rel>/themes/`
+/// (the RECORDED content dir, v24 — a hardcoded wp-content read nothing on
+/// Bedrock and every screenshot silently vanished).
 /// Missing file (screenshots are optional) ⇒ `None`, never an error.
-fn theme_screenshot(docroot: &Path, slug: &str) -> Option<String> {
+fn theme_screenshot(docroot: &Path, content_rel: &str, slug: &str) -> Option<String> {
     use base64::Engine;
-    let dir = docroot.join("wp-content").join("themes").join(slug);
+    let dir = docroot.join(content_rel).join("themes").join(slug);
     for (ext, mime) in [
         ("png", "image/png"),
         ("jpg", "image/jpeg"),
@@ -615,6 +617,7 @@ pub fn theme_list(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
+    content_rel: &str,
     check_updates: bool,
 ) -> Result<Vec<WpTheme>> {
     let mut args = vec!["theme", "list"];
@@ -624,7 +627,7 @@ pub fn theme_list(
     let mut themes: Vec<WpTheme> =
         wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT)?;
     for t in &mut themes {
-        t.screenshot = theme_screenshot(docroot, &t.name);
+        t.screenshot = theme_screenshot(docroot, content_rel, &t.name);
     }
     Ok(themes)
 }
@@ -2914,9 +2917,9 @@ Error: WordPress installation doesn't verify against checksums.";
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("screenshot.png"), [0x89, b'P', b'N', b'G']).unwrap();
 
-        let url = theme_screenshot(&docroot, "twentytwentyfive").expect("screenshot found");
+        let url = theme_screenshot(&docroot, "wp-content", "twentytwentyfive").expect("screenshot found");
         assert!(url.starts_with("data:image/png;base64,"), "{url}");
-        assert!(theme_screenshot(&docroot, "no-such-theme").is_none());
+        assert!(theme_screenshot(&docroot, "wp-content", "no-such-theme").is_none());
 
         std::fs::remove_dir_all(&docroot).unwrap();
     }

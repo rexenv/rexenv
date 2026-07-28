@@ -230,7 +230,7 @@ export function SiteLogs({
                     : "border-rex-border text-rex-text-dim",
                 )}
               >
-                {loggingOn ? "logging on" : "logging off"}
+                {status.indeterminate ? "can't determine" : loggingOn ? "logging on" : "logging off"}
               </span>
             )}
             {status?.exists && (
@@ -322,7 +322,19 @@ export function SiteLogs({
 
       {active === "wordpress" ? (
         <LogPane lines={wpLines} paused={paused}>
-          {!status ? null : !loggingOn && !status.exists ? (
+          {!status ? null : status.indeterminate && !status.exists ? (
+            <div className="flex flex-col gap-2 text-rex-text-muted">
+              <div>
+                Can&apos;t tell whether debug logging is on: this project keeps its WordPress
+                config outside <span className="font-mono">wp-config.php</span> (Bedrock-style),
+                which rexenv doesn&apos;t read yet.
+              </div>
+              <div>
+                If logging is on, entries appear here once{" "}
+                <span className="font-mono">{status.path}</span> exists.
+              </div>
+            </div>
+          ) : !loggingOn && !status.indeterminate && !status.exists ? (
             <div className="flex flex-col gap-2 text-rex-text-muted">
               <div>
                 WordPress debug logging is off — nothing is being written to{" "}
@@ -344,7 +356,7 @@ export function SiteLogs({
             </div>
           ) : wpLines.length === 0 ? (
             <div className="text-rex-text-muted">The debug log is empty.</div>
-          ) : !loggingOn ? (
+          ) : !loggingOn && !status.indeterminate ? (
             <div className="mb-2 text-rex-text-dim">
               Note: logging is currently off (
               {!status.debug ? "WP_DEBUG is false" : "WP_DEBUG_LOG is false"}) — these are

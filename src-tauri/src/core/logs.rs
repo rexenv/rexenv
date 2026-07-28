@@ -203,17 +203,24 @@ pub struct WpDebugLogStatus {
     pub path: String,
     pub exists: bool,
     pub size_bytes: u64,
+    /// True when the answer CANNOT be trusted: a non-stock content layout
+    /// (Bedrock/Radicle) keeps its defines in files the wp-config reader
+    /// never parses (`config/application.php`), so "off" here would really
+    /// mean "looked in the wrong place". The UI must say "can't determine",
+    /// never a confident off/empty. Full support rides the future wp-config
+    /// reader work (see docs/TODO.md).
+    pub indeterminate: bool,
 }
 
 /// Resolve a site's WP debug-log status from its docroot. A missing / non-WP
 /// docroot just reports everything off (the UI hides the section for non-WP
-/// sites anyway).
-pub fn wp_debug_log_status(docroot: &Path) -> WpDebugLogStatus {
+/// sites anyway). `content_rel` is the site's recorded content dir (v24).
+pub fn wp_debug_log_status(docroot: &Path, content_rel: &str) -> WpDebugLogStatus {
     // ONE wp-config reader, shared with the database import (`core::phpconf`) —
     // a second copy here would agree today and drift later, and that one is read
     // for credentials.
     let config = crate::core::phpconf::wp_config_text(docroot).unwrap_or_default();
-    let mut path = docroot.join("wp-content").join("debug.log");
+    let mut path = docroot.join(content_rel).join("debug.log");
     // First define wins, like PHP's `define()` — stock wp-config carries a
     // guarded `define('WP_DEBUG', false)` fallback BELOW where WP-CLI inserts.
     let first = |name: &str| crate::core::phpconf::find_defines(&config, name).0.into_iter().next();
@@ -238,17 +245,22 @@ pub fn wp_debug_log_status(docroot: &Path) -> WpDebugLogStatus {
         path: path.to_string_lossy().into_owned(),
         exists: meta.as_ref().is_some_and(|m| m.is_file()),
         size_bytes: meta.map(|m| m.len()).unwrap_or(0),
+        // Non-stock layout ⇒ the defines live outside wp-config.php and this
+        // reader can't see them. The file probe above still ran (a custom
+        // WP_DEBUG_LOG in wp-config.php is honored if present), but absence
+        // of evidence here is NOT "off".
+        indeterminate: content_rel != "wp-content",
     }
 }
 
 /// Tail the site's WordPress debug log (missing file ⇒ empty, like [`tail`]).
-pub fn wp_debug_log_tail(docroot: &Path, lines: usize) -> Result<Vec<String>> {
-    tail_file(Path::new(&wp_debug_log_status(docroot).path), lines)
+pub fn wp_debug_log_tail(docroot: &Path, content_rel: &str, lines: usize) -> Result<Vec<String>> {
+    tail_file(Path::new(&wp_debug_log_status(docroot, content_rel).path), lines)
 }
 
 /// Truncate the site's debug log to empty. A missing file is fine (nothing to clear).
-pub fn wp_debug_log_clear(docroot: &Path) -> Result<()> {
-    let status = wp_debug_log_status(docroot);
+pub fn wp_debug_log_clear(docroot: &Path, content_rel: &str) -> Result<()> {
+    let status = wp_debug_log_status(docroot, content_rel);
     if status.exists {
         std::fs::write(&status.path, "")?;
     }
@@ -257,8 +269,8 @@ pub fn wp_debug_log_clear(docroot: &Path) -> Result<()> {
 
 /// Copy the site's debug log into the user's Downloads folder
 /// (`<domain>-debug.log`, numbered on collision). Returns the destination.
-pub fn wp_debug_log_download(docroot: &Path, domain: &str) -> Result<PathBuf> {
-    let status = wp_debug_log_status(docroot);
+pub fn wp_debug_log_download(docroot: &Path, content_rel: &str, domain: &str) -> Result<PathBuf> {
+    let status = wp_debug_log_status(docroot, content_rel);
     if !status.exists {
         return Err(Error::Other("no debug.log to download".into()));
     }
@@ -398,7 +410,7 @@ mod tests {
             "<?php\ndefine(\n  'WP_DEBUG',\n  true\n);\ndefine('WP_DEBUG_LOG', '/tmp/split.log');\n",
         )
         .unwrap();
-        let status = wp_debug_log_status(&dir);
+        let status = wp_debug_log_status(&dir, "wp-content");
         assert!(status.debug, "a define split across lines must be seen");
         assert_eq!(status.path, "/tmp/split.log");
         let _ = std::fs::remove_dir_all(&dir);
@@ -411,7 +423,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("wp-content")).unwrap();
 
         // No wp-config ⇒ everything off, default path.
-        let s = wp_debug_log_status(&dir);
+        let s = wp_debug_log_status(&dir, "wp-content");
         assert!(!s.debug && !s.log_enabled && !s.exists);
         assert!(s.path.ends_with("wp-content/debug.log"));
 
@@ -422,7 +434,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(dir.join("wp-content/debug.log"), "[notice] hi\n").unwrap();
-        let s = wp_debug_log_status(&dir);
+        let s = wp_debug_log_status(&dir, "wp-content");
         assert!(s.debug && s.log_enabled && s.exists && s.size_bytes > 0);
 
         // Custom path string ⇒ log_enabled even without a bool, path honored.
@@ -431,7 +443,7 @@ mod tests {
             "<?php\ndefine('WP_DEBUG', false);\ndefine('WP_DEBUG_LOG', 'logs/wp.log');\n",
         )
         .unwrap();
-        let s = wp_debug_log_status(&dir);
+        let s = wp_debug_log_status(&dir, "wp-content");
         assert!(!s.debug && s.log_enabled);
         assert!(s.path.ends_with("logs/wp.log"), "{}", s.path);
 
@@ -450,7 +462,7 @@ mod tests {
              if ( ! defined( 'WP_DEBUG' ) ) {\n\tdefine( 'WP_DEBUG', false );\n}\n",
         )
         .unwrap();
-        let s = wp_debug_log_status(&dir);
+        let s = wp_debug_log_status(&dir, "wp-content");
         assert!(s.debug && s.log_enabled);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -462,11 +474,11 @@ mod tests {
         std::fs::create_dir_all(dir.join("wp-content")).unwrap();
         std::fs::write(dir.join("wp-config.php"), "<?php define('WP_DEBUG_LOG', true);").unwrap();
         std::fs::write(dir.join("wp-content/debug.log"), "old\n").unwrap();
-        wp_debug_log_clear(&dir).unwrap();
+        wp_debug_log_clear(&dir, "wp-content").unwrap();
         assert_eq!(std::fs::read_to_string(dir.join("wp-content/debug.log")).unwrap(), "");
         // Missing file is not an error.
         std::fs::remove_file(dir.join("wp-content/debug.log")).unwrap();
-        wp_debug_log_clear(&dir).unwrap();
+        wp_debug_log_clear(&dir, "wp-content").unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 

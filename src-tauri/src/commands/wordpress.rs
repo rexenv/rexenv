@@ -71,6 +71,19 @@ async fn site_tools(
     Ok((PathBuf::from(site.path), php_bin, wp_phar))
 }
 
+/// The site's recorded content dir (v24). The delete guards must stat the
+/// SAME directory wp-cli will act on — a hardcoded `wp-content` on a Bedrock
+/// site stats the wrong path, sees no symlink, and silently defeats the
+/// unlink-only partition.
+fn site_content_rel(state: &State<'_, AppState>, id: &str) -> Result<String> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+    let site = core::sites::get(&conn, id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?;
+    Ok(site.content_dir_rel().to_string())
+}
+
 /// List the site's plugins (`wp plugin list`). `checkUpdates` opts into the
 /// api.wordpress.org update check (slow / offline-hostile) — the UI lists fast
 /// without it, then refreshes update badges in a background query.
@@ -138,7 +151,7 @@ pub async fn wp_plugin_delete(state: State<'_, AppState>, id: String, names: Vec
     // UNLINKED — `wp plugin delete` walks INTO the link and destroys the
     // user's real checkout elsewhere on disk. Covers manually-linked dirs
     // that were never adopted (provenance is metadata, the fs is the guard).
-    let content = docroot.join("wp-content").join("plugins");
+    let content = docroot.join(site_content_rel(&state, &id)?).join("plugins");
     let (linked, normal) = core::repo::partition_symlink_deletes(&content, &names);
     for name in &linked {
         // Best-effort deactivate so WP doesn't trip over a vanished active
@@ -173,8 +186,9 @@ pub async fn wp_themes(
     check_updates: Option<bool>,
 ) -> Result<Vec<WpTheme>> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
+    let content_rel = site_content_rel(&state, &id)?;
     wp_blocking(move || {
-        core::wordpress::theme_list(&php, &wp, &docroot, check_updates.unwrap_or(false))
+        core::wordpress::theme_list(&php, &wp, &docroot, &content_rel, check_updates.unwrap_or(false))
     })
     .await
 }
@@ -200,7 +214,7 @@ pub async fn wp_theme_delete(state: State<'_, AppState>, id: String, names: Vec<
     // Same unlink-only guard as plugins (fs truth). The ACTIVE theme's link
     // is refused — wp-cli refuses deleting the active theme on the normal
     // path, and removing its link would leave WP themeless.
-    let content = docroot.join("wp-content").join("themes");
+    let content = docroot.join(site_content_rel(&state, &id)?).join("themes");
     let (linked, normal) = core::repo::partition_symlink_deletes(&content, &names);
     if !linked.is_empty() {
         let (p2, w2, d2) = (php.clone(), wp.clone(), docroot.clone());

@@ -627,6 +627,10 @@ pub fn detect_content_dir_rel(docroot: &Path) -> &'static str {
     if sibling("config/application.php") && docroot.join("app").exists() {
         return "app";
     }
+    // UNVERIFIED against a real project: `public/content` is Roots' documented
+    // Radicle layout, but no Radicle site has been linked on a live install
+    // yet — whoever first links one should confirm mu-plugins actually load
+    // from here before trusting features that write into it.
     if sibling("bedrock/application.php") && docroot.join("content").exists() {
         return "content";
     }

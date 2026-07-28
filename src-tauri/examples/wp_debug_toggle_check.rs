@@ -13,11 +13,11 @@ fn main() {
     let php = PathBuf::from(args.next().expect("php binary"));
     let wp = PathBuf::from(args.next().expect("wp-cli.phar"));
 
-    println!("== before: {:?}", logs::wp_debug_log_status(&docroot));
+    println!("== before: {:?}", logs::wp_debug_log_status(&docroot, "wp-content"));
 
     println!("== enable debugging");
     wordpress::wp_debug_set(&php, &wp, &docroot, true).expect("enable failed");
-    let s = logs::wp_debug_log_status(&docroot);
+    let s = logs::wp_debug_log_status(&docroot, "wp-content");
     println!("   status: {s:?}");
     assert!(s.debug && s.log_enabled, "toggle on must enable WP_DEBUG + WP_DEBUG_LOG");
 
@@ -30,10 +30,10 @@ fn main() {
     )
     .expect("wp eval failed");
 
-    let s = logs::wp_debug_log_status(&docroot);
+    let s = logs::wp_debug_log_status(&docroot, "wp-content");
     println!("   status after warning: {s:?}");
     assert!(s.exists && s.size_bytes > 0, "debug.log must be auto-created on first entry");
-    let tail = logs::wp_debug_log_tail(&docroot, 5).expect("tail failed");
+    let tail = logs::wp_debug_log_tail(&docroot, "wp-content", 5).expect("tail failed");
     println!("   tail: {tail:#?}");
     assert!(
         tail.iter().any(|l| l.contains("rexenv debug-log verify")),
@@ -42,7 +42,7 @@ fn main() {
 
     println!("== disable debugging");
     wordpress::wp_debug_set(&php, &wp, &docroot, false).expect("disable failed");
-    let s = logs::wp_debug_log_status(&docroot);
+    let s = logs::wp_debug_log_status(&docroot, "wp-content");
     println!("   status: {s:?}");
     assert!(!s.debug && !s.log_enabled, "toggle off must disable both constants");
 

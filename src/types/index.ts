@@ -745,6 +745,10 @@ export interface WpDebugLogStatus {
   path: string; // resolved debug.log path
   exists: boolean;
   sizeBytes: number;
+  /** True when the answer can't be trusted: a non-stock layout (Bedrock/
+   *  Radicle) keeps its defines outside wp-config.php — "off" would really
+   *  mean "looked in the wrong place". */
+  indeterminate: boolean;
 }
 
 /** An email address (display name may be empty). */

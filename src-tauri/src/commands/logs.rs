@@ -49,27 +49,27 @@ pub fn log_download(state: State<'_, AppState>, key: String) -> Result<String> {
 #[tauri::command]
 pub fn wp_debug_log_status(state: State<'_, AppState>, site_id: String) -> Result<WpDebugLogStatus> {
     let site = get_site(&state, &site_id)?;
-    Ok(core::logs::wp_debug_log_status(&PathBuf::from(site.path)))
+    Ok(core::logs::wp_debug_log_status(&PathBuf::from(&site.path), site.content_dir_rel()))
 }
 
 /// The last `lines` lines of the site's WordPress debug.log (missing ⇒ empty).
 #[tauri::command]
 pub fn wp_debug_log_tail(state: State<'_, AppState>, site_id: String, lines: usize) -> Result<Vec<String>> {
     let site = get_site(&state, &site_id)?;
-    core::logs::wp_debug_log_tail(&PathBuf::from(site.path), lines)
+    core::logs::wp_debug_log_tail(&PathBuf::from(&site.path), site.content_dir_rel(), lines)
 }
 
 /// Truncate the site's WordPress debug.log to empty.
 #[tauri::command]
 pub fn wp_debug_log_clear(state: State<'_, AppState>, site_id: String) -> Result<()> {
     let site = get_site(&state, &site_id)?;
-    core::logs::wp_debug_log_clear(&PathBuf::from(site.path))
+    core::logs::wp_debug_log_clear(&PathBuf::from(&site.path), site.content_dir_rel())
 }
 
 /// Copy the site's debug.log to the Downloads folder; returns the saved path.
 #[tauri::command]
 pub fn wp_debug_log_download(state: State<'_, AppState>, site_id: String) -> Result<String> {
     let site = get_site(&state, &site_id)?;
-    core::logs::wp_debug_log_download(&PathBuf::from(&site.path), &site.domain)
+    core::logs::wp_debug_log_download(&PathBuf::from(&site.path), site.content_dir_rel(), &site.domain)
         .map(|p| p.to_string_lossy().into_owned())
 }

@@ -251,16 +251,25 @@ fn parse_shorthand(s: &str) -> Result<Option<RepoSource>> {
     }))
 }
 
-/// Where an added asset lands: `<docroot>/wp-content/{plugins|themes}/<dir>`.
+/// Where an added asset lands: `<docroot>/<content_rel>/{plugins|themes}/<dir>`.
+/// `content_rel` is the site's RECORDED content dir (`Site::content_dir_rel`,
+/// v24 — `app` for Bedrock, `content` for Radicle): building from a hardcoded
+/// `wp-content` cloned repos into a dead path inside the user's project AND
+/// silently defeated the unlink-delete guard, which stats what this resolves.
 /// `kind` and `dir_name` are validated HERE (M7 class — both cross IPC).
-pub fn asset_dest(docroot: &Path, kind: &str, dir_name: &str) -> Result<std::path::PathBuf> {
+pub fn asset_dest(
+    docroot: &Path,
+    content_rel: &str,
+    kind: &str,
+    dir_name: &str,
+) -> Result<std::path::PathBuf> {
     let sub = match kind {
         "plugin" => "plugins",
         "theme" => "themes",
         other => return Err(other_kind(other)),
     };
     let name = derive_dir_name(dir_name)?;
-    Ok(docroot.join("wp-content").join(sub).join(name))
+    Ok(docroot.join(content_rel).join(sub).join(name))
 }
 
 fn other_kind(kind: &str) -> Error {
@@ -2011,6 +2020,19 @@ mod tests {
 
     fn parse(s: &str) -> RepoSource {
         parse_source(s).unwrap_or_else(|e| panic!("{s}: {e}"))
+    }
+
+    #[test]
+    fn asset_dest_follows_the_recorded_content_dir() {
+        let d = Path::new("/p/web");
+        assert_eq!(
+            asset_dest(d, "wp-content", "plugin", "x").unwrap(),
+            d.join("wp-content/plugins/x")
+        );
+        // Bedrock rel: a hardcoded wp-content cloned into the user's repo at
+        // a dead path AND blinded the unlink-delete guard.
+        assert_eq!(asset_dest(d, "app", "theme", "x").unwrap(), d.join("app/themes/x"));
+        assert!(asset_dest(d, "app", "mu-plugin", "x").is_err()); // kind still validated
     }
 
     #[test]

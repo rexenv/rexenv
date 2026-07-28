@@ -79,14 +79,14 @@ async fn main() {
     let out = wordpress::wp_cli(&php, &wp, &["theme", "install", NEW, &path_arg], None)
         .expect("install theme");
     assert!(out.status.success(), "install {NEW}: {}", String::from_utf8_lossy(&out.stderr));
-    let list = wordpress::theme_list(&php, &wp, &docroot, false).expect("list");
+    let list = wordpress::theme_list(&php, &wp, &docroot, "wp-content", false).expect("list");
     println!("after install: {NEW} status = {:?}", status(&list, NEW));
     assert_eq!(status(&list, NEW).as_deref(), Some("inactive"), "theme not installed/inactive");
 
     // Activate it → flips to active; whatever was active flips off.
     let prev_active = list.iter().find(|t| t.status == "active").map(|t| t.name.clone());
     wordpress::theme_activate(&php, &wp, &docroot, NEW).expect("activate");
-    let list = wordpress::theme_list(&php, &wp, &docroot, false).unwrap();
+    let list = wordpress::theme_list(&php, &wp, &docroot, "wp-content", false).unwrap();
     assert_eq!(status(&list, NEW).as_deref(), Some("active"), "theme not activated");
     if let Some(prev) = &prev_active {
         assert_ne!(status(&list, prev).as_deref(), Some("active"), "old theme still active");
@@ -96,7 +96,7 @@ async fn main() {
     // Delete a non-active theme.
     if let Some(victim) = list.iter().find(|t| t.status != "active").map(|t| t.name.clone()) {
         wordpress::theme_delete(&php, &wp, &docroot, std::slice::from_ref(&victim)).expect("delete");
-        let list = wordpress::theme_list(&php, &wp, &docroot, false).unwrap();
+        let list = wordpress::theme_list(&php, &wp, &docroot, "wp-content", false).unwrap();
         assert!(!list.iter().any(|t| t.name == victim), "{victim} still present");
         println!("✓ delete non-active theme '{victim}' → gone ({} themes remain)", list.len());
     }

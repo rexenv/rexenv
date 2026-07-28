@@ -623,6 +623,7 @@ export async function wpDebugLogStatus(siteId: string): Promise<WpDebugLogStatus
       path: "/Users/dev/Sites/demo/wp-content/debug.log",
       exists: true,
       sizeBytes: 2048,
+      indeterminate: false,
     };
   }
   return invoke<WpDebugLogStatus>("wp_debug_log_status", { siteId });

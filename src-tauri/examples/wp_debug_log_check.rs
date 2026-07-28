@@ -9,9 +9,9 @@ fn main() {
     let docroot = PathBuf::from(
         std::env::args().nth(1).expect("usage: wp_debug_log_check <site docroot>"),
     );
-    let status = logs::wp_debug_log_status(&docroot);
+    let status = logs::wp_debug_log_status(&docroot, "wp-content");
     println!("status: {status:#?}");
-    let lines = logs::wp_debug_log_tail(&docroot, 10).expect("tail failed");
+    let lines = logs::wp_debug_log_tail(&docroot, "wp-content", 10).expect("tail failed");
     println!("--- last {} lines ---", lines.len());
     for l in lines {
         println!("{l}");
