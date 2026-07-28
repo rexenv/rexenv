@@ -180,7 +180,7 @@ L3 = scripted manual.
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
 | 102 | logs.rs:7 | Log keys validated; tail never handed a UI path | ◐ key gate ✅; call-site discipline 🔨 L0 |
-| 103 | services.rs:414 | ⚠ Dotfile paths 404, never reach fastcgi (all three templates) | 🔨 L1 — proven only as a config SUBSTRING; nothing HTTP-requests a dotfile through a live server |
+| 103 | services.rs:414 | ⚠ Dotfile paths 404, never reach fastcgi (all three templates) | ◐ nginx leg ✅ `dotfile_guard_check` (T11: .env/.git/.hidden-php 404 over the wire, secret never crosses, .well-known exempt); Apache + FrankenPHP legs 🔨 L1 |
 | 104 | services.rs:122 | `-t` gate runs against a candidate the live pool never reads | ◐ shape ✅; candidate-vs-live isolation 🔨 L1 |
 | 105 | services.rs:315 | nginx never 413s an upload PHP would accept | ✅ 2 lib tests |
 | 106 | services.rs:769 | Long requests not killed at 300s | ✅ lib test |

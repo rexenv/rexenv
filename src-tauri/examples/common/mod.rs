@@ -66,7 +66,8 @@
 // Already-claimed fixture ports live in their examples today: 18097
 // (retry_recovery_check), 18099 (linked_site_check, valet_import_check),
 // 13397-13399 (config_rewrite/db_restore/db_dump), 9799 (apache_site_check),
-// 9998/19003 (xdebug_pool_check).
+// 9998/19003 (xdebug_pool_check), 18131/9791 (nginx_php_serve), 9792
+// (php_fpm_serve), 18132/9793 (dotfile_guard_check).
 
 use rexenv_lib::error::Result as RexResult;
 use rexenv_lib::platform::traits::{

@@ -70,7 +70,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     unrepresentable, pinned by `loopback_bind_is_structural`; #175 ◐: both login-safety
     decisions extracted pure (`uncached_names`, `login_edge_action`) + tested, command
     rewired through them. Ledger tally 120/195 proven. verify.sh green.
-  - [ ] T11. Dotfile-guard live 404 example (#103, nginx template first).
+  - [x] **T11. Dotfile guard proven over the wire (nginx)** ✓ 28 Jul 2026 —
+    `dotfile_guard_check` (sandbox tier, fixture 18132/9793): .env / .git/config /
+    .hidden/x.php all 404 through real nginx, the secret never crosses, the dot-dir
+    .php never reaches fastcgi, root /.well-known/ stays exempt, control PHP executes.
+    PASS. Ledger #103 → ◐ (Apache + FrankenPHP legs backlogged). verify.sh green.
   - [ ] T12. `scripts/verify-full.sh` (fast/full gate split).
   - [ ] T13. SMOKE-TEST/PUBLISH-TESTING §5 additions + ledger re-tally.
 
