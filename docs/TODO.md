@@ -111,10 +111,23 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     trycloudflare.com ⇒ Unverified is the terminal state for most drops; Broken
     sticky, Reachable decays, redirects unfollowed, UI copy says what Unverified
     means); `9d8b2f3` A6 quit-dialog drop guard + A7 api-host never the URL;
-    `ac2300c` clippy in verify.sh at zero. Still needs a live session: map the
-    Broken window (share → kill -9 cloudflared → watch probe verdicts);
-    `pgrep -P` a live cloudflared (single-process assumption). Re-assess
-    per-backend origins now that the lifetime vhost guard exists.
+    `ac2300c` clippy in verify.sh at zero. A4 shipped as the ASYMMETRY (ruled
+    better than the original ruling): Broken sticky (530s are positive evidence,
+    only an HTTP answer clears), Reachable decays (a freshness claim expires).
+    Live-measurement items, none blocking (human + real network): map the Broken
+    window (share → kill -9 cloudflared → watch probe verdicts minute by minute);
+    `pgrep -P` a live cloudflared (single-process assumption); Bedrock "Log in
+    as" landing in wp-admin.
+  - [ ] **Per-backend tunnel origins (deferred — RE-SCOPED 28 Jul post-audit,
+    smaller than the original estimate):** the lifetime vhost guard it needed now
+    EXISTS (`4815ff1` refuses any web-server switch while shared — so "handle a
+    mid-share switch" collapses to "already refused"; only its message needs
+    generalizing off nginx-specific wording when this ships). Remaining work:
+    resolve the RECORDED override port at tunnel start (`recorded_override_port`,
+    B20 — never re-derive) as the `--url` origin; refuse start when that backend
+    isn't up; replace `ensure_tunnelable`'s refusal (its "yet" message is the
+    seam). Health probe, mu-plugin, claim/row machinery are all origin-agnostic —
+    no changes there.
   - **Deferred (deliberate):** parent-death watcher helper (kqueue `NOTE_EXIT`) to close
     the crash→relaunch exposure gap entirely — a new long-lived helper process to get
     right vs. a rare window already bounded by next launch; revisit only if crash

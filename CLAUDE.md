@@ -62,8 +62,12 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 - `src/routes/` map 1:1 to screens (Sites, SiteDetail, Services, Databases, Mail,
   Tunnels, Settings, Onboarding).
 - Verification: **`scripts/verify.sh` is the pre-commit bar** (lib tests + example
-  builds + tsc; exit codes load-bearing — never pipe a check's output where the pipe
-  can mask its status). Live-check `examples/*.rs` — examples run against
+  builds + clippy at zero + tsc). A green verdict comes ONLY from the script's own
+  `verify: all green` line — an ad-hoc `cargo test`/`tsc` invocation is never a gate:
+  it can silently run from the wrong cwd (shell state resets between tool calls) and
+  a `&&`-chain then passes on partial checks, exactly as a piped exit code once
+  masked a failing tsc. The script sets its own cwd and its exit code is the
+  verdict. Live-check `examples/*.rs` — examples run against
   REAL app data and processes, so anything they write/spawn/delete MUST be
   fixture-owned: `common::sandbox()` for a throwaway `Platform`, `common::Reaped`
   for spawned services. Read the invariant in `examples/common/mod.rs` FIRST. Work in small verifiable
