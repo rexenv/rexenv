@@ -1,5 +1,5 @@
 #!/bin/bash
-# The FULL gate (docs/PLAN-testing-strategy.md §6): the fast pre-commit bar,
+# The FULL gate (docs/TESTING.md §6): the fast pre-commit bar,
 # then the L1 sandbox tier, then the L2 WebKit harness. Composition, not
 # bloat — verify.sh stays the per-commit bar; run THIS before a release or
 # after touching a layer's subject (config generators, examples/common, the

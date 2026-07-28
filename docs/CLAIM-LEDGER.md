@@ -1,6 +1,6 @@
 # CLAIM LEDGER — every asserted-but-unproven invariant, and what proves it
 
-The complete inventory behind `docs/PLAN-testing-strategy.md` §2. A **claim** is a
+The complete inventory behind `docs/TESTING.md` §2. A **claim** is a
 statement the code asserts (doc comment, safety posture, honest-UI promise) without a
 programmatic proof. This file is the project's test metric: **claims proven / claims
 provable** — never line coverage. Update the verdict column when a proof lands, with the

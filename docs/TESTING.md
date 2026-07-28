@@ -1,7 +1,10 @@
-# PLAN — the testing strategy: proofs at the right level, by design
+# TESTING — proofs at the right level, by design
 
-Written 28 Jul 2026. Companion ledger: `docs/CLAIM-LEDGER.md` (the full 194-claim
-inventory this plan's §2 summarizes — and the project's test metric).
+The standing testing doctrine (written 28 Jul 2026 as a plan; its T1–T13 all
+shipped the same day — evidence in `docs/archive/SHIPPED-2026-07.md` — so this now
+reads as the reference for how this repo tests). Companion ledger:
+`docs/CLAIM-LEDGER.md` (the full claim inventory §2 summarizes — and the project's
+test metric; its mechanical tally is the current number, not any count quoted here).
 
 ## 0. Why this plan exists
 
@@ -290,9 +293,10 @@ A gate nobody can afford to run stops being one: the fast bar stays fast, and no
 above it is required per-commit. The metric the gate serves is the ledger tally, which
 only proof-commits move.
 
-## Task list
+## Task list (ALL SHIPPED 28 Jul 2026 — kept for the record; evidence in
+`docs/archive/SHIPPED-2026-07.md`)
 
-Small, one commit each, ✓-ticked in `docs/TODO.md` with evidence. Ordered so every
+Small, one commit each, ✓-ticked with evidence. Ordered so every
 commit lands standalone value.
 
 - **T1** ✍ this plan + the ledger + TODO entry (docs).

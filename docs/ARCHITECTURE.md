@@ -30,17 +30,21 @@ platform/   ALL OS-specific code, behind 11 traits (platform/traits.rs):
 - The only non-platform `todo!`-ish code is a defensive `unreachable!` in
   `core/binaries.rs`. `core/`, `commands/`, `state/` are macOS-complete.
 
-**Module map** (file names; see README "Project structure" for the annotated tree):
-- `core/`: adminer · apache (per-site override server) · binaries · blueprints ·
-  database (MySQL) · db (`DbEngine` abstraction) · dns · frankenphp · logs · mail ·
-  mariadb · monitor · php · ports · postgres · proc · proxy · redis ·
-  service_manager · services · setup · site_metrics · sites · ssl · terminal ·
-  tunnels · wordpress · wp_login · wp_tunnel
-- `commands/`: blueprints · database · logs · mail · php · services · settings · sites ·
-  system · terminal · tunnels · wordpress
+**Module map** — the per-subsystem file/entry-point index is `docs/MAP.md`; every
+module also carries a `//!` doc header stating its job. Quick inventory:
+- `core/`: adminer · apache · binaries · blueprints · cli · confedit · confrewrite ·
+  confverify · database (MySQL) · db (`DbEngine`) · dbcompat · dbdump · dbimport ·
+  dbmirror · dbrestore · dbsource · devtools · dns · downloads · firefox ·
+  frankenphp · logs · mail · mariadb · monitor · php · phpconf · ports · postgres ·
+  proc · proxy · redis · repo · service_manager · services · setup · site_env ·
+  site_metrics · sites · ssl · stack_guard · terminal · tld · tunnels · valet ·
+  wordpress · wp_login · wp_tunnel · wporg
+- `commands/`: blueprints · database · db_import · downloads · logs · mail · php ·
+  repo · rewrite · services · settings · site_provision · sites · system · terminal ·
+  tunnels · valet_import · wordpress · wp_install
 - `state/`: app (AppState) · db (migrations) · models · store (repo)
-- `src/routes/`: Sites · SiteDetail · Services · Databases · Mail · Tunnels · Settings ·
-  Onboarding (1:1 with DESIGN_BRIEF screens)
+- `src/routes/`: Sites · SiteDetail · Services · Databases · Mail · Tunnels ·
+  Import · Settings · Onboarding (+ dev-only `/dev/git-panel`, `/dev/ui-review`)
 
 ## 2. Request & TLS topology
 
@@ -317,7 +321,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 22:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 25:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -330,8 +334,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   v17 `sites.docroot_managed` (see below) · v18 `resolver_takeovers` (see below) ·
   v19 `sites.db_created` (import provenance, see below) · v20 `db_imports` (the ONE
   settled import fact) · v21 `db_imports.verified` + `config_rewrites` (see below) ·
-  v22 `config_rewrites.written_digest`. Per-engine
-  DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
+  v22 `config_rewrites.written_digest` · v23 `tunnels` (spawn-time share rows —
+  see the tunnels entry in §9) · v24 `sites.content_dir` (the recorded content-dir
+  rel, below) · v25 `sites.mu_dir_created` (set-once when a writer creates
+  `mu-plugins/`; delete removes the dir only when recorded ours + empty).
+  Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
+- **The content dir is RECORDED, never re-derived at write time** (v24
+  `sites.content_dir`, decided once at create/backfill from filesystem markers,
+  poison-resistant): every writer that builds a `wp-content`-relative path itself —
+  mu-plugin writers, asset destinations, the unlink-delete guard, theme
+  screenshots, the debug-log reader — takes the recorded rel. Bedrock (`web/
+  app/`) is why: deriving at write time silently wrote where WordPress never
+  loads. Anything the record can't answer reads honestly `indeterminate`.
 - **Docroot ownership is RECORDED, never inferred from the path** (v17
   `sites.docroot_managed`): `true` = rexenv created the folder and teardown may
   remove it; `false` = a folder the user LINKED, or one moved outside the sites
@@ -498,12 +512,31 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
 - **"Log in as"** (`core/wp_login.rs`): one-time, single-use, loopback-only magic link
   via a mu-plugin.
-- **Tunnels** (`core/tunnels.rs` + `core/wp_tunnel.rs`): per-site cloudflared quick
-  tunnel, scoped to ONE site Host, outbound-only. Behind the edge `REMOTE_ADDR` is always
-  `127.0.0.1`, so loopback-only enforcement keys off `CF-*` headers + leftmost
-  `X-Forwarded-For` + `Host`, never the IP. On tunnel start an auto-managed mu-plugin
-  bakes in the public origin (HOST/HTTPS overrides + siteurl/home filters + output-buffer
-  rewrite for plain/JSON-escaped/%-encoded); removed on stop; local requests untouched.
+- **Tunnels** (`core/tunnels.rs` + `core/wp_tunnel.rs` + `commands/tunnels.rs`):
+  per-site cloudflared quick tunnel, scoped to ONE site Host, outbound-only. Behind
+  the edge `REMOTE_ADDR` is always `127.0.0.1`, so loopback-only enforcement keys off
+  `CF-*` headers + leftmost `X-Forwarded-For` + `Host`, never the IP. On tunnel start
+  an auto-managed mu-plugin bakes in the public origin (HOST/HTTPS overrides +
+  siteurl/home filters + output-buffer rewrite for plain/JSON-escaped/%-encoded);
+  removed on stop; local requests untouched.
+  - **Tunnels DIE WITH THE APP** (ruled 28 Jul 2026 — the deliberate opposite of
+    services-outlive-the-app: a public share must not outlive the thing supervising
+    it). The v23 `tunnels` row is claimed atomically BEFORE spawn (the row IS the
+    double-start guard; sentinel pid until the child exists), `RunEvent::Exit` kills
+    from rows, and the launch sweep kills only on positive argv identity — plus a
+    rowless backstop for cloudflared processes carrying our argv identity with no
+    row (app-data reset class), which stops them with a loud WARN.
+  - **Share health is its own tri-state** (Live / Unverified / Broken) probed via
+    bounded HEADs of the public URL: any non-530 answer proves the path, 530×3 =
+    Broken (sticky — only an HTTP answer clears it), transport errors are
+    non-evidence. Phase A after start probes via 1.1.1.1 + pinned-address edge
+    checks ONLY — never the system resolver, whose negative cache would poison the
+    LAN for 30 minutes (trycloudflare SOA MINIMUM = 1800s, measured).
+  - **A share guards its site for the share's LIFETIME:** web-server switch,
+    multisite convert, docroot move, db-import/rewrite and provision-retry all
+    refuse while shared, naming the exposure (and tunnel start refuses while those
+    run). rexenv never auto-stops a share on the user's behalf; quitting with live
+    shares gets a native confirm naming the honest count.
 - **Adminer** (`core/adminer.rs`): internal vhost `adminer.rexenv.rex` on the shared
   stack — never a tunnel origin. Per-site deep link via a generated `index.php` wrapper
   (`adminer_object()` hook): passwordless login for loopback servers only, auto-submits
@@ -565,9 +598,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 10. Verification pattern
 
-- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (~261 and growing).
+Layer model + gate tiers: `docs/TESTING.md`. Claim inventory (the test metric):
+`docs/CLAIM-LEDGER.md`. The pre-commit bar is `scripts/verify.sh` (lib tests +
+example builds + clippy at zero + tsc — green ONLY from its own final line);
+`scripts/verify-full.sh` adds the sandbox live-check tier + the WebKit harness.
+
+- `cargo test --lib` in `src-tauri/` — unit tests on pure functions (539 and growing).
 - Live checks = standalone `src-tauri/examples/*.rs` binaries (spawn real services,
   probe real ports) — the repo's convention instead of mocked integration tests.
+  Each declares a tier in `scripts/live-checks.sh`; read the invariant in
+  `examples/common/mod.rs` before writing one.
   They share the REAL app-data dir (cache + admin socket) by design, so
   `core::stack_guard` protects the user's running stack: a non-app process may
   stop only what it SPAWNED — adopted survivors, `proxy::stop_edge` /

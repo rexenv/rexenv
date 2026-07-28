@@ -82,10 +82,11 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Task | Read |
 |---|---|
 | Any feature/bug — system mental model | `docs/ARCHITECTURE.md` |
-| Testing: which layer proves what, the gate tiers | `docs/PLAN-testing-strategy.md` |
+| "Where does X live" — subsystem → files → entry points | `docs/MAP.md` |
+| Testing: which layer proves what, the gate tiers | `docs/TESTING.md` |
 | A "must never"/safety claim — is it proven? add one? | `docs/CLAIM-LEDGER.md` — **an invariant comment isn't finished until its ledger row + verdict land in the SAME commit** (a drifted ledger is worse than none); backlog is worked by the ledger's blast-radius tiers, top first |
 | Ports, pinned binary versions, checksums | `docs/PORTS.md` |
-| What's open / pick up work | `docs/TODO.md` |
+| What's open / pick up work | `docs/TODO.md` (open items ONLY; shipped evidence log: `docs/archive/SHIPPED-2026-07.md`) |
 | rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |
 | Module/file map | `README.md` ("Project structure") |
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |

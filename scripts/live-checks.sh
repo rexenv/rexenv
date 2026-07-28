@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tiered runner for the live checks (src-tauri/examples) — L1 of the layer
-# model (docs/PLAN-testing-strategy.md §4). Same discipline as verify.sh:
+# model (docs/TESTING.md §4). Same discipline as verify.sh:
 # exit codes are LOAD-BEARING, no pipes between a check and its verdict, and
 # the green verdict comes ONLY from this script's own final line.
 #
