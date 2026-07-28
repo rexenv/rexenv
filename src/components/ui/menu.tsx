@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -37,6 +38,23 @@ export function Menu({
     if (!r) return;
     setPos({ top: r.bottom + 6, left: align === "right" ? r.right - width : r.left });
   };
+
+  // Reposition once the menu has a real height: FLIP above the trigger when
+  // there isn't room below (the last rows of a long list rendered the menu
+  // past the viewport bottom — and the scroll listener closes it, so it
+  // couldn't even be scrolled into view), and clamp horizontally. Runs
+  // before paint, so the wrong position is never visible.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const r = wrapRef.current?.getBoundingClientRect();
+    const h = menuRef.current?.offsetHeight ?? 0;
+    if (!r || !h) return;
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - 6 - h);
+    let left = align === "right" ? r.right - width : r.left;
+    left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
+    setPos({ top, left });
+  }, [open, align, width]);
 
   useEffect(() => {
     if (!open) return;
