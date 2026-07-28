@@ -686,7 +686,19 @@ export function Sites() {
             <>
               This permanently removes <span className="font-mono text-rex-text">{deleteTarget.domain}</span>
               {deleteTarget.docrootManaged === false ? "" : ", its files"}
-              {deleteTarget.type === "wordpress" ? ", its database," : ""} and its certificate.
+              {deleteTarget.type === "wordpress" ? (
+                ", its database,"
+              ) : deleteTarget.dbCreated === true ? (
+                /* Non-WordPress: only explicit import provenance drops — and
+                   the confirm names the database it will drop. */
+                <>
+                  , its imported database copy{" "}
+                  <span className="font-mono text-rex-text">{deleteTarget.dbName}</span>,
+                </>
+              ) : (
+                ""
+              )}{" "}
+              and its certificate.
               {deleteTarget.docrootManaged === false && (
                 <>
                   {" "}Your folder at{" "}
@@ -715,21 +727,52 @@ export function Sites() {
             Delete "{deleteTarget.name}"?
           </div>
           <div className="mt-2 space-y-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
-            <p>
-              This site's config was rewritten to use rexenv's database copy — and deleting
-              the site drops that copy. Two ways to proceed:
-            </p>
-            <p>
-              <strong className="text-rex-text">Revert, then delete</strong> — the config
-              file is first restored to point back at the old database, then the site and
-              rexenv's copy are removed. The site keeps working against its old database.
-            </p>
-            <p>
-              <strong className="text-rex-text">Delete without reverting</strong> — the
-              config keeps pointing at rexenv's copy, which no longer exists after the
-              delete: <strong className="text-rex-text">the site breaks on next load</strong>{" "}
-              until you change its connection settings yourself.
-            </p>
+            {deleteTarget.dbCreated === false ? (
+              /* Restored into a PRE-EXISTING database: that one is never
+                 dropped, so the consequences read differently — the config
+                 keeps working either way, and revert is about the file. */
+              <>
+                <p>
+                  This site's config was rewritten to use a database on rexenv's engine
+                  that existed before the import —{" "}
+                  <span className="font-mono text-rex-text">{deleteTarget.dbName}</span> is
+                  kept, deleted or not. Two ways to proceed:
+                </p>
+                <p>
+                  <strong className="text-rex-text">Revert, then delete</strong> — the
+                  config file is first restored to point back at the old database, then
+                  the site is removed.
+                </p>
+                <p>
+                  <strong className="text-rex-text">Delete without reverting</strong> —
+                  the config keeps pointing at{" "}
+                  <span className="font-mono text-rex-text">{deleteTarget.dbName}</span>{" "}
+                  on rexenv's engine, which stays.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  This site's config was rewritten to use rexenv's database copy — and
+                  deleting the site drops that copy (
+                  <span className="font-mono text-rex-text">{deleteTarget.dbName}</span>).
+                  Two ways to proceed:
+                </p>
+                <p>
+                  <strong className="text-rex-text">Revert, then delete</strong> — the
+                  config file is first restored to point back at the old database, then
+                  the site and rexenv's copy are removed. The site keeps working against
+                  its old database.
+                </p>
+                <p>
+                  <strong className="text-rex-text">Delete without reverting</strong> —
+                  the config keeps pointing at rexenv's copy, which no longer exists after
+                  the delete:{" "}
+                  <strong className="text-rex-text">the site breaks on next load</strong>{" "}
+                  until you change its connection settings yourself.
+                </p>
+              </>
+            )}
             <p>
               {deleteTarget.docrootManaged === false ? (
                 <>

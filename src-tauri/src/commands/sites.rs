@@ -766,6 +766,21 @@ fn may_drop_database(site: &crate::state::models::Site) -> bool {
     }
 }
 
+/// Whether THIS site's delete drops `site.db_name` (settled 28 Jul 2026):
+/// [`may_drop_database`]'s provenance rules, scoped by type. WordPress keeps
+/// yesterday's behaviour (NULL = our own provisioning made it). Every other
+/// type drops ONLY on the explicit import provenance `Some(true)`:
+/// non-WordPress provisioning never creates a database, so NULL there means
+/// "we never made one" — and the derived `db_name` could collide with a
+/// database the user made themselves. Dropping on NULL for those would be
+/// data loss wearing a cleanup's clothes.
+fn should_drop_database(site: &crate::state::models::Site) -> bool {
+    match site.site_type {
+        SiteType::Wordpress => may_drop_database(site),
+        _ => site.db_created == Some(true),
+    }
+}
+
 /// Delete a site — complete cleanup: stop its public tunnel, drop its MySQL
 /// database, then tear down the DB row + cert + per-site configs/logs + docroot,
 /// and reload the running stack so it stops being served. Returns whether it
@@ -803,8 +818,7 @@ pub async fn delete_site(
     };
     let engine = DbEngine::from_site(site.db_engine);
     let engine_version = super::database::effective_db_version(&state, engine)?;
-    let want_db_drop =
-        matches!(site.site_type, SiteType::Wordpress) && may_drop_database(&site);
+    let want_db_drop = should_drop_database(&site);
     // Booting a STOPPED engine just to drop one account is deliberate
     // (settled 28 Jul 2026), not the linked-site over-fetch mistake
     // repeating: the drop genuinely runs, and skipping it is not harmless —
@@ -913,5 +927,28 @@ mod tests {
         // on the row names a database that was never created — reaching it only
         // boots (or downloads) MySQL to drop nothing.
         assert!(!may_drop_database(&site(Some(false), None)));
+    }
+
+    #[test]
+    fn non_wordpress_null_rows_never_drop_a_database_we_never_made() {
+        // THE silent-regression branch (settled 28 Jul 2026): Laravel/PHP
+        // provisioning never creates a database, so NULL means "we never made
+        // one" — the derived db_name could be the USER'S OWN database, and a
+        // NULL-row drop would be data loss, not cleanup. Explicit import
+        // provenance (Some(true)) is the only thing that drops.
+        let laravel = |managed, created| {
+            let mut s = site(managed, created);
+            s.site_type = SiteType::Laravel;
+            s
+        };
+        for managed in [None, Some(true), Some(false)] {
+            assert!(!should_drop_database(&laravel(managed, None)), "{managed:?}: NULL dropped");
+            assert!(!should_drop_database(&laravel(managed, Some(false))));
+            assert!(should_drop_database(&laravel(managed, Some(true))));
+        }
+        // WordPress keeps yesterday's behaviour, NULL included.
+        assert!(should_drop_database(&site(Some(true), None)));
+        assert!(should_drop_database(&site(Some(true), Some(true))));
+        assert!(!should_drop_database(&site(Some(true), Some(false))));
     }
 }
