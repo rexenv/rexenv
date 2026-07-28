@@ -44,6 +44,9 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] Create a sub-site; it appears in the list and loads.
 
 ## Public sharing (Tunnels) — needs internet
+- Timings, not badge-reading: start `scripts/tunnel-measure.sh <url>` the moment the
+  URL appears; press ENTER with a note at each physical action (kill -9, wifi off/on).
+  It prints the banner→resolver deltas and the break/recovery windows.
 - [ ] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified →
   **Live** once the probe confirms.
 - [ ] **Unverified + dead link on THIS machine is NORMAL on networks that negative-cache

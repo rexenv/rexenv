@@ -260,6 +260,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     PROBE SESSION addition: after a fresh share, watch `dig @1.1.1.1`
     second-by-second — the banner→authoritative gap decides how often a
     human-speed click races on its own; the last unknown in this chain.
+    **Instrumented 28 Jul 2026: `scripts/tunnel-measure.sh <url>`** records
+    cf1111/authoritative/system-resolver answers + HTTPS status + cloudflared
+    count per second with ENTER-marks for the physical actions (kill -9, wifi),
+    and prints the banner→X deltas — run it the moment the URL appears; the
+    human does the physical part, the script does the timings.
   - [ ] **DNS agent answers ARBITRARY names when queried directly** (found during the
     28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
     `127.0.0.1` — the hickory agent is a catch-all wildcard, not per-TLD zones.
