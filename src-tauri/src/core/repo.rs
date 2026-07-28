@@ -604,6 +604,10 @@ pub const STEP_IDLE_LIMIT: Duration = Duration::from_secs(300);
 /// How often the receive loop wakes to check the idle clock.
 const IDLE_TICK: Duration = Duration::from_secs(1);
 
+// program/args/cwd/env are a genuine spawn-spec cluster that wants a struct —
+// a deliberate deferral until this primitive is next touched for real work,
+// not a threshold raise (clippy-zero bar, 28 Jul 2026).
+#[allow(clippy::too_many_arguments)]
 pub fn run_step_streamed(
     supervisor: &dyn ProcessSupervisor,
     program: &Path,

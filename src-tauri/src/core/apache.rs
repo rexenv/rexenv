@@ -2,8 +2,8 @@
 //! services").
 //!
 //! httpd runs ONLY as a backend on an internal loopback HTTP port — NEVER the
-//! edge (same contract as `core::frankenphp`): the edge Caddy keeps :443 + TLS
-//! + Host routing and reverse-proxies to this backend. Unlike FrankenPHP,
+//! edge (same contract as `core::frankenphp`): the edge Caddy keeps :443,
+//! TLS, and Host routing, and reverse-proxies to this backend. Unlike FrankenPHP,
 //! Apache has no embedded PHP: `.php` is handed to the site's PHP version's
 //! SHARED php-fpm pool via `mod_proxy_fcgi` — the same pools nginx sites use,
 //! so per-version PHP settings apply identically.

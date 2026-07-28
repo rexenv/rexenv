@@ -344,7 +344,7 @@ pub(crate) fn start<R: tauri::Runtime>(
     if let Some(tunnels) = app.try_state::<crate::commands::tunnels::Tunnels>() {
         crate::commands::tunnels::refuse_if_shared(
             &tunnels,
-            &state,
+            state,
             &site.domain,
             "provisioning would rebuild it under the live link, publishing a half-built site",
         )?;

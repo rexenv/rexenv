@@ -10,6 +10,10 @@ cd "$(dirname "$0")/.."
 
 (cd src-tauri && cargo test --lib)
 (cd src-tauri && cargo build --examples)
+# Zero-warning baseline established 28 Jul 2026 — a bar that ships with known
+# warnings trains people to ignore it. Pre-existing 8-arg fns carry explicit,
+# reasoned allows; new warnings fail the build.
+(cd src-tauri && cargo clippy --lib -- -D warnings)
 npx tsc --noEmit
 
 echo "verify: all green"

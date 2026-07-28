@@ -118,6 +118,11 @@ fn prune_install_logs(log_dir: &std::path::Path, domain: &str, keep: usize) {
 /// Start a streamed plugin/theme install job. Returns the initial snapshot;
 /// progress arrives via `wp-install://state|output/<id>` events. One install
 /// job per site at a time (refused, not queued).
+// Four of the eight are Tauri-injected (AppHandle + three States) and cannot
+// be bundled into a struct — injection is per-parameter. The payload half
+// (site_id/kind/slugs/activate) is the IPC arg shape. Explicit allow, not a
+// threshold raise (clippy-zero bar, 28 Jul 2026).
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn wp_install_job<R: tauri::Runtime>(
     app: AppHandle<R>,

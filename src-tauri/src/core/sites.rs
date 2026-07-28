@@ -1453,6 +1453,10 @@ pub fn rebuild_configs(
 /// keep the DB connection borrowed across `.await`). `body_limits` comes from
 /// `php::nginx_body_limits`; `site_env` from `store::all_site_env`, keyed by
 /// site id.
+// The three ports + two per-site maps are a config-inputs cluster that wants
+// a struct — a deliberate deferral until this assembly is next touched for
+// real work, not a threshold raise (clippy-zero bar, 28 Jul 2026).
+#[allow(clippy::too_many_arguments)]
 pub fn rebuild_configs_for(
     sites: &[Site],
     platform: &dyn Platform,
