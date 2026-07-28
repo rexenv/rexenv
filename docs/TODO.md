@@ -29,7 +29,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     tools + both clients. PASS. Its first run FALSIFIED the "every dump tool
     hard-errors on --connect-timeout" comment: mariadb-dump warns-and-ignores (exit 0);
     both prose sites corrected, ledger #195 added. verify.sh green.
-  - [ ] T5. `frankenphp_subdir_validate` actually validates (real binary, asserts).
+  - [x] **T5. `frankenphp_subdir_validate` actually validates** ✓ 28 Jul 2026 — runs
+    the real adapter on all 3 modes + env variant, exit contract, PASS. Live probe
+    showed validate does NOT catch the placeholder-typo class (unknown placeholder =
+    "Valid configuration"), so that class is pinned at L0 instead:
+    `placeholders_reference_declared_matchers_in_every_mode` (generic, all modes).
+    verify.sh green, 535 tests.
   - [ ] T6. examples/common fixture library (fixture_db, port allocator, Check
     reporter, wp_fixture); two examples migrated.
   - [ ] T7. De-fang the three incident-3-shaped examples (nginx_php_serve,

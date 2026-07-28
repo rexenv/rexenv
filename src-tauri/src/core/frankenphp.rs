@@ -341,4 +341,46 @@ mod tests {
     fn running_false_on_closed_port() {
         assert!(!running(9));
     }
+
+    /// The typo class behind the shipped `wpsubph`/`wpsubphp` bug, pinned
+    /// generically: every `{http.regexp.NAME.…}` placeholder in a generated
+    /// config must reference a `path_regexp NAME` declared in that same
+    /// config. Caddy resolves an unknown placeholder to EMPTY at runtime and
+    /// `frankenphp validate` calls the config valid (probed live, 28 Jul 2026
+    /// — see `examples/frankenphp_subdir_validate.rs`), so this consistency
+    /// is OURS to enforce, and only at this level.
+    #[test]
+    fn placeholders_reference_declared_matchers_in_every_mode() {
+        for mode in [
+            RewriteMode::Single,
+            RewriteMode::SubdomainMultisite,
+            RewriteMode::SubdirectoryMultisite,
+        ] {
+            let cfg = generate_config(Path::new("/Sites/fp/public"), 8200, mode, &[]);
+            let declared: Vec<&str> = cfg
+                .lines()
+                .filter_map(|l| {
+                    let rest = l.trim().split_once("path_regexp ")?.1;
+                    rest.split_whitespace().next()
+                })
+                .collect();
+            let mut referenced = vec![];
+            let mut rest = cfg.as_str();
+            while let Some(i) = rest.find("{http.regexp.") {
+                let name = rest[i + "{http.regexp.".len()..]
+                    .split(['.', '}'])
+                    .next()
+                    .unwrap_or_default();
+                referenced.push(name.to_string());
+                rest = &rest[i + 1..];
+            }
+            for name in &referenced {
+                assert!(
+                    declared.contains(&name.as_str()),
+                    "{mode:?}: placeholder references regexp {name:?} but declared matchers \
+                     are {declared:?} — this placeholder resolves EMPTY at runtime"
+                );
+            }
+        }
+    }
 }
