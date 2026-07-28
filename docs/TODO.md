@@ -256,8 +256,15 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       delete confirm naming both outcomes with revert-then-delete default.
       Pending HIS ruling: collision-rename tell-only permanence, Laravel DB
       survival at delete (writeups delivered in session).
-    - [ ] 7. `mysqli.default_socket`/`pdo_mysql.default_socket` pool addition + live
-      check
+    - [x] 7. socket pool default ✓ `34973ed` — `mysqli.default_socket` only:
+      compiled default verified EMPTY on the cached binaries (strictly
+      additive), while `pdo_mysql`'s compiled default is `/tmp/mysql.sock`
+      (Homebrew's spot) so setting it could redirect an existing PDO site —
+      deliberately omitted, pinned by test, PENDING his ruling. Provisioning
+      confirmed to write `127.0.0.1:<port>` (never localhost). Live
+      served-and-connecting check folds into step 8/§J. Rulings landed this
+      round: collision-rename tell-only FINAL `abff030`; non-WP imported DB
+      drops with its site (Some(1)-only gate + NULL pinned) `120aea0`.
     - [ ] 8. examples: `config_rewrite_check` + failed-write recovery assertion
     - [ ] 9. `PUBLISH-TESTING.md` §J packaged pass
 
