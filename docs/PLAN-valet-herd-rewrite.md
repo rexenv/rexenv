@@ -118,6 +118,19 @@ is **host/port only** — the best case, one or two keys, no user change at all.
   Small and self-contained → its own step with its own live check (a localhost
   wp-config against a pool with the setting, served and connecting).
 
+  **Shipped 28 Jul 2026 as `mysqli.default_socket` ONLY — `pdo_mysql` stays
+  out, PERMANENTLY (settled).** Checked empirically on the cached static
+  binaries rather than assumed: `mysqli.default_socket` compiles in EMPTY, so
+  a localhost WordPress site under rexenv always failed and the setting takes
+  nothing from anyone — strictly additive. But `pdo_mysql.default_socket`
+  compiles in `/tmp/mysql.sock` — the Homebrew MySQL location — so a linked
+  PDO site on localhost with a Homebrew server is working TODAY, and an
+  override would silently redirect it to our engine: the site keeps running
+  and writes to the wrong database with no error, breaking something that
+  worked before rexenv was installed. Worse than a regression. The test
+  pinning the absent line (`fpm_config_pins_the_mysqli_socket_default_and_only_that`)
+  is intent, not an omission to "complete" later.
+
 ---
 
 ## 3. What we write, exactly — and what refuses

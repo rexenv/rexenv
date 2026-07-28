@@ -58,11 +58,13 @@ pub fn generate_fpm_config(
     // MariaDB-on-localhost site gets the tell-only "use 127.0.0.1:13307" in
     // its own panel instead of a silent half-support.
     //
-    // `pdo_mysql.default_socket` is deliberately NOT set: its compiled
-    // default is `/tmp/mysql.sock` (verified) — the Homebrew MySQL location —
-    // so overriding it could silently redirect an existing PDO site that
-    // works against a Homebrew server today. The mysqli half has no such
-    // hazard because its compiled default is empty.
+    // `pdo_mysql.default_socket` stays out PERMANENTLY (settled 28 Jul
+    // 2026, plan §2): its compiled default is `/tmp/mysql.sock` (verified) —
+    // the Homebrew MySQL location — so an override would silently redirect a
+    // linked PDO site that works against a Homebrew server today: it keeps
+    // running and writes to the WRONG database with no error. The mysqli
+    // half has no such hazard because its compiled default is empty. The
+    // pin test asserting the absent line is intent, not an omission.
     let socket = mysql_socket
         .map(|p| format!("php_admin_value[mysqli.default_socket] = \"{}\"\n", p.display()))
         .unwrap_or_default();

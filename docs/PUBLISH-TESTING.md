@@ -356,8 +356,14 @@ and `shasum ea's wp-config.php` noted BEFORE anything below.
 2. **Engine stopped = honest refusal naming OUR page.** Stop MySQL (Databases
    page), tick consent, Apply. Expect "rexenv's own MySQL … isn't running —
    start it from the Databases page", NOT a DBngin message, NOT a timeout.
-   Nothing written (`shasum` unchanged).
-3. **Apply.** Start MySQL, Apply again. Expect the "verified: the rewritten
+   Nothing written (`shasum` unchanged). Restart MySQL.
+2b. **fileChanged is a normal state** (must run BEFORE the first apply — the
+   consent card only shows while not connected). With the card open, add a
+   comment line to wp-config in an editor, then tick + Apply. Expect "changed
+   since the diff was shown — nothing was written", neutral styling, the
+   refreshed diff already below. **Remove the comment** (so step 8's
+   byte-identity check stays meaningful), let the card refresh.
+3. **Apply.** Apply with consent. Expect the "verified: the rewritten
    settings sign in to the rexenv copy" toast; the Sites badge flips to
    **DB connected** (green); the connected panel's wording claims the sign-in,
    not "the site now uses this database".
@@ -371,9 +377,8 @@ and `shasum ea's wp-config.php` noted BEFORE anything below.
 6. **HTTP upgrade.** The record's verified level should read `signin+http`
    (site was serving). If the edge is stopped during a later re-apply, expect
    `signin` only — "couldn't confirm over HTTP" must never block or unset.
-7. **fileChanged is a normal state.** Open the card, edit wp-config in an
-   editor (add a comment), Apply. Expect "changed since the diff was shown —
-   nothing was written", neutral styling, refreshed diff already below.
+7. *(merged into 2b — fileChanged needs the consent card, which only shows
+   before the site is connected.)*
 8. **Revert.** Revert from the connected panel. Expect: `shasum` equals the
    step-0 value (byte-identical), badge back to "DB imported · not connected",
    the interim panel returns, backup file + row gone.
