@@ -40,6 +40,9 @@ const SCENARIOS = [
     ["consent", "apply"],
   ],
   ["card-connected-http-cache", "view=card&rec=connectedHttp&preview=noop&cache=1", []],
+  // The file edited AFTER verification: connected (a proven past fact) with
+  // a live diff — the panel must say the file no longer points at the copy.
+  ["card-connected-drift", "view=card&rec=connected&preview=ready", []],
   ["card-revert-confirm", "view=card&rec=connected&preview=noop", ["revert"]],
   [
     "card-revert-refusedEdited",

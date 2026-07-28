@@ -40,19 +40,22 @@ function bytes(n: number): string {
   return `${n} B`;
 }
 
-/** The copy-paste block for this site's config shape. */
+/** The copy-paste block for this site's config shape. A mirrored user (their
+ *  own from Stage 2, or the dedicated `rex_…` a rewrite created) holds the
+ *  password already in the config, so the user line names IT — omitting the
+ *  line while the file might still say `root` gave incomplete instructions. */
 function connectionSnippet(site: Site, dbName: string, mirrored: string | null): string[] {
   if (site.type === "laravel") {
     const lines = [`DB_HOST=127.0.0.1`, `DB_PORT=${site.dbEngine === "mariadb" ? 13307 : 13306}`];
-    if (!mirrored) lines.push(`DB_USERNAME=root`, `DB_PASSWORD=`);
+    if (mirrored) lines.push(`DB_USERNAME=${mirrored}`);
+    else lines.push(`DB_USERNAME=root`, `DB_PASSWORD=`);
     if (dbName) lines.push(`DB_DATABASE=${dbName}`);
     return lines;
   }
   const port = site.dbEngine === "mariadb" ? 13307 : 13306;
   const lines = [`define( 'DB_HOST', '127.0.0.1:${port}' );`];
-  if (!mirrored) {
-    lines.push(`define( 'DB_USER', 'root' );`, `define( 'DB_PASSWORD', '' );`);
-  }
+  if (mirrored) lines.push(`define( 'DB_USER', '${mirrored}' );`);
+  else lines.push(`define( 'DB_USER', 'root' );`, `define( 'DB_PASSWORD', '' );`);
   return lines;
 }
 
@@ -255,6 +258,17 @@ export function DbImportCard({ site }: { site: Site }) {
                     runs your artisan.
                   </p>
                 )}
+                {preview?.status === "ready" && preview.diff.length > 0 && (
+                  /* Same class as §C1.3, one state over: `connected` is a
+                     proven PAST fact, but if the file was edited afterwards
+                     it no longer points at the copy — the panel must say so
+                     rather than let the green badge imply the present. */
+                  <p className="text-xs">
+                    <strong>The file has changed since verification</strong> — it no
+                    longer points at the rexenv copy. Apply the change again to
+                    reconnect, or revert.
+                  </p>
+                )}
               </div>
               <Button size="sm" variant="ghost" onClick={() => setRevertConfirm("normal")}>
                 <Undo2 className="mr-1 h-3.5 w-3.5" />
@@ -323,6 +337,12 @@ export function DbImportCard({ site }: { site: Site }) {
 
       {record?.state === "imported" && !running && (
         <div className="mt-3 space-y-3">
+          {/* THE ONE-FACT RULE, applied to copy (UI-REVIEW §C1.3): the claim
+              about which database the site reads derives from the SAME
+              preview the consent card renders — never asserted on its own.
+              The old unconditional "still reads and writes the old database"
+              contradicted a consent card saying the file already points at
+              rexenv (the rewritten-but-unverified state). */}
           <div
             className={cn(
               "rounded-lg border border-status-warning-border bg-status-warning-bg/30 p-3",
@@ -331,33 +351,50 @@ export function DbImportCard({ site }: { site: Site }) {
             <div className="flex items-start gap-2">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
               <div className="min-w-0 space-y-1.5 text-sm">
-                <p className="font-medium">Imported — not yet connected.</p>
+                <p className="font-medium">
+                  {preview?.status === "ready" && preview.diff.length === 0
+                    ? "Imported — rewritten, not yet verified."
+                    : "Imported — not yet connected."}
+                </p>
                 <p>
                   <span className="font-mono text-[0.78125rem]">{record.dbName}</span>{" "}
                   ({record.tableCount} tables, {bytes(record.sizeBytes)}) was copied from{" "}
                   {record.sourceLabel} into rexenv's{" "}
-                  {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}.{" "}
-                  <strong>This site still reads and writes the old database</strong> — and
-                  from now on the copy and the original drift apart: changes made on the
-                  site go to the old one, and nothing updates the copy.
+                  {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}.
                 </p>
-                <p>
-                  {record.mirroredUser ? (
-                    <>
-                      Its database user{" "}
-                      <span className="font-mono text-[0.78125rem]">{record.mirroredUser}</span>{" "}
-                      already works on rexenv's engine with the same password, so switching
-                      over is the connection line{record.dbName !== site.dbName ? "s" : ""} below.
-                    </>
-                  ) : (
-                    <>
-                      This site connects as <span className="font-mono text-[0.78125rem]">root</span>,
-                      which rexenv never mirrors — so switching over also means setting the
-                      user to <span className="font-mono text-[0.78125rem]">root</span> with an
-                      empty password (rexenv's local-dev default).
-                    </>
-                  )}
-                </p>
+                {preview === undefined && (
+                  <p>Checking which database the site's config points at…</p>
+                )}
+                {preview?.status === "ready" && preview.diff.length > 0 && (
+                  <p>
+                    <strong>This site still reads and writes the old database</strong> —
+                    and from now on the copy and the original drift apart: changes made
+                    on the site go to the old one, and nothing updates the copy.
+                  </p>
+                )}
+                {preview?.status === "ready" && preview.diff.length === 0 && (
+                  /* The honest sentence for this state: the FILE is proven
+                     (it points at the copy); the CONNECTION is not. Which
+                     database the running site actually uses is unknown until
+                     the sign-in check passes — so say exactly that. */
+                  <p>
+                    <strong>
+                      The config file now points at the rexenv copy, but the connection
+                      hasn't been verified
+                    </strong>{" "}
+                    — until the check below passes, rexenv can't say which database the
+                    site is actually using.
+                  </p>
+                )}
+                {preview?.status === "refused" && (
+                  <p>
+                    <strong>
+                      rexenv couldn't read this site's connection config confidently
+                    </strong>{" "}
+                    (the reason is below), so it can't say which database the site is
+                    using.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -504,11 +541,29 @@ export function DbImportCard({ site }: { site: Site }) {
           {preview?.status === "refused" && (
             <div className="rounded-lg border border-rex-border bg-rex-surface-2 p-3">
               {/* The tell-only floor: a refusal downgrades here with its
-                  reason, never to a guess. */}
+                  reason, never to a guess. The credentials sentence lives
+                  HERE (not in the panel above) because it is an instruction
+                  about the lines below — beside the consent card it
+                  contradicted the dedicated-user note (§C1.3's class). */}
               <p className="mb-2 text-xs text-rex-text-secondary">
                 The one-click change isn't available for this site: {preview.reason}
               </p>
               <p className="mb-2 text-xs text-rex-text-secondary">
+                {record.mirroredUser ? (
+                  <>
+                    The database user{" "}
+                    <span className="font-mono">{record.mirroredUser}</span> works on
+                    rexenv's engine with the password already in your config, so the
+                    lines below are the whole change.
+                  </>
+                ) : (
+                  <>
+                    This site connects as <span className="font-mono">root</span>, which
+                    rexenv never mirrors — so the lines below also set the user to{" "}
+                    <span className="font-mono">root</span> with an empty password
+                    (rexenv's local-dev default).
+                  </>
+                )}{" "}
                 To switch it over yourself, change{" "}
                 {site.type === "laravel" ? ".env" : "wp-config.php"} to:
               </p>
