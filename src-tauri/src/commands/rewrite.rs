@@ -253,6 +253,7 @@ pub enum RewriteApplied {
 pub async fn rewrite_apply(
     state: State<'_, AppState>,
     provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     site_id: String,
     fingerprint: String,
 ) -> Result<RewriteApplied> {
@@ -291,6 +292,16 @@ pub async fn rewrite_apply(
         *g = Some(r.site.domain.clone());
     }
     let _slot = Slot(&state.rewrite_active);
+    // Step 7: a tunnel EXPOSES rather than mutates, so this guard names what
+    // a visitor would see. Placed AFTER the slot claim (set-then-check) so it
+    // pairs with the tunnel start's claim-then-check — the two directions
+    // can't cross; the Slot's Drop releases on refusal.
+    crate::commands::tunnels::refuse_if_shared(
+        &tunnels,
+        &state,
+        &r.site.domain,
+        "rewriting its connection settings under the live link can break the site for anyone visiting",
+    )?;
 
     // The approved fingerprint covers the WHOLE file. Any drift — even
     // outside the target lines — changes what a write means: refuse, and
@@ -458,6 +469,7 @@ pub enum RevertOutcome {
 pub async fn rewrite_revert(
     state: State<'_, AppState>,
     provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     site_id: String,
     force: bool,
 ) -> Result<RevertOutcome> {
@@ -493,6 +505,14 @@ pub async fn rewrite_revert(
         *g = Some(site.domain.clone());
     }
     let _slot = Slot(&state.rewrite_active);
+    // Step 7 (same shape as apply): reverting connection settings under a
+    // live link can break the site for anyone visiting.
+    crate::commands::tunnels::refuse_if_shared(
+        &tunnels,
+        &state,
+        &site.domain,
+        "reverting its connection settings under the live link can break the site for anyone visiting",
+    )?;
 
     let rows = {
         let conn = lock(&state)?;

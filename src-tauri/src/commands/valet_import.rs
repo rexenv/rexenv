@@ -551,11 +551,16 @@ async fn import_db_for<R: tauri::Runtime>(
         }
         .message());
     }
+    use tauri::Manager as _;
+    let Some(tunnels) = app.try_state::<crate::commands::tunnels::Tunnels>() else {
+        return "failed: tunnel registry not ready".into();
+    };
     let start = crate::commands::db_import::db_import_start(
         app.clone(),
         state.clone(),
         db_jobs.clone(),
         provision.clone(),
+        tunnels,
         site_id.to_string(),
         None,
     )

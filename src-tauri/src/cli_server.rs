@@ -981,10 +981,14 @@ where
                 .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
             let id = need_str(&args, "id", cmd)?;
             if cmd == "tunnel.start" {
+                let provision = app
+                    .try_state::<commands::site_provision::ProvisionJobs>()
+                    .ok_or_else(|| Error::Other("provision registry not ready".into()))?;
                 let info = commands::tunnels::start_tunnel(
                     app.app_handle().clone(),
                     state.clone(),
                     tunnels,
+                    provision,
                     id,
                 )
                 .await?;

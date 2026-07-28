@@ -159,6 +159,7 @@ pub async fn db_import_start<R: tauri::Runtime>(
     state: State<'_, AppState>,
     jobs: State<'_, DbImportJobs>,
     provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     site_id: String,
     confirm_overwrite: Option<String>,
 ) -> Result<DbImportJobState> {
@@ -195,6 +196,22 @@ pub async fn db_import_start<R: tauri::Runtime>(
             )));
         }
         *active = Some(site.domain.clone());
+    }
+    // Step 7: a tunnel EXPOSES rather than mutates — the refusal names what a
+    // visitor would see. Placed AFTER the marker-set (set-then-check) so it
+    // pairs with the tunnel start's claim-then-check and the two directions
+    // can't cross; refusal clears the marker it just took.
+    if let Err(e) = crate::commands::tunnels::refuse_if_shared(
+        &tunnels,
+        &state,
+        &site.domain,
+        "importing its database would drop and rebuild it under the live link, showing \
+         visitors errors or half-restored content",
+    ) {
+        if let Ok(mut active) = state.db_import_active.lock() {
+            *active = None;
+        }
+        return Err(e);
     }
 
     let id = uuid::Uuid::new_v4().to_string();

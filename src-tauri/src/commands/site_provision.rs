@@ -337,6 +337,18 @@ pub(crate) fn start<R: tauri::Runtime>(
             )));
         }
     }
+    // Step 7: a tunnel EXPOSES rather than mutates — provisioning under a
+    // live link publishes a half-built site to whoever holds it. RETRY is the
+    // live case (the site exists and can be shared); on a fresh create this
+    // is a belt (no site row yet ⇒ no tunnel).
+    if let Some(tunnels) = app.try_state::<crate::commands::tunnels::Tunnels>() {
+        crate::commands::tunnels::refuse_if_shared(
+            &tunnels,
+            &state,
+            &site.domain,
+            "provisioning would rebuild it under the live link, publishing a half-built site",
+        )?;
+    }
     let site_tld = sites::domain_tld(&site.domain)?;
     core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
 
@@ -418,6 +430,18 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
                 site.domain
             )));
         }
+    }
+    // Step 7: a tunnel EXPOSES rather than mutates — provisioning under a
+    // live link publishes a half-built site to whoever holds it. RETRY is the
+    // live case (the site exists and can be shared); on a fresh create this
+    // is a belt (no site row yet ⇒ no tunnel).
+    if let Some(tunnels) = app.try_state::<crate::commands::tunnels::Tunnels>() {
+        crate::commands::tunnels::refuse_if_shared(
+            &tunnels,
+            &state,
+            &site.domain,
+            "provisioning would rebuild it under the live link, publishing a half-built site",
+        )?;
     }
     let site_tld = sites::domain_tld(&site.domain)?;
     core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;

@@ -95,6 +95,21 @@ impl Tunnels {
         stopped
     }
 
+    /// Whether `domain` has a live OR starting share (step-7 guards): the v23
+    /// row exists from claim to clean stop, so row-existence is the ONE fact
+    /// both guard directions read — an in-flight start blocks a job exactly
+    /// like a live share. Dead children are settled first: a crashed
+    /// cloudflared must never block the user's work.
+    pub(crate) fn sharing_domain(&self, state: &AppState, domain: &str) -> bool {
+        settle_dead(state, self.take_dead());
+        state
+            .db
+            .lock()
+            .ok()
+            .and_then(|c| crate::state::store::get_tunnel(&c, domain).ok().flatten())
+            .is_some()
+    }
+
     /// Remove every entry whose child has EXITED (`try_wait` — non-blocking,
     /// and `Some` means the zombie is already reaped). Returns the removed
     /// pairs for [`settle_dead`] to clean up outside the lock. `Err` from
@@ -124,6 +139,27 @@ fn settle_dead(state: &AppState, dead: Vec<(String, TunnelEntry)>) {
         }
         delete_tunnel_row(state, &domain);
     }
+}
+
+/// Step-7 exposure guard for mutating jobs: refuse while `domain` is shared
+/// (or a share is starting). A tunnel doesn't mutate, it EXPOSES — so the
+/// refusal must name what a VISITOR would experience (`would`), never a bare
+/// "busy". rexenv never stops a share on the user's behalf (same ruling as
+/// Broken-tunnel auto-stop): the message says where to stop it and that a
+/// re-share gets a fresh link, and the user decides.
+pub(crate) fn refuse_if_shared(
+    tunnels: &Tunnels,
+    state: &AppState,
+    domain: &str,
+    would: &str,
+) -> Result<()> {
+    if tunnels.sharing_domain(state, domain) {
+        return Err(Error::Other(format!(
+            "{domain} is publicly shared right now — {would}. Stop sharing it (Tunnels page) \
+             and retry; sharing again afterwards gets a NEW link."
+        )));
+    }
+    Ok(())
 }
 
 /// Record that a mu-plugin writer CREATED the site's mu-plugins dir (v25) —
@@ -363,6 +399,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     state: State<'_, AppState>,
     tunnels: State<'_, Tunnels>,
+    provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
     id: String,
 ) -> Result<TunnelInfo> {
     let site = tunnel_site(&state, &id)?;
@@ -410,6 +447,36 @@ pub async fn start_tunnel<R: tauri::Runtime>(
                  looks stuck"
             )));
         }
+    }
+
+    // Step-7 exposure guards, deliberately AFTER the claim: a job that races
+    // this start either sees our row (its guard refuses) or set its marker
+    // before we look here — the claim is what makes this side's ordering
+    // sound. A tunnel publishes the site, so sharing mid-mutation would hand
+    // visitors a half-built/half-restored/mid-change site; refusal releases
+    // the claim, and rexenv never cancels the user's job to make room.
+    let mid_mutation = if provision.busy_for(&domain) {
+        Some("it's still being set up — the link would publish a half-built site. Share it when setup finishes")
+    } else if state
+        .db_import_active
+        .lock()
+        .ok()
+        .is_some_and(|a| a.as_deref() == Some(domain.as_str()))
+    {
+        Some("its database is being imported right now — the link would publish a half-restored site. Share it again when the import finishes")
+    } else if state
+        .rewrite_active
+        .lock()
+        .ok()
+        .is_some_and(|a| a.as_deref() == Some(domain.as_str()))
+    {
+        Some("its connection settings are being rewritten right now — the link would publish a site mid-change. Share it again when that finishes")
+    } else {
+        None
+    };
+    if let Some(why) = mid_mutation {
+        delete_tunnel_row(&state, &domain);
+        return Err(Error::Other(format!("can't share {domain}: {why}")));
     }
 
     let platform = state.platform.as_ref();
