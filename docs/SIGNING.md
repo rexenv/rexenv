@@ -47,7 +47,6 @@ never land in git. (Alternatively hardcode `"signingIdentity": "Developer ID App
   `codesign` (visible even today: the ad-hoc bundle reports flags `0x10002(adhoc,runtime)`), so a
   Developer ID build is hardened automatically. There is no separate `hardenedRuntime` key in Tauri's
   macOS bundle config.
-- **While you're in there:** drop the dead `"android"` block (unrelated cleanup; no Android target).
 
 ## 2. Notarization — env vars for `pnpm release:mac`
 

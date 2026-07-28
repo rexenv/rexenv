@@ -48,7 +48,7 @@ the one thing I could not verify (it requires launching the app, which starts th
 Uses the existing local build; **no rebuild needed**.
 
 ```sh
-cd /Users/wpdev/PhpstormProjects/rexenv
+cd <your rexenv checkout>
 DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_0.1.0_universal.dmg"
 
 # 1. Simulate a real "downloaded from the internet" quarantine on the dmg:
@@ -131,8 +131,8 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
 
 ## F) 🚧 Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run)
 
-**Why this is here:** the dev Mac has no `/etc/resolver/test` (only `rex`, plus an
-unrelated `sb`), so the foreign-file paths of the Valet/Herd resolver takeover have never
+**Why this is here:** a machine that has never run Valet/Herd resolver setup has no foreign
+`/etc/resolver/test`, so the foreign-file paths of the Valet/Herd resolver takeover have never
 run against a real root-owned foreign file. Creating one on the dev machine to test was
 deliberately refused. The logic is unit-tested against fixture directories
 (`core::dns::owner_of`) and the ABSENT-file path is live-verified; these two paths are
@@ -191,42 +191,46 @@ content comes back.
 
 The most complex screen we've built (per-row honest statuses, selection, the
 resolver consent panel) and it has only ever been type-checked. Everything below
-is reproducible against the dev Mac's real Valet + Herd install unless marked
+is reproducible against a dev Mac with a real Valet + Herd install unless marked
 CLEAN-VM.
 
-**What a full import would CHANGE on this machine — read before clicking:**
-importing a `.test` site installs `/etc/resolver/test` (one admin prompt). That
-is a plain create, NOT a takeover — the file is absent today, so rexenv owns it
-outright and "Remove system changes" deletes it. It also creates real site rows
-pointing at real project folders and issues certs. Deleting those sites later
-leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.**
+**What a full import would CHANGE on the test machine — read before clicking:**
+importing a `.test` site installs `/etc/resolver/test` (one admin prompt). If the
+file is absent that is a plain create, NOT a takeover — rexenv owns it outright
+and "Remove system changes" deletes it. It also creates real site rows pointing
+at real project folders and issues certs. Deleting those sites later leaves the
+folders untouched (Stage 0 guarantee). **Import ONE site, not the whole list.**
+
+Before starting, run `cargo run --example valet_scan_check` (or a dry open of
+`/import`) and note YOUR machine's numbers: total rows, ready count, dangling
+symlinks, leftover confs, dedupe count, per-site PHP pins. The steps assert
+against those recorded numbers — the point is that the screen reconciles
+exactly with the scan, not that any machine matches the original pass.
 
 1. **Populated list.** Sites → the "N sites found in Valet or Herd" banner
-   appears (19 importable today). Open it. Expect **32 rows, 19 ready**, header
-   count matching, and two source cards (Herd `.test`, Valet `.test`) with
-   Herd's "parked folder ~/Herd has no sites in it" note.
-2. **Dangling symlinks** — `back.test`, `bl.test`, `ealite.test`, `eatest.test`,
-   `front.test`, `learn-valet.test`, `learn-wp.test`, `storeware-reviews.test`,
-   `valet-wp-learn.test`, `wpdcd.test`. Each must read "can't import" AND name
-   its missing target (e.g. `/Users/wpdev/bl`). Checkbox disabled.
-3. **Leftover configs** — `abc.test`, `eatest.dev`, `wp-dev.test.test`: "leftover
-   config with no site folder". Note `eatest.dev` proves a conf on a TLD the
-   config never mentions still appears.
-4. **Dedupe** — 11 rows carry "also in Valet" (Herd's copy won). No domain
-   appears twice.
-5. **PHP pins** — `strata.test` 8.5, `srdi.test`/`tr.test`/`typingbcc.test` 8.4,
-   `pma.test` 8.2, `ea`/`eapro`/`adminer` 8.3 (both marker formats). Rows with no
-   marker show the default.
+   (count = your ready count). Open it. Expect total rows + ready count matching
+   your scan, and a source card per source (Herd/Valet), including any
+   "parked folder … has no sites in it" note.
+2. **Dangling symlinks** — every dangling link from your scan must be A ROW
+   reading "can't import" AND naming its missing target path. Checkbox disabled.
+   (A dangling link is a site the user thinks they have — never silently skipped.)
+3. **Leftover configs** — every conf-with-no-site from your scan: "leftover
+   config with no site folder". A conf on a TLD the config never mentions
+   (the `<name>.dev`-style case) must still appear.
+4. **Dedupe** — rows for domains present in both sources carry "also in Valet"
+   (Herd's copy wins). No domain appears twice.
+5. **PHP pins** — rows with isolation markers show their pinned minor (both
+   marker formats — `php@8.4`-style and bare-digit); rows with no marker show
+   the default.
 6. **Docroot resolution** — a Laravel/Bedrock row must show `(serving public/)`
    or `(serving web/)`, not the project root.
-7. **Selection** — select-all ticks only the 19 ready ones; the indeterminate
+7. **Selection** — select-all ticks only the ready ones; the indeterminate
    state shows on a partial selection; disabled rows can't be ticked; the count
    in the bar matches; Rescan preserves nothing stale.
-8. **Import one site.** Pick a small static/PHP one (`shop.test`, `snpz.test`,
-   `rp.test`). Expect the admin prompt ONCE, up front, before any site is
-   created. Watch the row flip to `imported`. Then: it appears in Sites with the
-   **external** badge, `https://<domain>` loads THEIR files, and deleting it
-   leaves the folder on disk.
+8. **Import one site.** Pick a small static/PHP one. Expect the admin prompt
+   ONCE, up front, before any site is created. Watch the row flip to `imported`.
+   Then: it appears in Sites with the **external** badge, `https://<domain>`
+   loads THEIR files, and deleting it leaves the folder on disk.
 9. **Continue-on-failure** — hard to force naturally; if you want it, rename a
    project folder between the scan and the import so one row fails, and confirm
    the rest still import and the summary names the failure.
@@ -239,7 +243,7 @@ leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.
 **CLEAN-VM only** (cannot be exercised here):
 - The **empty state** (no Valet or Herd at all) — the "No Valet or Herd sites
   found" card. Most first-run users see this, so it matters as much as the
-  populated list. Do NOT fake it by moving the dev Mac's Valet/Herd folders.
+  populated list. Do NOT fake it by moving a real machine's Valet/Herd folders.
 - The **resolver consent panel** — needs a foreign `/etc/resolver/test`; both
   TLDs read "absent" here, so the panel never renders. Covered by §F.
 - **Hand-back row** in Settings — only appears for a BORROWED TLD, so it needs
@@ -290,7 +294,7 @@ leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.
 load-bearing steps behaved: with DBngin stopped, the UI contradicted the plist's
 `Status = started` and refused naming host, port and the fix (step 4); and the drift
 demonstrated itself — an edit made through the site did not appear in rexenv's copy
-(step 7). DBngin's MySQL 8.0.27 handshake also confirmed the last open pre-auth
+(step 7). their MySQL engine (DBngin in the original pass) handshake also confirmed the last open pre-auth
 identification case (plan §2.1).
 
 The sandbox proves the machinery (`db_dump_check`, `db_restore_check`); this pass proves
@@ -300,30 +304,30 @@ never starts or stops their database server, so step 2 is yours.**
 **Preconditions — in this order:**
 
 1. Rebuild + reinstall; confirm the commit via Settings → About or `rex version`.
-2. **Start DBngin's MySQL 8.0.27 yourself** (DBngin.app → start the engine). rexenv will
+2. **Start their MySQL engine (DBngin in the original pass) yourself** (DBngin.app → start the engine). rexenv will
    refuse honestly if 3306 is silent — that refusal is itself checkable (step 4).
-3. Have `ea.test` imported as a site (Stage 1) or import it now.
+3. Have `<site>.test` imported as a site (Stage 1) or import it now.
 
 **The pass:**
 
-4. WITH DBNGIN STILL STOPPED first: SiteDetail → ea.test → Database → **Import database**.
+4. WITH DBNGIN STILL STOPPED first: SiteDetail → <site>.test → Database → **Import database**.
    Expect the honest per-site refusal naming host, port and what to do ("start it in
    DBngin, then re-scan") — NOT a timeout, NOT a generic error. The plist claims
    `started`; the UI must not believe it.
 5. Start DBngin's MySQL. Import again. Expect phases check → copy → start → restore →
    finish, progress monotonic, ≤99 until the settle.
 6. **The interim state (§9 — the state users actually live in).** After success:
-   - the summary reads "Imported — not yet connected", names `ea`, the table count, size
+   - the summary reads "Imported — not yet connected", names the database, the table count, size
      and source, and says the site STILL reads the old database and the two DRIFT;
-   - the Sites page shows the "DB imported · not connected" badge on ea.test — same
+   - the Sites page shows the "DB imported · not connected" badge on <site>.test — same
      wording as the summary implies, because both render one `DbImportRecord`;
-   - `DB_USER` in ea's wp-config is root, so the copy must state the 3-key change
+   - `DB_USER` in the site's wp-config is root, so the copy must state the 3-key change
      (host + user + empty password), not just DB_HOST.
-7. Verify the copy is real: SiteDetail → Database (Adminer) → the `ea` database exists
+7. Verify the copy is real: SiteDetail → Database (Adminer) → the copied database exists
    on rexenv's MySQL with the expected tables. The SITE meanwhile still serves from the
    old database (edit a post title via the site, confirm it does NOT appear in rexenv's
    copy — that's the drift, demonstrated).
-8. **Their side untouched:** DBngin still runs, `ea` on 3306 intact (`shasum` of their
+8. **Their side untouched:** their engine still runs, the source database on 3306 intact (`shasum` of their
    datadir is overkill — check table counts via any client, or just that the site still
    works when pointed at it).
 9. Cancel path: start an import, cancel during the copy. Expect "cancelled", no artifact
@@ -339,18 +343,18 @@ never starts or stops their database server, so step 2 is yours.**
 
 ---
 
-## J) ✅ Connection rewrite (Stage 3) — packaged GUI pass on ea.test
+## J) ✅ Connection rewrite (Stage 3) — packaged GUI pass on <site>.test
 
 **PASSED 28 Jul 2026 — all 12 steps, human-verified on the packaged app
 (`44b6a6d`), no deviations reported. Stage 3 SHIPPED.**
 
 The sandbox proves the machinery end to end (`config_rewrite_check`, 11 live
 assertions, passed 28 Jul 2026); this pass proved it against the REAL site and
-the packaged UI. Steps kept for re-runs. Preconditions: `ea.test` imported (Stage 1) with its database
+the packaged UI. Steps kept for re-runs. Preconditions: `<site>.test` imported (Stage 1) with its database
 imported (Stage 2, state "imported · not connected"), rexenv's MySQL running,
-and `shasum ea's wp-config.php` noted BEFORE anything below.
+and `shasum the site's wp-config.php` noted BEFORE anything below.
 
-1. **The consent card.** SiteDetail → ea.test → Database. Expect the diff card:
+1. **The consent card.** SiteDetail → <site>.test → Database. Expect the diff card:
    exactly TWO changed pairs (`DB_HOST` → `127.0.0.1:13306`, `DB_USER` →
    `rex_ea_test`), **no password anywhere on screen**, consent unchecked, and
    the backup note carrying the limit ("the diff can't contain your password —
@@ -387,7 +391,7 @@ and `shasum ea's wp-config.php` noted BEFORE anything below.
 9. **Edited-since refuses without force.** Apply again, hand-edit wp-config,
    Revert. Expect the named refusal + "Restore anyway" (danger); forcing
    restores the original and says edits since are lost.
-10. **D2 delete confirm.** With a connected site (use a SCRATCH site, not ea):
+10. **D2 delete confirm.** With a connected site (use a SCRATCH site, not the testbed):
     Delete. Expect three buttons, both outcomes NAMED ("…the site breaks on
     next load"), revert-then-delete as the default; after it, the project's
     config points back at the old database and the site row is gone.
@@ -421,13 +425,12 @@ About must show it).
   OUR copy only), "Restore anyway" (not scheduled — skip unless a step says
   otherwise), "Delete without reverting" (NOT used in §K; use only the
   revert-then-delete or plain paths as written).
-- **Targets, from your real scan:** primary = `photocontest.test` (db
-  `photocontest`), secondary = `typingbcc.test` (db `typingbcc`) — swap
-  either for another WP site whose content you'd shrug at losing, but NOT
-  `ea.test` (the §I/§J testbed — §K uses it read-only as the
-  "already imported" exhibit) and not a site whose DBngin database you
-  treasure (nothing here writes to their DBs, but you'll be signing into
-  the sites and pressing delete buttons near them).
+- **Targets, from your real scan:** primary + secondary = two WordPress sites
+  from the scan rows (their db names per their own wp-config) — pick ones whose
+  content you'd shrug at losing, but NOT the §I/§J testbed site (§K uses it
+  read-only as the "already imported" exhibit) and not a site whose source
+  database you treasure (nothing here writes to their DBs, but you'll be
+  signing into the sites and pressing delete buttons near them).
 - **If you stop halfway:** nothing of theirs is harmed at ANY stopping
   point; what's left behind is rexenv state (site rows, copies) you can
   delete later. The one state needing an action: stopped between K10 and
@@ -446,8 +449,8 @@ About must show it).
 
 ```sh
 B=~/rexenv-k-before; mkdir -p "$B"
-PROJ=/path/to/photocontest    PROJ2=/path/to/typingbcc     # from the scan rows
-DB=photocontest               DB2=typingbcc
+PROJ=/path/to/primary        PROJ2=/path/to/secondary     # from the scan rows
+DB=<primary-db>               DB2=<secondary-db>
 shasum "$PROJ/wp-config.php" "$PROJ2/wp-config.php" | tee "$B/wpconfig.sha"
 find ~/.config/valet ~/Library/Application\ Support/Herd/config/valet \
   -maxdepth 2 -exec stat -f "%m %N" {} \; | sort | tee "$B/trees.mtime"
@@ -466,13 +469,13 @@ PATH, use DBngin's bundled one.)
 ### The journey
 
 1. **Scan.** `/import`: primary + secondary listed importable;
-   `ea.test` shows **already imported** (a prior stage's state, visible and
+   `<site>.test` shows **already imported** (a prior stage's state, visible and
    disabled — the first seam). Counts reconcile with §G's totals minus any
    sites you've since imported/deleted.
 2. **Import the primary** (site only — no DB checkbox). Expect: one admin
    prompt at most (resolver already ours), row flips `imported`, Sites shows
    the row with **external** badge, NO DB badge, Running.
-3. **It serves THEIR site.** `https://photocontest.test` shows the real
+3. **It serves THEIR site.** `https://<primary>.test` shows the real
    site (§H: confirm it's not the fallback — the content must be the
    site's own). It works because it still reads DBngin — that's correct.
 4. **Re-run: scan again.** Primary now **already imported** (disabled);
@@ -500,7 +503,7 @@ PATH, use DBngin's bundled one.)
       diff below; **remove the comment**; card refreshes clean.
    c. (verifyFailed has no safe manual trigger — see Honest limits.)
 10. **Connect.** Diff = exactly two pairs (`DB_HOST`, `DB_USER` →
-    `rex_photocontest_test`), no password anywhere; backup note carries the
+    `rex_<primary-slug>`), no password anywhere; backup note carries the
     password-in-backup limit; tick; **Apply and verify** → "verified: the
     rewritten settings sign in…" toast; badge flips **DB connected**;
     connected panel wording claims the sign-in, not "the site uses it".
@@ -511,12 +514,12 @@ PATH, use DBngin's bundled one.)
     the guard wins first; the reset path exists only while still `imported`
     (K8). Both behaviours are correct; note both.
 12. **Prove it uses OUR database.** Site → wp-admin → edit a post title.
-    The edit appears in rexenv's Adminer copy; their DBngin `photocontest`
+    The edit appears in rexenv's Adminer copy; their their old database
     must NOT change (the final checksums assert it — don't check by writing
     anything their side).
 13. **Interleave under load:** start the secondary's DB import; while its
     copy phase runs, try a THIRD import (any site) → **"a database import is
-    already running (for typingbcc.test) — one at a time"**; and Apply on
+    already running (for <secondary>.test) — one at a time"**; and Apply on
     the secondary's card → refusal naming the import. (Small DBs finish
     fast — if the window's too short, observe at least the first refusal.)
     Secondary settles: **Imported — not yet connected**, and the primary's
@@ -533,11 +536,11 @@ PATH, use DBngin's bundled one.)
     `"$HOME/Library/Application Support/dev.rexenv.rexenv"/bin/mysql-*/bin/mysql \
       --no-defaults -h127.0.0.1 -P13306 -uroot -e \
       "SELECT user,host FROM mysql.user WHERE user LIKE 'rex_%'"`
-    → `rex_photocontest_test` on localhost + 127.0.0.1 only.
+    → `rex_<primary-slug>` on localhost + 127.0.0.1 only.
 16. **Delete the primary** (state: imported, reverted). Ordinary confirm
     ("… its database, and its certificate"); delete. Then verify: row gone;
     `$PROJ` folder intact; rexenv's copy dropped (Adminer); the K15 query
-    now returns NO `rex_photocontest_test` (dropped BY THE RECORD — D3's
+    now returns NO `rex_<primary-slug>` (dropped BY THE RECORD — D3's
     other half). Delete the secondary too (its copy + row go the same way).
 17. **The AFTER capture.** Re-run every K0 command into `~/rexenv-k-after`
     and diff:
@@ -607,5 +610,5 @@ Result: ____ (date, reqwest version).
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
-| J | Connection rewrite (Stage 3): packaged GUI pass on ea.test | ✅ passed 28 Jul 2026 |
+| J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |
 | K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |

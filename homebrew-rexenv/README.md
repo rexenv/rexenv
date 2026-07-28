@@ -32,9 +32,9 @@ by Apple — there is no paid Apple Developer ID behind it. Consequences:
   com.apple.quarantine`). **This deliberately bypasses Gatekeeper's notarization
   check.**
 
-Install this **only if you trust this source** (it's a personal build, distributed
-to a small known audience). If the postflight can't remove the attribute on your
-setup, run it yourself once:
+Install this **only if you trust this source** — you are choosing to run an
+un-notarized build. If the postflight can't remove the attribute on your setup,
+run it yourself once:
 
 ```sh
 sudo xattr -rd com.apple.quarantine /Applications/rexenv.app
@@ -60,6 +60,12 @@ and a **local-CA trust** in your login keychain. Before uninstalling:
 `--zap` intentionally leaves your **`~/rexenv/Sites`** folder alone (that's your work).
 
 ## Updating the cask for a new release
+
+> ⚠️ The `sha256` currently committed in `Casks/rexenv.rb` is a **known-stale
+> placeholder** from an early local build (the file says so in its own header) —
+> it will not match any current dmg. It MUST be recomputed from the actually
+> uploaded Release asset before the tap is pushed; `brew install` fails on a
+> mismatch by design.
 
 1. Build + upload the new `rexenv_<version>_universal.dmg` to a GitHub Release
    tagged `v<version>` on `github.com/rudlinkon/rexenv`.

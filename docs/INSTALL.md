@@ -73,3 +73,16 @@ To update, quit rexenv and replace `rexenv.app` in Applications with the new
 `.dmg`'s copy (drag over, replace). Your sites, settings, and downloaded
 components are kept (they live in
 `~/Library/Application Support/dev.rexenv.rexenv/`).
+
+## Uninstalling — do the in-app step FIRST
+
+rexenv installs privileged, system-level things that deleting the app cannot
+remove: a **root LaunchDaemon** running the edge proxy on :443,
+`/etc/resolver/*` files for your dev TLDs, and the **local-CA trust** in your
+login keychain.
+
+1. In the app: **Settings → "Remove system changes"** (one admin prompt —
+   removes the edge daemon, resolver files, CA trust, and the DNS agent).
+2. Then delete `rexenv.app` from Applications (and, if you want a full wipe,
+   `~/Library/Application Support/dev.rexenv.rexenv/` — your site files live
+   there unless you moved the Sites folder, so check before deleting).

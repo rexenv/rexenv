@@ -16,7 +16,10 @@ event streaming into the packaged webview, real toasts, and anything
 involving your keychain/agent — that's this checklist.
 
 Before starting: **restart services once** (`rex restart`) — the dotfile-deny
-lands in the generated configs on the next stack start.
+lands in the generated configs on the next stack start. (Since this was
+written, the nginx leg of the dotfile guard is AUTOMATED —
+`examples/dotfile_guard_check`, sandbox tier; §1.1 remains useful for the
+Apache/FrankenPHP legs, still open as ledger #103.)
 
 ---
 

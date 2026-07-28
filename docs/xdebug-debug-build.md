@@ -68,7 +68,12 @@ tar -C buildroot/bin -czf php-8.3.31-fpm-xdebug-macos-aarch64.tar.gz php-fpm
 shasum -a 256 php-8.3.31-*-xdebug-macos-*.tar.gz   # → the four SHA-256s
 ```
 
-1. Upload the four `.tar.gz` to the host behind `PHP_DEBUG_BASE_URL`
+1. Upload the four `.tar.gz` to the host behind `PHP_DEBUG_BASE_URL`.
+   **The host itself is an OPEN DECISION (review item B33, tracked in
+   `docs/TODO.md`)** — a `dl.` host is wired in `core/binaries.rs:40` but was
+   never ratified vs the canonical project domain. Note: whichever host serves
+   these, rexenv becomes a DISTRIBUTOR of PHP at that moment — ship the PHP
+   licence + Xdebug licence texts alongside the artifacts.
    (`src-tauri/src/core/binaries.rs`), keeping the exact file names
    `php-{ver}-{cli|fpm}-xdebug-macos-{aarch64|x86_64}.tar.gz`.
 2. Fill the four consts `PHP_DEBUG_{CLI,FPM}_MAC_{ARM64,AMD64}_SHA256` with the
