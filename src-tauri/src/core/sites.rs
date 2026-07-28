@@ -249,6 +249,15 @@ pub fn backfill_content_dir(conn: &Connection) -> Result<()> {
         if s.content_dir.is_some() || s.site_type != SiteType::Wordpress {
             continue; // already recorded / never consulted — idempotent skip
         }
+        // Unreachable docroot (unmounted volume, temporarily missing linked
+        // folder): every marker probes false and the record is SET-ONCE — a
+        // wrong "wp-content" stamped here would condemn a Bedrock site to
+        // the pre-v24 bug permanently (audit A3). Leave NULL; a later launch
+        // with the volume mounted records the truth, and NULL already reads
+        // as the safe default meanwhile.
+        if !Path::new(&s.path).exists() {
+            continue;
+        }
         let rel = detect_content_dir_rel(Path::new(&s.path));
         store::set_site_content_dir(&tx, &s.id, rel)?;
     }
@@ -2449,11 +2458,21 @@ mod tests {
         php.content_dir = None;
         store::insert_site(&conn, &php).unwrap();
 
+        // A WP row whose docroot is UNREACHABLE (unmounted volume) must stay
+        // NULL — a set-once "wp-content" here would be permanent poison (A3).
+        let mut gone = site_at(Path::new("/nonexistent-volume/project/web"));
+        gone.id = "m3".into();
+        gone.domain = "gone.test".into();
+        gone.db_name = "wp_gone_test".into();
+        gone.content_dir = None;
+        store::insert_site(&conn, &gone).unwrap();
+
         backfill_content_dir(&conn).unwrap();
         let rows = store::list_sites(&conn).unwrap();
         let by_id = |id: &str| rows.iter().find(|s| s.id == id).unwrap();
         assert_eq!(by_id("m1").content_dir.as_deref(), Some("app"));
         assert_eq!(by_id("m2").content_dir, None); // non-WP: never consulted
+        assert_eq!(by_id("m3").content_dir, None); // unreachable: left for a later launch
         // Idempotent: a second run changes nothing.
         backfill_content_dir(&conn).unwrap();
         assert_eq!(by_id("m1").content_dir.as_deref(), Some("app"));
