@@ -116,9 +116,13 @@ half of every ◐ row, worked by the ledger's blast-radius tiers, top first:
 
 ## Decisions pending (owner)
 
-- [ ] **LICENSE** — no file exists; blocks any public use. (Analysis delivered
-  28 Jul 2026; `Cargo.toml`s already declare MIT ×2, `package.json` declares
-  nothing — align all three with whatever is chosen.)
+- [x] **LICENSE** — DECIDED + LANDED 28 Jul 2026: **Apache-2.0** (explicit patent
+  grant; §5 licenses inbound contributions without a CLA). ✓ `LICENSE` + `NOTICE`
+  at root, `Apache-2.0` in `package.json` + both `Cargo.toml`s,
+  `THIRD-PARTY-NOTICES.md` generated from the real graphs (389 crates + 112 npm
+  packages + OFL fonts + bundled SQLite; regeneration commands in its header),
+  DCO sign-off in `CONTRIBUTING.md`, README licence section. Regenerate the
+  notices file per release.
 - [ ] **B33 — php-debug download host**: `dl.rexenv.dev` is wired
   (`core/binaries.rs:40`, inert until the four SHA consts are filled) but the
   host choice vs the canonical domain was never settled. Note added to
@@ -126,9 +130,11 @@ half of every ◐ row, worked by the ledger's blast-radius tiers, top first:
   texts beside the artifacts (rexenv becomes a distributor of PHP at that moment).
 - [ ] **`rex config get|set`** — parked on which settings keys to allow-list
   (never the whole KV table).
-- [ ] **Publish history or start fresh** — HEAD is scrubbed; git history keeps
-  every earlier revision (and one deleted screenshot). Separate call from the
-  LICENSE one.
+- [x] **Publish history or start fresh** — DECIDED 28 Jul 2026: **fresh start**.
+  The public repo begins at the cleaned HEAD; the private repo keeps full
+  history. Reason: the docs cite commit hashes as evidence throughout, and a
+  filter-repo rewrite would break that proof chain. Execution happens at
+  publish time (init public repo from HEAD, push, add remotes).
 - [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
   tests; do not reopen).

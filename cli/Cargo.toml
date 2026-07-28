@@ -2,7 +2,7 @@
 name = "rexenv-cli"
 version = "0.1.0"
 description = "rex — remote control for the running rexenv app"
-license = "MIT"
+license = "Apache-2.0"
 edition = "2021"
 
 # STRUCTURAL second-brain guarantee (do not relitigate): this crate must NEVER

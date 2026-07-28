@@ -89,6 +89,21 @@ check `docs/ARCHITECTURE.md` and this list:
 - Screen comps in `design/` and the archive docs are historical — `docs/archive/`
   may contradict current code and never wins.
 
+## Licence and sign-off (DCO)
+
+rexenv is Apache-2.0 (see `LICENSE`). By submitting a contribution you agree it
+is licensed under Apache-2.0 (the licence's §5 covers this), and we additionally
+use the Developer Certificate of Origin: sign each commit off with
+`git commit -s`, which appends
+
+```
+Signed-off-by: Your Name <you@example.com>
+```
+
+The sign-off certifies the DCO 1.1 (https://developercertificate.org): in short,
+that you wrote the contribution or otherwise have the right to submit it under
+the project's licence. No CLA.
+
 ## Pull requests
 
 Keep changes surgical: touch what the task needs, match surrounding style, no

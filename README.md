@@ -88,8 +88,9 @@ demand, checksum-pinned, and prepared for macOS automatically.
 ```
 rexenv/
 ├── README.md                   # this file
+├── LICENSE · NOTICE · THIRD-PARTY-NOTICES.md   # Apache-2.0 + shipped-deps inventory
 ├── CLAUDE.md                   # agent router: rules + doc index
-├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions
+├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions · DCO
 ├── design/                     # reference comps (*.dc.html) — one per screen
 ├── docs/                       # ARCHITECTURE · MAP · TESTING · CLAIM-LEDGER · PORTS
 │   │                           #   TODO · INSTALL · SMOKE-TEST · PUBLISH-TESTING
@@ -201,3 +202,21 @@ rexenv/
 5. **Phase 4/5** — Windows, then Linux ports (fill the `platform/` stubs).
 
 Founding spec (historical): `docs/archive/PROJECT_SPEC.md`. Current system reference: `docs/ARCHITECTURE.md`.
+
+---
+
+## Licence
+
+rexenv is licensed under the **Apache License 2.0** (`LICENSE`). Contributions
+are accepted under the same licence with a DCO sign-off (`CONTRIBUTING.md`).
+
+What ships in the app (Rust crates, npm packages, fonts, bundled SQLite) is
+inventoried in **`THIRD-PARTY-NOTICES.md`**. The server binaries rexenv
+downloads at runtime (PHP, MySQL, MariaDB, PostgreSQL, Redis, nginx, Caddy,
+FrankenPHP, Apache httpd, Mailpit, Adminer, cloudflared, WP-CLI, Composer,
+Xdebug) are **not redistributed by rexenv** — they are fetched checksum-pinned
+from their own distributors (official upstreams, static-php.dev,
+jirutka/nginx-binaries, theseus-rs, Homebrew's bottle registry — the full
+source-and-version table is `docs/PORTS.md`) and remain under their own
+licences on your machine. Trusting rexenv therefore includes trusting those
+build sources; the pinned checksums are the enforcement.
