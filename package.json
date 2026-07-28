@@ -10,7 +10,8 @@
     "tauri": "tauri",
     "release:mac": "tauri build --target universal-apple-darwin",
     "typecheck": "tsc --noEmit",
-    "verify": "bash scripts/verify.sh"
+    "verify": "bash scripts/verify.sh",
+    "verify:full": "bash scripts/verify-full.sh"
   },
   "dependencies": {
     "@fontsource/inter": "^5.1.0",

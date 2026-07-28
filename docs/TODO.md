@@ -75,7 +75,10 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     .hidden/x.php all 404 through real nginx, the secret never crosses, the dot-dir
     .php never reaches fastcgi, root /.well-known/ stays exempt, control PHP executes.
     PASS. Ledger #103 → ◐ (Apache + FrankenPHP legs backlogged). verify.sh green.
-  - [ ] T12. `scripts/verify-full.sh` (fast/full gate split).
+  - [x] **T12. `scripts/verify-full.sh`** ✓ 28 Jul 2026 — composition: verify.sh →
+    live-checks sandbox tier → wk-checks (spawns its own vite on 5199, trap-killed).
+    Missing harness deps = NOT green (a gate that silently skips a layer isn't one).
+    Full run: exit 0, `verify-full: all green`. `npm run verify:full` added.
   - [ ] T13. SMOKE-TEST/PUBLISH-TESTING §5 additions + ledger re-tally.
 
 - [ ] **Tunnel hardening — end-to-end review 28 Jul 2026, fix order RULED same day**
