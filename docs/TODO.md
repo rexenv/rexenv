@@ -20,8 +20,17 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     identified dies, dead cleans); mu-plugin claim restated (lifetime = tunnel lifetime
     + at most one relaunch), crash-gap disclosure added to the Tunnels page copy.
     ✓ 521 lib tests, examples build+run, tsc via next UI task.
-  - [ ] **2. Status honesty** — `try_wait` so a dead child can never read Live; decide
-    whether "Live" should also mean a URL probe or process-liveness is the honest ceiling.
+  - [x] **2. Status honesty** ✓ SHIPPED 28 Jul 2026 — `4d259d1` dead children settled
+    (`try_wait`, `Err` reads alive — death claims need positive evidence) before every
+    status snapshot AND the already-sharing return (a crashed tunnel re-click now starts
+    fresh); `e8b8bc2` the URL IS probeable, so process-liveness is NOT the ceiling:
+    bounded HEAD / 30s / outside locks; ≠530 proves the path (origin errors rode the
+    tunnel — origin health stays the Services page's fact), 530×3 consecutive = Broken
+    (edge error 1033, reconnect-tolerant), transport error = Unverified, never Broken
+    (strikes carry through); `7f5cc9b` badge/border/status-line read tunnel.health
+    alone: Live / Unverified / Broken / absent. ✓ 523 lib tests (fold matrix +
+    take_dead with real children), tsc. Human verify: share → kill -9 the cloudflared
+    pid → card leaves Live within ~5s; share → watch Unverified→Live within seconds.
   - [ ] **3. Override-site refusal** — tunneling an Apache/FrankenPHP site hits nginx's
     DEFAULT vhost and serves ANOTHER site publicly (`commands/tunnels.rs` targets
     `NGINX_HTTP_PORT` unconditionally; `sites.rs is_nginx_served` excludes overrides).
