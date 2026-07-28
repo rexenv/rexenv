@@ -6,6 +6,30 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [ ] **Testing strategy — proofs at the right level (plan RULED 28 Jul 2026:
+  `docs/PLAN-testing-strategy.md`; claim inventory: `docs/CLAIM-LEDGER.md`, 194 claims,
+  117 proven at compile time)**. Metric = ledger tally, never line coverage. Tasks
+  (T-numbers from the plan):
+  - [x] **T1. Plan + ledger written** ✓ this entry's two docs.
+  - [ ] T2. Fix/delete wrong assertions (the four `len() >` checks, terminal.rs:201,
+    macos 2007 split assert, constant tautologies).
+  - [ ] T3. Rename lying test names; reduce the two live-superseded PHP-needle tests.
+  - [ ] T4. `examples/db_dump_flags_check.rs` — the mysqldump incident class, real
+    binaries, incl. the `--connect-timeout` negative.
+  - [ ] T5. `frankenphp_subdir_validate` actually validates (real binary, asserts).
+  - [ ] T6. examples/common fixture library (fixture_db, port allocator, Check
+    reporter, wp_fixture); two examples migrated.
+  - [ ] T7. De-fang the three incident-3-shaped examples (nginx_php_serve,
+    php_fpm_serve, php_pools_serve → sandbox + fixture ports).
+  - [ ] T8. `scripts/live-checks.sh` tiered runner (declared-tier enforcement).
+  - [ ] T9. wk-checks: heights probe (h-full class), uireview.js can fail, StatusPill
+    all-states scenario.
+  - [ ] T10. Ledger quick wins: wp_login injection-point test (#36), DNS loopback-bind
+    assert (#44), autostart guard tests (#175 L0).
+  - [ ] T11. Dotfile-guard live 404 example (#103, nginx template first).
+  - [ ] T12. `scripts/verify-full.sh` (fast/full gate split).
+  - [ ] T13. SMOKE-TEST/PUBLISH-TESTING §5 additions + ledger re-tally.
+
 - [ ] **Tunnel hardening — end-to-end review 28 Jul 2026, fix order RULED same day**
   (report + lifecycle decision: `docs/PLAN-tunnel-lifecycle.md`). Root finding: tunnels
   inherited NEITHER lifecycle model (not killed with the app like jobs, structurally
