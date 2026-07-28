@@ -1,0 +1,212 @@
+//! Live check for Stage 3 — the connection rewrite end to end (plan §8 step 8).
+//! Run: `cargo run --example config_rewrite_check`
+//!
+//! One sandbox mysqld on a fixture port plays "rexenv's engine"; the site is a
+//! fixture wp-config in a sandbox temp dir. Nothing here touches the user's
+//! real stack, app data, Valet, Herd, or DBngin (see `common::sandbox`).
+//!
+//! Proves, in order:
+//!   1. the ROOT case end to end with real credentials: dedicated user
+//!      created holding THEIR password, rewrite applied byte-exactly (the
+//!      password line untouched, and absent from the diff), and the sign-in
+//!      verification minting its proof against the REWRITTEN FILE AS RE-READ —
+//!      signing in as the dedicated user with their password;
+//!   2. a failed write leaves their file byte-untouched (temp+rename makes a
+//!      half-written config unrepresentable) — the Stage 1 recovery lesson;
+//!   3. revert restores the BYTE-IDENTICAL original, mode included;
+//!   4. the digest classifier refuses an edited-since file without force;
+//!   5. a REVERTED config can no longer mint a proof (WrongTarget — it points
+//!      at the old server again);
+//!   6. re-scanning the REWRITTEN config lands `SelfImport::ThisSite` — the
+//!      §7 self-source guard closes over the rewrite's own output.
+
+use rexenv_lib::core::confedit::{self, RewritePlan};
+use rexenv_lib::core::confrewrite::{self, FileEditedReason, RevertCheck};
+use rexenv_lib::core::confverify::{self, VerifyFail};
+use rexenv_lib::core::dbdump::{self, SelfImport};
+use rexenv_lib::core::dbmirror;
+use rexenv_lib::core::{binaries, database, dbimport};
+use rexenv_lib::state::db;
+use std::os::unix::fs::PermissionsExt;
+use std::time::Duration;
+
+mod common;
+use common::Reaped;
+
+const PORT: u16 = 13397;
+const DB: &str = "rwcheck_ea";
+const DOMAIN: &str = "rwcheck.test";
+const THEIR_PASSWORD: &str = "hunter2";
+
+fn check(ok: &mut bool, name: &str, pass: bool, detail: &str) {
+    println!("{} {name}{}", if pass { "✓" } else { "✗" }, if pass { String::new() } else { format!(" — {detail}") });
+    *ok &= pass;
+}
+
+#[tokio::main]
+async fn main() {
+    let (plat, sandbox) = common::sandbox("config_rewrite_check");
+    let mut ok = true;
+
+    // ── sandbox mysqld = "rexenv's engine" on a fixture port ────────────────
+    let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
+        .await
+        .expect("mysql tree (cached)");
+    let datadir = sandbox.root().join("mysql-data");
+    database::initialize(&*plat, &basedir, &datadir).expect("init datadir");
+    let socket = sandbox.root().join("mysql.sock");
+    let mut mysqld = Reaped::new(
+        database::start(&*plat, &basedir, &datadir, PORT, &socket).expect("start mysqld"),
+        PORT,
+        "mysqld",
+    );
+    for _ in 0..150 {
+        if database::mysql_running(PORT) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert!(database::mysql_running(PORT), "sandbox mysqld is up");
+    let client = database::mysql_client_bin(&basedir);
+    database::create_database(&client, PORT, DB).expect("create the imported copy");
+
+    // ── the fixture site: a root-case wp-config pointing at "their" server ──
+    let project = sandbox.root().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let config = project.join("wp-config.php");
+    let original = format!(
+        "<?php\n// The user's own file, conventions and all.\r\n\
+         define( 'DB_NAME', '{DB}' );\n\
+         define( 'DB_USER', 'root' );\n\
+         define( 'DB_PASSWORD', '{THEIR_PASSWORD}' );\n\
+         define( 'DB_HOST', '127.0.0.1:3306' );\n\
+         $table_prefix = 'wp_';\n"
+    );
+    std::fs::write(&config, &original).unwrap();
+    std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+    // ── 1a. plan + rewrite: the diff IS the write, and holds no secret ──────
+    let dedicated = dbmirror::dedicated_user_name(DOMAIN);
+    let plan =
+        RewritePlan::wp(&format!("127.0.0.1:{PORT}"), Some(&dedicated)).expect("plan");
+    let rewrite = confedit::rewrite(&original, &plan).expect("rewrite plans cleanly");
+    check(
+        &mut ok,
+        "the diff carries no secret and both changed lines",
+        rewrite.diff.iter().all(|d| !d.text.contains(THEIR_PASSWORD))
+            && rewrite.diff.iter().any(|d| d.text.contains(&dedicated))
+            && rewrite.diff.iter().any(|d| d.text.contains(&format!("127.0.0.1:{PORT}"))),
+        &format!("{:?}", rewrite.diff),
+    );
+    check(
+        &mut ok,
+        "the password line survives byte-identical in the new content",
+        rewrite.new_content.contains(&format!("define( 'DB_PASSWORD', '{THEIR_PASSWORD}' );")),
+        "password line was touched",
+    );
+
+    // ── 1b. backup (0600, first wins), mirror, write, verify ────────────────
+    let backup = confrewrite::backup_path(&*plat, "site-fixture", &config).expect("backup path");
+    confrewrite::write_backup(&*plat, &backup, &original).expect("backup written");
+    let mode = std::fs::metadata(&backup).unwrap().permissions().mode() & 0o777;
+    check(&mut ok, "the backup is born 0600", mode == 0o600, &format!("mode {mode:o}"));
+
+    dbmirror::mirror_dedicated(&client, PORT, DB, DOMAIN, THEIR_PASSWORD)
+        .expect("dedicated user created");
+    confrewrite::atomic_write_preserving_mode(&config, &rewrite.new_content)
+        .expect("atomic write");
+    let mode = std::fs::metadata(&config).unwrap().permissions().mode() & 0o777;
+    check(&mut ok, "their chmod 600 survives the rewrite", mode == 0o600, &format!("mode {mode:o}"));
+
+    let scratch = sandbox.root().join("scratch");
+    let proof = confverify::verify_signin(&*plat, &client, &project, &scratch, PORT, DB)
+        .expect("verify runs");
+    check(
+        &mut ok,
+        "the proof mints only from a real sign-in as the dedicated user",
+        matches!(&proof, Ok(p) if !p.http_confirmed()),
+        &format!("{proof:?}"),
+    );
+
+    // ── 2. a failed write leaves their file byte-untouched ──────────────────
+    let after_write = std::fs::read_to_string(&config).unwrap();
+    std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let denied = confrewrite::atomic_write_preserving_mode(&config, "sabotage");
+    std::fs::set_permissions(&project, std::fs::Permissions::from_mode(0o755)).unwrap();
+    check(
+        &mut ok,
+        "a failed write errors AND the file still holds the previous bytes",
+        denied.is_err() && std::fs::read_to_string(&config).unwrap() == after_write,
+        "the write half-landed",
+    );
+
+    // ── 6 (while rewritten). re-scan lands ThisSite ─────────────────────────
+    let conn_now = dbimport::read_connection(&project).expect("re-read the rewritten config");
+    let identity = match rexenv_lib::core::dbsource::probe(&conn_now.host, conn_now.port) {
+        rexenv_lib::core::dbsource::Probe::Listening(id) => id,
+        other => panic!("fixture engine not listening: {other:?}"),
+    };
+    let ours = [dbdump::OurEngine { port: PORT, version: binaries::MYSQL_VERSION.into() }];
+    let is_ours = dbdump::server_is_ours(&conn_now.host, conn_now.port, &identity, &ours);
+    let state = db::open(&sandbox.root().join("app.db")).expect("sandbox state db");
+    state
+        .execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path, db_name)
+             VALUES ('s1','Rw', ?1, 'wordpress', '8.3', ?2, ?3)",
+            rusqlite::params![DOMAIN, project.display().to_string(), DB],
+        )
+        .unwrap();
+    let class = dbdump::classify_self_import(&state, "s1", &conn_now.database).unwrap();
+    check(
+        &mut ok,
+        "re-scanning the rewritten config lands ThisSite on our own engine",
+        is_ours && class == SelfImport::ThisSite,
+        &format!("is_ours={is_ours} class={class:?}"),
+    );
+
+    // ── 4. edited-since refuses without force ───────────────────────────────
+    let digest = confrewrite::sha256_hex(rewrite.new_content.as_bytes());
+    let mut edited = std::fs::read_to_string(&config).unwrap();
+    edited.push_str("// their later edit\n");
+    std::fs::write(&config, &edited).unwrap();
+    let verdict = confrewrite::classify_revert(Some(&edited), Some(&original), Some(&digest));
+    check(
+        &mut ok,
+        "an edited-since file classifies as FileEdited, never a silent restore",
+        verdict == RevertCheck::FileEdited { reason: FileEditedReason::EditedSinceRewrite },
+        &format!("{verdict:?}"),
+    );
+
+    // ── 3. revert: byte-identical original, mode kept ───────────────────────
+    std::fs::write(&config, &rewrite.new_content).unwrap(); // back to un-edited
+    let current = std::fs::read_to_string(&config).unwrap();
+    let verdict = confrewrite::classify_revert(Some(&current), Some(&original), Some(&digest));
+    check(&mut ok, "an untouched rewrite classifies CleanRestore", verdict == RevertCheck::CleanRestore, &format!("{verdict:?}"));
+    confrewrite::atomic_write_preserving_mode(&config, &original).expect("restore");
+    let restored = std::fs::read_to_string(&config).unwrap();
+    let mode = std::fs::metadata(&config).unwrap().permissions().mode() & 0o777;
+    check(
+        &mut ok,
+        "revert restores the byte-identical original (CRLF quirk included), mode kept",
+        restored == original && mode == 0o600,
+        "restore drifted",
+    );
+
+    // ── 5. a reverted config can no longer mint a proof ─────────────────────
+    let after = confverify::verify_signin(&*plat, &client, &project, &scratch, PORT, DB)
+        .expect("verify runs");
+    check(
+        &mut ok,
+        "the reverted file fails WrongTarget — no proof without the rewrite",
+        matches!(after, Err(VerifyFail::WrongTarget { port: 3306, .. })),
+        &format!("{after:?}"),
+    );
+
+    mysqld.reap();
+    if ok {
+        println!("\nconfig_rewrite_check: ALL CHECKS PASSED");
+    } else {
+        println!("\nconfig_rewrite_check: FAILURES ABOVE");
+        std::process::exit(1);
+    }
+}
