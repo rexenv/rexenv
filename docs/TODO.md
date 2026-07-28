@@ -148,6 +148,18 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     Follow-up option (not built): a user-visible launch notice needs a queued
     notices channel — the sweep runs in setup before the webview mounts, so a
     plain event would be lost; WARN log is the honest current surface.
+  - [x] **Three-check diagnosis** ✓ SHIPPED 28 Jul 2026 — `683f961` (design ruled
+    same day). Failure-gated (healthy = zero extra traffic forever): 1.1.1.1-only
+    resolve (no new party learns anything — Cloudflare already carries the
+    tunnel), then edge connect to a LIVE-resolved IP with true SNI/Host (never a
+    constant). Badge meaning unchanged; the Unverified line becomes four precise
+    sentences (local-dns-behind / dns-propagating / edge-gone / offline), all
+    scoped, all pointing at the second device. The half that adds TRUTH: edge
+    530 feeds strikes, making Broken reachable after DNS death — tested as its
+    own claim (same ticks: Unverified without the edge answer, Broken with it;
+    edge 200 pinned to never upgrade). Anycast limit documented at the claim
+    site. Probe-session note: the kill -9 mapping can now also watch the
+    diagnosis line, not just the badge.
   - [ ] **DNS agent answers ARBITRARY names when queried directly** (found during the
     28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
     `127.0.0.1` — the hickory agent is a catch-all wildcard, not per-TLD zones.
