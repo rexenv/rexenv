@@ -144,6 +144,14 @@ the config, never by editing the config's password to match an account.
   would have to choose which). Same `Unreadable` vocabulary as Stage 2; one parser
   (`core::phpconf`) still.
 - **Bedrock and friends**: the `.env` path (already how Stage 2 read them).
+- **Collision-renamed imports (their `ea` restored as `ea_2`) → tell-only,
+  PERMANENTLY — settled 28 Jul 2026.** The closed key vocabulary deliberately
+  cannot express a database rename, and that stays: zero collisions across the
+  11 real WordPress sites on the dev machine, the tell-only floor already
+  prints the correct renamed line, and widening a deliberately tight three-key
+  contract for the rare path isn't worth it. The preview's refusal names both
+  database names, so the state explains itself. This is a decision, not an
+  unfinished edge.
 - Anything else → tell-only.
 
 Write discipline: read → build plan → show diff (computed from the plan, not from a
