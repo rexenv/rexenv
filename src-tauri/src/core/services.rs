@@ -29,6 +29,7 @@ pub fn generate_fpm_config(
     log_file: &Path,
     sendmail_path: Option<&str>,
     settings: &[(String, String)],
+    mysql_socket: Option<&Path>,
 ) -> String {
     // Pool sizing guards the "every site hangs while the UI shows running" spiral:
     // ALL default sites share this one pool, so N wall-clock-stuck workers (heavy
@@ -43,6 +44,27 @@ pub fn generate_fpm_config(
     // the ini parser, leaving an unquoted path that `sh` splits on the space.)
     let sendmail = sendmail_path
         .map(|p| format!("php_admin_value[sendmail_path] = \"{p}\"\n"))
+        .unwrap_or_default();
+    // The `DB_HOST=localhost` free win (Stage 3 D5): PHP treats `localhost`
+    // as "use the unix socket", and our static builds compile
+    // `mysqli.default_socket` in EMPTY (verified on the cached 8.0/8.3/8.5
+    // binaries) — so an imported localhost WordPress site fails today, and
+    // pointing the default at OUR MySQL socket is strictly additive: no
+    // config rexenv generates uses `localhost` (provisioning writes
+    // `127.0.0.1:<port>`), so no existing rexenv site can be affected.
+    //
+    // MySQL's socket on every pool, deliberately — per-pool-majority was
+    // rejected as derived, mutable state deciding runtime behaviour; a
+    // MariaDB-on-localhost site gets the tell-only "use 127.0.0.1:13307" in
+    // its own panel instead of a silent half-support.
+    //
+    // `pdo_mysql.default_socket` is deliberately NOT set: its compiled
+    // default is `/tmp/mysql.sock` (verified) — the Homebrew MySQL location —
+    // so overriding it could silently redirect an existing PDO site that
+    // works against a Homebrew server today. The mysqli half has no such
+    // hazard because its compiled default is empty.
+    let socket = mysql_socket
+        .map(|p| format!("php_admin_value[mysqli.default_socket] = \"{}\"\n", p.display()))
         .unwrap_or_default();
     let values: String = settings
         .iter()
@@ -74,6 +96,7 @@ pub fn generate_fpm_config(
          request_terminate_timeout = {terminate}s\n\
          catch_workers_output = yes\n\
          {sendmail}\
+         {socket}\
          {values}",
         pid = pid_file.display(),
         log = log_file.display(),
@@ -126,7 +149,14 @@ fn write_fpm_config_named(
     let conf = config_dir.join(format!("php-fpm-{version}.{ext}"));
     let pid = run_dir.join(format!("php-fpm-{version}.pid"));
     let log = log_dir.join(format!("php-fpm-{version}.log"));
-    std::fs::write(&conf, generate_fpm_config(port, &pid, &log, sendmail_path, settings))?;
+    // Same fixed-format-line reasoning as sendmail: the candidate (`-t` gate
+    // for user settings) omits the socket default; the real config gets it.
+    let mysql_socket =
+        (ext == "conf").then(|| super::database::socket_path(platform)).transpose()?;
+    std::fs::write(
+        &conf,
+        generate_fpm_config(port, &pid, &log, sendmail_path, settings, mysql_socket.as_deref()),
+    )?;
     Ok(conf)
 }
 
@@ -676,6 +706,7 @@ mod tests {
             Path::new("/logs/php-fpm-8.3.log"),
             None,
             &[],
+            None,
         );
         assert!(cfg.contains("[global]"));
         assert!(cfg.contains("daemonize = no"));
@@ -705,6 +736,7 @@ mod tests {
             Path::new("/logs/php-fpm-8.3.log"),
             Some(shim),
             &[],
+            None,
         );
         // Routed via php_admin_value (sites can't override it), double-quoted so
         // the ini parser preserves the inner single-quoted binary path.
@@ -726,6 +758,7 @@ mod tests {
             Path::new("/logs/php-fpm-8.3.log"),
             None,
             &settings,
+            None,
         );
         assert!(cfg.contains("php_value[memory_limit] = 512M"));
         assert!(cfg.contains("php_value[upload_max_filesize] = 64M"));
@@ -747,9 +780,46 @@ mod tests {
                 Path::new("/l.log"),
                 None,
                 &settings,
+                None,
             );
             assert!(cfg.contains("request_terminate_timeout = 300s"), "val {val}: {cfg}");
         }
+    }
+
+    #[test]
+    fn fpm_config_pins_the_mysqli_socket_default_and_only_that() {
+        // Stage 3 D5: mysqli's compiled default is EMPTY (verified on the
+        // cached static binaries), so pointing it at OUR MySQL socket is
+        // strictly additive — an imported DB_HOST=localhost WordPress site
+        // starts working; nothing rexenv generates uses localhost.
+        let cfg = generate_fpm_config(
+            9783,
+            Path::new("/run/php-fpm-8.3.pid"),
+            Path::new("/logs/php-fpm-8.3.log"),
+            None,
+            &[],
+            Some(Path::new("/Users/x/Library/Application Support/dev.rexenv.rexenv/run/mysql.sock")),
+        );
+        // Locked (admin) and double-quoted: app-data paths contain spaces.
+        assert!(cfg.contains(
+            "php_admin_value[mysqli.default_socket] = \
+             \"/Users/x/Library/Application Support/dev.rexenv.rexenv/run/mysql.sock\""
+        ));
+        // pdo_mysql.default_socket is deliberately ABSENT: its compiled
+        // default is /tmp/mysql.sock — the Homebrew MySQL location — and
+        // overriding it could silently redirect an existing PDO site that
+        // works against a Homebrew server today. A re-added line flips this.
+        assert!(!cfg.contains("pdo_mysql"), "{cfg}");
+        // Candidate-style calls (no socket) emit neither.
+        let candidate = generate_fpm_config(
+            9783,
+            Path::new("/p.pid"),
+            Path::new("/l.log"),
+            None,
+            &[],
+            None,
+        );
+        assert!(!candidate.contains("default_socket"));
     }
 
     #[test]
