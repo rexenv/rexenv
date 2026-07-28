@@ -322,7 +322,7 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
     let docroot = PathBuf::from(&site.path);
     let content_rel = site.content_dir_rel().to_string();
     let domain = site.domain.clone();
-    let token = wp_blocking(move || {
+    let (token, created_dir) = wp_blocking(move || {
         core::wp_login::issue(
             &php_bin,
             &wp_phar,
@@ -334,6 +334,9 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
         )
     })
     .await?;
+    if created_dir {
+        crate::commands::tunnels::record_mu_dir_created(&state, &site.id);
+    }
     Ok(format!(
         "https://{}/?rexenv_login={}&rexenv_user={}",
         site.domain, token, user_id
@@ -359,9 +362,9 @@ pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Resul
     let docroot = PathBuf::from(&site.path);
     let content_rel = site.content_dir_rel().to_string();
     let domain = site.domain.clone();
-    let (admin_id, token) = wp_blocking(move || {
+    let (admin_id, token, created_dir) = wp_blocking(move || {
         let admin_id = core::wordpress::primary_admin_id(&php_bin, &wp_phar, &docroot)?;
-        let token = core::wp_login::issue(
+        let (token, created_dir) = core::wp_login::issue(
             &php_bin,
             &wp_phar,
             &docroot,
@@ -370,9 +373,12 @@ pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Resul
             admin_id,
             core::wp_login::LOGIN_TTL_SECS,
         )?;
-        Ok((admin_id, token))
+        Ok((admin_id, token, created_dir))
     })
     .await?;
+    if created_dir {
+        crate::commands::tunnels::record_mu_dir_created(&state, &site.id);
+    }
     Ok(format!(
         "https://{}/?rexenv_login={}&rexenv_user={}",
         site.domain, token, admin_id

@@ -110,24 +110,47 @@ fn mu_plugin_source(domain: &str) -> String {
 
 /// Write the mu-plugin if missing or changed (idempotent). Content is per-site
 /// (the domain is baked into the host allow-list), so a domain change is
-/// picked up by the next `issue` call rewriting the file.
-pub fn ensure_muplugin(docroot: &Path, content_rel: &str, domain: &str) -> Result<()> {
+/// picked up by the next `issue` call rewriting the file. Returns whether the
+/// `mu-plugins/` DIR was created by this call — the caller records that fact
+/// (v25 `sites.mu_dir_created`) so site teardown can remove a dir WE created
+/// without ever inferring ownership from emptiness.
+pub fn ensure_muplugin(docroot: &Path, content_rel: &str, domain: &str) -> Result<bool> {
     let path = mu_plugin_path(docroot, content_rel);
     let source = mu_plugin_source(domain);
     let current = std::fs::read_to_string(&path).ok();
+    let mut created_dir = false;
     if current.as_deref() != Some(source.as_str()) {
         if let Some(parent) = path.parent() {
+            created_dir = !parent.exists();
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, source)?;
+    }
+    Ok(created_dir)
+}
+
+/// Remove the login mu-plugin (site delete / domain rename — its owner since
+/// the 28 Jul 2026 step-6 ruling: the file lives while rexenv MANAGES the
+/// site, is rewritten by every `issue`, and goes away when the site leaves
+/// rexenv or changes domain. Same every-layout sweep as the tunnel file — a
+/// pre-v24 stray in a Bedrock repo's dead `wp-content/` still gets cleaned).
+/// Missing files are fine.
+pub fn remove(docroot: &Path) -> Result<()> {
+    for layout in crate::core::sites::CONTENT_DIR_LAYOUTS {
+        match std::fs::remove_file(mu_plugin_path(docroot, layout)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
     }
     Ok(())
 }
 
 /// Issue a one-time login for `user_id`: ensure the mu-plugin, generate a token,
 /// store its hash + expiry in the `rexenv_login` option (via WP-CLI), and return
-/// the raw token. The caller builds the magic URL
-/// (`https://<domain>/?rexenv_login=<token>&rexenv_user=<id>`).
+/// the raw token plus whether the mu-plugins dir was created by this call (the
+/// caller records it — see [`ensure_muplugin`]). The caller builds the magic
+/// URL (`https://<domain>/?rexenv_login=<token>&rexenv_user=<id>`).
 pub fn issue(
     php_bin: &Path,
     wp_phar: &Path,
@@ -136,8 +159,8 @@ pub fn issue(
     domain: &str,
     user_id: u64,
     ttl_secs: u64,
-) -> Result<String> {
-    ensure_muplugin(docroot, content_rel, domain)?;
+) -> Result<(String, bool)> {
+    let created_dir = ensure_muplugin(docroot, content_rel, domain)?;
 
     // 256-bit token (two v4 UUIDs of randomness); store only its hash.
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
@@ -151,7 +174,7 @@ pub fn issue(
     let payload = serde_json::json!({ "hash": hash, "user": user_id, "exp": exp }).to_string();
     // Store (or overwrite any prior pending token) as a non-autoloaded option.
     wp_run(php_bin, wp_phar, docroot, &["option", "update", "rexenv_login", &payload, "--autoload=no"])?;
-    Ok(token)
+    Ok((token, created_dir))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -195,6 +218,27 @@ mod tests {
         // and no unexpanded placeholder survives.
         assert!(src.contains("$site   = 'acme.rex';"), "site domain injected");
         assert!(!src.contains("{{SITE_DOMAIN}}"));
+    }
+
+    #[test]
+    fn created_flag_reports_dir_creation_and_remove_sweeps_every_layout() {
+        let dir = std::env::temp_dir().join("rexenv-wplogin-remove-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // First write creates mu-plugins/ → the flag the caller records (v25).
+        assert!(ensure_muplugin(&dir, "wp-content", "a.test").unwrap());
+        // Idempotent re-ensure creates nothing.
+        assert!(!ensure_muplugin(&dir, "wp-content", "a.test").unwrap());
+
+        // A stray in another layout (the pre-v24 bug's droppings) is swept too.
+        ensure_muplugin(&dir, "app", "a.test").unwrap();
+        remove(&dir).unwrap();
+        for layout in crate::core::sites::CONTENT_DIR_LAYOUTS {
+            assert!(!mu_plugin_path(&dir, layout).exists(), "left behind in {layout}");
+        }
+        remove(&dir).unwrap(); // idempotent on missing files
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

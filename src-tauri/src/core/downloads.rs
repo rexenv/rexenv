@@ -735,6 +735,7 @@ mod tests {
             docroot_managed: Some(true),
             db_created: None,
             content_dir: None,
+            mu_dir_created: None,
         }
     }
 

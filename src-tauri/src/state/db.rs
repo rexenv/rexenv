@@ -304,6 +304,12 @@ const MIGRATIONS: &[&str] = &[
     // bar): NULL reads as the WP default 'wp-content' via
     // `Site::content_dir_rel`, never as a guess recorded to disk.
     "ALTER TABLE sites ADD COLUMN content_dir TEXT;",
+    // v25 — did REXENV create this site's `mu-plugins/` dir (step 6)? Set to 1
+    // the first time a writer (tunnel or login mu-plugin) has to create it;
+    // site delete/rename may then remove the dir when it's empty again. NULL =
+    // not ours / unknown — never inferred from emptiness: a user's own empty
+    // mu-plugins dir is not ours to delete.
+    "ALTER TABLE sites ADD COLUMN mu_dir_created INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

@@ -150,6 +150,11 @@ pub struct Site {
     /// as the WP default via [`Site::content_dir_rel`].
     #[serde(default)]
     pub content_dir: Option<String>,
+    /// Did rexenv CREATE this site's `mu-plugins/` dir (v25)? `Some(true)` =
+    /// a writer created it and site teardown may remove it once empty again.
+    /// `None` = not ours / unknown — emptiness alone never makes it deletable.
+    #[serde(default)]
+    pub mu_dir_created: Option<bool>,
 }
 
 impl Site {

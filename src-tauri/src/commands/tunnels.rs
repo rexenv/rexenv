@@ -126,6 +126,20 @@ fn settle_dead(state: &AppState, dead: Vec<(String, TunnelEntry)>) {
     }
 }
 
+/// Record that a mu-plugin writer CREATED the site's mu-plugins dir (v25) —
+/// best-effort: a missed record just means the dir outlives the site, which
+/// is the pre-v25 status quo, never a wrong deletion.
+pub(crate) fn record_mu_dir_created(state: &AppState, site_id: &str) {
+    match state.db.lock() {
+        Ok(conn) => {
+            if let Err(e) = crate::state::store::set_site_mu_dir_created(&conn, site_id) {
+                log::warn!("rexenv: could not record mu-plugins dir ownership for {site_id}: {e}");
+            }
+        }
+        Err(_) => log::warn!("rexenv: database lock poisoned; mu-plugins dir ownership unrecorded"),
+    }
+}
+
 /// Best-effort row delete (v23). Failure is logged, not fatal: the exit hook
 /// clears the table and the launch sweep settles survivors, so a missed
 /// delete degrades to "settled later", never to a wrong kill (the sweep
@@ -477,14 +491,21 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     // any device through the tunnel — not just on this machine (§9.2). Sharing
     // without it is broken enough that a write failure fails the start.
     if site.site_type == SiteType::Wordpress {
-        if let Err(e) = wp_tunnel::enable(Path::new(&site.path), site.content_dir_rel(), &url) {
-            let _ = tunnels::stop(state.platform.as_ref(), child.id());
-            let mut c = child;
-            let _ = c.wait();
-            delete_tunnel_row(&state, &domain);
-            return Err(Error::Other(format!(
-                "tunnel started but the URL-rewrite mu-plugin could not be written: {e}"
-            )));
+        match wp_tunnel::enable(Path::new(&site.path), site.content_dir_rel(), &url) {
+            Ok(created_dir) => {
+                if created_dir {
+                    record_mu_dir_created(&state, &site.id);
+                }
+            }
+            Err(e) => {
+                let _ = tunnels::stop(state.platform.as_ref(), child.id());
+                let mut c = child;
+                let _ = c.wait();
+                delete_tunnel_row(&state, &domain);
+                return Err(Error::Other(format!(
+                    "tunnel started but the URL-rewrite mu-plugin could not be written: {e}"
+                )));
+            }
         }
     }
 

@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, Row};
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
-     docroot_managed, db_created, content_dir";
+     docroot_managed, db_created, content_dir, mu_dir_created";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -51,6 +51,8 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // Nullable by design (v24): NULL = pre-backfill; reads as the WP
         // default `wp-content` via `Site::content_dir_rel`.
         content_dir: row.get(18)?,
+        // Nullable by design (v25): NULL = the mu-plugins dir is not ours.
+        mu_dir_created: row.get::<_, Option<i64>>(19)?.map(|v| v != 0),
     })
 }
 
@@ -64,8 +66,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
         params![
             site.id,
             site.name,
@@ -86,6 +88,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.docroot_managed.map(|m| m as i64),
             site.db_created.map(|c| c as i64),
             site.content_dir,
+            site.mu_dir_created.map(|c| c as i64),
         ],
     )?;
     Ok(())
@@ -392,6 +395,13 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
         Some(v) => Ok(Some(v?)),
         None => Ok(None),
     }
+}
+
+/// Record that rexenv created the site's mu-plugins dir (v25). Set-once, only
+/// ever to true — ownership is claimed at creation time, never revoked into a
+/// guess.
+pub fn set_site_mu_dir_created(conn: &Connection, id: &str) -> Result<bool> {
+    Ok(conn.execute("UPDATE sites SET mu_dir_created = 1 WHERE id = ?1", params![id])? > 0)
 }
 
 /// Record a site's content dir (v24 backfill; creation writes it inline).

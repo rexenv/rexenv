@@ -128,11 +128,7 @@ call_user_func(static function () {
 });
 "#;
 
-/// Every content-dir layout rexenv has ever written under (stock WP, Bedrock,
-/// Radicle). REMOVAL sweeps all of them — a file our own pre-v24 bug wrote
-/// into a Bedrock repo's dead `wp-content/` must still get cleaned up, and
-/// removing an exact filename from a dir that never had it is a no-op.
-const CONTENT_DIR_LAYOUTS: [&str; 3] = ["wp-content", "app", "content"];
+use crate::core::sites::CONTENT_DIR_LAYOUTS;
 
 /// Path of the auto-managed mu-plugin within a docroot. `content_rel` is the
 /// site's RECORDED content dir (`Site::content_dir_rel`, v24) — never derived
@@ -168,17 +164,22 @@ fn render(origin: &str) -> String {
 /// Write (or refresh) the mu-plugin with this tunnel's public origin. Idempotent:
 /// the quick-tunnel URL changes on every start, so the file is compared and only
 /// rewritten when its content differs.
-pub fn enable(docroot: &Path, content_rel: &str, origin: &str) -> Result<()> {
+pub fn enable(docroot: &Path, content_rel: &str, origin: &str) -> Result<bool> {
     validate_origin(origin)?;
     let rendered = render(origin.trim_end_matches('/'));
     let path = mu_plugin_path(docroot, content_rel);
+    let mut created_dir = false;
     if std::fs::read_to_string(&path).ok().as_deref() != Some(&rendered) {
         if let Some(parent) = path.parent() {
+            // Returned so the caller can RECORD dir ownership (v25) — site
+            // teardown removes a dir we created, never one inferred from
+            // emptiness.
+            created_dir = !parent.exists();
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, rendered)?;
     }
-    Ok(())
+    Ok(created_dir)
 }
 
 /// Remove the mu-plugin (tunnel stopped). Missing file is fine. Sweeps EVERY

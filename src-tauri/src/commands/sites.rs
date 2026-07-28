@@ -727,6 +727,11 @@ pub async fn change_site_domain(
     //    vhost that no longer exists; cert dir / FrankenPHP config / logs are
     //    keyed by the old domain (mirrors teardown).
     tunnels.stop_for_domain(&state, &old_domain);
+    // Both mu-plugins are stale after a rename (tunnel file: dead origin;
+    // login file: OLD domain baked into its host allow-list) — remove them;
+    // the next share / login recreates them with the new domain. The dir
+    // stays (the site is still managed and will likely want it again).
+    core::sites::cleanup_muplugin_artifacts(&updated, false);
     if let Ok(dir) = core::ssl::site_cert_dir(state.platform.paths(), &old_domain) {
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -799,7 +804,9 @@ pub async fn delete_site(
     let Some(site) = site else { return Ok(false) };
 
     // 1) A deleted site must not stay publicly shared: kill its live tunnel
-    //    (registry keyed by domain; the mu-plugin goes away with the docroot).
+    //    (registry keyed by domain). Its mu-plugins do NOT simply "go away
+    //    with the docroot" — a linked docroot is preserved — so step 3 below
+    //    removes them explicitly.
     tunnels.stop_for_domain(&state, &site.domain);
 
     // 2) Drop the site's database, and any RECORDED mirrored user (D3). Only
@@ -865,6 +872,10 @@ pub async fn delete_site(
             site.domain,
             site.path
         );
+        // The folder stays, our files inside it must not (linked-repo lens):
+        // tunnel + login mu-plugins, and the mu-plugins dir itself when it is
+        // RECORDED as ours and empty again.
+        core::sites::cleanup_muplugin_artifacts(&site, true);
     }
     // Best-effort reload (no-op if services aren't running). A delete only
     // REMOVES backends, so there are no readiness probes to await.
@@ -899,6 +910,7 @@ mod tests {
             docroot_managed,
             db_created,
             content_dir: None,
+            mu_dir_created: None,
         }
     }
 

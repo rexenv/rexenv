@@ -256,6 +256,50 @@ pub fn backfill_content_dir(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Remove rexenv's mu-plugin artifacts from a site's docroot at the moments
+/// the site ENDS or changes identity (step 6, 28 Jul 2026) — the linked-repo
+/// lens: a preserved docroot must not keep files we wrote. Removes the tunnel
+/// file (dead origin) and the login file (domain baked in; its owner rule:
+/// lives while rexenv manages the site, rewritten by every issue, gone at
+/// delete/rename) across EVERY known layout. `remove_dir` (delete only, not
+/// rename — a still-managed site will likely recreate it): also remove the
+/// `mu-plugins/` dir itself when RECORDED as ours (v25 `mu_dir_created`) and
+/// empty again — never inferred from emptiness, a user's own empty dir is not
+/// ours. Best-effort by design: every failure is logged, none blocks the
+/// caller's teardown.
+pub fn cleanup_muplugin_artifacts(site: &Site, remove_dir: bool) {
+    let docroot = Path::new(&site.path);
+    if let Err(e) = crate::core::wp_tunnel::disable(docroot) {
+        log::warn!("sites: could not remove the tunnel mu-plugin for {}: {e}", site.domain);
+    }
+    if let Err(e) = crate::core::wp_login::remove(docroot) {
+        log::warn!("sites: could not remove the login mu-plugin for {}: {e}", site.domain);
+    }
+    if remove_dir && site.mu_dir_created == Some(true) {
+        remove_if_effectively_empty(&docroot.join(site.content_dir_rel()).join("mu-plugins"));
+    }
+}
+
+/// Remove `dir` when it holds nothing but benign OS noise (`.DS_Store`,
+/// `._*` — the established benign-basename set). Any real entry keeps the dir
+/// untouched; a missing dir is a no-op.
+fn remove_if_effectively_empty(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut noise = Vec::new();
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name == ".DS_Store" || name.starts_with("._") {
+            noise.push(e.path());
+        } else {
+            return; // real content — not ours to judge
+        }
+    }
+    for p in noise {
+        let _ = std::fs::remove_file(p);
+    }
+    let _ = std::fs::remove_dir(dir);
+}
+
 /// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
 /// [`wordpress::db_name_for`] base (what existing sites already store); falls
 /// back to a hash-suffixed form when that base would COLLIDE with an existing
@@ -357,6 +401,8 @@ fn create_recording_ownership(
         // the real answer before it creates anything.
         db_created: None,
         content_dir,
+        // No mu-plugins dir has been created by us at insert time (v25).
+        mu_dir_created: None,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -612,6 +658,14 @@ pub struct DetectedProject {
     /// as-is rather than provision into.
     pub existing_install: bool,
 }
+
+/// Every content-dir layout rexenv has ever written under (stock WP, Bedrock,
+/// Radicle). REMOVAL of rexenv-owned mu-plugins sweeps all of them — a file a
+/// pre-v24 bug wrote into a Bedrock repo's dead `wp-content/` must still get
+/// cleaned up, and removing an exact filename from a dir that never had it is
+/// a no-op. Lives HERE, next to layout detection, so the write-side fact and
+/// the removal sweep can't drift apart (the one-fact-two-computations class).
+pub(crate) const CONTENT_DIR_LAYOUTS: [&str; 3] = ["wp-content", "app", "content"];
 
 /// The WP content dir RELATIVE to a docroot, from the same fs markers
 /// [`detect_project`] trusts (sibling `config/application.php` = Bedrock,
@@ -1817,6 +1871,7 @@ mod tests {
             docroot_managed: Some(true),
             db_created: None,
             content_dir: None,
+            mu_dir_created: None,
         }
     }
 
@@ -2063,6 +2118,7 @@ mod tests {
             docroot_managed: Some(true),
             db_created: None,
             content_dir: None,
+            mu_dir_created: None,
         }
     }
 
@@ -2301,6 +2357,42 @@ mod tests {
             std::fs::write(&p, "x").unwrap();
         }
         dir
+    }
+
+    #[test]
+    fn muplugin_dir_removal_needs_the_record_and_tolerates_only_noise() {
+        let root = std::env::temp_dir()
+            .join(format!("rexenv-mudir-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let docroot = root.join("site");
+        let mu = docroot.join("wp-content/mu-plugins");
+        std::fs::create_dir_all(&mu).unwrap();
+        std::fs::write(mu.join("rexenv-tunnel.php"), "x").unwrap();
+        std::fs::write(mu.join("rexenv-login.php"), "x").unwrap();
+        std::fs::write(mu.join(".DS_Store"), "").unwrap();
+
+        // RECORDED as ours → files removed, OS noise swept, dir gone.
+        let mut site = site_at(&docroot);
+        site.mu_dir_created = Some(true);
+        cleanup_muplugin_artifacts(&site, true);
+        assert!(!mu.exists(), "recorded dir must be removed once empty");
+
+        // NOT recorded → files removed, the dir itself untouched (a user's
+        // own dir is never ours to delete, however empty).
+        std::fs::create_dir_all(&mu).unwrap();
+        std::fs::write(mu.join("rexenv-login.php"), "x").unwrap();
+        let mut site = site_at(&docroot);
+        site.mu_dir_created = None;
+        cleanup_muplugin_artifacts(&site, true);
+        assert!(mu.exists() && std::fs::read_dir(&mu).unwrap().next().is_none());
+
+        // Recorded but holding a REAL file → dir stays with its content.
+        std::fs::write(mu.join("their-plugin.php"), "theirs").unwrap();
+        let mut site = site_at(&docroot);
+        site.mu_dir_created = Some(true);
+        cleanup_muplugin_artifacts(&site, true);
+        assert!(mu.join("their-plugin.php").exists(), "real content is never ours to judge");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
