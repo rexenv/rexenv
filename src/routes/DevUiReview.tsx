@@ -19,6 +19,7 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
+import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { SiteRow } from "@/routes/Sites";
@@ -204,6 +205,68 @@ function DeleteView() {
   );
 }
 
+/** Replica of SiteDetail's Database-tab REGION CHAIN (the two wrappers around
+ *  the tab content — keep the classes in sync with SiteDetail.tsx). The
+ *  content inside is the REAL DatabaseTab; the border marks the region bounds
+ *  so clipping is visible in screenshots. `shape=plain|imported` +
+ *  the usual rec/preview params drive the card's states. */
+function DbTabView() {
+  const shape = params.get("shape") ?? "plain";
+  const site =
+    shape === "plain"
+      ? fixtureSite({ docrootManaged: true, dbCreated: null })
+      : fixtureSite();
+  return (
+    <div className="flex h-[80vh] flex-col border border-rex-border">
+      <div className="min-h-0 flex-1 overflow-auto px-[22px] pb-[22px] pt-[18px]">
+        <div className="flex min-h-full flex-col gap-[14px]">
+          <DatabaseTab site={site} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** `rows=N`: a realistic-scale Sites list (his machine holds ~30 rows) with a
+ *  clickable row menu — the clipped-menu bug needs the LAST row of a long
+ *  list. Mix of badge shapes so the list looks like the real one. */
+function SitesScaleView() {
+  const n = Math.max(1, Math.min(60, Number(params.get("rows") ?? 28)));
+  const noop = () => {};
+  const rows = Array.from({ length: n }, (_, i) => {
+    const dbState =
+      i % 5 === 3 ? ("imported" as const) : i % 7 === 4 ? ("connected" as const) : undefined;
+    return {
+      site: fixtureSite({
+        id: `s${i}`,
+        name: i % 6 === 2 ? `storeware-reviews-staging-${i}` : `site-${i}`,
+        domain: i % 6 === 2 ? `storeware-reviews-staging-${i}.test` : `site-${i}.test`,
+        docrootManaged: i % 2 === 0 ? true : false,
+      }),
+      dbState,
+    };
+  });
+  return (
+    <div className="space-y-0.5">
+      {rows.map((r) => (
+        <SiteRow
+          key={r.site.id}
+          site={r.site}
+          status={r.site.status}
+          dbState={r.dbState}
+          onOpen={noop}
+          onDelete={noop}
+          onOpenDatabase={noop}
+          onOpenWordpress={noop}
+          onRename={noop}
+          onDuplicate={noop}
+          onRetry={noop}
+        />
+      ))}
+    </div>
+  );
+}
+
 function BadgesView() {
   const noop = () => {};
   const rows: Array<{ site: Site; dbState?: DbImportRecord["state"] }> = [
@@ -295,6 +358,8 @@ export function DevUiReview() {
           DEV harness — UI review ({view}, mocked IPC)
         </h1>
         {view === "card" && <DbImportCard site={fixtureSite({ dbEngine: params.get("engine") === "mariadb" ? "mariadb" : "mysql" })} />}
+        {view === "dbtab" && <DbTabView />}
+        {view === "sites" && <SitesScaleView />}
         {view === "delete" && <DeleteView />}
         {view === "badges" && <BadgesView />}
         {view === "resolver" && (

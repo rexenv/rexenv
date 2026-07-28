@@ -27,11 +27,9 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
-import { DbImportCard } from "@/components/sites/DbImportCard";
+import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
-import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
-import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import {
@@ -191,14 +189,20 @@ export function SiteDetail() {
         </div>
       </div>
 
+      {/* Database scrolls (its cards grow — imports, the rewrite consent);
+          the frame flexes to the REMAINING height inside a min-h-full column,
+          so with little above it it fills the region, and with a lot above it
+          the region scrolls and the frame keeps its floor (UI-REVIEW §C2:
+          overflow-hidden + a broken height chain clipped Adminer entirely).
+          Terminal keeps the fixed full-height/no-scroll shape. */}
       <div
         className={`min-h-0 flex-1 px-[22px] pb-[22px] pt-[18px] ${
-          active === "terminal" || active === "database" ? "overflow-hidden" : "overflow-auto"
+          active === "terminal" ? "overflow-hidden" : "overflow-auto"
         }`}
       >
         <div
           className={`flex flex-col gap-[14px] ${
-            active === "terminal" || active === "database" ? "h-full" : ""
+            active === "terminal" ? "h-full" : active === "database" ? "min-h-full" : ""
           }`}
         >
           {active === "overview" && (
@@ -239,23 +243,7 @@ export function SiteDetail() {
           {active === "wordpress" && (
             <WordPressManager siteId={site.id} multisite={site.multisite} domain={site.domain} />
           )}
-          {active === "database" && (
-            <div className="space-y-4">
-              {site.docrootManaged === false && <DbImportCard site={site} />}
-              {site.type === "php" ? (
-                <Placeholder
-                  icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
-                  label="No database"
-                  hint="Blank PHP sites have no database. WordPress / Laravel sites embed Adminer here."
-                />
-              ) : (
-                <AdminerFrame
-                  src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName })}
-                  externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
-                />
-              )}
-            </div>
-          )}
+          {active === "database" && <DatabaseTab site={site} />}
           {active === "logs" && (
             <SiteLogs site={site} isWordpress={isWordpress} wpResolved={wpResolved} />
           )}

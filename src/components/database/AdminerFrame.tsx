@@ -23,7 +23,11 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
     );
   }
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    /* h-full serves a definite-height parent (Databases); flex-1 serves a
+       flex-column parent (the site Database tab) — WebKit won't resolve a
+       percentage against a min-height-only flex item, which collapsed the
+       iframe to its ~150px intrinsic default (UI-REVIEW §C2.2). */
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-2">
       {externalUrl && (
         <div className="flex flex-none items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-1 py-1 pl-2.5 pr-1">
           <span className="min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-rex-text-muted" title={externalUrl}>
@@ -56,8 +60,11 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
           </button>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
-        <iframe title="Adminer" src={src} className="h-full w-full border-0 bg-rex-bg" />
+      {/* The iframe fills ABSOLUTELY: percentage heights through flex chains
+          are exactly what broke here, and inset-0 sizes against the
+          containing block with no percentage resolution at all. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
+        <iframe title="Adminer" src={src} className="absolute inset-0 h-full w-full border-0 bg-rex-bg" />
       </div>
     </div>
   );

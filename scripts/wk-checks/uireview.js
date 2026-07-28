@@ -61,6 +61,13 @@ const SCENARIOS = [
   ["delete-imported-laravel", "view=delete&kind=imported", []],
   ["delete-linked-nodb", "view=delete&kind=linked", []],
   ["badges", "view=badges", []],
+  // §C2: the Database tab's three shapes (real DatabaseTab inside a replica
+  // of SiteDetail's region chain) + the row menu on the LAST row at scale.
+  ["dbtab-plain", "view=dbtab&shape=plain", []],
+  ["dbtab-imported-nodb", "view=dbtab&shape=imported", []],
+  ["dbtab-imported-consent", "view=dbtab&shape=imported&rec=imported&preview=ready&root=1&cache=1", ["scrollBottom"]],
+  ["dbtab-imported-connected", "view=dbtab&shape=imported&rec=connectedHttp&preview=noop&cache=1", []],
+  ["sites-scale-menu", "view=sites&rows=28", ["lastMenu"]],
   ["resolver-handback", "view=resolver", []],
   ["toasts", "view=toast", []],
 ];
@@ -79,6 +86,23 @@ async function runActions(page, actions) {
       // The ConfirmDialog's confirm button (also labeled "Revert") — last one.
       await page.getByRole("button", { name: "Revert", exact: true }).last().click();
       await page.waitForTimeout(400);
+    } else if (a === "scrollBottom") {
+      // Scroll the inner region (an overflow-auto container) to its end —
+      // proves the frame is REACHABLE below tall cards (the before-state was
+      // overflow-hidden: same layout, no way to get there).
+      await page.evaluate(() => {
+        document
+          .querySelectorAll(".overflow-auto")
+          .forEach((el) => (el.scrollTop = el.scrollHeight));
+      });
+      await page.waitForTimeout(150);
+    } else if (a === "lastMenu") {
+      // Scroll to the bottom, open the LAST row's actions menu — the clipped
+      // case. The shot must show the menu fully inside the viewport.
+      const last = page.getByRole("button", { name: "More actions" }).last();
+      await last.scrollIntoViewIfNeeded();
+      await last.click();
+      await page.waitForTimeout(250);
     }
   }
 }
@@ -103,9 +127,11 @@ async function runActions(page, actions) {
         await page.waitForSelector("h1");
         await page.waitForTimeout(300);
         await runActions(page, actions);
+        // The menu scenario shoots the VIEWPORT: fullPage stitching scrolls,
+        // which both closes the menu and misplaces fixed-position elements.
         await page.screenshot({
           path: path.join(OUT, `shot-${name}-${wName}.png`),
-          fullPage: true,
+          fullPage: name !== "sites-scale-menu",
         });
         // Cheap layout probe: anything overflowing the viewport horizontally?
         const overflow = await page.evaluate(
