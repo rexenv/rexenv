@@ -218,9 +218,16 @@ function TunnelCard({
   onToggle: (on: boolean) => void;
 }) {
   const on = !!tunnel?.running;
+  const health = tunnel?.health ?? "unverified";
   const state: CardState = busy ? (on ? "stopping" : "starting") : on ? "live" : "idle";
+  // The live border reads the SAME fact as the badge — the tunnel's health.
+  const liveBorder = {
+    reachable: "border-status-running-border shadow-[0_0_0_1px_var(--rex-running-bg)]",
+    unverified: "border-status-warning-border",
+    broken: "border-status-error-border",
+  }[health];
   const border = {
-    live: "border-status-running-border shadow-[0_0_0_1px_var(--rex-running-bg)]",
+    live: liveBorder,
     stopping: "border-status-running-border",
     starting: "border-status-warning-border",
     idle: "border-rex-border-subtle",
@@ -241,7 +248,11 @@ function TunnelCard({
           <div className="mt-0.5 font-mono text-[0.6875rem] text-rex-text-muted">{site.domain}</div>
         </div>
 
-        {state === "live" && <StatusPill status="running" label="Live" />}
+        {state === "live" && health === "reachable" && <StatusPill status="running" label="Live" />}
+        {state === "live" && health === "unverified" && (
+          <StatusPill status="starting" label="Unverified" />
+        )}
+        {state === "live" && health === "broken" && <StatusPill status="error" label="Broken" />}
         {state === "starting" && (
           <span className="flex items-center gap-[7px] text-[0.75rem] text-status-warning-bright">
             <span className="h-3 w-3 rounded-full border-2 border-status-warning/30 border-t-status-warning animate-rex-spin motion-reduce:animate-none" />
@@ -306,9 +317,22 @@ function TunnelCard({
               Stop sharing
             </button>
           </div>
+          {health === "broken" && (
+            <div className="mt-[11px] flex items-start gap-2 rounded-[9px] border border-status-error-border bg-status-error-bg px-3 py-2 text-[0.75rem] leading-[1.5] text-status-error-bright">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 flex-none" strokeWidth={1.8} />
+              <span>
+                Cloudflare reports this tunnel is no longer registered — the link won't work.
+                Stop sharing, then share again for a fresh link.
+              </span>
+            </div>
+          )}
           {/* TODO(backend): request count + uptime aren't tracked on TunnelInfo yet. */}
           <div className="mt-2 flex items-center justify-between px-0.5 text-[0.6875rem] text-rex-text-dim">
-            <span>Public link active</span>
+            <span>
+              {health === "reachable" && "Public link confirmed reachable — checked every 30 s."}
+              {health === "unverified" && "Public link not confirmed yet — checking."}
+              {health === "broken" && "Public link is down."}
+            </span>
             <span>Anyone with this link can reach your local site.</span>
           </div>
         </>

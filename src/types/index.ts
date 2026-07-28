@@ -493,11 +493,16 @@ export interface WpInfo {
   multisite: boolean;
 }
 
+/** What the backend can honestly say about a live tunnel's public URL —
+ *  one fact, probed every 30 s (mirrors Rust `TunnelHealth`). */
+export type TunnelHealth = "unverified" | "reachable" | "broken";
+
 /** A per-site public tunnel (mirrors the Rust TunnelInfo DTO). */
 export interface TunnelInfo {
   domain: string;
   url: string; // public https://<id>.trycloudflare.com
   running: boolean;
+  health: TunnelHealth;
 }
 
 /** A WordPress plugin row (mirrors the Rust WpPlugin DTO / `wp plugin list`). */
