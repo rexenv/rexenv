@@ -98,9 +98,10 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 - **PHP substrings superseded by live checks** (`wp_tunnel.rs:208`, `wp_login.rs:202`):
   the examples run the real plugin under real PHP; the needle lists add nothing and one
   needle (`".test"`) matches anywhere in the file.
-- **The incident surface itself is untested at ANY level** (§3.5): `dbdump.rs:568-580`'s
-  real dump argv and `database.rs:155-163`'s exclusion of `--connect-timeout` are
-  documented in PROSE ONLY. The one flag-list test pins the branch that never broke.
+- **The incident surface itself was untested at ANY level** (closed by T4,
+  `db_dump_flags_check`): `dbdump.rs`'s real dump argv and `database.rs`'s exclusion of
+  `--connect-timeout` were documented in prose only — prose the new proof promptly
+  FALSIFIED (mariadb-dump warns-and-ignores rather than hard-erroring; ledger #195).
 
 ### 1.2 Audit: assertions that are wrong or vacuous (delete/fix, not keep)
 

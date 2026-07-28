@@ -214,6 +214,7 @@ L3 = scripted manual.
 | 129 | confedit.rs:35 | Byte-preserving means byte-preserving | ✅ 2 lib tests |
 | 130 | confrewrite.rs:5 | Backup-first; half-written unrepresentable; unknown digest reads conservative | ✅ 5 lib tests |
 | 131 | dbcompat.rs:12 | Cautions never change whether it runs; a block is never a dead end | ✅ 3 lib tests |
+| 195 | dbdump.rs (dump_tool_flags) + database.rs:155 | Every dump-tool flag is accepted by the real binaries; --connect-timeout is not honored (mysqldump hard-errors, mariadb-dump warns+ignores — vendor split DISCOVERED by the proof, old "every tool hard-errors" comment corrected) | ✅ `db_dump_flags_check` (28 Jul 2026, all 4 cached tools) |
 
 ## core/valet.rs / repo.rs / wordpress.rs / devtools.rs / mail.rs / ports.rs / ssl.rs
 
@@ -298,9 +299,10 @@ L3 = scripted manual.
 | 193 | commands/wordpress.rs:350 | Commands scoped: site row must exist in OUR db | 🔨 L0 |
 | 194 | commands/downloads.rs:64 | Leaving onboarding never cancels downloads | ✅ 2 lib tests + example |
 
-## Tally (28 Jul 2026)
+## Tally (28 Jul 2026, after T4)
 
-- ✅ proven: **117**
+- ✅ proven: **118** (of 195 — #195 added and proven the same day; its proof falsified
+  a prose claim, which is the ledger working)
 - ◐ half-proven (unproven half in the backlog): **32**
 - 🔨 provable-unproven: **36**
 - 🚫 inherently unprovable: **9** (each mapped in PLAN §5 or an accepted posture)

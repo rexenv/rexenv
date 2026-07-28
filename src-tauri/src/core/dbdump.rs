@@ -544,6 +544,29 @@ pub enum DumpOutcome {
     Cancelled,
 }
 
+/// The dump tool's flag set, exactly as [`dump`] passes it (between the
+/// defaults file, which must stay FIRST, and the per-run result-file/db args).
+///
+/// Public so `examples/db_dump_flags_check.rs` can feed the REAL bundled
+/// binaries the REAL flags: whether a tool accepts a flag is the TOOL's fact,
+/// not ours — `--connect-timeout` broke every export before the real binary
+/// was asked. Neither this list nor [`DefaultsFile`] carries it: mysqldump
+/// hard-errors on it, mariadb-dump warns and ignores it (both proven by the
+/// example, which is also where that vendor split was discovered).
+pub fn dump_tool_flags(tool_vendor: Vendor, source_version: &str) -> Vec<String> {
+    let mut args: Vec<String> =
+        ["--single-transaction", "--skip-lock-tables"].iter().map(|s| s.to_string()).collect();
+    if tool_vendor == Vendor::Mysql {
+        args.push("--set-gtid-purged=OFF".into());
+        // An 8.x tool dumping a 5.x server writes histogram syntax the pairing
+        // can't read back.
+        if Version::parse(source_version).is_some_and(|v| v.major == 5) {
+            args.push("--column-statistics=0".into());
+        }
+    }
+    args
+}
+
 /// Run the dump. Requires the gate's witness AND the disk answer — the
 /// signature is the preflight order.
 ///
@@ -567,17 +590,7 @@ pub fn dump(
 
     let mut args: Vec<String> =
         vec![format!("--defaults-extra-file={}", defaults.path().display())]; // MUST be first
-    args.extend(
-        ["--single-transaction", "--skip-lock-tables"].iter().map(|s| s.to_string()),
-    );
-    if req.tool_vendor == Vendor::Mysql {
-        args.push("--set-gtid-purged=OFF".into());
-        // An 8.x tool dumping a 5.x server writes histogram syntax the pairing
-        // can't read back.
-        if Version::parse(req.source_version).is_some_and(|v| v.major == 5) {
-            args.push("--column-statistics=0".into());
-        }
-    }
+    args.extend(dump_tool_flags(req.tool_vendor, req.source_version));
     args.push(format!("--result-file={}", partial.display()));
     args.push(req.db.to_string());
 

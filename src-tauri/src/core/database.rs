@@ -98,7 +98,11 @@ pub(crate) fn validate_db_name(name: &str) -> Result<()> {
 /// `mariadb-dump` 11.4/12.3) all REJECT `--connect-timeout` ("unknown variable",
 /// hard exit — verified against the bundled binaries), so the dump keeps its own
 /// unbounded-connect args rather than a flag that breaks every export.
-pub(crate) fn client_base_args(port: u16) -> [String; 6] {
+// Public (was crate-private) so `examples/db_dump_flags_check.rs` can prove
+// the real bundled binaries' verdicts on the exact production argv: clients
+// accept this array INCLUDING the connect bound; dump tools reject that same
+// bound, which is why export_to_downloads deliberately does not use it.
+pub fn client_base_args(port: u16) -> [String; 6] {
     [
         "--no-defaults".into(),
         "--protocol=TCP".into(),
@@ -149,10 +153,12 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
     }
     // --result-file (not shell redirection): no shell involved, so a Downloads
     // path with spaces can't break, and mysqldump writes the file itself.
-    // Deliberately NOT client_base_args: every bundled dump tool (mysqldump
-    // 8.0/8.4, mariadb-dump 11.4/12.3) hard-errors on --connect-timeout
-    // ("unknown variable"), so this one path keeps an unbounded connect — a
-    // dump with no connect bound beats a flag that breaks every export (B25).
+    // Deliberately NOT client_base_args, because the dump tools don't honor
+    // --connect-timeout — with vendor-split semantics (proven live by
+    // examples/db_dump_flags_check, 28 Jul 2026): mysqldump 8.0/8.4 hard-errors
+    // ("unknown variable") and would break every export; mariadb-dump
+    // 11.4/12.3 only WARNS and ignores it, dead weight spraying a warning per
+    // export. So this one path keeps an unbounded connect (B25).
     let out = std::process::Command::new(dump)
         .args([
             "--no-defaults",

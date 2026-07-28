@@ -23,8 +23,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     `…parse_live_…` → `…parse_captured_…` ×2; wp_tunnel/wp_login needle tests reduced
     to tripwires that NAME their behavioral example, vacuous needles (".test",
     "'exp'") dropped. verify.sh green.
-  - [ ] T4. `examples/db_dump_flags_check.rs` — the mysqldump incident class, real
-    binaries, incl. the `--connect-timeout` negative.
+  - [x] **T4. `db_dump_flags_check` closes the mysqldump incident class** ✓ 28 Jul
+    2026 — feeds the EXACT production argv (`dbdump::dump_tool_flags` extracted pub,
+    `client_base_args` made pub — one source of truth, no drift) to all 4 cached dump
+    tools + both clients. PASS. Its first run FALSIFIED the "every dump tool
+    hard-errors on --connect-timeout" comment: mariadb-dump warns-and-ignores (exit 0);
+    both prose sites corrected, ledger #195 added. verify.sh green.
   - [ ] T5. `frankenphp_subdir_validate` actually validates (real binary, asserts).
   - [ ] T6. examples/common fixture library (fixture_db, port allocator, Check
     reporter, wp_fixture); two examples migrated.
