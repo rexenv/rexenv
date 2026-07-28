@@ -74,9 +74,18 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     - [ ] **Debug-log full fix (deferred with the wp-config reader):** parse
       Bedrock's `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
       truthfully on non-stock layouts; today's honest state is "can't determine".
-  - [ ] **6. Leftover files, linked-repo lens** — delete/rename must remove the tunnel
-    mu-plugin for PRESERVED docroots (delete relies on docroot removal — false for
-    linked); `rexenv-login.php` has NO removal path anywhere and needs an owner.
+  - [x] **6. Leftover files, linked-repo lens** ✓ SHIPPED 28 Jul 2026 — `f4790f4`
+    delete (preserved docroots) + rename remove BOTH mu-plugins
+    (`cleanup_muplugin_artifacts`, every-layout sweep; delete's false
+    goes-away-with-the-docroot comment corrected). `rexenv-login.php` owner ruled:
+    lives while rexenv manages the site (eager removal = git-status flapping on the
+    repeated-login workflow), rewritten per issue, removed at delete/rename. Empty
+    dirs: v25 `mu_dir_created` set-once when a writer creates `mu-plugins/`; delete
+    removes the dir only when RECORDED ours + empty (benign `.DS_Store`/`._*` swept,
+    real files sacred) — recorded, never inferred. ✓ verify.sh, 530 lib tests
+    (ownership/noise/real-content matrix). Human verify: "Log in as" on a real
+    linked BEDROCK site must land in wp-admin (own proof — the path fix should
+    cover it, but it rides nothing).
   - [ ] **7. Cross-guards** — tunnels sit fully outside the provision/db-import/rewrite
     guard family in BOTH directions; a db-import can churn a publicly-live site.
   - [ ] **Disclosure copy** — linked-docroot exposure deltas in the share UI: nginx
