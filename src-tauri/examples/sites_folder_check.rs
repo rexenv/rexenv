@@ -5,17 +5,17 @@
 use rexenv_lib::core::{sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
-use rexenv_lib::state::{db, store};
+use rexenv_lib::state::store;
 
+
+mod common;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
     let custom = std::env::temp_dir().join("rexenv-custom-sites");
     let _ = std::fs::remove_dir_all(&custom);
 
-    let db_path = std::env::temp_dir().join("rexenv-10_2.db");
-    let _ = std::fs::remove_file(&db_path);
-    let conn = db::open(&db_path).unwrap();
+    let (conn, _dbf) = common::fixture_db("sites_folder_check");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
 
     println!("default sites_dir = {}", sites::sites_dir(&conn, &*plat).unwrap().display());

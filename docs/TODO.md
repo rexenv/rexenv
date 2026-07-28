@@ -35,8 +35,13 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     "Valid configuration"), so that class is pinned at L0 instead:
     `placeholders_reference_declared_matchers_in_every_mode` (generic, all modes).
     verify.sh green, 535 tests.
-  - [ ] T6. examples/common fixture library (fixture_db, port allocator, Check
-    reporter, wp_fixture); two examples migrated.
+  - [x] **T6. examples/common fixture library** ✓ 28 Jul 2026 — `fixture_db(tag)`
+    (pid-suffixed, Drop-cleaned; kills the rexenv-6_1.db/10_2.db cross-example
+    collisions — all 4 colliding examples migrated, one run live); `Check` reporter
+    (uniform ✓/✗ + PASS/FAIL + ExitCode-returning `verdict()` so Drop guards run,
+    unlike process::exit); fixture-port claim ledger comment. `wp_fixture()` (the 12×
+    WP-install block) DEFERRED to the sandbox-adoption backlog — an unused helper
+    lands with its users, not before. verify.sh green.
   - [ ] T7. De-fang the three incident-3-shaped examples (nginx_php_serve,
     php_fpm_serve, php_pools_serve → sandbox + fixture ports).
   - [ ] T8. `scripts/live-checks.sh` tiered runner (declared-tier enforcement).

@@ -12,16 +12,16 @@ use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
 use rexenv_lib::core::{services, sites, ssl};
 use rexenv_lib::platform;
-use rexenv_lib::state::db;
+
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::time::Duration;
 
+
+mod common;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
-    let db_path = std::env::temp_dir().join("rexenv-6_1.db");
-    let _ = std::fs::remove_file(&db_path);
-    let conn = db::open(&db_path).expect("db");
+    let (conn, _dbf) = common::fixture_db("monitor_coverage_demo");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
 
     for (name, domain, server) in [

@@ -18,7 +18,7 @@
 use rexenv_lib::core::service_manager::{self, Ports, ServiceManager};
 use rexenv_lib::core::{binaries, services, sites, ssl, wordpress};
 use rexenv_lib::platform;
-use rexenv_lib::state::db;
+
 use rexenv_lib::state::models::{MultisiteMode, NewSite, SiteType, WebServer};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -27,17 +27,15 @@ use std::time::Duration;
 
 const HTTPS: u16 = 8443;
 
+
+mod common;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
     let domain = "mysite.test";
     let other = "other.test";
 
-    let conn = {
-        let p = std::env::temp_dir().join("rexenv-10_2.db");
-        let _ = std::fs::remove_file(&p);
-        db::open(&p).unwrap()
-    };
+    let (conn, _dbf) = common::fixture_db("multisite_wildcard_check");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
 
     // The subdomain-multisite site + a plain non-multisite control site.

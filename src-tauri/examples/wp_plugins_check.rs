@@ -7,20 +7,18 @@
 
 use rexenv_lib::core::{binaries, database, sites, ssl, wordpress};
 use rexenv_lib::platform;
-use rexenv_lib::state::db;
+
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::time::Duration;
 
+
+mod common;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
     let domain = "wpplugins.test";
 
-    let conn = {
-        let p = std::env::temp_dir().join("rexenv-6_1.db");
-        let _ = std::fs::remove_file(&p);
-        db::open(&p).unwrap()
-    };
+    let (conn, _dbf) = common::fixture_db("wp_plugins_check");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();

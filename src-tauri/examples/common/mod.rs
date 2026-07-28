@@ -54,6 +54,20 @@
 
 #![allow(dead_code)] // each example uses a subset
 
+// ---------------------------------------------------------------------------
+// Fixture ports
+// ---------------------------------------------------------------------------
+//
+// An example must NEVER bind a production port (docs/PORTS.md) — a sandboxed
+// example on :18088 still collides with the user's running stack, and the
+// runner may execute examples while the stack is up. Claim a port here (one
+// line per example, unique, in the 18100+/9790+/13390+ bands) and reference
+// the const; a hardcoded port literal in an example is a review smell.
+// Already-claimed fixture ports live in their examples today: 18097
+// (retry_recovery_check), 18099 (linked_site_check, valet_import_check),
+// 13397-13399 (config_rewrite/db_restore/db_dump), 9799 (apache_site_check),
+// 9998/19003 (xdebug_pool_check).
+
 use rexenv_lib::error::Result as RexResult;
 use rexenv_lib::platform::traits::{
     AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,
@@ -220,6 +234,89 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
         real_data.display()
     );
     (Box::new(platform), SandboxGuard { root })
+}
+
+// ---------------------------------------------------------------------------
+// Fixture SQLite
+// ---------------------------------------------------------------------------
+
+/// Deletes the fixture database file when the example ends, however it ends.
+pub struct FixtureDb {
+    path: PathBuf,
+}
+
+impl FixtureDb {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for FixtureDb {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// A migrated, throwaway app database in the temp dir — the replacement for
+/// the hand-rolled `temp_dir().join("rexenv-<task>.db")` idiom, whose
+/// hardcoded names collided across examples (`rexenv-6_1.db` was two different
+/// examples' database; concurrent runs corrupted each other). The pid suffix
+/// makes concurrent runs safe; the guard cleans up what the old idiom left
+/// behind forever. Keep the guard alive for the whole run.
+pub fn fixture_db(tag: &str) -> (rusqlite::Connection, FixtureDb) {
+    let path = std::env::temp_dir()
+        .join(format!("rexenv-fixture-{tag}-{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let conn = rexenv_lib::state::db::open(&path).expect("open fixture SQLite");
+    (conn, FixtureDb { path })
+}
+
+// ---------------------------------------------------------------------------
+// Uniform verdict reporting
+// ---------------------------------------------------------------------------
+
+/// The one pass/fail contract every example should speak: ✓/✗ lines while
+/// running, one `<name>: PASS`/`FAIL` line at the end, exit code 0/1 — so a
+/// runner (scripts/live-checks.sh) can trust any example's exit status.
+///
+/// End `main` with `return checks.verdict();` (signature
+/// `fn main() -> std::process::ExitCode`) rather than `std::process::exit` —
+/// exit skips destructors, and the whole point of [`Reaped`]/[`SandboxGuard`]/
+/// [`FixtureDb`] is that they run.
+pub struct Check {
+    name: &'static str,
+    failed: u32,
+}
+
+impl Check {
+    pub fn new(name: &'static str) -> Self {
+        Self { name, failed: 0 }
+    }
+
+    /// Record one named assertion. `detail` prints only on failure.
+    pub fn is(&mut self, label: &str, pass: bool, detail: &str) {
+        if pass {
+            println!("  ✓ {label}");
+        } else {
+            println!("  ✗ {label} — {detail}");
+            self.failed += 1;
+        }
+    }
+
+    pub fn all_passed(&self) -> bool {
+        self.failed == 0
+    }
+
+    /// Print the one green/red line and return the exit code for `main`.
+    pub fn verdict(self) -> std::process::ExitCode {
+        if self.failed == 0 {
+            println!("{}: PASS", self.name);
+            std::process::ExitCode::SUCCESS
+        } else {
+            println!("{}: FAIL ({} check(s))", self.name, self.failed);
+            std::process::ExitCode::FAILURE
+        }
+    }
 }
 
 /// A spawned check process that is reaped when it goes out of scope — including
