@@ -61,11 +61,19 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     answer); both mu-plugin writers take the recorded rel; tunnel `disable` sweeps
     every known layout so pre-v24 strays clean up. "Log in as" was silently broken
     on Bedrock (wp-cli succeeded, file never loaded). ✓ verify.sh, 527 tests.
-    - [ ] **5b. Audit remainder (reported 28 Jul, awaiting ruling):** add-from-Git
-      clone/link target `repo.rs asset_path` (DANGEROUS on Bedrock — writes into the
-      repo at a dead path); `theme_screenshot` (cosmetic — silently no screenshot);
-      `wp_debug_log_status` (cosmetic-misleading — Bedrock defines live in
-      `config/application.php`, which the wp-config reader never sees).
+    - [x] **5b. Audit remainder** ✓ SHIPPED 28 Jul 2026 — `50d0de3` (plan
+      `docs/PLAN-content-dir-assets.md`, `e8061e3`): `asset_dest` takes the recorded
+      rel (12 callers); the unlink-delete guard's OWN path build (missed by the first
+      audit) was silently defeated on Bedrock — restored, zero change on stock
+      layouts; provenance rows store names so no migration exists to do, stranded
+      pre-fix clones fail loudly; `theme_screenshot` threaded; debug-log panel gains
+      honest `indeterminate` ("can't determine", never a wrong "off") — FULL Bedrock
+      config parsing still rides the future wp-config reader work; Radicle
+      `public/content` flagged unverified in code. ✓ verify.sh (which caught a
+      missing mock field mid-work), 528 lib tests.
+    - [ ] **Debug-log full fix (deferred with the wp-config reader):** parse
+      Bedrock's `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
+      truthfully on non-stock layouts; today's honest state is "can't determine".
   - [ ] **6. Leftover files, linked-repo lens** — delete/rename must remove the tunnel
     mu-plugin for PRESERVED docroots (delete relies on docroot removal — false for
     linked); `rexenv-login.php` has NO removal path anywhere and needs an owner.
