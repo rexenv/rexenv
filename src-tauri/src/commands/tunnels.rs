@@ -254,6 +254,10 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     id: String,
 ) -> Result<TunnelInfo> {
     let site = tunnel_site(&state, &id)?;
+    // Cross-site exposure wall (step 3): an override site has no nginx vhost,
+    // and the tunnel's origin IS nginx — refused before anything spawns, on
+    // every path (UI and CLI both land here).
+    tunnels::ensure_tunnelable(&site)?;
     let domain = site.domain.clone();
 
     // A dead child must never read "already sharing": sweep exited children

@@ -85,6 +85,30 @@ pub enum TunnelHealth {
     Broken,
 }
 
+/// Refuse a tunnel for any site the shared nginx does not serve (step 3,
+/// 28 Jul 2026). The tunnel's origin is nginx `:18088` routed by Host header;
+/// an Apache/FrankenPHP override site has NO nginx vhost, so its Host would
+/// fall through to nginx's DEFAULT server — we would publish a DIFFERENT
+/// site's content on the public URL. Cross-site exposure, so starting must be
+/// impossible, not discouraged: this runs in core, ahead of every IPC and CLI
+/// path, and reads the SAME predicate the nginx config generator uses
+/// (`sites::is_nginx_served`) so eligibility can never drift from reality.
+/// Fixable later by originating from the site's own recorded backend port —
+/// the refusal says "yet" truthfully.
+pub fn ensure_tunnelable(site: &crate::state::models::Site) -> Result<()> {
+    if crate::core::sites::is_nginx_served(site) {
+        return Ok(());
+    }
+    Err(crate::error::Error::Other(format!(
+        "{domain} can't be shared yet: it runs on {server}, and tunnels currently \
+         originate from the shared nginx — starting one would publish whatever \
+         nginx's default site answers with, which is a DIFFERENT site. Switch the \
+         site's web server to nginx to share it.",
+        domain = site.domain,
+        server = site.web_server.as_db(),
+    )))
+}
+
 /// A single health probe's raw result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProbeOutcome {
@@ -234,6 +258,40 @@ mod tests {
         }
         // An empty marker must never wildcard-match.
         assert!(!is_our_tunnel("cloudflared --http-host-header acme.rex", "", "acme.rex"));
+    }
+
+    #[test]
+    fn ensure_tunnelable_walls_off_override_sites() {
+        use crate::state::models::*;
+        let site = |ws: WebServer| Site {
+            id: "t1".into(),
+            name: "Acme".into(),
+            domain: "acme.rex".into(),
+            site_type: SiteType::Wordpress,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: ws,
+            ssl: true,
+            path: "/sites/acme".into(),
+            created_at: "now".into(),
+            multisite: MultisiteMode::None,
+            db_name: "wp_acme_rex".into(),
+            db_engine: SiteDbEngine::Mysql,
+            xdebug: false,
+            override_port: None,
+            provisioned: true,
+            docroot_managed: Some(true),
+            db_created: None,
+        };
+        assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
+        for ws in [WebServer::Apache, WebServer::Frankenphp] {
+            let msg = ensure_tunnelable(&site(ws)).unwrap_err().to_string();
+            // The reason must be specific: the site's own name, its server,
+            // and WHY (the default-vhost exposure), not a generic unsupported.
+            for needle in ["acme.rex", ws.as_db(), "DIFFERENT site"] {
+                assert!(msg.contains(needle), "{ws:?} message missing {needle:?}: {msg}");
+            }
+        }
     }
 
     #[test]

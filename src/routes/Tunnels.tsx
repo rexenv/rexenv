@@ -219,6 +219,10 @@ function TunnelCard({
 }) {
   const on = !!tunnel?.running;
   const health = tunnel?.health ?? "unverified";
+  // Courtesy mirror of the backend wall (core::tunnels::ensure_tunnelable):
+  // override sites have no nginx vhost and tunnels originate from nginx.
+  const overrideServer =
+    site.webServer === "apache" || site.webServer === "frankenphp" ? site.webServer : null;
   const state: CardState = busy ? (on ? "stopping" : "starting") : on ? "live" : "idle";
   // The live border reads the SAME fact as the badge — the tunnel's health.
   const liveBorder = {
@@ -260,11 +264,18 @@ function TunnelCard({
           </span>
         )}
         {state === "stopping" && <span className="text-[0.75rem] text-rex-text-muted">Stopping…</span>}
-        {state === "idle" && <span className="text-[0.75rem] text-rex-text-muted">Share publicly</span>}
+        {state === "idle" && (
+          <span className="text-[0.75rem] text-rex-text-muted">
+            {overrideServer
+              ? `Runs on ${overrideServer === "frankenphp" ? "FrankenPHP" : "Apache"} — can't be shared yet`
+              : "Share publicly"}
+          </span>
+        )}
 
         <StartStopToggle
           running={on || busy}
           variant={!on && busy ? "setting" : "status"}
+          disabled={!on && !!overrideServer}
           onToggle={() => onToggle(!on)}
           label={`${on ? "Stop" : "Start"} sharing ${site.name}`}
         />

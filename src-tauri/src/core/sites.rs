@@ -1222,8 +1222,12 @@ impl ProvisionProgress {
 }
 
 /// Whether a site is served by the shared nginx. Override servers (FrankenPHP,
-/// Apache) run their own backend process and are excluded.
-fn is_nginx_served(s: &Site) -> bool {
+/// Apache) run their own backend process and are excluded. Also the single
+/// source of truth for tunnel eligibility (`tunnels::ensure_tunnelable`):
+/// tunnels originate from the shared nginx, so "in the nginx config" and
+/// "safe to tunnel" must be the same predicate — a drift between them is the
+/// wrong-vhost exposure all over again.
+pub(crate) fn is_nginx_served(s: &Site) -> bool {
     !matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache)
 }
 
