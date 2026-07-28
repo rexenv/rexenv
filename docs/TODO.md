@@ -128,6 +128,19 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     isn't up; replace `ensure_tunnelable`'s refusal (its "yet" message is the
     seam). Health probe, mu-plugin, claim/row machinery are all origin-agnostic —
     no changes there.
+  - [x] **Rowless-orphan backstop** ✓ SHIPPED 28 Jul 2026 — `502c514` (ruled after
+    the live diagnosis: four pre-v23 fossils had served publicly 9–15 days,
+    invisible to every record-driven mechanism; survival of the PROCESSES is
+    measured, registration longevity was lost with them). Launch, after the row
+    sweep: `pids_named("cloudflared")` → the sweep's exact argv identity (domain
+    read from argv — no record exists) → no row ⇒ stop + weighty WARN ("a public
+    share this app had no record of"). Class = "DB and process table disagree"
+    (app-data reset, restore, future record loss) — permanent, not an upgrade
+    patch. Live-checked beside a REAL running share: rowless-ours killed,
+    outside-app-data lookalike survived, real tunnel provably untouched.
+    Follow-up option (not built): a user-visible launch notice needs a queued
+    notices channel — the sweep runs in setup before the webview mounts, so a
+    plain event would be lost; WARN log is the honest current surface.
   - [ ] **DNS agent answers ARBITRARY names when queried directly** (found during the
     28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
     `127.0.0.1` — the hickory agent is a catch-all wildcard, not per-TLD zones.
