@@ -6,8 +6,9 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
-- [ ] **Migrate an existing Valet / Herd environment into rexenv** — APPROVED 26 Jul 2026,
-  all four stages ship BEFORE the release. Plan + research:
+- [x] **Migrate an existing Valet / Herd environment into rexenv** ✓ **ALL FOUR
+  STAGES SHIPPED** — Stage 3's §J packaged pass (the last gate) passed 28 Jul 2026.
+  APPROVED 26 Jul 2026, all four stages ship BEFORE the release. Plan + research:
   `docs/PLAN-valet-herd-migration.md` (Q0–Q7, verified against the live Valet 4.12.0 +
   Herd 1.29.0 install on this Mac). Feasibility gate PASSED — the serving plane already
   handles an arbitrary docroot end to end; only `provision()` (`core/sites.rs:761-778`)
@@ -18,7 +19,8 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   "serving at …" while a shadow-binding Herd answers → wherever import reports success.
   All decisions settled — the last (`mysqli.default_socket` pool defaults, plan §11.3)
   decided 27 Jul 2026 as Stage 3 D5: MySQL's socket on every pool.
-  - [ ] **Stage 0 — Link an existing folder** (first-class feature, not migration
+  - [x] **Stage 0 — Link an existing folder** ✓ SHIPPED (all commits ticked below;
+    plan `docs/PLAN-linked-sites.md`) (first-class feature, not migration
     plumbing): serve a docroot outside `~/rexenv/Sites`. **Planned, awaiting 3 decisions:
     `docs/PLAN-linked-sites.md`** — v17 `sites.docroot_managed` marker (NOT `linked`: it
     must also cover docroots moved outside the sites dir, or `move_site_docroot`'s "kept —
@@ -80,7 +82,8 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     TAKEOVER, hand-back, restore-on-uninstall and drift. This machine has no
     `/etc/resolver/test`, and creating a root-owned foreign file to test against was
     deliberately refused; those paths are fixture- and unit-tested only.
-  - [ ] **Stage 2 — database import** — plan `docs/PLAN-valet-herd-db-import.md`
+  - [x] **Stage 2 — database import** ✓ SHIPPED — §I passed 27 Jul 2026 (all 12
+    steps, live DBngin source, packaged app) — plan `docs/PLAN-valet-herd-db-import.md`
     (APPROVED 26 Jul 2026, D1–D6 settled). Two halves, each verifiable alone.
     ✓ **Step 0 — the pre-auth handshake read is VERIFIED live** (`cabc749`): MySQL
     8.4.6 → `proto=10 version='8.4.6'`, MariaDB 12.3.2 → `'12.3.2-MariaDB'`, both
@@ -205,7 +208,9 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
         DBngin precondition (user starts it; step 4 checks the honest refusal
         while it's stopped), the drift demonstration (step 7), the mid-copy
         kill for the kept-artifact path, and both concurrency directions.
-  - [ ] Stage 3 — opt-in connection-config rewrite (per-site, backup, diff first).
+  - [x] **Stage 3 — opt-in connection-config rewrite ✓ SHIPPED — §J passed
+    28 Jul 2026** (all 12 steps, packaged app, real ea.test; every deviation:
+    none reported). (per-site, backup, diff first).
     **Plan APPROVED 27 Jul 2026: `docs/PLAN-valet-herd-rewrite.md`** — all five
     decisions settled (§9): D1 dedicated per-SITE user `rex_<slug>` (password
     unrepresentable in `RewritePlan`), D2 revert-then-delete as the default button
@@ -271,11 +276,11 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       no-secret diff, 0600 backup, mode-preserving write, denied-write leaves
       previous bytes, ThisSite re-scan, FileEdited classification,
       byte-identical revert, reverted file can't mint a proof.
-    - [ ] 9. `PUBLISH-TESTING.md` §J packaged pass — section WRITTEN (12 steps
-      incl. engine-stopped honest refusal, other-way drift, fileChanged,
-      edited-since force, D2 confirm, D5 socket win, concurrency); the pass
-      itself is HIS, after rebuild+reinstall (installed app has none of
-      Stage 3). PENDING his ruling: pdo_mysql.default_socket (step 7 note).
+    - [x] 9. `PUBLISH-TESTING.md` §J packaged pass ✓ PASSED 28 Jul 2026 —
+      human-verified on the packaged app (`44b6a6d`), all 12 steps, no
+      deviations reported. pdo_mysql ruling: OUT permanently `44b6a6d`
+      (silent-redirect of working Homebrew-socket sites — worse than a
+      regression; the pin test is intent).
 
 - [x] **Add plugin/theme from Git — clone → detect → install → build** ✓
   **HUMAN-VERIFIED 18 Jul 2026** — full docs/GIT-FEATURE-TEST.md pass (all

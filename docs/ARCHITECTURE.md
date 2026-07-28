@@ -317,7 +317,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 18:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 22:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -327,8 +327,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   the recorded override backend port; uniqueness enforced by the allocator, existing
   rows backfilled once at startup by `sites::backfill_override_ports`, B20 §4) · v15
   `site_git_assets` install fingerprints · v16 `sites.provisioned` (DEFAULT 1) ·
-  v17 `sites.docroot_managed` (see below) · v18 `resolver_takeovers` (see
-  below). Per-engine
+  v17 `sites.docroot_managed` (see below) · v18 `resolver_takeovers` (see below) ·
+  v19 `sites.db_created` (import provenance, see below) · v20 `db_imports` (the ONE
+  settled import fact) · v21 `db_imports.verified` + `config_rewrites` (see below) ·
+  v22 `config_rewrites.written_digest`. Per-engine
   DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
 - **Docroot ownership is RECORDED, never inferred from the path** (v17
   `sites.docroot_managed`): `true` = rexenv created the folder and teardown may
@@ -374,6 +376,40 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   and CONTINUE-ON-FAILURE, with resolver consent and `php::set_installed` +
   prefetch settled BEFORE the loop. `examples/valet_scan_check` fingerprints
   their trees before and after to prove the scan wrote nothing.
+- **Database import copies their database and RECORDS what it did** (Stage 2:
+  `core/{dbsource,dbcompat,dbdump,dbrestore,dbmirror,dbimport}`, v19 `sites.db_created`,
+  v20 `db_imports`). Their side is read-only: engines identified from the pre-auth
+  handshake (never a plist's `Status`), dumps are non-locking single-transaction to a
+  0600 artifact + manifest, and their server is never started or stopped. Restore is
+  provenance-FIRST: `db_created` (1 = this import created it, 0 = pre-existed → never
+  dropped by any path, NULL = legacy provisioning) is written before `CREATE DATABASE`.
+  Credentials are mirrored loopback-only (`localhost`+`127.0.0.1`, never `'%'`, never
+  root — reserved accounts refuse as an outcome). The settled fact is ONE serialized
+  row (`db_imports`): badge, summary and panel all render it, so they cannot disagree,
+  and its `state` closed set has a `connected` value ONLY the rewrite's verification
+  can write. Secrets: in memory for the job only, never argv (0600 defaults file,
+  Drop-deleted), never logged, never persisted.
+- **The connection rewrite writes ONE user file, provably** (Stage 3:
+  `core/{confedit,confverify,confrewrite}`, `commands/rewrite.rs`, v21/v22).
+  `RewriteKey` is a closed enum (Host/Port/User) — no password key exists, so no plan,
+  diff or write can stage one; wp-config edits are OUR value-span editor (not wp-cli:
+  the preview must BE the write). The diff is derived from the produced bytes; apply
+  is gated on a whole-file sha256 fingerprint from preview time; writes refuse MORE
+  than reads (any unclosed quote, equal-value duplicates, heredocs, commented-out
+  keys → tell-only with the reason). Runtime order: backup (first-backup-wins, PK
+  (site_id,file)) → row → temp+rename write (mode preserved) → digest → sign-in
+  verification. `connected` is minted only via `confverify::Verified`, constructible
+  only by a sign-in that succeeded against the RE-READ file (the HTTP probe can only
+  upgrade a proof, never create one). Revert classifies via `written_digest` (NULL =
+  can't-prove → conservative), clears the fact BEFORE restoring (crashes land in the
+  under-claim direction), and every ugly case is a named state — backup-missing keeps
+  `connected` (still true) and drops the row. Site delete: mirrored users drop by the
+  RECORD (never re-derived), non-WordPress databases drop only on `db_created = 1`,
+  and the connected-site confirm names both outcomes (revert-then-delete default).
+  Pools pin `mysqli.default_socket` at our MySQL socket (compiled default EMPTY →
+  strictly additive for `DB_HOST=localhost` imports); `pdo_mysql` stays out
+  permanently (its compiled default is Homebrew's `/tmp/mysql.sock` — an override
+  would silently redirect a working site).
 - **Linked sites are ADOPTED, never provisioned into.** A non-empty
   `NewSite.path` means "serve this folder in place": `core::sites::provision`
   validates it (`validate_linked_docroot` — canonicalized once so a later symlink

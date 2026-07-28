@@ -1,8 +1,12 @@
 # Stage 3 — the opt-in connection rewrite
 
-**Status:** APPROVED 27 Jul 2026 — all five decisions settled (§9). Stages 0–2 shipped;
-the research is `PLAN-valet-herd-migration.md` §8 (Q7, decided as option (c)), the
-interim state this replaces is `PLAN-valet-herd-db-import.md` §9.
+**Status: SHIPPED — §J passed 28 Jul 2026** (all 12 steps, packaged app `44b6a6d`,
+real ea.test; sandbox end-to-end `config_rewrite_check` passed the same day).
+Approved 27 Jul 2026 with all five decisions settled (§9); later rulings recorded in
+place: our own wp-config span editor over wp-cli (§3), collision-renames tell-only
+permanently (§3), `pdo_mysql.default_socket` out permanently (§2). The research is
+`PLAN-valet-herd-migration.md` §8 (Q7, decided as option (c)); the interim state this
+replaced was `PLAN-valet-herd-db-import.md` §9.
 
 **Scope:** after a database import, change the site's own connection config — per-site,
 opt-in, backed up, diff shown first — so the site actually reads the rexenv copy. This

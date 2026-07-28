@@ -1,8 +1,10 @@
 # Migrate an existing Valet / Herd environment into rexenv
 
-**Status: APPROVED 26 Jul 2026 — all four stages ship BEFORE the release.** Research
-(Q0–Q7), the feature shape, and the staging in §10 are green-lit. All decisions settled
-(the last, §11.3, on 27 Jul 2026). Researched 25–26 Jul 2026 against the code as of `f302996`, the live Valet
+**Status: ALL FOUR STAGES SHIPPED — the feature is complete.** Stage 0
+(`PLAN-linked-sites.md`), Stage 1 (§9 pass, 26 Jul 2026), Stage 2 (§I pass, 27 Jul
+2026), Stage 3 (§J pass, 28 Jul 2026 — `PLAN-valet-herd-rewrite.md`). Approved 26 Jul
+2026; research (Q0–Q7) verified as recorded below; all decisions settled (the last,
+§11.3, on 27 Jul 2026 as Stage 3 D5). Researched 25–26 Jul 2026 against the code as of `f302996`, the live Valet
 4.12.0 + Herd 1.29.0 install on the dev Mac, laravel/valet source at tag v4.12.0,
 herd.laravel.com docs, and the bundled DB binaries.
 

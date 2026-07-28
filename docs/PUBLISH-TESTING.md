@@ -339,12 +339,14 @@ never starts or stops their database server, so step 2 is yours.**
 
 ---
 
-## J) 🚧 Connection rewrite (Stage 3) — packaged GUI pass on ea.test
+## J) ✅ Connection rewrite (Stage 3) — packaged GUI pass on ea.test
+
+**PASSED 28 Jul 2026 — all 12 steps, human-verified on the packaged app
+(`44b6a6d`), no deviations reported. Stage 3 SHIPPED.**
 
 The sandbox proves the machinery end to end (`config_rewrite_check`, 11 live
-assertions, passed 28 Jul 2026); this pass proves it against the REAL site and
-the packaged UI. **Rebuild + reinstall first — the installed app contains none
-of Stage 3.** Preconditions: `ea.test` imported (Stage 1) with its database
+assertions, passed 28 Jul 2026); this pass proved it against the REAL site and
+the packaged UI. Steps kept for re-runs. Preconditions: `ea.test` imported (Stage 1) with its database
 imported (Stage 2, state "imported · not connected"), rexenv's MySQL running,
 and `shasum ea's wp-config.php` noted BEFORE anything below.
 
@@ -408,4 +410,4 @@ and `shasum ea's wp-config.php` noted BEFORE anything below.
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
-| J | Connection rewrite (Stage 3): packaged GUI pass on ea.test | 🚧 do after rebuild+reinstall |
+| J | Connection rewrite (Stage 3): packaged GUI pass on ea.test | ✅ passed 28 Jul 2026 |
