@@ -68,6 +68,23 @@ pub fn extract_url(text: &str) -> Option<String> {
         .map(|t| t.to_string())
 }
 
+/// What we can honestly say about a live tunnel's public URL (§ status
+/// honesty, step 2). One fact per state — the UI badge reads this and nothing
+/// else:
+/// - `Unverified` — the process runs, but the URL hasn't answered a check
+///   (yet, or the last check couldn't reach Cloudflare at all).
+/// - `Reachable` — the URL answered a probe THROUGH the tunnel path.
+/// - `Broken` — Cloudflare's edge has repeatedly said the tunnel is gone
+///   (HTTP 530 / error 1033) while the process still runs. Positive evidence,
+///   distinct from "can't verify".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TunnelHealth {
+    Unverified,
+    Reachable,
+    Broken,
+}
+
 /// Positive identification of a recorded tunnel pid (lifecycle ruling
 /// 28 Jul 2026): the live process's command line must reference our binary
 /// name AND the app-data dir (the cloudflared binary lives under it — the

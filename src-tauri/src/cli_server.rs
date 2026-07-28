@@ -968,10 +968,11 @@ where
         }
         // Tunnels — the SiteDetail Share actions (cloudflared).
         "tunnel.list" => {
+            let state = app_state(app)?;
             let tunnels = app
                 .try_state::<commands::tunnels::Tunnels>()
                 .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
-            Ok(json!({ "tunnels": to_value(&commands::tunnels::tunnels_status(tunnels).await?)? }))
+            Ok(json!({ "tunnels": to_value(&commands::tunnels::tunnels_status(state.clone(), tunnels).await?)? }))
         }
         "tunnel.start" | "tunnel.stop" => {
             let state = app_state(app)?;

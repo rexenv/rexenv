@@ -28,6 +28,12 @@ fn tunnel_site(state: &State<'_, AppState>, id: &str) -> Result<Site> {
 struct TunnelEntry {
     child: Child,
     url: String,
+    /// Docroot at start time — dead-child cleanup removes the mu-plugin here
+    /// without a site lookup (mirrors the v23 row).
+    docroot: String,
+    health: crate::core::tunnels::TunnelHealth,
+    /// Consecutive tunnel-gone (530) probe responses — see `fold_probe`.
+    strikes: u32,
 }
 
 /// Tauri-managed registry of live tunnels, keyed by site domain.
@@ -54,6 +60,36 @@ impl Tunnels {
         // survives here is exactly what the sweep and exit hook settle.
         delete_tunnel_row(state, domain);
         stopped
+    }
+
+    /// Remove every entry whose child has EXITED (`try_wait` — non-blocking,
+    /// and `Some` means the zombie is already reaped). Returns the removed
+    /// pairs for [`settle_dead`] to clean up outside the lock. `Err` from
+    /// `try_wait` reads as alive — status may only claim death on positive
+    /// evidence, the same rule the sweep applies to kills.
+    fn take_dead(&self) -> Vec<(String, TunnelEntry)> {
+        let Ok(mut map) = self.0.lock() else { return Vec::new() };
+        let dead: Vec<String> = map
+            .iter_mut()
+            .filter_map(|(domain, e)| matches!(e.child.try_wait(), Ok(Some(_))).then(|| domain.clone()))
+            .collect();
+        dead.into_iter().filter_map(|d| map.remove(&d).map(|e| (d, e))).collect()
+    }
+}
+
+/// Settle tunnels whose process died on its own (cloudflared crash): the
+/// child is already reaped, so only the file and the row remain. After this
+/// the site honestly reads "not sharing" — a dead tunnel must never sit in
+/// the registry showing Live with a dead URL.
+fn settle_dead(state: &AppState, dead: Vec<(String, TunnelEntry)>) {
+    for (domain, entry) in dead {
+        log::warn!(
+            "tunnels: the tunnel for {domain} exited on its own — clearing its mu-plugin and record"
+        );
+        if let Err(e) = wp_tunnel::disable(Path::new(&entry.docroot)) {
+            log::warn!("rexenv: could not remove the tunnel mu-plugin for {domain}: {e}");
+        }
+        delete_tunnel_row(state, &domain);
     }
 }
 
@@ -120,13 +156,16 @@ pub fn kill_all_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     };
 }
 
-/// A tunnel's public status for the UI.
+/// A tunnel's public status for the UI. `running` = a live process exists;
+/// `health` = what we can say about the public URL (one fact, see
+/// [`crate::core::tunnels::TunnelHealth`]). Absent from the list = not sharing.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TunnelInfo {
     pub domain: String,
     pub url: String,
     pub running: bool,
+    pub health: crate::core::tunnels::TunnelHealth,
 }
 
 /// Max time to wait for cloudflared to print the public URL.
@@ -143,11 +182,15 @@ pub async fn start_tunnel(
     let site = tunnel_site(&state, &id)?;
     let domain = site.domain.clone();
 
-    // Already sharing this site? Return the live URL.
+    // A dead child must never read "already sharing": sweep exited children
+    // first, so an existing entry is a LIVE process and its URL is this run's.
+    // A crashed tunnel therefore falls through to a fresh start instead of
+    // handing back its stale URL as success.
+    settle_dead(&state, tunnels.take_dead());
     {
         let map = tunnels.0.lock().map_err(|_| Error::Other("tunnel registry poisoned".into()))?;
         if let Some(e) = map.get(&domain) {
-            return Ok(TunnelInfo { domain, url: e.url.clone(), running: true });
+            return Ok(TunnelInfo { domain, url: e.url.clone(), running: true, health: e.health });
         }
     }
 
@@ -211,12 +254,22 @@ pub async fn start_tunnel(
         }
     }
 
-    tunnels
-        .0
-        .lock()
-        .map_err(|_| Error::Other("tunnel registry poisoned".into()))?
-        .insert(domain.clone(), TunnelEntry { child, url: url.clone() });
-    Ok(TunnelInfo { domain, url, running: true })
+    tunnels.0.lock().map_err(|_| Error::Other("tunnel registry poisoned".into()))?.insert(
+        domain.clone(),
+        TunnelEntry {
+            child,
+            url: url.clone(),
+            docroot: site.path.clone(),
+            health: crate::core::tunnels::TunnelHealth::Unverified,
+            strikes: 0,
+        },
+    );
+    Ok(TunnelInfo {
+        domain,
+        url,
+        running: true,
+        health: crate::core::tunnels::TunnelHealth::Unverified,
+    })
 }
 
 /// Stop a site's tunnel (no-op if not sharing).
@@ -238,14 +291,69 @@ pub async fn stop_tunnel(
     Ok(())
 }
 
-/// All active tunnels (domain → public URL).
+/// All active tunnels (domain → public URL + health). Dead children are
+/// settled BEFORE the snapshot, so a crashed cloudflared drops out of the
+/// list on the very poll that discovers it — never rendered as Live.
 #[tauri::command]
-pub async fn tunnels_status(tunnels: State<'_, Tunnels>) -> Result<Vec<TunnelInfo>> {
+pub async fn tunnels_status(
+    state: State<'_, AppState>,
+    tunnels: State<'_, Tunnels>,
+) -> Result<Vec<TunnelInfo>> {
+    settle_dead(&state, tunnels.take_dead());
     let map = tunnels.0.lock().map_err(|_| Error::Other("tunnel registry poisoned".into()))?;
     let mut out: Vec<TunnelInfo> = map
         .iter()
-        .map(|(domain, e)| TunnelInfo { domain: domain.clone(), url: e.url.clone(), running: true })
+        .map(|(domain, e)| TunnelInfo {
+            domain: domain.clone(),
+            url: e.url.clone(),
+            running: true,
+            health: e.health,
+        })
         .collect();
     out.sort_by(|a, b| a.domain.cmp(&b.domain));
     Ok(out)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn entry(child: Child) -> TunnelEntry {
+        TunnelEntry {
+            child,
+            url: "https://x.trycloudflare.com".into(),
+            docroot: "/nonexistent-fixture".into(),
+            health: crate::core::tunnels::TunnelHealth::Unverified,
+            strikes: 0,
+        }
+    }
+
+    #[test]
+    fn take_dead_removes_only_exited_children() {
+        // Fixture-owned children: /usr/bin/true exits immediately (the
+        // crashed-cloudflared stand-in), sleep stays alive and is killed +
+        // reaped by this test before it returns.
+        let reg = Tunnels::default();
+        let dead = std::process::Command::new("/usr/bin/true").spawn().expect("spawn true");
+        let live = std::process::Command::new("/bin/sleep").arg("30").spawn().expect("spawn sleep");
+        reg.0.lock().unwrap().insert("dead.rex".into(), entry(dead));
+        reg.0.lock().unwrap().insert("live.rex".into(), entry(live));
+
+        let mut settled = Vec::new();
+        for _ in 0..100 {
+            settled = reg.take_dead();
+            if !settled.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(settled.len(), 1, "exactly the exited child is taken");
+        assert_eq!(settled[0].0, "dead.rex");
+        // The live tunnel keeps its entry — liveness is per-child, not a purge.
+        assert!(reg.0.lock().unwrap().contains_key("live.rex"));
+
+        let mut e = reg.0.lock().unwrap().remove("live.rex").expect("live entry");
+        let _ = e.child.kill();
+        let _ = e.child.wait();
+    }
 }
