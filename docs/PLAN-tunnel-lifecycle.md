@@ -1,8 +1,11 @@
-# PLAN — Tunnel lifecycle decision (AWAITING RULING)
+# PLAN — Tunnel lifecycle decision (RULED: option (a), full shape)
 
-Status: **proposed, not ruled on**. Nothing below is implemented. Follow-up fixes
-(status honesty, override-site block, double-start race, Bedrock paths, leftovers,
-cross-guards) are sequenced separately and deliberately NOT planned here.
+Status: **ruled 28 Jul 2026 — (a) dies with the app, crash repaired at next
+launch — and SHIPPED same day** (`0aae71a` v23 table, `d22cfa0` spawn records,
+`92d6daf` exit hook, `311bb57` sweep + argv identity, `1eba999` restated claim
++ crash-gap disclosure). Follow-up fixes (status honesty, override-site block,
+double-start race, Bedrock paths, leftovers, cross-guards) are sequenced in
+`docs/TODO.md` ("Tunnel hardening") and deliberately NOT planned here.
 
 ## The problem being decided
 
