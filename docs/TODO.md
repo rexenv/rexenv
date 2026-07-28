@@ -114,10 +114,17 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     `ac2300c` clippy in verify.sh at zero. A4 shipped as the ASYMMETRY (ruled
     better than the original ruling): Broken sticky (530s are positive evidence,
     only an HTTP answer clears), Reachable decays (a freshness claim expires).
-    Live-measurement items, none blocking (human + real network): map the Broken
-    window (share → kill -9 cloudflared → watch probe verdicts minute by minute);
-    `pgrep -P` a live cloudflared (single-process assumption); Bedrock "Log in
-    as" landing in wp-admin.
+    Live-measurement items, none blocking (human + real network), adjusted 28 Jul
+    post-diagnosis: ONE probe session covering both fault shapes — kill -9 (death
+    path: Broken window minute by minute) AND a wifi blip while sharing (recovery
+    path: does the URL survive the reconnect, does the badge return to Live);
+    Bedrock "Log in as" landing in wp-admin; Radicle first-link verify (the
+    `public/content` rel is flagged UNVERIFIED in code — nobody has seen it work).
+    MEASURED ✓: cloudflared is single-process (`pgrep -P` empty on live pids,
+    28 Jul diagnosis). CLOSED deliberately, not a gap: registration longevity of
+    an unattended quick tunnel — the prober made the number irrelevant to users
+    (if Cloudflare reaps a long-lived share, the badge says so honestly, which is
+    the property we needed, not the number).
   - [ ] **Per-backend tunnel origins (deferred — RE-SCOPED 28 Jul post-audit,
     smaller than the original estimate):** the lifetime vhost guard it needed now
     EXISTS (`4815ff1` refuses any web-server switch while shared — so "handle a

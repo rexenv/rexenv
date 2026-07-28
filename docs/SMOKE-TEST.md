@@ -44,8 +44,27 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] Create a sub-site; it appears in the list and loads.
 
 ## Public sharing (Tunnels) — needs internet
-- [ ] Toggle **Share publicly** for a site; a `*.trycloudflare.com` URL appears and loads the site.
-- [ ] Toggle off; the public URL stops working.
+- [ ] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified →
+  **Live** once the probe confirms.
+- [ ] **Unverified + dead link on THIS machine is NORMAL on networks that negative-cache
+  DNS** (the router NXDOMAINs a hostname created seconds ago): verify from a SECOND
+  DEVICE (phone on cellular). Only unreachable-everywhere is a real failure — do not
+  file the router race as a bug.
+- [ ] Kill the site's cloudflared in Activity Monitor; the card leaves Live within ~5s
+  on its own (no stop/start needed).
+- [ ] Refusals name the EXPOSURE, never "busy": db-import / connection rewrite /
+  provision-retry / multisite convert while shared; Share while a db-import runs;
+  web-server switch while shared; docroot move while shared. CLI texts match
+  (`rex tunnel start`, `rex site server`, `rex site move`).
+- [ ] Apache/FrankenPHP site: Share toggle disabled with the why-tooltip; `rex tunnel
+  start` refuses naming the default-vhost consequence (a DIFFERENT site would publish).
+- [ ] Quit with a live share → "Quitting stops N public shares" dialog; both buttons
+  behave. Quit with none shared → NO dialog, ever.
+- [ ] Toggle off; the public URL stops working AND `mu-plugins/rexenv-tunnel.php` is
+  gone from the docroot.
+- [ ] Launch log, ONLY on a machine carrying rowless orphans: one backstop WARN per
+  orphan ("STOPPED A PUBLIC SHARE THIS APP HAD NO RECORD OF"). On a clean machine its
+  ABSENCE is correct — do not read a missing line as the backstop not running.
 
 ## Settings
 - [ ] Theme switch Dark ↔ Light ↔ System re-skins the app correctly.
