@@ -309,6 +309,16 @@ pub fn confirm_quit_or_prompt<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> b
     let app = app.clone();
     std::thread::spawn(move || {
         use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+        // Drop guard, not a trailing store (audit A6): a panic anywhere in
+        // the dialog path would otherwise leave the flag stuck true and
+        // every later quit silently prevented — an unquittable app.
+        struct DialogOpenReset;
+        impl Drop for DialogOpenReset {
+            fn drop(&mut self) {
+                QUIT_DIALOG_OPEN.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let _reset = DialogOpenReset;
         let message = if n == 1 {
             "Quitting stops 1 public share — its link goes dead immediately.".to_string()
         } else {
@@ -323,7 +333,6 @@ pub fn confirm_quit_or_prompt<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> b
                 "Keep sharing".to_string(),
             ))
             .blocking_show();
-        QUIT_DIALOG_OPEN.store(false, Ordering::SeqCst);
         if confirmed {
             QUIT_CONFIRMED.store(true, Ordering::SeqCst);
             app.exit(0);

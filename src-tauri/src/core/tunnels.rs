@@ -60,11 +60,18 @@ pub fn read_url(platform: &dyn Platform, domain: &str) -> Option<String> {
 }
 
 /// Pull the first `https://<sub>.trycloudflare.com` out of cloudflared output
-/// (it's printed inside a `|`-bordered banner).
+/// (it's printed inside a `|`-bordered banner). `api.trycloudflare.com` is
+/// cloudflared's REGISTRATION endpoint, not a tunnel URL — an error line
+/// printing it as a bare host must never be recorded as the public URL
+/// (audit A7).
 pub fn extract_url(text: &str) -> Option<String> {
     text.split(|c: char| c.is_whitespace() || c == '|')
         .map(str::trim)
-        .find(|t| t.starts_with("https://") && t.ends_with(".trycloudflare.com"))
+        .find(|t| {
+            t.starts_with("https://")
+                && t.ends_with(".trycloudflare.com")
+                && !t.starts_with("https://api.")
+        })
         .map(|t| t.to_string())
 }
 
@@ -370,5 +377,15 @@ mod tests {
     #[test]
     fn extract_url_none_before_ready() {
         assert!(extract_url("INF Starting tunnel...\nINF Requesting new quick tunnel...").is_none());
+    }
+
+    #[test]
+    fn extract_url_never_takes_the_registration_endpoint() {
+        // An error line naming the api host must not be recorded as the
+        // public URL; the real banner later still wins.
+        let log = "ERR request to https://api.trycloudflare.com failed, retrying\n\
+                   INF |  https://blue-cat-runs-fast.trycloudflare.com  |";
+        assert_eq!(extract_url(log).as_deref(), Some("https://blue-cat-runs-fast.trycloudflare.com"));
+        assert!(extract_url("ERR https://api.trycloudflare.com unreachable").is_none());
     }
 }
