@@ -86,8 +86,14 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     (ownership/noise/real-content matrix). Human verify: "Log in as" on a real
     linked BEDROCK site must land in wp-admin (own proof — the path fix should
     cover it, but it rides nothing).
-  - [ ] **7. Cross-guards** — tunnels sit fully outside the provision/db-import/rewrite
-    guard family in BOTH directions; a db-import can churn a publicly-live site.
+  - [x] **7. Cross-guards** ✓ SHIPPED 28 Jul 2026 — `f8439ba` a tunnel EXPOSES where
+    jobs MUTATE, so all six pairs REFUSE with the exposure named (what a visitor
+    would see), never "busy". Jobs read the v23 row (live OR starting share,
+    dead-settled first); tunnel start checks after its claim and releases on
+    refusal. Ordering: claim/set-then-check on tunnel + rewrite + db-import (can't
+    cross); provision keeps the family idiom (accepted microsecond class). NEVER
+    auto-stop a share or cancel a job — messages say where to act; re-share = new
+    link. Valet-import inherits. ✓ verify.sh, 530 tests.
   - [ ] **Disclosure copy** — linked-docroot exposure deltas in the share UI: nginx
     follows symlinks out of the project; stray dev PHP in the repo is publicly
     executable while shared. Not bugs — the user should be told before clicking.
