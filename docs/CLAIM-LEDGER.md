@@ -73,7 +73,7 @@ L3 = scripted manual.
 | 33 | wp_login.rs:9 | ⚠ Token can't replay through a public tunnel (CF-header + XFF + Host) | ◐ CF-header leg ✅ `wp_login_check` (C); XFF-spoof leg + always-carries-CF premise 🔨 L1 |
 | 34 | wp_login.rs:7 | Single-use: deleted on first attempt, success or not | ✅ `wp_login_check` (B) + lib test |
 | 35 | wp_login.rs:98 | Hardcoded wp-content silently breaks the feature on Bedrock | ◐ path ✅; "never loads" premise 🔨 L1 (Bedrock live check) |
-| 36 | wp_login.rs:104 | Domain can't escape the single-quoted PHP string | 🔨 L0 — validator inherited, no injection-point test (sibling wp_tunnel has one) |
+| 36 | wp_login.rs:104 | Domain can't escape the single-quoted PHP string | ✅ `injection_point_refuses_what_could_escape_the_php_string` — ensure_muplugin now re-checks at the injection point (T10) |
 
 ## core/adminer.rs
 
@@ -91,7 +91,7 @@ L3 = scripted manual.
 
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
-| 44 | dns.rs:8 | ⚠ Answer-anything is safe ONLY because the bind is loopback | 🔨 L0 (assert the bind address; the dangerous half is tested, the guard half isn't) |
+| 44 | dns.rs:8 | ⚠ Answer-anything is safe ONLY because the bind is loopback | ✅ structural since T10 — `serve_udp(port)` picks loopback itself (non-loopback unrepresentable); `loopback_bind_is_structural` pins it |
 | 45 | dns.rs:6 | No in-process TLD state; adding a TLD never restarts DNS | ✅ `any_tld_answers_loopback` +1 |
 | 46 | dns.rs:189 | Agent never exits on busy port; seamless takeover | 🔨 L3 (two-process handoff procedure) |
 | 47 | dns.rs:283 | Foreign resolver file never overwritten without backup-first takeover | ✅ 2 lib tests |
@@ -278,7 +278,7 @@ L3 = scripted manual.
 
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
-| 175 | commands/services.rs:206 | ⚠ Login autostart: never download, never prompt | 🔨 L0+L1 — both guards entirely untested |
+| 175 | commands/services.rs:206 | ⚠ Login autostart: never download, never prompt | ◐ both DECISIONS proven at L0 since T10 (`uncached_names_lists_exactly…`, `login_edge_action_never_runs_a_privileged_plan` — pure fns the command now calls); the end-to-end login run stays 🔨 L3 |
 | 176 | commands/services.rs:287 | Single monitor source of truth; DNS deliberately not a row | ✅ lib test + 2 examples |
 | 177 | commands/system.rs:94 | Footer and Services tab can never disagree | ✅ 2 lib tests (counting halves) |
 | 178 | commands/system.rs:61 | Reading it can never panic | 🔨 L0 |
@@ -301,10 +301,10 @@ L3 = scripted manual.
 
 ## Tally (28 Jul 2026, after T4)
 
-- ✅ proven: **118** (of 195 — #195 added and proven the same day; its proof falsified
-  a prose claim, which is the ledger working)
-- ◐ half-proven (unproven half in the backlog): **32**
-- 🔨 provable-unproven: **36**
+- ✅ proven: **120** (of 195; #195 added and proven the same day — its proof falsified
+  a prose claim, which is the ledger working; #36/#44 proven and #175 half-proven in T10)
+- ◐ half-proven (unproven half in the backlog): **33**
+- 🔨 provable-unproven: **33**
 - 🚫 inherently unprovable: **9** (each mapped in PLAN §5 or an accepted posture)
 
 **Provable total = 185; proven (incl. proven halves) ≈ 117 full + 32 half. The working

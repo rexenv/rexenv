@@ -241,11 +241,11 @@ pub async fn auto_start_services(app: tauri::AppHandle) {
 /// (edge skipped); `Err` = aborted (nothing/partial started, reason inside).
 async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>> {
     let (sites, php_minors, php_settings, site_env, db_versions) = start_inputs(state)?;
-    // Guard 1: strictly offline. Every needed binary must already be cached.
+    // Guard 1: strictly offline. Every needed binary must already be cached
+    // (the decision fn lives in core::downloads with its own test).
     let plan =
         core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors, &db_versions);
-    let missing: Vec<&str> =
-        plan.iter().filter(|p| !p.cached).map(|p| p.name.as_str()).collect();
+    let missing = core::downloads::uncached_names(&plan);
     if !missing.is_empty() {
         return Err(Error::Other(format!(
             "binaries not downloaded yet ({}) — open rexenv and press Start all once",
@@ -264,18 +264,22 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         let mut mgr = state.services.lock().await;
         mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
     };
-    match plan {
+    // Guard 2 is the pure `login_edge_action` decision (tested in core): a
+    // privileged plan would show an auth prompt at login — skipped, surfaced.
+    // (Normally unreachable post-reboot: RunAtLoad has the edge up before
+    // login.)
+    match core::service_manager::login_edge_action(&plan) {
         // Edge adopted (the boot daemon already serves it) or reloaded — but adopt
         // proves the PROCESS, not the wire: verify nothing (Herd) intercepts :443.
-        None => verify_edge_wire(state).await.map(|()| None),
-        // Guard 2: a privileged edge start would show an auth prompt at login —
-        // skip it and say so. (Normally unreachable post-reboot: RunAtLoad has
-        // the edge up before login.)
-        Some(plan) if plan.privileged => Ok(Some(
+        core::service_manager::LoginEdgeAction::AlreadyServing => {
+            verify_edge_wire(state).await.map(|()| None)
+        }
+        core::service_manager::LoginEdgeAction::SkipNeedsPrompt => Ok(Some(
             "services are up, but the HTTPS edge needs Start all (one admin prompt)".into(),
         )),
         // Unprivileged high-port edge (dev config) — no prompt, just start it.
-        Some(plan) => {
+        core::service_manager::LoginEdgeAction::StartUnprivileged => {
+            let plan = plan.expect("StartUnprivileged implies a plan");
             let child =
                 core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
             state.services.lock().await.set_edge_child(child);

@@ -158,6 +158,15 @@ pub fn label_for(name: &str, version: &str) -> String {
     }
 }
 
+/// LOGIN-SAFETY guard 1 (`commands::services::auto_start_inner`): the names a
+/// start plan would have to DOWNLOAD. An unattended login start must abort
+/// when this is non-empty — never stream downloads nobody asked for — so the
+/// decision lives here as a pure function with its own test rather than
+/// inline in an untestable command.
+pub fn uncached_names(plan: &[PlannedBinary]) -> Vec<&str> {
+    plan.iter().filter(|p| !p.cached).map(|p| p.name.as_str()).collect()
+}
+
 /// One binary an action needs: enough to plan (cached split), display (via
 /// [`Planned`]) and fetch (via [`resolve_any`]'s name-based dispatch).
 #[derive(Debug, Clone)]
@@ -585,6 +594,21 @@ impl Hub {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// LOGIN-SAFETY guard 1: the decision auto-start aborts on. Exactly the
+    /// uncached names, in plan order; an all-cached plan clears the gate.
+    #[test]
+    fn uncached_names_lists_exactly_what_a_login_start_must_refuse() {
+        let plan = vec![
+            PlannedBinary { name: "caddy".into(), version: "1".into(), cached: true },
+            PlannedBinary { name: "mysql".into(), version: "2".into(), cached: false },
+            PlannedBinary { name: "php-fpm-8.3".into(), version: "3".into(), cached: false },
+        ];
+        assert_eq!(uncached_names(&plan), vec!["mysql", "php-fpm-8.3"]);
+        let warm = vec![PlannedBinary { name: "caddy".into(), version: "1".into(), cached: true }];
+        assert!(uncached_names(&warm).is_empty());
+        assert!(uncached_names(&[]).is_empty());
+    }
 
     /// A fresh hub per test (the global one is shared across the test binary).
     fn fresh() -> Hub {

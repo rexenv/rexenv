@@ -108,6 +108,17 @@ fn mu_plugin_source(domain: &str) -> String {
     MU_PLUGIN.replace("{{SITE_DOMAIN}}", domain)
 }
 
+/// The character class a vetted hostname can contain — nothing that can close
+/// or escape a single-quoted PHP string (`'`, `\`) or smuggle interpolation.
+/// `core::sites::validate_domain` enforces more; this narrower re-check lives
+/// AT the injection point (see [`ensure_muplugin`]).
+fn domain_is_php_string_safe(domain: &str) -> bool {
+    !domain.is_empty()
+        && domain
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+}
+
 /// Write the mu-plugin if missing or changed (idempotent). Content is per-site
 /// (the domain is baked into the host allow-list), so a domain change is
 /// picked up by the next `issue` call rewriting the file. Returns whether the
@@ -115,6 +126,15 @@ fn mu_plugin_source(domain: &str) -> String {
 /// (v25 `sites.mu_dir_created`) so site teardown can remove a dir WE created
 /// without ever inferring ownership from emptiness.
 pub fn ensure_muplugin(docroot: &Path, content_rel: &str, domain: &str) -> Result<bool> {
+    // Injection-point guard (parity with wp_tunnel::validate_origin): the
+    // domain is validate_domain-vetted upstream (M7), but THIS is where it
+    // enters a single-quoted PHP string — re-check the character class here
+    // so no future call path can reach the replace with an escape.
+    if !domain_is_php_string_safe(domain) {
+        return Err(crate::error::Error::Other(format!(
+            "domain {domain:?} is not a vetted hostname"
+        )));
+    }
     let path = mu_plugin_path(docroot, content_rel);
     let source = mu_plugin_source(domain);
     let current = std::fs::read_to_string(&path).ok();
@@ -196,6 +216,34 @@ mod tests {
         // would litter the repo AND never load (the silent-broken class).
         let p = mu_plugin_path(Path::new("/srv/bedrock/web"), "app");
         assert!(p.ends_with("web/app/mu-plugins/rexenv-login.php"));
+    }
+
+    #[test]
+    fn injection_point_refuses_what_could_escape_the_php_string() {
+        // Parity with wp_tunnel::validate_origin_rejects_php_string_escapes:
+        // the guarantee used to be INHERITED from validate_domain with nothing
+        // at the injection point — a refactor away from a PHP injection into
+        // every site's mu-plugins. ensure_muplugin now refuses before any
+        // replace or write.
+        let dir = std::env::temp_dir().join("rexenv-wplogin-inject-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for bad in [
+            "a'b.test",                 // closes the quote
+            "a\\.test",                 // backslash games
+            "x.test'.phpinfo().'",      // the classic
+            "{$x}.test",                // interpolation shapes
+            "a b.test",                 // whitespace
+            "ACME.test",                // uppercase is never emitted by the vet
+            "",
+        ] {
+            assert!(
+                ensure_muplugin(&dir, "wp-content", bad).is_err(),
+                "accepted into a single-quoted PHP string: {bad:?}"
+            );
+        }
+        assert!(ensure_muplugin(&dir, "wp-content", "acme.rex").is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

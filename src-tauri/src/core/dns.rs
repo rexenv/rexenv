@@ -114,11 +114,16 @@ impl RequestHandler for DnsHandler {
     }
 }
 
-/// Bind a UDP socket and build a resolver server on it. Returns the actually
-/// bound address (useful when `addr` uses port 0) plus the server; the caller
+/// Bind a UDP socket on LOOPBACK and build a resolver server on it. Returns
+/// the actually bound address (useful with port 0) plus the server; the caller
 /// drives it with `server.block_until_done().await`.
-pub async fn serve_udp(addr: SocketAddr) -> Result<(SocketAddr, ServerFuture<DnsHandler>)> {
-    let socket = UdpSocket::bind(addr).await?;
+///
+/// Takes a PORT, not an address, deliberately: answer-anything is safe ONLY
+/// because the bind is loopback (module note) — a non-loopback bind would be
+/// an open wildcard resolver, so this API makes one unrepresentable rather
+/// than a convention (`loopback_bind_is_structural` pins it).
+pub async fn serve_udp(port: u16) -> Result<(SocketAddr, ServerFuture<DnsHandler>)> {
+    let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).await?;
     let local = socket.local_addr()?;
     let mut server = ServerFuture::new(DnsHandler::default());
     server.register_socket(socket);
@@ -134,9 +139,10 @@ pub struct DnsService {
 }
 
 impl DnsService {
-    /// Bind `addr` and spawn the resolver on the current tokio runtime.
-    pub async fn start(addr: SocketAddr) -> Result<Self> {
-        let (local, mut server) = serve_udp(addr).await?;
+    /// Bind loopback:`port` and spawn the resolver on the current tokio
+    /// runtime (loopback by construction — see [`serve_udp`]).
+    pub async fn start(port: u16) -> Result<Self> {
+        let (local, mut server) = serve_udp(port).await?;
         let handle = tokio::spawn(async move {
             if let Err(e) = server.block_until_done().await {
                 log::error!("dns: resolver task ended with error: {e}");
@@ -156,7 +162,7 @@ impl DnsService {
             crate::core::ports::Proto::Udp,
             "DNS resolver",
         )?;
-        Self::start(SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_DNS_PORT))).await
+        Self::start(DEFAULT_DNS_PORT).await
     }
 
     /// The address the resolver is actually bound to.
@@ -201,7 +207,7 @@ pub fn run_agent() -> i32 {
     };
     rt.block_on(async {
         loop {
-            match serve_udp(SocketAddr::from((Ipv4Addr::LOCALHOST, DEFAULT_DNS_PORT))).await {
+            match serve_udp(DEFAULT_DNS_PORT).await {
                 Ok((addr, mut server)) => {
                     eprintln!("rexenv dns-agent: listening on {addr} (udp)");
                     if let Err(e) = server.block_until_done().await {
@@ -676,7 +682,7 @@ mod tests {
     /// Start the resolver on an ephemeral loopback port; return its address and
     /// the spawned server task handle.
     async fn start() -> (SocketAddr, tokio::task::JoinHandle<()>) {
-        let (addr, mut server) = serve_udp("127.0.0.1:0".parse().unwrap()).await.unwrap();
+        let (addr, mut server) = serve_udp(0).await.unwrap();
         let handle = tokio::spawn(async move {
             let _ = server.block_until_done().await;
         });
@@ -729,6 +735,17 @@ mod tests {
         let reply = query(addr, "site1.mysite.test.", RecordType::A).await;
         assert_eq!(first_a(&reply), Some(Ipv4Addr::LOCALHOST));
         handle.abort();
+    }
+
+    /// Answer-anything is safe ONLY because the bind is loopback (the module
+    /// note). `serve_udp` takes a port and picks the interface itself, so a
+    /// non-loopback bind is unrepresentable through the API — this pins the
+    /// interface it picks.
+    #[tokio::test]
+    async fn loopback_bind_is_structural() {
+        let (addr, server) = serve_udp(0).await.unwrap();
+        assert_eq!(addr.ip(), std::net::IpAddr::from(Ipv4Addr::LOCALHOST));
+        drop(server);
     }
 
     /// The handler is TLD-agnostic on purpose: ANY name answers loopback, and
@@ -916,7 +933,7 @@ mod tests {
 
     #[tokio::test]
     async fn managed_service_starts_serves_and_stops() {
-        let svc = DnsService::start("127.0.0.1:0".parse().unwrap())
+        let svc = DnsService::start(0)
             .await
             .unwrap();
         assert!(svc.is_running());
@@ -934,7 +951,7 @@ mod tests {
     /// vs in-process fallback, and the watchdog uses it as agent liveness.
     #[tokio::test]
     async fn answers_as_ours_detects_our_resolver_and_a_dead_port() {
-        let svc = DnsService::start("127.0.0.1:0".parse().unwrap()).await.unwrap();
+        let svc = DnsService::start(0).await.unwrap();
         let port = svc.addr().port();
         // spawn_blocking: the probe is deliberately sync (used from non-async paths).
         let ours = tokio::task::spawn_blocking(move || answers_as_ours(port)).await.unwrap();

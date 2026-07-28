@@ -64,8 +64,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     renders non-`running`); probe asserts ≥92px/one line — the ad-hoc WKWebView
     measurement from the §C fix is now a repeatable check. Full run-all: ALL PASS
     (6 scripts, 54 uireview scenario-runs), tsc clean.
-  - [ ] T10. Ledger quick wins: wp_login injection-point test (#36), DNS loopback-bind
-    assert (#44), autostart guard tests (#175 L0).
+  - [x] **T10. Ledger quick wins landed** ✓ 28 Jul 2026 — #36 ✅: `ensure_muplugin`
+    re-checks the char class AT the injection point (wp_tunnel parity) + hostile-domain
+    test; #44 ✅ STRUCTURAL: `serve_udp(port)` binds loopback itself, non-loopback
+    unrepresentable, pinned by `loopback_bind_is_structural`; #175 ◐: both login-safety
+    decisions extracted pure (`uncached_names`, `login_edge_action`) + tested, command
+    rewired through them. Ledger tally 120/195 proven. verify.sh green.
   - [ ] T11. Dotfile-guard live 404 example (#103, nginx template first).
   - [ ] T12. `scripts/verify-full.sh` (fast/full gate split).
   - [ ] T13. SMOKE-TEST/PUBLISH-TESTING §5 additions + ledger re-tally.

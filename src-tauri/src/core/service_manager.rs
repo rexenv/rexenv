@@ -82,6 +82,28 @@ pub struct EdgePlan {
     pub caddyfile: PathBuf,
 }
 
+/// What an UNATTENDED start may do with a prepared edge plan — LOGIN-SAFETY
+/// guard 2 (`commands::services::auto_start_inner`). A privileged plan would
+/// block on an admin-password prompt at login, so it is never run: skipped
+/// and surfaced instead. Pure so the decision is testable
+/// (`login_edge_action_never_runs_a_privileged_plan`).
+pub enum LoginEdgeAction {
+    /// No plan — the edge is already serving (adopted/reloaded).
+    AlreadyServing,
+    /// The plan needs the admin prompt: skip it, tell the user.
+    SkipNeedsPrompt,
+    /// Unprivileged high-port edge (dev config): safe to start silently.
+    StartUnprivileged,
+}
+
+pub fn login_edge_action(plan: &Option<EdgePlan>) -> LoginEdgeAction {
+    match plan {
+        None => LoginEdgeAction::AlreadyServing,
+        Some(p) if p.privileged => LoginEdgeAction::SkipNeedsPrompt,
+        Some(_) => LoginEdgeAction::StartUnprivileged,
+    }
+}
+
 /// One database engine's status (for the Databases view).
 #[derive(Debug, Clone)]
 pub struct DbInfo {
@@ -2266,6 +2288,25 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
 mod tests {
     use super::*;
     use crate::platform::traits::*;
+
+    /// LOGIN-SAFETY guard 2: an unattended start may adopt or start an
+    /// unprivileged edge, but a plan that would prompt is always skipped.
+    #[test]
+    fn login_edge_action_never_runs_a_privileged_plan() {
+        assert!(matches!(login_edge_action(&None), LoginEdgeAction::AlreadyServing));
+        let privileged =
+            EdgePlan { privileged: true, caddy_bin: "/x".into(), caddyfile: "/y".into() };
+        assert!(matches!(
+            login_edge_action(&Some(privileged)),
+            LoginEdgeAction::SkipNeedsPrompt
+        ));
+        let high_port =
+            EdgePlan { privileged: false, caddy_bin: "/x".into(), caddyfile: "/y".into() };
+        assert!(matches!(
+            login_edge_action(&Some(high_port)),
+            LoginEdgeAction::StartUnprivileged
+        ));
+    }
 
     /// Minimal platform for edge state-machine tests: real paths (a tempdir, so the
     /// admin socket never exists → `admin_alive()` = false) + a configurable edge
