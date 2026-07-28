@@ -68,24 +68,30 @@ any code behaviour change.
 
 ## Tasks (one commit each)
 
-- **T1** This plan. ✓ (this commit)
+- **T1** This plan. ✓ `b31ce3a`
 - **T2** TODO reconciliation: rewrite `TODO.md` as the verified open list (newly
   surfaced items folded in: B29b, B33, Laravel-card honesty, onboarding :443 probe,
   resolver-drift surfacing, sites_dir validation, small nits); shipped history moves
-  verbatim-with-generalised-domains to `docs/archive/SHIPPED-2026-07.md`.
+  verbatim-with-generalised-domains to `docs/archive/SHIPPED-2026-07.md`. ✓ `7f97826`
 - **T3** ARCHITECTURE refresh (map, v23–v25, tunnels-die-with-app, content-dir rule,
-  unpinned test counts).
+  unpinned test counts). ✓ `b88e093`
 - **T4** `docs/MAP.md` + rename testing plan → `docs/TESTING.md` + CLAUDE.md router.
-- **T5** CONTRIBUTING.md + README refresh.
+  ✓ `b88e093` (with T3)
+- **T5** CONTRIBUTING.md + README refresh. ✓ `40531bc`
 - **T6** `docs/DESIGN.md` extraction + archive corrections/redactions (incl.
-  TASKS-RELEASE header, BACKLOG deletion, archive README).
+  TASKS-RELEASE header, BACKLOG deletion, archive README). ✓ `40531bc` + `60d8ef4`
 - **T7** Doc moves/deletions: CODEBASE-REVIEW, UI-REVIEW, TLD-FEATURE-REPORT,
   PLAN-tunnel-lifecycle, PLAN-content-dir-assets, PLAN-site-provisioning-progress →
   archive; QA-ROUND-2-HANDOFF + templates/README deleted; referrers updated.
+  ✓ `60d8ef4`
 - **T8** PUBLISH-TESTING generalisation; GIT-FEATURE-TEST de-personalise; INSTALL
   uninstall section; homebrew README rewrite; SIGNING/xdebug/CLI-ROADMAP touch-ups.
+  ✓ `93b8828`
 - **T9** Valet/Herd plan-doc scrubs + condensations (4 docs) + PLAN-linked-sites fixes.
-- **T10** Final `scripts/verify.sh` + wrap-up.
+  ✓ `957f6ef`
+- **T10** Final `scripts/verify.sh` + wrap-up. ✓ (this commit — `verify: all green`,
+  539 lib tests; residual grep over tracked files clean except the two code-side
+  fixtures deliberately left for a code pass)
 
 Doc-only commits rely on the session's green `verify.sh` baseline (539 lib tests);
 the script runs again at T10 (and with any commit that touches code or scripts).

@@ -23,6 +23,7 @@ bottle-bundle path — only OpenLiteSpeed remains blocked.
 | `PLAN-tunnel-lifecycle.md` | The tunnels-die-with-the-app decision record (ruled + shipped 28 Jul 2026). |
 | `PLAN-content-dir-assets.md` | The recorded-content-dir threading plan (shipped; the rule lives in `docs/ARCHITECTURE.md` §8). |
 | `PLAN-site-provisioning-progress.md` | The streamed-provisioning design (shipped). |
+| `PLAN-opensource-readiness.md` | The 28 Jul 2026 doc-set overhaul: audit verdicts + the task list that produced the current docs. |
 | `TASKS.md` | Phase 1 (MVP) task log. |
 | `TASKS-PHASE2.md` | Phase 2 (multi-PHP, FrankenPHP, PostgreSQL) task log + the deferral diagnoses the bundle path later resolved. |
 | `TASKS-PHASE3.md` | Phase 3 (WP Manager, Mailpit, Adminer, tunnels, multisite) task log. |
