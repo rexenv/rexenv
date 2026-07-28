@@ -88,7 +88,7 @@ demand, checksum-pinned, and prepared for macOS automatically.
 ```
 rexenv/
 ├── README.md                   # this file
-├── LICENSE · NOTICE · THIRD-PARTY-NOTICES.md   # Apache-2.0 + shipped-deps inventory
+├── LICENSE · NOTICE · THIRD-PARTY-NOTICES.md · SECURITY.md
 ├── CLAUDE.md                   # agent router: rules + doc index
 ├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions · DCO
 ├── design/                     # reference comps (*.dc.html) — one per screen
@@ -220,3 +220,5 @@ jirutka/nginx-binaries, theseus-rs, Homebrew's bottle registry — the full
 source-and-version table is `docs/PORTS.md`) and remain under their own
 licences on your machine. Trusting rexenv therefore includes trusting those
 build sources; the pinned checksums are the enforcement.
+
+Vulnerabilities: report privately first — see `SECURITY.md`.
