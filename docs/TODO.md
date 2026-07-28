@@ -50,7 +50,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     refusal, proven live against the actual running stack: honest FAIL exit 1, stack
     untouched). frankenphp_serve (production base port 8200) noted for the
     sandbox-adoption backlog. verify.sh green.
-  - [ ] T8. `scripts/live-checks.sh` tiered runner (declared-tier enforcement).
+  - [x] **T8. `scripts/live-checks.sh` tiered runner** ✓ 28 Jul 2026 — all 105
+    examples classified (sandbox 26 / service / network / stack / system / demo);
+    unclassified or stale entries fail the run; system tier runs only singly by name;
+    verify.sh discipline (no pipes before verdicts, own green line). First full
+    sandbox-tier suite run: **all 26 green with the real stack running** — the
+    safe-anytime claim held.
   - [ ] T9. wk-checks: heights probe (h-full class), uireview.js can fail, StatusPill
     all-states scenario.
   - [ ] T10. Ledger quick wins: wp_login injection-point test (#36), DNS loopback-bind
