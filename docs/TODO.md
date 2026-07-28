@@ -94,9 +94,13 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     cross); provision keeps the family idiom (accepted microsecond class). NEVER
     auto-stop a share or cancel a job — messages say where to act; re-share = new
     link. Valet-import inherits. ✓ verify.sh, 530 tests.
-  - [ ] **Disclosure copy** — linked-docroot exposure deltas in the share UI: nginx
-    follows symlinks out of the project; stray dev PHP in the repo is publicly
-    executable while shared. Not bugs — the user should be told before clicking.
+  - [x] **Disclosure copy** ✓ SHIPPED 28 Jul 2026 — `4d92ceb` the Tunnels info box
+    states the linked-docroot deltas before the click: stray dev PHP publicly
+    runnable, symlinks followed out of the project, dotfiles blocked (verified).
+    **TUNNEL HARDENING COMPLETE** — steps 1–7 + 5b + disclosure all shipped
+    28 Jul 2026; only the deliberate deferrals remain (watcher helper, quit-warning
+    shipped early, debug-log full fix with the wp-config reader, stranded-asset
+    badge, per-backend tunnel origins for override sites).
   - **Deferred (deliberate):** parent-death watcher helper (kqueue `NOTE_EXIT`) to close
     the crash→relaunch exposure gap entirely — a new long-lived helper process to get
     right vs. a rare window already bounded by next launch; revisit only if crash
