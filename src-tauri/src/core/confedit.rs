@@ -518,7 +518,7 @@ mod tests {
             assert!(RewritePlan::env(bad, 13306, None).is_err(), "{bad:?} accepted as host");
             assert!(RewritePlan::wp("127.0.0.1:13306", Some(bad)).is_err(), "{bad:?} accepted as user");
         }
-        assert!(RewritePlan::env("127.0.0.1", 13306, Some("rex_ea_test")).is_ok());
+        assert!(RewritePlan::env("127.0.0.1", 13306, Some("rex_myblog_test")).is_ok());
         assert!(RewritePlan::wp("127.0.0.1:13306", None).is_ok());
     }
 
@@ -527,15 +527,15 @@ mod tests {
     #[test]
     fn env_rewrite_changes_exactly_the_value_bytes_and_nothing_else() {
         let original = "APP_NAME=ea\nDB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=3306\n\
-                        DB_DATABASE=ea\nDB_USERNAME=root\nDB_PASSWORD=hunter2\n";
-        let plan = RewritePlan::env("127.0.0.1", 13306, Some("rex_ea_test")).unwrap();
+                        DB_DATABASE=myblog\nDB_USERNAME=root\nDB_PASSWORD=hunter2\n";
+        let plan = RewritePlan::env("127.0.0.1", 13306, Some("rex_myblog_test")).unwrap();
         let r = rewrite(original, &plan).unwrap();
         // Host is unchanged in value → its line must be byte-identical; the
         // password line must be byte-identical; only port and user change.
         assert_eq!(
             r.new_content,
             "APP_NAME=ea\nDB_CONNECTION=mysql\nDB_HOST=127.0.0.1\nDB_PORT=13306\n\
-             DB_DATABASE=ea\nDB_USERNAME=rex_ea_test\nDB_PASSWORD=hunter2\n"
+             DB_DATABASE=myblog\nDB_USERNAME=rex_myblog_test\nDB_PASSWORD=hunter2\n"
         );
         assert!(r.new_content.contains("DB_PASSWORD=hunter2\n"));
         assert_eq!(r.original, original);
@@ -549,12 +549,12 @@ mod tests {
         // normalisation would show up in their git diff.
         let original = "\u{feff}# db\r\n  DB_HOST = \"10.0.0.5\" # local\r\n\
                         export DB_PORT='3306'\r\nDB_USERNAME=root\r\nDB_PASSWORD=x";
-        let plan = RewritePlan::env("127.0.0.1", 13306, Some("rex_ea_test")).unwrap();
+        let plan = RewritePlan::env("127.0.0.1", 13306, Some("rex_myblog_test")).unwrap();
         let r = rewrite(original, &plan).unwrap();
         assert_eq!(
             r.new_content,
             "\u{feff}# db\r\n  DB_HOST = \"127.0.0.1\" # local\r\n\
-             export DB_PORT='13306'\r\nDB_USERNAME=rex_ea_test\r\nDB_PASSWORD=x"
+             export DB_PORT='13306'\r\nDB_USERNAME=rex_myblog_test\r\nDB_PASSWORD=x"
         );
     }
 
@@ -571,21 +571,21 @@ mod tests {
 
     #[test]
     fn env_appends_db_port_after_db_host_copying_its_conventions() {
-        let original = "APP_NAME=ea\nexport DB_HOST = localhost\nDB_DATABASE=ea\n";
+        let original = "APP_NAME=ea\nexport DB_HOST = localhost\nDB_DATABASE=myblog\n";
         let plan = RewritePlan::env("127.0.0.1", 13306, None).unwrap();
         let r = rewrite(original, &plan).unwrap();
         assert_eq!(
             r.new_content,
-            "APP_NAME=ea\nexport DB_HOST = 127.0.0.1\nexport DB_PORT = 13306\nDB_DATABASE=ea\n"
+            "APP_NAME=ea\nexport DB_HOST = 127.0.0.1\nexport DB_PORT = 13306\nDB_DATABASE=myblog\n"
         );
     }
 
     #[test]
     fn env_append_keeps_a_crlf_file_crlf() {
-        let original = "DB_HOST=old.host\r\nDB_DATABASE=ea\r\n";
+        let original = "DB_HOST=old.host\r\nDB_DATABASE=myblog\r\n";
         let plan = RewritePlan::env("127.0.0.1", 13306, None).unwrap();
         let r = rewrite(original, &plan).unwrap();
-        assert_eq!(r.new_content, "DB_HOST=127.0.0.1\r\nDB_PORT=13306\r\nDB_DATABASE=ea\r\n");
+        assert_eq!(r.new_content, "DB_HOST=127.0.0.1\r\nDB_PORT=13306\r\nDB_DATABASE=myblog\r\n");
     }
 
     #[test]
@@ -677,14 +677,14 @@ mod tests {
 
     #[test]
     fn wp_rewrite_changes_the_value_inside_the_quotes_and_nothing_else() {
-        let original = "<?php\ndefine( 'DB_NAME', 'ea' );\ndefine( 'DB_USER', 'root' );\n\
+        let original = "<?php\ndefine( 'DB_NAME', 'myblog' );\ndefine( 'DB_USER', 'root' );\n\
                         define( 'DB_PASSWORD', 'hunter2' );\ndefine( 'DB_HOST', '127.0.0.1' );\n\
                         $table_prefix = 'wp_';\n";
-        let plan = RewritePlan::wp("127.0.0.1:13306", Some("rex_ea_test")).unwrap();
+        let plan = RewritePlan::wp("127.0.0.1:13306", Some("rex_myblog_test")).unwrap();
         let r = rewrite(original, &plan).unwrap();
         assert_eq!(
             r.new_content,
-            "<?php\ndefine( 'DB_NAME', 'ea' );\ndefine( 'DB_USER', 'rex_ea_test' );\n\
+            "<?php\ndefine( 'DB_NAME', 'myblog' );\ndefine( 'DB_USER', 'rex_myblog_test' );\n\
              define( 'DB_PASSWORD', 'hunter2' );\ndefine( 'DB_HOST', '127.0.0.1:13306' );\n\
              $table_prefix = 'wp_';\n"
         );
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn the_diff_is_derived_from_the_produced_bytes() {
-        let original = "APP_NAME=ea\nDB_HOST=old.host\nDB_DATABASE=ea\n";
+        let original = "APP_NAME=ea\nDB_HOST=old.host\nDB_DATABASE=myblog\n";
         let plan = RewritePlan::env("127.0.0.1", 13306, None).unwrap();
         let r = rewrite(original, &plan).unwrap();
         // Exactly: one changed line (-/+) and one inserted line (+).

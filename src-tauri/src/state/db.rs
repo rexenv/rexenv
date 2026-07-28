@@ -677,7 +677,7 @@ mod tests {
         }
         conn.execute(
             "INSERT INTO sites (id, name, domain, type, php_version, path)
-             VALUES ('s1','Ea','ea.test','wordpress','8.3','/Users/x/code/ea')",
+             VALUES ('s1','Blog','myblog.test','wordpress','8.3','/Users/x/code/myblog')",
             [],
         )
         .unwrap();
@@ -741,7 +741,7 @@ mod tests {
         use crate::state::store::{self, ConnectedVerified};
         conn.execute(
             "INSERT INTO sites (id, name, domain, type, php_version, path)
-             VALUES ('s1','Ea','ea.test','wordpress','8.3','/x')",
+             VALUES ('s1','Blog','myblog.test','wordpress','8.3','/x')",
             [],
         )
         .unwrap();

@@ -297,11 +297,11 @@ mod tests {
     #[test]
     fn dedicated_names_are_per_site_deterministic_and_capped() {
         // The common case reads cleanly.
-        assert_eq!(dedicated_user_name("ea.test"), "rex_ea_test");
+        assert_eq!(dedicated_user_name("myblog.test"), "rex_myblog_test");
         // Deterministic: same domain, same name, every time.
-        assert_eq!(dedicated_user_name("ea.test"), dedicated_user_name("ea.test"));
+        assert_eq!(dedicated_user_name("myblog.test"), dedicated_user_name("myblog.test"));
         // Every name fits MySQL's 32-char user limit and its charset is tame.
-        for domain in ["ea.test", "a.b", &format!("{}.test", "x".repeat(80))] {
+        for domain in ["myblog.test", "a.b", &format!("{}.test", "x".repeat(80))] {
             let name = dedicated_user_name(domain);
             assert!(name.len() <= USER_NAME_MAX, "{name}");
             assert!(name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'));
@@ -328,7 +328,7 @@ mod tests {
     fn dedicated_names_can_never_be_reserved() {
         // The rex_ prefix keeps the generated name out of the reserved set
         // structurally — mirror_dedicated treats that branch as a bug.
-        for domain in ["ea.test", "root", "mysql.sys", "postgres", ""] {
+        for domain in ["myblog.test", "root", "mysql.sys", "postgres", ""] {
             let name = dedicated_user_name(domain);
             assert!(name.starts_with("rex_"), "{name}");
             assert!(
@@ -340,9 +340,9 @@ mod tests {
 
     #[test]
     fn dropping_is_loopback_scoped_if_exists_and_refuses_reserved() {
-        let sql = drop_sql("rex_ea_test");
-        assert!(sql.contains("DROP USER IF EXISTS 'rex_ea_test'@'localhost';"));
-        assert!(sql.contains("DROP USER IF EXISTS 'rex_ea_test'@'127.0.0.1';"));
+        let sql = drop_sql("rex_myblog_test");
+        assert!(sql.contains("DROP USER IF EXISTS 'rex_myblog_test'@'localhost';"));
+        assert!(sql.contains("DROP USER IF EXISTS 'rex_myblog_test'@'127.0.0.1';"));
         assert!(!sql.contains("'%'"), "{sql}");
         assert_eq!(sql.matches("DROP USER").count(), 2, "exactly the two mirrored scopes");
 

@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn a_conf_on_another_tld_still_contributes_its_tld() {
-        // `eatest.dev` really exists on the dev machine, in a `.test` config.
+        // A real install carried a `.dev` conf inside a `.test`-TLD config.
         let fx = Fixture::new("tlds").config(r#"{"tld":"test","paths":[]}"#);
         let fx = fx.project("app").conf("legacy.dev", "server { }\n");
         let (_, sites) = scan_source(SourceKind::Valet, &fx.0);

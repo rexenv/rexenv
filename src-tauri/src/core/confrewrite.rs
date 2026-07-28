@@ -234,8 +234,8 @@ mod tests {
     fn backup_paths_are_per_site_per_basename() {
         // Pure path shape — no platform needed for the naming property: the
         // basename keys the backup, so one per site+file by construction.
-        let a = Path::new("/Users/x/code/ea/wp-config.php");
-        let b = Path::new("/Users/x/code/ea/.env");
+        let a = Path::new("/Users/x/code/myblog/wp-config.php");
+        let b = Path::new("/Users/x/code/myblog/.env");
         assert_ne!(a.file_name(), b.file_name());
     }
 }

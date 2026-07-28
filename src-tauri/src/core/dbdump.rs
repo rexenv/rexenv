@@ -788,7 +788,7 @@ mod tests {
         // Not "we remembered to strip it" — the fields don't exist. This test
         // pins the full key set so a future field is a conscious decision.
         let m = Manifest {
-            domain: "ea.test".into(),
+            domain: "myblog.test".into(),
             database: "ea".into(),
             source_host: "127.0.0.1".into(),
             source_port: 3306,
@@ -824,16 +824,16 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
 
         // No artifact at all.
-        assert!(load_manifest(&dir, "ea.test").is_err());
+        assert!(load_manifest(&dir, "myblog.test").is_err());
 
         // Artifact, no manifest — the interrupted-dump shape.
-        std::fs::write(artifact_path(&dir, "ea.test"), "-- half a dump").unwrap();
-        let err = load_manifest(&dir, "ea.test").unwrap_err().to_string();
+        std::fs::write(artifact_path(&dir, "myblog.test"), "-- half a dump").unwrap();
+        let err = load_manifest(&dir, "myblog.test").unwrap_err().to_string();
         assert!(err.contains("never finished"), "{err}");
 
         // Manifest present but the size moved.
         let m = Manifest {
-            domain: "ea.test".into(),
+            domain: "myblog.test".into(),
             database: "ea".into(),
             source_host: "127.0.0.1".into(),
             source_port: 3306,
@@ -848,8 +848,8 @@ mod tests {
             tables: vec![],
             findings: Findings::default(),
         };
-        std::fs::write(manifest_path(&dir, "ea.test"), serde_json::to_string(&m).unwrap()).unwrap();
-        let err = load_manifest(&dir, "ea.test").unwrap_err().to_string();
+        std::fs::write(manifest_path(&dir, "myblog.test"), serde_json::to_string(&m).unwrap()).unwrap();
+        let err = load_manifest(&dir, "myblog.test").unwrap_err().to_string();
         assert!(err.contains("changed after it was written"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
     }

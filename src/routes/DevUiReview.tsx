@@ -35,13 +35,13 @@ function fixtureSite(over: Partial<Site> = {}): Site {
   return {
     id: "s-ea",
     name: "ea",
-    domain: "ea.test",
+    domain: "myblog.test",
     type: "wordpress",
     status: "running",
     phpVersion: "8.3",
     webServer: "nginx",
     ssl: true,
-    path: "/Users/wpdev/code/ea",
+    path: "/Users/dev/code/myblog",
     createdAt: "2026-07-26 00:00:00",
     multisite: "none",
     dbName: "ea",
@@ -69,9 +69,9 @@ function record(): DbImportRecord | null {
     case "imported":
       return { ...RECORD_BASE, state: "imported" };
     case "connected":
-      return { ...RECORD_BASE, mirroredUser: "rex_ea_test", state: "connected", verified: "signin" };
+      return { ...RECORD_BASE, mirroredUser: "rex_myblog_test", state: "connected", verified: "signin" };
     case "connectedHttp":
-      return { ...RECORD_BASE, mirroredUser: "rex_ea_test", state: "connected", verified: "signin+http" };
+      return { ...RECORD_BASE, mirroredUser: "rex_myblog_test", state: "connected", verified: "signin+http" };
     default:
       return null;
   }
@@ -81,7 +81,7 @@ const WP_DIFF = [
   { sign: "-", line: 4, text: "define( 'DB_HOST', '127.0.0.1' );" },
   { sign: "+", line: 4, text: "define( 'DB_HOST', '127.0.0.1:13306' );" },
   { sign: "-", line: 3, text: "define( 'DB_USER', 'root' );" },
-  { sign: "+", line: 3, text: "define( 'DB_USER', 'rex_ea_test' );" },
+  { sign: "+", line: 3, text: "define( 'DB_USER', 'rex_myblog_test' );" },
 ];
 
 function preview(): RewritePreview {
@@ -90,15 +90,15 @@ function preview(): RewritePreview {
       status: "refused",
       reason:
         "DB_HOST is set more than once (lines 40 and 61), so rexenv can't tell which one this site actually uses.",
-      file: "/Users/wpdev/code/ea/wp-config.php",
+      file: "/Users/dev/code/myblog/wp-config.php",
     };
   }
   return {
     status: "ready",
-    file: "/Users/wpdev/code/ea/wp-config.php",
+    file: "/Users/dev/code/myblog/wp-config.php",
     diff: params.get("preview") === "noop" ? [] : WP_DIFF,
     fingerprint: "f".repeat(64),
-    createsUser: params.get("root") === "1" ? "rex_ea_test" : null,
+    createsUser: params.get("root") === "1" ? "rex_myblog_test" : null,
     backupExists: params.get("backup") === "1",
     laravelCacheWarning: params.get("cache") === "1",
     target: "127.0.0.1:13306",
@@ -117,20 +117,20 @@ function applied(): RewriteApplied {
       return {
         status: "engineStopped",
         message:
-          "this change points ea.test at rexenv's own MySQL (127.0.0.1:13306), which isn't running — start it from the Databases page, then apply again.",
+          "this change points myblog.test at rexenv's own MySQL (127.0.0.1:13306), which isn't running — start it from the Databases page, then apply again.",
       };
     case "verifyFailed":
       return {
         status: "verifyFailed",
         reason:
-          "the server refused the file's own credentials (Access denied for user 'rex_ea_test'@'localhost') — the site isn't marked connected until a sign-in succeeds.",
+          "the server refused the file's own credentials (Access denied for user 'rex_myblog_test'@'localhost') — the site isn't marked connected until a sign-in succeeds.",
         message:
-          "the change was applied and backed up, but the sign-in check didn't pass — ea.test is not marked connected. You can revert the change from this card.",
+          "the change was applied and backed up, but the sign-in check didn't pass — myblog.test is not marked connected. You can revert the change from this card.",
       };
     default:
       return {
         status: "applied",
-        record: { ...RECORD_BASE, mirroredUser: "rex_ea_test", state: "connected", verified: "signin+http" },
+        record: { ...RECORD_BASE, mirroredUser: "rex_myblog_test", state: "connected", verified: "signin+http" },
         message: "verified: the rewritten settings sign in to the rexenv copy of `ea`.",
       };
   }
@@ -141,7 +141,7 @@ function reverted(): RewriteRevertOutcome {
     case "refusedEdited":
       return {
         status: "refusedEdited",
-        file: "/Users/wpdev/code/ea/wp-config.php",
+        file: "/Users/dev/code/myblog/wp-config.php",
         reason: "editedSinceRewrite",
         message:
           "This file was edited after the rewrite — restoring the backup would replace those edits. Choose \"restore anyway\" to proceed.",
@@ -149,16 +149,16 @@ function reverted(): RewriteRevertOutcome {
     case "backupMissing":
       return {
         status: "backupMissing",
-        file: "/Users/wpdev/code/ea/wp-config.php",
+        file: "/Users/dev/code/myblog/wp-config.php",
         message:
           "rexenv's copy of the original is gone; your file was left exactly as it is. To go back to the old database, edit the file yourself.",
       };
     default:
       return {
         status: "reverted",
-        file: "/Users/wpdev/code/ea/wp-config.php",
+        file: "/Users/dev/code/myblog/wp-config.php",
         message:
-          "/Users/wpdev/code/ea/wp-config.php was restored to the original, byte for byte; the site is back on its previous connection settings.",
+          "/Users/dev/code/myblog/wp-config.php was restored to the original, byte for byte; the site is back on its previous connection settings.",
       };
   }
 }
@@ -179,10 +179,10 @@ function DeleteView() {
   const long = params.get("long") === "1";
   const longOver: Partial<Site> = long
     ? {
-        name: "storeware-reviews-staging",
-        domain: "storeware-reviews-staging.test",
-        dbName: "wp_storeware_reviews_staging_9a1b2c3d",
-        path: "/Users/wpdev/Projects/clients/storeware/storeware-reviews-staging",
+        name: "acme-reviews-staging",
+        domain: "acme-reviews-staging.test",
+        dbName: "wp_acme_reviews_staging_9a1b2c3d",
+        path: "/Users/dev/Projects/clients/acme/acme-reviews-staging",
       }
     : {};
   const site =
@@ -241,8 +241,8 @@ function SitesScaleView() {
     return {
       site: fixtureSite({
         id: `s${i}`,
-        name: i % 6 === 2 ? `storeware-reviews-staging-${i}` : `site-${i}`,
-        domain: i % 6 === 2 ? `storeware-reviews-staging-${i}.test` : `site-${i}.test`,
+        name: i % 6 === 2 ? `acme-reviews-staging-${i}` : `site-${i}`,
+        domain: i % 6 === 2 ? `acme-reviews-staging-${i}.test` : `site-${i}.test`,
         docrootManaged: i % 2 === 0 ? true : false,
       }),
       dbState,
@@ -275,7 +275,7 @@ function BadgesView() {
     { site: fixtureSite({ name: "plain", domain: "plain.rex", docrootManaged: true }) },
     { site: fixtureSite({ name: "external", domain: "linked.test" }) },
     { site: fixtureSite({ name: "imported-db", domain: "lms.test" }), dbState: "imported" },
-    { site: fixtureSite({ name: "connected-db", domain: "ea.test" }), dbState: "connected" },
+    { site: fixtureSite({ name: "connected-db", domain: "myblog.test" }), dbState: "connected" },
     {
       site: fixtureSite({ name: "half", domain: "half.test", provisioned: false }),
       dbState: "imported",
@@ -284,8 +284,8 @@ function BadgesView() {
       // The worst realistic row: longest real domain + external + a DB badge
       // + running, all at once — the name must truncate, nothing may wrap.
       site: fixtureSite({
-        name: "storeware-reviews-staging",
-        domain: "storeware-reviews-staging.test",
+        name: "acme-reviews-staging",
+        domain: "acme-reviews-staging.test",
       }),
       dbState: "imported",
     },
@@ -345,7 +345,7 @@ function PillsView() {
 function ToastView() {
   useEffect(() => {
     toast.info(
-      "Not deleted — /Users/wpdev/code/lms/wp-config.php was edited after the rewrite — restoring the backup would replace those edits. Choose \"restore anyway\" to proceed. Resolve it on the site's Database tab, or delete without reverting.",
+      "Not deleted — /Users/dev/code/crm/wp-config.php was edited after the rewrite — restoring the backup would replace those edits. Choose \"restore anyway\" to proceed. Resolve it on the site's Database tab, or delete without reverting.",
     );
     toast.success("verified: the rewritten settings sign in to the rexenv copy of `ea`.");
     toast.error(

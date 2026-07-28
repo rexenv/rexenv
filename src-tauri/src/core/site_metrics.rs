@@ -84,14 +84,14 @@ mod tests {
         std::fs::write(
             &log,
             "127.0.0.1 - - [07/Jul/2026:20:20:40 +0600] \"POST /x HTTP/1.1\" 200 58 \"-\" \"-\"\n\
-             tr.test 2026-07-07T20:20:40+06:00 1000\n\
-             tr.test 2026-07-07T20:20:50+06:00 500\n\
+             blog.test 2026-07-07T20:20:40+06:00 1000\n\
+             blog.test 2026-07-07T20:20:50+06:00 500\n\
              shakib.test 2026-07-07T20:20:55+06:00 250\n\
-             tr.test 2026-07-07T20:19:00+06:00 9999\n", // outside the 60s window
+             blog.test 2026-07-07T20:19:00+06:00 9999\n", // outside the 60s window
         )
         .unwrap();
         let act = activity_by_host(&log, now);
-        assert_eq!(act["tr.test"], SiteActivity { requests: 2, bytes: 1500 });
+        assert_eq!(act["blog.test"], SiteActivity { requests: 2, bytes: 1500 });
         assert_eq!(act["shakib.test"], SiteActivity { requests: 1, bytes: 250 });
         let _ = std::fs::remove_dir_all(&dir);
     }
