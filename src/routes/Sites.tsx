@@ -213,7 +213,11 @@ export function SiteRow({
       >
         {t.letter}
       </div>
-      <div className="flex w-[188px] flex-none flex-col gap-px">
+      {/* The name column is the row's ONE flexible thing: everything to its
+          right is nowrap/fixed, so when badges + pills + a long domain all
+          land on one row, the name truncates instead of the badges
+          ballooning into neighbouring rows (UI-REVIEW §C1.2). */}
+      <div className="flex w-[188px] min-w-[110px] shrink flex-col gap-px">
         <div className="truncate text-[0.84375rem] font-semibold text-rex-text">
           {site.name}
         </div>
@@ -221,8 +225,11 @@ export function SiteRow({
           {site.domain}
         </div>
       </div>
+      {/* Quick actions reserve ~140px even while invisible (opacity). Below
+          lg they disappear from LAYOUT too — every action still exists in
+          the row menu — so badge-heavy rows fit narrow windows (§C1.2). */}
       <div
-        className="ml-1 flex items-center gap-px opacity-0 transition-opacity group-hover:opacity-100"
+        className="ml-1 hidden items-center gap-px opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
         onClick={(e) => e.stopPropagation()}
       >
         <Button
@@ -266,7 +273,13 @@ export function SiteRow({
         )}
       </div>
       <div className="flex-1" />
-      <SiteMetrics res={resources} />
+      {/* Metrics reserve a fixed 168px column for cross-row alignment; below
+          xl that reservation is what pushed badge-heavy rows past the window
+          edge, so the column yields entirely (supplementary data — SiteDetail
+          has the full numbers). */}
+      <div className="hidden xl:contents">
+        <SiteMetrics res={resources} />
+      </div>
       <span
         title={site.ssl ? "SSL · trusted" : "No SSL"}
         className="flex flex-none items-center"
@@ -285,7 +298,7 @@ export function SiteRow({
            the site. True for a linked folder and for one moved out of the sites
            folder, which is why it reads "external" rather than "linked". */
         <span
-          className="rounded-full border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.625rem] text-rex-text-muted"
+          className="flex-none whitespace-nowrap rounded-full border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.625rem] text-rex-text-muted"
           title={`Served from your own folder (${site.path}) — deleting the site leaves it in place`}
         >
           external
@@ -297,17 +310,17 @@ export function SiteRow({
            verification can write) — the badge and the summary cannot
            disagree, because neither computes anything. */
         <span
-          className="rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
+          className="flex-none whitespace-nowrap rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
           title="A copy of this site's database is on rexenv's engine, but the site still reads and writes the old one — they drift apart until you switch it over (see the site's Database tab)."
         >
-          DB imported · not connected
+          DB imported
         </span>
       )}
       {dbState === "connected" && (
         /* Wording matches what was PROVEN: the rewritten settings sign in to
            the rexenv copy — not "the site is now using this database". */
         <span
-          className="rounded-full border border-status-running-border bg-status-running-bg px-2 py-1 font-mono text-[0.625rem] text-status-running-bright"
+          className="flex-none whitespace-nowrap rounded-full border border-status-running-border bg-status-running-bg px-2 py-1 font-mono text-[0.625rem] text-status-running-bright"
           title="This site's connection settings were rewritten and verified: they sign in to the rexenv copy (see the site's Database tab)."
         >
           DB connected
@@ -320,7 +333,7 @@ export function SiteRow({
            the site is NOT healthy-stopped. Retry re-runs the remaining
            idempotent steps; Delete (menu) removes it. */
         <span
-          className="flex min-w-[92px] items-center justify-center gap-1 rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
+          className="flex min-w-[92px] flex-none items-center justify-center gap-1 whitespace-nowrap rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
           title="Provisioning did not finish — Retry re-runs the remaining steps; Delete removes the site."
         >
           setup incomplete

@@ -215,6 +215,15 @@ function BadgesView() {
       site: fixtureSite({ name: "half", domain: "half.test", provisioned: false }),
       dbState: "imported",
     },
+    {
+      // The worst realistic row: longest real domain + external + a DB badge
+      // + running, all at once — the name must truncate, nothing may wrap.
+      site: fixtureSite({
+        name: "storeware-reviews-staging",
+        domain: "storeware-reviews-staging.test",
+      }),
+      dbState: "imported",
+    },
   ];
   return (
     <div className="space-y-2">
