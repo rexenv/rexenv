@@ -311,6 +311,54 @@ pub fn delete_resolver_takeover(conn: &Connection, tld: &str) -> Result<bool> {
     Ok(conn.execute("DELETE FROM resolver_takeovers WHERE tld = ?1", params![tld])? > 0)
 }
 
+/// One recorded live tunnel (v23). Rows exist from spawn to clean stop/exit;
+/// a row found at launch is a crash survivor for the sweep to settle.
+#[derive(Debug, Clone)]
+pub struct TunnelRecord {
+    pub domain: String,
+    pub pid: u32,
+    /// The site's docroot AT SPAWN TIME — the sweep removes the tunnel
+    /// mu-plugin here without a site lookup (the site may be gone by then).
+    pub docroot: String,
+}
+
+fn row_to_tunnel(row: &Row) -> rusqlite::Result<TunnelRecord> {
+    Ok(TunnelRecord { domain: row.get(0)?, pid: row.get(1)?, docroot: row.get(2)? })
+}
+
+/// Record a spawned tunnel. Replaces any previous row for the domain (a
+/// restart after an unclean stop records the NEW pid — the old one is the
+/// sweep's or exit hook's to settle, and the newest spawn is the live one).
+pub fn record_tunnel(conn: &Connection, domain: &str, pid: u32, docroot: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO tunnels (domain, pid, docroot) VALUES (?1, ?2, ?3)
+         ON CONFLICT(domain) DO UPDATE SET
+             pid = excluded.pid,
+             docroot = excluded.docroot,
+             started_at = datetime('now')",
+        params![domain, pid, docroot],
+    )?;
+    Ok(())
+}
+
+/// Every recorded tunnel, domain-sorted.
+pub fn list_tunnels(conn: &Connection) -> Result<Vec<TunnelRecord>> {
+    let mut stmt = conn.prepare("SELECT domain, pid, docroot FROM tunnels ORDER BY domain")?;
+    let rows = stmt.query_map([], row_to_tunnel)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// Forget a tunnel record — clean stop, failed start, or settled by the sweep.
+pub fn delete_tunnel(conn: &Connection, domain: &str) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM tunnels WHERE domain = ?1", params![domain])? > 0)
+}
+
+/// Forget every tunnel record (app-exit hook, after killing them all).
+pub fn clear_tunnels(conn: &Connection) -> Result<()> {
+    conn.execute("DELETE FROM tunnels", [])?;
+    Ok(())
+}
+
 /// Read a setting value by key, or `None` if unset.
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;

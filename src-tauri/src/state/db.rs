@@ -278,6 +278,21 @@ const MIGRATIONS: &[&str] = &[
     // digest is recorded only AFTER the rename succeeds, so every crash
     // window fails toward the safe branch.
     "ALTER TABLE config_rewrites ADD COLUMN written_digest TEXT;",
+    // v23 — tunnel lifecycle (ruling 28 Jul 2026: tunnels DIE WITH THE APP).
+    // One row per spawned cloudflared, written at spawn — BEFORE the URL poll,
+    // so a start the app quits out of mid-poll is still on record — and
+    // deleted on clean stop, failed start, and app exit. A row surviving to
+    // the next launch therefore means a crash: the startup sweep
+    // (core::tunnels::sweep_startup) kills the pid only after positive argv
+    // identification and removes the mu-plugin at `docroot` either way.
+    // `docroot` is recorded, not looked up at sweep time — a site deleted or
+    // renamed between crash and relaunch must still get its file removed.
+    "CREATE TABLE tunnels (
+        domain     TEXT PRIMARY KEY,
+        pid        INTEGER NOT NULL,
+        docroot    TEXT NOT NULL,
+        started_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -802,6 +817,33 @@ mod tests {
         store::set_config_rewrite_digest(&conn, "s1", "/p/wp-config.php", "abc123").unwrap();
         let row = store::get_config_rewrite(&conn, "s1", "/p/wp-config.php").unwrap().unwrap();
         assert_eq!(row.written_digest.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn v23_tunnel_records_roundtrip_replace_and_clear() {
+        // Upgrade path: a v22 database gains the tunnels table.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..22].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        migrate(&conn).unwrap();
+
+        use crate::state::store;
+        store::record_tunnel(&conn, "a.rex", 111, "/sites/a").unwrap();
+        store::record_tunnel(&conn, "b.rex", 222, "/sites/b").unwrap();
+        // Re-record for the same domain replaces pid + docroot (restart after
+        // an unclean stop records the NEW spawn).
+        store::record_tunnel(&conn, "a.rex", 333, "/moved/a").unwrap();
+        let rows = store::list_tunnels(&conn).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!((rows[0].domain.as_str(), rows[0].pid, rows[0].docroot.as_str()),
+                   ("a.rex", 333, "/moved/a"));
+
+        assert!(store::delete_tunnel(&conn, "a.rex").unwrap());
+        assert!(!store::delete_tunnel(&conn, "a.rex").unwrap()); // already gone
+        store::clear_tunnels(&conn).unwrap();
+        assert!(store::list_tunnels(&conn).unwrap().is_empty());
     }
 
     #[test]
