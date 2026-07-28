@@ -109,7 +109,8 @@ export function Tunnels() {
               <div className="flex-1 text-[0.8125rem] leading-[1.55] text-rex-text-bright">
                 Sharing creates a <span className="font-medium text-rex-text">free, temporary public link</span>{" "}
                 through Cloudflare — anyone with the URL reaches your local site, no deploy required. Links
-                last while sharing is on and disappear when you stop.
+                last while sharing is on and disappear when you stop or quit rexenv. If rexenv crashes, a
+                link can stay live until rexenv next opens — it's shut down automatically then.
               </div>
               <span className="flex-none whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-[9px] py-1 font-mono text-[0.625rem] text-rex-text-dim">
                 via cloudflared

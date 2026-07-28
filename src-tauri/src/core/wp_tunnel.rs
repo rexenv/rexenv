@@ -17,9 +17,17 @@
 //!     (`https:\/\/…` in REST/inline settings), and %-encoded — via `ob_start`.
 //!
 //! Local requests carry no Cloudflare headers and are untouched, so the site
-//! stays fully usable at its `.test` domain while shared. The file is removed on
-//! tunnel stop; a stale copy (crash) is inert — its dead tunnel receives no
-//! requests, and the next start overwrites it.
+//! stays fully usable at its `.test` domain while shared.
+//!
+//! File lifetime (ruling 28 Jul 2026): **bounded by the tunnel's lifetime plus
+//! at most one app relaunch.** Removed on tunnel stop and at app quit — tunnels
+//! die with the app (`commands::tunnels::kill_all_on_exit`). After a CRASH the
+//! tunnel can survive until the next launch, and while it does this file is
+//! live and doing its job for a genuinely live tunnel; the launch sweep
+//! (`tunnels::sweep_startup`) then kills the tunnel and removes the file
+//! together. Do NOT weaken this into "leftover copies are harmless": a copy
+//! next to a live tunnel is ACTIVE by design, and only the sweep — after the
+//! kill — may treat one as dead.
 //!
 //! Scope: the tunnel is bound to ONE Host, so a subdomain-multisite network shares
 //! its main site only (sub-sites have their own hosts); subdirectory multisite

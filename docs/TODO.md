@@ -6,6 +6,49 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
 
 ## Actionable now
 
+- [ ] **Tunnel hardening — end-to-end review 28 Jul 2026, fix order RULED same day**
+  (report + lifecycle decision: `docs/PLAN-tunnel-lifecycle.md`). Root finding: tunnels
+  inherited NEITHER lifecycle model (not killed with the app like jobs, structurally
+  unadoptable like services — cloudflared binds no port). Fix in this order:
+  - [x] **1. Lifecycle: dies with the app + crash swept at next launch** ✓ SHIPPED
+    28 Jul 2026 — `0aae71a` v23 tunnels table (spawn-time rows, docroot recorded);
+    `d22cfa0` record before URL poll, failed starts settle their own row, stop/delete/
+    rename delete the row; `92d6daf` `RunEvent::Exit` kill from rows (in-flight starts
+    covered, reaped pids never re-signalled); `311bb57` launch sweep killing ONLY on
+    positive argv identity (`ProcessSupervisor::pid_command`; recycled pid ⇒ cleanup,
+    no signal — live-verified `examples/tunnel_sweep.rs`: foreign process survives,
+    identified dies, dead cleans); mu-plugin claim restated (lifetime = tunnel lifetime
+    + at most one relaunch), crash-gap disclosure added to the Tunnels page copy.
+    ✓ 521 lib tests, examples build+run, tsc via next UI task.
+  - [ ] **2. Status honesty** — `try_wait` so a dead child can never read Live; decide
+    whether "Live" should also mean a URL probe or process-liveness is the honest ceiling.
+  - [ ] **3. Override-site refusal** — tunneling an Apache/FrankenPHP site hits nginx's
+    DEFAULT vhost and serves ANOTHER site publicly (`commands/tunnels.rs` targets
+    `NGINX_HTTP_PORT` unconditionally; `sites.rs is_nginx_served` excludes overrides).
+    Refuse with an honest reason until it can be done right. Cross-site exposure.
+  - [ ] **4. Double-start race** — no in-flight guard in `start_tunnel` (check-then-act
+    across a 30s await; second insert leaks the first child untracked) + the UI half:
+    the card's `StartStopToggle` stays clickable during "Starting…" and a click that
+    reads as cancel actually starts a SECOND tunnel (no `busy` prop passed).
+  - [ ] **5. Bedrock content-dir** — `wp_tunnel`/`wp_login` hardcode
+    `docroot/wp-content/mu-plugins`; Bedrock (a supported linked layout, content at
+    `web/app`) gets junk dirs in the repo and a silently dead feature. Audit every
+    hardcoded `wp-content` assumption — Stage 0 made docroots not-ours.
+  - [ ] **6. Leftover files, linked-repo lens** — delete/rename must remove the tunnel
+    mu-plugin for PRESERVED docroots (delete relies on docroot removal — false for
+    linked); `rexenv-login.php` has NO removal path anywhere and needs an owner.
+  - [ ] **7. Cross-guards** — tunnels sit fully outside the provision/db-import/rewrite
+    guard family in BOTH directions; a db-import can churn a publicly-live site.
+  - [ ] **Disclosure copy** — linked-docroot exposure deltas in the share UI: nginx
+    follows symlinks out of the project; stray dev PHP in the repo is publicly
+    executable while shared. Not bugs — the user should be told before clicking.
+  - **Deferred (deliberate):** parent-death watcher helper (kqueue `NOTE_EXIT`) to close
+    the crash→relaunch exposure gap entirely — a new long-lived helper process to get
+    right vs. a rare window already bounded by next launch; revisit only if crash
+    reports show the gap mattering. Quit-time warning ("quitting stops N public
+    shares", `CloseRequested`) lands AFTER step 2 — only an honest count is worth
+    confirming.
+
 - [x] **Migrate an existing Valet / Herd environment into rexenv** ✓ **ALL FOUR
   STAGES SHIPPED** — Stage 3's §J packaged pass (the last gate) passed 28 Jul 2026.
   APPROVED 26 Jul 2026, all four stages ship BEFORE the release. Plan + research:
