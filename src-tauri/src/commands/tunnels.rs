@@ -181,6 +181,69 @@ pub fn spawn_health_prober<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     });
 }
 
+/// Live share count for the quit warning: dead children are settled FIRST, so
+/// the number names what is actually running — never registry entries that
+/// liveness has already invalidated.
+pub fn live_share_count<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> usize {
+    use tauri::Manager;
+    let (Some(registry), Some(state)) =
+        (app.try_state::<Tunnels>(), app.try_state::<AppState>())
+    else {
+        return 0;
+    };
+    settle_dead(&state, registry.take_dead());
+    registry.0.lock().map(|m| m.len()).unwrap_or(0)
+}
+
+/// Quit flows once the user has confirmed (or nothing was shared).
+static QUIT_CONFIRMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// One dialog at a time — a second Cmd+Q while it's up must not stack another.
+static QUIT_DIALOG_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Quit warning (28 Jul 2026): inform, don't obstruct. `true` = let the
+/// quit/close proceed. With no live shares (or after a confirm) quitting is
+/// untouched. With live shares the caller prevents the exit and this shows a
+/// native confirm naming the count — OFF the main thread, where
+/// `blocking_show` would deadlock the event loop — then re-exits on "Quit"
+/// with the flag set. "Keep sharing" simply drops the quit request.
+pub fn confirm_quit_or_prompt<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    use std::sync::atomic::Ordering;
+    if QUIT_CONFIRMED.load(Ordering::SeqCst) {
+        return true;
+    }
+    let n = live_share_count(app);
+    if n == 0 {
+        return true;
+    }
+    if QUIT_DIALOG_OPEN.swap(true, Ordering::SeqCst) {
+        return false; // dialog already up — keep holding the quit
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+        let message = if n == 1 {
+            "Quitting stops 1 public share — its link goes dead immediately.".to_string()
+        } else {
+            format!("Quitting stops {n} public shares — their links go dead immediately.")
+        };
+        let confirmed = app
+            .dialog()
+            .message(message)
+            .title("Stop sharing?")
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Quit".to_string(),
+                "Keep sharing".to_string(),
+            ))
+            .blocking_show();
+        QUIT_DIALOG_OPEN.store(false, Ordering::SeqCst);
+        if confirmed {
+            QUIT_CONFIRMED.store(true, Ordering::SeqCst);
+            app.exit(0);
+        }
+    });
+    false
+}
+
 /// App-exit hook: tunnels DIE WITH THE APP (lifecycle ruling 28 Jul 2026 —
 /// `docs/PLAN-tunnel-lifecycle.md`). A service outliving the app serves the
 /// developer; a tunnel outliving it serves the PUBLIC, unattended — so this is

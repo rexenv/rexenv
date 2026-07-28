@@ -23,6 +23,18 @@ pub fn run() {
     tauri::Builder::default()
         // Native open/save dialogs (Settings → Sites folder picker).
         .plugin(tauri_plugin_dialog::init())
+        // Closing the window quits the app, which stops live public shares —
+        // same pause-and-confirm as Cmd+Q (RunEvent::ExitRequested below).
+        // Held HERE too because a closed-then-cancelled window can't come
+        // back; preventing the close keeps it alive under the dialog.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                use tauri::Manager;
+                if !commands::tunnels::confirm_quit_or_prompt(window.app_handle()) {
+                    api.prevent_close();
+                }
+            }
+        })
         // Database Browser: `rexdb://localhost/…` proxies the embedded Adminer
         // through Rust with a native cookie jar — WebKit withholds third-party
         // cookies in cross-site iframes (ITP), which silently killed every
@@ -724,16 +736,29 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // Repo install/build jobs AND tunnels die WITH the app (deliberate
-            // opposite of services-outlive-the-app: jobs are interactive
-            // actions — an orphaned npm would keep writing into wp-content —
-            // and a tunnel outliving the app serves the PUBLIC unattended;
-            // lifecycle ruling 28 Jul 2026). Crash paths bypass this hook
-            // entirely — the launch sweep (core::tunnels::sweep_startup) is
-            // the other half of the story.
-            if let tauri::RunEvent::Exit = event {
-                commands::repo::cancel_all_on_exit(app);
-                commands::tunnels::kill_all_on_exit(app);
+            match event {
+                // Quitting stops live public shares (tunnels die with the
+                // app), so a quit with shares up pauses ONCE for a native
+                // confirm naming the count — inform, don't obstruct: no
+                // shares means no dialog, ever. Covers Cmd+Q; window close
+                // routes through on_window_event above.
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    if !commands::tunnels::confirm_quit_or_prompt(app) {
+                        api.prevent_exit();
+                    }
+                }
+                // Repo install/build jobs AND tunnels die WITH the app
+                // (deliberate opposite of services-outlive-the-app: jobs are
+                // interactive actions — an orphaned npm would keep writing
+                // into wp-content — and a tunnel outliving the app serves the
+                // PUBLIC unattended; lifecycle ruling 28 Jul 2026). Crash
+                // paths bypass this hook entirely — the launch sweep
+                // (core::tunnels::sweep_startup) is the other half.
+                tauri::RunEvent::Exit => {
+                    commands::repo::cancel_all_on_exit(app);
+                    commands::tunnels::kill_all_on_exit(app);
+                }
+                _ => {}
             }
         });
 }
