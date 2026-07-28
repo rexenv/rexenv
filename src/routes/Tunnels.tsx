@@ -363,7 +363,7 @@ function TunnelCard({
             <span>
               {health === "reachable" && "Public link confirmed reachable — checked every 30 s."}
               {health === "unverified" &&
-                "Public link can't be reached right now — it may still be coming up, or it may have dropped. If this persists, stop and share again."}
+                "Public link can't be reached from this machine right now — fresh links can take a while to resolve here (local DNS caching) while already working elsewhere. Try it from another device; if it stays unreachable everywhere, stop and share again."}
               {health === "broken" && "Public link is down."}
             </span>
             <span>Anyone with this link can reach your local site.</span>

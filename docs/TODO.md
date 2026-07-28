@@ -128,6 +128,13 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     isn't up; replace `ensure_tunnelable`'s refusal (its "yet" message is the
     seam). Health probe, mu-plugin, claim/row machinery are all origin-agnostic —
     no changes there.
+  - [ ] **DNS agent answers ARBITRARY names when queried directly** (found during the
+    28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
+    `127.0.0.1` — the hickory agent is a catch-all wildcard, not per-TLD zones.
+    Harmless today (only `/etc/resolver/{rex,sb,test}` route queries to it), but
+    "answers anything" is unintended: anything ever pointed more broadly at :15353
+    would black-hole all DNS to localhost. Scope it to configured TLDs; NXDOMAIN
+    the rest.
   - **Deferred (deliberate):** parent-death watcher helper (kqueue `NOTE_EXIT`) to close
     the crash→relaunch exposure gap entirely — a new long-lived helper process to get
     right vs. a rare window already bounded by next launch; revisit only if crash
