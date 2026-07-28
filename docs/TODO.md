@@ -43,10 +43,18 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     Human verify: quit while sharing (dialog + both buttons), quit while not
     sharing (no dialog), share attempt for an Apache site via `rex tunnel start`
     (refusal text). `e434fe4` scripts/verify.sh is now the pre-commit bar.
-  - [ ] **4. Double-start race** — no in-flight guard in `start_tunnel` (check-then-act
-    across a 30s await; second insert leaks the first child untracked) + the UI half:
-    the card's `StartStopToggle` stays clickable during "Starting…" and a click that
-    reads as cancel actually starts a SECOND tunnel (no `busy` prop passed).
+  - [x] **4. Double-start race** ✓ SHIPPED 28 Jul 2026 — `87044fe` the v23 row IS the
+    guard: atomic claim (`INSERT..DO NOTHING`) BEFORE resolve/spawn, so the loser
+    errors before it can spawn or truncate the winner's log; sentinel pid `u32::MAX`
+    (inert even unguarded) until the child exists, exit hook + sweep skip it.
+    Stop-vs-start closed BOTH ways: stop kills an in-flight recorded pid on positive
+    argv ID only and deletes the row = claim REVOKED (`set_tunnel_pid` false ⇒
+    pre-spawn start cancels itself; post-spawn kill caught by the poll's new
+    `try_wait` early-exit in ≤300ms, which also ends the burn-30s-on-a-dead-spawn
+    bug). Exit-during-in-flight: covered — the claim exists before any child, the
+    exit hook reads rows. `4055c01` toggle disabled (busy) during Starting — no
+    stop-shaped control requesting a second start. ✓ verify.sh green, sweep example
+    + pending-claim branch PASS, claim/revoke store tests.
   - [ ] **5. Bedrock content-dir** — `wp_tunnel`/`wp_login` hardcode
     `docroot/wp-content/mu-plugins`; Bedrock (a supported linked layout, content at
     `web/app`) gets junk dirs in the repo and a silently dead feature. Audit every
