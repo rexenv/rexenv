@@ -160,6 +160,22 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     edge 200 pinned to never upgrade). Anycast limit documented at the claim
     site. Probe-session note: the kill -9 mapping can now also watch the
     diagnosis line, not just the badge.
+  - [x] **Phase A/B do-no-harm probing** ✓ SHIPPED 28 Jul 2026 — `009cbf9`. The
+    best finding of the tunnel effort, out of a question that looked like a
+    misunderstanding: OUR immediate post-start probe (step 2's latency
+    optimisation) asked the system resolver ~1s after the banner, inside the
+    propagation window, and trycloudflare's SOA MINIMUM = 1800s (MEASURED via
+    1.1.1.1 + 8.8.8.8, identical) negative-caches the LAN's resolver for 30
+    minutes — every device behind the router, which is why the phone worked
+    only on cellular. We made the race universal. Phase A: 1.1.1.1 + pinned-
+    address edge checks only; Phase B once the record is provably public (or
+    the 5-min escape-hatch cap for 1.1.1.1-blocked networks — reasoning at the
+    const), system probe run the SAME tick the gate opens. Pinned loudly:
+    `phase_a_never_plans_a_system_dns_query`. Copy: dns-propagating nudges
+    against the user's own too-early click — the only remaining poisoning path.
+    PROBE SESSION addition: after a fresh share, watch `dig @1.1.1.1`
+    second-by-second — the banner→authoritative gap decides how often a
+    human-speed click races on its own; the last unknown in this chain.
   - [ ] **DNS agent answers ARBITRARY names when queried directly** (found during the
     28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
     `127.0.0.1` — the hickory agent is a catch-all wildcard, not per-TLD zones.
