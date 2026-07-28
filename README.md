@@ -6,8 +6,12 @@ A native, lightweight, limitless local development environment for web & WordPre
 > one-click WordPress on real `https://*.rex`, multi-PHP (8.0–8.5), Nginx + per-site
 > FrankenPHP/Apache, MySQL/MariaDB per site + PostgreSQL/Redis, per-engine DB version
 > switching, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
-> Cloudflare tunnels, blueprints, autostart. Open work is tracked in `docs/TODO.md`;
-> Windows/Linux ports are `todo!()` stubs by design.
+> Cloudflare tunnels, blueprints, autostart — plus, since July 2026: linked sites
+> (serve any existing folder in place), full Valet/Herd migration (scan → import →
+> database copy → consent-gated connection rewrite, all reversible), plugin/theme
+> add-from-Git with streamed jobs and watchers, per-site Xdebug, and the 40+-command
+> `rex` CLI. Open work is tracked in `docs/TODO.md`; Windows/Linux ports are
+> `todo!()` stubs by design.
 
 ---
 
@@ -29,11 +33,17 @@ whole WP plugin/theme/user manager, and `rex doctor`.
 ## Docs
 
 - **`docs/ARCHITECTURE.md`** — how rexenv works today, end-to-end. *Read this first.*
+- **`docs/MAP.md`** — where everything lives: subsystem → files → entry points.
+- **`CONTRIBUTING.md`** — build/run, the verification gate, conventions, deliberate decisions.
+- **`docs/TESTING.md`** / **`docs/CLAIM-LEDGER.md`** — the layer model + the claim
+  inventory that is the project's test metric.
 - **`docs/PORTS.md`** — the full port map + pinned binary versions.
-- **`docs/TODO.md`** — all open work (the single active-work file).
+- **`docs/TODO.md`** — all open work (open items only; the shipped evidence log is archived).
 - **`docs/CLI-ROADMAP.md`** — the `rex` CLI: shipped command surface + remaining items.
 - **`CLAUDE.md`** — agent router: non-negotiable rules + "for X read Y" index.
 - **`docs/INSTALL.md`** / **`docs/SMOKE-TEST.md`** — user install guide / clean-Mac release checklist.
+- **`docs/PLAN-*.md`** — design records for the larger features (linked sites, the
+  Valet/Herd migration stages); statuses in each header.
 - **`docs/archive/`** — historical: founding spec, design brief, phase task logs, audit record. May contradict current code.
 
 ## Tech stack
@@ -43,7 +53,7 @@ Tauri 2 (Rust backend + web frontend) · React + TypeScript + Vite · Tailwind C
 ## Prerequisites (macOS, for development)
 
 - **Rust** (stable) — for the Tauri backend
-- **Node.js** (LTS) — for the frontend
+- **Node.js** (LTS) + **pnpm** — for the frontend
 - **Xcode Command Line Tools** — Tauri's macOS prerequisite (`xcode-select --install`)
 
 ## Getting started
@@ -55,10 +65,13 @@ pnpm install
 # run the app in dev (Tauri + Vite)
 pnpm tauri dev
 
-# checks
-pnpm build                                 # strict tsc + vite build
-cargo test --lib   # in src-tauri/        # ~261 unit tests
-cargo run --example <name>                 # live verification binaries (see src-tauri/examples/)
+# THE pre-commit bar (lib tests + example builds + clippy at zero + tsc):
+scripts/verify.sh
+
+# deeper tiers (see CONTRIBUTING.md and docs/TESTING.md):
+scripts/live-checks.sh                     # tiered live checks against real binaries
+scripts/verify-full.sh                     # release gate: verify + sandbox tier + WebKit harness
+cargo run --example <name>                 # a single live check (src-tauri/examples/)
 ```
 
 First launch routes to Onboarding, which performs system setup (installs the
@@ -76,24 +89,31 @@ demand, checksum-pinned, and prepared for macOS automatically.
 rexenv/
 ├── README.md                   # this file
 ├── CLAUDE.md                   # agent router: rules + doc index
+├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions
 ├── design/                     # reference comps (*.dc.html) — one per screen
-├── docs/                       # ARCHITECTURE.md · PORTS.md · TODO.md · INSTALL.md
-│   │                           #   SMOKE-TEST.md · xdebug-debug-build.md
-│   └── archive/                # historical: spec, design brief, task logs, audit
+├── docs/                       # ARCHITECTURE · MAP · TESTING · CLAIM-LEDGER · PORTS
+│   │                           #   TODO · INSTALL · SMOKE-TEST · PUBLISH-TESTING
+│   │                           #   CLI-ROADMAP · SIGNING · DESIGN · PLAN-*.md
+│   └── archive/                # historical: spec, design brief, task logs, audit,
+│                               #   shipped evidence log — may contradict current code
 ├── package.json · tsconfig.json · vite.config.ts
 ├── tailwind.config.js · postcss.config.js · index.html
 │
 ├── cli/                        # ── `rex` CLI (bin) — remote control ONLY ──
 │   └── src/main.rs             # never links the app lib: one JSON line over the
 │                               #   app's private 0600 socket; app not running → exit 2
-├── scripts/build-cli.sh        # stages rex as Tauri sidecars (bundled into the app)
+├── scripts/                    # verify.sh (THE pre-commit bar) · verify-full.sh
+│   │                           #   live-checks.sh (tiered L1 runner) · build-cli.sh
+│   └── wk-checks/              # Playwright WebKit render checks (L2) + README
+├── homebrew-rexenv/            # staging copy of the future Homebrew tap (cask + README)
 │
 ├── src/                        # ── FRONTEND (React + TS) ──
 │   ├── main.tsx                # React entry
 │   ├── App.tsx                 # router, first-run gate, fatal-error screen
-│   ├── routes/                 # one file per screen (1:1 with DESIGN_BRIEF)
+│   ├── routes/                 # one file per screen
 │   │   ├── Sites.tsx · SiteDetail.tsx · Services.tsx · Databases.tsx
-│   │   ├── Mail.tsx · Tunnels.tsx · Settings.tsx · Onboarding.tsx
+│   │   ├── Mail.tsx · Tunnels.tsx · Import.tsx · Settings.tsx · Onboarding.tsx
+│   │   ├── DevGitPanel.tsx · DevUiReview.tsx   # dev-only harnesses (tree-shaken)
 │   ├── components/
 │   │   ├── ui/                 # shadcn/ui primitives (button, dialog, menu, …)
 │   │   ├── shell/              # AppShell, Sidebar, TopBar, StatusFooter
@@ -112,7 +132,8 @@ rexenv/
 └── src-tauri/                  # ── BACKEND (Rust) — Tauri convention ──
     ├── Cargo.toml · tauri.conf.json · build.rs
     ├── capabilities/           # Tauri 2 permission definitions
-    ├── examples/               # live verification binaries (task evidence)
+    ├── examples/               # live checks (L1) — READ examples/common/mod.rs's
+    │                           #   invariant first; tiers in scripts/live-checks.sh
     └── src/
         ├── main.rs             # binary entry (calls lib::run)
         ├── lib.rs              # Tauri builder; registers all commands
@@ -122,21 +143,31 @@ rexenv/
         │
         ├── commands/           # Tauri IPC handlers (THIN — just call core/)
         │   ├── system.rs       # status, setup, DNS/SSL, autostart, open-external
-        │   ├── sites.rs · services.rs · database.rs · php.rs · settings.rs
-        │   └── wordpress.rs · mail.rs · logs.rs · terminal.rs · tunnels.rs · blueprints.rs
+        │   ├── sites.rs · site_provision.rs · services.rs · database.rs · php.rs
+        │   ├── wordpress.rs · wp_install.rs · repo.rs · blueprints.rs
+        │   ├── valet_import.rs · db_import.rs · rewrite.rs · downloads.rs
+        │   └── mail.rs · logs.rs · terminal.rs · tunnels.rs · settings.rs
         │
-        ├── core/               # domain logic (PLATFORM-AGNOSTIC — "the what")
+        ├── core/               # domain logic (PLATFORM-AGNOSTIC — "the what");
+        │   │                   #   every module has a //! doc header; index: docs/MAP.md
         │   ├── service_manager.rs  # owns the stack: dbs, pools, overrides, mail, edge
-        │   ├── sites.rs        # provision / rebuild configs / switches / teardown
+        │   ├── sites.rs · site_env.rs · site_metrics.rs   # lifecycle, env vars, metrics
         │   ├── services.rs     # nginx + php-fpm config gen & control
-        │   ├── php.rs          # multi-version pool registry (8.0–8.5)
+        │   ├── php.rs · phpconf.rs  # multi-version pools (8.0–8.5); wp-config/.env readers
         │   ├── frankenphp.rs · apache.rs   # per-site override backends (loopback, never the edge)
-        │   ├── proxy.rs        # Caddy edge (unix-socket admin, stale-edge recovery)
+        │   ├── proxy.rs        # Caddy edge (unix-socket admin, root daemon, adoption)
         │   ├── database.rs · mariadb.rs · postgres.rs · redis.rs · db.rs   # engines + DbEngine
-        │   ├── wordpress.rs · wp_login.rs          # WP-CLI ops, magic login link
-        │   ├── dns.rs · ssl.rs                     # hickory-dns resolver, rcgen CA
-        │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · tunnels.rs
-        │   ├── blueprints.rs · setup.rs · ports.rs · monitor.rs
+        │   ├── wordpress.rs · wp_login.rs · wporg.rs      # WP-CLI ops, magic login, wp.org search
+        │   ├── dns.rs · tld.rs · ssl.rs · firefox.rs      # resolver + TLD policy, CA
+        │   ├── tunnels.rs · wp_tunnel.rs                  # cloudflared shares + URL rewrite
+        │   ├── valet.rs        # read-only Valet/Herd discovery (import Stage 1)
+        │   ├── dbsource.rs · dbcompat.rs · dbdump.rs · dbrestore.rs · dbmirror.rs · dbimport.rs
+        │   │                   # database import (Stage 2): identify → gate → dump → restore → mirror
+        │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
+        │   ├── repo.rs · devtools.rs                      # add-from-Git, toolchain discovery
+        │   ├── mail.rs · adminer.rs · logs.rs · terminal.rs · monitor.rs
+        │   ├── blueprints.rs · setup.rs · ports.rs · stack_guard.rs · cli.rs
+        │   ├── downloads.rs    # download-manager hub (prefetch-before-lock)
         │   └── binaries.rs     # BinaryProvider: pinned manifest, checksum, prepare
         │
         ├── platform/           # OS-SPECIFIC impls behind traits (CRITICAL)
@@ -144,22 +175,20 @@ rexenv/
         │   │                   #   ProcessSupervisor, AutostartManager, PermissionManager,
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,
         │   │                   #   DnsAgentManager
-        │   ├── macos/          # all 11 impls real
+        │   ├── macos/          # all 11 impls real (+ webview_dialogs.rs)
         │   └── windows/ · linux/   # todo!() stubs (fill later, no restructuring)
         │
-        ├── state/              # app state
-        │   ├── db.rs           # SQLite + migrations (v1–v14)
-        │   ├── models.rs · store.rs
-        │   └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
-        │
-        └── templates/          # (config templates are generated in core/ today)
+        └── state/              # app state
+            ├── db.rs           # SQLite + migrations (v1–v25)
+            ├── models.rs · store.rs
+            └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
 ```
 
 ### Why this shape
 - **`platform/` is the whole cross-platform strategy.** Every OS difference (DNS, trust store, privileges, process supervision, paths, binaries, permissions, shell) is a trait with per-OS impls. Build the macOS impls now and leave Windows/Linux as `todo!()` — adding them later means filling stubs, **not** restructuring.
 - **`core/` never imports OS-specific code** — it talks to `platform/` traits only. This keeps the Windows/Linux ports clean.
 - **`commands/` stay thin** — they translate IPC calls into `core/` calls, so the business logic is testable without the UI.
-- **Frontend mirrors the design** — `routes/` map 1:1 to the screens in `docs/archive/DESIGN_BRIEF.md`; `components/shell/` is the app shell; `lib/ipc/` is the typed bridge to Rust.
+- **Frontend mirrors the design** — `routes/` map 1:1 to screens (`docs/DESIGN.md` holds the design system + the comps' intentional divergences); `components/shell/` is the app shell; `lib/ipc/` is the typed bridge to Rust.
 
 ---
 

@@ -87,6 +87,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | A "must never"/safety claim — is it proven? add one? | `docs/CLAIM-LEDGER.md` — **an invariant comment isn't finished until its ledger row + verdict land in the SAME commit** (a drifted ledger is worse than none); backlog is worked by the ledger's blast-radius tiers, top first |
 | Ports, pinned binary versions, checksums | `docs/PORTS.md` |
 | What's open / pick up work | `docs/TODO.md` (open items ONLY; shipped evidence log: `docs/archive/SHIPPED-2026-07.md`) |
+| Conventions for human contributors | `CONTRIBUTING.md` |
 | rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |
 | Module/file map | `README.md` ("Project structure") |
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
@@ -97,5 +98,5 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |
-| Design tokens, screen specs | `docs/archive/DESIGN_BRIEF.md` + `design/*.dc.html` |
+| Design system, honest-UI rules, comp divergences | `docs/DESIGN.md` (+ `design/*.dc.html` comps, historical) |
 | Why a past decision / phase evidence / audit trail | `docs/archive/` — **historical, may contradict current code; never trust without checking** |
