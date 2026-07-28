@@ -55,10 +55,17 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     exit hook reads rows. `4055c01` toggle disabled (busy) during Starting — no
     stop-shaped control requesting a second start. ✓ verify.sh green, sweep example
     + pending-claim branch PASS, claim/revoke store tests.
-  - [ ] **5. Bedrock content-dir** — `wp_tunnel`/`wp_login` hardcode
-    `docroot/wp-content/mu-plugins`; Bedrock (a supported linked layout, content at
-    `web/app`) gets junk dirs in the repo and a silently dead feature. Audit every
-    hardcoded `wp-content` assumption — Stage 0 made docroots not-ours.
+  - [x] **5. Bedrock content-dir (writers)** ✓ SHIPPED 28 Jul 2026 — `29a247a` v24
+    `sites.content_dir` recorded ONCE (creation + backfill, same fs markers as
+    detection; poison case tested — a bug-written `web/wp-content` can't flip the
+    answer); both mu-plugin writers take the recorded rel; tunnel `disable` sweeps
+    every known layout so pre-v24 strays clean up. "Log in as" was silently broken
+    on Bedrock (wp-cli succeeded, file never loaded). ✓ verify.sh, 527 tests.
+    - [ ] **5b. Audit remainder (reported 28 Jul, awaiting ruling):** add-from-Git
+      clone/link target `repo.rs asset_path` (DANGEROUS on Bedrock — writes into the
+      repo at a dead path); `theme_screenshot` (cosmetic — silently no screenshot);
+      `wp_debug_log_status` (cosmetic-misleading — Bedrock defines live in
+      `config/application.php`, which the wp-config reader never sees).
   - [ ] **6. Leftover files, linked-repo lens** — delete/rename must remove the tunnel
     mu-plugin for PRESERVED docroots (delete relies on docroot removal — false for
     linked); `rexenv-login.php` has NO removal path anywhere and needs an owner.
