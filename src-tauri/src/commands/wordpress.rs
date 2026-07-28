@@ -899,10 +899,34 @@ pub async fn wp_super_admin_add(state: State<'_, AppState>, id: String, user: St
 #[tauri::command]
 pub async fn wp_multisite_convert(
     state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     id: String,
     mode: String,
 ) -> Result<Option<Site>> {
     let mode = MultisiteMode::parse_db(&mode)?;
+    // Mutation-under-share guard (audit A2 enumeration, 28 Jul 2026): the
+    // conversion rewrites the database and wp-config under the live link —
+    // same exposure class as the step-7 job guards. The vhost survives (this
+    // is not the A1 vhost-loss case), but visitors would hit a site
+    // mid-conversion.
+    {
+        let domain = {
+            let conn = state
+                .db
+                .lock()
+                .map_err(|_| Error::Other("database lock poisoned".into()))?;
+            core::sites::get(&conn, &id)?.map(|s| s.domain)
+        };
+        if let Some(domain) = domain {
+            crate::commands::tunnels::refuse_if_shared(
+                &tunnels,
+                &state,
+                &domain,
+                "converting it between single-site and multisite rewrites its database and \
+                 config under the live link — visitors would hit a site mid-conversion",
+            )?;
+        }
+    }
     let (docroot, php, wp) = site_tools(&state, &id).await?;
     let (site, sites) = {
         let conn = state

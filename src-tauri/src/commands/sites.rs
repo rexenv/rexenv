@@ -299,9 +299,33 @@ pub async fn create_site<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn set_site_web_server(
     state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     id: String,
     server: WebServer,
 ) -> Result<Option<Site>> {
+    // Lifetime guard (audit A1, 28 Jul 2026): step 3 made "safe to tunnel" ≡
+    // "has an nginx vhost" — ONE fact — but a check at tunnel start is a
+    // snapshot of a MUTABLE fact. Switching the server of a shared site
+    // removes its nginx vhost while the live tunnel keeps pointing at nginx:
+    // the public URL falls through to the DEFAULT vhost and publishes a
+    // DIFFERENT site. The guard must hold for the tunnel's lifetime; never
+    // auto-stop the share to make room.
+    {
+        let domain = {
+            let conn = lock(&state)?;
+            core::sites::get(&conn, &id)?.map(|s| s.domain)
+        };
+        if let Some(domain) = domain {
+            crate::commands::tunnels::refuse_if_shared(
+                &tunnels,
+                &state,
+                &domain,
+                "switching its web server would remove it from the shared nginx the tunnel \
+                 serves from, and the live link would start publishing whatever nginx's \
+                 default site answers with — a DIFFERENT site",
+            )?;
+        }
+    }
     let (site, sites) = {
         let conn = lock(&state)?;
         let updated = core::sites::set_web_server(&conn, &id, server)?;

@@ -410,6 +410,8 @@ where
             let created = match multisite {
                 Some(mode) => commands::wordpress::wp_multisite_convert(
                     state.clone(),
+                    app.try_state::<commands::tunnels::Tunnels>()
+                        .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?,
                     created.id.clone(),
                     mode,
                 )
@@ -547,6 +549,8 @@ where
                     .map_err(|e| Error::Other(format!("bad server: {e}")))?;
             let site = commands::sites::set_site_web_server(
                 state.clone(),
+                app.try_state::<commands::tunnels::Tunnels>()
+                    .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?,
                 need_str(&args, "id", cmd)?,
                 server,
             )
