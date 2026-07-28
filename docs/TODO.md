@@ -31,10 +31,18 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     alone: Live / Unverified / Broken / absent. ✓ 523 lib tests (fold matrix +
     take_dead with real children), tsc. Human verify: share → kill -9 the cloudflared
     pid → card leaves Live within ~5s; share → watch Unverified→Live within seconds.
-  - [ ] **3. Override-site refusal** — tunneling an Apache/FrankenPHP site hits nginx's
-    DEFAULT vhost and serves ANOTHER site publicly (`commands/tunnels.rs` targets
-    `NGINX_HTTP_PORT` unconditionally; `sites.rs is_nginx_served` excludes overrides).
-    Refuse with an honest reason until it can be done right. Cross-site exposure.
+  - [x] **3. Override-site refusal** ✓ SHIPPED 28 Jul 2026 — `f70a350`
+    `core::tunnels::ensure_tunnelable` refuses ahead of every path (UI + CLI land in
+    `start_tunnel`) reading the SAME predicate as the nginx config generator
+    (`is_nginx_served` — eligibility can't drift from reality). Message names the
+    site, its server, and the default-vhost consequence; "yet" is truthful (per-
+    backend-port origin is a real later fix, recorded ports exist). UI mirrors:
+    disabled toggle + plain hint. ✓ unit test asserts specificity per server.
+    QUIT WARNING also shipped (`7a7da37`, unblocked by step 2's honest count):
+    liveness-settled N, native confirm off the main thread, no shares = no dialog.
+    Human verify: quit while sharing (dialog + both buttons), quit while not
+    sharing (no dialog), share attempt for an Apache site via `rex tunnel start`
+    (refusal text). `e434fe4` scripts/verify.sh is now the pre-commit bar.
   - [ ] **4. Double-start race** — no in-flight guard in `start_tunnel` (check-then-act
     across a 30s await; second insert leaks the first child untracked) + the UI half:
     the card's `StartStopToggle` stays clickable during "Starting…" and a click that
