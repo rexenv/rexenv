@@ -400,6 +400,181 @@ and `shasum ea's wp-config.php` noted BEFORE anything below.
 
 ---
 
+## K) 🚧 The whole migration as ONE journey — scan → serve → copy → connect → revert → delete
+
+Not a re-run of §G/§I/§J: one unbroken arc on one site, exercising the SEAMS
+between stages, ending not with "it worked" but with **"everything of theirs
+is exactly as it was"** — the reversibility promise checked as a single fact.
+
+**Rebuild first.** The installed app predates the §C1/§C2 UI fixes. Build at
+this commit or later (`git log -1 --format=%h` at build time; Settings →
+About must show it).
+
+### Safety — read before step K0
+
+- **Writes into a real project:** K10 (two lines of the primary's
+  `wp-config.php`, backed up first, reverted at K14/K16 — byte-identity is
+  asserted). K9 has YOU add/remove a comment by hand.
+- **Persists on OUR side until the deletes:** site rows + certs, the copied
+  databases, the dedicated `rex_<slug>` user, `config-backups/` entries.
+- **Destructive if misclicked:** the typed-confirm overwrite (K8 — drops
+  OUR copy only), "Restore anyway" (not scheduled — skip unless a step says
+  otherwise), "Delete without reverting" (NOT used in §K; use only the
+  revert-then-delete or plain paths as written).
+- **Targets, from your real scan:** primary = `photocontest.test` (db
+  `photocontest`), secondary = `typingbcc.test` (db `typingbcc`) — swap
+  either for another WP site whose content you'd shrug at losing, but NOT
+  `ea.test` (the §I/§J testbed — §K uses it read-only as the
+  "already imported" exhibit) and not a site whose DBngin database you
+  treasure (nothing here writes to their DBs, but you'll be signing into
+  the sites and pressing delete buttons near them).
+- **If you stop halfway:** nothing of theirs is harmed at ANY stopping
+  point; what's left behind is rexenv state (site rows, copies) you can
+  delete later. The one state needing an action: stopped between K10 and
+  K14, the primary's wp-config points at rexenv's copy until you Revert
+  (the card's button, any time).
+
+### Preconditions
+
+1. Rebuild + reinstall + confirm the commit. Start the rexenv stack.
+2. Quit Herd/Valet (`:443` must be ours — Services shows the edge green).
+3. **Start DBngin's MySQL yourself** (D6 — rexenv never will).
+4. Primary and secondary are NOT in rexenv (delete leftovers from earlier
+   passes if present — that deletion is outside §K's scope).
+
+### K0 — the BEFORE capture (the reversibility baseline)
+
+```sh
+B=~/rexenv-k-before; mkdir -p "$B"
+PROJ=/path/to/photocontest    PROJ2=/path/to/typingbcc     # from the scan rows
+DB=photocontest               DB2=typingbcc
+shasum "$PROJ/wp-config.php" "$PROJ2/wp-config.php" | tee "$B/wpconfig.sha"
+find ~/.config/valet ~/Library/Application\ Support/Herd/config/valet \
+  -maxdepth 2 -exec stat -f "%m %N" {} \; | sort | tee "$B/trees.mtime"
+ls -l /etc/resolver/ | tee "$B/resolver.txt"
+# Content tables only: serving a WP site writes options/transients through
+# THEIR server (WordPress's normal life, not a rexenv write) — so wp_options
+# is deliberately excluded and every deliberate content edit in §K happens
+# only AFTER the site is connected to OUR copy.
+mysql -h127.0.0.1 -P3306 -uroot -p -e \
+  "CHECKSUM TABLE $DB.wp_posts, $DB.wp_postmeta, $DB.wp_users;
+   CHECKSUM TABLE $DB2.wp_posts, $DB2.wp_postmeta, $DB2.wp_users;" | tee "$B/db.checksums"
+```
+(Their client/creds; any MySQL client on 3306 works. If `mysql` isn't on
+PATH, use DBngin's bundled one.)
+
+### The journey
+
+1. **Scan.** `/import`: primary + secondary listed importable;
+   `ea.test` shows **already imported** (a prior stage's state, visible and
+   disabled — the first seam). Counts reconcile with §G's totals minus any
+   sites you've since imported/deleted.
+2. **Import the primary** (site only — no DB checkbox). Expect: one admin
+   prompt at most (resolver already ours), row flips `imported`, Sites shows
+   the row with **external** badge, NO DB badge, Running.
+3. **It serves THEIR site.** `https://photocontest.test` shows the real
+   site (§H: confirm it's not the fallback — the content must be the
+   site's own). It works because it still reads DBngin — that's correct.
+4. **Re-run: scan again.** Primary now **already imported** (disabled);
+   nothing duplicated; New Site with the same domain refuses honestly.
+5. **Interleave: import the secondary** (site only). Both rows healthy —
+   per-site state, not "the current site".
+6. **Copy the database.** Primary → SiteDetail → Database → Import
+   database. Phases run; summary reads **"Imported — not yet connected"**;
+   the panel says the site **still reads and writes the old database**
+   (true — and note it's the PREVIEW-derived sentence now); Sites badge:
+   **external + DB imported**. Adminer (below the card, now full-height —
+   §C2 fix) shows the copy.
+7. **Seam: the card and badge agree at every point from here on** — any
+   disagreement is a finding.
+8. **Re-run: copy again.** Import database again: expect the
+   **typed-name confirm** (the name now exists on OUR engine); type it;
+   converges — same settled state, no duplicates. (This is the legitimate
+   re-copy; after K10 the same button must behave DIFFERENTLY — K11.)
+9. **Failure paths, deliberately:**
+   a. Databases → stop MySQL. Consent card → tick → Apply → honest
+      **"rexenv's own MySQL … start it from the Databases page"** — OUR
+      page, not DBngin; `shasum` unchanged. Restart MySQL.
+   b. With the card open: add a comment line to wp-config in an editor,
+      Apply → **fileChanged**, neutral ("nothing was written"), refreshed
+      diff below; **remove the comment**; card refreshes clean.
+   c. (verifyFailed has no safe manual trigger — see Honest limits.)
+10. **Connect.** Diff = exactly two pairs (`DB_HOST`, `DB_USER` →
+    `rex_photocontest_test`), no password anywhere; backup note carries the
+    password-in-backup limit; tick; **Apply and verify** → "verified: the
+    rewritten settings sign in…" toast; badge flips **DB connected**;
+    connected panel wording claims the sign-in, not "the site uses it".
+11. **Seam: the self-source guard.** Import database AGAIN now → expect the
+    honest **ThisSite** refusal ("already reads and writes … on rexenv's own
+    engine — nothing to import"-class), NOT a copy. This is also why
+    "re-import resets connected → imported" is unreachable from connected —
+    the guard wins first; the reset path exists only while still `imported`
+    (K8). Both behaviours are correct; note both.
+12. **Prove it uses OUR database.** Site → wp-admin → edit a post title.
+    The edit appears in rexenv's Adminer copy; their DBngin `photocontest`
+    must NOT change (the final checksums assert it — don't check by writing
+    anything their side).
+13. **Interleave under load:** start the secondary's DB import; while its
+    copy phase runs, try a THIRD import (any site) → **"a database import is
+    already running (for typingbcc.test) — one at a time"**; and Apply on
+    the secondary's card → refusal naming the import. (Small DBs finish
+    fast — if the window's too short, observe at least the first refusal.)
+    Secondary settles: **Imported — not yet connected**, and the primary's
+    connected state is untouched.
+14. **Revert, re-apply, revert** (the backup lifecycle twice): Revert →
+    toast, badge back to **DB imported**, interim panel returns with the
+    (again true) still-reads-old sentence, `shasum "$PROJ/wp-config.php"`
+    equals `$B/wpconfig.sha`. A second Revert is UNREACHABLE (the button
+    left with the state — that's the convergence). Apply again (fresh
+    backup of the same original) → connected again → Revert again →
+    byte-identical AGAIN.
+15. **Dedicated user lifecycle (D3).** After the final revert the user
+    remains (inert):
+    `"$HOME/Library/Application Support/dev.rexenv.rexenv"/bin/mysql-*/bin/mysql \
+      --no-defaults -h127.0.0.1 -P13306 -uroot -e \
+      "SELECT user,host FROM mysql.user WHERE user LIKE 'rex_%'"`
+    → `rex_photocontest_test` on localhost + 127.0.0.1 only.
+16. **Delete the primary** (state: imported, reverted). Ordinary confirm
+    ("… its database, and its certificate"); delete. Then verify: row gone;
+    `$PROJ` folder intact; rexenv's copy dropped (Adminer); the K15 query
+    now returns NO `rex_photocontest_test` (dropped BY THE RECORD — D3's
+    other half). Delete the secondary too (its copy + row go the same way).
+17. **The AFTER capture.** Re-run every K0 command into `~/rexenv-k-after`
+    and diff:
+    ```sh
+    A=~/rexenv-k-after; mkdir -p "$A"   # …repeat the K0 commands into $A…
+    diff "$B/wpconfig.sha"  "$A/wpconfig.sha"     # identical
+    diff "$B/trees.mtime"   "$A/trees.mtime"      # identical — their trees untouched
+    diff "$B/resolver.txt"  "$A/resolver.txt"     # identical
+    diff "$B/db.checksums"  "$A/db.checksums"     # identical — their data untouched
+    ```
+    **Four empty diffs are the verdict.** The site edit of K12 lives only in
+    a copy that no longer exists; their environment is exactly as found.
+
+### Honest limits — what §K cannot cover on this machine
+
+- The **empty state** (no Valet/Herd) and the **resolver takeover /
+  hand-back / drift** paths (§F): no foreign `/etc/resolver/test` exists
+  here — clean-VM only, as before.
+- **verifyFailed** live: no safe manual trigger (it needs the engine to die
+  between write and verify, or credentials to rot mid-flight). Proven in
+  the sandbox example (WrongTarget after revert) and rendered in §C1.
+- **Laravel/.env end-to-end**: no Laravel project with a `.env` exists here
+  — the editor is unit-tested + sandbox-proven only.
+- **Non-root credential shapes** (Stage 2 mirror, host-only rewrite): every
+  wp-config on this machine connects as root.
+- **MariaDB-engine journey + the D5 note in anger**; the **unpinned-PHP
+  choice** (all markers here are 8.2–8.5); **Valet proxy rows** (none
+  exist).
+
+### Verdict
+
+- §K run on: ____ · app commit: ____ · result: **PASS / FAIL** ____
+- Deviations (step → what differed):
+  - ____
+
+---
+
 ## Publish-blocking summary
 
 | # | Check | Status |
@@ -411,3 +586,4 @@ and `shasum ea's wp-config.php` noted BEFORE anything below.
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on ea.test | ✅ passed 28 Jul 2026 |
+| K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
