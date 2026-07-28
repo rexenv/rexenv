@@ -42,8 +42,14 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     unlike process::exit); fixture-port claim ledger comment. `wp_fixture()` (the 12×
     WP-install block) DEFERRED to the sandbox-adoption backlog — an unused helper
     lands with its users, not before. verify.sh green.
-  - [ ] T7. De-fang the three incident-3-shaped examples (nginx_php_serve,
-    php_fpm_serve, php_pools_serve → sandbox + fixture ports).
+  - [x] **T7. Incident-3-shaped examples de-fanged** ✓ 28 Jul 2026 — nginx_php_serve
+    (sandbox + fixture 18131/9791 + Reaped + self-probes replacing the doc-header curl
+    instructions; PASS live), php_fpm_serve (sandbox + fixture 9792 + Reaped; PASS
+    live), php_pools_serve (sandbox paths; ports stay the production per-version ones
+    since PhpFpmPools derives them — the port gate now makes a running stack a clean
+    refusal, proven live against the actual running stack: honest FAIL exit 1, stack
+    untouched). frankenphp_serve (production base port 8200) noted for the
+    sandbox-adoption backlog. verify.sh green.
   - [ ] T8. `scripts/live-checks.sh` tiered runner (declared-tier enforcement).
   - [ ] T9. wk-checks: heights probe (h-full class), uireview.js can fail, StatusPill
     all-states scenario.

@@ -272,6 +272,28 @@ pub fn fixture_db(tag: &str) -> (rusqlite::Connection, FixtureDb) {
 }
 
 // ---------------------------------------------------------------------------
+// Plain HTTP probe
+// ---------------------------------------------------------------------------
+
+/// One loopback HTTP/1.1 GET with an explicit Host header (how the shared
+/// nginx routes vhosts). Returns the raw response (headers + body), or the
+/// error as a string — callers assert on content either way. Deliberately
+/// std-only: a probe with its own connection pool would hide first-connection
+/// failures.
+pub fn http_get(port: u16, host: &str, path: &str) -> String {
+    use std::io::{Read, Write};
+    let run = || -> std::io::Result<String> {
+        let mut s = std::net::TcpStream::connect(("127.0.0.1", port))?;
+        s.set_read_timeout(Some(Duration::from_secs(5)))?;
+        write!(s, "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n")?;
+        let mut out = String::new();
+        s.read_to_string(&mut out)?;
+        Ok(out)
+    };
+    run().unwrap_or_else(|e| format!("<probe error: {e}>"))
+}
+
+// ---------------------------------------------------------------------------
 // Uniform verdict reporting
 // ---------------------------------------------------------------------------
 
