@@ -509,6 +509,8 @@ where
             let state = app_state(app)?;
             let site = commands::sites::move_site_docroot(
                 state.clone(),
+                app.try_state::<commands::tunnels::Tunnels>()
+                    .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?,
                 need_str(&args, "id", cmd)?,
                 need_str(&args, "destParent", cmd)?,
             )

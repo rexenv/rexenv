@@ -474,6 +474,7 @@ pub async fn set_site_xdebug(
 #[tauri::command]
 pub async fn move_site_docroot(
     state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     id: String,
     dest_parent: String,
 ) -> Result<Site> {
@@ -485,6 +486,18 @@ pub async fn move_site_docroot(
         let target = core::sites::check_docroot_move(&site, &dest)?;
         (site, target)
     };
+    // Lifetime guard (audit A2): a live tunnel depends on the docroot two
+    // ways — nginx serves it, and the v23 row records it for mu-plugin
+    // removal. Moving under a live share churns what the public link serves
+    // mid-copy. (A share STARTED mid-move is handled by the row-docroot
+    // update after the commit below — either half alone leaves a window.)
+    crate::commands::tunnels::refuse_if_shared(
+        &tunnels,
+        &state,
+        &site.domain,
+        "moving its files would change what the live link serves mid-copy, and visitors \
+         could hit a half-moved site",
+    )?;
     let src = std::path::PathBuf::from(&site.path);
 
     // File work off the async runtime AND outside the DB lock — a cross-volume
@@ -499,6 +512,16 @@ pub async fn move_site_docroot(
         let conn = lock(&state)?;
         let updated = core::sites::set_path(&conn, state.platform.as_ref(), &id, &target)?
             .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        // A share that STARTED during the copy (the refusal above ran before
+        // the copy began) recorded the OLD docroot on its v23 row — re-point
+        // it, or settle/exit/sweep remove the mu-plugin at a path that no
+        // longer holds it and orphan the live-origin file at the new one.
+        // Best-effort: a miss degrades to the pre-fix leftover, never worse.
+        if let Err(e) =
+            crate::state::store::set_tunnel_docroot(&conn, &updated.domain, &updated.path)
+        {
+            log::warn!("sites: could not re-point the tunnel record for {}: {e}", updated.domain);
+        }
         (updated, core::sites::list(&conn)?)
     };
 

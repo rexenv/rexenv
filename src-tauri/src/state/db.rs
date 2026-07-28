@@ -862,6 +862,11 @@ mod tests {
         assert_eq!((rows[0].domain.as_str(), rows[0].pid, rows[0].docroot.as_str()),
                    ("a.rex", 333, "/sites/a"));
 
+        // A committed docroot move re-points the record (audit A2).
+        assert!(store::set_tunnel_docroot(&conn, "a.rex", "/moved/a").unwrap());
+        assert!(!store::set_tunnel_docroot(&conn, "ghost.rex", "/x").unwrap());
+        assert_eq!(store::get_tunnel(&conn, "a.rex").unwrap().unwrap().docroot, "/moved/a");
+
         // Releasing the claim reopens the slot (stop-then-start).
         assert!(store::delete_tunnel(&conn, "a.rex").unwrap());
         assert!(!store::delete_tunnel(&conn, "a.rex").unwrap()); // already gone

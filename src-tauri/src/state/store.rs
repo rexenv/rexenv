@@ -358,6 +358,16 @@ pub fn set_tunnel_pid(conn: &Connection, domain: &str, pid: u32) -> Result<bool>
     Ok(updated > 0)
 }
 
+/// Re-point a tunnel record's docroot after a committed docroot move (audit
+/// A2): the row's recorded path is what settle/exit/sweep remove the
+/// mu-plugin at — left stale, the file our writer put there is orphaned at
+/// the NEW location on every unclean end.
+pub fn set_tunnel_docroot(conn: &Connection, domain: &str, docroot: &str) -> Result<bool> {
+    Ok(conn
+        .execute("UPDATE tunnels SET docroot = ?2 WHERE domain = ?1", params![domain, docroot])?
+        > 0)
+}
+
 /// The recorded tunnel for a domain, if any.
 pub fn get_tunnel(conn: &Connection, domain: &str) -> Result<Option<TunnelRecord>> {
     let mut stmt =
