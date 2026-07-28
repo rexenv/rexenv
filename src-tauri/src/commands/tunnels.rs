@@ -34,6 +34,9 @@ struct TunnelEntry {
     health: crate::core::tunnels::TunnelHealth,
     /// Consecutive tunnel-gone (530) probe responses — see `fold_probe`.
     strikes: u32,
+    /// Failure-gated diagnosis (why the primary probe couldn't reach the
+    /// URL); cleared whenever the primary probe gets an HTTP answer.
+    diagnosis: Option<crate::core::tunnels::TunnelDiagnosis>,
 }
 
 /// Tauri-managed registry of live tunnels, keyed by site domain.
@@ -215,12 +218,27 @@ async fn probe_and_record<R: tauri::Runtime>(
         return;
     };
     let outcome = crate::core::tunnels::probe_url(client, &url).await;
-    let (health, strikes) = crate::core::tunnels::fold_probe(prev_health, strikes, outcome);
+    // Failure-gated (ruled): a healthy tunnel generates zero extra traffic,
+    // forever. Only a transport-failed primary earns the two extra checks —
+    // and an edge 530 upgrades the outcome into the strike evidence it is.
+    let (diagnosis, effective) = if outcome == crate::core::tunnels::ProbeOutcome::TransportError {
+        let host = url.trim_start_matches("https://");
+        let (public_resolves, edge_status) =
+            crate::core::tunnels::diagnose_unreachable(host).await;
+        (
+            Some(crate::core::tunnels::fold_diagnosis(public_resolves, edge_status)),
+            crate::core::tunnels::effective_outcome(outcome, edge_status),
+        )
+    } else {
+        (None, outcome)
+    };
+    let (health, strikes) = crate::core::tunnels::fold_probe(prev_health, strikes, effective);
     if let Ok(mut m) = registry.0.lock() {
         if let Some(e) = m.get_mut(domain) {
             if e.url == url {
                 e.health = health;
                 e.strikes = strikes;
+                e.diagnosis = diagnosis;
             }
         }
     };
@@ -401,6 +419,9 @@ pub struct TunnelInfo {
     pub url: String,
     pub running: bool,
     pub health: crate::core::tunnels::TunnelHealth,
+    /// Why the URL is unreachable from THIS machine, when it is (the line
+    /// under the badge — the badge itself never changes meaning for this).
+    pub diagnosis: Option<crate::core::tunnels::TunnelDiagnosis>,
 }
 
 /// Max time to wait for cloudflared to print the public URL.
@@ -431,7 +452,13 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     {
         let map = tunnels.0.lock().map_err(|_| Error::Other("tunnel registry poisoned".into()))?;
         if let Some(e) = map.get(&domain) {
-            return Ok(TunnelInfo { domain, url: e.url.clone(), running: true, health: e.health });
+            return Ok(TunnelInfo {
+                domain,
+                url: e.url.clone(),
+                running: true,
+                health: e.health,
+                diagnosis: e.diagnosis,
+            });
         }
     }
 
@@ -598,6 +625,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
             docroot: site.path.clone(),
             health: crate::core::tunnels::TunnelHealth::Unverified,
             strikes: 0,
+            diagnosis: None,
         },
     );
     // First verdict promptly instead of waiting out a full prober tick —
@@ -611,6 +639,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
         url,
         running: true,
         health: crate::core::tunnels::TunnelHealth::Unverified,
+        diagnosis: None,
     })
 }
 
@@ -650,6 +679,7 @@ pub async fn tunnels_status(
             url: e.url.clone(),
             running: true,
             health: e.health,
+            diagnosis: e.diagnosis,
         })
         .collect();
     out.sort_by(|a, b| a.domain.cmp(&b.domain));
@@ -667,6 +697,7 @@ mod tests {
             docroot: "/nonexistent-fixture".into(),
             health: crate::core::tunnels::TunnelHealth::Unverified,
             strikes: 0,
+            diagnosis: None,
         }
     }
 

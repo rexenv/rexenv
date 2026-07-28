@@ -497,12 +497,18 @@ export interface WpInfo {
  *  one fact, probed every 30 s (mirrors Rust `TunnelHealth`). */
 export type TunnelHealth = "unverified" | "reachable" | "broken";
 
+/** WHY the URL is unreachable from this machine, when it is — the
+ *  failure-gated diagnosis (mirrors Rust `TunnelDiagnosis`). Drives the line
+ *  under the badge; the badge itself keeps its meaning. */
+export type TunnelDiagnosis = "local-dns-behind" | "dns-propagating" | "edge-gone" | "offline";
+
 /** A per-site public tunnel (mirrors the Rust TunnelInfo DTO). */
 export interface TunnelInfo {
   domain: string;
   url: string; // public https://<id>.trycloudflare.com
   running: boolean;
   health: TunnelHealth;
+  diagnosis?: TunnelDiagnosis | null;
 }
 
 /** A WordPress plugin row (mirrors the Rust WpPlugin DTO / `wp plugin list`). */

@@ -210,6 +210,19 @@ function DefaultCredsSummary({ sites }: { sites: Site[] }) {
   );
 }
 
+/** Diagnosis-driven line under an Unverified badge. Wording stays SCOPED —
+ *  never anything shaped like "reachable everywhere" — and every state points
+ *  at the second device, the only true end-to-end test. */
+const DIAGNOSIS_LINE: Record<import("@/types").TunnelDiagnosis, string> = {
+  "local-dns-behind":
+    "Working — reachable at Cloudflare's edge from here; this machine's DNS hasn't caught up yet. Try it from another device.",
+  "dns-propagating":
+    "Just created — DNS is still propagating. Try it from another device; it should work everywhere shortly.",
+  "edge-gone":
+    "Cloudflare's edge reports this link is no longer registered — if that persists it will be marked Broken. Stop and share again for a fresh link.",
+  offline: "Can't check right now — this machine looks offline.",
+};
+
 type CardState = "idle" | "starting" | "live" | "stopping";
 
 function TunnelCard({
@@ -363,7 +376,8 @@ function TunnelCard({
             <span>
               {health === "reachable" && "Public link confirmed reachable — checked every 30 s."}
               {health === "unverified" &&
-                "Public link can't be reached from this machine right now — fresh links can take a while to resolve here (local DNS caching) while already working elsewhere. Try it from another device; if it stays unreachable everywhere, stop and share again."}
+                ((tunnel?.diagnosis && DIAGNOSIS_LINE[tunnel.diagnosis]) ||
+                  "Public link can't be reached from this machine right now — fresh links can take a while to resolve here (local DNS caching) while already working elsewhere. Try it from another device; if it stays unreachable everywhere, stop and share again.")}
               {health === "broken" && "Public link is down."}
             </span>
             <span>Anyone with this link can reach your local site.</span>

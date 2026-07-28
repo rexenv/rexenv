@@ -14,6 +14,7 @@ use crate::error::Result;
 use crate::platform::traits::Platform;
 use std::path::PathBuf;
 use std::process::Child;
+use std::time::Duration;
 
 /// Per-site tunnel log (cloudflared's stdout+stderr; the public URL is parsed
 /// from here).
@@ -193,6 +194,150 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> ProbeOutcome {
     match client.head(url).send().await {
         Ok(resp) => ProbeOutcome::Status(resp.status().as_u16()),
         Err(_) => ProbeOutcome::TransportError,
+    }
+}
+
+/// Why the primary probe couldn't reach the URL — the failure-gated
+/// diagnosis (ruled 28 Jul 2026). One fact for the LINE under the badge; the
+/// badge itself stays anchored to what a click from THIS machine experiences.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TunnelDiagnosis {
+    /// Cloudflare's edge answers for the hostname (DNS bypassed) — the
+    /// tunnel works; this machine's own resolution/connection is what's
+    /// failing (fresh-hostname DNS lag is the usual cause).
+    LocalDnsBehind,
+    /// The edge answers but 1.1.1.1 doesn't have the name yet — registration
+    /// is live, public DNS is still propagating.
+    DnsPropagating,
+    /// The edge itself answered 530: the registration is gone. Feeds the
+    /// strike counter — dead at the edge is dead everywhere.
+    EdgeGone,
+    /// Neither 1.1.1.1 nor the edge reachable: this machine looks offline;
+    /// nothing about the tunnel can be honestly claimed.
+    Offline,
+}
+
+/// Bounded A-record lookup DIRECTLY at 1.1.1.1 — and only 1.1.1.1, by
+/// ruling: the hostname is Cloudflare-issued and this machine already holds
+/// a QUIC connection to Cloudflare for the tunnel itself, so the query
+/// discloses nothing to a party that doesn't already know it; a second
+/// resolver would add a NEW third party (on a 30s schedule, while failing)
+/// for zero diagnostic gain on a binary question. Returns `None` when
+/// 1.1.1.1 didn't answer at all (offline-shaped), `Some(vec)` — possibly
+/// empty — when it did.
+pub async fn resolve_at_1111(host: &str) -> Option<Vec<std::net::Ipv4Addr>> {
+    use hickory_proto::op::{Message, MessageType, OpCode, Query};
+    use hickory_proto::rr::{Name, RData, RecordType};
+    use hickory_proto::serialize::binary::BinDecodable;
+
+    let name = Name::from_utf8(host).ok()?;
+    let mut msg = Message::new();
+    // Query id from the clock's low bits — std-only; anti-spoofing rigor is
+    // not the threat model for a diagnostic asking a fixed resolver about an
+    // already-public name.
+    let id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| (d.subsec_nanos() & 0xFFFF) as u16)
+        .unwrap_or(0x5150);
+    msg.set_id(id)
+        .set_message_type(MessageType::Query)
+        .set_op_code(OpCode::Query)
+        .set_recursion_desired(true)
+        .add_query(Query::query(name, RecordType::A));
+    let bytes = msg.to_vec().ok()?;
+
+    let sock = tokio::net::UdpSocket::bind("0.0.0.0:0").await.ok()?;
+    sock.send_to(&bytes, "1.1.1.1:53").await.ok()?;
+    let mut buf = [0u8; 512];
+    let n = tokio::time::timeout(Duration::from_secs(3), sock.recv(&mut buf))
+        .await
+        .ok()?
+        .ok()?;
+    let reply = Message::from_bytes(&buf[..n]).ok()?;
+    if reply.id() != id {
+        return None; // not our answer — treat as no answer
+    }
+    Some(
+        reply
+            .answers()
+            .iter()
+            .filter_map(|r| match r.data() {
+                Some(RData::A(a)) => Some(a.0),
+                _ => None,
+            })
+            .collect(),
+    )
+}
+
+/// The two failure-gated checks, run ONLY after the primary probe transport-
+/// failed (a healthy tunnel generates zero extra traffic, forever — ruled).
+/// Returns (does 1.1.1.1 have the name — None if 1.1.1.1 unreachable,
+/// edge HTTP status — None if no connection).
+///
+/// The edge IP comes from the LIVE 1.1.1.1 answer, falling back to a live
+/// apex (`trycloudflare.com`) lookup — NEVER a constant: a hardcoded edge IP
+/// rots silently and measures nothing (ruled).
+///
+/// HONEST LIMIT (anycast): a passing edge check proves "the Cloudflare POP
+/// nearest THIS machine routes the registration and the origin answers" —
+/// NOT that every POP on earth does, and not that any specific visitor's
+/// ISP, resolver, or network path works. Wording built on this must stay
+/// scoped; the second-device check remains the only true end-to-end test.
+pub async fn diagnose_unreachable(host: &str) -> (Option<bool>, Option<u16>) {
+    let answer = resolve_at_1111(host).await;
+    let public_resolves = answer.as_ref().map(|ips| !ips.is_empty());
+    let edge_ip = match answer.as_ref().and_then(|ips| ips.first().copied()) {
+        Some(ip) => Some(ip),
+        None => resolve_at_1111("trycloudflare.com")
+            .await
+            .and_then(|ips| ips.first().copied()),
+    };
+    let Some(ip) = edge_ip else {
+        return (public_resolves, None);
+    };
+    // TLS verifies the REAL hostname against Cloudflare's *.trycloudflare.com
+    // wildcard cert — nothing is loosened; only the address lookup is pinned.
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::none())
+        .resolve(host, std::net::SocketAddr::new(ip.into(), 443))
+        .build();
+    let Ok(client) = client else {
+        return (public_resolves, None);
+    };
+    let status = client
+        .head(format!("https://{host}/"))
+        .send()
+        .await
+        .ok()
+        .map(|r| r.status().as_u16());
+    (public_resolves, status)
+}
+
+/// Fold the failure-gated checks into the one diagnosis the UI line shows.
+pub fn fold_diagnosis(public_resolves: Option<bool>, edge_status: Option<u16>) -> TunnelDiagnosis {
+    match (public_resolves, edge_status) {
+        (_, Some(530)) => TunnelDiagnosis::EdgeGone,
+        (Some(false), Some(_)) => TunnelDiagnosis::DnsPropagating,
+        (_, Some(_)) => TunnelDiagnosis::LocalDnsBehind,
+        (_, None) => TunnelDiagnosis::Offline,
+    }
+}
+
+/// What the health fold sees after a diagnosis ran: an edge answer of 530
+/// upgrades a transport error into the positive evidence it is — dead at the
+/// edge is dead EVERYWHERE, which is what makes `Broken` reachable for the
+/// common drop shape (DNS dies first; probes stop producing HTTP verdicts —
+/// the audit's biggest honesty gap, partially closed here). DELIBERATELY
+/// asymmetric: a positive edge status never upgrades toward `Reachable`,
+/// because the badge anchors to what a click from THIS machine experiences,
+/// and this machine's click still fails.
+pub fn effective_outcome(primary: ProbeOutcome, edge_status: Option<u16>) -> ProbeOutcome {
+    match (primary, edge_status) {
+        (ProbeOutcome::TransportError, Some(530)) => ProbeOutcome::Status(530),
+        (p, _) => p,
     }
 }
 
@@ -434,6 +579,58 @@ mod tests {
         assert_eq!(fold_probe(Reachable, 0, TransportError), (Unverified, 0));
         // Only positive evidence clears Broken.
         assert_eq!(fold_probe(Broken, 3, Status(200)), (Reachable, 0));
+    }
+
+    #[test]
+    fn edge_530_makes_broken_reachable_after_dns_death() {
+        // THE ruled assertion (28 Jul): the audit found Broken nearly
+        // unreachable — a dead tunnel's DNS dies first, every probe becomes a
+        // transport error, and strikes never accumulate. The DNS-bypassing
+        // edge check restores the 530 verdict. This test IS that claim:
+        // identical inputs, with and without the edge answer.
+        use ProbeOutcome::TransportError;
+        use TunnelHealth::{Broken, Unverified};
+
+        // Without the diagnosis (today's shape): three DNS-dead ticks stay
+        // Unverified forever.
+        let (mut h, mut s) = (Unverified, 0);
+        for _ in 0..3 {
+            let (nh, ns) = fold_probe(h, s, effective_outcome(TransportError, None));
+            h = nh;
+            s = ns;
+        }
+        assert_eq!((h, s), (Unverified, 0), "DNS-dead without diagnosis can never strike");
+
+        // With the edge answering 530 through the DNS-bypassing check: the
+        // same three ticks reach Broken.
+        let (mut h, mut s) = (Unverified, 0);
+        for _ in 0..3 {
+            let (nh, ns) = fold_probe(h, s, effective_outcome(TransportError, Some(530)));
+            h = nh;
+            s = ns;
+        }
+        assert_eq!((h, s), (Broken, 3), "edge 530s must accumulate to Broken");
+
+        // The asymmetry is deliberate: a positive edge status never upgrades
+        // toward Reachable — this machine's click still fails.
+        assert_eq!(effective_outcome(TransportError, Some(200)), TransportError);
+        assert_eq!(
+            effective_outcome(ProbeOutcome::Status(200), Some(530)),
+            ProbeOutcome::Status(200),
+            "a real primary answer is never overridden"
+        );
+    }
+
+    #[test]
+    fn fold_diagnosis_reads_the_vector_honestly() {
+        use TunnelDiagnosis::*;
+        assert_eq!(fold_diagnosis(Some(true), Some(200)), LocalDnsBehind);
+        assert_eq!(fold_diagnosis(None, Some(200)), LocalDnsBehind); // 1.1.1.1 mute, edge fine
+        assert_eq!(fold_diagnosis(Some(false), Some(404)), DnsPropagating);
+        assert_eq!(fold_diagnosis(Some(true), Some(530)), EdgeGone);
+        assert_eq!(fold_diagnosis(Some(false), Some(530)), EdgeGone);
+        assert_eq!(fold_diagnosis(Some(true), None), Offline);
+        assert_eq!(fold_diagnosis(None, None), Offline);
     }
 
     #[test]
