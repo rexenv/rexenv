@@ -3,7 +3,7 @@
  *  (same never-clipped fixed-position approach as ui/menu.tsx) with a filter
  *  input on top of a grouped, keyboard-navigable list (cmdk). Picking an item
  *  only SETS the target — the Checkout button next door still fires the op. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { Check, ChevronsUpDown } from "lucide-react";
@@ -47,7 +47,10 @@ export function RefPicker({
   onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number }>({
+    top: 0,
+    left: 0,
+  });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -64,6 +67,26 @@ export function RefPicker({
       left: Math.min(r.left, window.innerWidth - PANEL_WIDTH - 8),
     });
   };
+
+  // Flip above the trigger when there's no room below — the same latent bug
+  // ui/menu.tsx had (§C2.1): a fixed-position panel near the viewport bottom
+  // rendered clipped, and scroll-dismiss keeps it unreachable. Runs before
+  // paint, once the panel's real height is measurable. The flipped case
+  // anchors by BOTTOM (not a computed top): this panel FILTERS, so its
+  // height shrinks while open — a top-anchored flip would detach from the
+  // trigger as the list shortens.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const r = triggerRef.current?.getBoundingClientRect();
+    const h = panelRef.current?.offsetHeight ?? 0;
+    if (!r || !h) return;
+    const left = Math.min(r.left, window.innerWidth - PANEL_WIDTH - 8);
+    if (r.bottom + 6 + h > window.innerHeight - 8) {
+      setPos({ bottom: window.innerHeight - r.top + 6, left });
+    } else {
+      setPos({ top: r.bottom + 6, left });
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -130,7 +153,13 @@ export function RefPicker({
         createPortal(
           <div
             ref={panelRef}
-            style={{ position: "fixed", top: pos.top, left: pos.left, width: PANEL_WIDTH }}
+            style={{
+              position: "fixed",
+              top: pos.top,
+              bottom: pos.bottom,
+              left: pos.left,
+              width: PANEL_WIDTH,
+            }}
             className="z-[60] rounded-[11px] border border-rex-border-strong bg-rex-surface-2 shadow-menu"
           >
             <Command label={ariaLabel}>
