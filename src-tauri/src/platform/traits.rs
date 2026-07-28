@@ -148,6 +148,17 @@ pub trait ProcessSupervisor: Send + Sync {
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
 
+    /// Full command line of `pid` as the OS reports it (argv, space-joined),
+    /// or `None` when the process is gone or the platform can't read it.
+    /// Callers use this to POSITIVELY identify a recorded pid before sending
+    /// any signal — a recycled pid must fail identification and never be
+    /// killed on the bare number (§5 ownership doctrine, ported off ports:
+    /// cloudflared listens on nothing, so its identity lives in its argv).
+    /// Default: unknown — callers must treat that as "not identified".
+    fn pid_command(&self, _pid: u32) -> Option<String> {
+        None
+    }
+
     /// Spawn `program` in its OWN process group with stdout+stderr piped, a
     /// working dir, and a caller-supplied FULL environment (the login-shell
     /// snapshot — not our launchd env). The repo-job primitive

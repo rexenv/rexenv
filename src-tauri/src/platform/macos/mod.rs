@@ -338,6 +338,17 @@ impl ProcessSupervisor for MacosSupervisor {
         stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL)
     }
 
+    fn pid_command(&self, pid: u32) -> Option<String> {
+        // Same world-readable `ps` source `owned_listeners` trusts for its
+        // marker check; empty output = no such process.
+        let out = std::process::Command::new("ps")
+            .args(["-p", &pid.to_string(), "-o", "command="])
+            .output()
+            .ok()?;
+        let cmd = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (!cmd.is_empty()).then_some(cmd)
+    }
+
     fn spawn_streamed(
         &self,
         program: &Path,

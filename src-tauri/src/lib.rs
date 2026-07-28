@@ -255,6 +255,17 @@ pub fn run() {
                     if swept > 0 {
                         log::info!("dns: swept {swept} orphaned resolver backup(s)");
                     }
+                    // Tunnel rows surviving to launch mean a crashed session
+                    // (a clean exit clears the table): kill each recorded pid
+                    // only on positive argv identification, and remove the
+                    // mu-plugin + row in every branch. Tunnels die with the
+                    // app — this is the crash half of that ruling.
+                    let orphaned = core::tunnels::sweep_startup(&conn, platform.as_ref());
+                    if orphaned > 0 {
+                        log::warn!(
+                            "tunnels: killed {orphaned} tunnel(s) still sharing after a crash"
+                        );
+                    }
                     // First run: create the sites root (~/rexenv/Sites, or the
                     // user's configured folder). Non-fatal — provision gives
                     // its own clear error if the folder still can't be made.

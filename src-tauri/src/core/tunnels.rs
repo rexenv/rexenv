@@ -68,9 +68,104 @@ pub fn extract_url(text: &str) -> Option<String> {
         .map(|t| t.to_string())
 }
 
+/// Positive identification of a recorded tunnel pid (lifecycle ruling
+/// 28 Jul 2026): the live process's command line must reference our binary
+/// name AND the app-data dir (the cloudflared binary lives under it — the
+/// standard ownership marker) AND carry the exact `--http-host-header
+/// <domain>` argument pair for THIS row's domain. The pair is matched on
+/// whitespace-split tokens, not substrings, so `a.rex` never matches a
+/// tunnel for `a.rexx`. Anything less than all three is NOT ours — most
+/// importantly a recycled pid now naming some unrelated process, which must
+/// only ever get file/row cleanup, never a signal.
+pub fn is_our_tunnel(command: &str, app_data_marker: &str, domain: &str) -> bool {
+    if app_data_marker.is_empty()
+        || !command.contains("cloudflared")
+        || !command.contains(app_data_marker)
+    {
+        return false;
+    }
+    let toks: Vec<&str> = command.split_whitespace().collect();
+    toks.windows(2).any(|w| w[0] == "--http-host-header" && w[1] == domain)
+}
+
+/// Launch-time sweep: settle every tunnel row a crashed session left behind
+/// (tunnels DIE WITH THE APP — a clean exit clears the table, so any row here
+/// is a crash survivor). Per row: kill the pid only on [`is_our_tunnel`]
+/// identification; in EVERY branch — identified, dead, or recycled pid —
+/// remove the row's mu-plugin and delete the record. Returns how many live
+/// tunnels were killed (callers log it).
+pub fn sweep_startup(conn: &rusqlite::Connection, platform: &dyn Platform) -> u32 {
+    let rows = match crate::state::store::list_tunnels(conn) {
+        Ok(rows) if !rows.is_empty() => rows,
+        _ => return 0,
+    };
+    let marker = platform
+        .paths()
+        .app_data_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let mut killed = 0u32;
+    for row in rows {
+        let ours = platform
+            .supervisor()
+            .pid_command(row.pid)
+            .map(|cmd| is_our_tunnel(&cmd, &marker, &row.domain))
+            .unwrap_or(false);
+        if ours {
+            log::warn!(
+                "tunnels: killing the orphaned tunnel for {} (pid {}) — a prior session \
+                 crashed while sharing; tunnels die with the app",
+                row.domain,
+                row.pid
+            );
+            let _ = platform.supervisor().stop(row.pid);
+            killed += 1;
+        }
+        if let Err(e) = crate::core::wp_tunnel::disable(std::path::Path::new(&row.docroot)) {
+            log::warn!("tunnels: could not remove the mu-plugin for {}: {e}", row.domain);
+        }
+        let _ = crate::state::store::delete_tunnel(conn, &row.domain);
+    }
+    killed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const MARKER: &str = "/Users/dev/Library/Application Support/dev.rexenv.rexenv";
+
+    #[test]
+    fn is_our_tunnel_accepts_only_the_full_identity() {
+        let ours = format!(
+            "{MARKER}/bin/cloudflared-2026.6.1/cloudflared tunnel --no-autoupdate \
+             --url http://127.0.0.1:18088 --http-host-header acme.rex"
+        );
+        assert!(is_our_tunnel(&ours, MARKER, "acme.rex"));
+        // Same process is NOT the identity for a different row's domain.
+        assert!(!is_our_tunnel(&ours, MARKER, "other.rex"));
+        // Exact-token match: a lookalike domain must not pass on prefix.
+        let lookalike = ours.replace("acme.rex", "acme.rexx");
+        assert!(!is_our_tunnel(&lookalike, MARKER, "acme.rex"));
+    }
+
+    #[test]
+    fn is_our_tunnel_rejects_recycled_and_foreign_processes() {
+        // The branch that would be silently wrong: a recycled pid now naming
+        // an unrelated process must never identify as ours.
+        for foreign in [
+            "vim notes.txt",
+            "",
+            // The USER'S own cloudflared (homebrew) sharing the same domain —
+            // no app-data marker, so not ours to kill.
+            "/opt/homebrew/bin/cloudflared tunnel --url http://127.0.0.1:3000 \
+             --http-host-header acme.rex",
+        ] {
+            assert!(!is_our_tunnel(foreign, MARKER, "acme.rex"), "identified: {foreign}");
+        }
+        // An empty marker must never wildcard-match.
+        assert!(!is_our_tunnel("cloudflared --http-host-header acme.rex", "", "acme.rex"));
+    }
 
     #[test]
     fn extract_url_from_banner() {
