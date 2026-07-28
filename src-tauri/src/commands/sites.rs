@@ -726,7 +726,7 @@ pub async fn change_site_domain(
     // 6) Old-domain artifacts (best-effort, non-fatal): a live tunnel proxies a
     //    vhost that no longer exists; cert dir / FrankenPHP config / logs are
     //    keyed by the old domain (mirrors teardown).
-    tunnels.stop_for_domain(state.platform.as_ref(), &old_domain);
+    tunnels.stop_for_domain(&state, &old_domain);
     if let Ok(dir) = core::ssl::site_cert_dir(state.platform.paths(), &old_domain) {
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -800,7 +800,7 @@ pub async fn delete_site(
 
     // 1) A deleted site must not stay publicly shared: kill its live tunnel
     //    (registry keyed by domain; the mu-plugin goes away with the docroot).
-    tunnels.stop_for_domain(state.platform.as_ref(), &site.domain);
+    tunnels.stop_for_domain(&state, &site.domain);
 
     // 2) Drop the site's database, and any RECORDED mirrored user (D3). Only
     //    WordPress sites get a provisioned database (the stored

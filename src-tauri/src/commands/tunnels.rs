@@ -36,18 +36,39 @@ pub struct Tunnels(Mutex<HashMap<String, TunnelEntry>>);
 
 impl Tunnels {
     /// Remove and kill a site's live tunnel; `true` if one was running. No-op
-    /// when the site isn't shared. Used by `stop_tunnel` and site deletion (a
-    /// deleted site must not stay publicly reachable).
-    pub fn stop_for_domain(&self, platform: &dyn crate::platform::traits::Platform, domain: &str) -> bool {
+    /// when the site isn't shared. Used by `stop_tunnel`, site deletion, and
+    /// domain rename (a deleted/renamed site must not stay publicly reachable).
+    pub fn stop_for_domain(&self, state: &AppState, domain: &str) -> bool {
         let entry = self.0.lock().ok().and_then(|mut m| m.remove(domain));
-        match entry {
+        let stopped = match entry {
             Some(mut e) => {
-                let _ = tunnels::stop(platform, e.child.id());
+                let _ = tunnels::stop(state.platform.as_ref(), e.child.id());
                 let _ = e.child.wait();
                 true
             }
             None => false,
+        };
+        // Row cleanup happens even with no registry entry: an in-flight
+        // start's row for this domain must not outlive a delete/rename — the
+        // sweep would only find it at the NEXT launch. Best-effort: a row that
+        // survives here is exactly what the sweep and exit hook settle.
+        delete_tunnel_row(state, domain);
+        stopped
+    }
+}
+
+/// Best-effort row delete (v23). Failure is logged, not fatal: the exit hook
+/// clears the table and the launch sweep settles survivors, so a missed
+/// delete degrades to "settled later", never to a wrong kill (the sweep
+/// signals only on positive argv identification).
+fn delete_tunnel_row(state: &AppState, domain: &str) {
+    match state.db.lock() {
+        Ok(conn) => {
+            if let Err(e) = crate::state::store::delete_tunnel(&conn, domain) {
+                log::warn!("rexenv: could not delete the tunnel record for {domain}: {e}");
+            }
         }
+        Err(_) => log::warn!("rexenv: database lock poisoned; tunnel record for {domain} left for the sweep"),
     }
 }
 
@@ -86,6 +107,29 @@ pub async fn start_tunnel(
     let bin = binaries::resolve(platform, "cloudflared", binaries::CLOUDFLARED_VERSION).await?;
     let child = tunnels::start(platform, &bin, &domain, services::NGINX_HTTP_PORT)?;
 
+    // Record the spawn BEFORE the URL poll (v23): a quit or crash during the
+    // poll must leave a row for the exit hook / launch sweep, or the child
+    // would outlive us untracked. If the record itself can't be written the
+    // crash story is broken for this tunnel — fail the start rather than run
+    // a public tunnel we couldn't clean up after.
+    {
+        let recorded = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))
+            .and_then(|conn| {
+                crate::state::store::record_tunnel(&conn, &domain, child.id(), &site.path)
+            });
+        if let Err(e) = recorded {
+            let _ = tunnels::stop(platform, child.id());
+            let mut c = child;
+            let _ = c.wait();
+            return Err(Error::Other(format!(
+                "tunnel start aborted: its lifecycle record could not be written: {e}"
+            )));
+        }
+    }
+
     // Poll the log for the public URL (async sleeps — don't block the executor).
     let deadline = Instant::now() + URL_TIMEOUT;
     let url = loop {
@@ -96,6 +140,8 @@ pub async fn start_tunnel(
             let _ = tunnels::stop(platform, child.id());
             let mut c = child;
             let _ = c.wait();
+            // A failed start settles its own row — never left for the sweep.
+            delete_tunnel_row(&state, &domain);
             return Err(Error::Other("cloudflared did not report a public URL in time".into()));
         }
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -110,6 +156,7 @@ pub async fn start_tunnel(
             let _ = tunnels::stop(state.platform.as_ref(), child.id());
             let mut c = child;
             let _ = c.wait();
+            delete_tunnel_row(&state, &domain);
             return Err(Error::Other(format!(
                 "tunnel started but the URL-rewrite mu-plugin could not be written: {e}"
             )));
@@ -132,7 +179,7 @@ pub async fn stop_tunnel(
     id: String,
 ) -> Result<()> {
     let site = tunnel_site(&state, &id)?;
-    tunnels.stop_for_domain(state.platform.as_ref(), &site.domain);
+    tunnels.stop_for_domain(&state, &site.domain);
     // Best-effort: the tunnel is already down, so a leftover mu-plugin is inert
     // (its dead URL receives no requests) — don't fail the stop over it.
     if site.site_type == SiteType::Wordpress {
