@@ -326,19 +326,40 @@ fn row_to_tunnel(row: &Row) -> rusqlite::Result<TunnelRecord> {
     Ok(TunnelRecord { domain: row.get(0)?, pid: row.get(1)?, docroot: row.get(2)? })
 }
 
-/// Record a spawned tunnel. Replaces any previous row for the domain (a
-/// restart after an unclean stop records the NEW pid — the old one is the
-/// sweep's or exit hook's to settle, and the newest spawn is the live one).
-pub fn record_tunnel(conn: &Connection, domain: &str, pid: u32, docroot: &str) -> Result<()> {
-    conn.execute(
+/// Atomically CLAIM the tunnel slot for a domain (step 4 in-flight guard):
+/// inserts only when no row exists and returns whether THIS caller won. The
+/// row is the shared state between concurrent starts, stop, the exit hook,
+/// and the launch sweep — a second start for the same domain loses here,
+/// before it resolves a binary or spawns anything. `pid` is the caller's
+/// sentinel until the child exists (`set_tunnel_pid`).
+pub fn try_claim_tunnel(conn: &Connection, domain: &str, pid: u32, docroot: &str) -> Result<bool> {
+    let inserted = conn.execute(
         "INSERT INTO tunnels (domain, pid, docroot) VALUES (?1, ?2, ?3)
-         ON CONFLICT(domain) DO UPDATE SET
-             pid = excluded.pid,
-             docroot = excluded.docroot,
-             started_at = datetime('now')",
+         ON CONFLICT(domain) DO NOTHING",
         params![domain, pid, docroot],
     )?;
-    Ok(())
+    Ok(inserted > 0)
+}
+
+/// Record the spawned child's real pid on an existing claim. `false` = the
+/// claim is GONE — a stop or site delete revoked it while the start was in
+/// flight, and the caller must treat the start as cancelled (kill its child),
+/// never proceed untracked.
+pub fn set_tunnel_pid(conn: &Connection, domain: &str, pid: u32) -> Result<bool> {
+    let updated =
+        conn.execute("UPDATE tunnels SET pid = ?2 WHERE domain = ?1", params![domain, pid])?;
+    Ok(updated > 0)
+}
+
+/// The recorded tunnel for a domain, if any.
+pub fn get_tunnel(conn: &Connection, domain: &str) -> Result<Option<TunnelRecord>> {
+    let mut stmt =
+        conn.prepare("SELECT domain, pid, docroot FROM tunnels WHERE domain = ?1")?;
+    let mut rows = stmt.query_map([domain], row_to_tunnel)?;
+    match rows.next() {
+        Some(v) => Ok(Some(v?)),
+        None => Ok(None),
+    }
 }
 
 /// Every recorded tunnel, domain-sorted.

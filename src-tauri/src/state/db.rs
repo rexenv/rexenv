@@ -830,18 +830,25 @@ mod tests {
         migrate(&conn).unwrap();
 
         use crate::state::store;
-        store::record_tunnel(&conn, "a.rex", 111, "/sites/a").unwrap();
-        store::record_tunnel(&conn, "b.rex", 222, "/sites/b").unwrap();
-        // Re-record for the same domain replaces pid + docroot (restart after
-        // an unclean stop records the NEW spawn).
-        store::record_tunnel(&conn, "a.rex", 333, "/moved/a").unwrap();
+        // The claim is atomic and exclusive: exactly one concurrent start can
+        // hold a domain's row (the step-4 in-flight guard).
+        assert!(store::try_claim_tunnel(&conn, "a.rex", u32::MAX, "/sites/a").unwrap());
+        assert!(!store::try_claim_tunnel(&conn, "a.rex", u32::MAX, "/sites/a").unwrap());
+        assert!(store::try_claim_tunnel(&conn, "b.rex", 222, "/sites/b").unwrap());
+
+        // The spawned child's real pid lands on the existing claim; a claim
+        // that was revoked mid-start reads false, never a silent no-op.
+        assert!(store::set_tunnel_pid(&conn, "a.rex", 333).unwrap());
+        assert!(!store::set_tunnel_pid(&conn, "revoked.rex", 1).unwrap());
         let rows = store::list_tunnels(&conn).unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!((rows[0].domain.as_str(), rows[0].pid, rows[0].docroot.as_str()),
-                   ("a.rex", 333, "/moved/a"));
+                   ("a.rex", 333, "/sites/a"));
 
+        // Releasing the claim reopens the slot (stop-then-start).
         assert!(store::delete_tunnel(&conn, "a.rex").unwrap());
         assert!(!store::delete_tunnel(&conn, "a.rex").unwrap()); // already gone
+        assert!(store::try_claim_tunnel(&conn, "a.rex", 444, "/sites/a").unwrap());
         store::clear_tunnels(&conn).unwrap();
         assert!(store::list_tunnels(&conn).unwrap().is_empty());
     }

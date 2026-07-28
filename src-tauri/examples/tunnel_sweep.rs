@@ -53,8 +53,13 @@ fn main() {
     let foreign_doc = docroot_with_muplugin(sandbox.root(), "foreign");
     let foreign_child = Command::new("/bin/sleep").arg("300").spawn().expect("spawn sleep");
     let mut foreign = common::Reaped::new(foreign_child, 39997, "sleep");
-    store::record_tunnel(&conn, "sweep-foreign.rex", foreign.id(), &foreign_doc.to_string_lossy())
-        .expect("record foreign row");
+    assert!(store::try_claim_tunnel(
+        &conn,
+        "sweep-foreign.rex",
+        foreign.id(),
+        &foreign_doc.to_string_lossy()
+    )
+    .expect("claim foreign row"));
 
     // 2) OURS: a stand-in with the full identity — a copy of /bin/bash named
     //    `cloudflared` under the SANDBOX app-data (the ownership marker), its
@@ -80,13 +85,29 @@ fn main() {
         .spawn()
         .expect("spawn fake tunnel");
     let mut ours = common::Reaped::new(ours_child, 39998, "cloudflared");
-    store::record_tunnel(&conn, "sweep-ours.rex", ours.id(), &ours_doc.to_string_lossy())
-        .expect("record ours row");
+    assert!(store::try_claim_tunnel(
+        &conn,
+        "sweep-ours.rex",
+        ours.id(),
+        &ours_doc.to_string_lossy()
+    )
+    .expect("claim ours row"));
 
     // 3) DEAD: an impossible pid (macOS pid_max is 99998) — pure cleanup.
     let dead_doc = docroot_with_muplugin(sandbox.root(), "dead");
-    store::record_tunnel(&conn, "sweep-dead.rex", 4_000_000, &dead_doc.to_string_lossy())
-        .expect("record dead row");
+    assert!(store::try_claim_tunnel(&conn, "sweep-dead.rex", 4_000_000, &dead_doc.to_string_lossy())
+        .expect("claim dead row"));
+
+    // 4) PENDING: a claim whose child never spawned (crash between claim and
+    //    spawn) — sentinel pid, cleanup only, nothing to signal.
+    let pending_doc = docroot_with_muplugin(sandbox.root(), "pending");
+    assert!(store::try_claim_tunnel(
+        &conn,
+        "sweep-pending.rex",
+        tunnels::PID_PENDING,
+        &pending_doc.to_string_lossy()
+    )
+    .expect("claim pending row"));
 
     let killed = tunnels::sweep_startup(&conn, &*plat);
 
@@ -104,7 +125,12 @@ fn main() {
         "identified tunnel must be killed by the sweep; ps state: {ours_state:?}"
     );
     assert_eq!(killed, 1, "exactly the identified tunnel counts as killed");
-    for (tag, doc) in [("foreign", &foreign_doc), ("ours", &ours_doc), ("dead", &dead_doc)] {
+    for (tag, doc) in [
+        ("foreign", &foreign_doc),
+        ("ours", &ours_doc),
+        ("dead", &dead_doc),
+        ("pending", &pending_doc),
+    ] {
         assert!(!muplugin_exists(doc), "{tag}: mu-plugin must be removed in every branch");
     }
     assert!(

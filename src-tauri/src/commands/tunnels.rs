@@ -54,10 +54,43 @@ impl Tunnels {
             }
             None => false,
         };
+        if !stopped {
+            // A start may be IN FLIGHT: claim taken, child possibly spawned,
+            // registry entry not yet inserted. Kill its recorded pid so stop
+            // wins that race — but only on the sweep's positive argv
+            // identification: the start's own failure path may have reaped
+            // this pid between our read and the signal, and a reaped pid is
+            // reusable. A sentinel (pre-spawn) claim has nothing to kill; the
+            // row delete below revokes it, and `set_tunnel_pid` returning
+            // false makes the in-flight start cancel itself.
+            let row = state
+                .db
+                .lock()
+                .ok()
+                .and_then(|c| crate::state::store::get_tunnel(&c, domain).ok().flatten());
+            if let Some(row) = row {
+                if row.pid != tunnels::PID_PENDING {
+                    let marker = state
+                        .platform
+                        .paths()
+                        .app_data_dir()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default();
+                    let ours = state
+                        .platform
+                        .supervisor()
+                        .pid_command(row.pid)
+                        .map(|cmd| tunnels::is_our_tunnel(&cmd, &marker, domain))
+                        .unwrap_or(false);
+                    if ours {
+                        let _ = tunnels::stop(state.platform.as_ref(), row.pid);
+                    }
+                }
+            }
+        }
         // Row cleanup happens even with no registry entry: an in-flight
-        // start's row for this domain must not outlive a delete/rename — the
-        // sweep would only find it at the NEXT launch. Best-effort: a row that
-        // survives here is exactly what the sweep and exit hook settle.
+        // start's claim must not outlive a stop/delete/rename — deleting it
+        // here is what revokes the claim.
         delete_tunnel_row(state, domain);
         stopped
     }
@@ -278,9 +311,11 @@ pub fn kill_all_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         .map(|conn| crate::state::store::list_tunnels(&conn).unwrap_or_default())
         .unwrap_or_default();
     for row in rows {
-        if !reaped.contains(&row.pid) {
+        if row.pid != tunnels::PID_PENDING && !reaped.contains(&row.pid) {
             // Our own child from THIS session (launch already swept older
-            // rows), unreaped, so the pid can't have been recycled.
+            // rows), unreaped, so the pid can't have been recycled. A
+            // sentinel row (claim taken, child not yet spawned) has no
+            // process to signal — its file/row still get cleaned below.
             let _ = tunnels::stop(state.platform.as_ref(), row.pid);
         }
         if let Err(e) = wp_tunnel::disable(Path::new(&row.docroot)) {
@@ -335,30 +370,79 @@ pub async fn start_tunnel<R: tauri::Runtime>(
         }
     }
 
-    let platform = state.platform.as_ref();
-    let bin = binaries::resolve(platform, "cloudflared", binaries::CLOUDFLARED_VERSION).await?;
-    let child = tunnels::start(platform, &bin, &domain, services::NGINX_HTTP_PORT)?;
+    // CLAIM the domain's row BEFORE resolving or spawning anything (step 4).
+    // The insert is atomic (`ON CONFLICT DO NOTHING`), so of two concurrent
+    // starts exactly one proceeds — the loser errors here, before it can
+    // resolve a binary, spawn a second cloudflared, or truncate the shared
+    // log the winner is polling. The claim doubles as the v23 lifecycle
+    // record: a quit or crash from this point on finds the row (exit hook /
+    // launch sweep), never an untracked child.
+    {
+        let claimed = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))
+            .and_then(|conn| {
+                crate::state::store::try_claim_tunnel(
+                    &conn,
+                    &domain,
+                    tunnels::PID_PENDING,
+                    &site.path,
+                )
+            })?;
+        if !claimed {
+            return Err(Error::Other(format!(
+                "a share for {domain} is already starting or running — stop it first if it \
+                 looks stuck"
+            )));
+        }
+    }
 
-    // Record the spawn BEFORE the URL poll (v23): a quit or crash during the
-    // poll must leave a row for the exit hook / launch sweep, or the child
-    // would outlive us untracked. If the record itself can't be written the
+    let platform = state.platform.as_ref();
+    let bin = match binaries::resolve(platform, "cloudflared", binaries::CLOUDFLARED_VERSION).await
+    {
+        Ok(bin) => bin,
+        Err(e) => {
+            delete_tunnel_row(&state, &domain); // release the claim
+            return Err(e);
+        }
+    };
+    let mut child = match tunnels::start(platform, &bin, &domain, services::NGINX_HTTP_PORT) {
+        Ok(child) => child,
+        Err(e) => {
+            delete_tunnel_row(&state, &domain);
+            return Err(e);
+        }
+    };
+    // The child's real pid lands on the claim; if it can't be written the
     // crash story is broken for this tunnel — fail the start rather than run
-    // a public tunnel we couldn't clean up after.
+    // a public tunnel the exit hook couldn't kill.
     {
         let recorded = state
             .db
             .lock()
             .map_err(|_| Error::Other("database lock poisoned".into()))
-            .and_then(|conn| {
-                crate::state::store::record_tunnel(&conn, &domain, child.id(), &site.path)
-            });
-        if let Err(e) = recorded {
-            let _ = tunnels::stop(platform, child.id());
-            let mut c = child;
-            let _ = c.wait();
-            return Err(Error::Other(format!(
-                "tunnel start aborted: its lifecycle record could not be written: {e}"
-            )));
+            .and_then(|conn| crate::state::store::set_tunnel_pid(&conn, &domain, child.id()));
+        match recorded {
+            Ok(true) => {}
+            // The claim vanished: a stop or site delete raced this start and
+            // revoked it. Cancel — killing our own child — rather than run a
+            // tunnel nothing tracks.
+            Ok(false) => {
+                let _ = tunnels::stop(platform, child.id());
+                let _ = child.wait();
+                return Err(Error::Other(format!(
+                    "sharing {domain} was stopped while it was still starting"
+                )));
+            }
+            Err(e) => {
+                let _ = tunnels::stop(platform, child.id());
+                let _ = child.wait();
+                delete_tunnel_row(&state, &domain);
+                return Err(Error::Other(format!(
+                    "tunnel start aborted: its lifecycle record could not be written: {e}"
+                )));
+            }
         }
     }
 
@@ -368,10 +452,19 @@ pub async fn start_tunnel<R: tauri::Runtime>(
         if let Some(u) = tunnels::read_url(platform, &domain) {
             break u;
         }
+        // A child that died can never print a URL — fail NOW with the honest
+        // reason instead of burning the rest of the 30s. Also how a stop that
+        // raced this start resolves: stop kills the recorded pid, this poll
+        // notices within an interval and releases everything.
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            delete_tunnel_row(&state, &domain);
+            return Err(Error::Other(format!(
+                "cloudflared exited before reporting a public URL — see logs/tunnel-{domain}.log"
+            )));
+        }
         if Instant::now() >= deadline {
             let _ = tunnels::stop(platform, child.id());
-            let mut c = child;
-            let _ = c.wait();
+            let _ = child.wait();
             // A failed start settles its own row — never left for the sweep.
             delete_tunnel_row(&state, &domain);
             return Err(Error::Other("cloudflared did not report a public URL in time".into()));

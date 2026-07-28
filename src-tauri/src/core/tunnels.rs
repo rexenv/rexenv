@@ -85,6 +85,13 @@ pub enum TunnelHealth {
     Broken,
 }
 
+/// Row pid before the child exists: a claim is taken BEFORE binary resolve
+/// and spawn (step 4 — the claim also gates the shared log truncation), so a
+/// row can briefly name no process. `u32::MAX` is structurally inert — it can
+/// never be a real pid, `kill` on it fails harmlessly if a guard is ever
+/// missed, and `pid_command` finds nothing so the sweep treats it as dead.
+pub const PID_PENDING: u32 = u32::MAX;
+
 /// Refuse a tunnel for any site the shared nginx does not serve (step 3,
 /// 28 Jul 2026). The tunnel's origin is nginx `:18088` routed by Host header;
 /// an Apache/FrankenPHP override site has NO nginx vhost, so its Host would
@@ -199,11 +206,15 @@ pub fn sweep_startup(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
         .unwrap_or_default();
     let mut killed = 0u32;
     for row in rows {
-        let ours = platform
-            .supervisor()
-            .pid_command(row.pid)
-            .map(|cmd| is_our_tunnel(&cmd, &marker, &row.domain))
-            .unwrap_or(false);
+        // A crash between claim and spawn leaves the sentinel — no process
+        // ever existed for it; cleanup only (the argv probe would agree, but
+        // the sentinel must not even be looked up).
+        let ours = row.pid != PID_PENDING
+            && platform
+                .supervisor()
+                .pid_command(row.pid)
+                .map(|cmd| is_our_tunnel(&cmd, &marker, &row.domain))
+                .unwrap_or(false);
         if ours {
             log::warn!(
                 "tunnels: killing the orphaned tunnel for {} (pid {}) — a prior session \
