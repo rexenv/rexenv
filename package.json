@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "release:mac": "tauri build --target universal-apple-darwin",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "bash scripts/verify.sh"
   },
   "dependencies": {
     "@fontsource/inter": "^5.1.0",
