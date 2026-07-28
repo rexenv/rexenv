@@ -52,6 +52,7 @@ const SCENARIOS = [
     ["revert", "confirmRevert"],
   ],
   ["delete-connected", "view=delete&kind=connected", []],
+  ["delete-connected-long", "view=delete&kind=connected&long=1", []],
   ["delete-preexisting-db", "view=delete&kind=preexisting", []],
   ["delete-wp-plain", "view=delete&kind=wp", []],
   ["delete-imported-laravel", "view=delete&kind=imported", []],
@@ -81,6 +82,9 @@ async function runActions(page, actions) {
 
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
+  // ONLY=regex narrows the sweep to matching scenario names (per-fix re-runs).
+  const only = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
+  const picked = only ? SCENARIOS.filter(([n]) => only.test(n)) : SCENARIOS;
   const browser = await webkit.launch();
   let failures = 0;
   for (const [wName, width] of WIDTHS) {
@@ -90,7 +94,7 @@ async function runActions(page, actions) {
       viewport: { width, height: 940 },
       colorScheme: "dark",
     });
-    for (const [name, query, actions] of SCENARIOS) {
+    for (const [name, query, actions] of picked) {
       try {
         await page.goto(`${BASE}/dev/ui-review?${query}`);
         await page.waitForSelector("h1");

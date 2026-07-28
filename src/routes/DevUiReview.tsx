@@ -171,6 +171,17 @@ const BORROWED: ResolverTldStatus = {
 
 function DeleteView() {
   const kind = params.get("kind") ?? "connected";
+  // `long=1`: the worst realistic case — the longest domain on the real
+  // machine's Valet tree plus a collision-suffixed db name and a deep path.
+  const long = params.get("long") === "1";
+  const longOver: Partial<Site> = long
+    ? {
+        name: "storeware-reviews-staging",
+        domain: "storeware-reviews-staging.test",
+        dbName: "wp_storeware_reviews_staging_9a1b2c3d",
+        path: "/Users/wpdev/Projects/clients/storeware/storeware-reviews-staging",
+      }
+    : {};
   const site =
     kind === "preexisting"
       ? fixtureSite({ dbCreated: false })
@@ -180,7 +191,7 @@ function DeleteView() {
           ? fixtureSite({ type: "laravel", dbCreated: true, dbName: "lms" })
           : kind === "linked"
             ? fixtureSite({ dbCreated: null })
-            : fixtureSite();
+            : fixtureSite(longOver);
   const dbState = kind === "connected" || kind === "preexisting" ? ("connected" as const) : undefined;
   return (
     <DeleteSiteDialog
