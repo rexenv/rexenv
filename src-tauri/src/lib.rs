@@ -170,8 +170,11 @@ pub fn run() {
             app.manage(commands::site_provision::ProvisionJobs::default());
             app.manage(commands::valet_import::ImportJobs::default());
             app.manage(commands::db_import::DbImportJobs::default());
-            // Registry of live per-site public tunnels (§9.1).
+            // Registry of live per-site public tunnels (§9.1) + its health
+            // prober (step 2 status honesty: dead children settled and public
+            // URLs probed every 30s, UI open or not).
             app.manage(commands::tunnels::Tunnels::default());
+            commands::tunnels::spawn_health_prober(app.handle().clone());
 
             // Open the app SQLite database (creating it + running migrations) and
             // hold it in app state for the IPC commands.

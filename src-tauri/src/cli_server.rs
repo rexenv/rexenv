@@ -981,7 +981,13 @@ where
                 .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
             let id = need_str(&args, "id", cmd)?;
             if cmd == "tunnel.start" {
-                let info = commands::tunnels::start_tunnel(state.clone(), tunnels, id).await?;
+                let info = commands::tunnels::start_tunnel(
+                    app.app_handle().clone(),
+                    state.clone(),
+                    tunnels,
+                    id,
+                )
+                .await?;
                 Ok(to_value(&info)?)
             } else {
                 commands::tunnels::stop_tunnel(state.clone(), tunnels, id).await?;

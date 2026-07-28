@@ -85,6 +85,58 @@ pub enum TunnelHealth {
     Broken,
 }
 
+/// A single health probe's raw result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeOutcome {
+    /// The URL answered with this HTTP status.
+    Status(u16),
+    /// No HTTP response at all (DNS/connect/timeout) — proves nothing about
+    /// the tunnel: OUR connectivity may be the problem.
+    TransportError,
+}
+
+/// Consecutive tunnel-gone (530) responses before the verdict is `Broken`.
+/// One 530 is normal while cloudflared reconnects to the edge; three checks
+/// (~90s at the 30s cadence) past that means the registration isn't coming
+/// back for this quick tunnel.
+pub const BROKEN_AFTER: u32 = 3;
+
+/// Fold a probe outcome into the next `(health, strikes)`.
+///
+/// Any HTTP response EXCEPT 530 proves the tunnel path: the edge accepted the
+/// hostname and something behind the tunnel answered — a WP 404/500, or
+/// cloudflared's own 502 for a stopped local origin, all rode the tunnel to
+/// get here. Origin health is the Services page's fact; this badge reads ONE
+/// fact, the tunnel's. HTTP 530 is Cloudflare's tunnel-level failure (error
+/// 1033, "could not resolve the tunnel") — positive evidence AGAINST, counted
+/// as a strike. Transport errors change nothing: not evidence for, not
+/// evidence against (strikes carry through, so a flapping edge can't dodge
+/// `Broken` by timing out between 530s).
+pub fn fold_probe(prev_strikes: u32, outcome: ProbeOutcome) -> (TunnelHealth, u32) {
+    match outcome {
+        ProbeOutcome::Status(530) => {
+            let strikes = prev_strikes.saturating_add(1);
+            if strikes >= BROKEN_AFTER {
+                (TunnelHealth::Broken, strikes)
+            } else {
+                (TunnelHealth::Unverified, strikes)
+            }
+        }
+        ProbeOutcome::Status(_) => (TunnelHealth::Reachable, 0),
+        ProbeOutcome::TransportError => (TunnelHealth::Unverified, prev_strikes),
+    }
+}
+
+/// One bounded HEAD against the public URL. The caller supplies a client with
+/// connect/total timeouts baked in and runs this OUTSIDE any registry lock —
+/// status snapshots must stay instant whatever the network does.
+pub async fn probe_url(client: &reqwest::Client, url: &str) -> ProbeOutcome {
+    match client.head(url).send().await {
+        Ok(resp) => ProbeOutcome::Status(resp.status().as_u16()),
+        Err(_) => ProbeOutcome::TransportError,
+    }
+}
+
 /// Positive identification of a recorded tunnel pid (lifecycle ruling
 /// 28 Jul 2026): the live process's command line must reference our binary
 /// name AND the app-data dir (the cloudflared binary lives under it — the
@@ -182,6 +234,26 @@ mod tests {
         }
         // An empty marker must never wildcard-match.
         assert!(!is_our_tunnel("cloudflared --http-host-header acme.rex", "", "acme.rex"));
+    }
+
+    #[test]
+    fn fold_probe_reads_one_fact_honestly() {
+        use ProbeOutcome::{Status, TransportError};
+        use TunnelHealth::{Broken, Reachable, Unverified};
+        // Any HTTP answer except 530 proves the path — including origin-side
+        // errors that rode the tunnel to reach us.
+        for code in [200u16, 301, 404, 405, 500, 502] {
+            assert_eq!(fold_probe(2, Status(code)), (Reachable, 0), "status {code}");
+        }
+        // 530s escalate: reconnect-tolerant, then Broken on positive evidence.
+        assert_eq!(fold_probe(0, Status(530)), (Unverified, 1));
+        assert_eq!(fold_probe(1, Status(530)), (Unverified, 2));
+        assert_eq!(fold_probe(2, Status(530)), (Broken, 3));
+        assert_eq!(fold_probe(3, Status(530)), (Broken, 4)); // stays broken
+        // Transport errors are non-evidence: verdict Unverified, strikes kept
+        // (a timeout between 530s must not reset the count).
+        assert_eq!(fold_probe(0, TransportError), (Unverified, 0));
+        assert_eq!(fold_probe(2, TransportError), (Unverified, 2));
     }
 
     #[test]

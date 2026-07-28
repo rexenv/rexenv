@@ -108,6 +108,79 @@ fn delete_tunnel_row(state: &AppState, domain: &str) {
     }
 }
 
+/// Probe cadence for live tunnels. External HTTPS HEAD per tunnel per tick —
+/// negligible volume, and verdicts age at most this long.
+const PROBE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Probe one tunnel's public URL and fold the verdict into its entry. Network
+/// waits happen OUTSIDE the registry lock (two brief locks around one bounded
+/// HEAD); the URL is re-checked on write-back so a restart mid-probe can't
+/// stamp the old run's verdict onto the new tunnel.
+async fn probe_and_record<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    client: &reqwest::Client,
+    domain: &str,
+) {
+    use tauri::Manager;
+    let Some(registry) = app.try_state::<Tunnels>() else { return };
+    let Some((url, strikes)) = registry
+        .0
+        .lock()
+        .ok()
+        .and_then(|m| m.get(domain).map(|e| (e.url.clone(), e.strikes)))
+    else {
+        return;
+    };
+    let outcome = crate::core::tunnels::probe_url(client, &url).await;
+    let (health, strikes) = crate::core::tunnels::fold_probe(strikes, outcome);
+    if let Ok(mut m) = registry.0.lock() {
+        if let Some(e) = m.get_mut(domain) {
+            if e.url == url {
+                e.health = health;
+                e.strikes = strikes;
+            }
+        }
+    };
+}
+
+/// A `reqwest` client bounded for health probes: a wedged edge costs at most
+/// the total timeout, never an open-ended wait (B25 discipline).
+fn probe_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(8))
+        .build()
+        .unwrap_or_default()
+}
+
+/// Background health prober, spawned once at setup. Every tick: settle dead
+/// children (so a crash is noticed within the interval even with no UI open,
+/// and its mu-plugin/row are cleaned promptly), then probe each live tunnel's
+/// public URL. Idles cheaply when nothing is shared.
+pub fn spawn_health_prober<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    use tauri::Manager;
+    tauri::async_runtime::spawn(async move {
+        let client = probe_client();
+        loop {
+            tokio::time::sleep(PROBE_INTERVAL).await;
+            let (Some(registry), Some(state)) =
+                (app.try_state::<Tunnels>(), app.try_state::<crate::state::app::AppState>())
+            else {
+                continue;
+            };
+            settle_dead(&state, registry.take_dead());
+            let domains: Vec<String> = registry
+                .0
+                .lock()
+                .map(|m| m.keys().cloned().collect())
+                .unwrap_or_default();
+            for domain in domains {
+                probe_and_record(&app, &client, &domain).await;
+            }
+        }
+    });
+}
+
 /// App-exit hook: tunnels DIE WITH THE APP (lifecycle ruling 28 Jul 2026 —
 /// `docs/PLAN-tunnel-lifecycle.md`). A service outliving the app serves the
 /// developer; a tunnel outliving it serves the PUBLIC, unattended — so this is
@@ -174,7 +247,8 @@ const URL_TIMEOUT: Duration = Duration::from_secs(30);
 /// Start (or return the existing) public quick tunnel for a site. Returns the
 /// public `trycloudflare.com` URL once cloudflared reports it.
 #[tauri::command]
-pub async fn start_tunnel(
+pub async fn start_tunnel<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     state: State<'_, AppState>,
     tunnels: State<'_, Tunnels>,
     id: String,
@@ -264,6 +338,12 @@ pub async fn start_tunnel(
             strikes: 0,
         },
     );
+    // First verdict promptly instead of waiting out a full prober tick —
+    // "Unverified" right after a successful start should be seconds, not 30.
+    let probe_domain = domain.clone();
+    tauri::async_runtime::spawn(async move {
+        probe_and_record(&app, &probe_client(), &probe_domain).await;
+    });
     Ok(TunnelInfo {
         domain,
         url,
