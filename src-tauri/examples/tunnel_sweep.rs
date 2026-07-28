@@ -138,7 +138,71 @@ fn main() {
         "every row must be settled"
     );
 
+    // ── Phase 2: the ROWLESS backstop (ruled 28 Jul 2026) ──────────────────
+    // Any real cloudflared on this machine is safe BY CONSTRUCTION: identity
+    // is checked against the SANDBOX app-data marker, which no real process's
+    // argv contains. Snapshot real pids to prove that, not just claim it.
+    let fixture_pids = |ours: u32, look: u32| move |p: &u32| *p != ours && *p != look;
+    let before: Vec<u32> = rexenv_lib::platform::current()
+        .supervisor()
+        .pids_named("cloudflared");
+
+    // OURS-ROWLESS: full identity under the sandbox app-data, NO row — the
+    // "DB and process table disagree" class. Must die.
+    let rowless_bin_dir =
+        plat.paths().app_data_dir().expect("sandbox app data").join("bin-rowless");
+    std::fs::create_dir_all(&rowless_bin_dir).expect("create rowless bin dir");
+    let rowless_bin = rowless_bin_dir.join("cloudflared");
+    std::fs::copy("/bin/bash", &rowless_bin).expect("stage rowless fake");
+    let rowless_child = Command::new(&rowless_bin)
+        .args(["-c", "sleep 300", "cloudflared", "tunnel", "--url", "http://127.0.0.1:18088", "--http-host-header", "rowless-ours.rex"])
+        .spawn()
+        .expect("spawn rowless fake");
+    let mut rowless = common::Reaped::new(rowless_child, 39996, "cloudflared");
+
+    // LOOKALIKE: named cloudflared, carries the host-header pair, but lives
+    // OUTSIDE our app-data — not provably ours, must SURVIVE (the branch
+    // that would be silently wrong in either direction).
+    let look_dir = std::env::temp_dir().join(format!("rexenv-lookalike-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&look_dir);
+    std::fs::create_dir_all(&look_dir).expect("create lookalike dir");
+    let look_bin = look_dir.join("cloudflared");
+    std::fs::copy("/bin/bash", &look_bin).expect("stage lookalike");
+    let look_child = Command::new(&look_bin)
+        .args(["-c", "sleep 300", "cloudflared", "tunnel", "--url", "http://127.0.0.1:18088", "--http-host-header", "lookalike.rex"])
+        .spawn()
+        .expect("spawn lookalike");
+    let mut look = common::Reaped::new(look_child, 39995, "cloudflared");
+
+    let killed_rowless = tunnels::sweep_rowless(&conn, &*plat);
+
+    let rowless_state = state_of(rowless.id());
+    assert!(
+        rowless_state.is_empty() || rowless_state.starts_with('Z'),
+        "rowless-but-ours must be killed by the backstop; ps state: {rowless_state:?}"
+    );
+    let look_state = state_of(look.id());
+    assert!(
+        !look_state.is_empty() && !look_state.starts_with('Z'),
+        "a lookalike outside our app-data must SURVIVE; ps state: {look_state:?}"
+    );
+    assert_eq!(killed_rowless, 1, "exactly the provably-ours rowless process counts");
+    // Every real cloudflared that predated the fixtures is still alive.
+    let after: Vec<u32> = rexenv_lib::platform::current()
+        .supervisor()
+        .pids_named("cloudflared");
+    let keep = fixture_pids(rowless.id(), look.id());
+    for p in before.iter().filter(|p| keep(p)) {
+        assert!(after.contains(p), "real cloudflared pid {p} must be untouched by the backstop");
+    }
+
+    rowless.reap();
+    look.reap();
+    let _ = std::fs::remove_dir_all(&look_dir);
     foreign.reap();
     ours.reap();
-    println!("PASS tunnel_sweep: foreign survived, ours killed, dead cleaned; all files+rows settled");
+    println!(
+        "PASS tunnel_sweep: foreign survived, ours killed, dead cleaned; rowless-ours killed, \
+         lookalike survived, real tunnels untouched"
+    );
 }

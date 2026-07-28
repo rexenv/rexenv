@@ -338,6 +338,21 @@ impl ProcessSupervisor for MacosSupervisor {
         stop_pid(pid, STOP_GRACE_TRIES, STOP_POLL_INTERVAL)
     }
 
+    fn pids_named(&self, name: &str) -> Vec<u32> {
+        // `pgrep -x` = exact process-name match; identification happens at the
+        // caller via `pid_command` — this is only the candidate list.
+        std::process::Command::new("pgrep")
+            .args(["-x", name])
+            .output()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter_map(|l| l.trim().parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn pid_command(&self, pid: u32) -> Option<String> {
         // Same world-readable `ps` source `owned_listeners` trusts for its
         // marker check; empty output = no such process.

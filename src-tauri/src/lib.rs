@@ -287,6 +287,17 @@ pub fn run() {
                             "tunnels: killed {orphaned} tunnel(s) still sharing after a crash"
                         );
                     }
+                    // Backstop for the class "DB and process table disagree"
+                    // (rowless but provably ours — pre-v23 fossils, app-data
+                    // reset, lost records): measured on this machine, such
+                    // processes serve publicly for WEEKS with nothing else
+                    // able to see them.
+                    let rowless = core::tunnels::sweep_rowless(&conn, platform.as_ref());
+                    if rowless > 0 {
+                        log::warn!(
+                            "tunnels: stopped {rowless} PUBLIC share(s) this app had no record of"
+                        );
+                    }
                     // First run: create the sites root (~/rexenv/Sites, or the
                     // user's configured folder). Non-fatal — provision gives
                     // its own clear error if the folder still can't be made.

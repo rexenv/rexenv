@@ -148,6 +148,14 @@ pub trait ProcessSupervisor: Send + Sync {
     /// Stop a previously spawned process by pid.
     fn stop(&self, pid: u32) -> Result<()>;
 
+    /// PIDs of every process whose NAME is exactly `name` (candidate
+    /// enumeration only — callers must positively identify each pid via
+    /// [`Self::pid_command`] before touching it; the name alone proves
+    /// nothing). Default: none — a platform without this relies on records.
+    fn pids_named(&self, _name: &str) -> Vec<u32> {
+        Vec::new()
+    }
+
     /// Full command line of `pid` as the OS reports it (argv, space-joined),
     /// or `None` when the process is gone or the platform can't read it.
     /// Callers use this to POSITIVELY identify a recorded pid before sending

@@ -261,6 +261,71 @@ pub fn sweep_startup(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
     killed
 }
 
+/// The `--http-host-header` value out of a ps command line — token-pair
+/// adjacency, same rule as [`is_our_tunnel`]'s match. `None` when the pair is
+/// absent (we never spawn cloudflared without it, so no-pair = not a tunnel
+/// we started).
+pub fn host_header_domain(command: &str) -> Option<String> {
+    let toks: Vec<&str> = command.split_whitespace().collect();
+    toks.windows(2).find(|w| w[0] == "--http-host-header").map(|w| w[1].to_string())
+}
+
+/// Rowless-orphan backstop (ruled 28 Jul 2026, after the live diagnosis found
+/// four pre-v23 fossils publicly serving for 9–15 days): kill any process
+/// that is PROVABLY ours but has NO v23 row. The class is "the DB and the
+/// process table disagree" — pre-v23 builds, an app-data reset, a restore
+/// without rows, or any future record loss — and each instance is a public
+/// share nothing else will ever reap.
+///
+/// Identity bar is EXACTLY the sweep's ([`is_our_tunnel`]: our app-data
+/// binary path in argv + the exact `--http-host-header` token pair, with the
+/// domain read from the argv itself since no record exists). A rowless
+/// process that is not provably ours — a lookalike cloudflared from
+/// elsewhere — is never touched. Runs AFTER [`sweep_startup`], so recorded
+/// rows are already settled; `rows` re-checked defensively anyway. Each kill
+/// logs at WARN with its weight: a public share the user didn't know about.
+pub fn sweep_rowless(conn: &rusqlite::Connection, platform: &dyn Platform) -> u32 {
+    let marker = platform
+        .paths()
+        .app_data_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    if marker.is_empty() {
+        return 0;
+    }
+    let recorded: Vec<u32> = crate::state::store::list_tunnels(conn)
+        .map(|rows| rows.iter().map(|r| r.pid).collect())
+        .unwrap_or_default();
+    let sites = crate::core::sites::list(conn).unwrap_or_default();
+    let mut killed = 0u32;
+    for pid in platform.supervisor().pids_named("cloudflared") {
+        if recorded.contains(&pid) {
+            continue; // the row sweep owns recorded pids
+        }
+        let Some(cmd) = platform.supervisor().pid_command(pid) else { continue };
+        let Some(domain) = host_header_domain(&cmd) else { continue };
+        if !is_our_tunnel(&cmd, &marker, &domain) {
+            continue; // not provably ours — never touched
+        }
+        log::warn!(
+            "tunnels: STOPPED A PUBLIC SHARE THIS APP HAD NO RECORD OF — {domain} (pid {pid}) \
+             was serving publicly without rexenv's knowledge (pre-v23 build, app-data reset, \
+             or a lost record). Share again from the Tunnels page if intended."
+        );
+        let _ = platform.supervisor().stop(pid);
+        killed += 1;
+        // The site may still exist (only the RECORD was lost) — its docroot
+        // then holds a live-origin mu-plugin worth removing. No site row =
+        // no known docroot = nothing reachable to clean.
+        if let Some(site) = sites.iter().find(|s| s.domain == domain) {
+            if let Err(e) = crate::core::wp_tunnel::disable(std::path::Path::new(&site.path)) {
+                log::warn!("tunnels: could not remove the mu-plugin for {domain}: {e}");
+            }
+        }
+    }
+    killed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +344,16 @@ mod tests {
         // Exact-token match: a lookalike domain must not pass on prefix.
         let lookalike = ours.replace("acme.rex", "acme.rexx");
         assert!(!is_our_tunnel(&lookalike, MARKER, "acme.rex"));
+    }
+
+    #[test]
+    fn host_header_domain_needs_the_exact_pair() {
+        assert_eq!(
+            host_header_domain("/x/cloudflared tunnel --url http://127.0.0.1:18088 --http-host-header a.rex"),
+            Some("a.rex".into())
+        );
+        assert_eq!(host_header_domain("/x/cloudflared tunnel --url http://127.0.0.1:18088"), None);
+        assert_eq!(host_header_domain("vim --http-host-header"), None); // no value token
     }
 
     #[test]
