@@ -17,7 +17,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     RunAtLoad split assert → contiguous; mail bounds echo test deleted (wedged-server
     test is the behavioral proof); `len() >= 2` const tautology dropped. verify.sh
     green, 534 tests.
-  - [ ] T3. Rename lying test names; reduce the two live-superseded PHP-needle tests.
+  - [x] **T3. Lying names renamed; needle tests reduced** ✓ 28 Jul 2026 — 16
+    `manifest_resolves_*` → `manifest_pins_*` (a HashMap lookup is not a fetch);
+    dbcompat's two "imports cleanly"/"land without drama" → verdict-level names;
+    `…parse_live_…` → `…parse_captured_…` ×2; wp_tunnel/wp_login needle tests reduced
+    to tripwires that NAME their behavioral example, vacuous needles (".test",
+    "'exp'") dropped. verify.sh green.
   - [ ] T4. `examples/db_dump_flags_check.rs` — the mysqldump incident class, real
     binaries, incl. the `--connect-timeout` negative.
   - [ ] T5. `frankenphp_subdir_validate` actually validates (real binary, asserts).

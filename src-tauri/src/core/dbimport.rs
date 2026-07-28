@@ -429,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_live_sample_shape() {
+    fn reads_the_captured_sample_shape() {
         // The real `ea` site on this machine: root with a password, TCP host.
         let text = r#"<?php
 define( 'DB_NAME', 'ea' );

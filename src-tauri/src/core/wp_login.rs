@@ -199,20 +199,22 @@ mod tests {
     }
 
     #[test]
-    fn mu_plugin_enforces_local_and_single_use() {
-        // The shipped mu-plugin must check tunnel headers, loopback, host, expiry,
-        // single-use deletion, and a timing-safe hash compare.
+    fn mu_plugin_source_keeps_the_guard_tripwires() {
+        // What THIS level can prove: the guard clauses are present in the
+        // source. Enforcement — magic link works, replay denied, tunnel-header
+        // request denied — is proven by `examples/wp_login_check.rs` against a
+        // real WP over TLS; run it after editing the plugin source. (The old
+        // needle list also carried ".test" and "'exp'", which match anywhere
+        // in the file and guarded nothing.)
         let src = mu_plugin_source("acme.rex");
         for needle in [
             "HTTP_CF_CONNECTING_IP",
             "HTTP_X_FORWARDED_FOR",
             "delete_option('rexenv_login')",
             "hash_equals",
-            "'exp'",
             "wp_set_auth_cookie",
-            ".test",
         ] {
-            assert!(src.contains(needle), "mu-plugin missing guard: {needle}");
+            assert!(src.contains(needle), "mu-plugin missing guard tripwire: {needle}");
         }
         // The site's own domain is baked into the host allow-list (custom TLDs),
         // and no unexpanded placeholder survives.

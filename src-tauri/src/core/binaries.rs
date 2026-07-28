@@ -2175,7 +2175,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_caddy_per_arch() {
+    fn manifest_pins_caddy_per_arch() {
         let arm = manifest("caddy", CADDY_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("caddy_2.11.4_mac_arm64.tar.gz"));
         assert_eq!(arm.archive, Archive::TarGz);
@@ -2189,7 +2189,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_php_cli_and_fpm() {
+    fn manifest_pins_php_cli_and_fpm() {
         let cli = manifest("php", PHP_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(cli.url.ends_with("php-8.3.31-cli-macos-aarch64.tar.gz"));
         assert_eq!(cli.member, "php");
@@ -2231,7 +2231,7 @@ mod tests {
     }
 
     #[test]
-    fn bundle_manifest_resolves_redis_per_arch() {
+    fn bundle_manifest_pins_redis_per_arch() {
         for arch in [Arch::Arm64, Arch::X86_64] {
             let bundle = bundle_manifest("redis", REDIS_VERSION, "macos", arch).unwrap();
             assert_eq!(bundle.member, "bin/redis-server");
@@ -2268,7 +2268,7 @@ mod tests {
     }
 
     #[test]
-    fn bundle_manifest_resolves_mariadb_per_arch() {
+    fn bundle_manifest_pins_mariadb_per_arch() {
         for arch in [Arch::Arm64, Arch::X86_64] {
             let bundle = bundle_manifest("mariadb", MARIADB_VERSION, "macos", arch).unwrap();
             assert_eq!(bundle.member, "bin/mariadbd");
@@ -2302,7 +2302,7 @@ mod tests {
     }
 
     #[test]
-    fn bundle_manifest_resolves_xdebug_per_supported_minor() {
+    fn bundle_manifest_pins_xdebug_per_supported_minor() {
         for minor in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
             assert!(xdebug_supported(minor), "{minor}");
             let (name, version) = xdebug_bundle_id(minor).unwrap();
@@ -2381,7 +2381,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_every_pinned_php_version() {
+    fn manifest_pins_every_pinned_php_version() {
         for v in PHP_VERSIONS {
             for arch in [Arch::Arm64, Arch::X86_64] {
                 let cli = manifest("php", v, "macos", arch).unwrap();
@@ -2446,7 +2446,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_nginx_as_raw_binary() {
+    fn manifest_pins_nginx_as_raw_binary() {
         let arm = manifest("nginx", NGINX_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("nginx-1.30.3-arm64-darwin"));
         assert_eq!(arm.archive, Archive::Raw);
@@ -2458,7 +2458,7 @@ mod tests {
     }
 
     #[test]
-    fn every_offered_db_version_is_pinned_and_resolves() {
+    fn every_offered_db_version_is_pinned_in_the_manifest() {
         for arch in [Arch::Arm64, Arch::X86_64] {
             for v in MYSQL_VERSIONS {
                 let m = manifest("mysql", v, "macos", arch).expect(v);
@@ -2495,7 +2495,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_mysql_as_tree() {
+    fn manifest_pins_mysql_as_tree() {
         let arm = manifest("mysql", MYSQL_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("mysql-8.4.6-macos15-arm64.tar.gz"));
         assert_eq!(arm.archive, Archive::TarGzTree);
@@ -2506,7 +2506,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_postgres_as_tree() {
+    fn manifest_pins_postgres_as_tree() {
         let arm = manifest("postgres", POSTGRES_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("postgresql-18.4.0-aarch64-apple-darwin.tar.gz"));
         assert_eq!(arm.archive, Archive::TarGzTree);
@@ -2518,7 +2518,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_frankenphp_as_raw_binary() {
+    fn manifest_pins_frankenphp_as_raw_binary() {
         let arm = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("v1.12.4/frankenphp-mac-arm64"));
         assert_eq!(arm.archive, Archive::Raw);
@@ -2531,7 +2531,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_mailpit_as_tar_member() {
+    fn manifest_pins_mailpit_as_tar_member() {
         let arm = manifest("mailpit", MAILPIT_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("v1.30.3/mailpit-darwin-arm64.tar.gz"));
         assert_eq!(arm.archive, Archive::TarGz);
@@ -2544,7 +2544,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_cloudflared_as_tar_member() {
+    fn manifest_pins_cloudflared_as_tar_member() {
         let arm = manifest("cloudflared", CLOUDFLARED_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("2026.6.1/cloudflared-darwin-arm64.tgz"));
         assert_eq!(arm.archive, Archive::TarGz);
@@ -2556,7 +2556,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_wp_cli_os_agnostic() {
+    fn manifest_pins_wp_cli_os_agnostic() {
         // Same phar on every OS/arch.
         let a = manifest("wp-cli", WP_CLI_VERSION, "macos", Arch::Arm64).unwrap();
         let b = manifest("wp-cli", WP_CLI_VERSION, "linux", Arch::X86_64).unwrap();
@@ -2567,7 +2567,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_composer_os_agnostic() {
+    fn manifest_pins_composer_os_agnostic() {
         // Same phar on every OS/arch — run via the SITE's bundled PHP.
         let a = manifest("composer", COMPOSER_VERSION, "macos", Arch::Arm64).unwrap();
         let b = manifest("composer", COMPOSER_VERSION, "linux", Arch::X86_64).unwrap();
@@ -2578,7 +2578,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_resolves_adminer_os_agnostic() {
+    fn manifest_pins_adminer_os_agnostic() {
         let a = manifest("adminer", ADMINER_VERSION, "macos", Arch::Arm64).unwrap();
         let b = manifest("adminer", ADMINER_VERSION, "linux", Arch::X86_64).unwrap();
         assert!(a.url.ends_with("v5.4.2/adminer-5.4.2-en.php"));

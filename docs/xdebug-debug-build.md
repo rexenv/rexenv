@@ -82,5 +82,5 @@ shasum -a 256 php-8.3.31-*-xdebug-macos-*.tar.gz   # → the four SHA-256s
 
 `cargo test --lib binaries` flips `php_debug_variant_is_wired_but_unresolvable_until_hosted`
 expectations — update that test to assert the variant now **resolves** with a 64-char
-SHA-256, mirroring `manifest_resolves_php_cli_and_fpm`. Then a live check should show
+SHA-256, mirroring `manifest_pins_php_cli_and_fpm`. Then a live check should show
 `php-fpm-debug` downloading, verifying, and `phpinfo()` reporting Xdebug.

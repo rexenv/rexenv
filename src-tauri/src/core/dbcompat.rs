@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[test]
-    fn the_live_sample_imports_cleanly_into_either_mysql_we_ship() {
+    fn a_dbngin_8_0_source_gets_proceed_verdicts_into_either_mysql_we_ship() {
         // DBngin MySQL 8.0.27 — the real source on the dev machine.
         let s = src(Vendor::Mysql, "8.0.27");
         let into_8_0 = compat(&s, &tgt(Vendor::Mysql, "8.0.44"));
@@ -566,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn mariadb_sources_land_on_our_mariadb_without_drama() {
+    fn mariadb_source_verdicts_proceed_into_our_mariadb() {
         for v in ["10.6.21-MariaDB", "10.11.2-MariaDB", "11.4.12-MariaDB"] {
             let verdict = compat(&src(Vendor::Mariadb, v), &tgt(Vendor::Mariadb, "12.3.2"));
             assert!(verdict.runs_now(), "{v} should import into MariaDB 12.3.2");

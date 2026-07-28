@@ -205,27 +205,18 @@ mod tests {
     const ORIGIN: &str = "https://blue-cat-runs-fast.trycloudflare.com";
 
     #[test]
-    fn render_bakes_origin_and_keeps_guards() {
+    fn render_bakes_origin_and_the_guard_tripwires() {
+        // What THIS level can prove: substitution happened and the guard
+        // clauses didn't vanish from the source. The behavioral proof — the
+        // guards firing under real PHP in all three modes — is
+        // `examples/tunnel_muplugin_check.rs`; run it after editing PLUGIN_SRC.
         let php = render(ORIGIN);
         assert!(php.contains(&format!("$origin = '{ORIGIN}';")));
         assert!(!php.contains(ORIGIN_PLACEHOLDER));
-        // Tunnel-only + rewrite guards the shipped plugin must never lose.
-        for needle in [
-            "HTTP_CF_RAY",
-            "HTTP_CF_CONNECTING_IP",
-            "defined('WP_CLI')",
-            "$_SERVER['HTTP_HOST']",
-            "$_SERVER['HTTPS']",
-            "option_siteurl",
-            "option_home",
-            "content_url",
-            "plugins_url",
-            "upload_dir",
-            "ob_start",
-            "preg_replace_callback",
-            "(?![A-Za-z0-9.-])",
-        ] {
-            assert!(php.contains(needle), "mu-plugin missing: {needle}");
+        // Tripwires only (presence, not behavior): the tunnel-only
+        // discriminator and the lookalike-domain boundary.
+        for needle in ["HTTP_CF_RAY", "HTTP_CF_CONNECTING_IP", "(?![A-Za-z0-9.-])"] {
+            assert!(php.contains(needle), "mu-plugin missing guard tripwire: {needle}");
         }
     }
 

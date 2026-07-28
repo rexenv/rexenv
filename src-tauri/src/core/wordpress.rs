@@ -2425,7 +2425,7 @@ Error: WordPress installation doesn't verify against checksums.";
     }
 
     #[test]
-    fn language_rows_parse_live_wp_cli_output() {
+    fn language_rows_parse_captured_wp_cli_output() {
         // Verbatim rows from `wp language core list --format=json` (wp-cli 2.12,
         // WP 7.0): snake_case keys, en_US with empty `updated`.
         let json = r#"[
