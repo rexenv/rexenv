@@ -133,19 +133,41 @@ of the cache/mariadb variant), `card-apply-engineStopped`,
 fixture data — real data lengths (long domains, deep paths) may widen rows
 beyond what fixtures show.
 
-## C2. His observations (packaged app, real data — the other half)
+## C2. His observations (packaged app, real data) — three found, three FIXED
 
-_Pending: per-screen list. Dark mode, fairly wide window (noted per item if
-size-dependent)._
+Reported 28 Jul 2026 (dark, fairly wide window); reproduced in the harness at
+real scale before fixing, re-verified after. His two-are-one hypothesis for
+2+3 was correct.
 
-- Sites page: —
-- SiteDetail (Database tab): —
-- SiteDetail (other tabs): —
-- `/import`: —
-- Settings: —
-- Services / Databases / Mail / Tunnels (pre-migration surfaces): —
-- Onboarding: —
-- Dialogs & toasts: —
+1. **Row menu clipped on the last rows of a long list** — FIXED `9273f91`.
+   Diagnosis: the menu is portaled to `<body>` + `position: fixed` (ancestor
+   overflow was innocent), but `place()` always positioned it BELOW the
+   trigger with no flip — it rendered past the viewport bottom, and the
+   scroll listener closes the menu, so it couldn't be scrolled into view.
+   Now re-placed via `useLayoutEffect` once its height is known: flips above
+   when below overflows, clamps horizontally, before paint. Verified on a
+   28-row list, last row, both widths.
+2. **Adminer too small on plain sites** — FIXED `26b268f`. Diagnosis: Stage
+   2's step-9 commit wrapped the tab in a plain `space-y-4` block, severing
+   the `h-full` percentage chain — the iframe fell to its ~150px intrinsic
+   default on every site. A regression that §I/§J passes missed because the
+   card, not the frame, was under scrutiny.
+3. **Adminer unreachable on imported sites with a DB import** — same root
+   cause + the region's `overflow-hidden`: the cards pushed the collapsed
+   frame past a clipped region with no scrollbar. **Worst shape: imported +
+   the consent card** (most content above the frame). FIXED `26b268f`: the
+   tab body is a flex column (extracted to `DatabaseTab`, `eca7b3d`-style,
+   so the harness renders the real composition), the region scrolls for the
+   database tab, cards take natural height, and the frame flexes to the
+   remainder with a 420px floor — filling when there's room (measured 658 /
+   568 / 410px), scrollable-to when there isn't (368px + scrollbar in the
+   consent shape). The iframe fills absolutely (`inset-0`); percentage-
+   through-flex sizing is exactly what broke, twice (`iframeH: 0` on the
+   first fix attempt — measured, not assumed).
+
+Fix-time lesson recorded: the frame's height chain now has three
+belt-and-braces layers (region min-h-full column → flex wrapper with floor →
+absolute fill), each verified by measurement in the harness.
 
 ## D. Known adjacent loose ends (not UI, listed so they aren't lost)
 
