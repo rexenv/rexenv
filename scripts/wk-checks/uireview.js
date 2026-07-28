@@ -70,7 +70,60 @@ const SCENARIOS = [
   ["sites-scale-menu", "view=sites&rows=28", ["lastMenu"]],
   ["resolver-handback", "view=resolver", []],
   ["toasts", "view=toast", []],
+  // Every StatusPill state + every StartStopToggle state — the states the
+  // other fixtures never render (they hardcode `running`).
+  ["pills", "view=pills", []],
 ];
+
+/** Per-scenario layout assertions (beyond the universal overflow probe).
+ *  Return a list of problem strings; empty = pass. */
+const PROBES = {
+  // The §C2 h-full class: the Adminer iframe participates in the region's
+  // height chain. A severed percentage chain collapses it to its ~150px
+  // intrinsic default (the shipped bug), or to 0. DatabaseTab's min-h-[420px]
+  // floor sits on the WRAPPER; the iframe legitimately gets the floor minus
+  // AdminerFrame's header row (~52px → ~368px measured healthy), so 300 is
+  // the discriminating line: healthy ≥ 360, collapsed ≤ 150.
+  dbtab: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const frame = document.querySelector('iframe[title="Adminer"]');
+      if (!frame) return ["no Adminer iframe in the DOM"];
+      const h = frame.getBoundingClientRect().height;
+      if (h < 300) problems.push(`iframe height ${Math.round(h)}px — percentage chain collapsed`);
+      return problems;
+    }),
+  // The WKWebView metrics fix, committed as a check: every pill at least the
+  // 92px floor, one line tall, label inside the pill (the bug rendered
+  // "Running" as two overlapping words in an exact-fit 86px pill).
+  pills: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      for (const pill of document.querySelectorAll('[data-probe="pills"] > span')) {
+        const r = pill.getBoundingClientRect();
+        const label = pill.querySelector("span.whitespace-nowrap");
+        const lr = label ? label.getBoundingClientRect() : null;
+        const text = label ? label.textContent : "?";
+        if (r.width < 92) problems.push(`pill "${text}" width ${r.width.toFixed(1)}px < 92`);
+        if (r.height > 34) problems.push(`pill "${text}" height ${r.height.toFixed(1)}px — wrapped?`);
+        if (lr && lr.right > r.right + 0.5)
+          problems.push(`pill "${text}" label overflows its pill`);
+      }
+      const toggles = document.querySelectorAll('[data-probe="toggles"] [role="switch"]');
+      if (toggles.length !== 4) problems.push(`${toggles.length}/4 toggles rendered`);
+      for (const t of toggles) {
+        if (t.getAttribute("aria-label")?.includes("locked") && !t.disabled)
+          problems.push("the locked toggle is not disabled");
+      }
+      return problems;
+    }),
+};
+
+function probeFor(name) {
+  if (name.startsWith("dbtab")) return PROBES.dbtab;
+  if (name === "pills") return PROBES.pills;
+  return null;
+}
 
 async function runActions(page, actions) {
   for (const a of actions) {
@@ -121,7 +174,15 @@ async function runActions(page, actions) {
       viewport: { width, height: 940 },
       colorScheme: "dark",
     });
+    // A page that throws, or logs an error, is a failed scenario — this sweep
+    // used to be unable to fail on anything but a selector timeout.
+    let pageProblems = [];
+    page.on("pageerror", (e) => pageProblems.push(`pageerror: ${String(e).split("\n")[0]}`));
+    page.on("console", (m) => {
+      if (m.type() === "error") pageProblems.push(`console.error: ${m.text().split("\n")[0]}`);
+    });
     for (const [name, query, actions] of picked) {
+      pageProblems = [];
       try {
         await page.goto(`${BASE}/dev/ui-review?${query}`);
         await page.waitForSelector("h1");
@@ -133,13 +194,20 @@ async function runActions(page, actions) {
           path: path.join(OUT, `shot-${name}-${wName}.png`),
           fullPage: name !== "sites-scale-menu",
         });
-        // Cheap layout probe: anything overflowing the viewport horizontally?
+        const problems = [...pageProblems];
+        // Horizontal overflow is a FAILURE, not a warning nobody reads.
         const overflow = await page.evaluate(
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         );
-        console.log(
-          `${overflow > 1 ? "⚠" : "✓"} ${name} @${wName}${overflow > 1 ? ` — horizontal overflow ${overflow}px` : ""}`,
-        );
+        if (overflow > 1) problems.push(`horizontal overflow ${overflow}px`);
+        const probe = probeFor(name);
+        if (probe) problems.push(...(await probe(page)));
+        if (problems.length) {
+          failures++;
+          console.log(`✗ ${name} @${wName} — ${problems.join("; ")}`);
+        } else {
+          console.log(`✓ ${name} @${wName}`);
+        }
       } catch (e) {
         failures++;
         console.log(`✗ ${name} @${wName} — ${String(e).split("\n")[0]}`);

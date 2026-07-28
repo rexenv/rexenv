@@ -2,7 +2,16 @@
 // Prereqs + usage: see README.md in this directory.
 const { spawnSync } = require("node:child_process");
 
-const CHECKS = ["check.js", "rehydrate.js", "repopanel.js", "watchpanel.js", "linkpanel.js"];
+const CHECKS = [
+  "check.js",
+  "rehydrate.js",
+  "repopanel.js",
+  "watchpanel.js",
+  "linkpanel.js",
+  // The UI-review sweep asserts now (overflow fatal, pageerror listeners,
+  // dbtab height probe, pill metrics) — it belongs in the bar.
+  "uireview.js",
+];
 
 let failed = 0;
 for (const script of CHECKS) {

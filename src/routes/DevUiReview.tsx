@@ -19,6 +19,8 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
+import { StatusPill } from "@/components/common/StatusPill";
+import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
@@ -309,6 +311,37 @@ function BadgesView() {
   );
 }
 
+/** Every StatusPill state + every StartStopToggle state, in one place.
+ *  These render NOWHERE else outside the live app (fixtures elsewhere are all
+ *  `running`), and the pill width is the WKWebView metrics fix (`min-w-[92px]`
+ *  after "Running" wrapped into two overlapping words) — measured by
+ *  uireview.js instead of the one-off console session that verified it. */
+function PillsView() {
+  const noop = () => {};
+  return (
+    <div className="flex flex-col gap-4">
+      <div data-probe="pills" className="flex flex-wrap items-center gap-3">
+        {(["running", "stopped", "starting", "error"] as const).map((s) => (
+          <StatusPill key={s} status={s} className="min-w-[92px]" />
+        ))}
+        <StatusPill status="stopped" label="Idle" className="min-w-[92px]" />
+      </div>
+      <div data-probe="toggles" className="flex flex-wrap items-center gap-3">
+        <StartStopToggle running onToggle={noop} label="demo on" />
+        <StartStopToggle running={false} onToggle={noop} label="demo off" />
+        <StartStopToggle running busy onToggle={noop} label="demo busy" />
+        <StartStopToggle
+          running={false}
+          disabled
+          title="disabled with a why-tooltip, like the share toggle on an override site"
+          onToggle={noop}
+          label="demo locked"
+        />
+      </div>
+    </div>
+  );
+}
+
 function ToastView() {
   useEffect(() => {
     toast.info(
@@ -371,6 +404,7 @@ export function DevUiReview() {
           </div>
         )}
         {view === "toast" && <ToastView />}
+        {view === "pills" && <PillsView />}
       </div>
     </div>
   );

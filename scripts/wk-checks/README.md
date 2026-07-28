@@ -32,7 +32,7 @@ npx vite --port 5199 --strictPort
 
 # terminal 2:
 cd scripts/wk-checks
-npm run check                   # all five, exits non-zero on any failure
+npm run check                   # all six, exits non-zero on any failure
 node repopanel.js               # or any single scenario
 ```
 
@@ -49,6 +49,7 @@ Each script drops full-page `shot-*.png` screenshots beside itself
 | `repopanel.js` | `?panel=repo` | RepoPanel: status chips (branch / dirty counts / ↑↓ vs upstream / source), remote line, last-job log toggle; ops row (Fetch/Pull/Push/Checkout + branch dropdown) and Pull → op-job card with the deps-changed install offer + disclosure |
 | `watchpanel.js` | `?panel=repo&watch=…` | Scripts row (Watch:/Run: split by the watchy heuristic, disclosure); running watcher (dot, Stop, Watch button disabled, ring-seeded output); exited watcher (`exited (code 1)` + Restart) |
 | `linkpanel.js` | `?panel=link` | Link-folder flow: picker (mocked dialog) → path shown + name prefilled → Link → result line + git/header warnings; the unlink-only copy is visible before anything runs |
+| `uireview.js` | `/dev/ui-review` | 28 scenarios × 2 widths (Stage 2/3 surfaces + `pills`). ASSERTS since 28 Jul 2026: pageerror/console.error fatal, horizontal overflow fatal, the Adminer-iframe height probe (the §C2 h-full collapse class, <300px = collapsed), and pill metrics (≥92px, one line — the WKWebView "Running"-wrap fix, previously verified once by hand and never committed as a check). Screenshots to `shots-uireview/` stay the human-review artifact; `ONLY=<regex>` narrows |
 
 What these deliberately do NOT cover (backend truth lives in
 `src-tauri/examples/repo_*_check.rs`, run those instead): real cloning,

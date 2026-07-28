@@ -56,8 +56,14 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     verify.sh discipline (no pipes before verdicts, own green line). First full
     sandbox-tier suite run: **all 26 green with the real stack running** — the
     safe-anytime claim held.
-  - [ ] T9. wk-checks: heights probe (h-full class), uireview.js can fail, StatusPill
-    all-states scenario.
+  - [x] **T9. wk-checks can fail; h-full class + pill metrics committed as checks**
+    ✓ 28 Jul 2026 — uireview.js: pageerror/console.error listeners, overflow FATAL,
+    Adminer-iframe height probe (calibrated live: floor is on the wrapper, iframe =
+    420−header ≈ 368px healthy; <300 = collapse), joined run-all. New `pills` harness
+    view renders every StatusPill state + every StartStopToggle state (nowhere else
+    renders non-`running`); probe asserts ≥92px/one line — the ad-hoc WKWebView
+    measurement from the §C fix is now a repeatable check. Full run-all: ALL PASS
+    (6 scripts, 54 uireview scenario-runs), tsc clean.
   - [ ] T10. Ledger quick wins: wp_login injection-point test (#36), DNS loopback-bind
     assert (#44), autostart guard tests (#175 L0).
   - [ ] T11. Dotfile-guard live 404 example (#103, nginx template first).
