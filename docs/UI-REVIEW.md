@@ -69,6 +69,16 @@ the record:
 ## C1. Observed by screenshot (28 Jul 2026 — Playwright WebKit, dark,
 ## 900px + 1440px, `scripts/wk-checks/uireview.js` → `#/dev/ui-review`)
 
+**ALL EIGHT FIXED and re-verified in the same harness, 28 Jul 2026:**
+1 `ccc1669` (stacked option blocks; holds at the longest real domain) ·
+2 `b4109d6` (pills nowrap, the name column is the row's one flexible thing;
+0px overflow at 900 in the worst realistic row) · 3 `75bd251` (the
+which-database claim derives from the same preview the card renders; TWO more
+instances of the class found and fixed — the root-case credentials paragraph
+beside the dedicated-user card, and a connected panel whose file was edited
+after verification) · 4 `645634f` · 5–8 `8e6aae5`. Original findings kept
+below for the record.
+
 38 captures across 19 scenarios (shots in `scripts/wk-checks/shots-uireview/`,
 gitignored — re-run: vite on 5199 + `node uireview.js`). The three
 never-rendered surfaces have now been rendered in the harness. Confirmed, in
