@@ -69,14 +69,19 @@ pub fn extract_url(text: &str) -> Option<String> {
 }
 
 /// What we can honestly say about a live tunnel's public URL (§ status
-/// honesty, step 2). One fact per state — the UI badge reads this and nothing
-/// else:
-/// - `Unverified` — the process runs, but the URL hasn't answered a check
-///   (yet, or the last check couldn't reach Cloudflare at all).
+/// honesty, step 2; semantics sharpened by the 28 Jul 2026 audit). One fact
+/// per state — the UI badge reads this and nothing else:
+/// - `Unverified` — the URL didn't answer the last check: still coming up,
+///   OUR network is down, or the tunnel has dropped. This is the REALISTIC
+///   TERMINAL state for a dropped tunnel: `trycloudflare.com` has no
+///   wildcard DNS (verified live, 28 Jul 2026 — an unregistered subdomain
+///   doesn't resolve), so once a dead tunnel's DNS record is gone, probes
+///   fail at DNS and no HTTP verdict is possible.
 /// - `Reachable` — the URL answered a probe THROUGH the tunnel path.
-/// - `Broken` — Cloudflare's edge has repeatedly said the tunnel is gone
-///   (HTTP 530 / error 1033) while the process still runs. Positive evidence,
-///   distinct from "can't verify".
+/// - `Broken` — Cloudflare's edge answered HTTP 530 (error 1033, tunnel
+///   gone) repeatedly while the process runs. Positive evidence, distinct
+///   from "can't verify" — reachable only in the deregistration window while
+///   DNS still resolves, so most dead tunnels read Unverified, not Broken.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TunnelHealth {
@@ -135,15 +140,24 @@ pub const BROKEN_AFTER: u32 = 3;
 /// Fold a probe outcome into the next `(health, strikes)`.
 ///
 /// Any HTTP response EXCEPT 530 proves the tunnel path: the edge accepted the
-/// hostname and something behind the tunnel answered — a WP 404/500, or
+/// hostname and something behind the tunnel answered — a WP 404/500, a 3xx
+/// (redirects are NOT followed — the first hop's status is the fact), or
 /// cloudflared's own 502 for a stopped local origin, all rode the tunnel to
 /// get here. Origin health is the Services page's fact; this badge reads ONE
 /// fact, the tunnel's. HTTP 530 is Cloudflare's tunnel-level failure (error
-/// 1033, "could not resolve the tunnel") — positive evidence AGAINST, counted
-/// as a strike. Transport errors change nothing: not evidence for, not
-/// evidence against (strikes carry through, so a flapping edge can't dodge
-/// `Broken` by timing out between 530s).
-pub fn fold_probe(prev_strikes: u32, outcome: ProbeOutcome) -> (TunnelHealth, u32) {
+/// 1033) — positive evidence AGAINST, counted as a strike.
+///
+/// Transport errors are NON-EVIDENCE and may never downgrade a verdict
+/// (audit A4): strikes carry through, and a confirmed `Broken` stays Broken
+/// — post-drop DNS expiry turns probes into transport errors, and that must
+/// not soften the verdict the 530s already proved. `Reachable` DOES decay to
+/// `Unverified` on a transport error: it is a freshness claim ("answered a
+/// probe"), and holding it green through an outage would over-claim.
+pub fn fold_probe(
+    prev_health: TunnelHealth,
+    prev_strikes: u32,
+    outcome: ProbeOutcome,
+) -> (TunnelHealth, u32) {
     match outcome {
         ProbeOutcome::Status(530) => {
             let strikes = prev_strikes.saturating_add(1);
@@ -154,7 +168,14 @@ pub fn fold_probe(prev_strikes: u32, outcome: ProbeOutcome) -> (TunnelHealth, u3
             }
         }
         ProbeOutcome::Status(_) => (TunnelHealth::Reachable, 0),
-        ProbeOutcome::TransportError => (TunnelHealth::Unverified, prev_strikes),
+        ProbeOutcome::TransportError => {
+            let health = if prev_health == TunnelHealth::Broken {
+                TunnelHealth::Broken
+            } else {
+                TunnelHealth::Unverified
+            };
+            (health, prev_strikes)
+        }
     }
 }
 
@@ -312,19 +333,25 @@ mod tests {
         use ProbeOutcome::{Status, TransportError};
         use TunnelHealth::{Broken, Reachable, Unverified};
         // Any HTTP answer except 530 proves the path — including origin-side
-        // errors that rode the tunnel to reach us.
+        // errors and unfollowed redirects that rode the tunnel to reach us.
         for code in [200u16, 301, 404, 405, 500, 502] {
-            assert_eq!(fold_probe(2, Status(code)), (Reachable, 0), "status {code}");
+            assert_eq!(fold_probe(Unverified, 2, Status(code)), (Reachable, 0), "status {code}");
         }
         // 530s escalate: reconnect-tolerant, then Broken on positive evidence.
-        assert_eq!(fold_probe(0, Status(530)), (Unverified, 1));
-        assert_eq!(fold_probe(1, Status(530)), (Unverified, 2));
-        assert_eq!(fold_probe(2, Status(530)), (Broken, 3));
-        assert_eq!(fold_probe(3, Status(530)), (Broken, 4)); // stays broken
-        // Transport errors are non-evidence: verdict Unverified, strikes kept
-        // (a timeout between 530s must not reset the count).
-        assert_eq!(fold_probe(0, TransportError), (Unverified, 0));
-        assert_eq!(fold_probe(2, TransportError), (Unverified, 2));
+        assert_eq!(fold_probe(Unverified, 0, Status(530)), (Unverified, 1));
+        assert_eq!(fold_probe(Unverified, 1, Status(530)), (Unverified, 2));
+        assert_eq!(fold_probe(Unverified, 2, Status(530)), (Broken, 3));
+        assert_eq!(fold_probe(Broken, 3, Status(530)), (Broken, 4)); // stays broken
+        // Transport errors are non-evidence and never DOWNGRADE a verdict
+        // (A4): strikes carry, Broken is sticky — post-drop DNS expiry turns
+        // probes into transport errors and must not soften what the 530s
+        // proved. Reachable DECAYS (it's a freshness claim; green through an
+        // outage would over-claim).
+        assert_eq!(fold_probe(Unverified, 2, TransportError), (Unverified, 2));
+        assert_eq!(fold_probe(Broken, 3, TransportError), (Broken, 3));
+        assert_eq!(fold_probe(Reachable, 0, TransportError), (Unverified, 0));
+        // Only positive evidence clears Broken.
+        assert_eq!(fold_probe(Broken, 3, Status(200)), (Reachable, 0));
     }
 
     #[test]

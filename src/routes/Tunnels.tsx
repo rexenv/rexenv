@@ -362,7 +362,8 @@ function TunnelCard({
           <div className="mt-2 flex items-center justify-between px-0.5 text-[0.6875rem] text-rex-text-dim">
             <span>
               {health === "reachable" && "Public link confirmed reachable — checked every 30 s."}
-              {health === "unverified" && "Public link not confirmed yet — checking."}
+              {health === "unverified" &&
+                "Public link can't be reached right now — it may still be coming up, or it may have dropped. If this persists, stop and share again."}
               {health === "broken" && "Public link is down."}
             </span>
             <span>Anyone with this link can reach your local site.</span>

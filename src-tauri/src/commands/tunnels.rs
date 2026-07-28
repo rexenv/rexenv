@@ -206,16 +206,16 @@ async fn probe_and_record<R: tauri::Runtime>(
 ) {
     use tauri::Manager;
     let Some(registry) = app.try_state::<Tunnels>() else { return };
-    let Some((url, strikes)) = registry
+    let Some((url, prev_health, strikes)) = registry
         .0
         .lock()
         .ok()
-        .and_then(|m| m.get(domain).map(|e| (e.url.clone(), e.strikes)))
+        .and_then(|m| m.get(domain).map(|e| (e.url.clone(), e.health, e.strikes)))
     else {
         return;
     };
     let outcome = crate::core::tunnels::probe_url(client, &url).await;
-    let (health, strikes) = crate::core::tunnels::fold_probe(strikes, outcome);
+    let (health, strikes) = crate::core::tunnels::fold_probe(prev_health, strikes, outcome);
     if let Ok(mut m) = registry.0.lock() {
         if let Some(e) = m.get_mut(domain) {
             if e.url == url {
@@ -232,6 +232,11 @@ fn probe_client() -> reqwest::Client {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(8))
+        // The FIRST hop's status is the fact (audit A5): a 3xx already rode
+        // the tunnel, and following it can leave the tunnel entirely — on
+        // this machine a redirect to the site's local .test URL resolves and
+        // would let the probe complete a chain real visitors can't.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap_or_default()
 }
