@@ -108,7 +108,7 @@ function applied(): RewriteApplied {
       return {
         status: "fileChanged",
         message:
-          "/Users/wpdev/code/ea/wp-config.php changed since the diff was shown — nothing was written. Re-open the preview to see the current change.",
+          "The file changed since the diff was shown — nothing was written. The refreshed preview shows the change against the file as it is now.",
       };
     case "engineStopped":
       return {
@@ -141,14 +141,14 @@ function reverted(): RewriteRevertOutcome {
         file: "/Users/wpdev/code/ea/wp-config.php",
         reason: "editedSinceRewrite",
         message:
-          "/Users/wpdev/code/ea/wp-config.php was edited after the rewrite — restoring the backup would replace those edits. Choose \"restore anyway\" to proceed.",
+          "This file was edited after the rewrite — restoring the backup would replace those edits. Choose \"restore anyway\" to proceed.",
       };
     case "backupMissing":
       return {
         status: "backupMissing",
         file: "/Users/wpdev/code/ea/wp-config.php",
         message:
-          "rexenv's copy of the original is gone; your file was left exactly as it is. To go back to the old database, edit /Users/wpdev/code/ea/wp-config.php yourself.",
+          "rexenv's copy of the original is gone; your file was left exactly as it is. To go back to the old database, edit the file yourself.",
       };
     default:
       return {

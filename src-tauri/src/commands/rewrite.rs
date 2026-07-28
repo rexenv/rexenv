@@ -296,12 +296,12 @@ pub async fn rewrite_apply(
     // outside the target lines — changes what a write means: refuse, and
     // touch nothing.
     if confrewrite::sha256_hex(r.original.as_bytes()) != fingerprint {
+        // No path inside the prose — the UI shows the file in mono beside
+        // the message (the mono rule can't reach into a flat string).
         return Ok(RewriteApplied::FileChanged {
-            message: format!(
-                "{} changed since the diff was shown — nothing was written. Re-open the \
-                 preview to see the current change.",
-                r.file.display()
-            ),
+            message: "The file changed since the diff was shown — nothing was written. \
+                      The refreshed preview shows the change against the file as it is now."
+                .into(),
         });
     }
 
@@ -519,33 +519,32 @@ pub async fn rewrite_revert(
             store::delete_config_rewrite(&conn, &site_id, &row.file)?;
             Ok(RevertOutcome::BackupMissing {
                 file: row.file.clone(),
-                message: format!(
-                    "rexenv's copy of the original is gone; your file was left exactly as \
-                     it is. To go back to the old database, edit {} yourself.",
-                    row.file
-                ),
+                message: "rexenv's copy of the original is gone; your file was left \
+                          exactly as it is. To go back to the old database, edit the \
+                          file yourself."
+                    .into(),
             })
         }
         RevertCheck::FileEdited { reason } if !force => Ok(RevertOutcome::RefusedEdited {
             file: row.file.clone(),
             reason,
+            // Pathless prose: the UI renders `file` in mono beside it.
             message: match reason {
-                FileEditedReason::EditedSinceRewrite => format!(
-                    "{} was edited after the rewrite — restoring the backup would replace \
-                     those edits. Choose \"restore anyway\" to proceed.",
-                    row.file
-                ),
-                FileEditedReason::UnknownDigest => format!(
-                    "rexenv can't prove {} is unchanged since the rewrite — restoring the \
-                     backup could replace later edits. Choose \"restore anyway\" to proceed.",
-                    row.file
-                ),
-                FileEditedReason::FileMissing => format!(
-                    "{} no longer exists — restoring would recreate a file that was \
-                     removed. Choose \"restore anyway\" to proceed.",
-                    row.file
-                ),
-            },
+                FileEditedReason::EditedSinceRewrite => {
+                    "This file was edited after the rewrite — restoring the backup would \
+                     replace those edits. Choose \"restore anyway\" to proceed."
+                }
+                FileEditedReason::UnknownDigest => {
+                    "rexenv can't prove this file is unchanged since the rewrite — \
+                     restoring the backup could replace later edits. Choose \
+                     \"restore anyway\" to proceed."
+                }
+                FileEditedReason::FileMissing => {
+                    "This file no longer exists — restoring would recreate a file that \
+                     was removed. Choose \"restore anyway\" to proceed."
+                }
+            }
+            .into(),
         }),
         RevertCheck::AlreadyReverted => {
             // A failed write, or the crash window after a restore: converge.

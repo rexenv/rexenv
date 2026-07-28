@@ -481,9 +481,11 @@ export function Sites() {
       }
       return out.message;
     },
-    onSuccess: (blocked) => {
+    onSuccess: (blocked, site) => {
       if (blocked) {
-        toast.info(`Not deleted — ${blocked} Resolve it on the site's Database tab, or delete without reverting.`);
+        toast.info(
+          `${site.domain} was not deleted — ${blocked} Resolve it on the site's Database tab, or delete without reverting.`,
+        );
       }
       void qc.invalidateQueries({ queryKey: ["sites"] });
       void qc.invalidateQueries({ queryKey: ["db-import-records"] });

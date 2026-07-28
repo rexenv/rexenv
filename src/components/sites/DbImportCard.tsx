@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Database, Loader2, Undo2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -270,14 +271,19 @@ export function DbImportCard({ site }: { site: Site }) {
                   </p>
                 )}
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setRevertConfirm("normal")}>
+              {/* The panel's one action must not be its faintest element
+                  (§C1.6) — secondary, not ghost. */}
+              <Button size="sm" variant="secondary" onClick={() => setRevertConfirm("normal")}>
                 <Undo2 className="mr-1 h-3.5 w-3.5" />
                 Revert
               </Button>
             </div>
           </div>
           {revertOutcome?.status === "refusedEdited" && (
-            <div className="rounded-lg border border-status-warning-border bg-status-warning-bg/30 p-3 text-sm">
+            <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-3 text-sm">
+              <p className="mb-1 font-mono text-[0.75rem] text-rex-text">
+                {revertOutcome.file}
+              </p>
               <p className="whitespace-pre-wrap break-words">{revertOutcome.message}</p>
               <Button
                 size="sm"
@@ -291,6 +297,9 @@ export function DbImportCard({ site }: { site: Site }) {
           )}
           {revertOutcome?.status === "backupMissing" && (
             <div className="rounded-lg border border-rex-border bg-rex-surface-2 p-3 text-sm">
+              <p className="mb-1 font-mono text-[0.75rem] text-rex-text">
+                {revertOutcome.file}
+              </p>
               <p className="whitespace-pre-wrap break-words">{revertOutcome.message}</p>
             </div>
           )}
@@ -404,20 +413,19 @@ export function DbImportCard({ site }: { site: Site }) {
             <div className="rounded-lg border border-rex-border bg-rex-surface-2 p-3 text-sm">
               <p className="whitespace-pre-wrap break-words">{applyOutcome.message}</p>
               <p className="mt-1 text-xs text-rex-text-secondary">
-                Nothing was written. The change shown below is against the file as it is
-                now.
+                The change shown below is against the file as it is now.
               </p>
             </div>
           )}
           {applyOutcome?.status === "engineStopped" && (
-            <div className="rounded-lg border border-status-warning-border bg-status-warning-bg/30 p-3 text-sm">
+            <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-3 text-sm">
               <p className="whitespace-pre-wrap break-words">{applyOutcome.message}</p>
             </div>
           )}
           {applyOutcome?.status === "verifyFailed" && (
             /* Written and backed up, but NOT verified — a different state
                from "couldn't write", and the copy carries the difference. */
-            <div className="rounded-lg border border-status-warning-border bg-status-warning-bg/30 p-3 text-sm">
+            <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-3 text-sm">
               <p className="font-medium">Change applied — not verified.</p>
               <p className="mt-1 whitespace-pre-wrap break-words">{applyOutcome.message}</p>
               <p className="mt-1 text-xs text-rex-text-secondary">{applyOutcome.reason}</p>
@@ -528,12 +536,9 @@ export function DbImportCard({ site }: { site: Site }) {
               )}
               {preview.diff.length > 0 && (
                 <label className="flex cursor-pointer items-start gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={consent}
-                    onChange={(e) => setConsent(e.target.checked)}
-                    className="mt-0.5"
-                  />
+                  <span className="mt-0.5 inline-flex">
+                    <Checkbox checked={consent} onCheckedChange={setConsent} />
+                  </span>
                   <span>
                     Apply exactly the change shown above to my file (backed up first).
                   </span>

@@ -30,7 +30,9 @@ export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
   push: (message, kind, command, action) => {
     const id = nextId++;
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind, command, action }] }));
+    // Cap the visible stack: beyond 5 the oldest yields (its timer still
+    // clears it from state) — an unbounded stack overflows the window top.
+    set((s) => ({ toasts: [...s.toasts, { id, message, kind, command, action }].slice(-5) }));
     // Toasts carrying a command stay long enough to read + copy it; ones with
     // an action button long enough to click it.
     const ttl = command ? 30000 : action ? 10000 : kind === "error" ? 7000 : 4000;
