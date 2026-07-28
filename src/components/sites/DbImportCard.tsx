@@ -486,22 +486,36 @@ export function DbImportCard({ site }: { site: Site }) {
                   itself is never changed, so it can't appear in the diff.
                 </p>
               )}
-              <p className="text-xs text-rex-text-secondary">
-                {preview.backupExists ? (
-                  <>
-                    An earlier backup of this file already exists on rexenv's side and is
-                    kept — the FIRST backup is the one revert restores.
-                  </>
-                ) : (
-                  <>
-                    Before writing, rexenv keeps a byte-exact backup of{" "}
-                    <span className="font-mono">{preview.file}</span> on its side (private,
-                    mode 600) for one-click revert.
-                  </>
-                )}{" "}
-                The diff above can't contain your password — but the backup is the whole
-                file, so it does include it.
-              </p>
+              {/* Only with its referent (§C1.4): "the diff above" and
+                  "before writing" describe a write — a verify-only state
+                  writes nothing, so the note reduces to the backup fact
+                  when one exists and disappears when there is none. */}
+              {preview.diff.length > 0 ? (
+                <p className="text-xs text-rex-text-secondary">
+                  {preview.backupExists ? (
+                    <>
+                      An earlier backup of this file already exists on rexenv's side and
+                      is kept — the FIRST backup is the one revert restores.
+                    </>
+                  ) : (
+                    <>
+                      Before writing, rexenv keeps a byte-exact backup of{" "}
+                      <span className="font-mono">{preview.file}</span> on its side
+                      (private, mode 600) for one-click revert.
+                    </>
+                  )}{" "}
+                  The diff above can't contain your password — but the backup is the
+                  whole file, so it does include it.
+                </p>
+              ) : (
+                preview.backupExists && (
+                  <p className="text-xs text-rex-text-secondary">
+                    rexenv still holds the backup taken before the rewrite (private,
+                    mode 600) — revert restores it. It is the whole original file, so
+                    it includes your old password.
+                  </p>
+                )
+              )}
               {site.dbEngine === "mariadb" && (
                 /* D5's tell-only surface, in the site's own panel: the socket
                    shortcut serves MySQL only. */
