@@ -272,10 +272,22 @@ function TunnelCard({
           </span>
         )}
 
+        {/* busy DISABLES the control: while "Starting…" the toggle looks
+            like a stop, but cancel-during-start isn't supported — a click
+            here used to read as cancel while actually requesting a second
+            start (the backend claim now refuses it; the UI must not offer
+            it). A control that does the opposite of what it looks like is
+            worse than a disabled one. */}
         <StartStopToggle
           running={on || busy}
+          busy={busy}
           variant={!on && busy ? "setting" : "status"}
           disabled={!on && !!overrideServer}
+          title={
+            !on && overrideServer
+              ? `Tunnels originate from nginx; this site runs on ${overrideServer}.`
+              : undefined
+          }
           onToggle={() => onToggle(!on)}
           label={`${on ? "Stop" : "Start"} sharing ${site.name}`}
         />
