@@ -339,6 +339,60 @@ never starts or stops their database server, so step 2 is yours.**
 
 ---
 
+## J) 🚧 Connection rewrite (Stage 3) — packaged GUI pass on ea.test
+
+The sandbox proves the machinery end to end (`config_rewrite_check`, 11 live
+assertions, passed 28 Jul 2026); this pass proves it against the REAL site and
+the packaged UI. **Rebuild + reinstall first — the installed app contains none
+of Stage 3.** Preconditions: `ea.test` imported (Stage 1) with its database
+imported (Stage 2, state "imported · not connected"), rexenv's MySQL running,
+and `shasum ea's wp-config.php` noted BEFORE anything below.
+
+1. **The consent card.** SiteDetail → ea.test → Database. Expect the diff card:
+   exactly TWO changed pairs (`DB_HOST` → `127.0.0.1:13306`, `DB_USER` →
+   `rex_ea_test`), **no password anywhere on screen**, consent unchecked, and
+   the backup note carrying the limit ("the diff can't contain your password —
+   the backup is the whole file, so it does").
+2. **Engine stopped = honest refusal naming OUR page.** Stop MySQL (Databases
+   page), tick consent, Apply. Expect "rexenv's own MySQL … isn't running —
+   start it from the Databases page", NOT a DBngin message, NOT a timeout.
+   Nothing written (`shasum` unchanged).
+3. **Apply.** Start MySQL, Apply again. Expect the "verified: the rewritten
+   settings sign in to the rexenv copy" toast; the Sites badge flips to
+   **DB connected** (green); the connected panel's wording claims the sign-in,
+   not "the site now uses this database".
+4. **The file.** `diff` old vs new wp-config: exactly the two lines; file mode
+   unchanged; backup exists at `<app-data>/config-backups/<site-id>/wp-config.php`
+   with mode 600; `config_rewrites` has one row with a digest.
+5. **Drift now runs the OTHER way (the point of the whole stage).** Edit a post
+   title through the site → it appears in rexenv's copy (Adminer), and does
+   NOT appear in the old DBngin database (start DBngin to compare if wanted —
+   read-only, their side untouched).
+6. **HTTP upgrade.** The record's verified level should read `signin+http`
+   (site was serving). If the edge is stopped during a later re-apply, expect
+   `signin` only — "couldn't confirm over HTTP" must never block or unset.
+7. **fileChanged is a normal state.** Open the card, edit wp-config in an
+   editor (add a comment), Apply. Expect "changed since the diff was shown —
+   nothing was written", neutral styling, refreshed diff already below.
+8. **Revert.** Revert from the connected panel. Expect: `shasum` equals the
+   step-0 value (byte-identical), badge back to "DB imported · not connected",
+   the interim panel returns, backup file + row gone.
+9. **Edited-since refuses without force.** Apply again, hand-edit wp-config,
+   Revert. Expect the named refusal + "Restore anyway" (danger); forcing
+   restores the original and says edits since are lost.
+10. **D2 delete confirm.** With a connected site (use a SCRATCH site, not ea):
+    Delete. Expect three buttons, both outcomes NAMED ("…the site breaks on
+    next load"), revert-then-delete as the default; after it, the project's
+    config points back at the old database and the site row is gone.
+11. **The socket free win (D5).** A linked site whose wp-config says
+    `DB_HOST=localhost` (user root/their password, mirrored): with Stage 3's
+    pools, the site serves and CONNECTS with zero file changes on MySQL.
+    A MariaDB site's panel shows the "use 127.0.0.1:13307" note instead.
+12. **Concurrency.** While a database import runs for a site, Apply/Revert
+    refuse naming the import; while an apply runs, provision/import refuse.
+
+---
+
 ## Publish-blocking summary
 
 | # | Check | Status |
@@ -349,3 +403,4 @@ never starts or stops their database server, so step 2 is yours.**
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
+| J | Connection rewrite (Stage 3): packaged GUI pass on ea.test | 🚧 do after rebuild+reinstall |

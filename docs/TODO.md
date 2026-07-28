@@ -265,8 +265,17 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
       served-and-connecting check folds into step 8/§J. Rulings landed this
       round: collision-rename tell-only FINAL `abff030`; non-WP imported DB
       drops with its site (Some(1)-only gate + NULL pinned) `120aea0`.
-    - [ ] 8. examples: `config_rewrite_check` + failed-write recovery assertion
-    - [ ] 9. `PUBLISH-TESTING.md` §J packaged pass
+    - [x] 8. `config_rewrite_check` ✓ `287e42f` — 11 live assertions against a
+      sandbox mysqld, ALL PASSED 28 Jul 2026: root-case end to end (dedicated
+      user + their password + sign-in as it against the re-read file),
+      no-secret diff, 0600 backup, mode-preserving write, denied-write leaves
+      previous bytes, ThisSite re-scan, FileEdited classification,
+      byte-identical revert, reverted file can't mint a proof.
+    - [ ] 9. `PUBLISH-TESTING.md` §J packaged pass — section WRITTEN (12 steps
+      incl. engine-stopped honest refusal, other-way drift, fileChanged,
+      edited-since force, D2 confirm, D5 socket win, concurrency); the pass
+      itself is HIS, after rebuild+reinstall (installed app has none of
+      Stage 3). PENDING his ruling: pdo_mysql.default_socket (step 7 note).
 
 - [x] **Add plugin/theme from Git — clone → detect → install → build** ✓
   **HUMAN-VERIFIED 18 Jul 2026** — full docs/GIT-FEATURE-TEST.md pass (all
