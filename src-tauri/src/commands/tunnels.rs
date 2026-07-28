@@ -37,6 +37,13 @@ struct TunnelEntry {
     /// Failure-gated diagnosis (why the primary probe couldn't reach the
     /// URL); cleared whenever the primary probe gets an HTTP answer.
     diagnosis: Option<crate::core::tunnels::TunnelDiagnosis>,
+    /// Phase gate (ruled 28 Jul): false = Phase A, the prober may not touch
+    /// the system resolver for this hostname yet — our own too-early query
+    /// was negative-caching the LAN for 30 minutes. Flips open once (never
+    /// back) via `gate_opens`.
+    system_probing: bool,
+    /// Share age, for the gate's escape-hatch cap.
+    started: Instant,
 }
 
 /// Tauri-managed registry of live tunnels, keyed by site domain.
@@ -209,28 +216,50 @@ async fn probe_and_record<R: tauri::Runtime>(
 ) {
     use tauri::Manager;
     let Some(registry) = app.try_state::<Tunnels>() else { return };
-    let Some((url, prev_health, strikes)) = registry
-        .0
-        .lock()
-        .ok()
-        .and_then(|m| m.get(domain).map(|e| (e.url.clone(), e.health, e.strikes)))
+    let Some((url, prev_health, strikes, gate_open, elapsed)) =
+        registry.0.lock().ok().and_then(|m| {
+            m.get(domain).map(|e| {
+                (e.url.clone(), e.health, e.strikes, e.system_probing, e.started.elapsed())
+            })
+        })
     else {
         return;
     };
-    let outcome = crate::core::tunnels::probe_url(client, &url).await;
-    // Failure-gated (ruled): a healthy tunnel generates zero extra traffic,
-    // forever. Only a transport-failed primary earns the two extra checks —
-    // and an edge 530 upgrades the outcome into the strike evidence it is.
-    let (diagnosis, effective) = if outcome == crate::core::tunnels::ProbeOutcome::TransportError {
-        let host = url.trim_start_matches("https://");
-        let (public_resolves, edge_status) =
-            crate::core::tunnels::diagnose_unreachable(host).await;
-        (
-            Some(crate::core::tunnels::fold_diagnosis(public_resolves, edge_status)),
-            crate::core::tunnels::effective_outcome(outcome, edge_status),
-        )
-    } else {
-        (None, outcome)
+    let (effective, diagnosis, open_gate) = match crate::core::tunnels::probe_plan(gate_open) {
+        // Phase A — INVARIANT (pinned by `phase_a_never_plans_a_system_dns_query`
+        // and by `diagnose_unreachable`'s construction: raw UDP to 1.1.1.1 +
+        // a reqwest client with the hostname's address PINNED, which never
+        // calls getaddrinfo for it): this arm must not resolve `host`
+        // through the system resolver. One early query negative-caches the
+        // LAN for up to 30 minutes (trycloudflare SOA MINIMUM = 1800s).
+        crate::core::tunnels::ProbePlan::EdgeOnly => {
+            let host = url.trim_start_matches("https://");
+            let (public_resolves, edge_status) =
+                crate::core::tunnels::diagnose_unreachable(host).await;
+            let opens = crate::core::tunnels::gate_opens(public_resolves, elapsed);
+            if opens {
+                // The record is provably in public DNS (or the cap fired) —
+                // a system query is now harmless. Run the real probe in the
+                // SAME tick rather than leaving the user an extra 30s of
+                // Unverified: the step-2 fast-first-verdict goal, kept,
+                // without the poison that goal originally caused.
+                let (eff, diag) = system_probe_cycle(client, &url).await;
+                (eff, diag, true)
+            } else {
+                (
+                    crate::core::tunnels::effective_outcome(
+                        crate::core::tunnels::ProbeOutcome::TransportError,
+                        edge_status,
+                    ),
+                    Some(crate::core::tunnels::fold_diagnosis(public_resolves, edge_status)),
+                    false,
+                )
+            }
+        }
+        crate::core::tunnels::ProbePlan::System => {
+            let (eff, diag) = system_probe_cycle(client, &url).await;
+            (eff, diag, false)
+        }
     };
     let (health, strikes) = crate::core::tunnels::fold_probe(prev_health, strikes, effective);
     if let Ok(mut m) = registry.0.lock() {
@@ -239,9 +268,31 @@ async fn probe_and_record<R: tauri::Runtime>(
                 e.health = health;
                 e.strikes = strikes;
                 e.diagnosis = diagnosis;
+                e.system_probing |= open_gate;
             }
         }
     };
+}
+
+/// Phase B's whole cycle: the system-path probe, plus the failure-gated
+/// diagnosis when it transport-fails (a healthy tunnel generates zero extra
+/// traffic, forever — an edge 530 upgrades the outcome into strike evidence).
+async fn system_probe_cycle(
+    client: &reqwest::Client,
+    url: &str,
+) -> (crate::core::tunnels::ProbeOutcome, Option<crate::core::tunnels::TunnelDiagnosis>) {
+    let outcome = crate::core::tunnels::probe_url(client, url).await;
+    if outcome == crate::core::tunnels::ProbeOutcome::TransportError {
+        let host = url.trim_start_matches("https://");
+        let (public_resolves, edge_status) =
+            crate::core::tunnels::diagnose_unreachable(host).await;
+        (
+            crate::core::tunnels::effective_outcome(outcome, edge_status),
+            Some(crate::core::tunnels::fold_diagnosis(public_resolves, edge_status)),
+        )
+    } else {
+        (outcome, None)
+    }
 }
 
 /// A `reqwest` client bounded for health probes: a wedged edge costs at most
@@ -626,6 +677,11 @@ pub async fn start_tunnel<R: tauri::Runtime>(
             health: crate::core::tunnels::TunnelHealth::Unverified,
             strikes: 0,
             diagnosis: None,
+            // Phase A: the system resolver stays untouched until the record
+            // is provably in public DNS (gate_opens) — our own immediate
+            // probe was the poisoning query.
+            system_probing: false,
+            started: Instant::now(),
         },
     );
     // First verdict promptly instead of waiting out a full prober tick —
@@ -698,6 +754,8 @@ mod tests {
             health: crate::core::tunnels::TunnelHealth::Unverified,
             strikes: 0,
             diagnosis: None,
+            system_probing: false,
+            started: Instant::now(),
         }
     }
 

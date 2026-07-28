@@ -217,7 +217,7 @@ const DIAGNOSIS_LINE: Record<import("@/types").TunnelDiagnosis, string> = {
   "local-dns-behind":
     "Working — reachable at Cloudflare's edge from here; this machine's DNS hasn't caught up yet. Try it from another device.",
   "dns-propagating":
-    "Just created — DNS is still propagating. Try it from another device; it should work everywhere shortly.",
+    "Just created — DNS is still propagating (usually seconds). Give it a moment before opening: asking too early can make this network remember the miss for a while.",
   "edge-gone":
     "Cloudflare's edge reports this link is no longer registered — if that persists it will be marked Broken. Stop and share again for a fresh link.",
   offline: "Can't check right now — this machine looks offline.",

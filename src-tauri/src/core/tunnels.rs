@@ -326,6 +326,52 @@ pub fn fold_diagnosis(public_resolves: Option<bool>, edge_status: Option<u16>) -
     }
 }
 
+/// How long a share may stay in Phase A (edge-only probing) before the
+/// system-resolver gate opens regardless. This is NOT a propagation timeout —
+/// propagation gaps last seconds, not minutes. It is the escape hatch for the
+/// corner where 1.1.1.1 is unreachable (egress-blocked network) while system
+/// DNS works fine: without it, that machine would sit in Phase A forever and
+/// never regain `Reachable`. By the time it fires, the record has existed for
+/// minutes and an early-query negative-cache is no longer possible.
+pub const SYSTEM_PROBE_GATE_CAP: Duration = Duration::from_secs(300);
+
+/// May the prober start asking the SYSTEM resolver about this hostname?
+/// Yes once 1.1.1.1 provably has the record (a compliant resolver chain then
+/// gets a positive answer — there is nothing left to negative-cache), or once
+/// [`SYSTEM_PROBE_GATE_CAP`] passes (see its reasoning). Until then, one
+/// system query from us would be the earliest query on the network by
+/// construction, landing inside the propagation window Cloudflare's own
+/// banner warns about — and `trycloudflare.com`'s SOA MINIMUM of 1800s means
+/// that single query poisons the LAN's resolver for up to THIRTY MINUTES
+/// (measured 28 Jul 2026; it is why a phone worked only on cellular).
+pub fn gate_opens(public_resolves: Option<bool>, elapsed: Duration) -> bool {
+    public_resolves == Some(true) || elapsed >= SYSTEM_PROBE_GATE_CAP
+}
+
+/// What one prober tick is ALLOWED to do — decided purely, so the property
+/// "Phase A never produces a system-DNS query" is pinned at the decision
+/// layer by its own test rather than implied by code shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbePlan {
+    /// Phase A: 1.1.1.1 + pinned-address edge checks ONLY. A system-resolver
+    /// query in this window is the bug this enum exists to prevent.
+    EdgeOnly,
+    /// Phase B: the normal system-path probe (plus the failure-gated
+    /// diagnosis, as before).
+    System,
+}
+
+/// The plan for a tick, from the gate flag the registry carries. The flag
+/// only ever flips open (via [`gate_opens`]) — a share never re-enters
+/// Phase A.
+pub fn probe_plan(gate_open: bool) -> ProbePlan {
+    if gate_open {
+        ProbePlan::System
+    } else {
+        ProbePlan::EdgeOnly
+    }
+}
+
 /// What the health fold sees after a diagnosis ran: an edge answer of 530
 /// upgrades a transport error into the positive evidence it is — dead at the
 /// edge is dead EVERYWHERE, which is what makes `Broken` reachable for the
@@ -579,6 +625,36 @@ mod tests {
         assert_eq!(fold_probe(Reachable, 0, TransportError), (Unverified, 0));
         // Only positive evidence clears Broken.
         assert_eq!(fold_probe(Broken, 3, Status(200)), (Reachable, 0));
+    }
+
+    #[test]
+    fn phase_a_never_plans_a_system_dns_query() {
+        // THE property (ruled 28 Jul): our immediate post-start probe was the
+        // earliest DNS query on the network by construction, inside the
+        // propagation window, and trycloudflare's SOA MINIMUM (1800s) turned
+        // that one query into a 30-minute LAN-wide dead link. Everything else
+        // can look green while a reintroduced early system query brings the
+        // bug back silently — so the decision layer is pinned here, loudly.
+        //
+        // Gate closed ⇒ EdgeOnly, unconditionally. There is no age, health,
+        // or diagnosis input that may produce a system probe before the gate
+        // opens — the plan takes ONLY the gate flag, by design.
+        assert_eq!(probe_plan(false), ProbePlan::EdgeOnly);
+        assert_eq!(probe_plan(true), ProbePlan::System);
+
+        // And the gate itself opens ONLY on proof-of-record or the cap:
+        use std::time::Duration as D;
+        // fresh + not in public DNS (the poisoning window): stays closed.
+        assert!(!gate_opens(Some(false), D::from_secs(1)));
+        assert!(!gate_opens(None, D::from_secs(1))); // 1.1.1.1 unreachable
+        assert!(!gate_opens(Some(false), SYSTEM_PROBE_GATE_CAP - D::from_secs(1)));
+        // 1.1.1.1 has the record: a system query can no longer teach anyone
+        // an NXDOMAIN — open.
+        assert!(gate_opens(Some(true), D::from_secs(1)));
+        // The escape-hatch cap (1.1.1.1 egress-blocked, system DNS fine):
+        // open regardless, the record has existed for minutes.
+        assert!(gate_opens(Some(false), SYSTEM_PROBE_GATE_CAP));
+        assert!(gate_opens(None, SYSTEM_PROBE_GATE_CAP));
     }
 
     #[test]
