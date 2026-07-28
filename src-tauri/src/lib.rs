@@ -710,12 +710,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // Repo install/build jobs die WITH the app (deliberate opposite of
-            // services-outlive-the-app: they're interactive actions, not
-            // infrastructure — and an orphaned npm would keep writing into
-            // wp-content after quit). Process-group kill via the supervisor.
+            // Repo install/build jobs AND tunnels die WITH the app (deliberate
+            // opposite of services-outlive-the-app: jobs are interactive
+            // actions — an orphaned npm would keep writing into wp-content —
+            // and a tunnel outliving the app serves the PUBLIC unattended;
+            // lifecycle ruling 28 Jul 2026). Crash paths bypass this hook
+            // entirely — the launch sweep (core::tunnels::sweep_startup) is
+            // the other half of the story.
             if let tauri::RunEvent::Exit = event {
                 commands::repo::cancel_all_on_exit(app);
+                commands::tunnels::kill_all_on_exit(app);
             }
         });
 }

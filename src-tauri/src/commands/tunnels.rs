@@ -72,6 +72,54 @@ fn delete_tunnel_row(state: &AppState, domain: &str) {
     }
 }
 
+/// App-exit hook: tunnels DIE WITH THE APP (lifecycle ruling 28 Jul 2026 —
+/// `docs/PLAN-tunnel-lifecycle.md`). A service outliving the app serves the
+/// developer; a tunnel outliving it serves the PUBLIC, unattended — so this is
+/// the deliberate opposite of services-outlive-the-app, same as repo jobs.
+///
+/// Kills from the RECORDED rows, not just the registry: a start still polling
+/// for its URL has a row but no registry entry yet. Registry children are
+/// reaped first (stop + wait) and their pids skipped in the row pass — after a
+/// `wait()` a pid is free for reuse, and a bare-number signal to it would
+/// violate the never-kill-on-a-bare-pid rule. Each row's mu-plugin is removed
+/// (the file must not outlive its tunnel), then the table is cleared.
+pub fn kill_all_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+    let (Some(registry), Some(state)) =
+        (app.try_state::<Tunnels>(), app.try_state::<AppState>())
+    else {
+        return;
+    };
+    let mut reaped: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    if let Ok(mut map) = registry.0.lock() {
+        for (_, mut e) in map.drain() {
+            let pid = e.child.id();
+            let _ = tunnels::stop(state.platform.as_ref(), pid);
+            let _ = e.child.wait();
+            reaped.insert(pid);
+        }
+    }
+    let rows = state
+        .db
+        .lock()
+        .ok()
+        .map(|conn| crate::state::store::list_tunnels(&conn).unwrap_or_default())
+        .unwrap_or_default();
+    for row in rows {
+        if !reaped.contains(&row.pid) {
+            // Our own child from THIS session (launch already swept older
+            // rows), unreaped, so the pid can't have been recycled.
+            let _ = tunnels::stop(state.platform.as_ref(), row.pid);
+        }
+        if let Err(e) = wp_tunnel::disable(Path::new(&row.docroot)) {
+            log::warn!("rexenv: could not remove the tunnel mu-plugin for {}: {e}", row.domain);
+        }
+    }
+    if let Ok(conn) = state.db.lock() {
+        let _ = crate::state::store::clear_tunnels(&conn);
+    };
+}
+
 /// A tunnel's public status for the UI.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
