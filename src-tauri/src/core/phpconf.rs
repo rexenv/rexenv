@@ -827,19 +827,29 @@ define('SCRIPT_DEBUG', 0);
 
     #[test]
     fn every_refusal_explains_itself_without_blaming_the_project() {
+        // Each case pairs the refusal with the datum a user would need in
+        // order to act (the key, the line, the syntax we stopped at) —
+        // actionable means NAMING it, which the old `len() > 30` couldn't
+        // see and padding satisfies.
         let cases = [
-            Unreadable::NoConfigFile,
-            Unreadable::DuplicateKey { key: "DB_NAME".into(), first_line: 1, second_line: 9 },
-            Unreadable::NonLiteral { key: "DB_NAME".into(), saw: "env('X')".into() },
-            Unreadable::MultiLineValue { key: "DB_PASSWORD".into(), line: 4 },
-            Unreadable::MissingKey { key: "DB_NAME".into() },
-            Unreadable::UnsupportedSyntax { detail: "a heredoc on line 3".into() },
-            Unreadable::CommentedOut { key: "DB_PORT".into(), line: 7 },
-            Unreadable::EditUnverified { key: "DB_HOST".into() },
+            (Unreadable::NoConfigFile, "wp-config.php"),
+            (
+                Unreadable::DuplicateKey { key: "DB_NAME".into(), first_line: 1, second_line: 9 },
+                "lines 1 and 9",
+            ),
+            (Unreadable::NonLiteral { key: "DB_NAME".into(), saw: "env('X')".into() }, "env('X')"),
+            (Unreadable::MultiLineValue { key: "DB_PASSWORD".into(), line: 4 }, "line 4"),
+            (Unreadable::MissingKey { key: "DB_NAME".into() }, "DB_NAME"),
+            (
+                Unreadable::UnsupportedSyntax { detail: "a heredoc on line 3".into() },
+                "a heredoc on line 3",
+            ),
+            (Unreadable::CommentedOut { key: "DB_PORT".into(), line: 7 }, "line 7"),
+            (Unreadable::EditUnverified { key: "DB_HOST".into() }, "DB_HOST"),
         ];
-        for c in cases {
+        for (c, datum) in cases {
             let m = c.message();
-            assert!(m.len() > 30, "{m:?} is too terse to act on");
+            assert!(m.contains(datum), "{m:?} never names the thing to act on ({datum})");
             assert!(m.ends_with('.'), "{m:?} should read as a sentence");
             // These are shapes we declined to guess at, not user errors.
             for blame in ["invalid", "malformed", "error", "wrong", "bad "] {

@@ -11,8 +11,12 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
   117 proven at compile time)**. Metric = ledger tally, never line coverage. Tasks
   (T-numbers from the plan):
   - [x] **T1. Plan + ledger written** ✓ this entry's two docs.
-  - [ ] T2. Fix/delete wrong assertions (the four `len() >` checks, terminal.rs:201,
-    macos 2007 split assert, constant tautologies).
+  - [x] **T2. Wrong assertions fixed/deleted** ✓ 28 Jul 2026 — the four `len() >`
+    byte-count checks now assert structure (second sentence / names the actionable
+    datum); terminal.rs unfailable PATH check → exact equality both branches; macos
+    RunAtLoad split assert → contiguous; mail bounds echo test deleted (wedged-server
+    test is the behavioral proof); `len() >= 2` const tautology dropped. verify.sh
+    green, 534 tests.
   - [ ] T3. Rename lying test names; reduce the two live-superseded PHP-needle tests.
   - [ ] T4. `examples/db_dump_flags_check.rs` — the mysqldump incident class, real
     binaries, incl. the `--connect-timeout` negative.

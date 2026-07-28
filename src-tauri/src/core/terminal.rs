@@ -196,8 +196,14 @@ mod tests {
         let dirs = vec![PathBuf::from("/a b/bin"), PathBuf::from("/c/bin")];
         assert_eq!(join_paths(&dirs), "/a b/bin:/c/bin");
         let p = prepend_path(&dirs);
-        assert!(p.starts_with("/a b/bin:/c/bin"));
-        // Our dirs come before the inherited PATH.
-        assert!(p.contains(&std::env::var("PATH").unwrap_or_default()) || std::env::var("PATH").is_err());
+        // Our dirs come first, then the inherited PATH verbatim. Exact
+        // equality on both branches — the old `contains(unwrap_or_default())`
+        // degenerated to `contains("")` with PATH unset and could never fail.
+        match std::env::var("PATH") {
+            Ok(inherited) if !inherited.is_empty() => {
+                assert_eq!(p, format!("/a b/bin:/c/bin:{inherited}"));
+            }
+            _ => assert_eq!(p, "/a b/bin:/c/bin"),
+        }
     }
 }

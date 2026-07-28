@@ -198,17 +198,30 @@ mod tests {
 
     #[test]
     fn every_fail_reads_as_a_sentence_without_blame_and_never_says_connected() {
+        // Each case pairs the failure with the datum a user would need in
+        // order to act — actionable means NAMING the thing, which a length
+        // check (the old `len() > 30`) cannot see and padding satisfies.
         let cases = [
-            VerifyFail::Unreadable(Unreadable::MissingKey { key: "DB_HOST".into() }),
-            VerifyFail::WrongTarget { host: "10.0.0.5".into(), port: 3306, expected_port: 13306 },
-            VerifyFail::WrongDatabase { file_db: "ea_old".into(), expected_db: "ea".into() },
-            VerifyFail::Unreachable("connection refused".into()),
-            VerifyFail::SigninRefused("access denied".into()),
-            VerifyFail::DatabaseMissing { db: "ea".into() },
+            (VerifyFail::Unreadable(Unreadable::MissingKey { key: "DB_HOST".into() }), "DB_HOST"),
+            (
+                VerifyFail::WrongTarget {
+                    host: "10.0.0.5".into(),
+                    port: 3306,
+                    expected_port: 13306,
+                },
+                "10.0.0.5:3306",
+            ),
+            (
+                VerifyFail::WrongDatabase { file_db: "ea_old".into(), expected_db: "ea".into() },
+                "`ea_old`",
+            ),
+            (VerifyFail::Unreachable("connection refused".into()), "connection refused"),
+            (VerifyFail::SigninRefused("access denied".into()), "access denied"),
+            (VerifyFail::DatabaseMissing { db: "ea".into() }, "`ea`"),
         ];
-        for c in cases {
+        for (c, datum) in cases {
             let m = c.message();
-            assert!(m.len() > 30, "{m:?} is too terse to act on");
+            assert!(m.contains(datum), "{m:?} never names the thing to act on ({datum})");
             assert!(m.ends_with('.'), "{m:?} should read as a sentence");
             for blame in ["invalid", "malformed", "wrong,", "bad "] {
                 assert!(!m.to_lowercase().contains(blame), "{m:?} reads as blame");

@@ -2406,7 +2406,6 @@ mod tests {
     #[test]
     fn php_versions_distinct_and_include_default() {
         assert!(PHP_VERSIONS.contains(&PHP_VERSION));
-        assert!(PHP_VERSIONS.len() >= 2);
         let mut seen = std::collections::HashSet::new();
         for v in PHP_VERSIONS {
             assert!(seen.insert(v), "duplicate PHP version pinned: {v}");

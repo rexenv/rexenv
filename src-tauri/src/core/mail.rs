@@ -380,15 +380,10 @@ mod tests {
         assert!(shim.contains("-S 127.0.0.1:11025"));
     }
 
-    #[test]
-    fn mail_client_bounds_are_generous_but_finite() {
-        // The real bounds the shared client is built with (B25): a wall-clock
-        // total is correct for Mailpit's small bounded responses (the B34
-        // prohibition is on capping UNBOUNDED transfers), and no healthy
-        // loopback call comes near either value.
-        assert_eq!(MAIL_CONNECT_TIMEOUT.as_secs(), 3);
-        assert_eq!(MAIL_REQUEST_TIMEOUT.as_secs(), 15);
-    }
+    // (No constant-echo test for the two timeout values: asserting a const
+    // equals its definition proves nothing — the wedged-server test below is
+    // the behavioral proof that the bound exists, and the rationale for the
+    // magnitudes lives on the constants themselves.)
 
     #[tokio::test]
     async fn mail_client_times_out_against_a_wedged_server() {

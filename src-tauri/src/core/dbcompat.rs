@@ -453,7 +453,14 @@ mod tests {
                 // row, which already names the database, server and versions.
                 let clean = matches!(&v, Verdict::Proceed { cautions } if cautions.is_empty());
                 if !clean {
-                    assert!(text.len() > 80, "{name}: {text:?} is too terse to teach anything");
+                    // Structural, not length (a byte count rewards padding and
+                    // miscounts em-dashes): a verdict that refuses or cautions
+                    // must carry a second sentence — the reason/fix beside the
+                    // verdict, which every constructor builds by concatenation.
+                    assert!(
+                        text.matches(". ").count() >= 1,
+                        "{name}: {text:?} is a bare verdict with no reason beside it"
+                    );
                 }
                 // Same voice as the rest of the import: explain, never scold.
                 for blame in ["invalid", "illegal", "you must", "unsupported configuration"] {
@@ -577,8 +584,15 @@ mod tests {
         assert!(v.runs_now());
         assert!(!v.cautions().is_empty());
         for c in v.cautions() {
-            assert!(c.message().len() > 40);
-            assert!(c.message().ends_with('.'));
+            // A caution is information: the fact plus the why, as a second
+            // sentence or an explanation clause — never a bare label. (Was a
+            // byte-length check, which padding satisfies and em-dashes skew.)
+            let m = c.message();
+            assert!(
+                m.matches(". ").count() >= 1 || m.contains(" — "),
+                "{m:?} states a fact without the why"
+            );
+            assert!(m.ends_with('.'));
         }
     }
 }

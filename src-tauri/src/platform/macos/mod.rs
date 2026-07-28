@@ -2008,9 +2008,9 @@ mod tests {
         let plist = MacosAutostart::plist_contents(Path::new("/Applications/rexenv.app"));
         assert!(plist.contains("<string>dev.rexenv.rexenv</string>"));
         assert!(plist.contains("<string>/Applications/rexenv.app</string>"));
-        // Runs at GUI login.
-        assert!(plist.contains("<key>RunAtLoad</key>"));
-        assert!(plist.contains("<true/>"));
+        // Runs at GUI login. One contiguous match — split asserts would pass
+        // a plist that sets RunAtLoad to <false/> yet has a <true/> elsewhere.
+        assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
         // Lives in the per-user LaunchAgents dir (no root).
         assert!(MacosAutostart::plist_path()
             .unwrap()
