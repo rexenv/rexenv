@@ -13,6 +13,7 @@ import { Import } from "@/routes/Import";
 import { Settings } from "@/routes/Settings";
 import { Onboarding } from "@/routes/Onboarding";
 import { DevGitPanel } from "@/routes/DevGitPanel";
+import { DevUiReview } from "@/routes/DevUiReview";
 import { dnsStatus, initError, onServiceHealth } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Toaster } from "@/components/ui/toaster";
@@ -103,6 +104,7 @@ export function App() {
         <Route path="/" element={<FirstRunGate />} />
         <Route path="/onboarding" element={<Onboarding />} />
         {import.meta.env.DEV && <Route path="/dev/git-panel" element={<DevGitPanel />} />}
+        {import.meta.env.DEV && <Route path="/dev/ui-review" element={<DevUiReview />} />}
         <Route element={<AppShell />}>
           <Route path="/sites" element={<Sites />} />
           <Route path="/sites/:id" element={<SiteDetail />} />

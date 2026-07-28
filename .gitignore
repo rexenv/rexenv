@@ -57,4 +57,5 @@ src-tauri/binaries/
 
 # WebKit check screenshots (scripts/wk-checks)
 scripts/wk-checks/*.png
+scripts/wk-checks/shots-uireview/
 scripts/wk-checks/package-lock.json
