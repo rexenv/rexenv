@@ -1,5 +1,11 @@
 # rexenv — Full Codebase Review
 
+> ⚠️ **HISTORICAL** (archived 28 Jul 2026) — every finding here was dispositioned:
+> fixed, or LEFT by documented decision. The two live tails, **B29b** (one-miss
+> fpm pool reap) and **B33** (php-debug download host), are tracked in
+> `docs/TODO.md`. All described vulnerabilities are FIXED in current code; the
+> write-ups are kept as the audit record.
+
 **Reviewer:** Claude (max-effort pass — read → verify-against-real-code → act)
 **Date started:** 2026-07-18
 **Baseline (clean):** `cargo test --lib` 320 passed / 0 failed · `cargo build --examples` ok · `tsc --noEmit` ok

@@ -92,7 +92,7 @@ header_register_callback(function () {
 // accepted "127.0.0.1.evil.com" and handed a passwordless session to a REMOTE
 // server — a malicious server can then use `LOAD DATA LOCAL INFILE` to read local
 // files off this machine. Strip an optional :port (or MySQL :socket, or bracketed
-// IPv6) and compare the bare host to the allow-list. See docs/CODEBASE-REVIEW.md B1.
+// IPv6) and compare the bare host to the allow-list. See docs/archive/CODEBASE-REVIEW.md B1.
 // (examples/adminer_login_gate_check runs this exact function through PHP.)
 if (!function_exists('rexenv_is_loopback')) {
     function rexenv_is_loopback($server) {

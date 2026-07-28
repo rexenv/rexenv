@@ -1,6 +1,6 @@
 #!/bin/bash
 # Timing recorder for the tunnel probe sessions (docs/TODO.md "PROBE SESSION",
-# docs/PLAN-tunnel-lifecycle.md). The physical part stays human — sharing,
+# docs/archive/PLAN-tunnel-lifecycle.md). The physical part stays human — sharing,
 # `kill -9`, toggling wifi; THIS records the second-by-second facts so the
 # session produces timings instead of badge-reading and guessing.
 #

@@ -1,4 +1,4 @@
-// WebKit screenshot sweep for the UI review (docs/UI-REVIEW.md §C).
+// WebKit screenshot sweep for the UI review (docs/archive/UI-REVIEW.md §C).
 // Drives `#/dev/ui-review` (DevUiReview.tsx, mocked IPC — zero backend, zero
 // contact with the real app). Captures every Stage 2/3 surface — including
 // the three that had never rendered anywhere — at a narrow and a wide width.

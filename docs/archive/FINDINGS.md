@@ -135,8 +135,8 @@ in two places:
 - **Severity:** High.
 - **Why it matters:** Every service's `running` is "can I open a TCP connection to the
   port," never "is *my* tracked child alive and the one bound there." The pid is tracked
-  but unused for the liveness decision. The dev machine's DBngin holds :443 (nginx) and
-  :3306 — rexenv reports **Caddy running** whenever DBngin's nginx is up, even with
+  but unused for the liveness decision. A developer's DBngin can hold :443 (nginx) and
+  :3306 — rexenv reported **Caddy running** whenever that nginx was up, even with
   rexenv fully stopped; a system MySQL makes MySQL show green. `stop_all` then can't
   stop these (not owned), so the UI shows "running" that Stop-all can't clear. False
   status + unactionable Stop.

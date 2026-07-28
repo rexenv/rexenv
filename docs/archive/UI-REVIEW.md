@@ -1,5 +1,11 @@
 # UI-REVIEW — the whole-app look-over (inventory first, then fixes)
 
+> ⚠️ **HISTORICAL** (archived 28 Jul 2026) — the review COMPLETED: §C1's eight and
+> §C2's three findings were all fixed and re-verified the same day; the two items
+> it surfaced that belonged to nobody (the Laravel-card installer promise, the
+> Apache teardown leftover) are tracked in `docs/TODO.md`. The "CAPTURING" status
+> below is the doc's original opening state, kept as written.
+
 **Status: CAPTURING (28 Jul 2026).** Not a bug hunt yet — an inventory. The last
 few stages added a lot of surface, almost all of it only type-checked or seen in
 a WebKit harness, and the app as a whole hasn't had a general look-over in a
@@ -122,7 +128,7 @@ hierarchy incl. cache warning, creates-user note, backup-limit copy and the
 MariaDB note; the diff block styling; the refused/tell-only panel with the
 reason + 13307 snippet; the connected panel wording (+http variant); the
 revert confirm; the refusedEdited → "Restore anyway" flow; the backupMissing
-message with `connected` kept; the ruling-2 delete copy naming `lms`; the
+message with `connected` kept; the ruling-2 delete copy naming the site; the
 resolver hand-back row (first-ever render: fine).
 
 **Coverage honesty**: eyeballed 12 of 19 scenarios (both widths' behaviour

@@ -1,5 +1,5 @@
 //! Live check — the tunnel launch sweep settles crash-survivor rows correctly
-//! (lifecycle ruling 28 Jul 2026, `docs/PLAN-tunnel-lifecycle.md`).
+//! (lifecycle ruling 28 Jul 2026, `docs/archive/PLAN-tunnel-lifecycle.md`).
 //!
 //! Three recorded rows, three fates:
 //!   1. FOREIGN — the row's pid is alive but names an unrelated process (the

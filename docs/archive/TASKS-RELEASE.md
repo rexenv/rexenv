@@ -2,13 +2,18 @@
 > Current truth = `docs/ARCHITECTURE.md` + `docs/TODO.md`. Do not trust any "fact" here
 > without checking the code.
 
-# TASKS — Release (macOS, limited closed-source distribution)
+# TASKS — Release (macOS, the original limited pre-open-source distribution)
 
-> **Goal:** package the finished macOS app (Phase 1–3 feature work COMPLETE) into a
-> **.dmg** I can hand to **myself + a few known people**. This is NOT new features and
-> NOT a public release. **Ad-hoc signing only** (no Apple Developer account): users do a
+> **Historical framing note (28 Jul 2026):** this log predates the decision to
+> open-source rexenv — at the time the goal was a private, hand-distributed build,
+> which is why it speaks of a "closed-source" release. It is kept as the packaging
+> evidence record; open distribution work is tracked in `docs/TODO.md`.
+>
+> **Goal (as written then):** package the finished macOS app (Phase 1–3 feature work
+> COMPLETE) into a **.dmg** for the maintainer + a few known testers. NOT a public
+> release. **Ad-hoc signing only** (no Apple Developer account): users do a
 > one-time right-click → Open. Full **Developer ID signing + notarization + stapling**,
-> **Homebrew**, and wide distribution are **DEFERRED** until the project is open-sourced.
+> **Homebrew**, and wide distribution were **DEFERRED** until open-sourcing.
 >
 > Reuse the existing architecture (CLAUDE.md): `BinaryProvider` + macOS `prepare_binary`
 > (the ad-hoc-sign pattern extends to the app bundle), `ProcessSupervisor`, `ServiceManager`,
@@ -231,8 +236,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
   + first launch, cold first run (downloads + the 3 setup prompts), WP-over-HTTPS, WP Manager, Mailpit,
   Adminer deep-link, multisite, tunnels, Settings (theme / default-PHP / autostart), robustness spot-checks,
   scale, and clean uninstall — each a checkbox with the expected result. **The actual clean-Mac run is the
-  hands-on step (paired with 1.5)** — it needs a second Mac / fresh account + the .dmg, so it's left for you
-  to execute. Depends on 1.5.
+  hands-on step (paired with 1.5)** — it needs a second Mac / fresh account + the .dmg; tracked in
+  `docs/TODO.md`. Depends on 1.5.
 
 ---
 
@@ -264,8 +269,8 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` intentionally def
 - **What's already done (verified in code, §4):** DNS & SSL controls, the real launchd `AutostartManager`,
   and the sites-folder setting all shipped in Phase 3 §11.1 — `[x]`. Theme + default-PHP setter (4.4) are
   genuinely outstanding.
-- **Distribution is limited + closed-source.** No public listing, no Homebrew, no auto-update required.
-  Those unlock after open-sourcing (→ 1.6, 6.1).
+- **Distribution was limited at the time** (see the framing note up top). No public listing, no
+  Homebrew, no auto-update required. Those unlock with open-sourcing (→ 1.6, 6.1).
 - **Excluded (post-1.0 / Tier 3):** backup/restore, production-site import, blueprint marketplace, installers
   for other apps. Phase-3 Xdebug (§8.2 / §11.2 hosting) remains external-blocked, not in scope.
 - **Verification carries over:** prefer a real check per task — a built/mounted .dmg, `codesign` / `security`

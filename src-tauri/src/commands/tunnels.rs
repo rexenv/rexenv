@@ -411,7 +411,7 @@ pub fn confirm_quit_or_prompt<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> b
 }
 
 /// App-exit hook: tunnels DIE WITH THE APP (lifecycle ruling 28 Jul 2026 —
-/// `docs/PLAN-tunnel-lifecycle.md`). A service outliving the app serves the
+/// `docs/archive/PLAN-tunnel-lifecycle.md`). A service outliving the app serves the
 /// developer; a tunnel outliving it serves the PUBLIC, unattended — so this is
 /// the deliberate opposite of services-outlive-the-app, same as repo jobs.
 ///

@@ -1,5 +1,10 @@
 # Configurable TLD (v1) — implementation report
 
+> ⚠️ **HISTORICAL** (archived 28 Jul 2026) — the feature + the `.rex` correction
+> shipped; the rationale lives in `docs/ARCHITECTURE.md`. The human-verify
+> checklist at the bottom was never formally walked — that walk is folded into
+> the clean-Mac smoke-test item in `docs/TODO.md`.
+
 > **12 Jul correction applied — `.rex` is now the backbone; `.test` is NOT
 > auto-installed.** See the "Correction" section at the bottom for the
 > blast-radius analysis, the three new commits, and the new Done-when

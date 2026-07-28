@@ -171,7 +171,7 @@ service pattern, and gives WordPress work a place to see captured mail.
   PATH gets the bundled-PHP dir + a generated `wp` wrapper (`ensure_wp_wrapper` → `php -d memory_limit=512M
   wp-cli.phar "$@"`); the terminal's PHP **matches the site's version**. **Gotcha handled:** macOS path_helper
   + the user's rc reorder PATH and would shadow the bundled php, so `open` also injects `export PATH="…:$PATH"`
-  AFTER rc runs — verified the bundled php wins even with a full powerline zsh rc + Herd/Homebrew php on the
+  AFTER rc runs — verified the bundled php wins even with a heavily-customised zsh rc + other php installs on the
   box. Command layer: a Tauri-managed `Terminals` registry + `terminal_open`/`terminal_write`/`terminal_resize`/
   `terminal_close`, output bridged to per-session events `terminal://output/<id>`; typed `ipc.openTerminal`/
   `writeTerminal`/`resizeTerminal`/`closeTerminal`/`onTerminalOutput` helpers. Verified: `cargo run --example

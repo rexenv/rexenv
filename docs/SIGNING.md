@@ -131,5 +131,5 @@ its own cert:
 
 - Update `docs/INSTALL.md` — remove the Gatekeeper right-click-Open workaround section.
 - Flip TODO.md "Developer ID signing + notarization" (Release 1.6) to done, and mark B32 fixed in
-  `docs/CODEBASE-REVIEW.md`.
+  `docs/archive/CODEBASE-REVIEW.md`.
 - The Homebrew cask then needs no `xattr`/quarantine workaround.

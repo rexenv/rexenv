@@ -171,7 +171,7 @@ discipline.
 **Stage 3 — CLI rides the job** (observable behavior unchanged, output diff shown)
 
 **Stage 4 — ship**
-- Fresh universal DMG (this obsoletes the `~/rexenv-release-staging` backup), user's
+- Fresh universal DMG (obsoletes the earlier staging backup), user's
   §A smoke → Release upload → canonical sha from uploaded asset → cask bump.
   Version/tag call (ship everything as v0.1.0 vs 0.1.0+0.1.1 split) is the user's at
   ship time.

@@ -100,14 +100,14 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   proxy::admin_in_use()` — probed via the admin endpoint (:2019), never raw :443. (PHP
   pools / FrankenPHP were already list-only-when-tracked.) Handle presence is a stronger
   ownership signal than an `owned_listeners` marker scan; a stopped manager now
-  short-circuits (zero probes). **Verified**: with DBngin holding :443, Services + footer
+  short-circuits (zero probes). **Verified**: with another app holding :443, Services + footer
   show Caddy **Stopped** (was falsely Running); after freeing :443 + Start-all it's Running;
-  Stop-all leaves DBngin untouched. 116/116 lib tests pass (two strengthened to pin
+  Stop-all leaves the foreign holder untouched. 116/116 lib tests pass (two strengthened to pin
   "stopped ⇒ nothing running, regardless of foreign listeners").
   *Done when:* each service's `running` is true only when a rexenv-owned process is up —
   tracked-child liveness (`try_wait`) and/or `owned_listeners(port, app_data_marker)`;
   the root Caddy edge is probed via its admin identity, not raw :443. Verified: with
-  rexenv stopped but DBngin holding :443/:3306 (or a system MySQL running), Services and
+  rexenv stopped but another app holding :443/:3306 (or a system MySQL running), Services and
   the footer show Caddy/MySQL as **stopped**, and Start-all/Stop-all act only on rexenv's
   own processes.
 
@@ -196,7 +196,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   watchdog untouched. **Verified:** 152/152 lib tests (`summarize(&[false,…]) == "stopped"`
   pins the footer); live — stack fully stopped (`lsof` shows :443/:8088/:9783/:13306/:11025
   free) while the resolver holds UDP `:15353`, footer reads Stopped/"Start all", DNS
-  indicator green; confirmed in-app by the user.
+  indicator green; confirmed in-app.
   *Done when:* UI and reality agree — no "running" that Stop-all can't clear; the DNS
   indicator stays visible (and goes red on a dead resolver) without ever affecting the
   global Start/Stop-all state.
@@ -208,7 +208,7 @@ Status: `[ ]` todo · `[~]` in progress · `[x]` done · `[D]` deferred
   `services` and `global-status` queries (the header copy only refreshed `services`).
   The TopBar keeps its "N of M running" subtitle. **Verified:** strict `tsc` clean at the
   commit + browser render (header action gone, single footer control whose label derives
-  from live `global_status.running`); confirmed in-app by the user.
+  from live `global_status.running`); confirmed in-app.
   *Done when:* exactly one global start/stop control exists, it drives `stop_all`, and
   its Start/Stop label reflects live service state.
 

@@ -250,7 +250,7 @@ leaves the folders untouched (Stage 0 guarantee). **Import ONE site, not all 19.
 - **🟢 Clean-Mac release QA** — `docs/SMOKE-TEST.md` on a fresh Mac / user account. The
   broadest confidence check; especially worth it before sharing with your QA friend.
 - **🟢 `examples/*` live re-verification of the fixes whose full behavior needs real
-  binaries** (the "live-check" scope notes in `docs/CODEBASE-REVIEW.md`). All are
+  binaries** (the "live-check" scope notes in `docs/archive/CODEBASE-REVIEW.md`). All are
   unit-tested for logic; these examples exercise them end-to-end against real services:
   - B22/B23 datadir cleanup — force a DB init failure (e.g. a deliberately-broken bootstrap)
     and confirm the next start re-inits cleanly rather than starting on a corrupt datadir.
