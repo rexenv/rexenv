@@ -83,7 +83,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 |---|---|
 | Any feature/bug — system mental model | `docs/ARCHITECTURE.md` |
 | Testing: which layer proves what, the gate tiers | `docs/PLAN-testing-strategy.md` |
-| A "must never"/safety claim — is it proven? add one? | `docs/CLAIM-LEDGER.md` (update it in the same commit) |
+| A "must never"/safety claim — is it proven? add one? | `docs/CLAIM-LEDGER.md` — **an invariant comment isn't finished until its ledger row + verdict land in the SAME commit** (a drifted ledger is worse than none); backlog is worked by the ledger's blast-radius tiers, top first |
 | Ports, pinned binary versions, checksums | `docs/PORTS.md` |
 | What's open / pick up work | `docs/TODO.md` |
 | rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |

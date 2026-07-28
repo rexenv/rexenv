@@ -147,8 +147,12 @@ pub const BROKEN_AFTER: u32 = 3;
 
 /// Fold a probe outcome into the next `(health, strikes)`.
 ///
-/// Any HTTP response EXCEPT 530 proves the tunnel path: the edge accepted the
-/// hostname and something behind the tunnel answered — a WP 404/500, a 3xx
+/// Any HTTP response EXCEPT 530 proves the tunnel path — on the honest
+/// assumption that nothing between this machine and Cloudflare forges HTTP
+/// (a captive portal would; ledger #15 marks that premise unprovable, and a
+/// forged answer here can only OVER-claim Live, never mask Broken): the edge
+/// accepted the hostname and something behind the tunnel answered — a WP
+/// 404/500, a 3xx
 /// (redirects are NOT followed — the first hop's status is the fact), or
 /// cloudflared's own 502 for a stopped local origin, all rode the tunnel to
 /// get here. Origin health is the Services page's fact; this badge reads ONE
@@ -332,7 +336,10 @@ pub fn fold_diagnosis(public_resolves: Option<bool>, edge_status: Option<u16>) -
 /// corner where 1.1.1.1 is unreachable (egress-blocked network) while system
 /// DNS works fine: without it, that machine would sit in Phase A forever and
 /// never regain `Reachable`. By the time it fires, the record has existed for
-/// minutes and an early-query negative-cache is no longer possible.
+/// minutes, so a COMPLIANT resolver (RFC 2308 bounds negative TTL) can no
+/// longer be holding an early-query negative-cache; a noncompliant router can
+/// still lie longer — that residue is exactly what the second-device check
+/// exists for (ledger #18).
 pub const SYSTEM_PROBE_GATE_CAP: Duration = Duration::from_secs(300);
 
 /// May the prober start asking the SYSTEM resolver about this hostname?

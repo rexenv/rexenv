@@ -337,7 +337,10 @@ const MAILPIT_1_30_3_MAC_AMD64_SHA256: &str = "ea8c2f5ac717ece100b453de282474b46
 
 // Homebrew bottle digests (from formulae.brew.sh, pinned 2026-07-14; the ghcr
 // blob URL embeds the same digest, so the pin is self-consistent — a changed
-// upstream can only 404, never swap bytes silently). arm64 = the arm64_sonoma
+// upstream can only 404, never swap bytes silently. That is ghcr's contract,
+// not something we can test (ledger #90) — which is fine, because the local
+// checksum verify catches a swapped body anyway; the pin never TRUSTS the
+// transport, it just makes drift loud as a 404 instead of a hash mismatch). arm64 = the arm64_sonoma
 // bottle, x86_64 = the sonoma bottle: oldest supported build of each arch runs
 // on every newer macOS. arm64 bottles downloaded + hashed + relinked + RUN at
 // pin time; x86_64 digests are Homebrew-published (verify live on the next

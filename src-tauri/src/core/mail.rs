@@ -2,8 +2,10 @@
 //!
 //! Mailpit is a single static Go binary that runs an SMTP sink plus a web UI /
 //! HTTP API. We bind both to loopback on fixed ports (SMTP 11025, HTTP/API
-//! 18025 — offset from Mailpit's stock 1025/8025 so we never clash with a
-//! standalone Mailpit/MailHog or Herd Pro's bundled Mailpit)
+//! 18025 — offset from Mailpit's stock 1025/8025 so we don't collide with a
+//! standalone Mailpit/MailHog or Herd Pro's bundled Mailpit on THEIR stock
+//! ports. Their defaults, not a guarantee — ledger #149; `ports::ensure_free`
+//! is the actual guard either way)
 //! and persist captured mail to a SQLite file under app-data so it survives
 //! restarts. Supervised like the other services via `ProcessSupervisor`.
 //! Platform-agnostic: talks to `platform/` traits only.

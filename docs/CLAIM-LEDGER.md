@@ -10,6 +10,11 @@ Compiled 28 Jul 2026 from a full sweep of `src-tauri/src` (~1,037 invariant-lang
 comment lines read against 535 lib tests and 105 examples). Line numbers are anchors,
 not contracts — trust the file, verify the line.
 
+**Maintenance rule (also in CLAUDE.md): an invariant comment isn't finished until its
+ledger row exists with a verdict — same commit, like the TODO tick.** A ledger that
+drifts is worse than none; this project has already shipped one false safety comment
+and two doc-drift audits.
+
 Verdicts:
 - ✅ **proven** — a named lib test or example exercises exactly this claim.
 - ◐ **half-proven** — the stated half is proven; the noted half is not (layer in note).
@@ -299,16 +304,78 @@ L3 = scripted manual.
 | 193 | commands/wordpress.rs:350 | Commands scoped: site row must exist in OUR db | 🔨 L0 |
 | 194 | commands/downloads.rs:64 | Leaving onboarding never cancels downloads | ✅ 2 lib tests + example |
 
-## Tally (28 Jul 2026, after T4)
+## Tally (mechanical — count rows by their LEADING verdict emoji)
 
-- ✅ proven: **120** (of 195; #195 added and proven the same day — its proof falsified
-  a prose claim, which is the ledger working; #36/#44 proven in T10)
-- ◐ half-proven (unproven half in the backlog): **34** (#175 in T10, #103 in T11)
-- 🔨 provable-unproven: **32**
-- 🚫 inherently unprovable: **9** (each mapped in PLAN §5 or an accepted posture)
+The tally is recomputed, never hand-maintained (the hand-kept version drifted within
+one day of being written):
 
-**Provable total = 185; proven (incl. proven halves) ≈ 117 full + 32 half. The working
-backlog = every 🔨 row + the noted half of every ◐ row.**
+```sh
+for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDGER.md; done
+```
+
+As of 28 Jul 2026 (after T1–T13 + the 🚫 wording audit): **✅ 117 · ◐ 37 · 🔨 37 ·
+🚫 4** of 195 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149,
+#154). The working backlog = every 🔨 row + the noted half of every ◐ row, ranked
+below.
+
+## 🚫 wording audit (28 Jul 2026)
+
+Directive: an inherently-unprovable claim must not read as a guarantee — that is
+exactly how wp_tunnel's comment became a false safety claim. All nine read against
+their code comments:
+
+- **Re-scoped in code** (they overclaimed to a reader): #15 ("any non-530 proves the
+  path" — now names the no-forged-HTTP assumption and that a forge can only
+  over-claim Live), #18 ("negative-cache no longer possible" — now "compliant
+  resolver, RFC 2308; a noncompliant router can still lie, hence the second-device
+  check"), #90 ("can never swap bytes silently" — now states it's ghcr's contract,
+  untestable, and that the local checksum is what's actually load-bearing), #149
+  ("never clash" — now "their stock ports, their defaults not a guarantee;
+  `ensure_free` is the actual guard").
+- **Already carried their scope**: #17 (self-labeled HONEST LIMIT), #43 (behavior
+  proven live; only the ITP attribution is unprovable), #52 (the RFC citation IS the
+  scope), #95 (self-flagged UNVERIFIED), #154 (dated, versioned, with its
+  falsification case).
+
+## The 🔨 backlog, ranked by blast radius
+
+Directive: worked top-down when there's slack — never a session grinding the tail.
+Rank = what a FALSE claim costs, not how easy the proof is.
+
+**Tier 1 — cross-site exposure, auth bypass, or data loss if false:**
+
+| Rows | If false |
+|---|---|
+| #10, #13-half | a tunnel publishes ANOTHER site's content (second-Host probe through a live tunnel; default-vhost fallthrough premise) |
+| #2, #33-half | CF-header discriminator fails ⇒ login-token replay through a public tunnel |
+| #37 | Adminer (passwordless DB) reachable as a tunnel origin |
+| #25, #26, #29, #30, #31 | a share outlives its site / claim races ⇒ stale PUBLIC exposure; #30 additionally signals a recycled (foreign) pid |
+| #54, #59 | a second SQLite writer/brain (cli crate linking the lib; dns-agent touching state) ⇒ corruption class |
+| #49 | cancelled takeover loses the user's own resolver config (Valet's file, no backup) |
+| #116 | a cancelled dump mutates THEIR server (locks/sessions) |
+| #190-half | site delete leaves its tunnel publishing a dead docroot |
+
+**Tier 2 — silent wrong answer (the debugging-days class):**
+
+| Rows | If false |
+|---|---|
+| #57 | CLI silently diverges from the UI code path |
+| #79, #80, #86 | leaked workers defeat probes; adoption downloads on a poll; a poisoned cache ships a binary that can't load |
+| #104/#191-half | a rejected PHP value reaches the live pool anyway |
+| #141, #180-half | wp-cli's internal bounds looser than assumed ⇒ false timeouts/hangs |
+| #46, #60 | DNS agent handoff/fallback fails ⇒ sites dark with green health |
+| #12, #20, #23 | tunnel sentinel/gate/argv drift ⇒ wrong lifecycle decisions |
+| #28-half, #32, #174-half | UI renders Live/agreeing status that the registry already knows is false |
+| #40, #166 | WebKit internals assumptions (redirect replay, dialog wiring) |
+| #1, #4-half, #9 | tunnel semantics (URL invisibility, relaunch bound, multisite scope) |
+| #19-half | reqwest `.resolve()` fallback (procedure now exists: PUBLISH-TESTING §L) |
+| #71, #178, #181-half, #182-half, #186-half | guard escapes: cfg(test) hatch, panic on read, import cross-guard, crash ordering, cancel boundary |
+
+**Tier 3 — untidy if false (structural lints and scoping tests; fine forever on the
+shelf):** #16, #24, #61, #102-half, #160, #163, #167, #188, #189, #193, #55-half.
+
+L3-by-nature rows (#46 two-process handoff, #67/#155/#156 root-install reality,
+#107/#159 live negatives) route to SMOKE-TEST/PUBLISH-TESTING, not this backlog.
 
 ## The highest-risk cluster (work these first)
 
