@@ -91,7 +91,8 @@ Two caveats carried into the implementation:
 - **MariaDB 10.x prefixes `5.5.5-`** (`5.5.5-10.11.2-MariaDB`) — the old replication
   compatibility hack. Our 12.3.2 sends no prefix (verified above); the 10.x form is
   documented but **not verified here**, so the parser strips a leading `5.5.5-` when
-  present and a live 10.x sighting should be recorded back into this section.
+  present and a live 10.x sighting should be recorded back into this section
+  (none sighted as of 28 Jul 2026 — the parser leg is pinned by tests either way).
 - ~~DBngin's MySQL 8.0.27 specifically is still unverified~~ **VERIFIED in the §I pass
   (27 Jul 2026)**: identified pre-auth as MySQL 8.0.27 once started.
 
@@ -110,7 +111,7 @@ Postgres has no pre-auth greeting; identify it with `psql -c "SHOW server_versio
 
 Per-site status, verbatim shape:
 
-> **database not reachable** — `ea` is on MySQL at 127.0.0.1:3306, which isn't running.
+> **database not reachable** — `myblog` is on MySQL at 127.0.0.1:3306, which isn't running.
 > Start it in DBngin, then re-scan.
 
 We name the app when we can identify it (DBngin/Herd/unknown), and we do not offer a
@@ -154,7 +155,7 @@ running. So the message doesn't stop at the negative — having authenticated, w
 what the server *does* hold, which turns it into a diagnosis:
 
 > The 8.0.27 server at 127.0.0.1:3306 is running and accepted the sign-in, but has no
-> database called `ea`. It does have: ea_old, wordpress, shop (+3 more). Either the
+> database called `myblog`. It does have: myblog_old, wordpress, shop (+3 more). Either the
 > database was deleted, or this site points at a different server than the one running
 > here.
 
@@ -413,7 +414,7 @@ work against our engine and only the host/port differ — which is what makes St
 one-key change.
 
 **Except when their user is `root`, which is the common case on this machine** (the live
-`ea` sample is `DB_USER=root` with a password). Our engines run passwordless
+`myblog` sample is `DB_USER=root` with a password). Our engines run passwordless
 `root@localhost`; that is baked into `client_base_args` and every path that uses it.
 
 > **Hard rule: never create, alter, or set a password on `root`** (or `mysql.sys`,
@@ -450,15 +451,15 @@ names what the user does next, and every "retry" claim has a test that proves it
 
 | Failure | What exists afterwards | What the user does | Proven by |
 |---|---|---|---|
-| source engine unreachable | nothing — no artifact, no database | start their engine (named), then Retry | `db_import_recovery_check` case 1 |
+| source engine unreachable | nothing — no artifact, no database | start their engine (named), then Retry | `db_dump_check` (refused-gate leg) |
 | credentials rejected | nothing | fix the config or enter details manually, Retry | unit (preflight error text) |
 | not enough disk | nothing | free space, Retry | unit (preflight refusal) |
-| dump failed mid-way | partial artifact **deleted** (existing `export_to_downloads` behaviour) | Retry — re-dumps from scratch | `db_import_recovery_check` case 2 |
-| restore failed, we created the DB | `db_created = 1` database, partially populated | Retry — **drops and recreates**, then restores | `db_import_recovery_check` case 3 |
-| restore failed, DB pre-existed | their/our pre-existing DB, possibly modified | reported, **never auto-dropped**; user decides | `db_import_recovery_check` case 4 |
+| dump failed mid-way | partial artifact **deleted** (existing `export_to_downloads` behaviour) | Retry — re-dumps from scratch | `db_dump_check` (partial-deleted leg) |
+| restore failed, we created the DB | `db_created = 1` database, partially populated | Retry — **drops and recreates**, then restores | `db_restore_check` case 3 |
+| restore failed, DB pre-existed | their/our pre-existing DB, possibly modified | reported, **never auto-dropped**; user decides | `db_restore_check` case 4 |
 | cancelled | as the boundary it stopped at, stated | Retry | cancel test |
 
-`db_import_recovery_check` is an example, not a unit test, because the thing that broke in
+`db_restore_check` is an example, not a unit test, because the thing that broke in
 Stage 1 broke *below* the level unit tests reach. Case 3 is the one that matters and is
 written to fail loudly if the retry path regresses: restore a dump crafted to error
 part-way (valid tables, then a bad statement), assert the job failed with the database
@@ -472,21 +473,21 @@ asserts a pre-existing database still exists and is untouched by cleanup.
 
 Two levels, and neither writes to the user's real engines.
 
-**Sandboxed example (`db_import_check`), the default.** Uses `common::sandbox()` from
+**Sandboxed example (`db_dump_check + db_restore_check`), the default.** Uses `common::sandbox()` from
 `f4d7a61`, and spins its **own** `mysqld` on a fixture port with a throwaway datadir
 inside the sandbox as both source and target. Touches nothing outside the sandbox root
 and the shared binary cache. This is what runs pre-commit.
 
 **Live source check, on request only.** Uses the real DBngin MySQL 8.0.27 and the real
-`ea` database as the **source**, because a real dump of a real WordPress database is
+`myblog` database as the **source**, because a real dump of a real WordPress database is
 worth more than a fixture.
 
 On the user's side it will:
 
 - **read** `~/Library/Application Support/com.tinyapp.DBngin/Data/DBEngines.plist`;
 - **TCP connect** to 127.0.0.1:3306 and read the handshake;
-- **read** the `ea` site's `wp-config.php` (this is where its password comes from);
-- **run `mysqldump --single-transaction --skip-lock-tables`** against `ea` — a
+- **read** the `myblog` site's `wp-config.php` (this is where its password comes from);
+- **run `mysqldump --single-transaction --skip-lock-tables`** against `myblog` — a
   non-locking read; their server is never written to, never restarted, never stopped.
 
 Everything it creates — artifact, target datadir, restored database, mirrored user —
@@ -507,7 +508,7 @@ here would be exactly the Q2a "serving at…" lie in a new place.
 
 The settled job's summary, per site:
 
-> **Imported — not yet connected.** `ea` (48 tables, 24 MB) was copied into rexenv's
+> **Imported — not yet connected.** `myblog` (48 tables, 24 MB) was copied into rexenv's
 > MySQL 8.4.6 at 127.0.0.1:13306. **This site still reads and writes the old database**
 > at 127.0.0.1:3306 — the copy will drift from it until you change the site's connection
 > settings.
@@ -540,7 +541,7 @@ the summary does, so the two can never disagree.
 
 ## 10. Decisions — SETTLED (2026-07-26)
 
-**D1 — the imported database's name: keep theirs** (`ea`) when free; collisions stay the
+**D1 — the imported database's name: keep theirs** (`myblog`) when free; collisions stay the
 B21 pattern (`db_name_exists` + live `SHOW DATABASES` → `unique_db_name`'s disambiguated
 form). Their config's `DB_NAME` then needs no change, which is what keeps the Stage 3
 rewrite short.
@@ -593,7 +594,7 @@ copy says so.
 7. Credential mirroring with the reserved-name refusal.
 8. Job wiring (registry, cancel, log, phases) + both entry points (D4).
 9. Interim-state reporting (§9) — the honest summary, the badge, the copy-paste block.
-10. `db_import_check` end-to-end in the sandbox + `db_import_recovery_check` cases 1–4.
+10. `db_dump_check + db_restore_check` end-to-end in the sandbox + `db_restore_check` cases 1–4.
 11. `PUBLISH-TESTING.md` §I — the live DBngin pass and the packaged GUI steps.
 
 Commit per step, `docs/TODO.md` ticked with evidence, `cargo test --lib` +

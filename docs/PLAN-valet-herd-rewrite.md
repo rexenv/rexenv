@@ -1,7 +1,7 @@
 # Stage 3 — the opt-in connection rewrite
 
 **Status: SHIPPED — §J passed 28 Jul 2026** (all 12 steps, packaged app `44b6a6d`,
-real ea.test; sandbox end-to-end `config_rewrite_check` passed the same day).
+the real imported testbed site; sandbox end-to-end `config_rewrite_check` passed the same day).
 Approved 27 Jul 2026 with all five decisions settled (§9); later rulings recorded in
 place: our own wp-config span editor over wp-cli (§3), collision-renames tell-only
 permanently (§3), `pdo_mysql.default_socket` out permanently (§2). The research is
@@ -33,11 +33,12 @@ and with it every DB operation rexenv performs — settled, not revisited).
 ```diff
 -define( 'DB_HOST', '127.0.0.1' );
 +define( 'DB_HOST', '127.0.0.1:13306' );
--define( 'DB_USER', 'root' );
-+define( 'DB_USER', 'root' );        (unchanged in the root case — shown for the .env shape)
 -define( 'DB_PASSWORD', 'hunter2' );
 +define( 'DB_PASSWORD', '' );
 ```
+
+(Hand-written illustration, not tool output. `DB_USER` is omitted because it is
+unchanged in the root case; a non-root case would show it as a third pair.)
 
 **Their password, plaintext, in a review UI.** On screen during review, in any
 screenshot of it, potentially in a screen-share while asking a colleague "is this
@@ -51,7 +52,7 @@ show a password line changing without showing the password.
 -define( 'DB_HOST', '127.0.0.1' );
 +define( 'DB_HOST', '127.0.0.1:13306' );
 -define( 'DB_USER', 'root' );
-+define( 'DB_USER', 'rex_ea_test' );
++define( 'DB_USER', 'rex_myblog_test' );
 ```
 
 The password line is never touched, so the diff cannot contain a secret. Stronger than
@@ -161,10 +162,10 @@ the config, never by editing the config's password to match an account.
   would have to choose which). Same `Unreadable` vocabulary as Stage 2; one parser
   (`core::phpconf`) still.
 - **Bedrock and friends**: the `.env` path (already how Stage 2 read them).
-- **Collision-renamed imports (their `ea` restored as `ea_2`) → tell-only,
+- **Collision-renamed imports (their `myblog` restored as `myblog_2`) → tell-only,
   PERMANENTLY — settled 28 Jul 2026.** The closed key vocabulary deliberately
   cannot express a database rename, and that stays: zero collisions across the
-  11 real WordPress sites on the dev machine, the tell-only floor already
+  the dozen real WordPress sites on the reference install, the tell-only floor already
   prints the correct renamed line, and widening a deliberately tight three-key
   contract for the rare path isn't worth it. The preview's refusal names both
   database names, so the state explains itself. This is a decision, not an
@@ -253,7 +254,7 @@ re-import must land in the right branch:
 - Engine RUNNING: `read_connection` → `127.0.0.1:13306` → probe → handshake matches →
   `server_is_ours` (two facts) → `classify_self_import` → the site's own `db_name`
   (recorded by `finish` in Stage 2) → **`SelfImport::ThisSite`** → "this site already
-  reads and writes `ea` on rexenv's own engine — nothing to import". Already built;
+  reads and writes `myblog` on rexenv's own engine — nothing to import". Already built;
   Stage 3 adds the assertion: the rewrite example ends by re-running the classification
   on the rewritten config and asserting the `ThisSite` branch.
 - **Engine STOPPED — the message gap this review found.** `server_is_ours` requires a
@@ -287,7 +288,7 @@ re-import must land in the right branch:
    → revert → byte-identical original restored → re-scan lands `ThisSite`);
    recovery per the Stage 1 lesson (a failed write must leave their file untouched —
    temp+rename makes a half-written file unrepresentable, asserted).
-9. `PUBLISH-TESTING.md` §J — packaged pass on ea.test (root case → dedicated user,
+9. `PUBLISH-TESTING.md` §J — packaged pass on the testbed site (root case → dedicated user,
    diff shows 2 keys and no secret), revert restores byte-identical, drift check now
    runs the OTHER way (edit through the site → appears in rexenv's copy).
 

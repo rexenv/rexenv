@@ -4,9 +4,16 @@
 (`PLAN-linked-sites.md`), Stage 1 (§9 pass, 26 Jul 2026), Stage 2 (§I pass, 27 Jul
 2026), Stage 3 (§J pass, 28 Jul 2026 — `PLAN-valet-herd-rewrite.md`). Approved 26 Jul
 2026; research (Q0–Q7) verified as recorded below; all decisions settled (the last,
-§11.3, on 27 Jul 2026 as Stage 3 D5). Researched 25–26 Jul 2026 against the code as of `f302996`, the live Valet
-4.12.0 + Herd 1.29.0 install on the dev Mac, laravel/valet source at tag v4.12.0,
-herd.laravel.com docs, and the bundled DB binaries.
+§11.3, on 27 Jul 2026 as Stage 3 D5). Researched 25–26 Jul 2026 against the code as
+of `f302996`, a live Valet 4.12.0 + Herd 1.29.0 install (the "reference install" —
+a real, messy two-tool setup), laravel/valet source at tag v4.12.0,
+herd.laravel.com docs, and the bundled DB binaries. Line numbers below are anchors
+taken at `f302996` — trust the file, verify the line (several `core/sites.rs` cites
+have drifted as the file grew). What SHIPPED is described in `docs/ARCHITECTURE.md`
+§8; the per-stage build record is `docs/archive/SHIPPED-2026-07.md`. This doc
+remains the canonical home of the empirical research: the on-disk layouts (§2),
+the four site-side conflicts (§3), the engine-compat findings (§6) and the
+dump-tool flag surface (§7).
 
 The two pre-existing bugs in §12 are folded INTO this work, not handled separately —
 they sit directly in the migration path.
@@ -79,7 +86,7 @@ means writing inside the user's project — same as Valet/Herd do, but say so.
 
 ## 2. What Valet and Herd actually put on disk
 
-Verified on this machine (read-only) and against laravel/valet v4.12.0 source.
+Verified read-only on the reference install and against laravel/valet v4.12.0 source.
 
 ### Valet 4.12.0 — `~/.config/valet/`
 
@@ -93,8 +100,8 @@ Verified on this machine (read-only) and against laravel/valet v4.12.0 source.
 - `Nginx/<fqdn>` — exists ONLY for isolated / secured / proxied sites. Plain parked
   sites have no per-site file at all (served by a catch-all).
   - **Isolated PHP version = first line `# ISOLATED_PHP_VERSION=<v>`.** Value format
-    varies by writer: `php@8.1`, `8.1`, or bare `81` — all three occur; this machine has
-    both `8.4` and `82`. Parse all three. `.valetrc` (v4) / `.valetphprc` (v3) in the
+    varies by writer: `php@8.1`, `8.1`, or bare `81` — all three occur (the reference
+    install had two of them side by side). Parse all three. `.valetrc` (v4) / `.valetphprc` (v3) in the
     project root are input hints, not the store — read the marker first.
   - **Proxy sites** are recognized by first line `# valet stub: proxy.valet.conf` (or
     `secure.proxy.valet.conf`) + a `proxy_pass` line, and must be EXCLUDED from site
@@ -120,28 +127,30 @@ Verified on this machine (read-only) and against laravel/valet v4.12.0 source.
 - Differences in the confs: `fastcgi_pass $herd_sock_84` (an nginx variable per PHP
   version, not a literal sock path), `server.php` inside Herd.app, an extra
   `fastcgi_param HERD_HOME`.
-- PHP binaries in `bin/` (`php82`–`php85` real here). **Prefs lie**: the plist claims
-  7.4–8.5 installed while those binaries are absent and `bin/php` is a broken symlink —
-  trust binaries on disk, never `defaults read`.
-- Live quirks a parser must survive: duplicate parked path differing only by a trailing
-  slash; `/Users/wpdev/Herd/` parked but empty; an orphan `abc.test` conf + cert with no
-  Sites symlink; a custom-TLD conf (`eatest.dev`); a double-suffix name
-  (`wp-dev.test.test`); **10 of 29 symlinks dangling**.
+- PHP binaries in `bin/` (e.g. `php82`–`php85` on disk). **Prefs lie**: the plist can
+  claim versions installed while those binaries are absent and `bin/php` is a broken
+  symlink — trust binaries on disk, never `defaults read`.
+- Live quirks a parser must survive (all observed on the reference install):
+  duplicate parked path differing only by a trailing slash; a parked `~/Herd/` folder
+  with no sites in it; an orphan conf + cert with no Sites symlink; a conf on a TLD
+  the config never mentions (a `.dev` one); a double-suffix name (`<name>.test.test`);
+  **a third of the symlinks dangling**.
 - **Herd auto-migrates Valet on first launch** → the same site appears in BOTH trees
-  (here Herd's 29 ⊇ Valet's 19). Dedupe by domain; prefer the Herd row.
+  (the Herd tree is a superset of the Valet one). Dedupe by domain; prefer the Herd row.
 - Services (nginx, dnsmasq, php-fpm) run via the root helper `de.beyondco.herd.helper`
   and **die when Herd quits** — the opposite of our outlive-the-app model. See §3b.
-- Herd Pro (not configured on this machine): MySQL 8.0/8.4/9.4, MariaDB 10.11, Postgres
+- Herd Pro (not present on the reference install): MySQL 8.0/8.4/9.4, MariaDB 10.11, Postgres
   14–18, Mongo, Redis/Valkey, etc. under `config/services`, multiple instances, per-
   instance ports, root + empty password by default. Mail = its own catcher on SMTP 2525,
   messages in `HerdCoreData.sqlite`. All import-relevant SITE state is free-tier.
 - Alternative read path worth knowing: Herd ships an MCP server with a `get_all_sites`
   tool. We won't depend on it (read files), but it corroborates.
 
-### Live inventory on the dev Mac (the test bed)
+### The reference install (what the scan was hardened against)
 
-29 unique site names across both tools (19 live targets, 10 dangling), 11 with
-`wp-config.php` at root, 1 secured Valet site, no Laravel project with `.env` present.
+A real two-tool setup: ~30 unique site names across both tools (roughly two-thirds
+live targets, a third dangling), a dozen WordPress projects with `wp-config.php` at
+root, one secured Valet site, no Laravel project with a `.env` present.
 
 ## 3. The four site-side conflicts
 
@@ -196,9 +205,9 @@ Honest context that shapes the UX, not an excuse:
 
 - Their resolver file without their dnsmasq is a dangling pointer — it routes `.test` to
   127.0.0.1:53 where nothing answers. Quitting Herd (required to free `:443`) kills its
-  dnsmasq, so `.test` goes dark machine-wide with their file still in place. **That is
-  this machine's current state**: no `/etc/resolver/test` at all, both dnsmasqs stopped,
-  all 29 `.test` sites unresolvable.
+  dnsmasq, so `.test` goes dark machine-wide with their file still in place. **That
+  was the reference install's live state**: no `/etc/resolver/test` at all, both
+  dnsmasqs stopped, every `.test` site unresolvable.
 - Both tools self-heal on their own terms: `valet install` idempotently rewrites resolver
   + dnsmasq (officially the reset path), and Herd's onboarding/helper recreates its
   state. Neither repairs continuously — Valet's `start`/`restart`/`status` never touch
@@ -235,8 +244,7 @@ one per site) — note as future, don't build it here.
 ### d) PHP versions
 
 **The premise that we lack 8.1/8.2 is stale — we already pin 8.0.30 / 8.1.34 / 8.2.31 /
-8.3.31 / 8.4.23 / 8.5.8** (`core/binaries.rs:20-28`; all six cached on this machine,
-pools 9780–9785). The dominant Valet/Herd cohort maps exactly. Genuinely absent: **7.4**
+8.3.31 / 8.4.23 / 8.5.8** (`core/binaries.rs:20-28`; pools 9780–9785). The dominant Valet/Herd cohort maps exactly. Genuinely absent: **7.4**
 (static-php.dev never published it — needs a self-hosted build, the same blocked class as
 the Xdebug debug build) and anything older.
 
@@ -290,12 +298,12 @@ injection). Also honest gaps: Valet's `default` config key (catch-all site) and 
 Valet manages no databases at all; users run DBngin, Homebrew, or Docker. Herd Pro
 bundles its own.
 
-**Live scan of this machine:** the only DB servers running are OURS (mysqld 8.4.6 on
-13306, mariadbd 12.3.2 on 13307). DBngin is installed with one engine — MySQL **8.0.27
-on 3306, stopped** — and its plist says `Status = "started"`. **Never trust DBngin's
-plist; trust `lsof`.** No brew DB service running, no Herd Pro services, no Docker. The
-sampled WordPress site (`ea`) points at `DB_HOST=127.0.0.1` (i.e. TCP to the stopped
-DBngin), user `root`, password present.
+**Live scan of the reference install:** the only DB servers running were OURS (mysqld
+8.4.6 on 13306, mariadbd 12.3.2 on 13307). DBngin was installed with one engine —
+a MySQL 8.0.x **on 3306, stopped** — and its plist said `Status = "started"`.
+**Never trust DBngin's plist; trust `lsof`.** No brew DB service running, no Herd Pro
+services, no Docker. The sampled WordPress site pointed at `DB_HOST=127.0.0.1`
+(i.e. TCP to the stopped DBngin), user `root`, password present.
 
 Discovery plan (read-only): enumerate DBngin `Data/DBEngines.plist` (engine, version,
 port, datadir), Herd `config/services`, `brew services list`; then verify each against
@@ -307,7 +315,7 @@ Per-site mapping lives in the SITE's config, and is reliably readable statically
 
 - **WordPress** → extend the existing static parser to `DB_NAME`, `DB_USER`,
   `DB_PASSWORD`, `DB_HOST` (host:port form), `$table_prefix`. Handles the WP-standard
-  `define( 'K', 'v' );` (the live sample is exactly that). Non-literal/env-driven defines
+  `define( 'K', 'v' );` (the reference install's sample was exactly that). Non-literal/env-driven defines
   (Bedrock) → the `.env` path or needs-attention. **Never execute wp-config.**
 - **Laravel** → new conservative `.env` line parser: `DB_CONNECTION`, `DB_HOST`,
   `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`; tolerate quotes, comments,
@@ -464,92 +472,26 @@ plus mirrored credentials, would make a `localhost` WordPress site work with ZER
 changes. The seam exists (`generate_fpm_config`, `core/services.rs:26-81`) and our
 servers already create sockets (`run/mysql.sock`, `run/mariadb.sock`); the plumbing does
 not exist today (`default_socket` is set nowhere). Narrow: only `DB_HOST=localhost` sites
-(the live sample uses `127.0.0.1` — TCP, unaffected), one engine's socket per shared
+(the sampled config used `127.0.0.1` — TCP, unaffected), one engine's socket per shared
 pool, nothing for Laravel's TCP default, and mind macOS's ~104-char socket path limit.
 Worth doing as a free win IN ADDITION to (c), not instead of it.
 
-## 9. Feature shape
+## 9.–12. Feature shape, staging, decisions, folded-in bugs (shipped — see the build record)
 
-**detect → present → import**, reusing existing machinery, never a parallel path.
-
-- **Detect** — read-only scan of both trees (Valet + Herd), dedupe by domain (prefer
-  Herd), classify with our own pure-fs detector (§4), read per-site DB config statically
-  (§5), enumerate DB engines and verify against live listeners.
-- **Present** — a migration screen listing every discovered site: path, detected docroot,
-  detected type, PHP version (+ mapping note), detected database, and an honest per-site
-  status (importable / needs attention / unsupported), with per-site checkboxes — never
-  "migrate everything" blindly. Beyond the original sketch, the screen also needs:
-  serving-blocked banner (Herd holds :443 → imported fine, serving paused — driven by a
-  live `edge_answers_as_ours` probe, not a false success); source badge (Valet / Herd /
-  both); custom-driver flag → needs attention; Valet **proxies listed separately as not
-  importable**; dangling symlinks listed but unimportable (10 of 29 on this machine);
-  DB-unreachable status ("start DBngin first").
-- **Import** — per selected site, through the existing site-creation/provisioning path:
-  same path (linked, in place), mapped PHP version (+ `php::set_installed` + prefetch),
-  detected docroot, our own freshly issued cert (never theirs), optional database. Set
-  the per-row `linked` marker. Idempotent re-scan: `domain` is UNIQUE, so an already-
-  imported site shows as such and re-runs are safe. **Never run WP-CLI against a scanned
-  site** (it executes their PHP) — pure fs until the user acts.
-
-## 10. Staging
-
-Agreed with the proposed order (riskiest last, each verified before the next), with one
-addition at the front:
-
-0. **Linked sites** — the §1 change set (+ delete-guard marker). Small, independently
-   shippable, and the biggest non-migration ask in local dev tooling; migration then
-   reuses it instead of special-casing. **Planned in detail: `docs/PLAN-linked-sites.md`**
-   (marker design, v17 migration + backfill, delete inventory, commit sequence).
-1. **Sites-only import** — detect + present + import, no databases. Includes the
-   resolver-consent work, which subsumes fixing today's silent foreign-file overwrite
-   (§3b) — worth shipping on its own merits.
-2. **Database import** — split internally: (a) dump to an artifact (their side, read-
-   only; keep the artifact and make it downloadable — user value even if restore is
-   deferred), (b) restore into our engine, collision-guarded and self-cleaning, plus
-   credential mirroring.
-3. **Connection-config rewrite** — opt-in (c), with the socket-default free win and the
-   tell-only floor.
-
-Each stage verified per repo convention: `cargo test --lib` + `cargo build --examples`
-plus a live `examples/*.rs` check; commit per task; tick here with ✓ evidence.
-
-## 11. Decisions
-
-1. **Q7 rewrite approach — APPROVED 26 Jul 2026:** option (c), per-site opt-in with a
-   backup and a diff shown first, reduced to a one-key change by mirroring their
-   credentials into our engine (§7). Stage 3.
-2. **`.test` resolver takeover — APPROVED 26 Jul 2026**, and specified: detect foreign
-   ownership, show their content vs ours, back up on OUR side, explicit checkbox,
-   refusal path = re-home to `.rex`. **Never a silent overwrite, ever.** Stage 1.
-3. **`mysqli.default_socket` pool defaults — DECIDED 27 Jul 2026 (Stage 3 D5):** ship it,
-   pointed at MySQL's socket on every pool (the default engine); per-pool-majority
-   rejected as derived, mutable state deciding runtime behaviour. Strictly additive for
-   existing rexenv sites (our provisioning writes `host:port`, never `localhost`). The
-   MariaDB-on-localhost limitation surfaces in that site's own rewrite panel as the
-   tell-only instruction. `docs/PLAN-valet-herd-rewrite.md` §2, §9.
-
-## 12. Pre-existing bugs folded into this work
-
-Both were found during this research, are real today, and sit directly in the migration
-path — so they are fixed AS PART OF the stage that hits them, not separately:
-
-- **`dns::ensure_resolver` silently overwrites a foreign `/etc/resolver/<tld>` (§3b) →
-  Stage 1.** Importing a `.test` site is exactly what triggers it, and the migration flow
-  needs the full consent-gated version anyway (decision §11.2). ROOT-op care class.
-- **Provisioning reports "serving at …" while a shadow-binding Herd actually answers
-  (§3a) → wherever the import reports success.** Gate the success line on
-  `edge_answers_as_ours` and show "imported — serving paused until you quit Herd".
-  Implementation seam + the reason it must be a state FIELD rather than a new `status`
-  value: `docs/PLAN-linked-sites.md` §13.
-
-Adjacent, genuinely unrelated to migration (still unowned): the New Site dialog's Laravel
-card promises an installer the backend doesn't implement (§4); `teardown` never removes
-the Apache per-site config/log (`docs/PLAN-linked-sites.md` §3).
+These four sections described what to build and in what order. All of it shipped
+(Stages 0–3, 26–28 Jul 2026) and is now recorded where current truth lives:
+`docs/ARCHITECTURE.md` §8 (the as-built model: docroot ownership, resolver
+takeovers, db import, connection rewrite), the four stage plans
+(`PLAN-linked-sites.md`, `PLAN-valet-herd-import.md`, `PLAN-valet-herd-db-import.md`,
+`PLAN-valet-herd-rewrite.md`), and the per-commit evidence log
+(`docs/archive/SHIPPED-2026-07.md`). The two §12 pre-existing bugs (foreign-resolver
+silent overwrite; false "serving at …" under a shadow-binding proxy) were fixed
+inside Stage 1 and the provisioning work respectively.
 
 ## Appendix — verification status
 
-**Verified live on this machine (read-only):** the Valet + Herd trees and their real
-config/conf/cert contents; the 29-site inventory and its quirks; `/etc/resolver` state;
+**Verified live on the reference install (read-only):** the Valet + Herd trees and their
+real config/conf/cert contents; the ~30-site inventory and its quirks; `/etc/resolver` state;
 every listening service and its owning process; DBngin's stale `Status`; the bundled
 binaries' `--version`, `--help` flag surfaces, `--connect-timeout` rejection (exit 7),
 `--defaults-extra-file` first-arg rule, dead-port timings, `PGCONNECT_TIMEOUT`, the
@@ -560,10 +502,11 @@ version-mismatch error, `\restrict` in PG 18 plain dumps, and `wp config set --h
 **Read in source:** every rexenv claim carries a `file:line`; laravel/valet at tag
 v4.12.0 (plus v2/v3 tags for the churn map).
 
-**Docs / secondary (marked as such above):** Herd internals beyond what's on this disk
+**Docs / secondary (marked as such above):** Herd internals beyond what's on disk
 (closed source), Herd Pro service layout, MySQL/MariaDB/Postgres release notes and MDEV
 tickets for the compatibility matrix.
 
-**Inferred, not proven:** how a scan behaves against Bedrock/Radicle/Craft trees (none
-exist on this machine); Laravel `.env` parsing (no Laravel project with a `.env` here) —
-both need fixtures when built.
+**Inferred at research time, since PROVEN with fixtures:** scan behaviour against
+Bedrock/Radicle/Craft-shaped trees (detector fixture matrix in `core/sites.rs` tests)
+and Laravel `.env` parsing (`core/dbimport.rs` tests + `examples/valet_import_check`
+runs a fixture Valet tree with a Laravel project).

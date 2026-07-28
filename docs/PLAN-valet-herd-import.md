@@ -1,10 +1,14 @@
 # Stage 1 — import Valet/Herd sites (read-only scan → review → import)
 
-**Status: SHIPPED 26 Jul 2026** (commits `42af4fc` → `7d7c340`), except the
-clean-VM verification in §9. All four decisions resolved (§11). Planned 26 Jul 2026
-against `5e8231f`, verified against the live Valet 4.12.0 + Herd 1.29.0 install on the dev
-Mac. Stage 1 of `docs/PLAN-valet-herd-migration.md`; builds directly on Stage 0
-(`docs/PLAN-linked-sites.md`).
+**Status: SHIPPED 26 Jul 2026** (commits `42af4fc` → `7d7c340`), with TWO
+verifications still outstanding: the clean-VM resolver-takeover paths (§9 here =
+`PUBLISH-TESTING.md` §F) and the packaged-app GUI pass of the `/import` screen
+(`PUBLISH-TESTING.md` §G — the screen has only ever been type-checked). All four
+decisions resolved (§11). Planned 26 Jul 2026 against `5e8231f`, verified against
+a live Valet 4.12.0 + Herd 1.29.0 install (the migration doc's "reference
+install"). Stage 1 of `docs/PLAN-valet-herd-migration.md`; builds directly on
+Stage 0 (`docs/PLAN-linked-sites.md`). This doc is the canonical home of the
+scan's mess taxonomy (§2) and the resolver ownership/takeover design (§4).
 
 Databases are Stage 2. Connection-config rewriting is Stage 3. Stage 1 ends with the
 user's Valet/Herd sites served by rexenv, from their existing folders, with their
@@ -41,7 +45,7 @@ wp-config/.env is Stage 2, with its own secrets handling.)
 3. Sites come from two places, per Valet's own model:
    - **Linked** — symlinks in `<home>/Sites`; hostname = link name + tld.
    - **Parked** — each immediate subdirectory of every parked path; hostname = dir name
-     + tld. (None on this machine, but Valet's default model.)
+     + tld. (None on the reference install, but Valet's default model.)
    Links win over parked on a name collision, as Valet does.
 4. Per-site nginx conf (`<home>/Nginx/<fqdn>`) supplies: the isolated PHP version
    (`# ISOLATED_PHP_VERSION=`), proxy-ness, and secured-ness pairs with
@@ -51,19 +55,20 @@ wp-config/.env is Stage 2, with its own secrets handling.)
 
 ### Mess tolerance — every case, and how it surfaces
 
-Verified against this machine unless marked. Nothing crashes, nothing is silently dropped.
+Every "live example" below was observed on the reference install (a real two-tool
+setup). Nothing crashes, nothing is silently dropped.
 
-| Case | Live example here | How it surfaces |
+| Case | Live example | How it surfaces |
 |---|---|---|
 | `config.json` missing / unparseable / unreadable | — | Source row with an issue note ("couldn't read Valet's config"), zero sites from it. Never fatal to the other source. |
-| Duplicate parked path differing by a trailing slash | Herd lists `…/Sites` twice | Canonicalize + dedupe before scanning. Silent — it's noise, not information. |
-| Parked path that doesn't exist, or is empty | `~/Herd/` (empty) | Counted in the source summary ("1 parked folder, empty"), no rows, no warning. |
-| Symlink present but target missing | **10 of 29** in Herd, 3 of 19 in Valet | A ROW, status **unsupported — "folder missing"**, target path shown. Never silently skipped: a dangling link is a site the user thinks they have. |
-| Conf + cert with no Sites entry at all | `abc.test`, `wp-dev.test.test` | A ROW, status **unsupported — "leftover config, no site folder"**. Nothing to import; listed so the count reconciles with what they see in Herd. |
-| Valet proxy entry | none here | A ROW, status **unsupported — "proxy to `<url>`, not a site"**. Detected by the `# valet stub: *proxy*` first line + `proxy_pass`. |
-| Conf on a different TLD from `config.tld` | `eatest.dev` | Normal row; its TLD joins the set that needs a resolver (§4). Its target is also dangling here, so it lands unsupported for that reason. |
-| Isolation marker format drift | live: `8.4`,`8.3`,`8.5` **and** `82`,`83` | Parser accepts `php@8.1`, `8.1`, and bare `81`. Both forms exist on this machine — the bare form is not legacy. |
-| Prefs claim PHP versions whose binaries are absent | Herd plist says 7.4/8.0/8.1; `bin/` has only php82–85 | **Prefs are never read.** Only the per-site conf marker matters, and only against OUR pinned set. |
+| Duplicate parked path differing by a trailing slash | Herd listed `…/Sites` twice | Canonicalize + dedupe before scanning. Silent — it's noise, not information. |
+| Parked path that doesn't exist, or is empty | a parked `~/Herd/`, empty | Counted in the source summary ("1 parked folder, empty"), no rows, no warning. |
+| Symlink present but target missing | **a third of the Herd rows**, several Valet ones | A ROW, status **unsupported — "folder missing"**, target path shown. Never silently skipped: a dangling link is a site the user thinks they have. |
+| Conf + cert with no Sites entry at all | two orphan confs (one with a doubled suffix, `<name>.test.test`) | A ROW, status **unsupported — "leftover config, no site folder"**. Nothing to import; listed so the count reconciles with what they see in Herd. |
+| Valet proxy entry | none on the reference install | A ROW, status **unsupported — "proxy to `<url>`, not a site"**. Detected by the `# valet stub: *proxy*` first line + `proxy_pass`. |
+| Conf on a different TLD from `config.tld` | a `.dev` conf | Normal row; its TLD joins the set that needs a resolver (§4). (That one's target was also dangling, so it landed unsupported for that reason.) |
+| Isolation marker format drift | `8.4`-style AND bare `82`-style side by side | Parser accepts `php@8.1`, `8.1`, and bare `81`. Both forms coexist in real installs — the bare form is not legacy. |
+| Prefs claim PHP versions whose binaries are absent | plist claimed 7.4–8.1; `bin/` had only php82–85 | **Prefs are never read.** Only the per-site conf marker matters, and only against OUR pinned set. |
 | Site name that isn't a valid hostname label | — | Status **unsupported — "name isn't a valid hostname"**. Must never reach cert issuance or config generation. |
 | Non-UTF8 / unreadable directory entries | — | Skipped, counted in a source note ("2 entries unreadable"). |
 | Domain already exists in rexenv | — | Status **already imported**, row shown unticked and disabled. |
@@ -82,7 +87,7 @@ Verified against this machine unless marked. Nothing crashes, nothing is silentl
 ### Cost note
 
 `validate_linked_docroot` iterates `list(conn)` per call, so an N-site scan is N
-sites-list queries under the DB lock. Fine at Valet scale (29 here); if it ever matters,
+sites-list queries under the DB lock. Fine at Valet scale (~30 on the reference install); if it ever matters,
 hoist the list once and pass it in.
 
 ## 3. PHP mapping and the two traps
@@ -131,7 +136,7 @@ pub fn resolver_owner(platform, tld, port) -> ResolverOwner
 ```
 
 Factored like `tlds_matching_signature` (which already takes a directory) so it is
-unit-testable against fixture files in a temp dir — necessary, because this machine has no
+unit-testable against fixture files in a temp dir — necessary, because the dev machine had no
 `/etc/resolver/test` to exercise the foreign path against (§9).
 
 ### 4.3 Making silent overwrite structurally impossible
@@ -259,7 +264,10 @@ needs no watcher. When a TLD we hold reads foreign:
 
 with the take-over action right there.
 
-**Later (Stage 2): the continuous version.** Polling belongs with a watcher and can wait;
+**Later: the continuous version.** *(Reconciliation note, 28 Jul 2026: Stage 2
+shipped WITHOUT picking this up, and the cheap check's user surface is itself
+still unwired — both now tracked as one item in `docs/TODO.md`.)* Polling belongs
+with a watcher and can wait;
 nothing in Stage 1 depends on it.
 
 Note `dns_status.resolverInstalled` is a bare `path.exists()` on `.rex` that gates
@@ -348,7 +356,7 @@ Components to copy, all existing:
 6. `feat(import)` — the import command: consent → `set_installed` → prefetch → sequential
    `start`+poll → per-row outcomes.
 7. `feat(ui)` — the migration screen, resolver consent panel, entry points.
-8. `test(examples)` — `valet_scan_check`: scan the real trees on this machine read-only
+8. `test(examples)` — `valet_scan_check`: scan the dev machine's real trees read-only
    and print the classification, asserting nothing is written.
 9. `docs` — ARCHITECTURE, plan, TODO tick with ✓ evidence.
 
@@ -358,13 +366,13 @@ Unit tests for: the marker parser (all three formats), dedupe with Herd winning,
 of the mess table against fixture trees, the resolver ownership classifier, and every row
 of the restore decision table.
 
-`valet_scan_check` runs the scan against the **real** Valet/Herd trees on this machine and
-asserts read-only behavior — this machine is an unusually good fixture (29 sites, 13
+`valet_scan_check` runs the scan against the **real** Valet/Herd trees on the dev machine and
+asserts read-only behavior — a real install is an unusually good fixture (~30 sites, a third
 dangling, 2 conf-only orphans, a custom-TLD conf, both marker formats).
 
 **The gap: `/etc/resolver/test` does not exist here**, so the takeover and restore paths
 cannot be live-verified without creating a foreign root-owned file, which I won't do on
-your machine. They will be unit-tested against fixture directories, and the live check
+the dev machine. They will be unit-tested against fixture directories, and the live check
 covers only the absent-file path. Stated rather than papered over; a clean-VM pass would
 close it.
 

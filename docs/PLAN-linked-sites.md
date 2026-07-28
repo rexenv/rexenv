@@ -208,8 +208,7 @@ Written with the Drop-guard discipline from §9, not the leaking shape.
 
 ## 9. Prerequisite: the examples orphan class fix
 
-Reaped 4 orphan php-fpm workers on 26 Jul 2026 (PIDs 54106/54107 on :9998,
-68265/68266 on :9799, dated Jul 15–16; SIGTERM sufficed). Root cause is a **class defect
+Reaped 4 orphan php-fpm workers on 26 Jul 2026 (two each on fixture ports :9998 and :9799, dated Jul 15–16; SIGTERM sufficed). Root cause is a **class defect
 in two examples**, and it must be fixed before Stage 0 adds more examples:
 
 - `examples/xdebug_pool_check.rs` (:9998) and `examples/apache_site_check.rs` (:9799)
@@ -284,6 +283,9 @@ Recorded because it is easy to miss a spot (the compiler catches most, not all):
 9. `src/types/index.ts` — mirror if serde-exposed.
 
 ## 14. Every other path-based ownership inference (audit, 26 Jul 2026)
+
+*(Order note: §14 sits before §13 in this file — kept as originally numbered
+because the §14.x items are cross-referenced by number throughout.)*
 
 Swept core/, commands/, cli/, cli_server.rs and the frontend for anything that infers
 "is this ours / may we touch it" from a path's LOCATION rather than recorded state.
