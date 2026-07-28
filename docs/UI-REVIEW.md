@@ -169,6 +169,29 @@ Fix-time lesson recorded: the frame's height chain now has three
 belt-and-braces layers (region min-h-full column → flex wrapper with floor →
 absolute fill), each verified by measurement in the harness.
 
+### Class sweeps (28 Jul 2026, after the §C2 fixes)
+
+**Severed-height-chain class** — the class needs BOTH a percentage-height
+descendant AND a wrapper inserted between it and its definite ancestor, so
+git history scopes it precisely: `git log f302996..HEAD` shows the four
+migration stages touched NO other full-height surface (Mail.tsx,
+SiteTerminal.tsx, Databases.tsx, SiteLogs.tsx — zero commits). Chains
+verified by reading anyway: SiteTerminal sits in the preserved `h-full`
+terminal branch with xterm's FitAddon measuring the real container; Mail's
+preview iframe hangs off a definite flexed `overflow-auto` parent; the
+Databases-route Adminer keeps its definite-height parent (and the frame
+retains `h-full` for it); SiteLogs' pane is a deliberate `h-[52vh]`, not a
+percentage chain. One class, one instance — because exactly one wrapper was
+inserted.
+
+**No-flip popover class** — `ui/menu.tsx` `Menu` has exactly ONE consumer
+(the Sites row menu), so the §C2.1 fix helped nothing else silently; but
+`RefPicker` (branch/tag picker, its own fixed-position implementation) had
+the same latent bug → FIXED `59cad08`, flipped case bottom-anchored because
+its filtering list shrinks while open. No other portal/fixed popovers exist
+(`createPortal` sweep: menu, dialog overlay — centered, unaffected —
+RefPicker, toaster).
+
 ## D. Known adjacent loose ends (not UI, listed so they aren't lost)
 
 - §G (`/import` packaged GUI pass) was never run as written — subsumed
