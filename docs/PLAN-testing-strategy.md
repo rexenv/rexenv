@@ -264,12 +264,12 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 | Keychain CA trust dialog | SMOKE-TEST first-run |
 | Second-device tunnel reach; router DNS negative-cache | SMOKE-TEST tunnels (explicitly not-a-bug note) |
 | Resolver takeover/restore on a clean VM | PUBLISH-TESTING §F |
-| Sleep/wake + reboot edge recovery; DNS agent handoff (#46) | ADD to SMOKE-TEST (task list) |
+| Sleep/wake + reboot edge recovery; DNS agent handoff (#46) | SMOKE-TEST robustness (added, T13) |
 | Datadir corruption recovery (B22/B23) | PUBLISH-TESTING §E |
-| Firefox out-of-the-box trust (#154) | ADD one-line check to SMOKE-TEST |
+| Firefox out-of-the-box trust (#154) | SMOKE-TEST robustness (added, T13) |
 | Visual design / theme correctness | SMOKE-TEST settings + uireview screenshot sweep (human eyeballs the shots) |
 | Radicle layout reality (#95) | flagged in code; first real project confirms |
-| Phase-A-never-resolves dtrace spot-check (#19) | ADD short procedure to PUBLISH-TESTING |
+| Phase-A-never-resolves wire spot-check (#19) | PUBLISH-TESTING §L (added, T13) |
 
 ## 6. The gate
 

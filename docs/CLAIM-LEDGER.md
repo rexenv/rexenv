@@ -302,9 +302,9 @@ L3 = scripted manual.
 ## Tally (28 Jul 2026, after T4)
 
 - ✅ proven: **120** (of 195; #195 added and proven the same day — its proof falsified
-  a prose claim, which is the ledger working; #36/#44 proven and #175 half-proven in T10)
-- ◐ half-proven (unproven half in the backlog): **33**
-- 🔨 provable-unproven: **33**
+  a prose claim, which is the ledger working; #36/#44 proven in T10)
+- ◐ half-proven (unproven half in the backlog): **34** (#175 in T10, #103 in T11)
+- 🔨 provable-unproven: **32**
 - 🚫 inherently unprovable: **9** (each mapped in PLAN §5 or an accepted posture)
 
 **Provable total = 185; proven (incl. proven halves) ≈ 117 full + 32 half. The working

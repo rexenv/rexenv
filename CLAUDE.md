@@ -70,7 +70,10 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
   verdict. Live-check `examples/*.rs` — examples run against
   REAL app data and processes, so anything they write/spawn/delete MUST be
   fixture-owned: `common::sandbox()` for a throwaway `Platform`, `common::Reaped`
-  for spawned services. Read the invariant in `examples/common/mod.rs` FIRST. Work in small verifiable
+  for spawned services. Read the invariant in `examples/common/mod.rs` FIRST. Every
+  example declares a tier in `scripts/live-checks.sh` (sandbox tier = safe with the
+  stack running; `verify-full.sh` = release gate: verify + sandbox tier + wk-checks).
+  Work in small verifiable
   steps, one task at a time; commit per task; tick finished items in `docs/TODO.md` with
   ✓ evidence. Surface assumptions before non-trivial work; keep changes surgical.
 
@@ -79,6 +82,8 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Task | Read |
 |---|---|
 | Any feature/bug — system mental model | `docs/ARCHITECTURE.md` |
+| Testing: which layer proves what, the gate tiers | `docs/PLAN-testing-strategy.md` |
+| A "must never"/safety claim — is it proven? add one? | `docs/CLAIM-LEDGER.md` (update it in the same commit) |
 | Ports, pinned binary versions, checksums | `docs/PORTS.md` |
 | What's open / pick up work | `docs/TODO.md` |
 | rex CLI — future commands, IPC-exists tags | `docs/CLI-ROADMAP.md` |

@@ -74,6 +74,14 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.
+- [ ] **Sleep/wake, then reboot** (ledger #67/#155 territory): after each, a site loads
+  over HTTPS *without opening the app* — the root edge daemon (KeepAlive) and the DNS
+  LaunchAgent both came back on their own.
+- [ ] **DNS outlives the app** (ledger #46): quit rexenv →
+  `dig foo.rex @127.0.0.1 -p 15353 +short` still answers `127.0.0.1`; sites keep
+  resolving indefinitely (not just while caches last).
+- [ ] **Firefox, fresh profile** (ledger #154): a site loads with the lock — no cert
+  warning, no about:config surgery.
 
 ## Scale
 - [ ] With ~15+ sites the Sites list, search, and status footer stay responsive.

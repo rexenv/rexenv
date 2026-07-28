@@ -575,6 +575,28 @@ PATH, use DBngin's bundled one.)
 
 ---
 
+## L) 🟢 Phase-A never-resolves spot-check (ledger #19) — wire-level, one-off
+
+**Why:** `phase_a_never_plans_a_system_dns_query` pins the DECISION layer (Phase A
+builds no system-DNS plan), but "reqwest's `.resolve()` pre-pin never falls back to
+getaddrinfo" is a claim about a dependency's internals. One wire-level observation
+settles it for the pinned reqwest version; re-run only after a reqwest bump.
+
+```sh
+# Terminal 1 — watch for any OUTBOUND port-53 query for the tunnel hostname
+# (loopback excluded: our own resolver on 15353 is not port 53):
+sudo tcpdump -i any -l -n 'udp port 53' | grep -i trycloudflare
+
+# Terminal 2 — start a share, watch the card through Unverified.
+```
+
+**Expected:** ZERO trycloudflare lines during Phase A (the probe phase before the
+gate opens). Lines appearing only AFTER the badge settles are Phase B/browser
+traffic and fine. Any hit during Phase A = the `.resolve()` pin leaked — file it.
+Result: ____ (date, reqwest version).
+
+---
+
 ## Publish-blocking summary
 
 | # | Check | Status |

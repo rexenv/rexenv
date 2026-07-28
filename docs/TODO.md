@@ -79,7 +79,16 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     live-checks sandbox tier → wk-checks (spawns its own vite on 5199, trap-killed).
     Missing harness deps = NOT green (a gate that silently skips a layer isn't one).
     Full run: exit 0, `verify-full: all green`. `npm run verify:full` added.
-  - [ ] T13. SMOKE-TEST/PUBLISH-TESTING §5 additions + ledger re-tally.
+  - [x] **T13. Manual layer scripted; ledger re-tallied** ✓ 28 Jul 2026 — SMOKE-TEST
+    gains sleep/wake+reboot recovery, DNS-outlives-the-app dig check, Firefox
+    fresh-profile line; PUBLISH-TESTING §L = the Phase-A never-resolves tcpdump
+    procedure (#19). CLAUDE.md router now points at the plan + ledger; verification
+    section names the tiers. Tally: **120 ✅ / 34 ◐ / 32 🔨 / 9 🚫 of 195.**
+  - Backlog (next sessions, ledger-driven): tunnel second-Host negative (#10),
+    CF-header discriminator probes (#2/#33), manifest HEAD+digest sweep, Bedrock live
+    provision (#35), fpm candidate isolation (#104), Apache/FrankenPHP dotfile legs
+    (#103), sandbox-adoption cohorts + `wp_fixture()`, webview_dialogs L2 (#166),
+    import-graph lint (#163), rusqlite-outside-state guard (#167).
 
 - [ ] **Tunnel hardening — end-to-end review 28 Jul 2026, fix order RULED same day**
   (report + lifecycle decision: `docs/PLAN-tunnel-lifecycle.md`). Root finding: tunnels
