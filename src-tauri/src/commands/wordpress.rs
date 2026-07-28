@@ -306,12 +306,14 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
     };
     let (php_bin, wp_phar) = wp_tools(&state, &site.php_version).await?;
     let docroot = PathBuf::from(&site.path);
+    let content_rel = site.content_dir_rel().to_string();
     let domain = site.domain.clone();
     let token = wp_blocking(move || {
         core::wp_login::issue(
             &php_bin,
             &wp_phar,
             &docroot,
+            &content_rel,
             &domain,
             user_id,
             core::wp_login::LOGIN_TTL_SECS,
@@ -341,6 +343,7 @@ pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Resul
     };
     let (php_bin, wp_phar) = wp_tools(&state, &site.php_version).await?;
     let docroot = PathBuf::from(&site.path);
+    let content_rel = site.content_dir_rel().to_string();
     let domain = site.domain.clone();
     let (admin_id, token) = wp_blocking(move || {
         let admin_id = core::wordpress::primary_admin_id(&php_bin, &wp_phar, &docroot)?;
@@ -348,6 +351,7 @@ pub async fn wp_admin_login_url(state: State<'_, AppState>, id: String) -> Resul
             &php_bin,
             &wp_phar,
             &docroot,
+            &content_rel,
             &domain,
             admin_id,
             core::wp_login::LOGIN_TTL_SECS,

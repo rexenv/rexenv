@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, Row};
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
-     docroot_managed, db_created";
+     docroot_managed, db_created, content_dir";
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -48,6 +48,9 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // (legacy — droppable), Some(false) = the name pre-existed and is never
         // dropped. See `Site::db_created`.
         db_created: row.get::<_, Option<i64>>(17)?.map(|v| v != 0),
+        // Nullable by design (v24): NULL = pre-backfill; reads as the WP
+        // default `wp-content` via `Site::content_dir_rel`.
+        content_dir: row.get(18)?,
     })
 }
 
@@ -61,8 +64,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
         params![
             site.id,
             site.name,
@@ -82,6 +85,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.provisioned as i64,
             site.docroot_managed.map(|m| m as i64),
             site.db_created.map(|c| c as i64),
+            site.content_dir,
         ],
     )?;
     Ok(())
@@ -388,6 +392,11 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
         Some(v) => Ok(Some(v?)),
         None => Ok(None),
     }
+}
+
+/// Record a site's content dir (v24 backfill; creation writes it inline).
+pub fn set_site_content_dir(conn: &Connection, id: &str, rel: &str) -> Result<bool> {
+    Ok(conn.execute("UPDATE sites SET content_dir = ?1 WHERE id = ?2", params![rel, id])? > 0)
 }
 
 /// Insert or update a setting.

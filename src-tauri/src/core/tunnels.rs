@@ -293,6 +293,7 @@ mod tests {
             provisioned: true,
             docroot_managed: Some(true),
             db_created: None,
+            content_dir: None,
         };
         assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
         for ws in [WebServer::Apache, WebServer::Frankenphp] {

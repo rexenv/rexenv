@@ -91,9 +91,13 @@ add_action('init', function () {
 });
 "#;
 
-/// Path to the auto-managed mu-plugin within a docroot.
-fn mu_plugin_path(docroot: &Path) -> PathBuf {
-    docroot.join("wp-content").join("mu-plugins").join("rexenv-login.php")
+/// Path to the auto-managed mu-plugin within a docroot. `content_rel` is the
+/// site's RECORDED content dir (`Site::content_dir_rel`, v24 — `app` for
+/// Bedrock, `content` for Radicle): writing to a hardcoded `wp-content/`
+/// there both litters the user's repo and silently breaks this feature (the
+/// file never loads).
+fn mu_plugin_path(docroot: &Path, content_rel: &str) -> PathBuf {
+    docroot.join(content_rel).join("mu-plugins").join("rexenv-login.php")
 }
 
 /// The mu-plugin source for a site: the template with the site's own domain
@@ -107,8 +111,8 @@ fn mu_plugin_source(domain: &str) -> String {
 /// Write the mu-plugin if missing or changed (idempotent). Content is per-site
 /// (the domain is baked into the host allow-list), so a domain change is
 /// picked up by the next `issue` call rewriting the file.
-pub fn ensure_muplugin(docroot: &Path, domain: &str) -> Result<()> {
-    let path = mu_plugin_path(docroot);
+pub fn ensure_muplugin(docroot: &Path, content_rel: &str, domain: &str) -> Result<()> {
+    let path = mu_plugin_path(docroot, content_rel);
     let source = mu_plugin_source(domain);
     let current = std::fs::read_to_string(&path).ok();
     if current.as_deref() != Some(source.as_str()) {
@@ -128,11 +132,12 @@ pub fn issue(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
+    content_rel: &str,
     domain: &str,
     user_id: u64,
     ttl_secs: u64,
 ) -> Result<String> {
-    ensure_muplugin(docroot, domain)?;
+    ensure_muplugin(docroot, content_rel, domain)?;
 
     // 256-bit token (two v4 UUIDs of randomness); store only its hash.
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
@@ -161,9 +166,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mu_plugin_path_is_under_mu_plugins() {
-        let p = mu_plugin_path(Path::new("/srv/site"));
+    fn mu_plugin_path_follows_the_recorded_content_dir() {
+        let p = mu_plugin_path(Path::new("/srv/site"), "wp-content");
         assert!(p.ends_with("wp-content/mu-plugins/rexenv-login.php"));
+        // Bedrock: content lives at docroot/app — a hardcoded wp-content
+        // would litter the repo AND never load (the silent-broken class).
+        let p = mu_plugin_path(Path::new("/srv/bedrock/web"), "app");
+        assert!(p.ends_with("web/app/mu-plugins/rexenv-login.php"));
     }
 
     #[test]
@@ -193,13 +202,13 @@ mod tests {
         let dir = std::env::temp_dir().join("rexenv-wplogin-test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        ensure_muplugin(&dir, "acme.test").unwrap();
-        let p = mu_plugin_path(&dir);
+        ensure_muplugin(&dir, "wp-content", "acme.test").unwrap();
+        let p = mu_plugin_path(&dir, "wp-content");
         assert!(p.is_file());
-        ensure_muplugin(&dir, "acme.test").unwrap(); // no rewrite when unchanged
+        ensure_muplugin(&dir, "wp-content", "acme.test").unwrap(); // no rewrite when unchanged
         assert_eq!(std::fs::read_to_string(&p).unwrap(), mu_plugin_source("acme.test"));
         // A domain change (Change domain → .rex) rewrites the allow-list.
-        ensure_muplugin(&dir, "acme.rex").unwrap();
+        ensure_muplugin(&dir, "wp-content", "acme.rex").unwrap();
         assert!(std::fs::read_to_string(&p).unwrap().contains("'acme.rex'"));
         let _ = std::fs::remove_dir_all(&dir);
     }

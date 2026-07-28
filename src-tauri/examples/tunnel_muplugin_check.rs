@@ -86,7 +86,7 @@ async fn main() {
     let dir = std::env::temp_dir().join("rexenv-tunnel-muplugin-check");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    wp_tunnel::enable(&dir, ORIGIN).expect("enable");
+    wp_tunnel::enable(&dir, "wp-content", ORIGIN).expect("enable");
     let plugin = dir.join("wp-content/mu-plugins/rexenv-tunnel.php");
     assert!(plugin.is_file(), "mu-plugin written");
     let harness = dir.join("harness.php");

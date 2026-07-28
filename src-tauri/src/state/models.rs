@@ -142,6 +142,22 @@ pub struct Site {
     /// loses data.
     #[serde(default)]
     pub db_created: Option<bool>,
+    /// WP content dir RELATIVE to the docroot (v24): `wp-content` for stock
+    /// WordPress, `app` for Bedrock, `content` for Radicle. Recorded once at
+    /// creation / by the startup backfill from the same fs markers detection
+    /// uses — writers read the record, never re-derive (our own historical
+    /// junk could poison a use-time probe). `None` = pre-backfill row; reads
+    /// as the WP default via [`Site::content_dir_rel`].
+    #[serde(default)]
+    pub content_dir: Option<String>,
+}
+
+impl Site {
+    /// The recorded content dir relative to the docroot, defaulting to WP's
+    /// stock `wp-content` when no record exists yet.
+    pub fn content_dir_rel(&self) -> &str {
+        self.content_dir.as_deref().unwrap_or("wp-content")
+    }
 }
 
 fn default_true() -> bool {

@@ -898,6 +898,7 @@ mod tests {
             provisioned: true,
             docroot_managed,
             db_created,
+            content_dir: None,
         }
     }
 

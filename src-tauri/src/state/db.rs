@@ -293,6 +293,17 @@ const MIGRATIONS: &[&str] = &[
         docroot    TEXT NOT NULL,
         started_at TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    // v24 — the WP content dir RELATIVE to the docroot ('wp-content' for stock
+    // WordPress; 'app' for Bedrock, 'content' for Radicle — Stage 0 linked
+    // layouts where docroot/wp-content does not exist and writing there both
+    // pollutes the user's repo and silently does nothing). Recorded ONCE at
+    // creation (and by the startup backfill for existing rows) from the same
+    // fs markers detection uses; every writer reads the record, never
+    // re-derives — historical junk (a bug-written web/wp-content) must not
+    // poison the answer at use time. Nullable, no DEFAULT (the v17/v19/v21
+    // bar): NULL reads as the WP default 'wp-content' via
+    // `Site::content_dir_rel`, never as a guess recorded to disk.
+    "ALTER TABLE sites ADD COLUMN content_dir TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

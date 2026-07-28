@@ -128,9 +128,17 @@ call_user_func(static function () {
 });
 "#;
 
-/// Path of the auto-managed mu-plugin within a docroot.
-fn mu_plugin_path(docroot: &Path) -> PathBuf {
-    docroot.join("wp-content").join("mu-plugins").join("rexenv-tunnel.php")
+/// Every content-dir layout rexenv has ever written under (stock WP, Bedrock,
+/// Radicle). REMOVAL sweeps all of them — a file our own pre-v24 bug wrote
+/// into a Bedrock repo's dead `wp-content/` must still get cleaned up, and
+/// removing an exact filename from a dir that never had it is a no-op.
+const CONTENT_DIR_LAYOUTS: [&str; 3] = ["wp-content", "app", "content"];
+
+/// Path of the auto-managed mu-plugin within a docroot. `content_rel` is the
+/// site's RECORDED content dir (`Site::content_dir_rel`, v24) — never derived
+/// here at write time.
+fn mu_plugin_path(docroot: &Path, content_rel: &str) -> PathBuf {
+    docroot.join(content_rel).join("mu-plugins").join("rexenv-tunnel.php")
 }
 
 /// The public origin is baked into single-quoted PHP source — reject anything
@@ -160,10 +168,10 @@ fn render(origin: &str) -> String {
 /// Write (or refresh) the mu-plugin with this tunnel's public origin. Idempotent:
 /// the quick-tunnel URL changes on every start, so the file is compared and only
 /// rewritten when its content differs.
-pub fn enable(docroot: &Path, origin: &str) -> Result<()> {
+pub fn enable(docroot: &Path, content_rel: &str, origin: &str) -> Result<()> {
     validate_origin(origin)?;
     let rendered = render(origin.trim_end_matches('/'));
-    let path = mu_plugin_path(docroot);
+    let path = mu_plugin_path(docroot, content_rel);
     if std::fs::read_to_string(&path).ok().as_deref() != Some(&rendered) {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -173,13 +181,20 @@ pub fn enable(docroot: &Path, origin: &str) -> Result<()> {
     Ok(())
 }
 
-/// Remove the mu-plugin (tunnel stopped). Missing file is fine.
+/// Remove the mu-plugin (tunnel stopped). Missing file is fine. Sweeps EVERY
+/// known layout rather than taking a content-dir argument: removal callers
+/// (stop, dead-child settle, exit hook, launch sweep) may hold only a
+/// recorded docroot, and the file names are exactly ours — removing them from
+/// a layout dir that never had them changes nothing.
 pub fn disable(docroot: &Path) -> Result<()> {
-    match std::fs::remove_file(mu_plugin_path(docroot)) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.into()),
+    for layout in CONTENT_DIR_LAYOUTS {
+        match std::fs::remove_file(mu_plugin_path(docroot, layout)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -234,19 +249,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        enable(&dir, ORIGIN).unwrap();
-        let p = mu_plugin_path(&dir);
+        enable(&dir, "wp-content", ORIGIN).unwrap();
+        let p = mu_plugin_path(&dir, "wp-content");
         assert!(p.is_file());
         assert!(std::fs::read_to_string(&p).unwrap().contains(ORIGIN));
 
         // Next start gets a NEW random URL → file must be refreshed in place.
-        enable(&dir, "https://other-name.trycloudflare.com").unwrap();
+        enable(&dir, "wp-content", "https://other-name.trycloudflare.com").unwrap();
         let s = std::fs::read_to_string(&p).unwrap();
         assert!(s.contains("other-name") && !s.contains("blue-cat"));
 
         disable(&dir).unwrap();
         assert!(!p.exists());
         disable(&dir).unwrap(); // idempotent on a missing file
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bedrock_layout_writes_where_wp_loads_and_disable_sweeps_every_layout() {
+        let dir = std::env::temp_dir().join("rexenv-wptunnel-bedrock-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // The recorded Bedrock rel writes under app/, never wp-content/.
+        enable(&dir, "app", ORIGIN).unwrap();
+        assert!(mu_plugin_path(&dir, "app").is_file());
+        assert!(!mu_plugin_path(&dir, "wp-content").exists());
+
+        // disable takes no layout — it must clean EVERY known one, including a
+        // pre-v24 stray our own bug wrote into a dead wp-content/.
+        enable(&dir, "wp-content", ORIGIN).unwrap(); // the historical stray
+        disable(&dir).unwrap();
+        for layout in CONTENT_DIR_LAYOUTS {
+            assert!(!mu_plugin_path(&dir, layout).exists(), "left behind in {layout}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

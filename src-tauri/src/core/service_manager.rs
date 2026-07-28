@@ -2711,6 +2711,7 @@ mod tests {
             provisioned: true,
             docroot_managed: Some(true),
             db_created: None,
+            content_dir: None,
         };
 
         let sites = vec![

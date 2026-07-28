@@ -236,6 +236,26 @@ pub fn backfill_docroot_managed(conn: &Connection, platform: &dyn Platform) -> R
     Ok(())
 }
 
+/// One-time v24 backfill: record each existing WordPress site's content dir
+/// from the same fs markers detection uses (`detect_content_dir_rel`) — a
+/// linked Bedrock/Radicle site created before v24 must not keep writing
+/// mu-plugins into a dead `wp-content/`. Idempotent (NULL rows only); the
+/// probe runs here ONCE and the answer is recorded, mirroring the v17
+/// docroot-ownership backfill. Non-WP rows are skipped (they never consult
+/// it; NULL stays honest).
+pub fn backfill_content_dir(conn: &Connection) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    for s in store::list_sites(&tx)? {
+        if s.content_dir.is_some() || s.site_type != SiteType::Wordpress {
+            continue; // already recorded / never consulted — idempotent skip
+        }
+        let rel = detect_content_dir_rel(Path::new(&s.path));
+        store::set_site_content_dir(&tx, &s.id, rel)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
 /// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
 /// [`wordpress::db_name_for`] base (what existing sites already store); falls
 /// back to a hash-suffixed form when that base would COLLIDE with an existing
@@ -305,6 +325,11 @@ fn create_recording_ownership(
     // site: a slug collision or >64-char overflow falls back to a hash suffix
     // (finding B21) so two domains can never share one database.
     let db_name = unique_db_name(conn, &new.domain)?;
+    // Recorded ONCE from the stored path's own markers (v24) — Bedrock/
+    // Radicle linked docroots keep mu-plugins out of a dead `wp-content/`.
+    // Non-WP sites never consult it.
+    let content_dir = (new.site_type == SiteType::Wordpress)
+        .then(|| detect_content_dir_rel(Path::new(&new.path)).to_string());
     let site = Site {
         id: Uuid::new_v4().to_string(),
         name: new.name,
@@ -331,6 +356,7 @@ fn create_recording_ownership(
         // (whatever the provision job creates is ours); the import job records
         // the real answer before it creates anything.
         db_created: None,
+        content_dir,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -585,6 +611,26 @@ pub struct DetectedProject {
     /// True when the folder already holds an installed app we must adopt
     /// as-is rather than provision into.
     pub existing_install: bool,
+}
+
+/// The WP content dir RELATIVE to a docroot, from the same fs markers
+/// [`detect_project`] trusts (sibling `config/application.php` = Bedrock,
+/// content at `docroot/app`; sibling `bedrock/application.php` = Radicle,
+/// content at `docroot/content`; else WP's stock `wp-content`). Called ONCE
+/// per site — at creation and by the v24 backfill — and recorded; writers
+/// read the record. Never call this at write time: a `web/wp-content/` this
+/// bug itself once littered into a Bedrock repo would poison a use-time
+/// probe, which is exactly why the layout checks run before any `wp-content`
+/// fallback.
+pub fn detect_content_dir_rel(docroot: &Path) -> &'static str {
+    let sibling = |rel: &str| docroot.parent().is_some_and(|p| p.join(rel).exists());
+    if sibling("config/application.php") && docroot.join("app").exists() {
+        return "app";
+    }
+    if sibling("bedrock/application.php") && docroot.join("content").exists() {
+        return "content";
+    }
+    "wp-content"
 }
 
 /// Classify an existing project folder by probing the filesystem — **never by
@@ -1766,6 +1812,7 @@ mod tests {
             provisioned: true,
             docroot_managed: Some(true),
             db_created: None,
+            content_dir: None,
         }
     }
 
@@ -2011,6 +2058,7 @@ mod tests {
             provisioned: true,
             docroot_managed: Some(true),
             db_created: None,
+            content_dir: None,
         }
     }
 
@@ -2249,6 +2297,71 @@ mod tests {
             std::fs::write(&p, "x").unwrap();
         }
         dir
+    }
+
+    #[test]
+    fn content_dir_rel_reads_layout_markers_and_resists_poison() {
+        let bed = project(
+            "cdir-bedrock",
+            &["web/wp-config.php", "config/application.php", "web/app/mu-plugins/x.php"],
+        );
+        assert_eq!(detect_content_dir_rel(&bed.join("web")), "app");
+        let _ = std::fs::remove_dir_all(&bed);
+
+        let rad = project(
+            "cdir-radicle",
+            &["public/wp-config.php", "bedrock/application.php", "public/content/mu-plugins/x.php"],
+        );
+        assert_eq!(detect_content_dir_rel(&rad.join("public")), "content");
+        let _ = std::fs::remove_dir_all(&rad);
+
+        let plain = project("cdir-plain", &["wp-config.php", "wp-content/index.php"]);
+        assert_eq!(detect_content_dir_rel(&plain), "wp-content");
+        let _ = std::fs::remove_dir_all(&plain);
+
+        // Poison resistance: a stray web/wp-content — the litter our own
+        // pre-v24 bug wrote — must not flip a Bedrock repo's answer. This is
+        // WHY the fact is recorded once instead of probed at write time.
+        let poisoned = project(
+            "cdir-poisoned",
+            &[
+                "web/wp-config.php",
+                "config/application.php",
+                "web/app/mu-plugins/x.php",
+                "web/wp-content/mu-plugins/rexenv-login.php",
+            ],
+        );
+        assert_eq!(detect_content_dir_rel(&poisoned.join("web")), "app");
+        let _ = std::fs::remove_dir_all(&poisoned);
+    }
+
+    #[test]
+    fn backfill_content_dir_records_wp_rows_and_skips_the_rest() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let bed = project(
+            "cdir-backfill",
+            &["web/wp-config.php", "config/application.php", "web/app/mu-plugins/x.php"],
+        );
+        let mut wp = site_at(&bed.join("web"));
+        wp.content_dir = None; // a pre-v24 row
+        store::insert_site(&conn, &wp).unwrap();
+        let mut php = site_at(Path::new("/tmp/nonwp"));
+        php.id = "m2".into();
+        php.domain = "php.test".into();
+        php.db_name = "wp_php_test".into();
+        php.site_type = SiteType::Php;
+        php.content_dir = None;
+        store::insert_site(&conn, &php).unwrap();
+
+        backfill_content_dir(&conn).unwrap();
+        let rows = store::list_sites(&conn).unwrap();
+        let by_id = |id: &str| rows.iter().find(|s| s.id == id).unwrap();
+        assert_eq!(by_id("m1").content_dir.as_deref(), Some("app"));
+        assert_eq!(by_id("m2").content_dir, None); // non-WP: never consulted
+        // Idempotent: a second run changes nothing.
+        backfill_content_dir(&conn).unwrap();
+        assert_eq!(by_id("m1").content_dir.as_deref(), Some("app"));
+        let _ = std::fs::remove_dir_all(&bed);
     }
 
     #[test]

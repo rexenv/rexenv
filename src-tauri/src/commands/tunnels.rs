@@ -477,7 +477,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     // any device through the tunnel — not just on this machine (§9.2). Sharing
     // without it is broken enough that a write failure fails the start.
     if site.site_type == SiteType::Wordpress {
-        if let Err(e) = wp_tunnel::enable(Path::new(&site.path), &url) {
+        if let Err(e) = wp_tunnel::enable(Path::new(&site.path), site.content_dir_rel(), &url) {
             let _ = tunnels::stop(state.platform.as_ref(), child.id());
             let mut c = child;
             let _ = c.wait();

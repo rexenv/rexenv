@@ -225,6 +225,12 @@ pub fn run() {
                     // setting. Zero behavior change; moved-out docroots stay
                     // preserved. One-time + idempotent; the legacy test remains
                     // the fallback for any row this fails to record.
+                    // v24: record each WP site's content dir once (Bedrock/
+                    // Radicle linked layouts) — mu-plugin writers read the
+                    // record; a NULL row falls back to plain `wp-content`.
+                    if let Err(e) = core::sites::backfill_content_dir(&conn) {
+                        log::error!("sites: content-dir backfill failed (writers fall back to wp-content): {e}");
+                    }
                     if let Err(e) =
                         core::sites::backfill_docroot_managed(&conn, platform.as_ref())
                     {
