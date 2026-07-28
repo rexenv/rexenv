@@ -101,6 +101,20 @@ one-line ✓ evidence note (same convention as the archived TASKS files).
     28 Jul 2026; only the deliberate deferrals remain (watcher helper, quit-warning
     shipped early, debug-log full fix with the wp-config reader, stranded-asset
     badge, per-backend tunnel origins for override sites).
+  - [x] **Post-completion fresh audit + rulings** ✓ SHIPPED 28 Jul 2026 — the
+    sharpened pattern: a one-time check on a MUTABLE fact is a snapshot; lifetime
+    guards or propagate-on-commit, usually both. `4815ff1` A1 web-server switch +
+    third door (multisite convert) refuse under a live share; `7bebd11` A2 move
+    refused while shared AND row docroot re-pointed on commit; `c8b7399` A3
+    backfill leaves NULL for unreachable docroots (set-once poison); `679cdfc`
+    A4+A5 probe semantics honest to the live-verified DNS reality (NO wildcard on
+    trycloudflare.com ⇒ Unverified is the terminal state for most drops; Broken
+    sticky, Reachable decays, redirects unfollowed, UI copy says what Unverified
+    means); `9d8b2f3` A6 quit-dialog drop guard + A7 api-host never the URL;
+    `ac2300c` clippy in verify.sh at zero. Still needs a live session: map the
+    Broken window (share → kill -9 cloudflared → watch probe verdicts);
+    `pgrep -P` a live cloudflared (single-process assumption). Re-assess
+    per-backend origins now that the lifetime vhost guard exists.
   - **Deferred (deliberate):** parent-death watcher helper (kqueue `NOTE_EXIT`) to close
     the crash→relaunch exposure gap entirely — a new long-lived helper process to get
     right vs. a rare window already bounded by next launch; revisit only if crash
