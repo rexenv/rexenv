@@ -310,6 +310,22 @@ const MIGRATIONS: &[&str] = &[
     // not ours / unknown — never inferred from emptiness: a user's own empty
     // mu-plugins dir is not ours to delete.
     "ALTER TABLE sites ADD COLUMN mu_dir_created INTEGER;",
+    // v26 — the MCP agent activity feed (accountability record: what an AI agent
+    // did through the MCP server). A TYPED shape, deliberately: `target_site` is
+    // the only argument recorded (the site a call named), NOT a free-form arg
+    // summary — a later tool's args can't smuggle content into the feed because
+    // there is no column to hold it (a per-tool value like a query gets its own
+    // typed column when that tool lands). `detail` is rexenv's own bounded reason
+    // for a non-ok outcome, never agent-supplied content. Bounded by a row cap +
+    // user-clearable (see `mcp_server::feed`).
+    "CREATE TABLE agent_actions (\
+        id INTEGER PRIMARY KEY AUTOINCREMENT, \
+        at TEXT NOT NULL, \
+        client TEXT NOT NULL, \
+        tool TEXT NOT NULL, \
+        target_site TEXT, \
+        outcome TEXT NOT NULL, \
+        detail TEXT);",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

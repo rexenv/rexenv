@@ -24,6 +24,9 @@
 //! the CLI socket — `cli_server::bind`, deliberately reused so there is one
 //! socket convention, not two. Never TCP.
 
+// `pub` because the feed's read/clear API (`feed::recent`, `feed::clear`) is the
+// surface the Settings card's IPC consumes; `record` is the server's own write.
+pub mod feed;
 mod readctx;
 mod tools;
 mod view;
@@ -103,17 +106,36 @@ where
 {
     let mut reader = BufReader::new(read);
     let mut buf = Vec::new();
+    // The client's self-reported name, for feed attribution — set at initialize.
+    let mut client = String::from("unknown");
     while read_line_capped(&mut reader, &mut buf, MAX_LINE_BYTES).await.is_some() {
         let text = String::from_utf8_lossy(&buf);
         let trimmed = text.trim();
         if trimmed.is_empty() {
             continue;
         }
+        if let Some(name) = client_name_if_initialize(trimmed) {
+            client = name;
+        }
+        // Record the action BEFORE replying, so a reader that sees the reply
+        // already sees the feed row. Every tools/call and every rejected/
+        // malformed message is logged here — one place, no tool can forget.
         let reply = match dispatch(trimmed) {
             Dispatch::Silent => None,
             Dispatch::Reply(r) => Some(r),
+            Dispatch::Rejected { reply, log } => {
+                log_action(&app, &client, &log);
+                Some(reply)
+            }
             Dispatch::ToolCall { id, name, args } => {
-                Some(fulfill_tool_call(&app, id, &name, &args).await)
+                let target = args.get("site_id").and_then(Value::as_str).map(String::from);
+                let (reply, outcome, detail) = fulfill_tool_call(&app, id, &name, &args).await;
+                log_action(
+                    &app,
+                    &client,
+                    &feed::PendingLog { tool: name, target_site: target, outcome, detail },
+                );
+                Some(reply)
             }
         };
         if let Some(reply) = reply {
@@ -159,12 +181,17 @@ where
 /// `tools/call` reaches into app state (via `fulfill_tool_call`).
 #[derive(Debug)]
 enum Dispatch {
-    /// A complete JSON-RPC reply line to send back.
+    /// A protocol reply (initialize/ping/tools-list/unknown-method) — sent back,
+    /// NOT an agent action, so never logged to the feed.
     Reply(String),
     /// A notification — nothing to send.
     Silent,
-    /// A call to a REGISTERED tool; needs app state to fulfil.
+    /// A call to a REGISTERED tool; needs app state to fulfil, logged after.
     ToolCall { id: Value, name: String, args: Value },
+    /// A tools/call refused before any handler (unknown tool) or a message we
+    /// couldn't parse — carries BOTH the reply and the feed entry, so the
+    /// non-happy-path is recorded by construction, not by anyone remembering.
+    Rejected { reply: String, log: feed::PendingLog },
 }
 
 /// Pure protocol dispatch: initialize / ping / tools-list / notifications /
@@ -173,8 +200,19 @@ enum Dispatch {
 /// while a call to an *unknown* tool errors here.
 fn dispatch(text: &str) -> Dispatch {
     let msg: Value = match serde_json::from_str(text) {
-        // JSON-RPC: a parse error is reported with a null id.
-        Err(_) => return Dispatch::Reply(error_response(Value::Null, -32700, "parse error")),
+        // JSON-RPC: a parse error is reported with a null id — and it is an
+        // attempt at SOMETHING, so it is a feed entry (bad-request).
+        Err(_) => {
+            return Dispatch::Rejected {
+                reply: error_response(Value::Null, -32700, "parse error"),
+                log: feed::PendingLog {
+                    tool: "(unparseable)".into(),
+                    target_site: None,
+                    outcome: feed::Outcome::BadRequest,
+                    detail: Some("could not parse the JSON-RPC message".into()),
+                },
+            }
+        }
         Ok(v) => v,
     };
     // Absence of `id` marks a notification — never answered.
@@ -186,8 +224,17 @@ fn dispatch(text: &str) -> Dispatch {
         ("tools/list", Some(id)) => Dispatch::Reply(result_response(id, tools::tools_list_result())),
         ("tools/call", Some(id)) => {
             let name = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
+            let target = tool_target_site(&msg);
             if tools::find(name).is_none() {
-                Dispatch::Reply(error_response(id, -32602, &format!("unknown tool: {name}")))
+                Dispatch::Rejected {
+                    reply: error_response(id, -32602, &format!("unknown tool: {name}")),
+                    log: feed::PendingLog {
+                        tool: name.to_string(),
+                        target_site: target,
+                        outcome: feed::Outcome::UnknownTool,
+                        detail: Some("no such tool".into()),
+                    },
+                }
             } else {
                 let args = msg.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
                 Dispatch::ToolCall { id, name: name.to_string(), args }
@@ -202,29 +249,60 @@ fn dispatch(text: &str) -> Dispatch {
     }
 }
 
+/// The ONE argument the feed records — the site a tools/call named — read from
+/// the request's `arguments.site_id`. No other argument is captured (§feed).
+fn tool_target_site(msg: &Value) -> Option<String> {
+    msg.pointer("/params/arguments/site_id").and_then(Value::as_str).map(String::from)
+}
+
+/// The client's self-reported name from `initialize`, so the feed can attribute
+/// actions. Cheap: only initialize-shaped messages are parsed here.
+fn client_name_if_initialize(text: &str) -> Option<String> {
+    if !text.contains("\"initialize\"") {
+        return None;
+    }
+    let msg: Value = serde_json::from_str(text).ok()?;
+    if msg.get("method")?.as_str()? != "initialize" {
+        return None;
+    }
+    msg.pointer("/params/clientInfo/name")?.as_str().map(String::from)
+}
+
 /// Run a registered read-only tool and wrap its outcome as an MCP `tools/call`
 /// result. A handler error is a TOOL error (`isError: true` content), not a
 /// JSON-RPC protocol error — the agent sees a message, not a broken transport.
+/// Run a registered tool, returning the reply AND the feed outcome (+ a bounded
+/// reason for a non-ok one), so the session records what happened.
 async fn fulfill_tool_call<Rt: tauri::Runtime>(
     app: &tauri::AppHandle<Rt>,
     id: Value,
     name: &str,
     args: &Value,
-) -> String {
+) -> (String, feed::Outcome, Option<String>) {
     use tauri::Manager;
     let Some(tool) = tools::find(name) else {
-        return error_response(id, -32602, &format!("unknown tool: {name}"));
+        // Defensive: dispatch already rejected unknown tools before here.
+        return (
+            error_response(id, -32602, &format!("unknown tool: {name}")),
+            feed::Outcome::UnknownTool,
+            Some("no such tool".into()),
+        );
     };
     let Some(state) = app.try_state::<AppState>() else {
-        return result_response(
-            id,
-            tool_error_content("rexenv is still starting — try again in a moment"),
+        return (
+            result_response(id, tool_error_content("rexenv is still starting — try again in a moment")),
+            feed::Outcome::Error,
+            Some("rexenv is still starting".into()),
         );
     };
     let ctx = ReadCtx::new(state.inner());
     match (tool.handler)(ctx, args).await {
-        Ok(v) => result_response(id, tool_success_content(&v)),
-        Err(e) => result_response(id, tool_error_content(&e.to_string())),
+        Ok(v) => (result_response(id, tool_success_content(&v)), feed::Outcome::Ok, None),
+        Err(e) => (
+            result_response(id, tool_error_content(&e.to_string())),
+            feed::Outcome::Error,
+            Some(e.to_string()),
+        ),
     }
 }
 
@@ -252,6 +330,25 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
         outputs.push((tool.name, text));
     }
     outputs
+}
+
+/// Record one agent action to the feed, best-effort — a logging failure must
+/// never break the session (accountability is important, but not at the cost of
+/// the connection). The feed is its own table; this is the server's write, not a
+/// tool's, so the read-only tool boundary is untouched.
+fn log_action<Rt: tauri::Runtime>(app: &tauri::AppHandle<Rt>, client: &str, log: &feed::PendingLog) {
+    use tauri::Manager;
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let conn = match state.db.lock() {
+        Ok(conn) => conn,
+        Err(_) => {
+            log::warn!("mcp: skipped feed record — the db lock is poisoned");
+            return;
+        }
+    };
+    if let Err(e) = feed::record(&conn, client, log) {
+        log::warn!("mcp: could not record agent action: {e}");
+    }
 }
 
 /// The `initialize` result: advertise the tools capability, our name and
@@ -294,10 +391,12 @@ mod tests {
     use super::*;
 
     fn reply(text: &str) -> Value {
-        match dispatch(text) {
-            Dispatch::Reply(r) => serde_json::from_str(&r).expect("reply is valid JSON"),
-            other => panic!("expected a Reply, got {other:?}"),
-        }
+        let r = match dispatch(text) {
+            Dispatch::Reply(r) => r,
+            Dispatch::Rejected { reply, .. } => reply,
+            other => panic!("expected a reply, got {other:?}"),
+        };
+        serde_json::from_str(&r).expect("reply is valid JSON")
     }
 
     #[test]
@@ -354,27 +453,53 @@ mod tests {
     }
 
     #[test]
-    fn a_known_tool_becomes_a_toolcall_an_unknown_one_errors() {
+    fn a_known_tool_becomes_a_toolcall() {
         // A registered tool defers to the stateful fulfil step.
         match dispatch(r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_sites"}}"#) {
             Dispatch::ToolCall { name, .. } => assert_eq!(name, "list_sites"),
             other => panic!("expected a ToolCall, got {other:?}"),
         }
-        // An unregistered tool errors at dispatch, statelessly — never executes.
-        let v = reply(
-            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"definitely_not_a_tool"}}"#,
-        );
-        assert_eq!(v["error"]["code"], -32602);
-        assert!(v["error"]["message"].as_str().unwrap().contains("definitely_not_a_tool"));
     }
 
     #[test]
-    fn unknown_method_errors_and_garbage_is_a_parse_error_at_null_id() {
-        let v = reply(r#"{"jsonrpc":"2.0","id":6,"method":"resources/list"}"#);
-        assert_eq!(v["error"]["code"], -32601);
-        let v = reply("this is not json");
-        assert_eq!(v["id"], Value::Null);
-        assert_eq!(v["error"]["code"], -32700);
+    fn unknown_method_errors_without_a_feed_entry() {
+        // A protocol method that isn't a tool call is answered but NOT logged —
+        // the feed is agent actions, not handshake noise.
+        match dispatch(r#"{"jsonrpc":"2.0","id":6,"method":"resources/list"}"#) {
+            Dispatch::Reply(r) => {
+                let v: Value = serde_json::from_str(&r).unwrap();
+                assert_eq!(v["error"]["code"], -32601);
+            }
+            other => panic!("expected a plain Reply, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_non_happy_paths_are_loggable_by_construction() {
+        // Malformed input → a bad-request feed entry with its reply.
+        match dispatch("this is not json") {
+            Dispatch::Rejected { reply, log } => {
+                let v: Value = serde_json::from_str(&reply).unwrap();
+                assert_eq!(v["error"]["code"], -32700);
+                assert_eq!(v["id"], Value::Null);
+                assert_eq!(log.outcome, feed::Outcome::BadRequest);
+            }
+            other => panic!("expected Rejected, got {other:?}"),
+        }
+        // An unknown tool → an unknown-tool entry that STILL captures the typed
+        // target (site_id), and never executes.
+        match dispatch(
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"nope","arguments":{"site_id":"s9","smuggle":"SECRET"}}}"#,
+        ) {
+            Dispatch::Rejected { log, .. } => {
+                assert_eq!(log.outcome, feed::Outcome::UnknownTool);
+                assert_eq!(log.tool, "nope");
+                assert_eq!(log.target_site.as_deref(), Some("s9"));
+                // The extra arg is not captured anywhere in the entry.
+                assert!(log.detail.as_deref() != Some("SECRET"));
+            }
+            other => panic!("expected Rejected, got {other:?}"),
+        }
     }
 
     #[test]

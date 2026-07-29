@@ -58,6 +58,14 @@ async fn main() {
     let app = tauri::test::mock_app();
     app.manage(AppState::new(conn, platform, ca));
 
+    // The session records agent actions to the real DB; note the current max
+    // feed id so we verify only the rows THIS run adds and remove only those.
+    let before_id: i64 = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        conn.query_row("SELECT COALESCE(MAX(id),0) FROM agent_actions", [], |r| r.get(0)).unwrap()
+    };
+
     // Bind with the SAME convention as the CLI socket (one convention, not two),
     // then serve the real M1 server against the app's state.
     let listener = cli_server::bind(&sock).expect("bind MCP socket");
@@ -147,15 +155,50 @@ async fn main() {
         println!("✓ tools/call tail_log → {} line(s), source `wp-debug`, honest note", tail["lines"].as_array().unwrap().len());
     }
 
-    // 7) ping — an empty result.
-    send(&mut stream, r#"{"jsonrpc":"2.0","id":6,"method":"ping"}"#);
+    // 7) the non-happy-paths — an unknown tool and a malformed message. Both
+    // must be answered AND recorded (the feed check below proves the recording).
+    send(
+        &mut stream,
+        r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"does_not_exist","arguments":{}}}"#,
+    );
+    assert_eq!(read_reply(&mut reader)["error"]["code"], -32602, "unknown tool errors");
+    send(&mut stream, "this is not valid json");
+    assert_eq!(read_reply(&mut reader)["error"]["code"], -32700, "malformed → parse error");
+    println!("✓ unknown tool + malformed message answered");
+
+    // 8) ping — an empty result, and NOT a feed entry (handshake, not an action).
+    send(&mut stream, r#"{"jsonrpc":"2.0","id":9,"method":"ping"}"#);
     let v = read_reply(&mut reader);
     assert_eq!(v["result"], json!({}), "reply: {v}");
     println!("✓ ping → {{}}");
 
+    // The activity feed: read the rows THIS run created and verify the session
+    // recorded every call — the happy path AND the non-happy-paths — attributed
+    // to the client, with ping/initialize NOT logged. Then remove only those
+    // rows (scoped by id — never the user's own feed).
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        let mine: Vec<_> = mcp_server::feed::recent(&conn, 100)
+            .unwrap()
+            .into_iter()
+            .filter(|a| a.id > before_id)
+            .collect();
+        let by_tool = |t: &str| mine.iter().find(|a| a.tool == t);
+        use rexenv_lib::mcp_server::feed::Outcome;
+        assert_eq!(by_tool("list_sites").map(|a| a.outcome), Some(Outcome::Ok), "{mine:?}");
+        assert_eq!(by_tool("does_not_exist").map(|a| a.outcome), Some(Outcome::UnknownTool));
+        assert_eq!(by_tool("(unparseable)").map(|a| a.outcome), Some(Outcome::BadRequest));
+        assert!(mine.iter().all(|a| a.client == "mcp_socket_check"), "client attributed: {mine:?}");
+        assert!(by_tool("ping").is_none() && by_tool("initialize").is_none(), "handshake not logged");
+        assert!(mine.iter().any(|a| a.concerning), "the unknown-tool/bad-request rows are concerning");
+        println!("✓ activity feed → {} row(s) recorded (incl. unknown-tool + bad-request), ping not logged", mine.len());
+        conn.execute("DELETE FROM agent_actions WHERE id > ?1", [before_id]).unwrap();
+    }
+
     let _ = std::fs::remove_file(&sock);
     println!(
-        "✓ mcp_socket_check green — spec-literal handshake + list_sites OK. \
+        "✓ mcp_socket_check green — handshake + list_sites/site_status/tail_log + activity feed OK. \
          Real-client check: `claude mcp add rexenv -- rex mcp` (manual, §8)."
     );
 }
