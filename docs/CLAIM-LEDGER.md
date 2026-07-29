@@ -275,7 +275,7 @@ L3 = scripted manual.
 
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
-| 167 | store.rs:1 | Only state/ knows the sites table shape; core never writes SQL | 🔨 L0 (rusqlite-outside-state grep guard) |
+| 167 | store.rs:1 | Only state/ hand-writes SQL against the app's SQLite schema (core reaches it only via store.rs fns). NOT "core writes no SQL" — withdrawn 29 Jul: core runs `information_schema` reads + `CREATE DATABASE`/`GRANT` on the developer's MySQL/Postgres in dbmirror | 🔨 L0 (planned rusqlite-outside-state grep guard — note: it would scan IMPORTS, not SQL-string content, so it is itself the surface-coverage shape — see Defect families below) |
 | 168 | store.rs:478 | ConnectedVerified mint demands the witness; probe only upgrades | ✅ 2 lib tests |
 | 169 | store.rs:715 | INSERT never upsert — first backup wins | ✅ lib test |
 | 170 | db.rs:143 | NULL = present-unverified, never stale; upgrades never spray alarms | ✅ 2 lib tests |
@@ -345,6 +345,37 @@ their code comments:
   proven live; only the ITP attribution is unprovable), #52 (the RFC citation IS the
   scope), #95 (self-flagged UNVERIFIED), #154 (dated, versioned, with its
   falsification case).
+
+## Defect families — the claim and the check aren't looking at the same thing
+
+Three shapes have each shipped a false or overstated guard this month. They are one
+family: a claim asserts a property of THING X, but the check that "proves" it looks
+at THING Y ≠ X. They diverge along different axes:
+
+- **Redundant computation** — one fact computed in two places; the claim is that the
+  two agree, and nothing checks that they *can't* diverge (the single-source-of-truth
+  rows #174/#177, footer-vs-tab).
+- **Time** — a one-time check on a mutable fact; the claim holds for the dependent
+  thing's LIFETIME, the check holds ONCE at mint (the share-guard #188 shape; memory
+  `one-fact-lifetime-guards`).
+- **Coverage / surface** — a guard asserts a property of a whole SURFACE but checks
+  one PLACE inside it. Instances this month:
+  - `tail_log` docroot leak (#199/#201): "docroot dropped from the view" asserted of
+    ALL output; the drop was checked on `list_sites` and re-emitted via log content.
+  - the sandbox invariant (`examples/common/mod.rs`): "no example writes real app
+    data" asserted of ALL 109 examples; structure covers the ~20 that call
+    `sandbox()`, and the bin cache is a real, mutable hole even there.
+  - the M1 read-only guard (#199): asserted of the whole read surface; originally
+    scanned only `tools.rs` when the boundary is also `ReadCtx` in `readctx.rs`
+    (fixed — now scans both, proven to fire on a planted violation).
+  - #167's planned rusqlite grep: asserts "core writes no app SQL", but a grep for
+    the `rusqlite` import checks IMPORTS, not SQL-string content.
+
+**The audit question this adds** — belongs in whatever the audit procedure becomes:
+for every guard, *does the check cover the whole surface the claim names, for the
+whole lifetime the claim spans?* If the claim says "all X" and the check reads "one
+X", the guard is narrower than its claim, and that gap is exactly where the next
+false-safety comment hides.
 
 ## The 🔨 backlog, ranked by blast radius
 
