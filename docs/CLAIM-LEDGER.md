@@ -211,6 +211,7 @@ L3 = scripted manual.
 | 121 | dbrestore.rs:27 | "Some tables exist" can never read as success | ✅ lib test |
 | 122 | dbmirror.rs:7 | Never our root; loopback-scoped; idempotent | ✅ 4 lib tests |
 | 123 | dbmirror.rs:21 | Password over stdin, never argv/env/logs | ◐ SQL shape ✅ + live restore; never-logged 🔨 L0 |
+| 196 | dbmirror.rs (grant_db_object) | GRANT `ON db.*` names exactly ONE database — `_`/`%` are pattern wildcards even inside backticks, so a bare `wp_shop` grant also covers `wpashop`; escaping them stops a mirrored user reaching a sibling site's schema (Tier-1 cross-site; was a live bug, `wp_<slug>` names carry `_`) | ✅ `grant_names_exactly_one_database_escaping_wildcard_metachars` |
 | 124 | dbsource.rs:6 | Plists label, listeners decide | ✅ 2 lib tests |
 | 125 | dbsource.rs:13 | Identification never authenticates; declarations can't override the wire | ✅ 3 lib tests + `db_source_check` |
 | 126 | dbsource.rs:22 | MariaDB clients cannot auth to MySQL 8 at all | ◐ positive matrix ✅; the NEGATIVE ("cannot at all") 🔨 L1 |
@@ -313,10 +314,10 @@ one day of being written):
 for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDGER.md; done
 ```
 
-As of 28 Jul 2026 (after T1–T13 + the 🚫 wording audit): **✅ 117 · ◐ 37 · 🔨 37 ·
-🚫 4** of 195 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149,
-#154). The working backlog = every 🔨 row + the noted half of every ◐ row, ranked
-below.
+As of 29 Jul 2026 (after T1–T13 + the 🚫 wording audit + #196 grant-escaping):
+**✅ 118 · ◐ 37 · 🔨 37 · 🚫 4** of 196 rows, plus 5 🚫 premises living inside ◐/✅
+rows (#15, #43, #52, #149, #154). The working backlog = every 🔨 row + the noted
+half of every ◐ row, ranked below.
 
 ## 🚫 wording audit (28 Jul 2026)
 

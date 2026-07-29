@@ -76,7 +76,7 @@ pub const USER_NAME_MAX: usize = 32;
 /// ```sql
 /// CREATE USER IF NOT EXISTS 'u'@'h' IDENTIFIED BY 'p';
 /// ALTER USER 'u'@'h' IDENTIFIED BY 'p';   -- converge a changed password
-/// GRANT ALL PRIVILEGES ON `db`.* TO 'u'@'h';
+/// GRANT ALL PRIVILEGES ON `db`.* TO 'u'@'h';   -- db wildcard-escaped (grant_db_object)
 /// ```
 pub fn mirror(
     client: &Path,
@@ -211,14 +211,44 @@ fn run_sql(client: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
 fn mirror_sql(db: &str, user: &str, password: &str) -> String {
     let u = sql_str(user);
     let p = sql_str(password);
+    let db_obj = grant_db_object(db);
     let mut sql = String::new();
     for host in HOSTS {
         sql.push_str(&format!("CREATE USER IF NOT EXISTS '{u}'@'{host}' IDENTIFIED BY '{p}';\n"));
         sql.push_str(&format!("ALTER USER '{u}'@'{host}' IDENTIFIED BY '{p}';\n"));
-        sql.push_str(&format!("GRANT ALL PRIVILEGES ON `{db}`.* TO '{u}'@'{host}';\n"));
+        sql.push_str(&format!("GRANT ALL PRIVILEGES ON {db_obj}.* TO '{u}'@'{host}';\n"));
     }
     sql.push_str("FLUSH PRIVILEGES;\n");
     sql
+}
+
+/// Quote a database name for the GRANT `ON db.*` position, where MySQL and
+/// MariaDB treat `_` and `%` as pattern wildcards **even inside backticks** —
+/// so a bare `GRANT ALL ON `wp_shop`.*` also grants on `wpashop`, `wpXshop`, …,
+/// letting a mirrored user reach a SIBLING site's database whose name happens
+/// to match. rexenv's own names carry `_` routinely (`wp_<slug>`), so this is
+/// live, not theoretical. Backtick-quote AND backslash-escape the two
+/// wildcards: inside backticks `\` is a literal byte, and the GRANT matcher
+/// then reads `\_`/`\%` as the literal character — naming exactly one database.
+///
+/// `db` is `validate_db_name`-restricted to `[A-Za-z0-9_]` (enforced in
+/// [`mirror`] before any SQL is built), so no backtick or backslash can appear
+/// and escaping the two wildcards is sufficient and complete.
+///
+/// **Do not "simplify" the escaping away** — `_` reads as a plain underscore to
+/// the eye, but to the GRANT matcher it is a wildcard, which is exactly why this
+/// was a live cross-site over-grant before the escape.
+///
+/// **Audit tripwire (29 Jul 2026):** this GRANT clause is the ONLY
+/// pattern-matching position any site-derived name reaches in the whole
+/// codebase — `CREATE`/`DROP DATABASE`, `USE`, and every `information_schema …
+/// WHERE table_schema = '…'` comparison are literal/object positions where `_`
+/// is inert. There is NO `LIKE` on a site-derived name anywhere. A future `LIKE`
+/// (or any new GRANT) would reintroduce the wildcard exposure and MUST route its
+/// name through this helper.
+fn grant_db_object(db: &str) -> String {
+    let escaped = db.replace('_', r"\_").replace('%', r"\%");
+    format!("`{escaped}`")
 }
 
 /// The statements [`drop_mirrored`] feeds — same testability split. Exactly
@@ -265,6 +295,23 @@ mod tests {
         // And access is to the one database, not *.*.
         assert!(sql.contains("ON `ea`.*"));
         assert!(!sql.contains("ON *.*"), "{sql}");
+    }
+
+    #[test]
+    fn grant_names_exactly_one_database_escaping_wildcard_metachars() {
+        // In a GRANT `ON db.*` clause `_` and `%` are pattern wildcards even
+        // inside backticks, so an unescaped `wp_shop` would ALSO grant ALL on
+        // `wpashop`, `wpXshop`, … — a mirrored user reaching a sibling site's
+        // database. rexenv names carry `_` routinely (`wp_<slug>`), so the
+        // db-object must escape the metachars to name exactly one database.
+        let sql = mirror_sql("wp_shop", "u", "pw");
+        assert!(sql.contains(r"ON `wp\_shop`.*"), "{sql}");
+        for grant in sql.lines().filter(|l| l.starts_with("GRANT")) {
+            assert!(!grant.contains("`wp_shop`"), "unescaped wildcard grant: {grant}");
+        }
+        // The escaper neutralises both metachars in isolation (validate_db_name
+        // forbids `%` upstream, but the shape must still be correct on its own).
+        assert_eq!(grant_db_object("a_b%c"), r"`a\_b\%c`");
     }
 
     #[test]
