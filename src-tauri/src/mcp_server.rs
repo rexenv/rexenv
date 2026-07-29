@@ -96,18 +96,44 @@ fn socket_path() -> crate::error::Result<std::path::PathBuf> {
     Ok(crate::platform::current().paths().config_dir()?.join(SOCKET_FILE))
 }
 
+/// Bind the MCP socket WITHOUT an ambient tokio runtime — a plain `std`
+/// `UnixListener`, `0600`, stale-file unlinked, non-blocking so the serve task
+/// can adopt it via `UnixListener::from_std`.
+///
+/// This is deliberately runtime-agnostic. `start` is called from app startup AND
+/// from the SYNCHRONOUS `mcp_set_enabled` command, both of which run OFF the tokio
+/// runtime — and `tokio::net::UnixListener::bind` panics there (`Handle::current`:
+/// "there is no reactor running"), which is the packaged enable-crash (a SIGABRT
+/// across wry's ObjC callback). Binding with `std` here and converting to tokio
+/// INSIDE the runtime-resident serve task removes that hidden requirement while
+/// keeping bind errors synchronous to the toggle. Guarded by
+/// `binding_the_socket_needs_no_ambient_runtime`.
+pub fn bind_socket(path: &std::path::Path) -> crate::error::Result<std::os::unix::net::UnixListener> {
+    use std::os::unix::fs::PermissionsExt;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    let listener = std::os::unix::net::UnixListener::bind(path)?;
+    // 0600 BEFORE anything can connect — and, unlike the crashing path, this line
+    // always runs, so a bound socket is never left world-accessible.
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    listener.set_nonblocking(true)?; // required for `from_std`
+    Ok(listener)
+}
+
 /// Bind the socket and start serving. Returns the shutdown sender for `AppState`
 /// to hold; `McpControl::stop` (or dropping it) tears the endpoint down. Binding
-/// is synchronous so a port/permission failure surfaces to the caller (the
-/// Settings toggle) rather than vanishing into a spawned task — the toggle must
-/// not read on if nothing bound.
+/// is synchronous (via the runtime-agnostic `bind_socket`) so a port/permission
+/// failure surfaces to the caller (the Settings toggle) rather than vanishing into
+/// a spawned task — the toggle must not read on if nothing bound.
 pub fn start<Rt: tauri::Runtime>(
     app: tauri::AppHandle<Rt>,
 ) -> crate::error::Result<watch::Sender<bool>> {
     let path = socket_path()?;
-    // Reuse the CLI socket's bind: 0600, stale-file unlink, connect-to-detect
-    // liveness — one socket convention across both sockets, not two.
-    let listener = crate::cli_server::bind(&path)?;
+    let listener = bind_socket(&path)?;
     let (tx, rx) = watch::channel(true);
     log::info!("mcp: listening on {} (opt-in enabled)", path.display());
     tauri::async_runtime::spawn(serve(listener, app, rx));
@@ -150,10 +176,24 @@ pub fn spawn_if_enabled(app: tauri::AppHandle) {
 /// Public and runtime-generic so the `mcp_socket_check` example can serve it
 /// with a `MockRuntime` app, exactly as `cli_server` tests do.
 pub async fn serve<Rt: tauri::Runtime>(
-    listener: UnixListener,
+    listener: std::os::unix::net::UnixListener,
     app: tauri::AppHandle<Rt>,
     mut shutdown: watch::Receiver<bool>,
 ) {
+    // Adopt the std listener into tokio HERE — this task runs on the tokio
+    // runtime, where `Handle::current` exists. `bind_socket` did NOT need it (it
+    // may be called off the runtime, e.g. the sync enable command); `from_std`
+    // does, and this is the first point we are guaranteed to be inside it.
+    let listener = match UnixListener::from_std(listener) {
+        Ok(l) => l,
+        Err(e) => {
+            log::error!("mcp: could not adopt the socket into the runtime: {e}");
+            if let Ok(path) = socket_path() {
+                let _ = std::fs::remove_file(path);
+            }
+            return;
+        }
+    };
     loop {
         tokio::select! {
             // Stop when the toggle sends `false`, OR when every sender is dropped
@@ -496,6 +536,29 @@ fn error_response(id: Value, code: i64, message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The packaged enable-crash guard: `mcp_set_enabled` is a SYNC command, so it
+    /// binds OFF the tokio runtime, where `tokio::net::UnixListener::bind` aborts on
+    /// `Handle::current` ("there is no reactor running"). `bind_socket` must need no
+    /// ambient runtime — proven by binding on a plain `std::thread` with NONE and
+    /// requiring success + 0600. This FAILS on the pre-fix path (the throwaway proof
+    /// against `cli_server::bind` panicked on this exact thread); it passes on the
+    /// std bind. A harness (L2) can never catch this — it mocks the IPC command.
+    #[test]
+    fn binding_the_socket_needs_no_ambient_runtime() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rexenv-mcp-bindguard-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("mcp.sock");
+        let p = path.clone();
+        // A plain std thread — deliberately NO tokio runtime in context.
+        let joined = std::thread::spawn(move || bind_socket(&p).map(|_| ())).join();
+        assert!(joined.is_ok(), "bind_socket panicked off the runtime (Handle::current) — the packaged crash");
+        assert!(joined.unwrap().is_ok(), "bind_socket errored");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "the bound socket must be 0600, always");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn reply(text: &str) -> Value {
         let r = match dispatch(text) {

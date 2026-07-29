@@ -80,6 +80,10 @@ Run the four functional steps AND eyeball the PACKAGED webview — this project'
 bug class lives specifically in WKWebView, not in the dev harness: the residual copy
 above the toggle, the muted-amber concerning rows, and the feed rendering **domains,
 not raw UUIDs**.
+**Why this gate exists (evidence):** the first packaged run of this caught `mcp_set_enabled`
+*aborting the app on enable* — a crash the WebKit harness certified fine across 10 scenarios
+because it mocks the IPC command (TESTING.md §1, L2). Nothing above the packaged pass could
+have found it. That is why step 4 is a hold, not a note.
 - [ ] **1. Default off = no socket.** Fresh launch, never enabled → Settings → AI
   agents: toggle OFF, no status line, "No agent activity yet". `ls -l <socket>` →
   the file is ABSENT. **Tell #1:** if the socket exists here, the toggle is a label

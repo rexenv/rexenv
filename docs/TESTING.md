@@ -67,8 +67,14 @@ it can:
 - **Proves:** layout and copy in the engine family that ships (WKWebView class bugs
   Chrome hides): overflow, collapse, control chrome, dialog flows — via dev-only
   harness routes with mocked IPC, zero backend.
-- **Cannot prove:** backend truth (IPC is mocked BY DESIGN), real cookies/schemes
-  (`rexdb://` doesn't exist in Playwright), aesthetics.
+- **Cannot prove:** backend truth (IPC is mocked BY DESIGN) — **it proves a card RENDERS,
+  never that its command WORKS.** The MCP toggle rendered correctly across 10 harness
+  scenarios while `mcp_set_enabled` *aborted the packaged app* on click (the mock returned
+  success; the real command was never invoked). A backend crash is invisible here by
+  construction — the same shape as "a lib test can't prove mysqldump accepts the flag"
+  (§1's table): read ten green harness scenarios as render coverage, never as backend
+  coverage. Also can't prove: real cookies/schemes (`rexdb://` doesn't exist in Playwright),
+  aesthetics.
 - **Cost:** ~a minute + a vite dev server. **Runs:** after UI changes; part of the full
   gate (§6). **Bug class:** percentage-height collapse, WebKit metrics overflow,
   states that render wrong or not at all.

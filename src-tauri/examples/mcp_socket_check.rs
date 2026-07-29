@@ -16,7 +16,7 @@
 //! reads the real database, and writes nothing.
 
 use rexenv_lib::state::app::AppState;
-use rexenv_lib::{cli_server, mcp_server};
+use rexenv_lib::mcp_server;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -68,7 +68,7 @@ async fn main() {
 
     // Bind with the SAME convention as the CLI socket (one convention, not two),
     // then serve the real M1 server against the app's state.
-    let listener = cli_server::bind(&sock).expect("bind MCP socket");
+    let listener = mcp_server::bind_socket(&sock).expect("bind MCP socket");
     let mode = std::fs::metadata(&sock).expect("socket metadata").permissions().mode();
     assert_eq!(mode & 0o777, 0o600, "socket must be 0600");
     // A never-signalled shutdown (the toggle's live-disable path isn't under test
