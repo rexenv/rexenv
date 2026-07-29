@@ -73,6 +73,13 @@ const SCENARIOS = [
   // Every StatusPill state + every StartStopToggle state — the states the
   // other fixtures never render (they hardcode `running`).
   ["pills", "view=pills", []],
+  // The AI-agents (MCP) card: the status-line states + the concerning-row
+  // (muted-amber) feed treatment + the empty state + off (feed still shown).
+  ["agents-working", "view=agents&astate=working", []],
+  ["agents-erroring", "view=agents&astate=erroring", []],
+  ["agents-idle-empty", "view=agents&astate=idle&feed=empty", []],
+  ["agents-off", "view=agents&astate=off", []],
+  ["agents-site-section", "view=agents&astate=working&site=1", []],
 ];
 
 /** Per-scenario layout assertions (beyond the universal overflow probe).
@@ -117,11 +124,34 @@ const PROBES = {
       }
       return problems;
     }),
+  // The AI-agents card: the residual copy renders verbatim above the toggle,
+  // the concerning rows get the muted-amber accent (or the empty state shows),
+  // and the toggle reflects enabled/off.
+  agents: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const text = document.body.textContent || "";
+      if (!text.includes("AI agents (MCP)")) problems.push("card title missing");
+      if (!text.includes("Before you turn this on")) problems.push("enable-moment copy missing");
+      const p = new URLSearchParams(location.search);
+      const amber = document.querySelectorAll('[class*="border-l-status-warning"]').length;
+      if (p.get("feed") === "empty") {
+        if (!text.includes("No agent activity yet")) problems.push("empty state missing");
+      } else if (amber < 1) {
+        problems.push("no muted-amber concerning row rendered");
+      }
+      const toggle = document.querySelector('[role="switch"]');
+      if (!toggle) problems.push("no toggle rendered");
+      else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
+        problems.push("toggle state does not match astate");
+      return problems;
+    }),
 };
 
 function probeFor(name) {
   if (name.startsWith("dbtab")) return PROBES.dbtab;
   if (name === "pills") return PROBES.pills;
+  if (name.startsWith("agents")) return PROBES.agents;
   return null;
 }
 

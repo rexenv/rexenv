@@ -16,6 +16,9 @@
  *    badges   — a column of SiteRow variants (badge crowding at narrow widths)
  *    resolver — the borrowed-resolver hand-back row (Settings card context)
  *    toast    — the long revert-then-delete refusal toast + friends
+ *    agents   — the AI-agents (MCP) card. `astate=off|idle|working|erroring`
+ *               drives the status line, `feed=empty` empties the activity list,
+ *               `site=1` also shows the per-site SiteDetail section
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -26,8 +29,10 @@ import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
+import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
+import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { toast } from "@/lib/toast";
-import type { DbImportRecord, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, Site } from "@/types";
+import type { ActivityStatus, AgentAction, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, Site } from "@/types";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -342,6 +347,63 @@ function PillsView() {
   );
 }
 
+/** SQLite UTC stamp `mins` minutes ago (the shape the card's `timeAgo` parses).
+ *  Computed from the real clock so the rendered "Nm ago" is representative. */
+function agoStamp(mins: number): string {
+  return new Date(Date.now() - mins * 60_000).toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** A realistic activity feed: two concerning rows (a WP-less tail_log error and
+ *  an unknown-tool) newest, then successes. `targetSite` is the site id the
+ *  agent named — what the feed actually stores (`arguments.site_id`). */
+const AGENT_ROWS: AgentAction[] = [
+  { id: 6, at: agoStamp(1), client: "Claude Code", tool: "tail_log", targetSite: "s-ea", outcome: "error", detail: "no debug.log for this site", concerning: true },
+  { id: 5, at: agoStamp(3), client: "Claude Code", tool: "site_status", targetSite: "s-shop", outcome: "unknown-tool", detail: "no such tool", concerning: true },
+  { id: 4, at: agoStamp(4), client: "Claude Code", tool: "site_status", targetSite: "s-ea", outcome: "ok", detail: null, concerning: false },
+  { id: 3, at: agoStamp(9), client: "Cursor 0.42", tool: "list_sites", targetSite: null, outcome: "ok", detail: null, concerning: false },
+  { id: 2, at: agoStamp(24), client: "Claude Code", tool: "tail_log", targetSite: "s-ea", outcome: "ok", detail: null, concerning: false },
+];
+
+function activityStatusMock(): ActivityStatus {
+  switch (params.get("astate")) {
+    case "off":
+      return { kind: "off" };
+    case "idle":
+      return { kind: "idle" };
+    case "erroring":
+      return { kind: "erroring", errored: 2, minutesAgo: 1 };
+    default:
+      return { kind: "working", lastTool: "site_status", minutesAgo: 4 };
+  }
+}
+
+function mcpStatusMock(): McpStatus {
+  const recent = params.get("feed") === "empty" ? [] : AGENT_ROWS;
+  return {
+    enabled: params.get("astate") !== "off",
+    connectCommand: "claude mcp add rexenv -- rex mcp",
+    activity: activityStatusMock(),
+    recent,
+  };
+}
+
+/** The AI-agents card, plus (with `site=1`) the per-site SiteDetail section. */
+function AgentsView() {
+  return (
+    <div className="space-y-4">
+      <AgentsMcpCard />
+      {params.get("site") === "1" && (
+        <div className="rounded-xl border border-rex-border bg-rex-bg p-3">
+          <div className="mb-2 text-[0.71875rem] text-rex-text-muted">
+            SiteDetail → Overview section (renders only when the site has activity):
+          </div>
+          <SiteAgentActivity siteId="s-ea" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ToastView() {
   useEffect(() => {
     toast.info(
@@ -375,6 +437,15 @@ export function DevUiReview() {
           return [];
         case "get_setting":
           return null;
+        case "mcp_status":
+        case "mcp_set_enabled":
+          return mcpStatusMock();
+        case "agent_activity":
+          return params.get("feed") === "empty"
+            ? []
+            : AGENT_ROWS.filter((r) => r.targetSite === "s-ea");
+        case "agent_activity_clear":
+          return 0;
         default:
           return 1; // plugin:event|listen etc. — accept quietly.
       }
@@ -405,6 +476,7 @@ export function DevUiReview() {
         )}
         {view === "toast" && <ToastView />}
         {view === "pills" && <PillsView />}
+        {view === "agents" && <AgentsView />}
       </div>
     </div>
   );

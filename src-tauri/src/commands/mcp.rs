@@ -51,7 +51,7 @@ pub struct McpStatus {
 /// connected-but-broken split rexenv refuses to paint green elsewhere (a share
 /// showing Live while 530-ing). So this speaks to what calls DID, not liveness.
 #[derive(Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(tag = "kind", rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum ActivityStatus {
     /// The endpoint is off.
     Off,

@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, Blueprint, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, AgentAction, Blueprint, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1675,4 +1675,32 @@ export async function repoLink(
   target: string,
 ): Promise<RepoLinkResult> {
   return invoke<RepoLinkResult>("repo_link", { siteId, kind, dirName, target });
+}
+
+// ── MCP: the "AI agents" Settings card + per-site activity ───────────────────
+
+/** The MCP card's whole state in one read: the opt-in toggle, the derived
+ *  status line, and the recent activity feed. Off/empty outside Tauri. */
+export async function mcpStatus(): Promise<McpStatus> {
+  if (!isTauri())
+    return { enabled: false, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
+  return invoke<McpStatus>("mcp_status");
+}
+
+/** Flip the opt-in toggle. Enabling BINDS the endpoint's socket (and only then
+ *  reads on); disabling drops live sessions and unlinks it. Returns fresh status. */
+export async function mcpSetEnabled(enable: boolean): Promise<McpStatus> {
+  return invoke<McpStatus>("mcp_set_enabled", { enable });
+}
+
+/** The activity feed — all recent rows, or just those naming one site (pass a
+ *  site id for the per-site SiteDetail section). Newest first. */
+export async function agentActivity(siteId: string | null, limit: number): Promise<AgentAction[]> {
+  if (!isTauri()) return [];
+  return invoke<AgentAction[]>("agent_activity", { siteId, limit });
+}
+
+/** Clear the feed — the user's own record, theirs to wipe. Returns rows removed. */
+export async function agentActivityClear(): Promise<number> {
+  return invoke<number>("agent_activity_clear");
 }

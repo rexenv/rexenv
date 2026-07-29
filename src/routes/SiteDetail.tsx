@@ -30,6 +30,7 @@ import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
+import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import {
@@ -479,6 +480,7 @@ function Overview({
       </div>
 
       <RecentLogs siteId={site.id} onViewAll={onViewLogs} />
+      <SiteAgentActivity siteId={site.id} />
     </>
   );
 }
