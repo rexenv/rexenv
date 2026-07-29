@@ -113,7 +113,7 @@ where
             Dispatch::Silent => None,
             Dispatch::Reply(r) => Some(r),
             Dispatch::ToolCall { id, name, args } => {
-                Some(fulfill_tool_call(&app, id, &name, &args))
+                Some(fulfill_tool_call(&app, id, &name, &args).await)
             }
         };
         if let Some(reply) = reply {
@@ -205,7 +205,7 @@ fn dispatch(text: &str) -> Dispatch {
 /// Run a registered read-only tool and wrap its outcome as an MCP `tools/call`
 /// result. A handler error is a TOOL error (`isError: true` content), not a
 /// JSON-RPC protocol error — the agent sees a message, not a broken transport.
-fn fulfill_tool_call<Rt: tauri::Runtime>(
+async fn fulfill_tool_call<Rt: tauri::Runtime>(
     app: &tauri::AppHandle<Rt>,
     id: Value,
     name: &str,
@@ -222,10 +222,36 @@ fn fulfill_tool_call<Rt: tauri::Runtime>(
         );
     };
     let ctx = ReadCtx::new(state.inner());
-    match (tool.handler)(&ctx, args) {
+    match (tool.handler)(ctx, args).await {
         Ok(v) => result_response(id, tool_success_content(&v)),
         Err(e) => result_response(id, tool_error_content(&e.to_string())),
     }
+}
+
+/// Run EVERY registered tool against `app`'s state with the fixture site id, and
+/// return each tool's serialised output (or its error text — errors can leak
+/// too). For the secret-leak sweep (`examples/mcp_secret_sweep`): it plants
+/// secrets in the state and asserts none appear in any output here. Enumerates
+/// the registry (`tools::sweep_plan`), so a new tool is swept by construction —
+/// adding one WITHOUT the sweep covering it is not possible.
+pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
+    app: &tauri::AppHandle<Rt>,
+    fixture_site_id: &str,
+) -> Vec<(&'static str, String)> {
+    use tauri::Manager;
+    let Some(state) = app.try_state::<AppState>() else {
+        return Vec::new();
+    };
+    let ctx = ReadCtx::new(state.inner());
+    let mut outputs = Vec::new();
+    for (tool, args) in tools::sweep_plan(fixture_site_id) {
+        let text = match (tool.handler)(ctx, &args).await {
+            Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
+            Err(e) => e.to_string(),
+        };
+        outputs.push((tool.name, text));
+    }
+    outputs
 }
 
 /// The `initialize` result: advertise the tools capability, our name and
@@ -349,6 +375,18 @@ mod tests {
         let v = reply("this is not json");
         assert_eq!(v["id"], Value::Null);
         assert_eq!(v["error"]["code"], -32700);
+    }
+
+    #[test]
+    fn every_tool_declares_valid_sweep_args_so_the_leak_sweep_can_exercise_it() {
+        // The secret-leak sweep (examples/mcp_secret_sweep) enumerates the
+        // registry and runs each tool with these args against a planted fixture.
+        // Requiring the field (and this smoke test) means a tool cannot be
+        // registered without being exercisable by the sweep.
+        for t in tools::registry() {
+            let args = (t.sweep_args)("fixture-site-id");
+            assert!(args.is_object(), "{}: sweep_args must be a JSON object", t.name);
+        }
     }
 
     #[test]

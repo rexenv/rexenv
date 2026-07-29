@@ -110,8 +110,27 @@ async fn main() {
     }
     println!("✓ tools/call list_sites → {} site(s), no path/db-name in output", arr.len());
 
-    // 5) ping — an empty result.
-    send(&mut stream, r#"{"jsonrpc":"2.0","id":4,"method":"ping"}"#);
+    // 5) tools/call site_status on the first site — the diagnostic, end to end.
+    if let Some(first) = arr.first().and_then(|s| s["id"].as_str()) {
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{{"name":"site_status","arguments":{{"site_id":"{first}"}}}}}}"#
+        );
+        send(&mut stream, &req);
+        let v = read_reply(&mut reader);
+        assert!(v["result"]["isError"].is_null(), "site_status must not error: {v}");
+        let text = v["result"]["content"][0]["text"].as_str().expect("text content");
+        let status: Value = serde_json::from_str(text).expect("site_status is a JSON object");
+        // A specific verdict + who-resolves-it + scope, never a bare bool, and
+        // never an internal path.
+        assert!(status["verdict"].is_string(), "verdict present: {status}");
+        assert!(status["resolution"].is_string(), "resolution present: {status}");
+        assert!(status["detail"].as_str().unwrap().len() > 10, "detail present: {status}");
+        assert!(status.get("path").is_none() && status.get("docroot").is_none(), "path leaked: {status}");
+        println!("✓ tools/call site_status → verdict `{}`, resolution `{}`", status["verdict"], status["resolution"]);
+    }
+
+    // 6) ping — an empty result.
+    send(&mut stream, r#"{"jsonrpc":"2.0","id":6,"method":"ping"}"#);
     let v = read_reply(&mut reader);
     assert_eq!(v["result"], json!({}), "reply: {v}");
     println!("✓ ping → {{}}");
