@@ -9,6 +9,18 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **MCP server M1 — read-only diagnosis + opt-in card** (branch `feat/mcp-m1`).
+  ✓ Socket + `rex mcp` shim + registry (list_sites / site_status / tail_log) +
+  ReadCtx read-only boundary (guard scans both surfaces) + secret-leak sweep +
+  activity feed + the opt-in toggle that really binds/unbinds + Settings "AI
+  agents" card + per-site SiteDetail section. Ledger #198–#203; wk-checks
+  `agents-*`. Diverged from PLAN §7.3 honestly: no mail tools/sub-toggle in M1;
+  `site_status` runs nothing (Option A, no HTTP GET); status line is feed-driven
+  not a live-session list. **Next MCP stage = M2 (scratch sites)** — see
+  `docs/PLAN-mcp-server.md §7.3` (on branch `docs/mcp-server-plan`).
+  ⚠ On merge: the plan doc + ledger §-pointers to it are on `docs/mcp-server-plan`
+  (#197 lands from there); add the router row for the plan and recompute the
+  mechanical tally then.
 - [ ] **DNS agent answers ARBITRARY names when queried directly** (found in the
   28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
   `127.0.0.1` — the hickory handler is a catch-all, not per-TLD zones
