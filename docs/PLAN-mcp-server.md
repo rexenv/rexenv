@@ -131,11 +131,25 @@ detail our own tests accept and Claude Code rejects.
 ### 2.3 App not running: honest failure, no autostart
 
 Same ruling as the CLI (`cli/src/main.rs:146-153`): the shim fails to connect,
-prints `rexenv isn't running — open the app first` on stderr, exits non-zero.
-Deliberately no autostart / no headless mode (§2.1). Version skew: the tool
-registry lives app-side, so the CLI's stale-binary unknown-command class
-(`cli_server.rs:1320-1322`) can't happen for tools — a connected client always
-sees the running app's tools. `serverInfo.version` = app version.
+prints a specific reason (`rexenv isn't running — open the rexenv app, then
+reconnect…`) on stderr, exits 2. Deliberately no autostart / no headless mode
+(§2.1). The reason travels on stderr + exit code, which an MCP client surfaces as
+the server's startup error. Version skew: the tool registry lives app-side, so
+the CLI's stale-binary unknown-command class (`cli_server.rs:1320-1322`) can't
+happen for tools — a connected client always sees the running app's tools.
+`serverInfo.version` = app version.
+
+**Why the in-band variant stays deferred — and the exact condition that reopens
+it.** In M1 there are no tools, so the only failure is "the client couldn't
+connect at startup," which is *a human's* question ("why won't it connect?") and
+a startup error on stderr reaches the human fine. The calculus changes at **M2**:
+once an agent holds tools and the app quits **mid-session**, the model gets a bare
+transport error mid-conversation and will *guess* — that is exactly when an
+in-band JSON-RPC error (the shim reading the pending request's `id` and returning
+a legible "rexenv stopped" error the model reads) earns its added complexity. So
+this is not an open nicety: it is **deferred with a trigger** — revisit when the
+first tools land (M2) and a mid-session app-quit becomes a model-facing failure,
+not a human-facing one. Until then the shim stays a dumb pipe.
 
 ### 2.4 The registry IS the surface — an allowlist, not the 42
 
