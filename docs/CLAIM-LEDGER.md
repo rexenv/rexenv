@@ -119,6 +119,7 @@ L3 = scripted manual.
 | 198 | mcp_server.rs (SOCKET_FILE) | MCP socket is 0600, never TCP — the CLI socket's convention, not a second one (reuses `cli_server::bind`) | ✅ `mcp_socket_check` (0600 assert + spec-literal handshake) + `mcp_server` unit tests; never-TCP structural (`UnixListener`); shares #55's binder |
 | 199 | mcp_server/tools.rs + readctx.rs + view.rs | M1 tools are read-only BY CONSTRUCTION: a handler reaches state ONLY through `ReadCtx` (no mutating method), the `tools` module imports no manager/command at all (loud import guard steers a violator to the M2 module), and `AgentSiteView` DROPS the docroot path + db_name rather than redacting — so the containment claim survives M2's arrival | ✅ `m1_tools_are_read_only_by_construction` (guard proven to fire loudly on a planted violation, then revert clean) + `the_view_carries_only_the_agent_fields` + `mcp_socket_check` live (`list_sites` over the real socket → 12 real sites, no path/db-name) |
 | 200 | mcp_server/view.rs (classify) + tools.rs (sweep_plan) | `site_status` keeps failures DISTINCT (edge-down / edge-blocked / backend-down / site-error / setup-incomplete / serving / unknown — never collapsed to "not serving"), every non-serving verdict names WHO resolves it (an agent can't start services → user-action-in-rexenv; a site's own 5xx → check-code-and-logs) and STATES the probe's scope; the secret-leak sweep enumerates the WHOLE registry, so every content tool is swept by construction; `AgentSiteStatus` drops the doctor internals | ✅ `classify_keeps_the_failures_distinct…` + `every_non_serving_diagnosis_names_who_acts…` + `every_tool_declares_valid_sweep_args…` + `mcp_secret_sweep` live (both tools, planted fixture, nothing leaked, non-vacuous) + `mcp_socket_check` live (`site_status` over the real socket) |
+| 201 | mcp_server/view.rs (scrub_log_line) + tools.rs (tail_log) + readctx.rs | `tail_log` is CONSTRAINED, not trusted-to-a-filter: only the WordPress debug log (per-site; shared server/edge/db/access logs NOT exposed), tail-only, line-capped (≤200). The scrubber removes KNOWN rexenv login tokens + cookie headers but the tool's note/copy explicitly does NOT claim the content is safe/sanitised — a false "logs are sanitised" line is the risk here and is refused | ✅ `the_scrubber_removes_known_tokens_and_cookies_but_keeps_benign_content` + `the_log_tail_note_never_claims_the_content_is_safe` + `mcp_secret_sweep` live (planted login token + Set-Cookie in a real fixture log → scrubbed out, benign line kept: proves the scrubber via the harness, non-vacuously) + `mcp_socket_check` live (`tail_log` over the real socket) |
 | 59 | main.rs:6 | `--dns-agent` never opens a window / touches SQLite / starts services | 🔨 L0 (what run_agent can reach) |
 | 60 | lib.rs:121 | In-process resolver fallback means DNS never regresses | 🔨 L1 (agent-death fallback) |
 | 61 | lib.rs:410 | Locks never held across .await; polls never block the UI | 🔨 L0/lint (today a reading discipline) |
@@ -317,13 +318,13 @@ for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDG
 ```
 
 As of 29 Jul 2026 (this branch, after #198 MCP-socket + #199 read-only boundary +
-#200 site_status/sweep): **✅ 120 · ◐ 37 · 🔨 37 · 🚫 4** of 198 rows, plus 5 🚫
-premises living inside ◐/✅ rows (#15, #43, #52, #149, #154). Rows #196
-(grant-escaping ✅) and #197 (MCP posture 🚫) land from the sibling
-`fix/dbmirror-grant-wildcard-escaping` and `docs/mcp-server-plan` branches, so
-post-merge = ✅ 121 · 🚫 5 of 200 (recompute mechanically after merge — the tally
-is never hand-maintained). The working backlog = every 🔨 row + the noted half of
-every ◐ row, ranked below.
+#200 site_status/sweep + #201 tail_log/scrubber): **✅ 121 · ◐ 37 · 🔨 37 · 🚫 4**
+of 199 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149,
+#154). Rows #196 (grant-escaping ✅) and #197 (MCP posture 🚫) land from the
+sibling `fix/dbmirror-grant-wildcard-escaping` and `docs/mcp-server-plan`
+branches, so post-merge = ✅ 122 · 🚫 5 of 201 (recompute mechanically after merge
+— the tally is never hand-maintained). The working backlog = every 🔨 row + the
+noted half of every ◐ row, ranked below.
 
 ## 🚫 wording audit (28 Jul 2026)
 

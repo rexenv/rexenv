@@ -18,7 +18,7 @@ use super::view::ServingSignals;
 use crate::core;
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::Site;
+use crate::state::models::{Site, SiteType};
 use std::collections::HashSet;
 
 /// The edge's HTTPS port — the one place a browser reaches a site.
@@ -94,6 +94,22 @@ impl<'a> ReadCtx<'a> {
         };
 
         ServingSignals { edge_answers_ours, tcp_443_open, serving_manager, http_status }
+    }
+
+    /// The RAW tail of the site's WordPress debug log (the caller scrubs), capped
+    /// to `lines` and tail-only via `core::logs`. Refuses a non-WordPress site
+    /// (the WP debug log is the only source M1 exposes). Missing/empty log ⇒
+    /// empty vec, like the log page.
+    pub fn wp_debug_log_tail(&self, site: &Site, lines: usize) -> Result<Vec<String>> {
+        if site.site_type != SiteType::Wordpress {
+            return Err(Error::Other(
+                "this site isn't WordPress — the WordPress debug log is the only log source \
+                 exposed in this version (shared server, edge, database and access logs are not)"
+                    .into(),
+            ));
+        }
+        let content_rel = site.content_dir.clone().unwrap_or_else(|| "wp-content".into());
+        core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), &content_rel, lines)
     }
 }
 

@@ -25,14 +25,32 @@ mod common;
 
 /// Distinctive markers with no overlap with the site's domain, planted into the
 /// two `Site` fields a tool must never leak.
-const DOCROOT_SECRET: &str = "SWEEPSECRETDOCROOTaa11";
+const DOCROOT_SECRET: &str = "SWEEPSECRETDOCROOTaa11"; // a distinctive path component
 const DBNAME_SECRET: &str = "SWEEPSECRETDBNAMEbb22";
+const LOGIN_TOKEN: &str = "TOKENSECRETee55ff66"; // a rexenv-issued login token, in a log
+const COOKIE_SECRET: &str = "COOKIESECRETcc33"; // a Set-Cookie value, in a log
+const BENIGN_MARKER: &str = "BENIGNMARKERdd44"; // benign log content that MUST survive
 
 #[tokio::main]
 async fn main() {
     let (plat, _sandbox) = common::sandbox("mcp_secret_sweep");
     let conn = rexenv_lib::state::db::open_for_platform(plat.paths()).expect("open sandbox db");
     let ca = core::ssl::load_or_create(plat.paths(), plat.permissions()).expect("load sandbox CA");
+
+    // A real docroot (so tail_log can read a debug log) whose path carries the
+    // distinctive marker, with a debug log holding a real login token, a
+    // Set-Cookie, and a benign line that MUST come through.
+    let docroot = plat.paths().app_data_dir().expect("data dir").join(DOCROOT_SECRET);
+    std::fs::create_dir_all(docroot.join("wp-content")).expect("make fixture docroot");
+    std::fs::write(
+        docroot.join("wp-content/debug.log"),
+        format!(
+            "[29-Jul-2026] PHP Warning: {BENIGN_MARKER} in plugin.php on line 5\n\
+             GET /wp-login.php?rexenv_login={LOGIN_TOKEN}&redir=1 HTTP/1.1\n\
+             Set-Cookie: wordpress_logged_in={COOKIE_SECRET}; Path=/; HttpOnly\n"
+        ),
+    )
+    .expect("write fixture debug log");
 
     let site = core::sites::create(
         &conn,
@@ -49,7 +67,7 @@ async fn main() {
     .expect("create fixture site");
     conn.execute(
         "UPDATE sites SET path = ?1, db_name = ?2 WHERE id = ?3",
-        rusqlite::params![DOCROOT_SECRET, DBNAME_SECRET, site.id],
+        rusqlite::params![docroot.to_string_lossy(), DBNAME_SECRET, site.id],
     )
     .expect("plant the docroot path + db_name secrets");
 
@@ -59,8 +77,11 @@ async fn main() {
     let outputs = mcp_server::sweep_tool_outputs(app.handle(), &site.id).await;
     assert!(!outputs.is_empty(), "the sweep must exercise the registered tools");
 
-    let planted = [DOCROOT_SECRET, DBNAME_SECRET, "rexenv-ca-key.pem"];
+    // EVERY tool's output, checked for EVERY planted secret. tail_log read the
+    // token + cookie from the log; the scrubber must have removed them here.
+    let planted = [DOCROOT_SECRET, DBNAME_SECRET, LOGIN_TOKEN, COOKIE_SECRET, "rexenv-ca-key.pem"];
     let mut list_sites_saw_the_site = false;
+    let mut tail_log_kept_benign = false;
     for (tool, out) in &outputs {
         for secret in planted {
             assert!(
@@ -71,16 +92,27 @@ async fn main() {
         if *tool == "list_sites" && out.contains("sweep-fixture.rex") {
             list_sites_saw_the_site = true;
         }
-        println!("  ✓ {tool}: no docroot path / db name / CA path in output");
+        // Non-vacuous for tail_log: it must have READ the log (benign line
+        // present) — a scrubber that just emptied the log would pass the
+        // absence checks while proving nothing.
+        if *tool == "tail_log" && out.contains(BENIGN_MARKER) {
+            tail_log_kept_benign = true;
+        }
+        println!("  ✓ {tool}: no docroot / db-name / login-token / cookie / CA path in output");
     }
     assert!(
         list_sites_saw_the_site,
         "list_sites must have INCLUDED the planted site (its domain) — else the sweep proved nothing"
     );
+    assert!(
+        tail_log_kept_benign,
+        "tail_log must have RETURNED the log's benign content — else the scrubber's clean output is vacuous"
+    );
 
     println!(
-        "✓ mcp_secret_sweep green — {} registered tool(s) exercised against a planted fixture; \
-         the site appears by domain but no docroot path, db name, or CA path reached the output.",
+        "✓ mcp_secret_sweep green — {} registered tool(s) exercised against a planted fixture: \
+         the site appears by domain, the log's benign line comes through, but no docroot, db name, \
+         login token, cookie, or CA path reached the output.",
         outputs.len()
     );
 }

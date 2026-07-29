@@ -129,7 +129,25 @@ async fn main() {
         println!("✓ tools/call site_status → verdict `{}`, resolution `{}`", status["verdict"], status["resolution"]);
     }
 
-    // 6) ping — an empty result.
+    // 6) tools/call tail_log on the first WordPress site — the log surface.
+    if let Some(wp_id) = arr.iter().find(|s| s["type"] == "wordpress").and_then(|s| s["id"].as_str()) {
+        let req = format!(
+            r#"{{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{{"name":"tail_log","arguments":{{"site_id":"{wp_id}","lines":20}}}}}}"#
+        );
+        send(&mut stream, &req);
+        let v = read_reply(&mut reader);
+        assert!(v["result"]["isError"].is_null(), "tail_log must not error on a WP site: {v}");
+        let text = v["result"]["content"][0]["text"].as_str().expect("text content");
+        let tail: Value = serde_json::from_str(text).expect("tail_log is a JSON object");
+        assert_eq!(tail["source"], "wp-debug", "tail: {tail}");
+        assert!(tail["lines"].is_array(), "lines array: {tail}");
+        let note = tail["note"].as_str().unwrap().to_ascii_lowercase();
+        assert!(note.contains("not") && !note.contains("sanitis"), "honest note: {tail}");
+        assert!(tail.get("path").is_none(), "path leaked: {tail}");
+        println!("✓ tools/call tail_log → {} line(s), source `wp-debug`, honest note", tail["lines"].as_array().unwrap().len());
+    }
+
+    // 7) ping — an empty result.
     send(&mut stream, r#"{"jsonrpc":"2.0","id":6,"method":"ping"}"#);
     let v = read_reply(&mut reader);
     assert_eq!(v["result"], json!({}), "reply: {v}");

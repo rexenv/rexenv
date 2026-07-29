@@ -218,6 +218,84 @@ impl AgentSiteStatus {
     }
 }
 
+/// A tail of a site's log, as an agent sees it — scrubbed of KNOWN
+/// rexenv-issued tokens and cookie headers, capped, tail-only.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentLogTail {
+    pub id: String,
+    pub domain: String,
+    /// Which log this is (M1: `wp-debug` only).
+    pub source: &'static str,
+    /// The most recent lines, oldest first, each scrubbed.
+    pub lines: Vec<String>,
+    /// The honesty contract, in the output itself — NOT "sanitised".
+    pub note: &'static str,
+}
+
+/// The scope + scrubber caveat, stated where the agent reads it every time.
+const LOG_NOTE: &str = "The site's own WordPress debug log (tail only, capped). \
+    rexenv-issued login tokens and cookie headers are removed, but this does NOT make \
+    the content safe — a debug log can contain anything the site's code wrote to it \
+    (request data, config dumps, third-party API responses). Treat it as raw output.";
+
+impl AgentLogTail {
+    /// Build from the raw tail, scrubbing each line. `source` is a fixed string
+    /// from the closed set the tool offers, never a filename.
+    pub fn from_lines(id: &str, domain: &str, source: &'static str, raw: Vec<String>) -> Self {
+        AgentLogTail {
+            id: id.to_string(),
+            domain: domain.to_string(),
+            source,
+            lines: raw.iter().map(|l| scrub_log_line(l)).collect(),
+            note: LOG_NOTE,
+        }
+    }
+}
+
+/// Redact KNOWN rexenv-issued tokens and cookie headers from a log line. It
+/// removes THESE specific shapes only — a rexenv login token (`rexenv_login=…`)
+/// and `Cookie:`/`Set-Cookie:` header values. **It does NOT make arbitrary log
+/// content safe**: a debug log holds whatever the site's code logged, and no
+/// pattern list can catch an unknown-shaped secret. The tool's `note` and its
+/// scope limits (closed source set, tail-only, line cap) are the real defence;
+/// this scrub is one honest layer, never a "the log is now safe" claim.
+pub fn scrub_log_line(line: &str) -> String {
+    let out = redact_token_after(line, "rexenv_login=");
+    redact_cookie_header(&out)
+}
+
+/// Replace the token following `marker` (URL-token characters) with `<redacted>`,
+/// for every occurrence in the line.
+fn redact_token_after(line: &str, marker: &str) -> String {
+    let mut result = String::new();
+    let mut rest = line;
+    while let Some(pos) = rest.find(marker) {
+        result.push_str(&rest[..pos + marker.len()]);
+        let after = &rest[pos + marker.len()..];
+        let end = after
+            .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '%')))
+            .unwrap_or(after.len());
+        result.push_str("<redacted>");
+        rest = &after[end..];
+    }
+    result.push_str(rest);
+    result
+}
+
+/// Redact a cookie header's value. `Set-Cookie:` is checked before `Cookie:` so
+/// the shorter marker never matches inside the longer one.
+fn redact_cookie_header(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    for marker in ["set-cookie:", "cookie:"] {
+        if let Some(pos) = lower.find(marker) {
+            let end = pos + marker.len();
+            return format!("{}{} <redacted>", &line[..pos], &line[pos..end]);
+        }
+    }
+    line.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +384,32 @@ mod tests {
             // States a limit of the probe.
             assert!(detail.contains("can't") || detail.contains("only"), "{detail}");
         }
+    }
+
+    #[test]
+    fn the_scrubber_removes_known_tokens_and_cookies_but_keeps_benign_content() {
+        let token = "TOKENSECRETee55ff66";
+        let scrubbed = scrub_log_line(&format!("GET /wp-login.php?rexenv_login={token}&redir=1"));
+        assert!(!scrubbed.contains(token), "login token survived: {scrubbed}");
+        assert!(scrubbed.contains("rexenv_login=<redacted>"), "{scrubbed}");
+        assert!(scrubbed.contains("redir=1"), "benign query lost — the scrubber over-reached");
+
+        let cookie = scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly");
+        assert!(!cookie.contains("SECRETVALUE99"), "cookie value survived: {cookie}");
+        assert!(cookie.starts_with("Set-Cookie: <redacted>"), "{cookie}");
+
+        // Benign content is untouched — the scrubber is not a blanket eraser
+        // (which would make the log useless while still not "safe").
+        let benign = "[29-Jul-2026] PHP Warning: undefined variable $x in plugin.php on line 10";
+        assert_eq!(scrub_log_line(benign), benign);
+    }
+
+    #[test]
+    fn the_log_tail_note_never_claims_the_content_is_safe() {
+        // The one place a false "logs are sanitised" line would get written.
+        let tail = AgentLogTail::from_lines("id", "d.rex", "wp-debug", vec!["a".into()]);
+        let note = tail.note.to_ascii_lowercase();
+        assert!(note.contains("not") && note.contains("safe"), "{}", tail.note);
+        assert!(!note.contains("sanitis"), "must not claim sanitised: {}", tail.note);
     }
 }

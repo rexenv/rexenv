@@ -13,11 +13,16 @@
 //! and, of course, presence in `REGISTRY` (the only way a tool exists).
 
 use super::readctx::ReadCtx;
-use super::view::{AgentSiteStatus, AgentSiteView};
+use super::view::{AgentLogTail, AgentSiteStatus, AgentSiteView};
 use crate::error::{Error, Result};
 use serde_json::{json, Value};
 use std::future::Future;
 use std::pin::Pin;
+
+/// `tail_log` line bounds — a scope limit, not a filter: the less of a log an
+/// agent can pull, the less an unknown-shaped secret in it matters.
+const DEFAULT_LOG_LINES: usize = 100;
+const MAX_LOG_LINES: usize = 200;
 
 /// A tool's async result, boxed so the registry can hold handlers uniformly.
 /// `Send` so the session task stays `Send`; `'a` borrows the `ReadCtx`.
@@ -69,6 +74,19 @@ static REGISTRY: &[ReadTool] = &[
         sweep_args: |id| json!({ "site_id": id }),
         handler: site_status,
     },
+    ReadTool {
+        name: "tail_log",
+        description: "Read the tail of a WordPress site's OWN debug log — its plugin/theme PHP \
+                      errors and warnings — the most recent lines (tail-only, capped at 200, \
+                      default 100). rexenv-issued login tokens and cookie headers are removed, \
+                      but the log is otherwise the site's RAW output and is NOT sanitised: it can \
+                      contain whatever the site's code logged (request data, config dumps, API \
+                      responses). Only the WordPress debug log is exposed — shared server, edge, \
+                      database, and access logs are not. Takes `site_id` and optional `lines`.",
+        input_schema: site_id_lines_param,
+        sweep_args: |id| json!({ "site_id": id }),
+        handler: tail_log,
+    },
 ];
 
 /// The `tools/list` result — the registry as MCP tool descriptors.
@@ -113,6 +131,18 @@ fn site_id_param() -> Value {
     })
 }
 
+fn site_id_lines_param() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The site's id (from list_sites)." },
+            "lines": { "type": "integer", "description": "How many recent lines (max 200; default 100)." }
+        },
+        "required": ["site_id"],
+        "additionalProperties": false
+    })
+}
+
 fn list_sites<'a>(ctx: ReadCtx<'a>, _args: &'a Value) -> ToolFuture<'a> {
     Box::pin(async move {
         let sites = ctx.sites()?;
@@ -137,5 +167,26 @@ fn site_status<'a>(ctx: ReadCtx<'a>, args: &'a Value) -> ToolFuture<'a> {
         let signals = ctx.probe_serving(&site).await;
         let status = AgentSiteStatus::from_signals(&site, &signals);
         serde_json::to_value(status).map_err(|e| Error::Other(format!("serialising status: {e}")))
+    })
+}
+
+fn tail_log<'a>(ctx: ReadCtx<'a>, args: &'a Value) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("tail_log needs a `site_id` string".into()))?;
+        let lines = args
+            .get("lines")
+            .and_then(Value::as_u64)
+            .map_or(DEFAULT_LOG_LINES, |n| (n as usize).min(MAX_LOG_LINES));
+        let site = ctx
+            .site_by_id(id)?
+            .ok_or_else(|| Error::Other(format!("no site with id `{id}`")))?;
+        // The WordPress-only gate lives in ReadCtx (the trusted bridge), so this
+        // handler stays free of state types.
+        let raw = ctx.wp_debug_log_tail(&site, lines)?;
+        let tail = AgentLogTail::from_lines(&site.id, &site.domain, "wp-debug", raw);
+        serde_json::to_value(tail).map_err(|e| Error::Other(format!("serialising log tail: {e}")))
     })
 }
