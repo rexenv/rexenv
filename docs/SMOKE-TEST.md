@@ -74,6 +74,31 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version.
 - [ ] "Start rexenv on login" toggles (LaunchAgent created/removed).
 
+## AI agents (MCP) — opt-in endpoint (ships in v0.1.0 only if this passes)
+Socket: `~/Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock`.
+Run the four functional steps AND eyeball the PACKAGED webview — this project's UI
+bug class lives specifically in WKWebView, not in the dev harness: the residual copy
+above the toggle, the muted-amber concerning rows, and the feed rendering **domains,
+not raw UUIDs**.
+- [ ] **1. Default off = no socket.** Fresh launch, never enabled → Settings → AI
+  agents: toggle OFF, no status line, "No agent activity yet". `ls -l <socket>` →
+  the file is ABSENT. **Tell #1:** if the socket exists here, the toggle is a label
+  over an always-on socket (the always-on bug) — not really controlling it.
+- [ ] **2. Enable binds.** Toggle ON → "On — no recent agent activity"; `ls -l
+  <socket>` shows `srw-------` (0600); `nc -U <socket>` connects.
+- [ ] **3. Real client.** `claude mcp add rexenv -- rex mcp`, then ask Claude Code
+  "why is `<site>` 502-ing?" → feed rows appear (list_sites/site_status/tail_log),
+  status flips to "Working — …".
+- [ ] **4. Disable drops the socket AND live sessions.** Toggle OFF while the agent
+  is still connected → status off; `ls -l <socket>` → GONE; the connected agent's
+  NEXT call ERRORS. **Tell #2:** if the socket remains, or the agent keeps working,
+  disable isn't tearing down. **⚠ A step-4 failure is a HOLD, not a note.** "Disable
+  drops the socket" is the security-relevant half — an endpoint you can't turn off is
+  a standing same-user attack surface. Fix-then-ship; do NOT ship v0.1.0 with MCP if
+  step 4 fails.
+- [ ] **5. Persistence + startup gating.** Restart with the toggle ON → the socket
+  rebinds at launch; restart with it OFF → no socket.
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.
