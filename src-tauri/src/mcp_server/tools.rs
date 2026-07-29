@@ -64,12 +64,12 @@ static REGISTRY: &[ReadTool] = &[
     },
     ReadTool {
         name: "site_status",
-        description: "Diagnose why a site is or isn't serving: whether rexenv's edge is up, \
-                      whether this site's backend answers, and the site's HTTP response — reported \
-                      as a specific verdict (serving / backend down / site error / edge down / \
-                      edge blocked …) with what the probe can and cannot tell, and whether \
-                      resolving it is the user's action in rexenv or something to check in the \
-                      site's own code and logs. Takes `site_id` (from list_sites).",
+        description: "Diagnose why a site is or isn't serving, from the stack's OWN state — whether \
+                      rexenv's edge is up and whether this site's backend is running — reported as a \
+                      specific verdict (serving / backend-down / setup-incomplete / edge-blocked / \
+                      edge-down) and whether resolving it is the user's action in rexenv. It does \
+                      NOT request the site (so it never runs the site's code); whether the site's \
+                      own code renders correctly is checked with tail_log. Takes `site_id`.",
         input_schema: site_id_param,
         sweep_args: |id| json!({ "site_id": id }),
         handler: site_status,

@@ -128,8 +128,9 @@ async fn main() {
         assert!(v["result"]["isError"].is_null(), "site_status must not error: {v}");
         let text = v["result"]["content"][0]["text"].as_str().expect("text content");
         let status: Value = serde_json::from_str(text).expect("site_status is a JSON object");
-        // A specific verdict + who-resolves-it + scope, never a bare bool, and
-        // never an internal path.
+        // Assert the SHAPE, not a specific verdict — the verdict reflects this
+        // example's own (empty) manager, so it's honestly BackendDown here.
+        // A specific verdict, who-resolves-it, and scope — never an internal path.
         assert!(status["verdict"].is_string(), "verdict present: {status}");
         assert!(status["resolution"].is_string(), "resolution present: {status}");
         assert!(status["detail"].as_str().unwrap().len() > 10, "detail present: {status}");

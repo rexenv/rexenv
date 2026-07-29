@@ -61,22 +61,20 @@ pub struct ServingSignals {
     pub tcp_443_open: bool,
     /// MANAGER belief: edge up AND this site's upstream up (the Sites-page bool).
     pub serving_manager: bool,
-    /// WIRE: the site's HTTP status for its home URL, if the edge is ours.
-    pub http_status: Option<u16>,
 }
 
 /// A serving verdict — kept DISTINCT rather than collapsed into "not serving",
-/// because an agent acts on whichever we imply and these are four different
-/// problems with different owners.
+/// because an agent acts on whichever we imply and these are different problems
+/// with different owners. All are read from the SERVING PATH's own state (edge
+/// liveness + the manager's backend state), NEVER by requesting the site — M1
+/// runs nothing, so the site's own render errors are `tail_log`'s territory, not
+/// a verdict here.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ServingVerdict {
-    /// Answers a normal response through the edge.
+    /// rexenv's edge and this site's backend are both up — the stack is serving it.
     Serving,
-    /// The site's OWN app returned a 5xx — infrastructure is up, the site's code
-    /// is not.
-    SiteError,
-    /// The edge is up but this site's PHP/web backend isn't answering (502/503/504).
+    /// The edge is up but this site's PHP/web backend isn't running.
     BackendDown,
     /// The site's setup didn't finish, or it has no working route yet.
     SetupIncomplete,
@@ -84,8 +82,6 @@ pub enum ServingVerdict {
     EdgeBlocked,
     /// Nothing is serving on :443 (the stack looks stopped).
     EdgeDown,
-    /// The edge is up but the site's URL didn't respond — reason undetermined.
-    Unknown,
 }
 
 /// Who can resolve a diagnosis — decided ONCE, reused by every diagnostic tool.
@@ -101,9 +97,10 @@ pub enum Resolution {
     /// A human action in the rexenv app (start the stack, resolve a port
     /// conflict, retry setup). An AGENT CANNOT do this.
     UserActionInRexenv,
-    /// The infrastructure is fine; the site's own code/config is the issue —
-    /// look at the code and the logs (the `tail_log` tool).
-    CheckSiteCodeAndLogs,
+    // A third owner ("check the site's own code/logs") was here for the
+    // HTTP-500 verdict; Option A drops the site request, so site_status no
+    // longer produces it — the site's own errors are tail_log's territory. Re-add
+    // deliberately if a future diagnostic needs it, rather than keep it unused.
 }
 
 impl ServingSignals {
@@ -114,15 +111,16 @@ impl ServingSignals {
     pub fn classify(&self, provisioned: bool) -> (ServingVerdict, String, Resolution) {
         use Resolution::*;
         use ServingVerdict::*;
-        // 1) Our edge isn't answering for this host.
+        // 1) Our edge isn't answering for this host (a 204 marker probe the edge
+        //    answers itself — it does NOT request the site).
         if !self.edge_answers_ours {
             return if self.tcp_443_open {
                 (EdgeBlocked,
                  "Another server is answering on port 443 — not rexenv's edge — so rexenv can't \
                   serve this (or any) site until that's resolved. Resolving the conflict, or \
                   stopping the other server, is your action in rexenv's Services screen; an agent \
-                  can't do it. The probe can't identify the other server, only that its response \
-                  isn't rexenv's.".into(),
+                  can't do it. The probe can't identify the other server, only that it isn't \
+                  rexenv's edge.".into(),
                  UserActionInRexenv)
             } else {
                 (EdgeDown,
@@ -132,8 +130,7 @@ impl ServingSignals {
                  UserActionInRexenv)
             };
         }
-        // 2) Edge is up and ours. Setup that never finished is the reason before
-        //    any HTTP reading.
+        // 2) Edge is up and ours. Setup that never finished is the reason first.
         if !provisioned {
             return (SetupIncomplete,
                 "This site's setup didn't finish (it's marked incomplete) — retry or delete it in \
@@ -141,46 +138,22 @@ impl ServingSignals {
                  partially.".into(),
                 UserActionInRexenv);
         }
-        // 3) Read the site's own response.
-        match self.http_status {
-            Some(code) if (200..400).contains(&code) => {
-                (Serving, format!("Serving normally (HTTP {code})."), None)
-            }
-            Some(code @ 502..=504) => (BackendDown,
-                format!("rexenv's edge is up, but this site's PHP/web backend isn't answering \
-                         (HTTP {code}). Its pool may be down or its setup incomplete — start the \
-                         stack or retry the site in the rexenv app; an agent can't. The probe sees \
-                         the gateway error, not the backend's own reason."),
-                UserActionInRexenv),
-            Some(code) if (500..600).contains(&code) => (SiteError,
-                format!("The site is up but its OWN code returned an error (HTTP {code}) — the \
-                         site's application, not rexenv's infrastructure. Look at the site's code \
-                         and its logs (the tail_log tool). The probe can only see that the app \
-                         returned {code}, not why."),
-                CheckSiteCodeAndLogs),
-            Some(404) if self.serving_manager => (Serving,
-                "The site answered HTTP 404 for its home URL, and its backend is up — most likely \
-                 the application's own not-found (an empty or freshly-installed site), not a \
-                 rexenv problem. The probe can't tell an app 404 from a missing route with \
-                 certainty.".into(),
-                CheckSiteCodeAndLogs),
-            Some(404) => (SetupIncomplete,
-                "rexenv's edge is up but this site has no working route to a backend (HTTP 404, \
-                 and the manager doesn't see this site's backend up) — it may have been created \
-                 while the stack was stopped, or its setup didn't finish. Retry or finish setup in \
-                 the rexenv app; an agent can't. The probe can't distinguish an unrouted host from \
-                 an app 404 with certainty.".into(),
-                UserActionInRexenv),
-            Some(code) => (Serving,
-                format!("The site's backend answered (HTTP {code}) — it is up and responding. The \
-                         probe reports the code but can't judge whether {code} is expected for \
-                         this site's app."),
-                None),
-            Option::None => (Unknown,
-                "rexenv's edge is up, but this site's URL didn't respond at all — it may still be \
-                 starting, or its backend just came down. Check Services and the site's logs in \
-                 the rexenv app. The probe only knows the request didn't complete, not why.".into(),
-                UserActionInRexenv),
+        // 3) Edge up + provisioned: is the site's own backend up, per the stack's
+        //    state? (Read from service_infos — NOT by requesting the site.)
+        if self.serving_manager {
+            (Serving,
+             "The stack is serving this site — rexenv's edge and this site's backend are both up. \
+              This checks the serving PATH from the stack's own state, WITHOUT requesting the site \
+              (M1 runs nothing). Whether the site's own code renders correctly — a PHP fatal, a \
+              plugin error — is NOT checked here; use tail_log for the site's own errors.".into(),
+             None)
+        } else {
+            (BackendDown,
+             "rexenv's edge is up, but this site's PHP/web backend isn't running (the stack has no \
+              live pool/server for it). Start the stack, or if setup was incomplete retry the \
+              site, in the rexenv app; an agent can't. Read from the stack's state, not by \
+              requesting the site.".into(),
+             UserActionInRexenv)
         }
     }
 }
@@ -362,61 +335,46 @@ mod tests {
         assert_eq!(json["webServer"], "nginx");
     }
 
-    fn sig(edge_ours: bool, tcp443: bool, mgr: bool, http: Option<u16>) -> ServingSignals {
-        ServingSignals {
-            edge_answers_ours: edge_ours,
-            tcp_443_open: tcp443,
-            serving_manager: mgr,
-            http_status: http,
-        }
+    fn sig(edge_ours: bool, tcp443: bool, mgr: bool) -> ServingSignals {
+        ServingSignals { edge_answers_ours: edge_ours, tcp_443_open: tcp443, serving_manager: mgr }
     }
 
     #[test]
     fn classify_keeps_the_failures_distinct_never_collapsing_to_not_serving() {
         use ServingVerdict::*;
         // edge down (nothing on :443) vs edge blocked (a foreign server on :443)
-        assert_eq!(sig(false, false, false, None).classify(true).0, EdgeDown);
-        assert_eq!(sig(false, true, false, None).classify(true).0, EdgeBlocked);
-        // a gateway 502 (backend down) is NOT the site's own 500 (its code) —
-        // different verdicts, different owners
-        assert_eq!(sig(true, true, false, Some(502)).classify(true).0, BackendDown);
-        let (v, _, r) = sig(true, true, true, Some(500)).classify(true);
-        assert_eq!(v, SiteError);
-        assert_eq!(r, Resolution::CheckSiteCodeAndLogs);
-        // serving
-        assert_eq!(sig(true, true, true, Some(200)).classify(true).0, Serving);
-        // setup incomplete beats the HTTP reading, even with the edge up
-        assert_eq!(sig(true, true, true, Some(200)).classify(false).0, SetupIncomplete);
-        // a 404 with the backend up is the app's own 404 (serving); with the
-        // backend NOT up it reads as unrouted/incomplete
-        assert_eq!(sig(true, true, true, Some(404)).classify(true).0, Serving);
-        assert_eq!(sig(true, true, false, Some(404)).classify(true).0, SetupIncomplete);
-        // edge up but no response at all → Unknown, never a confident "serving"
-        assert_eq!(sig(true, true, true, None).classify(true).0, Unknown);
+        assert_eq!(sig(false, false, false).classify(true).0, EdgeDown);
+        assert_eq!(sig(false, true, false).classify(true).0, EdgeBlocked);
+        // edge up + provisioned: backend up (per the stack's own state) = serving;
+        // backend down = BackendDown — distinct, different owners.
+        assert_eq!(sig(true, true, true).classify(true).0, Serving);
+        assert_eq!(sig(true, true, false).classify(true).0, BackendDown);
+        // setup incomplete beats the backend state, even with the edge up.
+        assert_eq!(sig(true, true, true).classify(false).0, SetupIncomplete);
     }
 
     #[test]
-    fn every_non_serving_diagnosis_names_who_acts_and_states_the_probe_scope() {
-        // The honesty contract: a non-serving verdict never leaves the model to
-        // guess an action it can't take, and always says what the probe can't tell.
-        for s in [
-            sig(false, false, false, None),    // edge down
-            sig(false, true, false, None),     // edge blocked
-            sig(true, true, false, Some(502)), // backend down
-            sig(true, true, true, Some(500)),  // site error
-            sig(true, true, false, Some(404)), // unrouted / setup incomplete
+    fn every_non_serving_names_the_user_and_serving_states_it_never_ran_the_site() {
+        // A non-serving verdict never leaves the model to guess an action it
+        // can't take: all M1 infra faults resolve to the user in rexenv.
+        for (s, prov) in [
+            (sig(false, false, false), true), // edge down
+            (sig(false, true, false), true),  // edge blocked
+            (sig(true, true, false), true),   // backend down
+            (sig(true, true, false), false),  // setup incomplete
         ] {
-            let (verdict, detail, resolution) = s.classify(true);
+            let (verdict, detail, resolution) = s.classify(prov);
             assert_ne!(verdict, ServingVerdict::Serving);
-            assert_ne!(resolution, Resolution::None, "must name who resolves it");
-            // Points at rexenv OR the site's own code/logs — never nowhere.
-            assert!(
-                detail.contains("rexenv") || detail.contains("code") || detail.contains("logs"),
-                "{detail}"
-            );
-            // States a limit of the probe.
+            assert_eq!(resolution, Resolution::UserActionInRexenv, "an agent can't fix infra");
+            assert!(detail.contains("rexenv"), "{detail}");
             assert!(detail.contains("can't") || detail.contains("only"), "{detail}");
         }
+        // The Serving verdict itself states it did NOT run the site (Option A) and
+        // points at tail_log for the site's own render errors.
+        let (v, detail, _) = sig(true, true, true).classify(true);
+        assert_eq!(v, ServingVerdict::Serving);
+        assert!(detail.contains("requesting the site"), "must state it didn't run the site: {detail}");
+        assert!(detail.contains("tail_log"), "{detail}");
     }
 
     #[test]

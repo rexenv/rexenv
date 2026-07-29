@@ -1,18 +1,24 @@
 //! `ReadCtx` — the ONLY door an M1 tool handler has to app state, and it opens
-//! only onto reads. A handler receives a `ReadCtx` and nothing else, so it
-//! physically cannot start, stop, write, or delete anything: the capability
-//! boundary is this type's method set.
+//! only onto reads.
+//!
+//! **The guarantee, stated honestly (assembly-review correction):** a handler
+//! receives a `ReadCtx` and nothing else, and `ReadCtx` exposes no mutating
+//! method and keeps its `state` field private — so a handler **cannot mutate
+//! rexenv's state** (start/stop a service, write the DB, change a site). It is
+//! NOT a claim that a handler "cannot write or delete anything" in the abstract:
+//! a handler is a plain `fn` and could in principle call `std::fs`/`std::process`
+//! itself. That the shipped handlers don't is checked by the read-only guard
+//! (which scans BOTH `tools.rs` and this bridge); the type-level boundary is
+//! that state is reachable only through this read-only method set.
 //!
 //! **Keep it minimal to the point of inconvenience.** Every method here is
-//! permanent M1 surface — it is far easier to add one later than to remove one
-//! after a tool depends on it. If a tool needs data ReadCtx doesn't expose,
-//! prefer widening that tool's own conversion over widening ReadCtx.
+//! permanent M1 surface — easier to add one later than to remove one a tool
+//! depends on. Prefer widening a tool's own conversion over widening ReadCtx.
 //!
 //! This module is the trusted bridge, so it (unlike `tools`) may reach `core`
-//! reads, the `AppState` snapshot, and the network for a probe. The `tools`
-//! module imports only `ReadCtx` — enforced by the read-only import guard in the
-//! parent module. `ReadCtx` is `Copy` (a single `&AppState`) so async handlers
-//! can take it by value.
+//! READS and the `AppState` snapshot — but never a mutator (guard-scanned). The
+//! `tools` module imports only `ReadCtx`. `ReadCtx` is `Copy` (a single
+//! `&AppState`) so async handlers can take it by value.
 
 use super::view::ServingSignals;
 use crate::core;
@@ -59,11 +65,14 @@ impl<'a> ReadCtx<'a> {
         Ok(serving.into_iter().filter(|s| s.serving).map(|s| s.domain).collect())
     }
 
-    /// Gather the honest signals behind "is this site serving, and if not, why".
-    /// Mixes the manager's belief (a snapshot — no lock held across the network
-    /// waits) with WIRE truth (does our edge actually answer, is anything on
-    /// :443, what does the site's URL return). The classification of these into
-    /// a verdict is pure and lives in `ServingSignals::classify`.
+    /// Gather the signals behind "is this site serving, and if not, why" —
+    /// WITHOUT requesting the site (M1 runs nothing; a GET would boot WordPress
+    /// and fire wp-cron). Reads the SERVING PATH's own state: the manager's
+    /// belief (a snapshot, no lock across the network waits), whether OUR edge
+    /// answers its 204 marker probe (the edge answers that itself — it does not
+    /// proxy to the site), and whether anything holds :443. The site's OWN render
+    /// errors are `tail_log`'s territory, never a signal here. Classification is
+    /// pure (`ServingSignals::classify`).
     pub async fn probe_serving(&self, site: &Site) -> ServingSignals {
         // Manager belief: edge && this site's upstream up (the Sites-page bool).
         let serving_manager =
@@ -71,12 +80,13 @@ impl<'a> ReadCtx<'a> {
                 .first()
                 .is_some_and(|s| s.serving);
 
-        // Wire: does OUR edge answer (marker header) for this exact host?
+        // Wire: does OUR edge answer (marker header) for this host? The probe path
+        // short-circuits at the edge (`respond 204`), so this NEVER runs the site.
         let edge_answers_ours =
             core::proxy::edge_answers_as_ours(&site.domain, EDGE_HTTPS_PORT).await;
 
         // Wire: is ANYTHING listening on :443 (to tell "stack stopped" from
-        // "another server holds the port")?
+        // "another server holds the port")? A bare TCP connect, no request.
         let tcp_443_open = tokio::time::timeout(
             std::time::Duration::from_secs(2),
             tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, EDGE_HTTPS_PORT)),
@@ -85,15 +95,7 @@ impl<'a> ReadCtx<'a> {
         .map(|r| r.is_ok())
         .unwrap_or(false);
 
-        // Wire: the site's actual HTTP response for its home URL, if the edge is
-        // ours (no point probing a foreign or absent edge).
-        let http_status = if edge_answers_ours {
-            site_http_status(&site.domain, EDGE_HTTPS_PORT).await
-        } else {
-            None
-        };
-
-        ServingSignals { edge_answers_ours, tcp_443_open, serving_manager, http_status }
+        ServingSignals { edge_answers_ours, tcp_443_open, serving_manager }
     }
 
     /// The RAW tail of the site's WordPress debug log (the caller scrubs), capped
@@ -108,20 +110,4 @@ impl<'a> ReadCtx<'a> {
         let content_rel = site.content_dir.clone().unwrap_or_else(|| "wp-content".into());
         core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), &content_rel, lines).map(Some)
     }
-}
-
-/// GET the site's home URL through the edge (resolved to loopback), returning
-/// the HTTP status. Identity comes from having asked our edge (the caller only
-/// probes when the edge answered as ours); the leaf won't chain for reqwest's
-/// store, so certs are not verified. `None` on any transport failure.
-async fn site_http_status(host: &str, https_port: u16) -> Option<u16> {
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .resolve(host, std::net::SocketAddr::from(([127, 0, 0, 1], https_port)))
-        .timeout(std::time::Duration::from_secs(4))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .ok()?;
-    let url = format!("https://{host}:{https_port}/");
-    client.get(&url).send().await.ok().map(|r| r.status().as_u16())
 }

@@ -515,35 +515,55 @@ mod tests {
     }
 
     #[test]
-    fn m1_tools_are_read_only_by_construction() {
-        // The tools module may reach app state ONLY through ReadCtx. A direct
-        // reference to a manager, a command, or raw AppState would become a hole
-        // the moment M2 lands, so scan the source and fail LOUDLY + SPECIFICALLY.
-        // Comments are stripped first: prose may name these to explain the rule.
-        let src = include_str!("mcp_server/tools.rs");
-        const FORBIDDEN: &[&str] = &[
-            "core::",
-            "commands::",
-            "ServiceManager",
-            "service_manager",
-            "AppState",
-            "PrivilegeManager",
-            "run_privileged",
-        ];
-        for (i, line) in src.lines().enumerate() {
-            let code = line.split("//").next().unwrap_or("");
-            for tok in FORBIDDEN {
-                assert!(
-                    !code.contains(tok),
-                    "M1 read-only boundary violated: mcp_server/tools.rs:{} reaches `{}`.\n\
-                     M1 tools are read-only BY CONSTRUCTION — a handler may touch app state ONLY \
-                     through ReadCtx (super::readctx), never a manager, command, or raw AppState. \
-                     If you are adding a tool that must mutate or execute, it belongs in the M2 \
-                     executing-tools module (a different capability), NOT here.",
-                    i + 1,
-                    tok
-                );
+    fn m1_read_only_boundary_holds_across_tools_and_the_read_bridge() {
+        // The read-only guarantee is enforced structurally by ReadCtx (no
+        // mutator method; private state field) — but a handler is a plain fn and
+        // ReadCtx reaches `core::` for its READS, so the assembly review taught us
+        // to scan BOTH surfaces, not just tools.rs (the door isn't the only file
+        // with reach):
+        //   - tools.rs: a handler reaches state ONLY through ReadCtx — never a
+        //     manager, command, raw AppState, OR a direct syscall (fs/process/net).
+        //   - readctx.rs (the audited bridge): may reach `core::` READS, but never
+        //     a MUTATOR or executor.
+        // Comments are stripped (prose names these to explain the rule). A token
+        // hidden in a string literal after `//` is a known minor gap — these
+        // tokens don't appear in string literals in either file; the type-level
+        // ReadCtx boundary is the real guarantee, this scan is the belt.
+        fn scan(src: &str, file: &str, forbidden: &[&str]) {
+            for (i, line) in src.lines().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                for tok in forbidden {
+                    assert!(
+                        !code.contains(tok),
+                        "M1 read-only boundary violated: {}:{} reaches `{}`.\n\
+                         M1 is read-only: a tool handler touches state ONLY through ReadCtx, and \
+                         ReadCtx itself may only READ. Anything that mutates or executes belongs \
+                         in the M2 executing-tools module (a different capability), NOT here.",
+                        file,
+                        i + 1,
+                        tok
+                    );
+                }
             }
         }
+        scan(
+            include_str!("mcp_server/tools.rs"),
+            "mcp_server/tools.rs",
+            &[
+                "core::", "commands::", "ServiceManager", "service_manager", "AppState",
+                "PrivilegeManager", "run_privileged", "std::fs", "std::process", "std::os",
+                "Command", "reqwest",
+            ],
+        );
+        scan(
+            include_str!("mcp_server/readctx.rs"),
+            "mcp_server/readctx.rs",
+            &[
+                "start_all", "stop_all", "spawn_db", "stop_db", "start_edge", "stop_edge",
+                ".reload(", "start_privileged", "run_privileged", "PrivilegeManager",
+                "commands::", "std::fs::write", "std::fs::remove", "std::fs::create",
+                "std::process", "Command", ".execute(",
+            ],
+        );
     }
 }
