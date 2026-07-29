@@ -152,20 +152,52 @@ at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
    exists at `<app-data>/resolver-backups/test` with mode `600`; exactly one row in
    `resolver_takeovers`.
 5. Import a site on `.test`, confirm it resolves and serves.
-6. **Hand it back** from the resolver card. Verify: `/etc/resolver/test` is byte-identical
-   to step 1's `shasum`; the backup file is GONE; the record is GONE; the confirm warned
-   that rexenv `.test` sites stop resolving.
+6. **Hand it back** from **Settings → DNS & SSL** (the borrowed-resolver "Hand back" row) —
+   NOT the import screen: after takeover the TLD reads "borrowed", which the `/import`
+   consent panel filters out, so no card renders there (`Import.tsx` `blocked` filter). The
+   row also shows for a *drifted* (reclaimed) TLD. Verify: `/etc/resolver/test` is
+   byte-identical to step 1's `shasum`; the backup file is GONE; the record is GONE; the
+   confirm warned that rexenv `.test` sites stop resolving.
 7. Take it over again, then this time run **Settings → Remove system changes**. Verify the
    same restore happened as part of the single privileged prompt.
 8. **Drift:** take it over, then run `valet install` (or relaunch Herd) so they reclaim the
-   file. Restart rexenv → expect the startup drift notice naming the TLD, and `rex doctor`
-   reporting it too. Then remove system changes and verify we left THEIR file alone and
-   dropped our record + backup.
+   file. Restart rexenv → expect the startup **log** to warn naming the TLD (`lib.rs`
+   `log::warn`); there is **no on-launch UI toast/banner** — the drift shows in the UI only
+   on `/import` and Settings → DNS & SSL, and `rex doctor` reports it under `resolverDrift`.
+   Then remove system changes and verify we left THEIR file alone and dropped our record +
+   backup.
 9. **Backup-missing path:** take it over, delete `<app-data>/resolver-backups/test` by
    hand, then remove system changes. Expect our file removed and an honest message saying
    the backup was gone and to run `valet install`.
 10. Throughout: `/etc/resolver/rex` must be untouched, and no file we did not create may
     ever be removed.
+
+**Rollback — if the takeover goes wrong or you stop halfway (keep this beside the run).**
+The takeover is **record-before-write** (`core/dns.rs` `take_over_resolver`): it writes the
+`0600` backup and the `resolver_takeovers` row FIRST, then runs the single privileged
+`osascript` that overwrites `/etc/resolver/<tld>`; a failure rolls back BOTH. So:
+- **Cancelled admin prompt → nothing changed.** No cleanup. Verify: `cat /etc/resolver/<tld>`
+  still shows their content and the DB has no row.
+- **Crash / force-quit after the overwrite → a record + backup ALWAYS exist**, so hand-back /
+  Remove system changes restores it normally. The "overwrote-but-untracked" state cannot occur
+  by construction — there is no silent-alteration-without-a-recovery-path case.
+- **Manual restore of ANY borrowed TLD:**
+  ```sh
+  sudo cp ~/Library/Application\ Support/dev.rexenv.rexenv/resolver-backups/<tld> /etc/resolver/<tld>
+  sudo chmod 644 /etc/resolver/<tld>
+  sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder
+  ```
+  (the same original bytes also live in `resolver_takeovers.original` in `…/rexenv.db`.)
+- **A TLD rexenv PLAIN-CREATED** (absent → create, no record — e.g. `.rex`, or any TLD added on
+  a clean Mac; ours iff its content is exactly `nameserver 127.0.0.1` + `port 15353`, list with
+  `grep -l 'port 15353' /etc/resolver/*`): `sudo rm -f /etc/resolver/<tld>` + the flush above.
+  The per-site "Hand back" button REFUSES these (no record) — use Settings → Remove system
+  changes, or the manual `rm`.
+- **Backup truly gone** (both the `0600` file AND the row): rexenv can only remove ITS version
+  and tell you to run `valet install`; it cannot restore the original owner's file — reinstall it
+  via `valet install` / a Herd relaunch.
+- **Metadata:** restore normalizes the file to mode `644` (content byte-identical, permissions
+  not) — `chmod` by hand only if the original had a non-`644` mode.
 
 ## H) ⚠️ READING THE EVIDENCE — a 200 on an imported host proves nothing
 
@@ -221,16 +253,31 @@ exactly with the scan, not that any machine matches the original pass.
    (Herd's copy wins). No domain appears twice.
 5. **PHP pins** — rows with isolation markers show their pinned minor (both
    marker formats — `php@8.4`-style and bare-digit); rows with no marker show
-   the default.
+   the default. **Expected, not a bug:** a pin rexenv doesn't ship (anything outside
+   PHP 8.0–8.5) flips the row AMBER "needs attention — PHP x.y isn't one rexenv ships,
+   choose a version to import it on", still shows their pin, and disables its checkbox
+   until you pick one (a legacy 7.4-isolated project renders this).
 6. **Docroot resolution** — a Laravel/Bedrock row must show `(serving public/)`
-   or `(serving web/)`, not the project root.
+   or `(serving web/)`, not the project root. **Two amber "needs attention" cases are
+   also expected here, not bugs:** a project with a `LocalValetDriver.php` in its root
+   shows its detected docroot but flips amber (rexenv won't execute their driver to
+   confirm the root); and a served folder that overlaps an existing rexenv site, is too
+   broad, or sits inside rexenv's app data reads "needs attention".
 7. **Selection** — select-all ticks only the ready ones; the indeterminate
    state shows on a partial selection; disabled rows can't be ticked; the count
    in the bar matches; Rescan preserves nothing stale.
-8. **Import one site.** Pick a small static/PHP one. Expect the admin prompt
-   ONCE, up front, before any site is created. Watch the row flip to `imported`.
-   Then: it appears in Sites with the **external** badge, `https://<domain>`
-   loads THEIR files, and deleting it leaves the folder on disk.
+8. **Import one site.** Pick a small static/PHP one. Note the **"also copy databases"**
+   opt-in checkbox (off by default — Stage-2, `Import.tsx`): the doc's populated-list
+   steps predate it. Leave it OFF for the first pass. Expect the admin prompt ONCE, up
+   front, before any site is created (the DB copy, when enabled, adds no admin prompt —
+   it's a loopback SQL read/restore). Watch the row flip to `imported`. Then: it appears
+   in Sites with the **external** badge, `https://<domain>` loads THEIR files, and
+   deleting it leaves the folder on disk.
+   - **With "also copy databases" ON** (do this as a second import): each site also gets
+     its DB copied into rexenv's engine — a READ, their original database is never touched.
+     The site keeps using the OLD database until you switch it over (its Database tab shows
+     the exact change), the row carries a **DB pill**, and the summary reports "N databases
+     copied / N failed". This is the Stage-2 flow §I exercises in full.
 9. **Continue-on-failure** — hard to force naturally; if you want it, rename a
    project folder between the scan and the import so one row fails, and confirm
    the rest still import and the summary names the failure.
