@@ -8,6 +8,7 @@ pub mod cli_server;
 pub mod commands;
 pub mod core;
 pub mod error;
+#[cfg(unix)]
 pub mod mcp_server;
 pub mod platform;
 pub mod state;
@@ -406,9 +407,10 @@ pub fn run() {
 
             // MCP server socket (see `mcp_server`): the AI-agent endpoint,
             // driven through the `rex mcp` pipe. Its own `0600` socket beside
-            // the CLI one; M1 exposes zero tools (just the handshake).
+            // the CLI one; M1 tools are read-only (list_sites), reached only
+            // through ReadCtx.
             #[cfg(unix)]
-            mcp_server::spawn();
+            mcp_server::spawn(app.handle().clone());
 
             // Health watchdog: every 10s probe every service the manager OWNS and
             // respawn dead ones (bounded attempts) — the UI used to show "running"

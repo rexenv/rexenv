@@ -3,27 +3,33 @@
 //!
 //! Like `cli_server`, this is remote control of THIS process only — the `cli/`
 //! shim never links the app lib; it copies bytes between the client's stdio and
-//! our socket. Once tools land they execute through the same `commands::*` fns
-//! the UI calls, so there is one brain (M1-T1 exposes ZERO tools — just the
-//! handshake, which is contained because there is nothing to execute).
+//! our socket. Tools execute through the same read paths the UI uses, via
+//! `ReadCtx` (see `readctx`), so there is one brain.
 //!
 //! **No SDK** (docs/PLAN-mcp-server.md §2.1): every `rmcp` is edition 2024
-//! (rustc ≥ 1.85) and the repo pins 1.77.2, so a proposed feature would raise
-//! the toolchain floor as a side effect — and rmcp's whole tree cuts against
-//! this codebase's dependency-closure discipline. M1 needs only MCP's stable,
-//! boring core, so it is hand-rolled on `serde_json` (already a dep). We
-//! implement the **2025-11-25** core: `initialize`, `notifications/initialized`,
-//! `tools/list`, `tools/call`, `ping`. Framing is newline-delimited JSON-RPC 2.0
-//! — one message per line, no embedded newlines (the MCP stdio transport, piped
-//! through the shim verbatim). Owning the protocol means owning its
-//! compatibility, so the handshake is proven against a REAL client, not just our
-//! own encoder (`examples/mcp_socket_check.rs` speaks a spec-literal handshake;
-//! the manual `claude mcp add` check closes the last gap — §8).
+//! (rustc ≥ 1.85) and the repo pins 1.77.2, so the server is hand-rolled on
+//! `serde_json`. We implement the **2025-11-25** stable core: `initialize`,
+//! `notifications/initialized`, `tools/list`, `tools/call`, `ping`. Framing is
+//! newline-delimited JSON-RPC 2.0 — one message per line (the MCP stdio
+//! transport, piped verbatim).
+//!
+//! **M1 is the read-only, contained tier**, and that is structural, not a
+//! convention: a tool handler receives only a `ReadCtx` (no mutating method,
+//! `readctx`) and the `tools` module imports no manager or command at all —
+//! pinned by the read-only import guard in `tests`. When executing tools arrive
+//! (M2) they go in a *different* module with its own capability; this boundary
+//! does not erode.
 //!
 //! Socket: `<config>/rexenv-mcp.sock`, `0600`, bound with the SAME convention as
 //! the CLI socket — `cli_server::bind`, deliberately reused so there is one
 //! socket convention, not two. Never TCP.
 
+mod readctx;
+mod tools;
+mod view;
+
+use crate::state::app::AppState;
+use readctx::ReadCtx;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
@@ -46,7 +52,7 @@ const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Spawn the MCP listener at app startup. Failure is logged, never fatal — the
 /// app works without its MCP endpoint, exactly like the CLI socket.
-pub fn spawn() {
+pub fn spawn(app: tauri::AppHandle) {
     let path = match crate::platform::current().paths().config_dir() {
         Ok(dir) => dir.join(SOCKET_FILE),
         Err(e) => {
@@ -65,21 +71,23 @@ pub fn spawn() {
             }
         };
         log::info!("mcp: listening on {}", path.display());
-        serve(listener).await;
+        serve(listener, app).await;
     });
 }
 
 /// Accept loop: one long-lived MCP session per connection (unlike the CLI
 /// socket's one-request-per-connection). Each session runs on its own task.
-/// Public so the `mcp_socket_check` example can serve it over the real socket.
-pub async fn serve(listener: UnixListener) {
+/// Public and runtime-generic so the `mcp_socket_check` example can serve it
+/// with a `MockRuntime` app, exactly as `cli_server` tests do.
+pub async fn serve<Rt: tauri::Runtime>(listener: UnixListener, app: tauri::AppHandle<Rt>) {
     loop {
         let Ok((stream, _)) = listener.accept().await else {
             continue; // transient accept error; the socket stays bound
         };
+        let app = app.clone();
         tokio::spawn(async move {
             let (read, write) = stream.into_split();
-            session(read, write).await;
+            session(read, write, app).await;
         });
     }
 }
@@ -87,10 +95,11 @@ pub async fn serve(listener: UnixListener) {
 /// One MCP session: read newline-delimited JSON-RPC messages, dispatch each,
 /// write a reply for every request (never for a notification), until EOF.
 /// Generic over the byte streams so it is testable without a socket.
-async fn session<R, W>(read: R, mut write: W)
+async fn session<R, W, Rt>(read: R, mut write: W, app: tauri::AppHandle<Rt>)
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
+    Rt: tauri::Runtime,
 {
     let mut reader = BufReader::new(read);
     let mut buf = Vec::new();
@@ -100,8 +109,15 @@ where
         if trimmed.is_empty() {
             continue;
         }
-        if let Some(response) = handle_message(trimmed) {
-            if write.write_all(response.as_bytes()).await.is_err()
+        let reply = match dispatch(trimmed) {
+            Dispatch::Silent => None,
+            Dispatch::Reply(r) => Some(r),
+            Dispatch::ToolCall { id, name, args } => {
+                Some(fulfill_tool_call(&app, id, &name, &args))
+            }
+        };
+        if let Some(reply) = reply {
+            if write.write_all(reply.as_bytes()).await.is_err()
                 || write.write_all(b"\n").await.is_err()
                 || write.flush().await.is_err()
             {
@@ -138,40 +154,83 @@ where
     }
 }
 
-/// Dispatch one JSON-RPC message. `Some(json line)` for a request (a result or
-/// an error, echoing the request `id`); `None` for a notification or an
-/// unparseable notification-shaped message (nothing to reply to). A message we
-/// cannot parse at all is answered with a parse error at `id: null`.
-fn handle_message(text: &str) -> Option<String> {
+/// The outcome of dispatching one message, separated so the STATELESS protocol
+/// (everything but running a tool) stays a pure, unit-testable function and only
+/// `tools/call` reaches into app state (via `fulfill_tool_call`).
+#[derive(Debug)]
+enum Dispatch {
+    /// A complete JSON-RPC reply line to send back.
+    Reply(String),
+    /// A notification — nothing to send.
+    Silent,
+    /// A call to a REGISTERED tool; needs app state to fulfil.
+    ToolCall { id: Value, name: String, args: Value },
+}
+
+/// Pure protocol dispatch: initialize / ping / tools-list / notifications /
+/// unknown-method / parse-error all resolve here without touching app state; a
+/// call to a *known* tool becomes a `ToolCall` the session fulfils with state,
+/// while a call to an *unknown* tool errors here.
+fn dispatch(text: &str) -> Dispatch {
     let msg: Value = match serde_json::from_str(text) {
-        Ok(v) => v,
         // JSON-RPC: a parse error is reported with a null id.
-        Err(_) => return Some(error_response(Value::Null, -32700, "parse error")),
+        Err(_) => return Dispatch::Reply(error_response(Value::Null, -32700, "parse error")),
+        Ok(v) => v,
     };
     // Absence of `id` marks a notification — never answered.
     let id = msg.get("id").cloned();
     let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
     match (method, id) {
-        ("initialize", Some(id)) => Some(result_response(id, initialize_result(&msg))),
-        ("ping", Some(id)) => Some(result_response(id, json!({}))),
-        ("tools/list", Some(id)) => Some(result_response(id, json!({ "tools": [] }))),
-        // M1 exposes no tools, so every tools/call names an unknown tool.
+        ("initialize", Some(id)) => Dispatch::Reply(result_response(id, initialize_result(&msg))),
+        ("ping", Some(id)) => Dispatch::Reply(result_response(id, json!({}))),
+        ("tools/list", Some(id)) => Dispatch::Reply(result_response(id, tools::tools_list_result())),
         ("tools/call", Some(id)) => {
             let name = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
-            Some(error_response(id, -32602, &format!("unknown tool: {name}")))
+            if tools::find(name).is_none() {
+                Dispatch::Reply(error_response(id, -32602, &format!("unknown tool: {name}")))
+            } else {
+                let args = msg.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
+                Dispatch::ToolCall { id, name: name.to_string(), args }
+            }
         }
         // Notifications (no id): `initialized` and anything else — no reply.
-        (_, None) => None,
+        (_, None) => Dispatch::Silent,
         // Any other request method.
         (other, Some(id)) => {
-            Some(error_response(id, -32601, &format!("method not found: {other}")))
+            Dispatch::Reply(error_response(id, -32601, &format!("method not found: {other}")))
         }
     }
 }
 
-/// The `initialize` result: advertise the tools capability (so clients call
-/// `tools/list`), our name and version, and the negotiated protocol version —
-/// echoing the client's when we recognise it, else our own.
+/// Run a registered read-only tool and wrap its outcome as an MCP `tools/call`
+/// result. A handler error is a TOOL error (`isError: true` content), not a
+/// JSON-RPC protocol error — the agent sees a message, not a broken transport.
+fn fulfill_tool_call<Rt: tauri::Runtime>(
+    app: &tauri::AppHandle<Rt>,
+    id: Value,
+    name: &str,
+    args: &Value,
+) -> String {
+    use tauri::Manager;
+    let Some(tool) = tools::find(name) else {
+        return error_response(id, -32602, &format!("unknown tool: {name}"));
+    };
+    let Some(state) = app.try_state::<AppState>() else {
+        return result_response(
+            id,
+            tool_error_content("rexenv is still starting — try again in a moment"),
+        );
+    };
+    let ctx = ReadCtx::new(state.inner());
+    match (tool.handler)(&ctx, args) {
+        Ok(v) => result_response(id, tool_success_content(&v)),
+        Err(e) => result_response(id, tool_error_content(&e.to_string())),
+    }
+}
+
+/// The `initialize` result: advertise the tools capability, our name and
+/// version, and the negotiated protocol version — echoing the client's when we
+/// recognise it, else our own.
 fn initialize_result(msg: &Value) -> Value {
     let requested = msg.pointer("/params/protocolVersion").and_then(Value::as_str);
     let version = match requested {
@@ -185,6 +244,17 @@ fn initialize_result(msg: &Value) -> Value {
     })
 }
 
+/// A successful tool result: the tool's JSON rendered as a text content block.
+fn tool_success_content(v: &Value) -> Value {
+    let text = serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string());
+    json!({ "content": [ { "type": "text", "text": text } ] })
+}
+
+/// A tool execution failure: an `isError` text block (not a JSON-RPC error).
+fn tool_error_content(msg: &str) -> Value {
+    json!({ "content": [ { "type": "text", "text": msg } ], "isError": true })
+}
+
 fn result_response(id: Value, result: Value) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "result": result }).to_string()
 }
@@ -196,21 +266,23 @@ fn error_response(id: Value, code: i64, message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::AsyncReadExt;
 
-    fn parse(line: &str) -> Value {
-        serde_json::from_str(line).expect("handler emits valid JSON")
+    fn reply(text: &str) -> Value {
+        match dispatch(text) {
+            Dispatch::Reply(r) => serde_json::from_str(&r).expect("reply is valid JSON"),
+            other => panic!("expected a Reply, got {other:?}"),
+        }
     }
 
     #[test]
     fn initialize_returns_server_info_and_the_tools_capability() {
-        let req = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}"#;
-        let v = parse(&handle_message(req).expect("initialize is a request"));
+        let v = reply(
+            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}"#,
+        );
         assert_eq!(v["jsonrpc"], "2.0");
         assert_eq!(v["id"], 1);
         assert_eq!(v["result"]["serverInfo"]["name"], "rexenv");
         assert!(v["result"]["serverInfo"]["version"].is_string());
-        // Advertising the tools capability is what makes a client call tools/list.
         assert!(v["result"]["capabilities"]["tools"].is_object());
     }
 
@@ -218,73 +290,97 @@ mod tests {
     fn initialize_echoes_a_supported_version_and_falls_back_otherwise() {
         for (asked, want) in [
             ("2025-11-25", "2025-11-25"),
-            ("2024-11-05", "2024-11-05"), // an older but core-compatible revision
-            ("2099-01-01", PROTOCOL_VERSION), // unknown → our own version
+            ("2024-11-05", "2024-11-05"),
+            ("2099-01-01", PROTOCOL_VERSION),
         ] {
-            let req = format!(
+            let v = reply(&format!(
                 r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{asked}"}}}}"#
-            );
-            let v = parse(&handle_message(&req).unwrap());
+            ));
             assert_eq!(v["result"]["protocolVersion"], want, "asked {asked}");
         }
     }
 
     #[test]
-    fn tools_list_is_empty_and_ping_is_an_empty_result_in_m1() {
-        let v = parse(&handle_message(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap());
-        assert_eq!(v["result"]["tools"], json!([]));
-        let v = parse(&handle_message(r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#).unwrap());
+    fn tools_list_advertises_list_sites_with_a_schema() {
+        let v = reply(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
+        let tools = v["result"]["tools"].as_array().expect("tools array");
+        let ls = tools.iter().find(|t| t["name"] == "list_sites").expect("list_sites present");
+        assert!(ls["description"].as_str().unwrap().len() > 10);
+        assert_eq!(ls["inputSchema"]["type"], "object");
+    }
+
+    #[test]
+    fn ping_is_an_empty_result() {
+        let v = reply(r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#);
         assert_eq!(v["result"], json!({}));
     }
 
     #[test]
     fn notifications_are_never_answered() {
-        assert!(handle_message(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
-        assert!(handle_message(r#"{"jsonrpc":"2.0","method":"notifications/anything"}"#).is_none());
+        assert!(matches!(
+            dispatch(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#),
+            Dispatch::Silent
+        ));
+        assert!(matches!(
+            dispatch(r#"{"jsonrpc":"2.0","method":"notifications/anything"}"#),
+            Dispatch::Silent
+        ));
     }
 
     #[test]
-    fn unknown_method_and_any_tool_call_error_by_id_never_panic() {
-        let v = parse(&handle_message(r#"{"jsonrpc":"2.0","id":4,"method":"resources/list"}"#).unwrap());
-        assert_eq!(v["id"], 4);
-        assert_eq!(v["error"]["code"], -32601);
-        // Zero tools in M1: any call is an unknown tool, never an execution.
-        let call = r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"list_sites"}}"#;
-        let v = parse(&handle_message(call).unwrap());
+    fn a_known_tool_becomes_a_toolcall_an_unknown_one_errors() {
+        // A registered tool defers to the stateful fulfil step.
+        match dispatch(r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_sites"}}"#) {
+            Dispatch::ToolCall { name, .. } => assert_eq!(name, "list_sites"),
+            other => panic!("expected a ToolCall, got {other:?}"),
+        }
+        // An unregistered tool errors at dispatch, statelessly — never executes.
+        let v = reply(
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"definitely_not_a_tool"}}"#,
+        );
         assert_eq!(v["error"]["code"], -32602);
-        assert!(v["error"]["message"].as_str().unwrap().contains("list_sites"));
+        assert!(v["error"]["message"].as_str().unwrap().contains("definitely_not_a_tool"));
     }
 
     #[test]
-    fn garbage_is_a_parse_error_at_null_id_not_a_crash() {
-        let v = parse(&handle_message("this is not json").unwrap());
+    fn unknown_method_errors_and_garbage_is_a_parse_error_at_null_id() {
+        let v = reply(r#"{"jsonrpc":"2.0","id":6,"method":"resources/list"}"#);
+        assert_eq!(v["error"]["code"], -32601);
+        let v = reply("this is not json");
         assert_eq!(v["id"], Value::Null);
         assert_eq!(v["error"]["code"], -32700);
     }
 
-    #[tokio::test]
-    async fn a_session_replies_to_requests_and_stays_silent_on_notifications() {
-        // Two requests and one notification over one connection: exactly two
-        // reply lines come back, in order, and the notification is silent.
-        let input = concat!(
-            r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}"#,
-            "\n",
-            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
-            "\n",
-            r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
-            "\n",
-        );
-        let (mut client, server) = tokio::io::duplex(64 * 1024);
-        let (sr, sw) = tokio::io::split(server);
-        let task = tokio::spawn(async move { session(sr, sw).await });
-        client.write_all(input.as_bytes()).await.unwrap();
-        client.shutdown().await.unwrap(); // EOF ends the session
-        let mut out = String::new();
-        client.read_to_string(&mut out).await.unwrap();
-        task.await.unwrap();
-        let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines.len(), 2, "one reply per request, none for the notification: {out}");
-        assert_eq!(parse(lines[0])["result"]["serverInfo"]["name"], "rexenv");
-        assert_eq!(parse(lines[1])["result"]["tools"], json!([]));
+    #[test]
+    fn m1_tools_are_read_only_by_construction() {
+        // The tools module may reach app state ONLY through ReadCtx. A direct
+        // reference to a manager, a command, or raw AppState would become a hole
+        // the moment M2 lands, so scan the source and fail LOUDLY + SPECIFICALLY.
+        // Comments are stripped first: prose may name these to explain the rule.
+        let src = include_str!("mcp_server/tools.rs");
+        const FORBIDDEN: &[&str] = &[
+            "core::",
+            "commands::",
+            "ServiceManager",
+            "service_manager",
+            "AppState",
+            "PrivilegeManager",
+            "run_privileged",
+        ];
+        for (i, line) in src.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            for tok in FORBIDDEN {
+                assert!(
+                    !code.contains(tok),
+                    "M1 read-only boundary violated: mcp_server/tools.rs:{} reaches `{}`.\n\
+                     M1 tools are read-only BY CONSTRUCTION — a handler may touch app state ONLY \
+                     through ReadCtx (super::readctx), never a manager, command, or raw AppState. \
+                     If you are adding a tool that must mutate or execute, it belongs in the M2 \
+                     executing-tools module (a different capability), NOT here.",
+                    i + 1,
+                    tok
+                );
+            }
+        }
     }
 }
