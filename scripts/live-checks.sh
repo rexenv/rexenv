@@ -76,6 +76,7 @@ mail_route_check service
 mailpit_check service
 mariadb_bundle_check network
 mariadb_site_check network
+mcp_socket_check stack
 metrics_check sandbox
 monitor_coverage_demo service
 multisite_check network

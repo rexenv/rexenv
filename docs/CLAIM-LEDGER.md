@@ -116,6 +116,7 @@ L3 = scripted manual.
 | 56 | cli_server.rs:34 | Byte cap + deadline never cut a legitimate request | ✅ `read_request_line_bounds_size_and_timeout` |
 | 57 | cli_server.rs:307 | Every command routes to the SAME commands::* fn as the UI | 🔨 L0 (general drift guard; one migration compared live) |
 | 58 | cli_server.rs:1422 | Reply is an error envelope, never a panic | ✅ lib test |
+| 198 | mcp_server.rs (SOCKET_FILE) | MCP socket is 0600, never TCP — the CLI socket's convention, not a second one (reuses `cli_server::bind`); M1 exposes zero tools so a `tools/call` errors, never executes | ✅ `mcp_socket_check` (0600 assert + spec-literal handshake) + `mcp_server` unit tests; never-TCP structural (`UnixListener`); shares #55's binder |
 | 59 | main.rs:6 | `--dns-agent` never opens a window / touches SQLite / starts services | 🔨 L0 (what run_agent can reach) |
 | 60 | lib.rs:121 | In-process resolver fallback means DNS never regresses | 🔨 L1 (agent-death fallback) |
 | 61 | lib.rs:410 | Locks never held across .await; polls never block the UI | 🔨 L0/lint (today a reading discipline) |
@@ -313,10 +314,13 @@ one day of being written):
 for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDGER.md; done
 ```
 
-As of 28 Jul 2026 (after T1–T13 + the 🚫 wording audit): **✅ 117 · ◐ 37 · 🔨 37 ·
-🚫 4** of 195 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149,
-#154). The working backlog = every 🔨 row + the noted half of every ◐ row, ranked
-below.
+As of 29 Jul 2026 (this branch, after adding #198 MCP-socket): **✅ 118 · ◐ 37 ·
+🔨 37 · 🚫 4** of 196 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43,
+#52, #149, #154). Rows #196 (grant-escaping ✅) and #197 (MCP posture 🚫) land from
+the sibling `fix/dbmirror-grant-wildcard-escaping` and `docs/mcp-server-plan`
+branches, so post-merge = ✅ 119 · 🚫 5 of 198 (recompute mechanically after
+merge — the tally is never hand-maintained). The working backlog = every 🔨 row +
+the noted half of every ◐ row, ranked below.
 
 ## 🚫 wording audit (28 Jul 2026)
 
