@@ -349,7 +349,7 @@ their code comments:
 
 ## Defect families — the claim and the check aren't looking at the same thing
 
-Three shapes have each shipped a false or overstated guard this month. They are one
+These shapes have each shipped a false or overstated guard this month. They are one
 family: a claim asserts a property of THING X, but the check that "proves" it looks
 at THING Y ≠ X. They diverge along different axes:
 
@@ -371,12 +371,24 @@ at THING Y ≠ X. They diverge along different axes:
     (fixed — now scans both, proven to fire on a planted violation).
   - #167's planned rusqlite grep: asserts "core writes no app SQL", but a grep for
     the `rusqlite` import checks IMPORTS, not SQL-string content.
+- **Data / fixture** — the check exercises the right surface at the right time, but on
+  UNREPRESENTATIVE inputs: the fixture is friendlier than production, so the gap is in
+  the DATA, not the code. Two misses this month, both #202's feed/sweep neighbourhood:
+  - the secret-leak sweep passed on a debug.log carrying a *relative* path when
+    production logs carry *absolute* stack-trace paths that leak the docroot + OS
+    username (fixture misled the THING being verified — it never triggered the leak).
+  - the MCP feed's display: the DevUiReview mock used friendly ids (`s-ea`), so the
+    WebKit screenshot certified `→ myblog.test` while production stores a
+    `uuid::new_v4()` and rendered `→ 550e8400-e29b-4…` (fixture misled the VERIFIER —
+    the human/probe read a broken display as fine). Fixed by planting real UUIDs AND a
+    probe that FAILS on a bare UUID; memory `fixtures-must-look-like-production`.
 
 **The audit question this adds** — belongs in whatever the audit procedure becomes:
 for every guard, *does the check cover the whole surface the claim names, for the
-whole lifetime the claim spans?* If the claim says "all X" and the check reads "one
-X", the guard is narrower than its claim, and that gap is exactly where the next
-false-safety comment hides.
+whole lifetime the claim spans, on data shaped like production?* If the claim says
+"all X" and the check reads "one X" — or reads X on friendly-fake data — the guard is
+narrower than its claim, and that gap (in code OR in the fixture) is exactly where the
+next false-safety comment hides.
 
 ## The 🔨 backlog, ranked by blast radius
 
