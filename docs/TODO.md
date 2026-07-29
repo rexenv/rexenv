@@ -138,6 +138,21 @@ half of every ◐ row, worked by the ledger's blast-radius tiers, top first:
 - [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
   tests; do not reopen).
+- [ ] **MCP server — SCOPE RULED 29 Jul 2026, build M1 → M2 → M3**
+  (`docs/PLAN-mcp-server.md`): expose an MCP server so a dev's AI agent can drive
+  rexenv — disposable WordPress "scratch" sites (new `origin='agent'` column,
+  TTL+cap+reaper), real-site DB SELECT-only via a native driver, read-only
+  diagnostics. In-process beside `cli_server`, second `0600` socket, `rex mcp`
+  pipe. Security is the bulk: the honest reckoning (§3.1) is that running the
+  user's plugin code is user-level power — tiers deliver a safe paved road + no
+  silent amplifier, NOT containment once scratch exec is in play. D1 (ship
+  `wp_run` scratch-only), D3 (real-site mutation unpromised), D4 (mail opt-in
+  sub-toggle), D6 (tunnels never a tool), D7 (accept the residual, toggle off +
+  ledger 🚫) all SETTLED; **D2/D5 open but non-blocking; the M3 DB surface is
+  ruled at M3, not now.** Next task = M1 (diagnostics, zero scratch machinery,
+  independently shippable). One task at a time, owner-verify per task. ✓ ahead of
+  the feature: the mirrored-user GRANT wildcard-escaping fix landed on its own
+  (ledger #196).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 

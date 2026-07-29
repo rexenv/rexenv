@@ -304,6 +304,15 @@ L3 = scripted manual.
 | 193 | commands/wordpress.rs:350 | Commands scoped: site row must exist in OUR db | 🔨 L0 |
 | 194 | commands/downloads.rs:64 | Leaving onboarding never cancels downloads | ✅ 2 lib tests + example |
 
+## MCP server (PROPOSED — pre-implementation posture, `docs/PLAN-mcp-server.md`)
+
+Forward-recorded so nothing downstream describes MCP as sandboxed before the code
+exists. Re-anchors to the toggle/registry code when it lands (M2).
+
+| # | Anchor | Claim | Verdict |
+|---|---|---|---|
+| 197 | PLAN-mcp-server.md §3.1 (D7) | ⚠ The MCP server is NOT a sandbox: once a client has scratch code execution it holds user-level power over rexenv and the machine (plugin activation is arbitrary user PHP; user PHP reaches the CLI socket), so the tiers deliver a paved road + no silent amplifier, NEVER containment | 🚫 inherently unprovable — a *containment* claim would be FALSE, not merely unproven; the posture is the claim (accepted, D7). Re-anchor to the toggle/registry code at M2 |
+
 ## Tally (mechanical — count rows by their LEADING verdict emoji)
 
 The tally is recomputed, never hand-maintained (the hand-kept version drifted within
@@ -313,10 +322,12 @@ one day of being written):
 for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDGER.md; done
 ```
 
-As of 28 Jul 2026 (after T1–T13 + the 🚫 wording audit): **✅ 117 · ◐ 37 · 🔨 37 ·
-🚫 4** of 195 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149,
-#154). The working backlog = every 🔨 row + the noted half of every ◐ row, ranked
-below.
+As of 29 Jul 2026 (this branch, after adding #197 MCP posture): **✅ 117 · ◐ 37 ·
+🔨 37 · 🚫 5** of 196 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43,
+#52, #149, #154). Row #196 (grant-escaping ✅) lands from the sibling
+`fix/dbmirror-grant-wildcard-escaping` branch, so post-merge = ✅ 118 · 🚫 5 of
+197 (recompute mechanically after merge — the tally is never hand-maintained).
+The working backlog = every 🔨 row + the noted half of every ◐ row, ranked below.
 
 ## 🚫 wording audit (28 Jul 2026)
 
