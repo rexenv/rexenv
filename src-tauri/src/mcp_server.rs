@@ -36,8 +36,15 @@ use readctx::ReadCtx;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
+use tokio::sync::watch;
 
 pub const SOCKET_FILE: &str = "rexenv-mcp.sock";
+
+/// Settings key (KV `settings` table) for the opt-in toggle. Absent = OFF, the
+/// default: a new API surface into rexenv is opt-in, not ambient (docs/PLAN §6).
+/// The socket is bound ONLY while this is "true" AND `start` bound it — never on
+/// the setting alone, so the toggle can never read on while nothing listens.
+pub const MCP_ENABLED_KEY: &str = "mcp_enabled";
 
 /// The MCP revision whose stable JSON-RPC core we implement (docs/PLAN §2.1).
 /// Returned when the client requests a version we do not recognise.
@@ -53,53 +60,138 @@ const SUPPORTED_PROTOCOLS: &[&str] = &["2025-11-25", "2025-06-18", "2025-03-26",
 /// lesson) — an over-long line closes the session rather than buffering forever.
 const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
 
-/// Spawn the MCP listener at app startup. Failure is logged, never fatal — the
-/// app works without its MCP endpoint, exactly like the CLI socket.
-pub fn spawn(app: tauri::AppHandle) {
-    let path = match crate::platform::current().paths().config_dir() {
-        Ok(dir) => dir.join(SOCKET_FILE),
-        Err(e) => {
-            log::error!("mcp: no config dir for the socket: {e}");
-            return;
+/// Live control of the opt-in MCP endpoint, held in `AppState`. A held sender =
+/// serving; `None` = not. Sending `false` stops the accept loop AND drops every
+/// live session (each `select!`s on this receiver), and `serve` then unlinks the
+/// socket. The socket exists ONLY while a sender is held here — never ambiently,
+/// so disabling the toggle genuinely removes the endpoint. Dropping the whole
+/// `AppState` (app exit) drops the sender too, which `serve` reads as "stop".
+#[derive(Default)]
+pub struct McpControl {
+    shutdown: Option<watch::Sender<bool>>,
+}
+
+impl McpControl {
+    /// Whether the endpoint is serving right now (a socket is bound).
+    pub fn is_running(&self) -> bool {
+        self.shutdown.is_some()
+    }
+
+    /// Adopt the shutdown handle of a freshly-`start`ed server.
+    pub fn store_handle(&mut self, tx: watch::Sender<bool>) {
+        self.shutdown = Some(tx);
+    }
+
+    /// Stop serving: drop the accept loop and every live session (they `select!`
+    /// on the receiver), after which `serve` unlinks the socket. Idempotent.
+    pub fn stop(&mut self) {
+        if let Some(tx) = self.shutdown.take() {
+            let _ = tx.send(false);
         }
-    };
-    tauri::async_runtime::spawn(async move {
-        // Reuse the CLI socket's bind: 0600, stale-file unlink, connect-to-detect
-        // liveness — one socket convention across both sockets, not two.
-        let listener = match crate::cli_server::bind(&path) {
-            Ok(l) => l,
-            Err(e) => {
-                log::error!("mcp: could not bind {}: {e}", path.display());
-                return;
+    }
+}
+
+/// The MCP socket path — a sibling of the CLI socket in the config dir.
+fn socket_path() -> crate::error::Result<std::path::PathBuf> {
+    Ok(crate::platform::current().paths().config_dir()?.join(SOCKET_FILE))
+}
+
+/// Bind the socket and start serving. Returns the shutdown sender for `AppState`
+/// to hold; `McpControl::stop` (or dropping it) tears the endpoint down. Binding
+/// is synchronous so a port/permission failure surfaces to the caller (the
+/// Settings toggle) rather than vanishing into a spawned task — the toggle must
+/// not read on if nothing bound.
+pub fn start<Rt: tauri::Runtime>(
+    app: tauri::AppHandle<Rt>,
+) -> crate::error::Result<watch::Sender<bool>> {
+    let path = socket_path()?;
+    // Reuse the CLI socket's bind: 0600, stale-file unlink, connect-to-detect
+    // liveness — one socket convention across both sockets, not two.
+    let listener = crate::cli_server::bind(&path)?;
+    let (tx, rx) = watch::channel(true);
+    log::info!("mcp: listening on {} (opt-in enabled)", path.display());
+    tauri::async_runtime::spawn(serve(listener, app, rx));
+    Ok(tx)
+}
+
+/// At app startup, start the endpoint IF the user has enabled it — otherwise the
+/// socket stays unbound (default off). The handle is stored in `AppState` so the
+/// Settings toggle can stop/restart it live. Never fatal: the app works without
+/// the endpoint, exactly like the CLI socket.
+pub fn spawn_if_enabled(app: tauri::AppHandle) {
+    use tauri::Manager;
+    let enabled = match app.try_state::<AppState>() {
+        Some(state) => match state.db.lock() {
+            Ok(conn) => {
+                matches!(crate::state::store::get_setting(&conn, MCP_ENABLED_KEY), Ok(Some(v)) if v == "true")
             }
-        };
-        log::info!("mcp: listening on {}", path.display());
-        serve(listener, app).await;
-    });
+            Err(_) => false,
+        },
+        None => false,
+    };
+    if !enabled {
+        log::info!("mcp: endpoint off (default) — enable in Settings → AI agents (MCP)");
+        return;
+    }
+    match start(app.clone()) {
+        Ok(tx) => {
+            if let Some(state) = app.try_state::<AppState>() {
+                if let Ok(mut ctl) = state.mcp.lock() {
+                    ctl.store_handle(tx);
+                }
+            }
+        }
+        Err(e) => log::error!("mcp: enabled but the socket did not bind at startup: {e}"),
+    }
 }
 
 /// Accept loop: one long-lived MCP session per connection (unlike the CLI
 /// socket's one-request-per-connection). Each session runs on its own task.
 /// Public and runtime-generic so the `mcp_socket_check` example can serve it
 /// with a `MockRuntime` app, exactly as `cli_server` tests do.
-pub async fn serve<Rt: tauri::Runtime>(listener: UnixListener, app: tauri::AppHandle<Rt>) {
+pub async fn serve<Rt: tauri::Runtime>(
+    listener: UnixListener,
+    app: tauri::AppHandle<Rt>,
+    mut shutdown: watch::Receiver<bool>,
+) {
     loop {
-        let Ok((stream, _)) = listener.accept().await else {
-            continue; // transient accept error; the socket stays bound
-        };
-        let app = app.clone();
-        tokio::spawn(async move {
-            let (read, write) = stream.into_split();
-            session(read, write, app).await;
-        });
+        tokio::select! {
+            // Stop when the toggle sends `false`, OR when every sender is dropped
+            // (app exit) — `changed()` errors then, and no one can turn it back on.
+            res = shutdown.changed() => {
+                if res.is_err() || !*shutdown.borrow() {
+                    break;
+                }
+            }
+            accepted = listener.accept() => {
+                let Ok((stream, _)) = accepted else {
+                    continue; // transient accept error; the socket stays bound
+                };
+                let app = app.clone();
+                let sd = shutdown.clone();
+                tokio::spawn(async move {
+                    let (read, write) = stream.into_split();
+                    session(read, write, app, sd).await;
+                });
+            }
+        }
+    }
+    // Accept loop stopped (disabled or app exit): unlink the socket so nothing
+    // lingers advertising a dead endpoint and a later enable rebinds cleanly.
+    if let Ok(path) = socket_path() {
+        let _ = std::fs::remove_file(path);
     }
 }
 
 /// One MCP session: read newline-delimited JSON-RPC messages, dispatch each,
 /// write a reply for every request (never for a notification), until EOF.
 /// Generic over the byte streams so it is testable without a socket.
-async fn session<R, W, Rt>(read: R, mut write: W, app: tauri::AppHandle<Rt>)
-where
+async fn session<R, W, Rt>(
+    read: R,
+    mut write: W,
+    app: tauri::AppHandle<Rt>,
+    mut shutdown: watch::Receiver<bool>,
+) where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
     Rt: tauri::Runtime,
@@ -108,7 +200,22 @@ where
     let mut buf = Vec::new();
     // The client's self-reported name, for feed attribution — set at initialize.
     let mut client = String::from("unknown");
-    while read_line_capped(&mut reader, &mut buf, MAX_LINE_BYTES).await.is_some() {
+    loop {
+        // Disabling the toggle drops this session mid-idle: `select!` wakes on the
+        // shutdown signal instead of waiting for the client's next line.
+        tokio::select! {
+            res = shutdown.changed() => {
+                if res.is_err() || !*shutdown.borrow() {
+                    break; // disabled or app exit — drop the session
+                }
+                continue;
+            }
+            got = read_line_capped(&mut reader, &mut buf, MAX_LINE_BYTES) => {
+                if got.is_none() {
+                    break; // EOF / over-long line / read error
+                }
+            }
+        }
         let text = String::from_utf8_lossy(&buf);
         let trimmed = text.trim();
         if trimmed.is_empty() {
@@ -423,6 +530,23 @@ mod tests {
             ));
             assert_eq!(v["result"]["protocolVersion"], want, "asked {asked}");
         }
+    }
+
+    #[test]
+    fn mcp_control_is_off_by_default_and_stop_signals_shutdown_idempotently() {
+        // The opt-in state machine: off until a handle is held, serving while it
+        // is, and `stop` both drops the handle AND signals every session (via the
+        // watch value) to shut down. Idempotent so a double-disable can't panic.
+        let mut ctl = McpControl::default();
+        assert!(!ctl.is_running(), "off by default (opt-in, socket unbound)");
+        let (tx, rx) = watch::channel(true);
+        ctl.store_handle(tx);
+        assert!(ctl.is_running(), "serving once a handle is held");
+        ctl.stop();
+        assert!(!ctl.is_running(), "stop drops the handle");
+        assert!(!*rx.borrow(), "stop signalled false — sessions and accept loop drop");
+        ctl.stop(); // idempotent
+        assert!(!ctl.is_running());
     }
 
     #[test]

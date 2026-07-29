@@ -71,7 +71,10 @@ async fn main() {
     let listener = cli_server::bind(&sock).expect("bind MCP socket");
     let mode = std::fs::metadata(&sock).expect("socket metadata").permissions().mode();
     assert_eq!(mode & 0o777, 0o600, "socket must be 0600");
-    tokio::spawn(mcp_server::serve(listener, app.handle().clone()));
+    // A never-signalled shutdown (the toggle's live-disable path isn't under test
+    // here) — keep the sender alive so `serve`'s accept loop stays up for the run.
+    let (_mcp_shutdown, mcp_rx) = tokio::sync::watch::channel(true);
+    tokio::spawn(mcp_server::serve(listener, app.handle().clone(), mcp_rx));
 
     let mut stream = UnixStream::connect(&sock).expect("connect to MCP socket");
     let mut reader = BufReader::new(stream.try_clone().expect("clone stream for reads"));

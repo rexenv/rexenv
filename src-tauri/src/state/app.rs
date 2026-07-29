@@ -86,6 +86,12 @@ pub struct AppState {
     /// provision and db-import refuse while a rewrite holds the site's config
     /// file, and the rewrite refuses while they run.
     pub rewrite_active: Mutex<Option<String>>,
+    /// Live control of the opt-in MCP endpoint (Settings → AI agents). Holds the
+    /// running server's shutdown handle so the toggle can bind/unbind the socket
+    /// at runtime; `None` shutdown = not serving. Unix-only, mirroring the
+    /// unix-socket `mcp_server` module.
+    #[cfg(unix)]
+    pub mcp: Mutex<crate::mcp_server::McpControl>,
 }
 
 impl AppState {
@@ -131,6 +137,8 @@ impl AppState {
             db_status_cache: Mutex::new(Vec::new()),
             db_import_active: Mutex::new(None),
             rewrite_active: Mutex::new(None),
+            #[cfg(unix)]
+            mcp: Mutex::new(crate::mcp_server::McpControl::default()),
         }
     }
 }

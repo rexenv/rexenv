@@ -130,28 +130,88 @@ pub fn record(conn: &Connection, client: &str, log: &PendingLog) -> Result<()> {
     Ok(())
 }
 
+/// Columns selected for an `AgentAction`, in struct order — shared so `recent`
+/// and `recent_for_site` read the same shape through `row_to_action`.
+const ACTION_COLUMNS: &str = "id, at, client, tool, target_site, outcome, detail";
+
+/// Map a row (selecting `ACTION_COLUMNS`) into an `AgentAction`.
+fn row_to_action(r: &rusqlite::Row) -> rusqlite::Result<AgentAction> {
+    let outcome = Outcome::from_db(&r.get::<_, String>(5)?);
+    Ok(AgentAction {
+        id: r.get(0)?,
+        at: r.get(1)?,
+        client: r.get(2)?,
+        tool: r.get(3)?,
+        target_site: r.get(4)?,
+        outcome,
+        detail: r.get(6)?,
+        concerning: outcome.is_concerning(),
+    })
+}
+
 /// The most recent actions, newest first (for the card).
 pub fn recent(conn: &Connection, limit: usize) -> Result<Vec<AgentAction>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, at, client, tool, target_site, outcome, detail \
-         FROM agent_actions ORDER BY id DESC LIMIT ?1",
-    )?;
+    let sql = format!("SELECT {ACTION_COLUMNS} FROM agent_actions ORDER BY id DESC LIMIT ?1");
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
-        .query_map(params![limit as i64], |r| {
-            let outcome = Outcome::from_db(&r.get::<_, String>(5)?);
-            Ok(AgentAction {
-                id: r.get(0)?,
-                at: r.get(1)?,
-                client: r.get(2)?,
-                tool: r.get(3)?,
-                target_site: r.get(4)?,
-                outcome,
-                detail: r.get(6)?,
-                concerning: outcome.is_concerning(),
-            })
-        })?
+        .query_map(params![limit as i64], row_to_action)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(rows)
+}
+
+/// The most recent actions that named `site` (the per-site SiteDetail section),
+/// newest first — a WHERE on the stored `target_site`, so an older row for this
+/// site is not lost behind a burst of activity on others.
+pub fn recent_for_site(conn: &Connection, site: &str, limit: usize) -> Result<Vec<AgentAction>> {
+    let sql = format!(
+        "SELECT {ACTION_COLUMNS} FROM agent_actions WHERE target_site = ?1 ORDER BY id DESC LIMIT ?2"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map(params![site, limit as i64], row_to_action)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// The head of activity within `window_mins`: the newest call, how long ago, and
+/// (if it errored) how many consecutive concerning calls precede the first
+/// success. Drives the card's status line — and it self-recovers, because a row
+/// ages OUT of the window on its own, so an old error state clears without any
+/// write. `None` = no activity in the window.
+#[derive(Debug, PartialEq, Eq)]
+pub struct RecentHead {
+    pub last_tool: String,
+    pub minutes_ago: i64,
+    pub last_ok: bool,
+    pub trailing_errors: i64,
+}
+
+pub fn recent_head(conn: &Connection, window_mins: i64) -> Result<Option<RecentHead>> {
+    // SQLite does the time math in UTC (matching `datetime('now')` at write), so
+    // there is one clock; `minutes_ago` is whole minutes since the row's stamp.
+    let mut stmt = conn.prepare(
+        "SELECT tool, CAST((julianday('now') - julianday(at)) * 1440 AS INTEGER), outcome \
+         FROM agent_actions WHERE at >= datetime('now', ?1) ORDER BY id DESC",
+    )?;
+    let window = format!("-{window_mins} minutes");
+    let rows = stmt
+        .query_map(params![window], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                Outcome::from_db(&r.get::<_, String>(2)?),
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let Some((tool, mins, out)) = rows.first().cloned() else {
+        return Ok(None);
+    };
+    let last_ok = !out.is_concerning();
+    // Count concerning rows from the newest, stopping at the first success — "the
+    // last N calls errored", the honest N the status line names.
+    let trailing_errors =
+        if last_ok { 0 } else { rows.iter().take_while(|(_, _, o)| o.is_concerning()).count() as i64 };
+    Ok(Some(RecentHead { last_tool: tool, minutes_ago: mins.max(0), last_ok, trailing_errors }))
 }
 
 /// Clear the feed — the user's record of their own machine, theirs to wipe.
@@ -254,6 +314,58 @@ mod tests {
         let count: i64 =
             conn.query_row("SELECT COUNT(*) FROM agent_actions", [], |r| r.get(0)).unwrap();
         assert_eq!(count, ROW_CAP, "the feed must be capped");
+    }
+
+    #[test]
+    fn recent_for_site_returns_only_that_sites_rows_newest_first() {
+        let conn = mem();
+        record(&conn, "c", &log("site_status", Some("s1"), Outcome::Ok, None)).unwrap();
+        record(&conn, "c", &log("tail_log", Some("s2"), Outcome::Ok, None)).unwrap();
+        record(&conn, "c", &log("site_status", Some("s1"), Outcome::Error, Some("x"))).unwrap();
+        let s1 = recent_for_site(&conn, "s1", 10).unwrap();
+        assert_eq!(s1.len(), 2, "only s1's rows");
+        assert_eq!(s1[0].outcome, Outcome::Error, "newest first");
+        assert!(s1.iter().all(|r| r.target_site.as_deref() == Some("s1")));
+        assert_eq!(recent_for_site(&conn, "s2", 10).unwrap().len(), 1);
+        assert!(recent_for_site(&conn, "nope", 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn recent_head_reads_the_head_and_counts_trailing_errors() {
+        let conn = mem();
+        record(&conn, "c", &log("list_sites", None, Outcome::Ok, None)).unwrap();
+        record(&conn, "c", &log("site_status", Some("s1"), Outcome::Error, Some("x"))).unwrap();
+        record(&conn, "c", &log("tail_log", Some("s1"), Outcome::UnknownTool, None)).unwrap();
+        let h = recent_head(&conn, 15).unwrap().expect("head present");
+        assert_eq!(h.last_tool, "tail_log");
+        assert!(!h.last_ok, "newest call errored");
+        assert_eq!(h.trailing_errors, 2, "two trailing concerning rows before the ok");
+        assert!(h.minutes_ago >= 0);
+        // A fresh success flips it back to working — self-recovery within the window.
+        record(&conn, "c", &log("list_sites", None, Outcome::Ok, None)).unwrap();
+        let h2 = recent_head(&conn, 15).unwrap().unwrap();
+        assert!(h2.last_ok);
+        assert_eq!(h2.trailing_errors, 0);
+    }
+
+    #[test]
+    fn recent_head_ages_activity_out_of_the_window() {
+        let conn = mem();
+        // A row stamped 30 minutes ago is outside a 15-minute window (self-recovery
+        // needs no write — the state clears as the row leaves the window).
+        conn.execute(
+            "INSERT INTO agent_actions (at, client, tool, target_site, outcome, detail) \
+             VALUES (datetime('now','-30 minutes'), 'c', 'list_sites', NULL, 'ok', NULL)",
+            [],
+        )
+        .unwrap();
+        assert!(recent_head(&conn, 15).unwrap().is_none(), "30-min-old row is outside a 15-min window");
+        assert!(recent_head(&conn, 60).unwrap().is_some(), "but inside a 60-min window");
+    }
+
+    #[test]
+    fn recent_head_is_none_when_the_feed_is_empty() {
+        assert!(recent_head(&mem(), 15).unwrap().is_none());
     }
 
     #[test]

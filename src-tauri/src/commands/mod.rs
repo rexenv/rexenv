@@ -8,6 +8,9 @@ pub mod rewrite;
 pub mod downloads;
 pub mod logs;
 pub mod mail;
+/// Unix-only: IPC for the opt-in MCP endpoint (mirrors the `mcp_server` module).
+#[cfg(unix)]
+pub mod mcp;
 pub mod php;
 pub mod repo;
 pub mod services;
