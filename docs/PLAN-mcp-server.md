@@ -74,10 +74,39 @@ The MCP endpoint runs **inside the app**, a sibling of `cli_server::spawn`
 - The app process is `mark_app_process`-blessed, so `core::stack_guard` friction
   never applies.
 
-SDK: **`rmcp`**, the official Rust MCP SDK — tokio-based, and its `IntoTransport`
-accepts any AsyncRead+AsyncWrite pair, so a `tokio::net::UnixStream` is a
-transport out of the box. Pin the stable line (2.2.x, spec 2025-11-25); the 3.0
-betas track a spec RC finalized 28 Jul 2026 — migrate deliberately later (§9 D5).
+**No SDK — a hand-rolled minimal server (decided 29 Jul 2026, reversing the
+draft's `rmcp` choice).** Every `rmcp` release is edition 2024 → rustc ≥ 1.85
+(3.0 declares MSRV 1.88), and the repo pins `rust-version = 1.77.2`. Three reasons,
+in the order that decided it:
+
+1. **A proposed feature does not get to raise the project's declared toolchain
+   floor.** If 1.77.2 moves, it moves on its own merits, decided for its own
+   reason — not as a side effect of an SDK pick.
+2. **Dependency-closure discipline.** This codebase pins and checksums every
+   binary it touches, ships a 389-crate THIRD-PARTY-NOTICES, runs a root
+   LaunchDaemon and holds a CA. Pulling `rmcp`'s whole tree in for a surface this
+   small is out of grain with everything else here.
+3. **Scope makes it safe, not brave.** M1 needs only MCP's stable, boring core —
+   `initialize`, `tools/list`, `tools/call`, `ping`, over newline-delimited
+   JSON-RPC 2.0 — the part every client handles identically. The evolving parts
+   (resources, prompts, elicitation, output schemas, tool annotations, JSON-RPC
+   batching) are explicitly out of v1 (§7.4), so we own only the part nobody
+   disagrees about. `serde_json` is already a dep; the server is a few hundred
+   lines under the closed registry.
+
+**What we've taken on — owning a protocol means owning its compatibility.** We
+implement the **2025-11-25** stable JSON-RPC core, and negotiate the handshake by
+echoing the client's requested `protocolVersion` when it is one we recognise
+(`2024-11-05` → `2025-11-25` share this core), else returning `2025-11-25`. We
+deliberately do NOT implement the evolving features listed above. **Revisit
+triggers, so this is re-openable with evidence rather than re-litigated from
+scratch:** if the spec's *stable core* changes in a breaking way, or a v2 needs
+the evolving features, `rmcp` comes back on the table — and the MSRV bump then has
+a concrete reason of its own and a clearer cost. **Compatibility is proven against
+a real client, not our own encoder** (§8): an L1 check speaks a spec-literal
+handshake, and a manual `claude mcp add rexenv -- rex mcp` step confirms the #1
+target client — because the hand-roll risk is precisely a framing or schema
+detail our own tests accept and Claude Code rejects.
 
 ### 2.2 Transport: a second 0600 socket + a dumb `rex mcp` pipe. Never TCP.
 
@@ -590,10 +619,12 @@ Roughly 13 tools in the full WordPress build-out; M1+M2 ship 9 (§7.3).
 - **A public API.** Tool names + schemas become compatibility surface the day
   someone scripts against them. Smallest v1; names chosen once; schema versioning
   rides `serverInfo.version`.
-- **Dependencies**: `rmcp` (official, mature, Apache-2.0) + a **native MySQL
-  driver** for the agent read path (§3.6, a reasoned bundled-client departure) —
-  both pinned; the rmcp 2.x→3.x spec transition forces one deliberate migration
-  later (D5).
+- **Dependencies**: **no MCP SDK** — the server is hand-rolled on `serde_json`
+  (already a dep) to keep MSRV at 1.77.2 and the dependency closure tight (§2.1).
+  The one new dependency the plan still adds is a **native MySQL driver** for the
+  agent read path in M3 (§3.6, a reasoned bundled-client departure), pinned like
+  everything else. The tradeoff of hand-rolling — owning protocol compatibility —
+  is recorded in §2.1 with its revisit triggers.
 - **A standing review burden**: every new tool is a security decision; the ledger
   grows rows (§8) that must stay green.
 - Windows/Linux: socket path + shim go through `Paths`; Windows = named pipe
@@ -690,7 +721,19 @@ so a tool-surface test can never be read as a containment guarantee (§3.1):
 
 L1: `mcp_socket_check` — real socket, real initialize, tool list, one T0 call,
 the secrets sweep over live output, the RO-principal write/`system` refusal
-(sandbox tier, fixture-owned per `examples/common/mod.rs`).
+(fixture-owned per `examples/common/mod.rs`).
+
+**Real-client verification (condition of the hand-roll, §2.1).** Because the
+risk of owning the protocol is a framing/schema detail our own encoder is happy
+with but a real client rejects, T1's verification is two-layered: (a) the
+`mcp_socket_check` example speaks a **spec-literal** handshake (bytes written to
+match the MCP spec's own examples, not round-tripped through our types) and
+asserts a valid `initialize` result + empty `tools/list`; (b) a **manual
+real-client check** in the release manual list — `claude mcp add rexenv -- rex
+mcp`, then confirm the server shows connected and `tools/list` returns cleanly in
+Claude Code (the #1 target). (a) catches our own mistakes; only (b) proves the
+client we actually care about — the L1-layer principle of testing against the
+real thing.
 
 ## 9. Decisions — D1/D3/D4/D6/D7 SETTLED 29 Jul 2026; D2/D5 open
 
@@ -711,9 +754,12 @@ the secrets sweep over live output, the RO-principal write/`system` refusal
    carrying reset links (§3.5) makes ambient T0 mail a credential-harvest pivot;
    the sub-toggle keeps the genuinely-useful WP *and* Laravel mail-testing loop
    available without making it ambient.
-5. **D5 — rmcp pin: stable 2.2.x now (spec 2025-11-25), migrate to 3.x after the
-   2026-07-28 spec finalizes.** OPEN (technical, not blocking) — recommend
-   exactly that; revisit at M3.
+5. **D5 — MCP SDK. SETTLED 29 Jul 2026: no SDK — hand-rolled minimal server**
+   (was "pin rmcp 2.2.x"). Reversed on the discovery that every `rmcp` is edition
+   2024 / rustc ≥ 1.85, which would force the repo's `rust-version = 1.77.2` floor
+   up as a side effect of an SDK pick. Reasons + what we own + revisit triggers in
+   §2.1. `rmcp` is the documented re-entry path if the stable core changes or v2
+   needs the evolving features.
 6. **D6 — tunnels. SETTLED: never a tool.** Confirmed as the standing ruling;
    webhook testing (§3.7) is recorded as the only future reopening argument (real
    demand + T1 + scratch-only + auto-stop).
