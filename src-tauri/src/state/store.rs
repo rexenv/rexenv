@@ -1,5 +1,11 @@
-//! Repository layer over SQLite — the only place that knows the `sites` table
-//! shape. `core/` calls these functions; it never writes SQL itself.
+//! Repository layer over SQLite — the only place that knows the app database's
+//! `sites` table shape. `core/` reaches the app SQLite database only through
+//! these functions; it never hand-writes SQL against the app schema.
+//!
+//! Withdrawn 29 Jul (was "core never writes SQL itself"): core DOES execute SQL
+//! — it reads `information_schema` and issues `CREATE DATABASE`/`GRANT` against
+//! the developer's MySQL/Postgres in `core::dbmirror`. The honest, narrow
+//! guarantee is only that the app's OWN SQLite schema is state/'s alone.
 
 use crate::error::{Error, Result};
 use crate::state::models::{

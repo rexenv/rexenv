@@ -8,6 +8,8 @@ pub mod cli_server;
 pub mod commands;
 pub mod core;
 pub mod error;
+#[cfg(unix)]
+pub mod mcp_server;
 pub mod platform;
 pub mod state;
 pub mod utils;
@@ -403,6 +405,14 @@ pub fn run() {
             #[cfg(unix)]
             cli_server::spawn(app.handle().clone());
 
+            // MCP server socket (see `mcp_server`): the AI-agent endpoint,
+            // driven through the `rex mcp` pipe. Its own `0600` socket beside
+            // the CLI one; M1 tools are read-only (list_sites), reached only
+            // through ReadCtx. OPT-IN — the socket binds only if the user
+            // enabled it in Settings → AI agents (default off).
+            #[cfg(unix)]
+            mcp_server::spawn_if_enabled(app.handle().clone());
+
             // Health watchdog: every 10s probe every service the manager OWNS and
             // respawn dead ones (bounded attempts) — the UI used to show "running"
             // forever off the initial start state while e.g. a crashed edge left
@@ -716,6 +726,14 @@ pub fn run() {
             commands::settings::default_tld,
             commands::settings::set_default_tld,
             commands::settings::tld_policy,
+            #[cfg(unix)]
+            commands::mcp::mcp_status,
+            #[cfg(unix)]
+            commands::mcp::mcp_set_enabled,
+            #[cfg(unix)]
+            commands::mcp::agent_activity,
+            #[cfg(unix)]
+            commands::mcp::agent_activity_clear,
             commands::tunnels::start_tunnel,
             commands::tunnels::stop_tunnel,
             commands::tunnels::tunnels_status,

@@ -16,6 +16,12 @@ use std::process::exit;
 const NOT_RUNNING: &str =
     "rexenv isn't running — open the app first (the CLI controls the running app).";
 
+// A SPECIFIC reason for `rex mcp`, not a generic transport error: an MCP client
+// surfaces this on stderr when the bridge can't reach the app, so the agent
+// learns WHY rather than guessing at an opaque failure.
+const MCP_NOT_RUNNING: &str =
+    "rexenv isn't running — open the rexenv app, then reconnect. No MCP server is available until rexenv is running.";
+
 const USAGE: &str = "\
 rex — control the running rexenv app
 
@@ -110,6 +116,8 @@ COMMANDS:
   tld [--set <tld>]
                 Default TLD for new sites
   version       App + CLI versions (needs the app; -v/--version works without)
+  mcp           MCP stdio bridge for an AI agent's client — used in the client's
+                config, not run by hand (e.g. `claude mcp add rexenv -- rex mcp`)
   completions zsh|bash    Print a shell completion script (eval or install it)
   help          Show this help
 
@@ -136,6 +144,67 @@ fn socket_path() -> PathBuf {
         eprintln!("rex: this platform is not supported yet");
         exit(1)
     }
+}
+
+/// The MCP socket path — the app's `mcp_server` endpoint, a sibling of the CLI
+/// socket in the same config dir. Same fixed-path convention (`REXENV_MCP_SOCKET`
+/// overrides for tests only), never a second discovery scheme.
+fn mcp_socket_path() -> PathBuf {
+    if let Ok(p) = std::env::var("REXENV_MCP_SOCKET") {
+        return PathBuf::from(p);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join("Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        eprintln!("rex: this platform is not supported yet");
+        exit(1)
+    }
+}
+
+/// `rex mcp` — the MCP stdio bridge. A DUMB bidirectional pipe: it copies bytes
+/// between the client's stdio and the app's MCP socket and never parses MCP (the
+/// app is the brain). Newline-delimited JSON-RPC flows through untouched. On a
+/// dead socket it fails with a specific reason and exits 2 — never a generic
+/// transport error the agent papers over with a guess. Either side closing ends
+/// the whole bridge, so the client sees the server go away.
+fn run_mcp_bridge() -> ! {
+    let socket = match UnixStream::connect(mcp_socket_path()) {
+        Ok(s) => s,
+        // ENOENT (never bound) and ECONNREFUSED (stale after a crash) both mean
+        // the app isn't there to serve — the CLI socket's exact treatment.
+        Err(_) => {
+            eprintln!("{MCP_NOT_RUNNING}");
+            exit(2);
+        }
+    };
+    let mut sock_write = match socket.try_clone() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("rex: could not set up the MCP bridge: {e}");
+            exit(1);
+        }
+    };
+    let mut sock_read = socket;
+    // socket → stdout. When the app closes the socket the server is gone; end
+    // the whole process so the client observes the server exit (even if our
+    // stdin is still open).
+    let pump = std::thread::spawn(move || {
+        let mut out = std::io::stdout().lock();
+        let _ = std::io::copy(&mut sock_read, &mut out);
+        let _ = out.flush();
+        exit(0);
+    });
+    // stdin → socket. Client EOF means the session is done: half-close so the
+    // app sees end-of-input, then let the socket→stdout side finish.
+    let mut stdin = std::io::stdin().lock();
+    let _ = std::io::copy(&mut stdin, &mut sock_write);
+    let _ = sock_write.shutdown(std::net::Shutdown::Write);
+    let _ = pump.join();
+    exit(0);
 }
 
 /// One request line out, one reply line back. Exits the process on transport
@@ -218,6 +287,12 @@ fn main() {
             }
             _ => words.push(arg),
         }
+    }
+    // `rex mcp` is the MCP bridge, not a request/reply command: it uses its own
+    // socket and holds a long-lived session, so it runs BEFORE the CLI-socket
+    // preflight below and never returns.
+    if words.first().map(String::as_str) == Some("mcp") {
+        run_mcp_bridge();
     }
     // Preflight: every subcommand below talks to the app. Probe the socket
     // ONCE up front so a not-running app prints only the honest message and

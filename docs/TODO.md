@@ -9,6 +9,18 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **MCP server M1 — read-only diagnosis + opt-in card** (branch `feat/mcp-m1`).
+  ✓ Socket + `rex mcp` shim + registry (list_sites / site_status / tail_log) +
+  ReadCtx read-only boundary (guard scans both surfaces) + secret-leak sweep +
+  activity feed + the opt-in toggle that really binds/unbinds + Settings "AI
+  agents" card + per-site SiteDetail section. Ledger #198–#203; wk-checks
+  `agents-*`. Diverged from PLAN §7.3 honestly: no mail tools/sub-toggle in M1;
+  `site_status` runs nothing (Option A, no HTTP GET); status line is feed-driven
+  not a live-session list. **Next MCP stage = M2 (scratch sites)** — see
+  `docs/PLAN-mcp-server.md §7.3` (on branch `docs/mcp-server-plan`).
+  ⚠ On merge: the plan doc + ledger §-pointers to it are on `docs/mcp-server-plan`
+  (#197 lands from there); add the router row for the plan and recompute the
+  mechanical tally then.
 - [ ] **DNS agent answers ARBITRARY names when queried directly** (found in the
   28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
   `127.0.0.1` — the hickory handler is a catch-all, not per-TLD zones
@@ -66,9 +78,10 @@ evidence cited.
 
 ## Ledger-driven proof backlog
 
-The test metric is `docs/CLAIM-LEDGER.md` (mechanical tally 28 Jul 2026:
-**117 ✅ · 37 ◐ · 37 🔨 · 4 🚫** of 195). The backlog = every 🔨 row + the noted
-half of every ◐ row, worked by the ledger's blast-radius tiers, top first:
+The test metric is `docs/CLAIM-LEDGER.md` (mechanical tally 29 Jul 2026, after the
+fix/docs/M1 merges: **123 ✅ · 38 ◐ · 37 🔨 · 5 🚫** of 203). The backlog = every 🔨
+row + the noted half of every ◐ row, worked by the ledger's blast-radius tiers, top
+first:
 
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
@@ -77,8 +90,13 @@ half of every ◐ row, worked by the ledger's blast-radius tiers, top first:
   (#190).
 - [ ] Then: Apache/FrankenPHP dotfile legs (#103), fpm candidate isolation
   (#104/#191), manifest HEAD+digest sweep, Bedrock live provision (#35),
-  sandbox-adoption cohorts + `wp_fixture()`, `webview_dialogs` L2 (#166),
-  import-graph lint (#163), rusqlite-outside-state guard (#167).
+  sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
+  `download_progress_check`'s bin-cache delete off the REAL shared cache
+  (surface-coverage finding 29 Jul: the sandbox invariant is structural for only
+  ~20 of 109 examples, and this one deletes a real content-addressed entry),
+  `webview_dialogs` L2 (#166), import-graph lint (#163), rusqlite-outside-state
+  guard (#167 — must scan SQL-STRING content, not just the `rusqlite` import, or
+  it repeats the surface-coverage shape; see "Defect families" in the ledger).
 
 ## Release gates (human, scripted — see the docs named)
 

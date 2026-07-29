@@ -116,6 +116,12 @@ L3 = scripted manual.
 | 56 | cli_server.rs:34 | Byte cap + deadline never cut a legitimate request | ✅ `read_request_line_bounds_size_and_timeout` |
 | 57 | cli_server.rs:307 | Every command routes to the SAME commands::* fn as the UI | 🔨 L0 (general drift guard; one migration compared live) |
 | 58 | cli_server.rs:1422 | Reply is an error envelope, never a panic | ✅ lib test |
+| 198 | mcp_server.rs (SOCKET_FILE) | MCP socket is 0600, never TCP — the CLI socket's convention, not a second one (reuses `cli_server::bind`) | ✅ `mcp_socket_check` (0600 assert + spec-literal handshake) + `mcp_server` unit tests; never-TCP structural (`UnixListener`); shares #55's binder |
+| 199 | mcp_server/tools.rs + readctx.rs + view.rs | M1 tools cannot MUTATE rexenv's state (the honest guarantee, assembly-review re-scoped from "physically cannot write/delete"): a handler reaches state ONLY through `ReadCtx`, which exposes no mutator (private state field); the read-only guard scans BOTH `tools.rs` (no manager/command/AppState/syscall) AND the `readctx.rs` bridge (no mutator/executor). NOT a claim a handler can't do arbitrary in-process work. `AgentSiteView` DROPS docroot+db_name — but "we dropped a field" is only true if NOTHING re-emits it (the same-information-different-door class: `tail_log` re-emitted the docroot via log content until #201 scrubbed it) | ✅ `m1_read_only_boundary_holds_across_tools_and_the_read_bridge` (both surfaces; proven to fire loudly on a planted violation) + `the_view_carries_only_the_agent_fields` + `mcp_socket_check` live |
+| 200 | mcp_server/view.rs (classify) + tools.rs (sweep_plan) | `site_status` keeps failures DISTINCT (edge-down / edge-blocked / backend-down / setup-incomplete / serving — never collapsed to "not serving"), each non-serving verdict resolves to `user-action-in-rexenv` (an agent can't fix infra). It reads the serving path from the STACK'S OWN STATE and NEVER requests the site (Option A — M1 runs nothing; a GET would boot WP + fire wp-cron), so the site's own render errors are `tail_log`'s territory, stated in the verdict. The secret-leak sweep enumerates the WHOLE registry (every content tool swept by construction); `AgentSiteStatus` carries no path/internal by TYPE (so its sweep presence is a type-guarantee, not a non-vacuity proof — that's `list_sites`/`tail_log`) | ✅ `classify_keeps_the_failures_distinct…` + `every_non_serving_names_the_user_and_serving_states_it_never_ran_the_site` + `every_tool_declares_valid_sweep_args…` + `mcp_secret_sweep` live (Ok+error paths) + `mcp_socket_check` live |
+| 201 | mcp_server/view.rs (scrub_log_line) + tools.rs (tail_log) + readctx.rs | `tail_log` is CONSTRAINED, not trusted-to-a-filter: only the WordPress debug log (per-site; shared server/edge/db/access logs NOT exposed), tail-only, line-capped (≤200). The scrubber removes KNOWN rexenv login tokens, cookie headers, AND the site's own docroot prefix (an absolute stack-trace path would otherwise hand the agent the docroot + OS username that `AgentSiteView` drops — the assembly-review leak), but the tool's note/copy explicitly does NOT claim the content is safe/sanitised. A non-WordPress site returns a normal empty result, never a "concerning" error row | ✅ `the_scrubber_removes_tokens_cookies_and_the_docroot_but_keeps_benign_content` + `the_log_tail_note_never_claims_the_content_is_safe` + `mcp_secret_sweep` live (planted token + Set-Cookie + a REALISTIC absolute-path stack trace in a fixture log → all scrubbed, benign line kept; Ok AND error paths swept) + `mcp_socket_check` live |
+| 202 | mcp_server/feed.rs + mcp_server.rs (session) | The agent activity feed is COMPLETE for executed/attempted tool calls (the session records EVERY tools/call outcome AND the non-happy-paths — unknown tool, malformed request, handler error — at one place; protocol handshakes are deliberately NOT logged), a TYPED shape (only the stable `target_site` id is stored, no free-form arg column — its human `target_label`/domain is resolved at READ time by a `commands::mcp` view join over the sites table, never stored, never agent content), BOUNDED on every write (row cap AND every field length-capped — the AGENT-controlled `client`/`tool`/`target_site` hardest, the assembly-review write-amplification fix), user-CLEARABLE, and it survives app restart (a SQLite table) | ✅ 8 `feed` lib tests (round-trip, typed-shape key-set, detail+agent-field bounds, row cap, clear, reopen-persistence) + `the_non_happy_paths_are_loggable_by_construction` + `mcp_socket_check` live (recorded 3 ok tools + unknown-tool + bad-request, ping NOT logged, client attributed, rows scoped-cleaned) |
+| 203 | mcp_server.rs (McpControl/spawn_if_enabled/start) + commands/mcp.rs | The MCP endpoint is OPT-IN, not ambient: the socket is bound ONLY while `AppState.mcp` holds a running server's handle, which happens only when the user enabled it (`mcp_enabled`, default off) AND `start` bound the socket — so the toggle can never read on while nothing listens (bind first, persist "true" after). Disabling drops every live session (each `select!`s on the shutdown watch) and unlinks the socket; app exit drops the sender, which `serve` reads as stop. The status line is derived from recent call OUTCOMES in a 15-min window (self-recovering), never the handshake alone | ◐ control state-machine ✅ `mcp_control_is_off_by_default_and_stop_signals_shutdown_idempotently` + status derivation ✅ `recent_head_*` (window head, trailing-error count, ages-out, empty); the LIVE bind→unbind + over-the-wire session-drop 🔨 L1 (an enable/disable example asserting the socket unbinds and a live session ends) + card renders the derived status honestly at L2 (`uireview` `agents-working/erroring/idle/off` WebKit scenarios: working=green, erroring=amber-named "last N errored" not green, concerning rows muted-amber, empty state, toggle matches enabled) |
 | 59 | main.rs:6 | `--dns-agent` never opens a window / touches SQLite / starts services | 🔨 L0 (what run_agent can reach) |
 | 60 | lib.rs:121 | In-process resolver fallback means DNS never regresses | 🔨 L1 (agent-death fallback) |
 | 61 | lib.rs:410 | Locks never held across .await; polls never block the UI | 🔨 L0/lint (today a reading discipline) |
@@ -271,7 +277,7 @@ L3 = scripted manual.
 
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
-| 167 | store.rs:1 | Only state/ knows the sites table shape; core never writes SQL | 🔨 L0 (rusqlite-outside-state grep guard) |
+| 167 | store.rs:1 | Only state/ hand-writes SQL against the app's SQLite schema (core reaches it only via store.rs fns). NOT "core writes no SQL" — withdrawn 29 Jul: core runs `information_schema` reads + `CREATE DATABASE`/`GRANT` on the developer's MySQL/Postgres in dbmirror | 🔨 L0 (planned rusqlite-outside-state grep guard — note: it would scan IMPORTS, not SQL-string content, so it is itself the surface-coverage shape — see Defect families below) |
 | 168 | store.rs:478 | ConnectedVerified mint demands the witness; probe only upgrades | ✅ 2 lib tests |
 | 169 | store.rs:715 | INSERT never upsert — first backup wins | ✅ lib test |
 | 170 | db.rs:143 | NULL = present-unverified, never stale; upgrades never spray alarms | ✅ 2 lib tests |
@@ -323,12 +329,11 @@ one day of being written):
 for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDGER.md; done
 ```
 
-As of 29 Jul 2026 (master after merging the dbmirror fix #196 and the MCP plan
-#197; feat/mcp-m1 with #198–#203 merges next): **✅ 118 · ◐ 37 · 🔨 37 · 🚫 5** of
-197 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
-Recompute mechanically with the one-liner above once feat/mcp-m1 lands — never
-hand-maintain. The working backlog = every 🔨 row + the noted half of every ◐ row,
-ranked below.
+As of 29 Jul 2026 (master after merging all three branches: the dbmirror fix #196,
+the MCP plan #197, and MCP M1 #198–#203): **✅ 123 · ◐ 38 · 🔨 37 · 🚫 5** of 203
+rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+Recomputed mechanically with the one-liner above. The working backlog = every 🔨
+row + the noted half of every ◐ row, ranked below.
 
 ## 🚫 wording audit (28 Jul 2026)
 
@@ -348,6 +353,49 @@ their code comments:
   proven live; only the ITP attribution is unprovable), #52 (the RFC citation IS the
   scope), #95 (self-flagged UNVERIFIED), #154 (dated, versioned, with its
   falsification case).
+
+## Defect families — the claim and the check aren't looking at the same thing
+
+These shapes have each shipped a false or overstated guard this month. They are one
+family: a claim asserts a property of THING X, but the check that "proves" it looks
+at THING Y ≠ X. They diverge along different axes:
+
+- **Redundant computation** — one fact computed in two places; the claim is that the
+  two agree, and nothing checks that they *can't* diverge (the single-source-of-truth
+  rows #174/#177, footer-vs-tab).
+- **Time** — a one-time check on a mutable fact; the claim holds for the dependent
+  thing's LIFETIME, the check holds ONCE at mint (the share-guard #188 shape; memory
+  `one-fact-lifetime-guards`).
+- **Coverage / surface** — a guard asserts a property of a whole SURFACE but checks
+  one PLACE inside it. Instances this month:
+  - `tail_log` docroot leak (#199/#201): "docroot dropped from the view" asserted of
+    ALL output; the drop was checked on `list_sites` and re-emitted via log content.
+  - the sandbox invariant (`examples/common/mod.rs`): "no example writes real app
+    data" asserted of ALL 109 examples; structure covers the ~20 that call
+    `sandbox()`, and the bin cache is a real, mutable hole even there.
+  - the M1 read-only guard (#199): asserted of the whole read surface; originally
+    scanned only `tools.rs` when the boundary is also `ReadCtx` in `readctx.rs`
+    (fixed — now scans both, proven to fire on a planted violation).
+  - #167's planned rusqlite grep: asserts "core writes no app SQL", but a grep for
+    the `rusqlite` import checks IMPORTS, not SQL-string content.
+- **Data / fixture** — the check exercises the right surface at the right time, but on
+  UNREPRESENTATIVE inputs: the fixture is friendlier than production, so the gap is in
+  the DATA, not the code. Two misses this month, both #202's feed/sweep neighbourhood:
+  - the secret-leak sweep passed on a debug.log carrying a *relative* path when
+    production logs carry *absolute* stack-trace paths that leak the docroot + OS
+    username (fixture misled the THING being verified — it never triggered the leak).
+  - the MCP feed's display: the DevUiReview mock used friendly ids (`s-ea`), so the
+    WebKit screenshot certified `→ myblog.test` while production stores a
+    `uuid::new_v4()` and rendered `→ 550e8400-e29b-4…` (fixture misled the VERIFIER —
+    the human/probe read a broken display as fine). Fixed by planting real UUIDs AND a
+    probe that FAILS on a bare UUID; memory `fixtures-must-look-like-production`.
+
+**The audit question this adds** — belongs in whatever the audit procedure becomes:
+for every guard, *does the check cover the whole surface the claim names, for the
+whole lifetime the claim spans, on data shaped like production?* If the claim says
+"all X" and the check reads "one X" — or reads X on friendly-fake data — the guard is
+narrower than its claim, and that gap (in code OR in the fixture) is exactly where the
+next false-safety comment hides.
 
 ## The 🔨 backlog, ranked by blast radius
 

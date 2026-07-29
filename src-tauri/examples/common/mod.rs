@@ -16,6 +16,18 @@
 //! > example created, a Drop-owned process guard. Never a derived path, never
 //! > the shared prefix, never a path computed from the real `Paths`.
 //!
+//! **The actual shape of this boundary — where it is structure and where it is
+//! discipline.** [`sandbox`] makes the invariant STRUCTURAL, but only for the
+//! ~20 of 109 examples that call it; the rest run on the REAL `Paths` and rest
+//! on per-example review (a [`Reaped`] guard for spawns, a self-created temp dir
+//! for writes), not on a type that redirects the paths. And even under
+//! `sandbox` the shared binary cache is a DELIBERATE real, mutable exception:
+//! examples add to it, and `download_progress_check` deliberately DELETES one
+//! content-addressed entry to test re-download. So the honest boundary is not
+//! "an example writes nothing real" — it is "an example writes nothing real
+//! EXCEPT the content-addressed binary cache, and only the ~20 sandbox callers
+//! have even that guaranteed by structure rather than by review."
+//!
 //! This has now bitten three times, each fixed per-instance until this note:
 //!
 //! 1. an example `rm -rf`'d `docroot.parent()` and took the user's whole Sites
@@ -95,7 +107,10 @@ struct SandboxPaths {
     /// The REAL binary cache: the one deliberate exception. It is
     /// content-addressed, checksum-verified and atomically published, and not
     /// sharing it would mean re-downloading ~600 MB of MySQL per example run.
-    /// Examples only ever add to it.
+    /// Deliberately MUTABLE, not add-only (that was overstated): examples add to
+    /// it, and `download_progress_check` deletes one content-addressed entry to
+    /// exercise re-download — safe only because every entry is re-fetchable by
+    /// checksum.
     bin: PathBuf,
     hosts: PathBuf,
 }
@@ -202,9 +217,11 @@ impl Drop for SandboxGuard {
 /// let cfg = sites::rebuild_configs(&conn, &*plat, &ca, PORT, 8081, 8444)?; // writes into the sandbox
 /// ```
 ///
-/// Two deliberate exceptions, both read-mostly and both stated on the methods
-/// above: the binary cache is shared (re-downloading 600 MB per run is worse),
-/// and the hosts file is the real one (only ever read). Privileged operations
+/// Two deliberate exceptions, stated on the methods above: the binary cache is
+/// shared (re-downloading 600 MB per run is worse) and MUTABLE — examples add to
+/// it and one deletes a content-addressed entry to test re-download (safe:
+/// re-fetchable by checksum); the hosts file is the real one (only ever read).
+/// Privileged operations
 /// and the DNS command builders also delegate to the real platform — an example
 /// that calls those is asking for a real system change and should say so.
 pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {

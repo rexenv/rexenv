@@ -4,12 +4,13 @@ import { toast, toastBackendError } from "@/lib/toast";
 import { confirm } from "@/components/ui/dialog";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { RexLogo } from "@/components/common/RexLogo";
+import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import {
   applyPhpSettings,
   autostartStatus,
@@ -1171,12 +1172,13 @@ function AboutSetting() {
   );
 }
 
-type Section = "general" | "dns" | "services" | "about";
+type Section = "general" | "dns" | "services" | "agents" | "about";
 
 const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
   { key: "general", label: "General", icon: SettingsIcon },
   { key: "dns", label: "DNS & SSL", icon: Shield },
   { key: "services", label: "Services", icon: Server },
+  { key: "agents", label: "AI agents", icon: Bot },
   { key: "about", label: "About", icon: Info },
 ];
 
@@ -1237,6 +1239,7 @@ export function Settings() {
                 </Card>
               </>
             )}
+            {section === "agents" && <AgentsMcpCard />}
             {section === "about" && <AboutSetting />}
           </div>
         </div>

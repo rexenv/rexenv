@@ -1078,3 +1078,44 @@ export interface RepoLinkResult {
   isGit: boolean;
   wp: { kind: "plugin" | "theme" | "none"; name: string | null };
 }
+
+// ── MCP: the "AI agents" Settings card + per-site activity ───────────────────
+
+/** How one agent tool call turned out (mirrors `mcp_server::feed::Outcome`). */
+export type AgentOutcome = "ok" | "error" | "denied" | "unknown-tool" | "bad-request";
+
+/** One recorded agent action (mirrors `mcp_server::feed::AgentAction`). Only
+ *  `targetSite` is stored from a call's arguments — there is no free-form arg
+ *  field, by construction. */
+export interface AgentAction {
+  id: number;
+  at: string;
+  client: string;
+  tool: string;
+  /** The stable site id the call named (a UUID) — not human-readable. */
+  targetSite: string | null;
+  /** The named site's current domain, resolved at read time; null when there's
+   *  no target or the site was deleted (then fall back to `targetSite`). */
+  targetLabel: string | null;
+  outcome: AgentOutcome;
+  detail: string | null;
+  concerning: boolean;
+}
+
+/** The header status line's state — derived from recent call OUTCOMES in a
+ *  15-minute window, never the socket handshake alone (mirrors the Rust
+ *  `ActivityStatus` tagged enum). Self-recovering: an error state ages out. */
+export type ActivityStatus =
+  | { kind: "off" }
+  | { kind: "idle" }
+  | { kind: "working"; lastTool: string; minutesAgo: number }
+  | { kind: "erroring"; errored: number; minutesAgo: number };
+
+/** The MCP card's whole state in one read, so the header and the feed it shows
+ *  come from the same snapshot (mirrors `commands::mcp::McpStatus`). */
+export interface McpStatus {
+  enabled: boolean;
+  connectCommand: string;
+  activity: ActivityStatus;
+  recent: AgentAction[];
+}
