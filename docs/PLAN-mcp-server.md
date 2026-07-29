@@ -546,17 +546,31 @@ Roughly 13 tools in the full WordPress build-out; M1+M2 ship 9 (§7.3).
   tool that can read real databases and run scratch code should be opt-in, not
   ambient. Enabling binds the socket; disabling unlinks it and drops sessions.
   Mail is a second sub-toggle, also off (§3.5).
-  - **The card's own copy states the residual (§3.1), verbatim** — this is D7's
-    binding condition, so the reckoning lives where the person enabling it will
-    read it, not only in this plan: *"While this is on, an AI agent can create
-    disposable sites and run their code. Code running in those sites has the same
-    power over rexenv and this machine that your own code does — including
-    reaching rexenv's command socket. Turn this off when you're not using it."*
+  - **The residual (§3.1) reads AT THE MOMENT OF ENABLING, not in a disclosure**
+    — D7's binding condition, and worded so it is true in M1 (read-only, actually
+    contained) AND still true when M2's executing tiers land, so a user who
+    enabled it in M1 never needs a rewrite they won't see. It sits above the
+    toggle, not behind an expander: *"Before you turn this on: this lets an AI
+    agent connect to rexenv and use the tools you've enabled. Today those are
+    read-only — it can look at your sites, their status and logs, but not change
+    or run anything. As rexenv adds more capable tools, an agent will be able to
+    create disposable sites and run code in them, and code in those sites has the
+    same power over rexenv and this machine as code you run yourself. Turn this
+    off when you're not using it."* The "as rexenv adds…" clause is the hinge: it
+    is honest in M1 and stays honest at M2 without an edit.
 - **Copy-paste connect:** the card shows `claude mcp add rexenv -- rex mcp` plus
   the Cursor/VS Code JSON stanza, wired to the existing CLI-install card for the
   "not on PATH" case. Zero new install steps (§2.2).
-- **Connected now:** the card lists live sessions — client name/version, since,
-  last activity (socket connect + MCP initialize = "connected").
+- **Connected now — and "connected" vs "connected and working" are distinct.**
+  The card lists live sessions (client name/version, since, last activity), but
+  the status line must not stay green on the handshake alone: `initialize`
+  succeeding then every call failing is the same connected-but-broken split
+  rexenv cleans up elsewhere (a share showing Live while 530-ing; a service
+  "running" on a bare port-listen). So the line reads from RECENT CALL OUTCOMES,
+  not just the socket: **On — waiting** (no session) → **Connected** (a session,
+  no calls yet) → **Working** (recent calls succeeding) → **Connected, but the
+  last N calls errored** (handshake up, calls failing — named, not green). The
+  activity feed's outcomes feed this line so header and feed can never disagree.
 - **Activity feed — every agent action visible, none silent.** Append-only
   `agent_actions` (ts, client, tool, target site, argument summary — including
   full SQL text for `db_query` — outcome ok/error/denied). On the card (live
