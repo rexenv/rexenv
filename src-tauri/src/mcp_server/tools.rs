@@ -184,9 +184,12 @@ fn tail_log<'a>(ctx: ReadCtx<'a>, args: &'a Value) -> ToolFuture<'a> {
             .site_by_id(id)?
             .ok_or_else(|| Error::Other(format!("no site with id `{id}`")))?;
         // The WordPress-only gate lives in ReadCtx (the trusted bridge), so this
-        // handler stays free of state types.
-        let raw = ctx.wp_debug_log_tail(&site, lines)?;
-        let tail = AgentLogTail::from_lines(&site.id, &site.domain, "wp-debug", raw);
+        // handler stays free of state types. A non-WP site is a normal empty
+        // result, not an error (so it isn't a misleading "concerning" feed row).
+        let tail = match ctx.wp_debug_log_tail(&site, lines)? {
+            Some(raw) => AgentLogTail::from_lines(&site.id, &site.domain, &site.path, "wp-debug", raw),
+            None => AgentLogTail::none_for_non_wordpress(&site.id, &site.domain),
+        };
         serde_json::to_value(tail).map_err(|e| Error::Other(format!("serialising log tail: {e}")))
     })
 }

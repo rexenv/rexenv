@@ -97,19 +97,16 @@ impl<'a> ReadCtx<'a> {
     }
 
     /// The RAW tail of the site's WordPress debug log (the caller scrubs), capped
-    /// to `lines` and tail-only via `core::logs`. Refuses a non-WordPress site
-    /// (the WP debug log is the only source M1 exposes). Missing/empty log ⇒
-    /// empty vec, like the log page.
-    pub fn wp_debug_log_tail(&self, site: &Site, lines: usize) -> Result<Vec<String>> {
+    /// to `lines` and tail-only via `core::logs`. `Ok(None)` for a non-WordPress
+    /// site (the WP debug log is the only source M1 exposes) — a NORMAL answer,
+    /// not an error, so the tool reports "no log for this site type" without a
+    /// misleading concerning feed row. Missing/empty log ⇒ `Ok(Some(empty))`.
+    pub fn wp_debug_log_tail(&self, site: &Site, lines: usize) -> Result<Option<Vec<String>>> {
         if site.site_type != SiteType::Wordpress {
-            return Err(Error::Other(
-                "this site isn't WordPress — the WordPress debug log is the only log source \
-                 exposed in this version (shared server, edge, database and access logs are not)"
-                    .into(),
-            ));
+            return Ok(None);
         }
         let content_rel = site.content_dir.clone().unwrap_or_else(|| "wp-content".into());
-        core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), &content_rel, lines)
+        core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), &content_rel, lines).map(Some)
     }
 }
 

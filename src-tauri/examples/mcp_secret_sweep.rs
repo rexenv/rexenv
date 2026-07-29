@@ -39,7 +39,9 @@ async fn main() {
 
     // A real docroot (so tail_log can read a debug log) whose path carries the
     // distinctive marker, with a debug log holding a real login token, a
-    // Set-Cookie, and a benign line that MUST come through.
+    // Set-Cookie, a REALISTIC absolute-path stack trace (the shape a WP fatal
+    // actually logs — this is where the docroot/username leaked), and a benign
+    // line that MUST come through.
     let docroot = plat.paths().app_data_dir().expect("data dir").join(DOCROOT_SECRET);
     std::fs::create_dir_all(docroot.join("wp-content")).expect("make fixture docroot");
     std::fs::write(
@@ -47,7 +49,9 @@ async fn main() {
         format!(
             "[29-Jul-2026] PHP Warning: {BENIGN_MARKER} in plugin.php on line 5\n\
              GET /wp-login.php?rexenv_login={LOGIN_TOKEN}&redir=1 HTTP/1.1\n\
-             Set-Cookie: wordpress_logged_in={COOKIE_SECRET}; Path=/; HttpOnly\n"
+             Set-Cookie: wordpress_logged_in={COOKIE_SECRET}; Path=/; HttpOnly\n\
+             [29-Jul-2026] PHP Fatal error: boom in {}/wp-content/plugins/x.php on line 9\n",
+            docroot.display()
         ),
     )
     .expect("write fixture debug log");
@@ -109,10 +113,28 @@ async fn main() {
         "tail_log must have RETURNED the log's benign content — else the scrubber's clean output is vacuous"
     );
 
+    // The ERROR path (assembly-review coverage gap #5): drive the tools with a
+    // bogus site_id so site_status/tail_log take their Err branch, and assert no
+    // secret reaches the agent-facing error text either. Enumerated, so a future
+    // tool's error path is swept too.
+    let errs = mcp_server::sweep_tool_outputs(app.handle(), "no-such-site-id-zzzz").await;
+    let mut saw_an_error = false;
+    for (tool, out) in &errs {
+        for secret in planted {
+            assert!(!out.contains(secret), "tool `{tool}` leaked `{secret}` in its ERROR text:\n{out}");
+        }
+        if *tool != "list_sites" {
+            saw_an_error = true; // site_status/tail_log error on a bogus id
+        }
+    }
+    assert!(saw_an_error, "the error-path pass must actually take an Err branch");
+    println!("  ✓ error path: tools erroring on a bogus site_id leak no secret");
+
     println!(
-        "✓ mcp_secret_sweep green — {} registered tool(s) exercised against a planted fixture: \
-         the site appears by domain, the log's benign line comes through, but no docroot, db name, \
-         login token, cookie, or CA path reached the output.",
+        "✓ mcp_secret_sweep green — {} tool(s) exercised on a planted fixture (Ok AND error paths): \
+         the site appears by domain, the log's benign line + absolute stack-trace come through with \
+         the docroot stripped, but no docroot, db name, login token, cookie, or CA path reached the \
+         output.",
         outputs.len()
     );
 }

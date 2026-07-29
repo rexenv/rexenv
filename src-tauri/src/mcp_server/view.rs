@@ -234,21 +234,46 @@ pub struct AgentLogTail {
 }
 
 /// The scope + scrubber caveat, stated where the agent reads it every time.
-const LOG_NOTE: &str = "The site's own WordPress debug log (tail only, capped). \
-    rexenv-issued login tokens and cookie headers are removed, but this does NOT make \
-    the content safe — a debug log can contain anything the site's code wrote to it \
-    (request data, config dumps, third-party API responses). Treat it as raw output.";
+const LOG_NOTE: &str = "The site's own WordPress debug log (tail only, capped). The site's own \
+    docroot path, rexenv-issued login tokens, and cookie headers are removed, but this does NOT \
+    make the content safe — a debug log can contain anything the site's code wrote to it (other \
+    paths, request data, config dumps, third-party API responses). Treat it as raw output.";
+
+/// The note when there is no WordPress debug log to read — a non-WordPress site.
+/// A normal, non-concerning answer, not an error.
+const LOG_NOTE_NONE: &str = "This site isn't WordPress, so it has no WordPress debug log. Only the \
+    WordPress debug log is exposed in this version.";
 
 impl AgentLogTail {
-    /// Build from the raw tail, scrubbing each line. `source` is a fixed string
-    /// from the closed set the tool offers, never a filename.
-    pub fn from_lines(id: &str, domain: &str, source: &'static str, raw: Vec<String>) -> Self {
+    /// Build from the raw tail, scrubbing each line against known token/cookie
+    /// shapes AND the site's own `docroot` (so an absolute path in a stack trace
+    /// doesn't hand the agent the docroot + OS username that `AgentSiteView`
+    /// drops). `source` is a fixed string from the closed set, never a filename.
+    pub fn from_lines(
+        id: &str,
+        domain: &str,
+        docroot: &str,
+        source: &'static str,
+        raw: Vec<String>,
+    ) -> Self {
         AgentLogTail {
             id: id.to_string(),
             domain: domain.to_string(),
             source,
-            lines: raw.iter().map(|l| scrub_log_line(l)).collect(),
+            lines: raw.iter().map(|l| scrub_log_line(l, docroot)).collect(),
             note: LOG_NOTE,
+        }
+    }
+
+    /// A non-WordPress site: no log source, returned as a normal EMPTY result
+    /// (never an error — so it doesn't read as "something's off" in the feed).
+    pub fn none_for_non_wordpress(id: &str, domain: &str) -> Self {
+        AgentLogTail {
+            id: id.to_string(),
+            domain: domain.to_string(),
+            source: "wp-debug",
+            lines: Vec::new(),
+            note: LOG_NOTE_NONE,
         }
     }
 }
@@ -260,9 +285,17 @@ impl AgentLogTail {
 /// pattern list can catch an unknown-shaped secret. The tool's `note` and its
 /// scope limits (closed source set, tail-only, line cap) are the real defence;
 /// this scrub is one honest layer, never a "the log is now safe" claim.
-pub fn scrub_log_line(line: &str) -> String {
-    let out = redact_token_after(line, "rexenv_login=");
-    redact_cookie_header(&out)
+pub fn scrub_log_line(line: &str, docroot: &str) -> String {
+    let mut out = redact_token_after(line, "rexenv_login=");
+    out = redact_cookie_header(&out);
+    // The site's own docroot is a KNOWN value — redact it so an absolute
+    // stack-trace path doesn't surface the docroot + OS username that
+    // `AgentSiteView` withholds. Other absolute paths the site logged remain
+    // (unknown shapes; the note says the content is not made safe).
+    if !docroot.is_empty() {
+        out = out.replace(docroot, "<docroot>");
+    }
+    out
 }
 
 /// Replace the token following `marker` (URL-token characters) with `<redacted>`,
@@ -387,27 +420,36 @@ mod tests {
     }
 
     #[test]
-    fn the_scrubber_removes_known_tokens_and_cookies_but_keeps_benign_content() {
+    fn the_scrubber_removes_tokens_cookies_and_the_docroot_but_keeps_benign_content() {
+        let dr = "/Users/me/Sites/myblog.rex";
         let token = "TOKENSECRETee55ff66";
-        let scrubbed = scrub_log_line(&format!("GET /wp-login.php?rexenv_login={token}&redir=1"));
+        let scrubbed = scrub_log_line(&format!("GET /wp-login.php?rexenv_login={token}&redir=1"), dr);
         assert!(!scrubbed.contains(token), "login token survived: {scrubbed}");
         assert!(scrubbed.contains("rexenv_login=<redacted>"), "{scrubbed}");
         assert!(scrubbed.contains("redir=1"), "benign query lost — the scrubber over-reached");
 
-        let cookie = scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly");
+        let cookie =
+            scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly", dr);
         assert!(!cookie.contains("SECRETVALUE99"), "cookie value survived: {cookie}");
         assert!(cookie.starts_with("Set-Cookie: <redacted>"), "{cookie}");
 
-        // Benign content is untouched — the scrubber is not a blanket eraser
-        // (which would make the log useless while still not "safe").
-        let benign = "[29-Jul-2026] PHP Warning: undefined variable $x in plugin.php on line 10";
-        assert_eq!(scrub_log_line(benign), benign);
+        // A realistic WP stack-trace line: the docroot (and the OS username in
+        // it) must NOT reach the agent — this is the assembly-review leak.
+        let trace = format!("PHP Fatal error: boom in {dr}/wp-content/plugins/x.php on line 5");
+        let s = scrub_log_line(&trace, dr);
+        assert!(!s.contains(dr), "docroot survived: {s}");
+        assert!(!s.contains("/Users/me"), "OS home/username survived: {s}");
+        assert!(s.contains("<docroot>/wp-content/plugins/x.php"), "{s}");
+
+        // Benign content is untouched — the scrubber is not a blanket eraser.
+        let benign = "[29-Jul-2026] PHP Warning: undefined variable $x on line 10";
+        assert_eq!(scrub_log_line(benign, dr), benign);
     }
 
     #[test]
     fn the_log_tail_note_never_claims_the_content_is_safe() {
         // The one place a false "logs are sanitised" line would get written.
-        let tail = AgentLogTail::from_lines("id", "d.rex", "wp-debug", vec!["a".into()]);
+        let tail = AgentLogTail::from_lines("id", "d.rex", "/dr", "wp-debug", vec!["a".into()]);
         let note = tail.note.to_ascii_lowercase();
         assert!(note.contains("not") && note.contains("safe"), "{}", tail.note);
         assert!(!note.contains("sanitis"), "must not claim sanitised: {}", tail.note);

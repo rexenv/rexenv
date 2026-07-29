@@ -33,6 +33,13 @@ const ROW_CAP: i64 = 2000;
 /// Bound on `detail` (rexenv's own reason text) — a message, never a document.
 const DETAIL_MAX: usize = 500;
 
+/// Bound on the AGENT-controlled fields (client name, tool name, target site id).
+/// These come straight off the wire (`clientInfo.name`, `params.name`,
+/// `arguments.site_id`) bounded only by the 4 MB line cap, so without this an
+/// agent could drive gigabytes into the feed table — the row cap bounds row
+/// COUNT, not row SIZE. The discipline: cap the UNTRUSTED fields hardest.
+const FIELD_MAX: usize = 200;
+
 /// How one agent action turned out. Non-`Ok` outcomes are the "something's off"
 /// signal — an agent erroring, calling a tool that doesn't exist, sending
 /// garbage, or (from M2) being denied — which the card surfaces more prominently
@@ -104,11 +111,16 @@ pub struct AgentAction {
 /// Record one action, then prune to the row cap. `client` is the session's
 /// self-reported client name; SQLite stamps `at`.
 pub fn record(conn: &Connection, client: &str, log: &PendingLog) -> Result<()> {
+    // Cap the agent-controlled fields (client/tool/target_site) hardest — they
+    // arrive off the wire; only rexenv's own `detail` was previously bounded.
+    let client = truncate(client, FIELD_MAX);
+    let tool = truncate(&log.tool, FIELD_MAX);
+    let target = log.target_site.as_deref().map(|s| truncate(s, FIELD_MAX));
     let detail = log.detail.as_deref().map(|d| truncate(d, DETAIL_MAX));
     conn.execute(
         "INSERT INTO agent_actions (at, client, tool, target_site, outcome, detail) \
          VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5)",
-        params![client, log.tool, log.target_site, log.outcome.as_db(), detail],
+        params![client, tool, target, log.outcome.as_db(), detail],
     )?;
     conn.execute(
         "DELETE FROM agent_actions WHERE id NOT IN \
@@ -217,6 +229,20 @@ mod tests {
         record(&conn, "c", &log("site_status", None, Outcome::Error, Some(&huge))).unwrap();
         let d = recent(&conn, 1).unwrap()[0].detail.clone().unwrap();
         assert!(d.chars().count() <= DETAIL_MAX + 1, "detail not bounded: {}", d.chars().count());
+    }
+
+    #[test]
+    fn the_agent_controlled_fields_are_bounded_not_just_detail() {
+        // client/tool/target_site come off the wire (≤4 MB each) — an
+        // assembly-review finding: only `detail` was capped, so an agent could
+        // amplify writes far past the row cap. All three must be bounded.
+        let conn = mem();
+        let huge = "z".repeat(5000);
+        record(&conn, &huge, &log(&huge, Some(&huge), Outcome::UnknownTool, None)).unwrap();
+        let row = &recent(&conn, 1).unwrap()[0];
+        assert!(row.client.chars().count() <= FIELD_MAX + 1, "client unbounded");
+        assert!(row.tool.chars().count() <= FIELD_MAX + 1, "tool unbounded");
+        assert!(row.target_site.as_ref().unwrap().chars().count() <= FIELD_MAX + 1, "target unbounded");
     }
 
     #[test]
