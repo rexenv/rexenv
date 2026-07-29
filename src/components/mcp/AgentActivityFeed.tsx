@@ -29,7 +29,17 @@ export function timeAgo(at: string): string {
  * treatment: a thin left accent and an amber outcome label — visible without a
  * loud alarm fill, since a read-only agent erroring is a signal, not an incident.
  */
-export function AgentActivityFeed({ rows, empty }: { rows: AgentAction[]; empty: string }) {
+export function AgentActivityFeed({
+  rows,
+  empty,
+  hideTarget = false,
+}: {
+  rows: AgentAction[];
+  empty: string;
+  /** Drop the "→ site" reference — used in the per-site section, where naming
+   *  the site again is redundant with the page you're already on. */
+  hideTarget?: boolean;
+}) {
   if (rows.length === 0) {
     return <div className="px-1 py-5 text-center text-[0.75rem] text-rex-text-dim">{empty}</div>;
   }
@@ -44,9 +54,9 @@ export function AgentActivityFeed({ rows, empty }: { rows: AgentAction[]; empty:
           )}
         >
           <span className="font-mono text-[0.71875rem] text-rex-text">{r.tool}</span>
-          {r.targetSite && (
+          {!hideTarget && (r.targetLabel ?? r.targetSite) && (
             <span className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
-              → {r.targetSite}
+              → {r.targetLabel ?? r.targetSite}
             </span>
           )}
           <span

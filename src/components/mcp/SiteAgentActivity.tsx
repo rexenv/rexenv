@@ -20,7 +20,7 @@ export function SiteAgentActivity({ siteId }: { siteId: string }) {
       <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
         Agent activity
       </div>
-      <AgentActivityFeed rows={rows} empty="" />
+      <AgentActivityFeed rows={rows} empty="" hideTarget />
     </div>
   );
 }

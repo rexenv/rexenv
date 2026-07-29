@@ -30,6 +30,31 @@ fn db(state: &AppState) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection
     state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))
 }
 
+/// Fill each row's `target_label` with the named site's CURRENT domain. The feed
+/// stores the stable site id (`arguments.site_id`, a UUID); a human reading the
+/// card needs the domain. A deleted site resolves to `None` and the UI falls back
+/// to the raw id. rexenv-derived here (our own sites table), never agent content,
+/// so the feed's typed-shape discipline is untouched — this is a READ-time view
+/// join, not a stored field.
+fn resolve_target_labels(conn: &rusqlite::Connection, rows: &mut [feed::AgentAction]) -> Result<()> {
+    if rows.iter().all(|r| r.target_site.is_none()) {
+        return Ok(());
+    }
+    let mut by_id = std::collections::HashMap::new();
+    let mut stmt = conn.prepare("SELECT id, domain FROM sites")?;
+    let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    for row in mapped {
+        let (id, domain) = row?;
+        by_id.insert(id, domain);
+    }
+    for r in rows.iter_mut() {
+        if let Some(id) = &r.target_site {
+            r.target_label = by_id.get(id).cloned();
+        }
+    }
+    Ok(())
+}
+
 /// The card's whole state in ONE read, so the header status and the feed rows it
 /// shows come from the same snapshot and can never disagree (the plan's
 /// "connected vs working" honesty: never green while the feed shows errors).
@@ -70,7 +95,8 @@ fn status_snapshot(state: &AppState, limit: usize) -> Result<McpStatus> {
         .map_err(|_| Error::Other("mcp control lock poisoned".into()))?
         .is_running();
     let conn = db(state)?;
-    let recent = feed::recent(&conn, limit)?;
+    let mut recent = feed::recent(&conn, limit)?;
+    resolve_target_labels(&conn, &mut recent)?;
     let activity = if !enabled {
         ActivityStatus::Off
     } else {
@@ -135,10 +161,12 @@ pub fn agent_activity(
 ) -> Result<Vec<feed::AgentAction>> {
     let conn = db(&state)?;
     let limit = limit.min(500);
-    match site_id {
-        Some(id) => feed::recent_for_site(&conn, &id, limit),
-        None => feed::recent(&conn, limit),
-    }
+    let mut rows = match site_id {
+        Some(id) => feed::recent_for_site(&conn, &id, limit)?,
+        None => feed::recent(&conn, limit)?,
+    };
+    resolve_target_labels(&conn, &mut rows)?;
+    Ok(rows)
 }
 
 /// Clear the feed — the user's own record of their machine, theirs to wipe.

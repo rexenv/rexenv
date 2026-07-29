@@ -353,15 +353,21 @@ function agoStamp(mins: number): string {
   return new Date(Date.now() - mins * 60_000).toISOString().slice(0, 19).replace("T", " ");
 }
 
+// Production-shaped site handles: the feed stores `uuid::new_v4()` ids, resolved
+// to the current domain (`targetLabel`) at read time by commands::mcp — so the
+// fixtures must carry BOTH (friendly fake ids once masked the raw-UUID display).
+const EA = "7f3a1c2e-9b40-4d1a-8c22-1f0e5a6b7c8d";
+const SHOP = "2b91d0f4-1a33-4e77-9a0c-8d2e4f5a6b1c";
+
 /** A realistic activity feed: two concerning rows (a WP-less tail_log error and
- *  an unknown-tool) newest, then successes. `targetSite` is the site id the
- *  agent named — what the feed actually stores (`arguments.site_id`). */
+ *  an unknown-tool) newest, then successes. `targetSite` is the stored UUID; the
+ *  card shows `targetLabel` (the resolved domain). */
 const AGENT_ROWS: AgentAction[] = [
-  { id: 6, at: agoStamp(1), client: "Claude Code", tool: "tail_log", targetSite: "s-ea", outcome: "error", detail: "no debug.log for this site", concerning: true },
-  { id: 5, at: agoStamp(3), client: "Claude Code", tool: "site_status", targetSite: "s-shop", outcome: "unknown-tool", detail: "no such tool", concerning: true },
-  { id: 4, at: agoStamp(4), client: "Claude Code", tool: "site_status", targetSite: "s-ea", outcome: "ok", detail: null, concerning: false },
-  { id: 3, at: agoStamp(9), client: "Cursor 0.42", tool: "list_sites", targetSite: null, outcome: "ok", detail: null, concerning: false },
-  { id: 2, at: agoStamp(24), client: "Claude Code", tool: "tail_log", targetSite: "s-ea", outcome: "ok", detail: null, concerning: false },
+  { id: 6, at: agoStamp(1), client: "Claude Code", tool: "tail_log", targetSite: EA, targetLabel: "myblog.test", outcome: "error", detail: "no debug.log for this site", concerning: true },
+  { id: 5, at: agoStamp(3), client: "Claude Code", tool: "site_status", targetSite: SHOP, targetLabel: "shop.test", outcome: "unknown-tool", detail: "no such tool", concerning: true },
+  { id: 4, at: agoStamp(4), client: "Claude Code", tool: "site_status", targetSite: EA, targetLabel: "myblog.test", outcome: "ok", detail: null, concerning: false },
+  { id: 3, at: agoStamp(9), client: "Cursor 0.42", tool: "list_sites", targetSite: null, targetLabel: null, outcome: "ok", detail: null, concerning: false },
+  { id: 2, at: agoStamp(24), client: "Claude Code", tool: "tail_log", targetSite: EA, targetLabel: "myblog.test", outcome: "ok", detail: null, concerning: false },
 ];
 
 function activityStatusMock(): ActivityStatus {
@@ -397,7 +403,7 @@ function AgentsView() {
           <div className="mb-2 text-[0.71875rem] text-rex-text-muted">
             SiteDetail → Overview section (renders only when the site has activity):
           </div>
-          <SiteAgentActivity siteId="s-ea" />
+          <SiteAgentActivity siteId={EA} />
         </div>
       )}
     </div>
@@ -443,7 +449,7 @@ export function DevUiReview() {
         case "agent_activity":
           return params.get("feed") === "empty"
             ? []
-            : AGENT_ROWS.filter((r) => r.targetSite === "s-ea");
+            : AGENT_ROWS.filter((r) => r.targetSite === EA);
         case "agent_activity_clear":
           return 0;
         default:

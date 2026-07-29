@@ -1092,7 +1092,11 @@ export interface AgentAction {
   at: string;
   client: string;
   tool: string;
+  /** The stable site id the call named (a UUID) — not human-readable. */
   targetSite: string | null;
+  /** The named site's current domain, resolved at read time; null when there's
+   *  no target or the site was deleted (then fall back to `targetSite`). */
+  targetLabel: string | null;
   outcome: AgentOutcome;
   detail: string | null;
   concerning: boolean;

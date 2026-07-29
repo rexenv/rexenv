@@ -144,6 +144,10 @@ const PROBES = {
       if (!toggle) problems.push("no toggle rendered");
       else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
         problems.push("toggle state does not match astate");
+      // The feed must show resolved DOMAINS, never a raw UUID site handle (the
+      // fix: target_site is a uuid, target_label is the domain shown).
+      if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/.test(text))
+        problems.push("raw UUID site handle rendered — target_site not resolved to a domain");
       return problems;
     }),
 };

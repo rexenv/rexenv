@@ -101,7 +101,15 @@ pub struct AgentAction {
     pub at: String,
     pub client: String,
     pub tool: String,
+    /// The STABLE site id the call named (`arguments.site_id`) — keyed on by
+    /// `recent_for_site`, survives a domain rename. Not human-readable (a UUID).
     pub target_site: Option<String>,
+    /// The named site's CURRENT domain, resolved at READ time (never stored — the
+    /// feed keeps only the stable id). `None` when there is no target, or the site
+    /// was deleted; the UI then falls back to the raw id. rexenv-derived, never
+    /// agent content, so the typed-shape discipline holds. Filled by the command
+    /// layer (`commands::mcp`), which alone can reach the sites table.
+    pub target_label: Option<String>,
     pub outcome: Outcome,
     pub detail: Option<String>,
     /// Whether the card should surface this row prominently.
@@ -143,6 +151,7 @@ fn row_to_action(r: &rusqlite::Row) -> rusqlite::Result<AgentAction> {
         client: r.get(2)?,
         tool: r.get(3)?,
         target_site: r.get(4)?,
+        target_label: None, // resolved by the command layer, never stored
         outcome,
         detail: r.get(6)?,
         concerning: outcome.is_concerning(),
@@ -275,7 +284,7 @@ mod tests {
         let keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         for k in &keys {
             assert!(
-                ["id", "at", "client", "tool", "targetSite", "outcome", "detail", "concerning"]
+                ["id", "at", "client", "tool", "targetSite", "targetLabel", "outcome", "detail", "concerning"]
                     .contains(k),
                 "unexpected feed field `{k}` — the record shape grew"
             );
