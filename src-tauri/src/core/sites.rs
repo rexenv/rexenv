@@ -344,7 +344,7 @@ fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
 /// ownership explicitly; the flag is never taken from IPC input, so no caller
 /// can claim ownership of a path it doesn't own and get it deleted later.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
-    create_recording_ownership(conn, new, true)
+    create_recording_ownership(conn, new, true, Ownership::User)
 }
 
 /// [`create`], with the docroot-ownership answer supplied by the caller that
@@ -353,6 +353,7 @@ fn create_recording_ownership(
     conn: &Connection,
     new: NewSite,
     docroot_managed: bool,
+    ownership: Ownership,
 ) -> Result<Site> {
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
@@ -414,13 +415,23 @@ fn create_recording_ownership(
         content_dir,
         // No mu-plugins dir has been created by us at insert time (v25).
         mu_dir_created: None,
-        // v27: this is THE human create path, so the site is the user's. The
-        // agent path records `Agent` at ITS own insert (M2a) — deliberately a
-        // separate entry point rather than a bool on this one, so no caller can
-        // pass the wrong flag and no later code has to ask which mode it's in.
-        origin: SiteOrigin::User,
-        agent_client: None,
-        expires_at: None,
+        // v27, from the ONE ownership value — recorded at the insert, never
+        // derived later from the domain or the path.
+        origin: match ownership {
+            Ownership::User => SiteOrigin::User,
+            Ownership::Agent { .. } => SiteOrigin::Agent,
+        },
+        agent_client: match &ownership {
+            Ownership::User => None,
+            Ownership::Agent { client, .. } => Some(client.clone()),
+        },
+        // The clock starts here, at the insert, so a site that fails LATER in
+        // provisioning still expires and still gets reaped — a half-built
+        // scratch site is exactly the kind that would otherwise linger forever.
+        expires_at: match &ownership {
+            Ownership::User => None,
+            Ownership::Agent { ttl_hours, .. } => Some(store::db_time_from_now(conn, *ttl_hours)?),
+        },
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -1225,11 +1236,57 @@ pub fn ensure_sites_dir(conn: &Connection, platform: &dyn Platform) -> Result<Pa
 /// The DB-provisioning step branches on [`needs_database`] (a hook for 9.2).
 /// Does NOT (re)write the shared server configs — call [`rebuild_configs`] +
 /// reload after, so one apply covers any number of changes.
+/// Who a new site will belong to — and, because the two must never disagree,
+/// the SAME value decides whether its creation may raise a privileged prompt.
+///
+/// Threading one value rather than two (an `origin` plus a `never_prompt` bool)
+/// is deliberate: "an agent-created site never prompts" is then true by
+/// construction instead of true as long as every caller remembers to set both.
+/// A bool pair is exactly the shape that drifts.
+#[derive(Debug, Clone)]
+pub enum Ownership {
+    /// The user asked for this site, in the app or the CLI.
+    User,
+    /// An agent created it through the MCP server: recorded `origin='agent'`,
+    /// stamped with the client name and a TTL, and never allowed to prompt.
+    Agent {
+        /// The MCP client's self-reported name — display-only, capped at write.
+        client: String,
+        /// Hours from now until it expires.
+        ttl_hours: i64,
+    },
+}
+
+impl Ownership {
+    /// May creating this site raise a privileged password prompt? Derived, never
+    /// passed alongside — see the type doc.
+    pub fn resolver_prompt(&self) -> crate::core::dns::ResolverPrompt {
+        match self {
+            Ownership::User => crate::core::dns::ResolverPrompt::Allow,
+            Ownership::Agent { .. } => crate::core::dns::ResolverPrompt::Never,
+        }
+    }
+}
+
 pub fn provision(
     conn: &Connection,
     platform: &dyn Platform,
     ca: &ssl::LocalCa,
+    new: NewSite,
+) -> Result<Site> {
+    provision_with(conn, platform, ca, new, Ownership::User)
+}
+
+/// [`provision`], with ownership recorded at the insert (v27). The agent
+/// variant is a distinct VALUE rather than a flag on the human path, so no
+/// caller can pass the wrong one by accident and nothing downstream has to ask
+/// which mode it is in.
+pub fn provision_with(
+    conn: &Connection,
+    platform: &dyn Platform,
+    ca: &ssl::LocalCa,
     mut new: NewSite,
+    ownership: Ownership,
 ) -> Result<Site> {
     validate_domain(&new.domain)?; // before any docroot/cert/DB use of the domain
     if store::domain_exists(conn, &new.domain)? {
@@ -1266,7 +1323,7 @@ pub fn provision(
     }
 
     new.path = docroot.display().to_string();
-    create_recording_ownership(conn, new, !linked)
+    create_recording_ownership(conn, new, !linked, ownership)
 }
 
 // ---------------------------------------------------------------------------
@@ -2559,7 +2616,7 @@ mod tests {
         // Linked: refused outright. A cross-volume move COPIES then deletes the
         // source, so this would rewrite the user's own project layout.
         let (dir, new) = docroot_fixture("nomove");
-        let linked = create_recording_ownership(&conn, new, false).unwrap();
+        let linked = create_recording_ownership(&conn, new, false, Ownership::User).unwrap();
         let err = check_docroot_move(&linked, &std::env::temp_dir()).unwrap_err().to_string();
         assert!(err.contains("your own folder"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
@@ -2684,7 +2741,7 @@ mod tests {
         // Some(false)` — this pins the predicate it relies on.
         let conn = db::open_in_memory().unwrap();
         let (dir, new) = docroot_fixture("noretrywrite");
-        let linked = create_recording_ownership(&conn, new, false).unwrap();
+        let linked = create_recording_ownership(&conn, new, false, Ownership::User).unwrap();
         assert_eq!(linked.docroot_managed, Some(false), "linked rows must be recognisable");
 
         let (dir2, new2) = docroot_fixture("ourswrite");
@@ -2711,6 +2768,7 @@ mod tests {
             &conn,
             NewSite { path: dir.display().to_string(), ..new },
             false, // linked: we did not create this folder
+            Ownership::User,
         )
         .unwrap();
 
@@ -2915,4 +2973,96 @@ mod tests {
         assert_eq!(t, "php");
         assert_eq!(ws, "apache");
     }
+
+    #[test]
+    fn an_agent_create_records_origin_client_and_a_ttl_at_the_insert() {
+        // Ownership is recorded where the row is BORN, from the same value that
+        // decided the prompt policy — so "this site is the agent's" and "this
+        // create may not prompt" cannot disagree. And the clock starts here, at
+        // the insert, so a create that fails LATER still expires and still gets
+        // reaped: a half-built scratch site is exactly the kind that would
+        // otherwise linger forever.
+        use crate::state::models::SiteOrigin;
+        let conn = db::open_in_memory().unwrap();
+        let (dir, new) = docroot_fixture("scratchborn");
+        let site = create_recording_ownership(
+            &conn,
+            NewSite { domain: "probe.scratch.rex".into(), ..new },
+            true,
+            Ownership::Agent { client: "Claude Code".into(), ttl_hours: 24 },
+        )
+        .unwrap();
+        assert_eq!(site.origin, SiteOrigin::Agent);
+        assert!(site.is_scratch());
+        assert_eq!(site.agent_client.as_deref(), Some("Claude Code"));
+        let expiry = site.expires_at.clone().expect("a scratch site expires");
+        let now = store::db_now(&conn).unwrap();
+        assert!(expiry > now, "the TTL is in the future: {expiry} vs {now}");
+        // ...and it round-trips through the row, not just the returned struct.
+        let read = store::get_site(&conn, &site.id).unwrap().unwrap();
+        assert!(read.is_scratch() && read.expires_at == site.expires_at);
+        // Same fixture, user ownership: no client, no clock, never reapable.
+        let (dir2, new2) = docroot_fixture("userborn");
+        let mine = create_recording_ownership(&conn, new2, true, Ownership::User).unwrap();
+        assert_eq!(mine.origin, SiteOrigin::User);
+        assert_eq!(mine.agent_client, None);
+        assert_eq!(mine.expires_at, None);
+        assert!(!mine.reap_due("2099-01-01 00:00:00"));
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(dir2);
+    }
+
+    #[test]
+    fn a_scratch_name_is_a_single_label_and_the_refusal_shows_the_shape() {
+        use crate::core::scratch::scratch_domain;
+        assert_eq!(scratch_domain("plugin-test", "rex").unwrap(), "plugin-test.scratch.rex");
+        assert_eq!(scratch_domain("  probe  ", "rex").unwrap(), "probe.scratch.rex");
+        // An agent must not be able to nest a namespace or squat `scratch.rex`.
+        let err = scratch_domain("a.b", "rex").unwrap_err().to_string();
+        assert!(err.contains("single word"), "names the rule: {err}");
+        assert!(err.contains("plugin-test.scratch.rex"), "SHOWS the shape wanted: {err}");
+        assert!(scratch_domain("", "rex").is_err());
+        assert!(scratch_domain("-lead", "rex").is_err());
+        assert!(scratch_domain("trail-", "rex").is_err());
+        // And the full domain still passes the ordinary validator.
+        validate_domain(&scratch_domain("probe", "rex").unwrap()).unwrap();
+    }
+
+    #[test]
+    fn the_cap_refusal_names_the_sites_and_two_ways_forward() {
+        // A refusal that states the rule and stops is where a model starts
+        // improvising — a different name, then another, then something else
+        // entirely. So the ceiling has to hand it the actions that exist.
+        use crate::core::scratch::{ensure_capacity, MAX_SCRATCH_SITES};
+        use crate::state::models::{test_site, SiteOrigin};
+        let conn = db::open_in_memory().unwrap();
+        // The user's own sites do NOT count toward the agent's ceiling.
+        for i in 0..8 {
+            let s = test_site(&format!("u{i}-0000-4000-8000-00000000000{i}"), &format!("mine{i}.rex"), SiteOrigin::User);
+            store::insert_site(&conn, &s).unwrap();
+        }
+        ensure_capacity(&conn).expect("the user's sites are not the agent's quota");
+
+        for i in 0..MAX_SCRATCH_SITES {
+            let mut s = test_site(
+                &format!("a{i}-0000-4000-8000-00000000000{i}"),
+                &format!("probe{i}.scratch.rex"),
+                SiteOrigin::Agent,
+            );
+            s.expires_at = Some("2099-01-01 00:00:00".into());
+            store::insert_site(&conn, &s).unwrap();
+            if i + 1 < MAX_SCRATCH_SITES {
+                ensure_capacity(&conn).expect("below the cap");
+            }
+        }
+        let err = ensure_capacity(&conn).unwrap_err().to_string();
+        assert!(err.contains(&MAX_SCRATCH_SITES.to_string()), "names the limit: {err}");
+        assert!(err.contains("probe0.scratch.rex") && err.contains("probe4.scratch.rex"),
+                "lists what it can delete: {err}");
+        assert!(!err.contains("mine0.rex"), "never offers the USER's sites for deletion: {err}");
+        assert!(err.contains("scratch_delete_site"), "way forward #1 — delete one: {err}");
+        assert!(err.contains("ask the person"), "way forward #2 — ask the user: {err}");
+        assert!(err.contains("expire"), "and the passive one: {err}");
+    }
+
 }

@@ -625,7 +625,16 @@ async fn import_one<R: tauri::Runtime>(
         path: c.serve_path.clone().unwrap_or_default(),
         db_engine: crate::state::models::SiteDbEngine::Mysql,
     };
-    let snap = match crate::commands::site_provision::start(app, state, provision, site, None, None)
+    let snap = match crate::commands::site_provision::start(
+        app,
+        state,
+        provision,
+        site,
+        None,
+        None,
+        // An import is the USER adopting their own Valet/Herd sites.
+        crate::core::sites::Ownership::User,
+    )
     {
         Ok(s) => s,
         Err(e) => {

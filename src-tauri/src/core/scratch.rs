@@ -64,6 +64,72 @@ impl ScratchSite {
     }
 }
 
+/// The label every agent-created domain sits under: `<name>.scratch.<tld>`.
+///
+/// This is **UX, never policy** — it lets a human scanning the Sites list tell
+/// at a glance which sites are disposable. Every decision reads
+/// [`crate::state::models::SiteOrigin`]; a site the user hand-creates at
+/// `mine.scratch.rex` is a normal site of theirs (`claim` refuses it, tested).
+pub const SCRATCH_LABEL: &str = "scratch";
+
+/// How many scratch sites may exist at once (PLAN §4.2). The answer to "an agent
+/// creates twenty": it can't.
+pub const MAX_SCRATCH_SITES: usize = 5;
+
+/// Build the domain for a scratch site called `name` under `tld`.
+///
+/// `name` must be a SINGLE label: no dots, so an agent can neither nest
+/// namespaces nor squat `scratch.<tld>` itself, and no leading/trailing dash.
+/// The full domain is validated downstream by `sites::validate_domain` as well —
+/// this is the shape rule, not the character rule.
+pub fn scratch_domain(name: &str, tld: &str) -> Result<String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Other(
+            "A scratch site needs a name — a single word, like `plugin-test`.".into(),
+        ));
+    }
+    if name.contains('.') {
+        return Err(Error::Other(format!(
+            "`{name}` can't be a scratch site name: use a single word with no dots (rexenv adds \
+             `.{SCRATCH_LABEL}.{tld}` itself, so `plugin-test` becomes `plugin-test.{SCRATCH_LABEL}.{tld}`)."
+        )));
+    }
+    if name.starts_with('-') || name.ends_with('-') {
+        return Err(Error::Other(format!(
+            "`{name}` can't be a scratch site name: it must not start or end with a dash."
+        )));
+    }
+    Ok(format!("{name}.{SCRATCH_LABEL}.{tld}"))
+}
+
+/// Refuse when the scratch pool is full, naming a WAY FORWARD.
+///
+/// A refusal that states the rule and stops is where a model starts improvising
+/// — it will try a different name, then another, then reach for something else
+/// entirely. So this lists the sites it can delete, by domain, and says the two
+/// things it can actually do: delete one of its own, or ask the user (who can
+/// Keep or remove them in rexenv). The count is the recorded fact, not an
+/// estimate.
+pub fn ensure_capacity(conn: &Connection) -> Result<()> {
+    let mine: Vec<String> = store::list_sites(conn)?
+        .into_iter()
+        .filter(|s| s.is_scratch())
+        .map(|s| s.domain)
+        .collect();
+    if mine.len() < MAX_SCRATCH_SITES {
+        return Ok(());
+    }
+    Err(Error::Other(format!(
+        "There are already {} scratch sites, which is the limit ({MAX_SCRATCH_SITES}): {}.\n\
+         Delete one you no longer need with scratch_delete_site, or ask the person you're working \
+         with — they can keep or remove scratch sites in rexenv under Settings → AI agents. \
+         Scratch sites also expire on their own once nothing has used them for a while.",
+        mine.len(),
+        mine.join(", ")
+    )))
+}
+
 /// The ONE conversion: read the row by id and prove it is the agent's, or refuse
 /// with a sentence the agent can act on.
 ///

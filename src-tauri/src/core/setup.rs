@@ -52,7 +52,12 @@ pub fn resolver_install_script(platform: &dyn Platform, dns_port: u16) -> String
 pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
     let ca = ssl::load_or_create(platform.paths(), platform.permissions())?;
     // 1) privileged: install the backbone resolver file (one admin prompt).
-    dns::ensure_resolver(platform, tld::BACKBONE_TLD, dns::DEFAULT_DNS_PORT)?;
+    dns::ensure_resolver(
+        platform,
+        tld::BACKBONE_TLD,
+        dns::DEFAULT_DNS_PORT,
+        dns::ResolverPrompt::Allow, // first-run setup: the user IS the one asking
+    )?;
     // 2) user: trust the CA (native dialog; login keychain, no root).
     ssl::trust_ca(platform, &ca)?;
     Ok(ca)

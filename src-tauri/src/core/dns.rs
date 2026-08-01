@@ -343,14 +343,48 @@ fn foreign_resolver_error(path: &std::path::Path) -> Error {
 /// — leaving them with neither their file nor ours. Taking a TLD over is a
 /// deliberate, backed-up, consented operation; it does not happen as a side
 /// effect of creating a site.
-pub fn ensure_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<()> {
+pub fn ensure_resolver(
+    platform: &dyn Platform,
+    tld: &str,
+    port: u16,
+    prompt: ResolverPrompt,
+) -> Result<()> {
     match resolver_owner(platform, tld, port) {
         ResolverOwner::Ours => Ok(()),
-        ResolverOwner::Absent => configure_resolver(platform, tld, port),
+        ResolverOwner::Absent => match prompt {
+            ResolverPrompt::Allow => configure_resolver(platform, tld, port),
+            ResolverPrompt::Never => Err(Error::Other(format!(
+                "rexenv can't serve `.{tld}` yet — its system resolver file is missing, and \
+                 installing one needs your administrator password, which only you can give. \
+                 Open rexenv and finish its setup, then try again."
+            ))),
+        },
         ResolverOwner::Foreign { .. } => {
             Err(foreign_resolver_error(&platform.dns().resolver_path(tld)))
         }
     }
+}
+
+/// May this operation raise a privileged password prompt to install a missing
+/// resolver file — or must it FAIL instead?
+///
+/// The distinction exists because an agent-driven operation must never pop a
+/// macOS authorization dialog: nothing an agent calls may make that prompt
+/// routine (PLAN §3.1b), and a dialog the user didn't ask for, attached to work
+/// they didn't start, is the definition of prompt fatigue.
+///
+/// It is a REQUIRED parameter rather than a default-plus-opt-out, deliberately.
+/// A defaulting `ensure_resolver` is a call someone can add later without
+/// noticing it prompts — which is precisely how "the agent path never prompts"
+/// would become true of the path as written and false of the path as extended.
+/// Making every call site state its policy means a new one cannot be silent
+/// about it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolverPrompt {
+    /// A user-initiated operation: install the file, prompting if needed.
+    Allow,
+    /// Fail with an explanation instead of prompting. The agent path.
+    Never,
 }
 
 /// Where we keep our copies of resolver files we borrowed.

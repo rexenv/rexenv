@@ -315,6 +315,7 @@ pub(crate) fn start<R: tauri::Runtime>(
     site: NewSite,
     wp: Option<wordpress::InstallOptions>,
     blueprint_id: Option<String>,
+    ownership: core::sites::Ownership,
 ) -> Result<SiteProvisionState> {
     // The mirror of ProvisionJobs::busy_for: a database import mid-run for this
     // domain owns the site's database (it may be mid-DROP on a retry) — a
@@ -350,11 +351,25 @@ pub(crate) fn start<R: tauri::Runtime>(
         )?;
     }
     let site_tld = sites::domain_tld(&site.domain)?;
-    core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
+    // The prompt policy is DERIVED from the same ownership value that gets
+    // recorded on the row — never passed separately. An agent-created site
+    // therefore cannot raise a macOS authorization dialog, and that stays true
+    // for the WHOLE operation rather than at an entry check: this is the only
+    // prompting call the create path makes, `ensure_resolver`'s policy argument
+    // is REQUIRED so a future one cannot be silent about it, and the job phases
+    // downstream reach no privileged op (proven by
+    // `an_agent_create_never_reaches_a_privileged_prompt`).
+    core::dns::ensure_resolver(
+        state.platform.as_ref(),
+        &site_tld,
+        core::dns::DEFAULT_DNS_PORT,
+        ownership.resolver_prompt(),
+    )?;
 
     let (created, blueprint) = {
         let conn = lock_db(state)?;
-        let created = sites::provision(&conn, state.platform.as_ref(), &state.ca, site)?;
+        let created =
+            sites::provision_with(&conn, state.platform.as_ref(), &state.ca, site, ownership)?;
         // The job owns this row's lifecycle from here: 0 until settle-ok. A
         // crash between insert and this write leaves 1 — yesterday's
         // semantics, never a false alarm.
@@ -383,7 +398,8 @@ pub async fn site_provision_job<R: tauri::Runtime>(
     wp: Option<wordpress::InstallOptions>,
     blueprint_id: Option<String>,
 ) -> Result<SiteProvisionState> {
-    start(&app, &state, &jobs, site, wp, blueprint_id)
+    // The IPC create command IS the user's own action.
+    start(&app, &state, &jobs, site, wp, blueprint_id, core::sites::Ownership::User)
 }
 
 /// Re-enter provisioning for a `provisioned = 0` half-site (the "setup
@@ -444,7 +460,15 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
         )?;
     }
     let site_tld = sites::domain_tld(&site.domain)?;
-    core::dns::ensure_resolver(state.platform.as_ref(), &site_tld, core::dns::DEFAULT_DNS_PORT)?;
+    // Retry is a USER action — the Retry button in the app, or the CLI. (No
+    // agent tool retries: a scratch create that failed leaves a site the user
+    // can retry or delete, and the agent is told exactly that.)
+    core::dns::ensure_resolver(
+        state.platform.as_ref(),
+        &site_tld,
+        core::dns::DEFAULT_DNS_PORT,
+        core::dns::ResolverPrompt::Allow,
+    )?;
     let docroot = PathBuf::from(&site.path);
     // Re-ensure prepare's artifacts — but ONLY for a docroot we own. A linked
     // site's folder is the user's: creating it, or dropping our phpinfo probe
@@ -1021,5 +1045,209 @@ async fn streamed_step<R: tauri::Runtime>(
         ),
         Ok(Err(e)) => StepEnd::Failed(e.to_string()),
         Err(e) => StepEnd::Failed(format!("step worker died: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::sites::Ownership;
+    use crate::platform::traits::{DnsManager, Paths, PrivilegeManager};
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+
+    /// Paths rooted in a throwaway temp dir — nothing here touches real app data.
+    struct TmpPaths(PathBuf);
+    impl Paths for TmpPaths {
+        fn app_data_dir(&self) -> crate::error::Result<PathBuf> {
+            Ok(self.0.clone())
+        }
+        fn config_dir(&self) -> crate::error::Result<PathBuf> {
+            Ok(self.0.join("config"))
+        }
+        fn log_dir(&self) -> crate::error::Result<PathBuf> {
+            Ok(self.0.join("logs"))
+        }
+        fn bin_dir(&self) -> crate::error::Result<PathBuf> {
+            Ok(self.0.join("bin"))
+        }
+        fn hosts_file(&self) -> PathBuf {
+            self.0.join("hosts")
+        }
+    }
+
+    /// A resolver file that does NOT exist — `resolver_owner` reads that as
+    /// `Absent`, the state that decides whether a prompt happens. This is the
+    /// half-onboarded machine the never-prompt rule exists for.
+    struct AbsentResolver(PathBuf);
+    impl DnsManager for AbsentResolver {
+        fn resolver_path(&self, tld: &str) -> PathBuf {
+            self.0.join(format!("resolver-{tld}"))
+        }
+        fn resolver_contents(&self, port: u16) -> String {
+            format!("nameserver 127.0.0.1\nport {port}\n")
+        }
+        fn install_command(&self, _tld: &str, _port: u16) -> String {
+            "true".into()
+        }
+        fn uninstall_command(&self, _tlds: &[String]) -> String {
+            "true".into()
+        }
+        fn restore_command(&self, _restores: &[(String, PathBuf)]) -> String {
+            "true".into()
+        }
+    }
+
+    /// Records every privileged escalation instead of performing one. An EMPTY
+    /// log is the assertion: "nothing an agent can call ever asks macOS for an
+    /// administrator password" is the guarantee paragraph's most brittle
+    /// sentence (PLAN §4.2/§6.0), and this recorder is what catches it going
+    /// false. Returning Ok keeps the path RUNNING past the escalation, so the
+    /// test measures whether one was attempted rather than whether it worked.
+    #[derive(Default)]
+    struct RecordingPrivileges {
+        calls: Mutex<Vec<String>>,
+    }
+    impl PrivilegeManager for RecordingPrivileges {
+        fn run_privileged(&self, script: &str) -> crate::error::Result<String> {
+            self.calls.lock().unwrap().push(script.to_string());
+            Ok(String::new())
+        }
+    }
+
+    /// Real file ops in the temp dir — `configure_resolver` writes its backup
+    /// through this on the USER path, and stubbing it would stop the control
+    /// test before it reaches the escalation it exists to observe.
+    struct TmpPermissions;
+    impl crate::platform::traits::PermissionManager for TmpPermissions {
+        fn set_executable(&self, _path: &std::path::Path) -> crate::error::Result<()> {
+            Ok(())
+        }
+        fn set_private(&self, _path: &std::path::Path) -> crate::error::Result<()> {
+            Ok(())
+        }
+        fn write_private(
+            &self,
+            path: &std::path::Path,
+            contents: &[u8],
+        ) -> crate::error::Result<()> {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            std::fs::write(path, contents)?;
+            Ok(())
+        }
+    }
+
+    struct ProvisionTestPlatform {
+        paths: TmpPaths,
+        dns: AbsentResolver,
+        privileges: Arc<RecordingPrivileges>,
+    }
+
+    impl crate::platform::traits::Platform for ProvisionTestPlatform {
+        fn paths(&self) -> &dyn Paths {
+            &self.paths
+        }
+        fn dns(&self) -> &dyn DnsManager {
+            &self.dns
+        }
+        fn privileges(&self) -> &dyn PrivilegeManager {
+            self.privileges.as_ref()
+        }
+        fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor {
+            unimplemented!("the create path must not reach the edge")
+        }
+        fn cert_trust(&self) -> &dyn crate::platform::traits::CertTrustManager {
+            unimplemented!()
+        }
+        fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor {
+            unimplemented!()
+        }
+        fn autostart(&self) -> &dyn crate::platform::traits::AutostartManager {
+            unimplemented!()
+        }
+        fn permissions(&self) -> &dyn crate::platform::traits::PermissionManager {
+            &TmpPermissions
+        }
+        fn shell(&self) -> &dyn crate::platform::traits::ShellRunner {
+            unimplemented!()
+        }
+        fn binaries(&self) -> &dyn crate::platform::traits::BinaryProvider {
+            unimplemented!()
+        }
+        fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager {
+            unimplemented!()
+        }
+    }
+
+    /// Drive the REAL `start()` — the whole prepare phase, not a precheck —
+    /// against a machine whose resolver file is missing. Returns the outcome and
+    /// every privileged escalation the path attempted.
+    fn run_start(ownership: Ownership) -> (crate::error::Result<SiteProvisionState>, Vec<String>) {
+        let dir = std::env::temp_dir()
+            .join(format!("rexenv-provision-prompt-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let recorder = Arc::new(RecordingPrivileges::default());
+        let platform = ProvisionTestPlatform {
+            paths: TmpPaths(dir.clone()),
+            dns: AbsentResolver(dir.clone()),
+            privileges: Arc::clone(&recorder),
+        };
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let ca = crate::core::ssl::LocalCa {
+            cert_pem: String::new(),
+            key_pem: String::new(),
+            cert_path: dir.join("ca.pem"),
+            key_path: dir.join("ca.key"),
+        };
+        let app = tauri::test::mock_app();
+        let state = AppState::new(conn, Box::new(platform), ca);
+        let jobs = ProvisionJobs::default();
+        let new = NewSite {
+            name: "probe".into(),
+            domain: "probe.scratch.rex".into(),
+            site_type: SiteType::Wordpress,
+            php_version: "8.3".into(),
+            web_server: crate::state::models::WebServer::Nginx,
+            path: String::new(),
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
+        };
+        let out = start(&app.handle().clone(), &state, &jobs, new, None, None, ownership);
+        let calls = recorder.calls.lock().unwrap().clone();
+        let _ = std::fs::remove_dir_all(&dir);
+        (out, calls)
+    }
+
+    #[test]
+    fn an_agent_create_never_reaches_a_privileged_prompt() {
+        // THE guarantee paragraph's most brittle sentence, driven end to end
+        // through the real provision path rather than asserted at an entry
+        // check: resolver absent, agent ownership, and the recorder must stay
+        // empty. If the policy stopped being derived from ownership — or a
+        // future call site defaulted to prompting — `calls` fills and this
+        // fails. (Proven load-bearing: with `Ownership::User` the same path
+        // DOES escalate, see the sibling test.)
+        let (out, calls) = run_start(Ownership::Agent { client: "Claude Code".into(), ttl_hours: 24 });
+        assert!(calls.is_empty(), "an agent create attempted a privileged escalation: {calls:?}");
+        let err = out.expect_err("a missing resolver must FAIL the agent path").to_string();
+        assert!(err.contains("administrator password"), "says why it stopped: {err}");
+        assert!(err.contains("finish its setup"), "names the USER's action: {err}");
+        assert!(!err.contains("try a different"), "never suggests routing around it: {err}");
+    }
+
+    #[test]
+    fn the_same_path_does_prompt_for_a_user_create_so_the_flag_is_what_stops_it() {
+        // The control. Without it, `an_agent_create_never_reaches_a_privileged_prompt`
+        // could pass because this fixture cannot escalate at all — which would
+        // make it decoration rather than a guard. Same platform, same missing
+        // resolver, ownership the only difference.
+        let (_out, calls) = run_start(Ownership::User);
+        assert!(
+            !calls.is_empty(),
+            "the user path must still install the resolver — otherwise the agent test proves nothing"
+        );
+        assert!(calls[0].contains("resolver") || !calls[0].is_empty(), "escalated to install it");
     }
 }

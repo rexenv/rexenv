@@ -500,6 +500,17 @@ pub fn db_now(conn: &Connection) -> Result<String> {
     Ok(conn.query_row("SELECT datetime('now')", [], |r| r.get(0))?)
 }
 
+/// The database's timestamp `hours` from now, in the same format as
+/// [`db_now`] — so an expiry written here compares correctly against
+/// `datetime('now')` at reap time. SQLite does the arithmetic, in UTC, with the
+/// same clock the comparison will use; computing it in Rust would introduce a
+/// second clock and a second format for one value.
+pub fn db_time_from_now(conn: &Connection, hours: i64) -> Result<String> {
+    Ok(conn.query_row("SELECT datetime('now', ?1)", params![format!("+{hours} hours")], |r| {
+        r.get(0)
+    })?)
+}
+
 /// True if a site already uses `domain` (domains are unique).
 pub fn domain_exists(conn: &Connection, domain: &str) -> Result<bool> {
     let count: i64 = conn.query_row(

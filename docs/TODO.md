@@ -228,9 +228,17 @@ first:
     one line. Wrote the SOCKET-level statement (different sentence from M1's) and
     guarded the card's "Today those are read-only" copy against the registry by
     `include_str!` — plant-proven to fail the day the first executing tool lands.
-    Next task = 8 (`scratch_create_site`: forced domain, origin at insert,
-    never-prompt resolver flag tested END TO END, cap, honest stack-stopped
-    result, and a test that the path never reaches `run_privileged`).
+    ✓ task 8a — **the agent create PATH**, ledger #210: one `Ownership` value
+    decides both what is recorded (`origin`/`agent_client`/`expires_at`, at the
+    insert, so a create that fails later still expires) and whether a prompt may
+    happen; `ResolverPrompt` is a REQUIRED parameter so a future call site can't
+    be silent about its policy; ownership is unreachable from IPC (`create_site`
+    has no such field). Never-prompt driven end to end through the real
+    `start()` with a recording PrivilegeManager, **with a permanent control test**
+    proving the same path DOES escalate for a user create. Cap + domain refusals
+    name a way forward. Next = task 8b (the `scratch_create_site` TOOL itself:
+    ScratchCtx wiring, blocking settle, the honest stack-stopped result, and the
+    enable-moment copy rewrite the #209 guard now demands).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

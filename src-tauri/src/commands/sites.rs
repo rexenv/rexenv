@@ -250,22 +250,44 @@ pub async fn create_site<R: tauri::Runtime>(
     wp: Option<core::wordpress::InstallOptions>,
     blueprint_id: Option<String>,
 ) -> Result<Site> {
+    // Ownership is NOT a parameter of this command, and that is the point: the
+    // IPC surface has no field that could set `origin='agent'`, so no caller —
+    // UI, CLI, or anything that reaches the socket — can create a site that the
+    // reaper is then allowed to delete unattended. The agent path calls
+    // [`create_site_owned`] directly, inside the app.
+    create_site_owned(app, &state, &jobs, site, wp, blueprint_id, core::sites::Ownership::User)
+        .await
+}
+
+/// [`create_site`], with the ownership recorded on the new row (v27). Internal:
+/// reachable from the MCP scratch tool and the IPC command above, never from IPC
+/// input itself.
+pub(crate) async fn create_site_owned<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: &AppState,
+    jobs: &super::site_provision::ProvisionJobs,
+    site: NewSite,
+    wp: Option<core::wordpress::InstallOptions>,
+    blueprint_id: Option<String>,
+    ownership: core::sites::Ownership,
+) -> Result<Site> {
     // ONE execution path: this is a thin blocking wrapper over the streamed
     // provision job (`commands::site_provision`) that preserves the old
     // contract exactly — prepare-phase errors (invalid/duplicate domain,
     // declined resolver prompt) surface immediately with nothing created,
     // the await returns only when the site is fully provisioned (and served,
     // when the stack runs), and the fresh `Site` row comes back on success.
-    let snap = super::site_provision::start(&app, &state, &jobs, site, wp, blueprint_id)?;
+    let snap =
+        super::site_provision::start(&app, state, jobs, site, wp, blueprint_id, ownership)?;
     let settled = loop {
-        let st = super::site_provision::state_of(&jobs, &snap.id)?;
+        let st = super::site_provision::state_of(jobs, &snap.id)?;
         if st.status != "running" {
             break st;
         }
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     };
     if settled.status == "ok" {
-        let conn = lock(&state)?;
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         let id = settled.site_id.as_deref().unwrap_or_default();
         core::sites::get(&conn, id)?
             .ok_or_else(|| Error::Other(format!("created site vanished: {id}")))
@@ -672,7 +694,13 @@ pub async fn change_site_domain(
     // resolve. First use of a TLD = one privileged prompt; no-op otherwise.
     // BEFORE the backup/search-replace, so declining the prompt changes nothing.
     let new_tld = core::sites::domain_tld(&domain)?;
-    core::dns::ensure_resolver(state.platform.as_ref(), &new_tld, core::dns::DEFAULT_DNS_PORT)?;
+    core::dns::ensure_resolver(
+        state.platform.as_ref(),
+        &new_tld,
+        core::dns::DEFAULT_DNS_PORT,
+        // A user typing a new domain in the app: prompting is the point.
+        core::dns::ResolverPrompt::Allow,
+    )?;
 
     let mut backup_path = None;
     let mut replacements = 0u64;
