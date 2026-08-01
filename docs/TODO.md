@@ -268,10 +268,11 @@ first:
     ◐ task 9b — **the reaper's SWEEP**, ledger #215: skip-don't-stop for shared
     sites (calling the normal delete path would break #29 unattended), a failed
     stop is a skip, per-sweep ceiling of 5 with a loud log, outcomes deduped by
-    `record_reap`. **Deliberately NOT wired to launch/hourly**: that lands with
-    the user-visible summary, whose copy is with the owner — a launch sweep
-    without it is a silent bulk delete. Next: approve the summary copy → wire it,
-    then 11–14.
+    `record_reap`. Wired to launch + hourly WITH the
+    approved summary (names the domains, silent on a quiet launch). Remaining ◐:
+    the skip-don't-stop and delete legs need a live tunnel + real site (L1,
+    task 14). Next = 11–14 (`scratch_add_package`/`sync`, `wp_run`, the Sites UI
+    incl. the Keep dialog + the reap banner, then the L1 example + SMOKE gate).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

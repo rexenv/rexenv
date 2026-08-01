@@ -44,9 +44,8 @@ pub(crate) struct SweepOutcome {
 }
 
 impl SweepOutcome {
-    /// Whether this sweep is worth telling the user about. Used by the launch
-    /// summary, which lands with its approved copy (see `reap_expired`).
-    #[allow(dead_code)]
+    /// Whether this sweep is worth telling the user about — so a user with no
+    /// scratch sites never learns the reaper exists.
     pub fn did_anything(&self) -> bool {
         !self.deleted.is_empty() || !self.skipped_shared.is_empty() || !self.failed.is_empty()
     }
@@ -54,12 +53,6 @@ impl SweepOutcome {
 
 /// Collect every scratch site whose clock has run out.
 ///
-/// NOT WIRED YET, deliberately: turning the sweep on at launch without the
-/// user-visible summary is the silent-bulk-delete experience — a user back from
-/// a week away would find several sites simply gone, with feed rows as the only
-/// record. The summary copy is with the owner for approval; the launch + hourly
-/// wiring lands with it, in the same commit. Remove this allow then.
-#[allow(dead_code)]
 pub(crate) async fn reap_expired(state: &AppState, tunnels: &Tunnels) -> SweepOutcome {
     let mut out = SweepOutcome::default();
     let (now, due) = {
@@ -112,7 +105,6 @@ pub(crate) async fn reap_expired(state: &AppState, tunnels: &Tunnels) -> SweepOu
 
 /// Record what the reaper did — deduped, so a site that cannot be deleted says
 /// so ONCE rather than once per launch (`feed::record_reap`).
-#[allow(dead_code)]
 fn record(state: &AppState, id: &str, outcome: Outcome, detail: &str) {
     let Ok(conn) = state.db.lock() else { return };
     if let Err(e) = feed::record_reap(&conn, id, outcome, Some(detail.to_string())) {
@@ -132,6 +124,27 @@ mod tests {
     }
 
     #[test]
+    fn the_summary_names_the_sites_and_a_quiet_launch_says_nothing() {
+        // Naming beats counting: a user recognises a domain they cared about and
+        // can act on it, where "3 sites" only says something is gone.
+        assert_eq!(summary(&SweepOutcome::default()), None, "a quiet launch is silent");
+        let mut out = SweepOutcome::default();
+        out.deleted = vec!["probe.scratch.rex".into(), "plugin-test.scratch.rex".into()];
+        let text = summary(&out).unwrap();
+        assert!(text.contains("`probe.scratch.rex` and `plugin-test.scratch.rex`"), "{text}");
+        assert!(text.contains("removed 2 expired scratch sites"), "{text}");
+        assert!(text.contains("Nothing of yours was touched"), "{text}");
+        assert!(text.contains("press Keep"), "names the way to prevent it: {text}");
+
+        // The shared case reads as left-alone, never as failed.
+        let mut shared = SweepOutcome::default();
+        shared.skipped_shared = vec!["demo.scratch.rex".into()];
+        let text = summary(&shared).unwrap();
+        assert!(text.contains("still shared publicly") && text.contains("left it alone"), "{text}");
+        assert!(!text.contains("removed"), "nothing was removed: {text}");
+    }
+
+    #[test]
     fn a_sweep_that_did_nothing_says_nothing() {
         // The launch summary must not appear on every launch — a user with no
         // scratch sites should never learn the reaper exists.
@@ -140,4 +153,86 @@ mod tests {
         swept.skipped_shared.push("probe.scratch.rex".into());
         assert!(swept.did_anything(), "a skip IS worth surfacing — it is a site that outlived its clock");
     }
+}
+
+/// The user-visible summary, in the approved words. `None` when the sweep did
+/// nothing — a quiet launch says nothing at all.
+///
+/// It NAMES the domains rather than only counting them: a user recognises a name
+/// they cared about and can act on it, where "3 sites" only tells them something
+/// is gone. And it says what was NOT touched, which is a claim the code backs —
+/// the teardown checks `docroot_managed` and the recorded database provenance
+/// where the deletion happens, independently of the reap predicate.
+pub(crate) fn summary(out: &SweepOutcome) -> Option<String> {
+    if !out.did_anything() {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if !out.deleted.is_empty() {
+        parts.push(format!(
+            "rexenv removed {} expired scratch site{}\n{} {} created by an AI agent and hadn't \
+             been used for a while, so rexenv cleaned {} up. Nothing of yours was touched.\n\
+             To stop this happening to one you want, open it and press Keep — that makes it yours.",
+            out.deleted.len(),
+            if out.deleted.len() == 1 { "" } else { "s" },
+            list(&out.deleted),
+            if out.deleted.len() == 1 { "was" } else { "were" },
+            if out.deleted.len() == 1 { "it" } else { "them" },
+        ));
+    }
+    if !out.skipped_shared.is_empty() {
+        parts.push(format!(
+            "{} expired scratch site{} still shared publicly\n{} ran out {} clock, but you're \
+             sharing {}, so rexenv left {} alone. Stop sharing and {} be cleaned up next time — \
+             or press Keep to have {} for good.",
+            out.skipped_shared.len(),
+            if out.skipped_shared.len() == 1 { " is" } else { "s are" },
+            list(&out.skipped_shared),
+            if out.skipped_shared.len() == 1 { "its" } else { "their" },
+            if out.skipped_shared.len() == 1 { "it" } else { "them" },
+            if out.skipped_shared.len() == 1 { "it" } else { "them" },
+            if out.skipped_shared.len() == 1 { "it'll" } else { "they'll" },
+            if out.skipped_shared.len() == 1 { "it" } else { "them" },
+        ));
+    }
+    Some(parts.join("\n\n"))
+}
+
+/// `a`, `b` and `c` — the domains, read the way a person would say them.
+fn list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => format!("`{one}`"),
+        [rest @ .., last] => format!(
+            "{} and `{last}`",
+            rest.iter().map(|d| format!("`{d}`")).collect::<Vec<_>>().join(", ")
+        ),
+    }
+}
+
+/// Sweep now, then every hour, for as long as the app runs.
+///
+/// The launch sweep is what collects sites that expired while rexenv was closed
+/// — the week-away case — so its summary is the one that matters most. Every
+/// deletion is ALSO a feed row (`actor='rexenv'`, #205), so the record survives
+/// a dismissed banner.
+pub(crate) fn spawn(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        use tauri::{Emitter, Manager};
+        loop {
+            let (Some(state), Some(tunnels)) =
+                (app.try_state::<AppState>(), app.try_state::<Tunnels>())
+            else {
+                return; // shutting down
+            };
+            let out = reap_expired(state.inner(), tunnels.inner()).await;
+            if let Some(text) = summary(&out) {
+                log::info!("scratch reaper: {text}");
+                // The Sites/agents UI renders this as a dismissible banner; the
+                // feed rows are the durable record either way.
+                let _ = app.emit("scratch-reaped", &text);
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(60 * 60)).await;
+        }
+    });
 }

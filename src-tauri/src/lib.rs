@@ -413,6 +413,14 @@ pub fn run() {
             #[cfg(unix)]
             mcp_server::spawn_if_enabled(app.handle().clone());
 
+            // The scratch reaper: collect agent-created sites whose clock ran
+            // out — now (catching everything that expired while rexenv was
+            // closed) and hourly after. Skips anything publicly shared (#29:
+            // rexenv never stops a share on the user's behalf), refuses to
+            // delete more than the scratch cap in one pass, and every removal is
+            // both a feed row and a user-visible summary.
+            commands::scratch::spawn(app.handle().clone());
+
             // Health watchdog: every 10s probe every service the manager OWNS and
             // respawn dead ones (bounded attempts) — the UI used to show "running"
             // forever off the initial start state while e.g. a crashed edge left
