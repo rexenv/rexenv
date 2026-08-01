@@ -187,8 +187,16 @@ first:
     is the user's), `expires_at` NULL = never so a user site and a Kept scratch
     site are indistinguishable to `Site::reap_due` (the ONE expression of the
     predicate), `agent_client` capped at the write and never branched on.
-    Upgrade-path test proven to fail on a `DEFAULT 'agent'`. Next task = 3 (v28
-    `agent_actions.actor`).
+    Upgrade-path test proven to fail on a `DEFAULT 'agent'`.
+    ✓ task 3 — **v28** `agent_actions.actor`, ledger #205 (+#202 amended): the
+    feed keeps BOTH true claims ("an agent did this" / "everything consequential
+    is visible") by labelling everywhere and filtering in exactly one place —
+    `recent_head`, the agent status line, so a reaper sweep can never read as
+    "Working — scratch_reap". Default records a known fact; the READ fails the
+    other way (unknown actor = rexenv, never the agent). UI: "rexenv · automatic"
+    + a reap's unresolvable target reads "(deleted site)", not a bare UUID —
+    all three L2 probes proven to fail on the pre-v28 rendering. Next task = 4
+    (feed: result-derived `target_site`, so a create records the site it made).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

@@ -1103,9 +1103,17 @@ export type AgentOutcome = "ok" | "error" | "denied" | "unknown-tool" | "bad-req
 /** One recorded agent action (mirrors `mcp_server::feed::AgentAction`). Only
  *  `targetSite` is stored from a call's arguments — there is no free-form arg
  *  field, by construction. */
+/** Who performed a feed row's action (mirrors the Rust `FeedActor`). `"rexenv"`
+ *  = rexenv's own housekeeping (the scratch reaper), listed like any other row
+ *  but labelled as ours — and excluded from the header's agent status line. */
+export type FeedActor = "agent" | "rexenv";
+
 export interface AgentAction {
   id: number;
   at: string;
+  /** Who did this. A row that isn't the agent's must never render as one. */
+  actor: FeedActor;
+  /** For an agent row, the client's self-reported name. */
   client: string;
   tool: string;
   /** The stable site id the call named (a UUID) — not human-readable. */

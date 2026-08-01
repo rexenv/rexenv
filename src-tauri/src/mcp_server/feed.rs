@@ -1,7 +1,7 @@
-//! The MCP agent activity feed — the accountability record of what an AI agent
-//! did through the MCP server, so nothing an agent does is silent.
+//! The MCP agent activity feed — the accountability record of what happened to
+//! agent-owned things, so nothing an agent does is silent.
 //!
-//! Two disciplines, both structural:
+//! Three disciplines, all structural:
 //!
 //! - **Complete by construction.** The session records EVERY tools/call outcome
 //!   — success, a handler error, an unknown tool, a malformed request — not just
@@ -18,6 +18,15 @@
 //!   never agent-supplied content. A per-tool value that genuinely belongs in
 //!   the record (e.g. a future db_query's SQL) gets its OWN typed column, added
 //!   deliberately when that tool lands — never a catch-all blob.
+//!
+//! - **Attribution is typed, because two true claims had to coexist** (v28).
+//!   "An AI agent did this" was true while the session loop was the only
+//!   writer. M2a's reaper breaks it: deleting an expired scratch site is the
+//!   most consequential event in that lifecycle, so it cannot be invisible —
+//!   and it is rexenv's own doing, so an unlabelled row would make every
+//!   neighbour's attribution a lie by juxtaposition. `actor` keeps both: the
+//!   row is listed, and it says who. It LABELS everywhere and FILTERS in
+//!   exactly one place (`recent_head`, the "an agent is working" status line).
 //!
 //! The table only grows, and one agent session can make hundreds of calls, so it
 //! is bounded by a row cap on every write and is user-clearable.
@@ -39,6 +48,52 @@ const DETAIL_MAX: usize = 500;
 /// agent could drive gigabytes into the feed table — the row cap bounds row
 /// COUNT, not row SIZE. The discipline: cap the UNTRUSTED fields hardest.
 const FIELD_MAX: usize = 200;
+
+/// WHO performed the action a row records (v28).
+///
+/// The feed is an accountability record, and its whole value is that a row's
+/// attribution is true. So the two directions are NOT symmetric:
+///
+/// - the migration's `DEFAULT 'agent'` records a KNOWN fact — `record` is
+///   called from exactly one place (the MCP session loop), so every pre-v28 row
+///   is an agent's tool call;
+/// - but an unrecognised stored value reads as [`FeedActor::Rexenv`], because
+///   labelling rexenv's own action as an agent's is the damaging error (a false
+///   accusation in the record), while the reverse merely under-attributes. It
+///   is also the correct forward-compatible read: a future actor this build
+///   doesn't know is, by definition, not the agent.
+///
+/// **Actor LABELS a row; it never hides one.** `recent`/`recent_for_site`
+/// return every row whatever its actor — the UI says who did each. The one
+/// place it filters is [`recent_head`], which drives the card's "an agent is
+/// working" line: a claim about the AGENT's session must not be fed by rexenv's
+/// own housekeeping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FeedActor {
+    /// A connected MCP client, through the session loop.
+    Agent,
+    /// rexenv itself — the scratch reaper (M2a) and anything like it.
+    Rexenv,
+}
+
+impl FeedActor {
+    pub fn as_db(self) -> &'static str {
+        match self {
+            FeedActor::Agent => "agent",
+            FeedActor::Rexenv => "rexenv",
+        }
+    }
+
+    /// Read a stored value. Never fails, and never fails TOWARD the agent — see
+    /// the type doc for why that asymmetry is the point.
+    pub fn from_db(s: &str) -> FeedActor {
+        match s {
+            "agent" => FeedActor::Agent,
+            _ => FeedActor::Rexenv,
+        }
+    }
+}
 
 /// How one agent action turned out. Non-`Ok` outcomes are the "something's off"
 /// signal — an agent erroring, calling a tool that doesn't exist, sending
@@ -99,6 +154,12 @@ pub struct PendingLog {
 pub struct AgentAction {
     pub id: i64,
     pub at: String,
+    /// WHO did this (v28). `Rexenv` rows are rexenv's own housekeeping (the
+    /// scratch reaper) — listed like any other, labelled as ours, and excluded
+    /// from the card's agent-activity status line.
+    pub actor: FeedActor,
+    /// For an agent row, the client's self-reported name. For a `Rexenv` row it
+    /// is rexenv itself, not an agent-asserted string.
     pub client: String,
     pub tool: String,
     /// The STABLE site id the call named (`arguments.site_id`) — keyed on by
@@ -119,6 +180,24 @@ pub struct AgentAction {
 /// Record one action, then prune to the row cap. `client` is the session's
 /// self-reported client name; SQLite stamps `at`.
 pub fn record(conn: &Connection, client: &str, log: &PendingLog) -> Result<()> {
+    write(conn, FeedActor::Agent, client, log)
+}
+
+/// Record something REXENV did to an agent-owned site — the scratch reaper
+/// (M2a), and anything later of the same kind.
+///
+/// It lands in the same table because deleting a site is the most consequential
+/// event in the scratch lifecycle and must not be invisible; it carries
+/// `actor = Rexenv` because the record's value is that attribution is true.
+/// `client` is rexenv itself, so — unlike an agent row — this string is ours,
+/// never off the wire.
+pub fn record_system(conn: &Connection, log: &PendingLog) -> Result<()> {
+    write(conn, FeedActor::Rexenv, "rexenv", log)
+}
+
+/// The one writer. Both entry points funnel here so the bounds and the row cap
+/// can't be applied to one kind of row and forgotten on the other.
+fn write(conn: &Connection, actor: FeedActor, client: &str, log: &PendingLog) -> Result<()> {
     // Cap the agent-controlled fields (client/tool/target_site) hardest — they
     // arrive off the wire; only rexenv's own `detail` was previously bounded.
     let client = truncate(client, FIELD_MAX);
@@ -126,9 +205,9 @@ pub fn record(conn: &Connection, client: &str, log: &PendingLog) -> Result<()> {
     let target = log.target_site.as_deref().map(|s| truncate(s, FIELD_MAX));
     let detail = log.detail.as_deref().map(|d| truncate(d, DETAIL_MAX));
     conn.execute(
-        "INSERT INTO agent_actions (at, client, tool, target_site, outcome, detail) \
-         VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5)",
-        params![client, tool, target, log.outcome.as_db(), detail],
+        "INSERT INTO agent_actions (at, actor, client, tool, target_site, outcome, detail) \
+         VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5, ?6)",
+        params![actor.as_db(), client, tool, target, log.outcome.as_db(), detail],
     )?;
     conn.execute(
         "DELETE FROM agent_actions WHERE id NOT IN \
@@ -140,20 +219,21 @@ pub fn record(conn: &Connection, client: &str, log: &PendingLog) -> Result<()> {
 
 /// Columns selected for an `AgentAction`, in struct order — shared so `recent`
 /// and `recent_for_site` read the same shape through `row_to_action`.
-const ACTION_COLUMNS: &str = "id, at, client, tool, target_site, outcome, detail";
+const ACTION_COLUMNS: &str = "id, at, actor, client, tool, target_site, outcome, detail";
 
 /// Map a row (selecting `ACTION_COLUMNS`) into an `AgentAction`.
 fn row_to_action(r: &rusqlite::Row) -> rusqlite::Result<AgentAction> {
-    let outcome = Outcome::from_db(&r.get::<_, String>(5)?);
+    let outcome = Outcome::from_db(&r.get::<_, String>(6)?);
     Ok(AgentAction {
         id: r.get(0)?,
         at: r.get(1)?,
-        client: r.get(2)?,
-        tool: r.get(3)?,
-        target_site: r.get(4)?,
+        actor: FeedActor::from_db(&r.get::<_, String>(2)?),
+        client: r.get(3)?,
+        tool: r.get(4)?,
+        target_site: r.get(5)?,
         target_label: None, // resolved by the command layer, never stored
         outcome,
-        detail: r.get(6)?,
+        detail: r.get(7)?,
         concerning: outcome.is_concerning(),
     })
 }
@@ -182,11 +262,17 @@ pub fn recent_for_site(conn: &Connection, site: &str, limit: usize) -> Result<Ve
     Ok(rows)
 }
 
-/// The head of activity within `window_mins`: the newest call, how long ago, and
-/// (if it errored) how many consecutive concerning calls precede the first
-/// success. Drives the card's status line — and it self-recovers, because a row
-/// ages OUT of the window on its own, so an old error state clears without any
-/// write. `None` = no activity in the window.
+/// The head of AGENT activity within `window_mins`: the newest agent call, how
+/// long ago, and (if it errored) how many consecutive concerning calls precede
+/// the first success. Drives the card's status line — and it self-recovers,
+/// because a row ages OUT of the window on its own, so an old error state clears
+/// without any write. `None` = no agent activity in the window.
+///
+/// **This is the ONE place `actor` filters instead of labelling** (v28): the
+/// status line is a claim about the agent's session ("Working — tail_log, 2
+/// minutes ago"), so a rexenv row — a reaper sweep — must not make the card say
+/// an agent is working when nothing is even connected. The listed feed still
+/// shows those rows; it just says who did them.
 #[derive(Debug, PartialEq, Eq)]
 pub struct RecentHead {
     pub last_tool: String,
@@ -200,7 +286,7 @@ pub fn recent_head(conn: &Connection, window_mins: i64) -> Result<Option<RecentH
     // there is one clock; `minutes_ago` is whole minutes since the row's stamp.
     let mut stmt = conn.prepare(
         "SELECT tool, CAST((julianday('now') - julianday(at)) * 1440 AS INTEGER), outcome \
-         FROM agent_actions WHERE at >= datetime('now', ?1) ORDER BY id DESC",
+         FROM agent_actions WHERE at >= datetime('now', ?1) AND actor = 'agent' ORDER BY id DESC",
     )?;
     let window = format!("-{window_mins} minutes");
     let rows = stmt
@@ -284,8 +370,15 @@ mod tests {
         let keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         for k in &keys {
             assert!(
-                ["id", "at", "client", "tool", "targetSite", "targetLabel", "outcome", "detail", "concerning"]
-                    .contains(k),
+                // `actor` (v28) is admitted DELIBERATELY, which is the point of
+                // this guard: a field joins the record by someone editing this
+                // list, never by a struct quietly growing. It is a closed enum
+                // rexenv sets, not agent-supplied content.
+                [
+                    "id", "at", "actor", "client", "tool", "targetSite", "targetLabel", "outcome",
+                    "detail", "concerning"
+                ]
+                .contains(k),
                 "unexpected feed field `{k}` — the record shape grew"
             );
         }
@@ -400,4 +493,77 @@ mod tests {
         assert_eq!(rows[0].outcome, Outcome::Denied);
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn a_rexenv_row_is_listed_and_labelled_but_never_says_an_agent_is_working() {
+        // The v28 split, both halves in one test because they are one decision:
+        // `actor` LABELS a row everywhere the user reads the feed, and FILTERS in
+        // exactly one place — the status line, which is a claim about the agent's
+        // session. A reaper sweep must never render as "Working — scratch_reap".
+        let conn = mem();
+        record_system(&conn, &log("scratch_reap", Some("site-7"), Outcome::Ok, Some("expired")))
+            .unwrap();
+
+        // Listed, with its actor, and attributed to rexenv rather than a client.
+        let rows = recent(&conn, 10).unwrap();
+        assert_eq!(rows.len(), 1, "a rexenv row is never hidden from the feed");
+        assert_eq!(rows[0].actor, FeedActor::Rexenv);
+        assert_eq!(rows[0].client, "rexenv");
+        assert_eq!(rows[0].tool, "scratch_reap");
+        // And in the per-site section too — this is the site's own history.
+        assert_eq!(recent_for_site(&conn, "site-7", 10).unwrap().len(), 1);
+
+        // But the status line sees nothing: no agent has done anything.
+        assert_eq!(recent_head(&conn, 15).unwrap(), None, "rexenv's own work is not agent activity");
+
+        // With a real agent call present, the head is that call — not the newer
+        // rexenv row that would otherwise be "the most recent thing".
+        record(&conn, "Claude Code", &log("list_sites", None, Outcome::Ok, None)).unwrap();
+        record_system(&conn, &log("scratch_reap", Some("site-9"), Outcome::Ok, None)).unwrap();
+        let head = recent_head(&conn, 15).unwrap().expect("the agent call is the head");
+        assert_eq!(head.last_tool, "list_sites");
+    }
+
+    #[test]
+    fn a_failed_reap_is_recorded_as_concerning_and_still_ours() {
+        // The reaper (M2a task 9) records its failures here rather than in a new
+        // sites column. A failed reap must read as concerning — but as REXENV's
+        // problem, never as an agent erroring, which would otherwise show up as
+        // "the last N calls errored" in a line about the agent's session.
+        let conn = mem();
+        record_system(
+            &conn,
+            &log("scratch_reap", Some("site-7"), Outcome::Error, Some("database drop failed")),
+        )
+        .unwrap();
+        let row = &recent(&conn, 1).unwrap()[0];
+        assert!(row.concerning);
+        assert_eq!(row.actor, FeedActor::Rexenv);
+        assert_eq!(row.detail.as_deref(), Some("database drop failed"));
+        assert_eq!(recent_head(&conn, 15).unwrap(), None, "not the agent's error to wear");
+    }
+
+    #[test]
+    fn an_unrecognised_actor_reads_as_rexenv_never_as_the_agent() {
+        // Direction matters more than the value: a corrupt cell, or a row
+        // written by a FUTURE rexenv with an actor this build doesn't know,
+        // must not be attributed to an AI agent. Under-attributing our own work
+        // is survivable; a false accusation in an accountability record is not.
+        let conn = mem();
+        for odd in ["", "AGENT", " agent", "user", "reaper"] {
+            conn.execute("DELETE FROM agent_actions", []).unwrap();
+            conn.execute(
+                "INSERT INTO agent_actions (at, actor, client, tool, outcome) \
+                 VALUES (datetime('now'), ?1, 'x', 'list_sites', 'ok')",
+                params![odd],
+            )
+            .unwrap();
+            assert_eq!(recent(&conn, 1).unwrap()[0].actor, FeedActor::Rexenv, "{odd:?}");
+            // ...and it cannot drive the agent status line either.
+            assert_eq!(recent_head(&conn, 15).unwrap(), None, "{odd:?}");
+        }
+        // Only the exact value is the agent.
+        assert_eq!(FeedActor::from_db("agent"), FeedActor::Agent);
+    }
+
 }

@@ -601,7 +601,26 @@ ok/error, `detail` = rexenv's OWN bounded reason. The typed-shape discipline
 (#202) is untouched — a new typed column added deliberately, never a free-form
 blob — the `client` on these rows is rexenv itself rather than an agent-asserted
 string, and the card styles them distinctly. #202's wording is amended in the
-same commit.
+same commit; the attribution half is its own row, #205.
+
+**Built 1 Aug 2026 (task 3) — the rule that fell out of it: `actor` LABELS
+everywhere and FILTERS in exactly one place.** Deciding what the existing
+surfaces do was the substance, not the column:
+
+- `recent` / `recent_for_site` (the card's list, SiteDetail's per-site section)
+  return EVERY row whatever its actor. Hiding rexenv's rows would trade a false
+  impression for a missing fact — and the reap is the fact most worth having.
+- `recent_head` (the card's status line) excludes them, because that line is a
+  claim about the AGENT's session: a sweep must never render as "Working —
+  scratch_reap", and a failed reap must never render as "the last N calls
+  errored". This is the only filter in the feed.
+- In the UI a rexenv row reads **"rexenv · automatic"** rather than putting
+  "rexenv" in the client-name slot, where it would simply read as an agent that
+  calls itself rexenv.
+- **A reap names a site it just deleted**, so `target_label` cannot resolve and
+  the pre-v28 UI would have shown a bare UUID — the exact defect M1 fixed once
+  already. The rule now: an unresolvable UUID target renders **"(deleted site)"**
+  and the domain travels in rexenv's own `detail` text.
 
 App closed at expiry → the launch sweep catches up (the tunnel `sweep_startup`
 shape). Services keep serving expired scratch sites until then — harmless

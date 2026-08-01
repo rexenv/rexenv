@@ -145,9 +145,23 @@ const PROBES = {
       else if (toggle.getAttribute("aria-checked") !== (p.get("astate") === "off" ? "false" : "true"))
         problems.push("toggle state does not match astate");
       // The feed must show resolved DOMAINS, never a raw UUID site handle (the
-      // fix: target_site is a uuid, target_label is the domain shown).
+      // fix: target_site is a uuid, target_label is the domain shown). This now
+      // also covers the case that CANNOT resolve — a reap names a site it just
+      // deleted — which must read as "(deleted site)", not as a UUID.
       if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/.test(text))
         problems.push("raw UUID site handle rendered — target_site not resolved to a domain");
+      // A rexenv row (the scratch reaper) must SAY it is rexenv's. Unlabelled,
+      // it reads as an agent action under a heading about agents — and putting
+      // "rexenv" in the client-name slot alone would read as an agent that calls
+      // itself rexenv. It must also be LISTED, never filtered out.
+      if (p.get("feed") !== "empty") {
+        if (!text.includes("scratch_reap"))
+          problems.push("the rexenv (reaper) row is missing — actor rows must be listed, not hidden");
+        if (!text.includes("rexenv · automatic"))
+          problems.push("the rexenv row is not labelled as rexenv's own — untrue by juxtaposition");
+        if (!text.includes("(deleted site)"))
+          problems.push("a reap's deleted target does not read as '(deleted site)'");
+      }
       return problems;
     }),
 };

@@ -354,6 +354,26 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE sites ADD COLUMN origin TEXT NOT NULL DEFAULT 'user';\
      ALTER TABLE sites ADD COLUMN agent_client TEXT;\
      ALTER TABLE sites ADD COLUMN expires_at TEXT;",
+    // v28 — WHO did the thing this feed row records (MCP M2a).
+    //
+    // The table's implicit claim is "an AI agent did this", and it was true
+    // while the session loop was the only writer. M2a's reaper breaks that: a
+    // scratch site expiring and being deleted is the most consequential event in
+    // the lifecycle, so it must not be invisible — and it is rexenv's own doing,
+    // so recording it unlabelled would make every row's attribution a lie by
+    // juxtaposition. One TYPED column keeps both claims true (a deliberate typed
+    // addition, never a free-form blob — the v26 discipline).
+    //
+    // NOT NULL DEFAULT 'agent' is a default that is CORRECT: `feed::record` is
+    // called from exactly one place (the MCP session loop), so every pre-v28 row
+    // IS an agent's tool call. Same shape as v27's `origin`, same reasoning.
+    //
+    // The READ fails the other way, though, and deliberately: an unrecognised
+    // actor reads as REXENV, not as the agent (`FeedActor::parse_db`).
+    // Attributing our own action to an agent is the damaging error in an
+    // accountability record — and it is also the right forward-compatible read,
+    // since a future actor value ('user', say) is by definition not the agent.
+    "ALTER TABLE agent_actions ADD COLUMN actor TEXT NOT NULL DEFAULT 'agent';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -958,6 +978,37 @@ mod tests {
         assert_eq!(site.agent_client, None);
         // The point of all three: the reaper cannot touch it, at any clock.
         assert!(!site.reap_due("2099-01-01 00:00:00"));
+    }
+
+    #[test]
+    fn v28_every_existing_feed_row_migrates_to_the_agent_that_wrote_it() {
+        // Same upgrade discipline as v27, and the same known-vs-unknown test:
+        // `feed::record` is called from exactly ONE place (the MCP session
+        // loop), so every pre-v28 row IS an agent's tool call. `DEFAULT 'agent'`
+        // records that fact rather than guessing — and unlike v27's, this
+        // default is NOT the conservative direction, which is precisely why the
+        // READ fails the other way (see the sibling test in `mcp_server::feed`).
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..27].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO agent_actions (at, client, tool, target_site, outcome, detail) \
+             VALUES (datetime('now'), 'Claude Code', 'tail_log', \
+                     '7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30', 'ok', NULL)",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::mcp_server::feed::{self, FeedActor};
+        let rows = feed::recent(&conn, 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].actor, FeedActor::Agent, "an existing feed row is the AGENT's call");
+        assert_eq!(rows[0].client, "Claude Code");
+        // And it still drives the status line, exactly as it did before v28.
+        assert!(feed::recent_head(&conn, 15).unwrap().is_some());
     }
 
     #[test]

@@ -23,11 +23,34 @@ export function timeAgo(at: string): string {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** What a row names as its target. The feed stores the STABLE site id and the
+ *  domain is resolved at read time — so a row whose site no longer exists has no
+ *  label, and that case is not rare: the reaper's own rows are about a site it
+ *  just deleted. A bare UUID is not an answer to "which site" for a human, so
+ *  say the true thing instead. (`detail` carries the domain for those rows.) */
+function targetText(r: AgentAction): string | null {
+  if (r.targetLabel) return r.targetLabel;
+  if (!r.targetSite) return null;
+  return UUID_RE.test(r.targetSite) ? "(deleted site)" : r.targetSite;
+}
+
 /**
  * The agent activity list — shared by the Settings card and the per-site
  * SiteDetail section. A concerning row (any non-ok outcome) gets a muted-amber
  * treatment: a thin left accent and an amber outcome label — visible without a
  * loud alarm fill, since a read-only agent erroring is a signal, not an incident.
+ *
+ * **A rexenv row says so, in the row** (v28 `actor`). The list can now contain
+ * rexenv's own housekeeping — the scratch reaper deleting an expired site —
+ * because that event must not be invisible. But an unlabelled row sitting under
+ * a heading about agents would be untrue by juxtaposition, so those rows are
+ * marked "rexenv · automatic" rather than wearing the client-name slot, where
+ * "rexenv" would just read as an agent that calls itself rexenv. Nothing is
+ * FILTERED here: hiding a row would trade one false impression for a missing
+ * fact. (The status line above the list is the opposite call — it is a claim
+ * about the agent's session, so `recent_head` excludes rexenv rows entirely.)
  */
 export function AgentActivityFeed({
   rows,
@@ -54,9 +77,9 @@ export function AgentActivityFeed({
           )}
         >
           <span className="font-mono text-[0.71875rem] text-rex-text">{r.tool}</span>
-          {!hideTarget && (r.targetLabel ?? r.targetSite) && (
+          {!hideTarget && targetText(r) && (
             <span className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
-              → {r.targetLabel ?? r.targetSite}
+              → {targetText(r)}
             </span>
           )}
           <span
@@ -69,9 +92,18 @@ export function AgentActivityFeed({
             {OUTCOME_LABEL[r.outcome]}
           </span>
           <span className="ml-auto flex flex-none items-center gap-1.5 text-[0.6875rem] text-rex-text-dim">
-            <span className="max-w-[130px] truncate" title={r.client}>
-              {r.client}
-            </span>
+            {r.actor === "rexenv" ? (
+              <span
+                className="max-w-[130px] truncate italic"
+                title="rexenv did this itself — not an AI agent"
+              >
+                rexenv · automatic
+              </span>
+            ) : (
+              <span className="max-w-[130px] truncate" title={r.client}>
+                {r.client}
+              </span>
+            )}
             <span aria-hidden>·</span>
             <span title={r.at}>{timeAgo(r.at)}</span>
           </span>
