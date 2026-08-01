@@ -201,8 +201,17 @@ first:
     the only setter takes a `&Site` row, and it is an out-parameter so it
     survives `?` (a provisioning failure after the insert still names the
     half-built site). A row names a site iff a row exists. Both load-bearing
-    tests proven to fail on a no-op `set`. Next task = 5 (TTL touch in the
-    session layer, beside `log_action`, with the M1 read-only guard untouched).
+    tests proven to fail on a no-op `set`.
+    ✓ task 5 — **TTL touch**, ledger #207 (+#199 scope sharpened): using a
+    scratch site pushes its expiry out, from the SESSION layer beside the feed
+    write so M1's read-only handler boundary is untouched. A touch can only MOVE
+    an expiry — never start a clock, never reach a user's site (even one with a
+    stale expiry), never resurrect a deleted one; each `WHERE` clause
+    mutation-proven load-bearing. Audited what the shape narrows: the plan's
+    §3.1c "no writes" and `mcp_socket_check`'s "writes nothing" were already
+    loose (the feed writes) and are corrected — read-only scopes the HANDLER,
+    not the call. Next task = 6 (core origin gate + the `ScratchSite` witness:
+    a planted call on a user site must fail to COMPILE).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

@@ -13,7 +13,10 @@
 //! `claude mcp add rexenv -- rex mcp` step.
 //!
 //! Read-only by construction: `list_sites` reaches state only through `ReadCtx`,
-//! reads the real database, and writes nothing.
+//! and reads the real database. It is the HANDLER that writes nothing — the
+//! session still writes rexenv's own records for every call (the activity feed,
+//! and from M2a the named scratch site's TTL), which is why this example scopes
+//! and removes the feed rows it creates below.
 
 use rexenv_lib::state::app::AppState;
 use rexenv_lib::mcp_server;

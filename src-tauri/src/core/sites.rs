@@ -1141,6 +1141,12 @@ pub fn domain_tld(domain: &str) -> Result<String> {
 /// Settings key for the configurable sites root.
 pub const SITES_DIR_KEY: &str = "sites_dir";
 
+/// How long a scratch (agent-created) site lives without being used, in hours
+/// (MCP M2a, PLAN §4.3). ONE definition, so the clock that creation starts and
+/// the clock activity extends can never drift apart. A user-configurable
+/// setting lands with the create tool; until then this is the value.
+pub const SCRATCH_TTL_HOURS: i64 = 24;
+
 /// Settings key for the default TLD new sites are created under (v1 of the
 /// configurable-TLD feature: default-for-NEW-sites only — existing sites keep
 /// their domain; re-point one via Change domain if wanted).

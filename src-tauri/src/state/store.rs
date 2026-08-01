@@ -441,6 +441,36 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
     }
 }
 
+/// Push a scratch site's expiry `ttl_hours` further out because an agent just
+/// used it (v27) — "idle scratch dies; active scratch lives". Returns whether a
+/// row was touched.
+///
+/// **It can only MOVE an expiry, never establish one**, and every clause of the
+/// `WHERE` is there to keep that true:
+///
+/// - `origin = 'agent'` — a user's own site is never given lifecycle state by an
+///   agent naming it. That includes a site the user hand-named
+///   `*.scratch.rex`, and a scratch site the user has since KEPT (Keep flips
+///   `origin` to `'user'`).
+/// - `expires_at IS NOT NULL` — belt for the same fact from the other side. If a
+///   row ever reached `origin='agent'` with no expiry, writing one here would
+///   CREATE deletion state that did not exist, which is the one direction this
+///   must never move in. A touch extends a deadline; it does not start a clock.
+/// - `id = ?1` on an UPDATE — a deleted site matches nothing, so a call naming
+///   one is a no-op and cannot resurrect a row (an UPDATE cannot insert).
+///
+/// An already-past expiry IS refreshed: the reaper hasn't collected it yet and
+/// the agent is demonstrably still using it, which is exactly what the TTL is
+/// asking about.
+pub fn touch_site_expiry(conn: &Connection, id: &str, ttl_hours: i64) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET expires_at = datetime('now', ?2) \
+         WHERE id = ?1 AND origin = 'agent' AND expires_at IS NOT NULL",
+        params![id, format!("+{ttl_hours} hours")],
+    )?;
+    Ok(affected > 0)
+}
+
 /// Record that rexenv created the site's mu-plugins dir (v25). Set-once, only
 /// ever to true — ownership is claimed at creation time, never revoked into a
 /// guess.

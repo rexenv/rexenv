@@ -321,7 +321,14 @@ actually delivers, stated precisely:
   never converts "agent ran a tool" into "root happened silently."
 - **(c) A real boundary for the no-code-execution surface.** A client that uses
   only the diagnostic/read tools (M1) and never touches scratch execution stays
-  genuinely contained — read-only, secret-scrubbed, no writes.
+  genuinely contained — read-only and secret-scrubbed. **"No writes" is the
+  imprecise version and this doc used to say it** (corrected 1 Aug 2026): a tool
+  call always writes rexenv's OWN records — the activity feed, and from M2a the
+  named scratch site's TTL. Neither is reachable by a handler (both happen in the
+  session layer, on rexenv's account) and neither touches the user's sites, their
+  files, or their databases, which is what the containment claim is about. Saying
+  "no writes" invited someone to read the narrower true thing as a wider false
+  one.
 
 What the tier model does **not** deliver: containment of an agent that holds a
 shell, or one that has scratch code execution and chooses to reach the CLI
@@ -792,7 +799,9 @@ text; it lands in the Settings card above the M2 tools, near-verbatim:
 > **What rexenv guarantees once an agent can create sites — and what it does not.**
 >
 > Every tool that changes anything can only change a site rexenv created for the
-> agent itself. That is a recorded fact (`origin='agent'`, written at creation),
+> agent itself. (Using one also keeps it alive: an agent that looks at a scratch
+> site pushes its expiry out, so the disposable sites that disappear are the ones
+> nobody is using.) That is a recorded fact (`origin='agent'`, written at creation),
 > never inferred from a name or a path — a site you named `foo.scratch.rex`
 > yourself is yours, and the reaper will not touch it. Your sites, their files,
 > their databases, and every system change rexenv can make (the resolver, the CA,

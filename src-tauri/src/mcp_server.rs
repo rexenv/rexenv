@@ -20,6 +20,16 @@
 //! (M2) they go in a *different* module with its own capability; this boundary
 //! does not erode.
 //!
+//! **What "read-only" scopes: the HANDLER, not the call.** A tool call always
+//! writes rexenv's own records — the activity feed, and (M2a) the named scratch
+//! site's TTL — both in the session layer, on rexenv's account, unreachable from
+//! a handler (`log_action`). That is the point of keeping them out here: a
+//! refresh inside `tools.rs` would either break the handler boundary or force
+//! the guard to be weakened around it. Neither write touches the user's sites,
+//! their files, or their databases, which is what the containment claim is
+//! about — but "an M1 call writes nothing" would be the false wider reading, so
+//! it is not said anywhere.
+//!
 //! Socket: `<config>/rexenv-mcp.sock`, `0600`, bound with the SAME convention as
 //! the CLI socket — `cli_server::bind`, deliberately reused so there is one
 //! socket convention, not two. Never TCP.
@@ -505,10 +515,17 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     outputs
 }
 
-/// Record one agent action to the feed, best-effort — a logging failure must
-/// never break the session (accountability is important, but not at the cost of
-/// the connection). The feed is its own table; this is the server's write, not a
-/// tool's, so the read-only tool boundary is untouched.
+/// Record one agent action to the feed AND push the named scratch site's TTL
+/// out — the session's own two writes for a call, best-effort under one lock.
+///
+/// Both are REXENV's writes on its own account, not the tool's: a handler
+/// touches state only through `ReadCtx`, which has no mutator (the M1 boundary,
+/// #199, unchanged). They live here rather than in a handler for exactly that
+/// reason — a refresh in `tools.rs` would either break that boundary or force
+/// the guard to be weakened to accommodate it.
+///
+/// A failure in either must never break the session: accountability matters, but
+/// not at the cost of the connection.
 fn log_action<Rt: tauri::Runtime>(app: &tauri::AppHandle<Rt>, client: &str, log: &feed::PendingLog) {
     use tauri::Manager;
     let Some(state) = app.try_state::<AppState>() else { return };
@@ -521,6 +538,29 @@ fn log_action<Rt: tauri::Runtime>(app: &tauri::AppHandle<Rt>, client: &str, log:
     };
     if let Err(e) = feed::record(&conn, client, log) {
         log::warn!("mcp: could not record agent action: {e}");
+    }
+    refresh_scratch_ttl(&conn, log.target_site.as_deref());
+}
+
+/// "The agent is still using this site" — push a SCRATCH site's expiry out
+/// (PLAN §4.3: idle scratch dies, active scratch lives).
+///
+/// Read tools count: naming a site to diagnose it is using it, and M1's tools
+/// get this for free precisely because the write lives out here in the session
+/// rather than in a handler.
+///
+/// It is a **no-op unless the named site is a live scratch row**, which
+/// `store::touch_site_expiry` enforces in its `WHERE` rather than here — a real
+/// site the agent named (a `tail_log` on the user's own site) is never touched,
+/// a KEPT site is never re-armed, a site that no longer exists matches nothing,
+/// and no row is ever GIVEN an expiry it didn't have. Best-effort: a failure to
+/// extend a TTL is not worth failing a call the user asked for.
+fn refresh_scratch_ttl(conn: &rusqlite::Connection, target: Option<&str>) {
+    let Some(id) = target else { return };
+    if let Err(e) =
+        crate::state::store::touch_site_expiry(conn, id, crate::core::sites::SCRATCH_TTL_HOURS)
+    {
+        log::warn!("mcp: could not refresh the scratch TTL for {id}: {e}");
     }
 }
 
@@ -853,6 +893,108 @@ mod tests {
         // And it is taken ONCE — a second read cannot re-attribute a stale
         // target to the next call on the same session.
         assert_eq!(acted.take(), None);
+    }
+
+
+    /// An in-memory app db with one scratch row and one of the user's own, both
+    /// in production shape. Returns the connection.
+    #[cfg(test)]
+    fn db_with_a_scratch_and_a_real_site() -> rusqlite::Connection {
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut scratch =
+            test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        scratch.expires_at = Some("2026-08-02 09:00:00".into());
+        scratch.agent_client = Some("Claude Code".into());
+        store::insert_site(&conn, &scratch).unwrap();
+        // The user's own site — and deliberately given a stale expiry, so the
+        // refusal below rests on `origin`, not on the expiry happening to be NULL.
+        let mut real = test_site("7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30", "myblog.rex", SiteOrigin::User);
+        real.expires_at = Some("2020-01-01 00:00:00".into());
+        store::insert_site(&conn, &real).unwrap();
+        conn
+    }
+
+    #[test]
+    fn using_a_scratch_site_pushes_its_expiry_out() {
+        use crate::state::store;
+        let conn = db_with_a_scratch_and_a_real_site();
+        let id = "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24";
+        refresh_scratch_ttl(&conn, Some(id));
+        let after = store::get_site(&conn, id).unwrap().unwrap().expires_at.unwrap();
+        assert!(after > "2026-08-02 09:00:00".to_string(), "the deadline moved out: {after}");
+        // ...and it moved to roughly the TTL from now, not to some other clock.
+        let expected: String = conn
+            .query_row("SELECT datetime('now', '+24 hours')", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after[..16], expected[..16], "expiry is now + SCRATCH_TTL_HOURS");
+    }
+
+    #[test]
+    fn a_read_tool_naming_the_users_own_site_touches_nothing() {
+        // `tail_log` against a real site is a perfectly ordinary call. It must
+        // not write lifecycle state onto a site the agent does not own — and the
+        // refusal rests on `origin`, which is why this fixture's real site
+        // carries a stale expiry rather than a NULL one.
+        use crate::state::store;
+        let conn = db_with_a_scratch_and_a_real_site();
+        let id = "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30";
+        refresh_scratch_ttl(&conn, Some(id));
+        assert_eq!(
+            store::get_site(&conn, id).unwrap().unwrap().expires_at.as_deref(),
+            Some("2020-01-01 00:00:00"),
+            "a user's site is untouched, expiry and all"
+        );
+    }
+
+    #[test]
+    fn naming_a_site_that_no_longer_exists_creates_nothing() {
+        // A feed row can name a site that has since been deleted (a reap, or a
+        // stale id an agent kept). The touch must not resurrect it, and must not
+        // invent a row.
+        use crate::state::store;
+        let conn = db_with_a_scratch_and_a_real_site();
+        let before = store::list_sites(&conn).unwrap().len();
+        refresh_scratch_ttl(&conn, Some("00000000-0000-4000-8000-000000000000"));
+        refresh_scratch_ttl(&conn, None); // a call that named no site at all
+        assert_eq!(store::list_sites(&conn).unwrap().len(), before, "no row appeared");
+        assert!(store::get_site(&conn, "00000000-0000-4000-8000-000000000000").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_touch_extends_a_deadline_and_never_starts_a_clock() {
+        // The direction that matters: an agent row with NO expiry (what a KEPT
+        // site would look like if `origin` had not also been flipped) must not
+        // be GIVEN one. Writing an expiry here would create deletion state that
+        // did not exist — the one move this must never make.
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let kept = test_site("b41d7c58-2e0a-49f6-9a13-7d5c8e2f4011", "kept.scratch.rex", SiteOrigin::Agent);
+        assert_eq!(kept.expires_at, None);
+        store::insert_site(&conn, &kept).unwrap();
+        refresh_scratch_ttl(&conn, Some(&kept.id));
+        let after = store::get_site(&conn, &kept.id).unwrap().unwrap();
+        assert_eq!(after.expires_at, None, "a touch must not start a clock");
+        assert!(!after.reap_due("2099-01-01 00:00:00"), "and so it stays unreapable");
+    }
+
+    #[test]
+    fn an_expired_but_uncollected_scratch_site_is_revived_by_use() {
+        // The reaper hasn't got to it and the agent is demonstrably still using
+        // it — which is the question the TTL asks. Refreshing is the answer;
+        // letting it die under an active session would be the surprise.
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut stale = test_site("d17c9b30-5f2e-4a68-b1d4-9c3e7a2f5011", "old.scratch.rex", SiteOrigin::Agent);
+        stale.expires_at = Some("2020-01-01 00:00:00".into());
+        store::insert_site(&conn, &stale).unwrap();
+        assert!(stale.reap_due("2026-08-01 12:00:00"), "it was due");
+        refresh_scratch_ttl(&conn, Some(&stale.id));
+        let after = store::get_site(&conn, &stale.id).unwrap().unwrap();
+        assert!(!after.reap_due("2026-08-01 12:00:00"), "using it bought it another TTL");
     }
 
 }
