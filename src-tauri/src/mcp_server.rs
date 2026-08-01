@@ -541,7 +541,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         Tool::Read(t) => (t.handler)(ReadCtx::new(state.inner()), args, acted).await,
         Tool::Scratch(t) => {
             let creator = AppSiteCreator { app: app.clone() };
-            let ctx = scratch::ScratchCtx::new(state.inner(), &creator, client);
+            let ctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, client);
             (t.handler)(ctx, args, acted).await
         }
     };
@@ -565,6 +565,34 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
 /// for, ownership being the only difference.
 struct AppSiteCreator<Rt: tauri::Runtime> {
     app: tauri::AppHandle<Rt>,
+}
+
+impl<Rt: tauri::Runtime> scratch::SiteDeleter for AppSiteCreator<Rt> {
+    fn delete<'a>(
+        &'a self,
+        id: String,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::error::Result<()>> + Send + 'a>>
+    {
+        use tauri::Manager;
+        Box::pin(async move {
+            let state = self
+                .app
+                .try_state::<AppState>()
+                .ok_or_else(|| crate::error::Error::Other("rexenv is still starting".into()))?;
+            let tunnels = self
+                .app
+                .try_state::<crate::commands::tunnels::Tunnels>()
+                .ok_or_else(|| crate::error::Error::Other(
+                    "rexenv cannot delete sites right now — the person you're working with may \
+                     need to restart it."
+                        .into(),
+                ))?;
+            // The app's OWN delete: stops the tunnel, drops the database by
+            // provenance, tears down the docroot by `docroot_managed`, reloads.
+            crate::commands::sites::delete_site_owned(state.inner(), tunnels.inner(), id).await?;
+            Ok(())
+        })
+    }
 }
 
 impl<Rt: tauri::Runtime> scratch::SiteCreator for AppSiteCreator<Rt> {
@@ -647,7 +675,7 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     // time a scratch tool lands — the surface-coverage defect family, which is
     // exactly what a second registry invites.
     let creator = AppSiteCreator { app: app.clone() };
-    let sctx = scratch::ScratchCtx::new(state.inner(), &creator, "secret-sweep");
+    let sctx = scratch::ScratchCtx::new(state.inner(), &creator, &creator, "secret-sweep");
     for (tool, args) in scratch::sweep_plan(fixture_site_id) {
         let text = match (tool.handler)(sctx, &args, &acted).await {
             Ok(v) => serde_json::to_string(&v).unwrap_or_default(),

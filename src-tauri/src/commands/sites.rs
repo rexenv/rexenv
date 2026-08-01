@@ -908,8 +908,18 @@ pub async fn delete_site(
     tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     id: String,
 ) -> Result<bool> {
+    delete_site_owned(&state, &tunnels, id).await
+}
+
+/// [`delete_site`] without the IPC wrappers, so in-app callers (the MCP scratch
+/// tool, the reaper) run the SAME full teardown rather than a second one.
+pub(crate) async fn delete_site_owned(
+    state: &AppState,
+    tunnels: &crate::commands::tunnels::Tunnels,
+    id: String,
+) -> Result<bool> {
     let site = {
-        let conn = lock(&state)?;
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::sites::get(&conn, &id)?
     };
     let Some(site) = site else { return Ok(false) };
@@ -918,7 +928,7 @@ pub async fn delete_site(
     //    (registry keyed by domain). Its mu-plugins do NOT simply "go away
     //    with the docroot" — a linked docroot is preserved — so step 3 below
     //    removes them explicitly.
-    tunnels.stop_for_domain(&state, &site.domain);
+    tunnels.stop_for_domain(state, &site.domain);
 
     // 2) Drop the site's database, and any RECORDED mirrored user (D3). Only
     //    WordPress sites get a provisioned database (the stored
@@ -931,11 +941,11 @@ pub async fn delete_site(
     //    initialized (then neither the database nor the user can exist);
     //    otherwise the engine is brought up first, exactly like site creation.
     let mirrored_user = {
-        let conn = lock(&state)?;
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         crate::state::store::get_db_import(&conn, &id)?.and_then(|r| r.mirrored_user)
     };
     let engine = DbEngine::from_site(site.db_engine);
-    let engine_version = super::database::effective_db_version(&state, engine)?;
+    let engine_version = super::database::effective_db_version(state, engine)?;
     let want_db_drop = should_drop_database(&site);
     // Booting a STOPPED engine just to drop one account is deliberate
     // (settled 28 Jul 2026), not the linked-site over-fetch mistake
@@ -973,7 +983,7 @@ pub async fn delete_site(
     // 3) Row + cert + per-site configs/logs + docroot (the last only if it's
     //    ours — a linked folder is never touched).
     let (outcome, sites) = {
-        let conn = lock(&state)?;
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         let outcome = core::sites::teardown(&conn, state.platform.as_ref(), &id)?;
         (outcome, core::sites::list(&conn)?)
     };

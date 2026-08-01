@@ -247,9 +247,16 @@ first:
     (its first trip is spent) with BOTH surviving directions re-proven to fire.
     ⚠ Open for the owner: eyeball the longer paragraph in the PACKAGED webview at
     both widths — L2 covers render at 900/1440, L3 is the WKWebView bug class.
-    Next task = 9 (`scratch_delete_site` + reaper: delete by record,
-    once-per-launch retry, reap failures as `actor='rexenv'` rows, rowless-share
-    backstop).
+    
+    ✓ task 9a — **`scratch_delete_site`**, ledger #212: gated by the WITNESS (not
+    the name/suffix), refuses the user's sites with the ownership statement
+    rather than a not-found, re-reads `origin` before anything destructive so a
+    Keep mid-flight is reported honestly, and runs the app's own full delete
+    path. Reap-failure policy decided: ONE row per distinct problem (dedupe on
+    outcome+reason), never per launch; successes never deduped. `reap_due`'s
+    three clauses each mutation-proven load-bearing.
+    Next task = 9b (the reaper itself: launch + hourly sweep over
+    `due_for_reap`, once-per-launch retry, the rowless-share backstop).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

@@ -155,6 +155,15 @@ pub fn claim(conn: &Connection, id: &str) -> Result<ScratchSite> {
     Ok(ScratchSite(site))
 }
 
+/// Is this site STILL the agent's, right now?
+///
+/// The witness proves the path was gated when it claimed; this is the re-read
+/// immediately before a destructive step, for the case the witness deliberately
+/// does not cover — the user pressing Keep in between.
+pub fn still_the_agents(conn: &Connection, id: &str) -> Result<bool> {
+    Ok(store::get_site(conn, id)?.is_some_and(|s| s.is_scratch()))
+}
+
 /// Every scratch site currently DUE for reaping at `now`, as witnesses.
 ///
 /// Goes through the same [`ScratchSite`] door as everything else, so the reaper

@@ -74,6 +74,19 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     input_schema: create_params,
     sweep_args: |_id| json!({ "name": "sweep-probe" }),
     handler: create_site,
+}, ScratchTool {
+    name: "scratch_delete_site",
+    description: "Delete a scratch site the agent created — its files, its database and its \
+                  configuration. Only works on scratch sites: the user's own sites are refused. \
+                  Takes `site_id`.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": { "site_id": { "type": "string", "description": "The scratch site's id." } },
+        "required": ["site_id"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id }),
+    handler: delete_site,
 }];
 
 fn create_params() -> Value {
@@ -123,6 +136,14 @@ pub struct ScratchCtx<'a> {
     creator: &'a dyn SiteCreator,
     /// The MCP client's self-reported name, recorded on the row it creates.
     client: &'a str,
+    /// Deleting goes through the app's own full delete path (tunnel stop, DB
+    /// drop, teardown, reload) — same runtime erasure, same one-brain rule.
+    deleter: &'a dyn SiteDeleter,
+}
+
+/// Deleting a site through the app's own delete path.
+pub trait SiteDeleter: Send + Sync {
+    fn delete<'a>(&'a self, id: String) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
 }
 
 /// Creating a site through the app's own provision job.
@@ -145,8 +166,13 @@ pub trait SiteCreator: Send + Sync {
 }
 
 impl<'a> ScratchCtx<'a> {
-    pub fn new(state: &'a AppState, creator: &'a dyn SiteCreator, client: &'a str) -> Self {
-        ScratchCtx { state, creator, client }
+    pub fn new(
+        state: &'a AppState,
+        creator: &'a dyn SiteCreator,
+        deleter: &'a dyn SiteDeleter,
+        client: &'a str,
+    ) -> Self {
+        ScratchCtx { state, creator, deleter, client }
     }
 
     /// The refusals a create must clear BEFORE anything is built, in the order
@@ -210,6 +236,34 @@ impl<'a> ScratchCtx<'a> {
         }
     }
 
+    /// Delete a proven scratch site, re-asserting the recorded fact at the
+    /// destructive write.
+    ///
+    /// The witness is a snapshot: the user can press Keep between the claim and
+    /// this call, and then the site is THEIRS. So the row deletion carries
+    /// `AND origin = 'agent'` in its own `WHERE`, and a miss is reported
+    /// honestly — "no longer the agent's" — rather than passing as a silent
+    /// no-op that would leave the agent believing it deleted something.
+    ///
+    /// The re-assert happens BEFORE anything destructive, deliberately: putting
+    /// it at the last write would mean discovering the adoption after the
+    /// database was already dropped. The residual window between this check and
+    /// the resource teardown is milliseconds and cannot be closed without a
+    /// transaction spanning MySQL — stated, not pretended away.
+    async fn delete(&self, scratch: &ScratchSite) -> Result<()> {
+        {
+            let conn = self.db()?;
+            if !crate::core::scratch::still_the_agents(&conn, scratch.id())? {
+                return Err(Error::Other(format!(
+                    "`{}` is no longer a scratch site — the person you're working with kept it, \
+                     so it is theirs now and agent tools cannot delete it.",
+                    scratch.domain()
+                )));
+            }
+        }
+        self.deleter.delete(scratch.id().to_string()).await
+    }
+
     /// The created site's serving status, in M1's vocabulary.
     async fn status_of(&self, site: &Site) -> super::view::AgentSiteStatus {
         let read = super::readctx::ReadCtx::new(self.state);
@@ -225,9 +279,6 @@ impl<'a> ScratchCtx<'a> {
     }
 
     /// Prove a site is the agent's, or refuse with the policy statement
-    // First user: `scratch_delete_site` (M2a task 9). `create` makes a site
-    // rather than claiming one, so the door has no caller yet.
-    #[allow(dead_code)]
     /// (`core::scratch::claim`, #208). **The only way a scratch handler obtains
     /// a site**: there is no `site_by_id` here, so "I'll just read the row and
     /// check it myself" is not an available shortcut.
@@ -348,6 +399,34 @@ fn create_site<'a>(
             status,
         };
         serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the site: {e}")))
+    })
+}
+
+/// Delete a scratch site — gated by the WITNESS, not by its name.
+///
+/// `claim` is what decides (#208): it reads the recorded `origin`, so a site the
+/// user hand-named `*.scratch.rex` is refused with the ownership policy
+/// statement, not with a "not found" that would send the agent looking again.
+fn delete_site<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("scratch_delete_site needs a `site_id`.".into()))?;
+        // THE gate. Not a suffix check, not a name check — the recorded fact.
+        let scratch = ctx.claim(id)?;
+        acted.set(scratch.site());
+        let domain = scratch.domain().to_string();
+        ctx.delete(&scratch).await?;
+        Ok(json!({
+            "deleted": true,
+            "domain": domain,
+            "detail": format!("`{domain}` and its database are gone."),
+        }))
     })
 }
 
@@ -481,5 +560,68 @@ mod tests {
         assert!(err.to_string().contains("Pick a different name"), "the refusal stands alone");
         assert!(!err.to_string().contains("was created"), "nothing was");
         assert_eq!(acted.take(), None, "and the feed names no site");
+    }
+    #[test]
+    fn deleting_is_gated_by_the_witness_not_by_the_name() {
+        // The gate is the RECORDED origin. A site the user hand-named
+        // `*.scratch.rex` must read as "that one is yours" — the ownership
+        // policy statement — and never as "not found", which would send the
+        // agent looking for it again instead of understanding the rule.
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let theirs = test_site("a1b2c3d4-1111-4222-8333-444455556666", "mine.scratch.rex", SiteOrigin::User);
+        crate::state::store::insert_site(&conn, &theirs).unwrap();
+        let err = crate::core::scratch::claim(&conn, &theirs.id).unwrap_err().to_string();
+        assert!(err.contains("your own sites"), "the ownership refusal: {err}");
+        assert!(!err.contains("no site with id"), "NOT a not-found: {err}");
+        assert!(err.contains("mine.scratch.rex"), "names it: {err}");
+    }
+
+    #[test]
+    fn a_site_kept_between_the_claim_and_the_delete_is_no_longer_the_agents() {
+        // The witness is a snapshot, so the destructive path re-reads the
+        // recorded fact immediately before it does anything. This is that read.
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut row = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        row.expires_at = Some("2099-01-01 00:00:00".into());
+        crate::state::store::insert_site(&conn, &row).unwrap();
+        let scratch = crate::core::scratch::claim(&conn, &row.id).unwrap();
+        assert!(crate::core::scratch::still_the_agents(&conn, scratch.id()).unwrap());
+        // The user presses Keep — origin flips under the held witness.
+        conn.execute("UPDATE sites SET origin = 'user', expires_at = NULL WHERE id = ?1", [&row.id])
+            .unwrap();
+        assert!(
+            !crate::core::scratch::still_the_agents(&conn, scratch.id()).unwrap(),
+            "a Keep between claim and delete must be seen — a stale witness is not permission"
+        );
+        // ...and a site deleted in between is not the agent's either.
+        conn.execute("DELETE FROM sites WHERE id = ?1", [&row.id]).unwrap();
+        assert!(!crate::core::scratch::still_the_agents(&conn, scratch.id()).unwrap());
+    }
+
+    #[test]
+    fn a_reap_that_keeps_failing_says_so_once_not_once_per_launch() {
+        // Retry-once-per-launch means a site that CANNOT be deleted would write
+        // an identical row every launch, forever: a slow flood that buries the
+        // feed and makes one persistent problem look like many events. The first
+        // occurrence is news; the same failure after it is not.
+        use crate::mcp_server::feed::{last_reap, record_reap, recent, Outcome};
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let id = "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24";
+        assert!(record_reap(&conn, id, Outcome::Error, Some("database drop failed".into())).unwrap());
+        for _ in 0..5 {
+            assert!(
+                !record_reap(&conn, id, Outcome::Error, Some("database drop failed".into())).unwrap(),
+                "the same problem is not news on every launch"
+            );
+        }
+        assert_eq!(recent(&conn, 50).unwrap().len(), 1, "one row per distinct problem");
+        // A DIFFERENT reason is news again — it tells the user something changed.
+        assert!(record_reap(&conn, id, Outcome::Error, Some("docroot is not writable".into())).unwrap());
+        assert_eq!(recent(&conn, 50).unwrap().len(), 2);
+        // And success is always recorded: the site is gone, which is the single
+        // most consequential event in this lifecycle.
+        assert!(record_reap(&conn, id, Outcome::Ok, None).unwrap());
+        assert!(record_reap(&conn, id, Outcome::Ok, None).unwrap(), "a reap is never deduped away");
+        assert_eq!(last_reap(&conn, id).unwrap().unwrap().0, Outcome::Ok);
     }
 }

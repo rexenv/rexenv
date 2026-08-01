@@ -367,6 +367,58 @@ pub fn recent_head(conn: &Connection, window_mins: i64) -> Result<Option<RecentH
     Ok(Some(RecentHead { last_tool: tool, minutes_ago: mins.max(0), last_ok, trailing_errors }))
 }
 
+/// The newest `scratch_reap` row for `site`, as `(outcome, detail)` — the reaper
+/// reads it to avoid saying the same thing every launch.
+///
+/// **Why this exists.** A reap that fails is retried at most once per launch, so
+/// a site that CANNOT be deleted (a database drop that keeps failing, say) would
+/// otherwise write one identical row per launch, forever: a slow flood that
+/// buries the feed's real content and makes a persistent problem look like many
+/// events. The reaper records the FIRST occurrence and then stays quiet until the
+/// outcome or the reason changes — so the feed carries one row per distinct
+/// problem, while the site's own visible state (expired, still present) is what
+/// says the problem is ongoing.
+pub fn last_reap(conn: &Connection, site: &str) -> Result<Option<(Outcome, Option<String>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT outcome, detail FROM agent_actions \
+         WHERE tool = 'scratch_reap' AND target_site = ?1 ORDER BY id DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map(params![site], |r| {
+        Ok((Outcome::from_db(&r.get::<_, String>(0)?), r.get::<_, Option<String>>(1)?))
+    })?;
+    match rows.next() {
+        Some(v) => Ok(Some(v?)),
+        None => Ok(None),
+    }
+}
+
+/// The reaper's own record: what rexenv did to an agent-owned site, recorded
+/// ONLY when it is news (see [`last_reap`]). Returns whether a row was written.
+pub fn record_reap(
+    conn: &Connection,
+    site_id: &str,
+    outcome: Outcome,
+    detail: Option<String>,
+) -> Result<bool> {
+    if outcome != Outcome::Ok {
+        if let Some((prev, prev_detail)) = last_reap(conn, site_id)? {
+            if prev == outcome && prev_detail == detail {
+                return Ok(false); // same problem, already said once
+            }
+        }
+    }
+    record_system(
+        conn,
+        &PendingLog {
+            tool: "scratch_reap".into(),
+            target_site: Some(site_id.to_string()),
+            outcome,
+            detail,
+        },
+    )?;
+    Ok(true)
+}
+
 /// Clear the feed — the user's record of their own machine, theirs to wipe.
 pub fn clear(conn: &Connection) -> Result<usize> {
     Ok(conn.execute("DELETE FROM agent_actions", [])?)
