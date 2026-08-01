@@ -259,10 +259,15 @@ first:
     (origin + expiry), guarded by `AND origin='agent'` so it is idempotent and
     never touches the user's own; keeping at the ceiling frees a slot
     immediately, and the cap refusal now offers it as a third way forward.
-    Next = task 9b (the reaper: launch + hourly sweep over `due_for_reap`,
-    once-per-launch retry, rowless-share backstop) and 10b (the Keep confirm
-    copy + the four promotion call sites — rename/move/env/share — all routed
-    through `keep_site`, never their own writes).
+    ✓ task 10b — **the promotion choke point**, ledger #214: the RULE ("the user
+    deliberately changed this site") replaced §4.3's list — it added the PHP /
+    web-server / Xdebug switches and removed share; six commands call one
+    function; a source guard fails the build if a command stops calling it or a
+    new one never does. ⚠ Still open in 10b: the Keep confirm DIALOG (copy
+    approved 2 Aug, lands with the Sites UI, task 13).
+    Next = task 9b (the reaper — per-sweep ceiling of 5 + loud log, visible
+    launch summary [copy to the owner FIRST], skip-don't-stop for shared sites
+    incl. a failed stop; **depends on 10b being in**).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

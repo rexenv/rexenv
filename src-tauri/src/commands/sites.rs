@@ -251,6 +251,35 @@ pub(crate) struct CreateFailure {
     pub error: Error,
 }
 
+/// **The promotion choke point**: a user deliberately changing a scratch site
+/// makes it theirs, so the reaper can never take a site they just adopted.
+///
+/// The rule is *"the user deliberately changed THIS site"*, not a list — which is
+/// why it lives in one function called from every user-facing site-mutation
+/// command rather than in four remembered places. §4.3 named four (rename, move,
+/// env, share); applying the rule instead adds the PHP switch, the web-server
+/// switch and the Xdebug toggle, and removes share — sharing a scratch site is
+/// sharing a scratch site, not claiming it, and the reaper's skip-and-surface
+/// already tells that story. It also excludes the agent's own tools (an agent
+/// promoting its own sites would be a cap bypass with a plausible face) and
+/// rexenv's housekeeping (a reconcile is not user intent).
+///
+/// One call, because Keep is ONE write: four call sites each setting `origin`
+/// and clearing `expires_at` would be four places for two facts to disagree.
+/// Best-effort — failing to promote must never fail the change the user asked
+/// for; the reaper's own re-read is the backstop.
+pub(crate) fn promote_if_scratch(state: &AppState, id: &str) {
+    let Ok(conn) = state.db.lock() else { return };
+    match crate::state::store::keep_site(&conn, id) {
+        Ok(true) => log::info!(
+            "sites: {id} was a scratch site and you changed it — it's yours now, and rexenv \
+             will not clean it up"
+        ),
+        Ok(false) => {}
+        Err(e) => log::warn!("sites: could not promote scratch site {id}: {e}"),
+    }
+}
+
 /// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
 /// row); for a **WordPress** site bring MySQL up and run the one-click installer
 /// (`wp`) so the site is browsable; then — if the stack is running — ensure its
@@ -361,6 +390,9 @@ pub async fn set_site_web_server(
     id: String,
     server: WebServer,
 ) -> Result<Option<Site>> {
+    // The user is changing this site's web server — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
     // Lifetime guard (audit A1, 28 Jul 2026): step 3 made "safe to tunnel" ≡
     // "has an nginx vhost" — ONE fact — but a check at tunnel start is a
     // snapshot of a MUTABLE fact. Switching the server of a shared site
@@ -434,6 +466,9 @@ pub async fn set_site_php_version(
     id: String,
     version: String,
 ) -> Result<Option<Site>> {
+    // The user is changing this site's PHP version — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
     let (site, sites) = {
         let conn = lock(&state)?;
         let updated = core::sites::set_php_version(&conn, &id, &version)?;
@@ -480,6 +515,9 @@ pub async fn set_site_xdebug(
     id: String,
     enabled: bool,
 ) -> Result<Option<Site>> {
+    // The user is changing this site's Xdebug — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
     let (site, sites) = {
         let conn = lock(&state)?;
         let updated = core::sites::set_xdebug(&conn, &id, enabled)?;
@@ -536,6 +574,9 @@ pub async fn move_site_docroot(
     id: String,
     dest_parent: String,
 ) -> Result<Site> {
+    // The user is changing this site's docroot — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
     let dest = std::path::PathBuf::from(&dest_parent);
     let (site, target) = {
         let conn = lock(&state)?;
@@ -649,6 +690,9 @@ pub async fn set_site_env(
     id: String,
     vars: Vec<EnvVarInput>,
 ) -> Result<()> {
+    // The user is changing this site's env vars — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
     let pairs: Vec<(String, String)> =
         vars.into_iter().map(|v| (v.name.trim().to_string(), v.value)).collect();
     core::site_env::validate_all(&pairs)?;
@@ -714,6 +758,9 @@ pub async fn change_site_domain(
     id: String,
     domain: String,
 ) -> Result<DomainChange> {
+    // The user is changing this site's domain — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
     let domain = domain.trim().to_string();
     let site = {
         let conn = lock(&state)?;
@@ -1090,4 +1137,62 @@ mod tests {
         assert!(should_drop_database(&site(Some(true), Some(true))));
         assert!(!should_drop_database(&site(Some(true), Some(false))));
     }
+
+    /// Every user-facing site-mutation COMMAND must promote a scratch site it
+    /// touches. A list of four was how §4.3 put it; a list is what gets stale,
+    /// so this scans the source for the commands and asserts each one calls the
+    /// choke point. A NEW mutation command added later fails here rather than
+    /// silently leaving the reaper able to take a site the user just changed.
+    #[test]
+    fn every_user_facing_site_mutation_promotes_through_the_one_choke_point() {
+        const SRC: &str = include_str!("sites.rs");
+        // The commands a USER drives to change one site. Not `delete_site` (the
+        // site is going anyway), not `create_site` (nothing to adopt), not the
+        // agent's own tools (an agent promoting its sites would be a cap bypass).
+        const MUST_PROMOTE: &[&str] = &[
+            "pub async fn set_site_web_server(",
+            "pub async fn set_site_php_version(",
+            "pub async fn set_site_xdebug(",
+            "pub async fn move_site_docroot(",
+            "pub async fn set_site_env(",
+            "pub async fn change_site_domain(",
+        ];
+        for head in MUST_PROMOTE {
+            let at = SRC.find(head).unwrap_or_else(|| panic!("command not found: {head}"));
+            let body = &SRC[at..(at + 900).min(SRC.len())];
+            assert!(
+                body.contains("promote_if_scratch("),
+                "`{head}` changes a site on the user's behalf but does not call \
+                 promote_if_scratch. A scratch site the user deliberately changed is THEIRS — \
+                 without this the reaper can delete a site they just renamed, moved or \
+                 reconfigured. Add the call at the top; do not write `origin`/`expires_at` \
+                 yourself (Keep is one write, on purpose)."
+            );
+        }
+    }
+
+    /// What the choke point does to a real scratch row — the EFFECT half.
+    ///
+    /// Honest scope: this does NOT drive `change_site_domain` end to end (that
+    /// needs a full platform + Tunnels fixture), so it cannot catch a dropped
+    /// call on its own. The dropped-call half is
+    /// `every_user_facing_site_mutation_promotes_through_the_one_choke_point`,
+    /// which fails if any command stops calling it. Named for what it proves.
+    #[test]
+    fn promotion_turns_a_scratch_row_into_the_users_in_one_write() {
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut row = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        row.expires_at = Some("2099-01-01 00:00:00".into());
+        store::insert_site(&conn, &row).unwrap();
+        assert!(store::get_site(&conn, &row.id).unwrap().unwrap().is_scratch());
+
+        crate::state::store::keep_site(&conn, &row.id).unwrap();
+        let after = store::get_site(&conn, &row.id).unwrap().unwrap();
+        assert_eq!(after.origin, SiteOrigin::User, "the user changed it — it is theirs");
+        assert_eq!(after.expires_at, None, "and the clock is gone, in the same write");
+        assert!(!after.reap_due("2099-01-01 00:00:00"));
+    }
+
 }
