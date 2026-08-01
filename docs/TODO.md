@@ -255,8 +255,14 @@ first:
     path. Reap-failure policy decided: ONE row per distinct problem (dedupe on
     outcome+reason), never per launch; successes never deduped. `reap_due`'s
     three clauses each mutation-proven load-bearing.
-    Next task = 9b (the reaper itself: launch + hourly sweep over
-    `due_for_reap`, once-per-launch retry, the rowless-share backstop).
+    ✓ task 10a — **Keep**, ledger #213: ONE atomic UPDATE for one decision
+    (origin + expiry), guarded by `AND origin='agent'` so it is idempotent and
+    never touches the user's own; keeping at the ceiling frees a slot
+    immediately, and the cap refusal now offers it as a third way forward.
+    Next = task 9b (the reaper: launch + hourly sweep over `due_for_reap`,
+    once-per-launch retry, rowless-share backstop) and 10b (the Keep confirm
+    copy + the four promotion call sites — rename/move/env/share — all routed
+    through `keep_site`, never their own writes).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

@@ -500,6 +500,34 @@ pub fn db_now(conn: &Connection) -> Result<String> {
     Ok(conn.query_row("SELECT datetime('now')", [], |r| r.get(0))?)
 }
 
+/// **Keep** a scratch site: it becomes the user's, permanently (v27).
+///
+/// Two columns, ONE write, on purpose. `origin` and `expires_at` express a
+/// single decision — "this is not disposable any more" — and writing them in two
+/// statements would be the two-facts-that-must-agree shape this codebase keeps
+/// collapsing: a crash between them could leave a site marked the user's with a
+/// live clock, or an agent's site with none. A single `UPDATE` is atomic in
+/// SQLite, so that interleaving is not representable.
+///
+/// Even the degenerate failure is inert: `Site::reap_due` tests `origin` FIRST,
+/// so an expiry left on a user's row can never collect it. The clear is for the
+/// UI's sake (a kept site must not read "expires in 4h"), not for safety.
+///
+/// This is also the promotion path for any USER-initiated mutation of a scratch
+/// site — rename, move, an env edit, sharing it publicly. Touching it makes it
+/// yours, so the reaper never deletes a site the user just adopted. Agents
+/// cannot call it: it is the counterpart to their tools, not one of them.
+///
+/// Returns whether a row changed. Idempotent: keeping a site twice is a no-op,
+/// and there is no "un-keep" — see the confirm copy.
+pub fn keep_site(conn: &Connection, id: &str) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE sites SET origin = 'user', expires_at = NULL WHERE id = ?1 AND origin = 'agent'",
+        params![id],
+    )?;
+    Ok(affected > 0)
+}
+
 /// The database's timestamp `hours` from now, in the same format as
 /// [`db_now`] — so an expiry written here compares correctly against
 /// `datetime('now')` at reap time. SQLite does the arithmetic, in UTC, with the

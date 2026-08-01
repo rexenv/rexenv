@@ -3062,7 +3062,45 @@ mod tests {
         assert!(!err.contains("mine0.rex"), "never offers the USER's sites for deletion: {err}");
         assert!(err.contains("scratch_delete_site"), "way forward #1 — delete one: {err}");
         assert!(err.contains("ask the person"), "way forward #2 — ask the user: {err}");
+        // Keep frees a slot immediately (the test below proves it), so the
+        // ceiling names it: it turns a wait into something the human can DO.
+        assert!(err.contains("frees a slot"), "way forward #3 — Keep, now that it is true: {err}");
         assert!(err.contains("expire"), "and the passive one: {err}");
+    }
+
+
+    #[test]
+    fn keep_is_one_write_and_frees_a_slot_for_the_agent_immediately() {
+        // Keep expresses ONE decision — "not disposable any more" — through two
+        // columns, so it is one atomic statement rather than two writes that
+        // must agree. And the cap counts scratch sites, so keeping one at the
+        // ceiling frees a slot straight away: Keep is a pressure valve, not a
+        // trap that leaves the agent stuck.
+        use crate::core::scratch::{ensure_capacity, MAX_SCRATCH_SITES};
+        use crate::state::models::{test_site, SiteOrigin};
+        let conn = db::open_in_memory().unwrap();
+        for i in 0..MAX_SCRATCH_SITES {
+            let mut s = test_site(
+                &format!("a{i}-0000-4000-8000-00000000000{i}"),
+                &format!("probe{i}.scratch.rex"),
+                SiteOrigin::Agent,
+            );
+            s.expires_at = Some("2099-01-01 00:00:00".into());
+            store::insert_site(&conn, &s).unwrap();
+        }
+        assert!(ensure_capacity(&conn).is_err(), "at the ceiling");
+
+        let kept = "a0-0000-4000-8000-000000000000";
+        assert!(store::keep_site(&conn, kept).unwrap());
+        let row = store::get_site(&conn, kept).unwrap().unwrap();
+        assert_eq!(row.origin, SiteOrigin::User, "it is the user's now");
+        assert_eq!(row.expires_at, None, "and carries no clock");
+        assert!(!row.reap_due("2099-01-01 00:00:00"), "so the reaper can never take it");
+        ensure_capacity(&conn).expect("keeping one frees a slot immediately");
+
+        // Idempotent, and it never reaches a site that is already the user's.
+        assert!(!store::keep_site(&conn, kept).unwrap(), "keeping twice changes nothing");
+        assert!(!store::keep_site(&conn, "00000000-0000-4000-8000-000000000000").unwrap());
     }
 
 }

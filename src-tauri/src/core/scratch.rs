@@ -123,8 +123,9 @@ pub fn ensure_capacity(conn: &Connection) -> Result<()> {
     Err(Error::Other(format!(
         "There are already {} scratch sites, which is the limit ({MAX_SCRATCH_SITES}): {}.\n\
          Delete one you no longer need with scratch_delete_site, or ask the person you're working \
-         with — they can keep or remove scratch sites in rexenv under Settings → AI agents. \
-         Scratch sites also expire on their own once nothing has used them for a while.",
+         with — in rexenv they can remove one, or Keep one, which makes it theirs and frees a slot \
+         straight away. Scratch sites also expire on their own once nothing has used them for a \
+         while.",
         mine.len(),
         mine.join(", ")
     )))
