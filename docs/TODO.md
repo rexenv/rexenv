@@ -236,9 +236,20 @@ first:
     has no such field). Never-prompt driven end to end through the real
     `start()` with a recording PrivilegeManager, **with a permanent control test**
     proving the same path DOES escalate for a user create. Cap + domain refusals
-    name a way forward. Next = task 8b (the `scratch_create_site` TOOL itself:
-    ScratchCtx wiring, blocking settle, the honest stack-stopped result, and the
-    enable-moment copy rewrite the #209 guard now demands).
+    name a way forward.
+    ✓ task 8b — **`scratch_create_site`**, ledger #211: the tool runs through the
+    SAME provision job as the app and the CLI (runtime generic erased by a
+    `SiteCreator` trait object, since a static registry can't be generic);
+    stack-stopped is a SUCCESS carrying M1's verdict/resolution vocabulary; a
+    half-built create NAMES the site it made (id, owner-split actions, no local
+    log path) and records it in the feed; enable-moment copy rewritten to
+    describe CAPABILITY, approved 2 Aug, and the #209 guard re-scoped to drift
+    (its first trip is spent) with BOTH surviving directions re-proven to fire.
+    ⚠ Open for the owner: eyeball the longer paragraph in the PACKAGED webview at
+    both widths — L2 covers render at 900/1440, L3 is the WKWebView bug class.
+    Next task = 9 (`scratch_delete_site` + reaper: delete by record,
+    once-per-launch retry, reap failures as `actor='rexenv'` rows, rowless-share
+    backstop).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

@@ -235,6 +235,22 @@ pub async fn regenerate_site_cert(state: State<'_, AppState>, id: String) -> Res
     super::system::reload_edge_for_new_certs(&state, &sites).await
 }
 
+/// A create that failed — **and whether a site row EXISTS anyway**.
+///
+/// The prepare phase is inline, so a validation failure creates nothing; but a
+/// failure in provisioning (WordPress download, install) happens AFTER the row
+/// is inserted, and leaves a real site the user can see, retry, or delete. A
+/// bare `Error` cannot distinguish those two, and the difference is the whole
+/// content of "what should I do now" — for a person and, in the MCP path, for an
+/// agent that must not report "nothing happened" about a site sitting in the
+/// user's list.
+#[derive(Debug)]
+pub(crate) struct CreateFailure {
+    /// The id of the site that was created before the failure, if any.
+    pub site_id: Option<String>,
+    pub error: Error,
+}
+
 /// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
 /// row); for a **WordPress** site bring MySQL up and run the one-click installer
 /// (`wp`) so the site is browsable; then — if the stack is running — ensure its
@@ -257,6 +273,7 @@ pub async fn create_site<R: tauri::Runtime>(
     // [`create_site_owned`] directly, inside the app.
     create_site_owned(app, &state, &jobs, site, wp, blueprint_id, core::sites::Ownership::User)
         .await
+        .map_err(|f| f.error)
 }
 
 /// [`create_site`], with the ownership recorded on the new row (v27). Internal:
@@ -270,27 +287,40 @@ pub(crate) async fn create_site_owned<R: tauri::Runtime>(
     wp: Option<core::wordpress::InstallOptions>,
     blueprint_id: Option<String>,
     ownership: core::sites::Ownership,
-) -> Result<Site> {
+) -> std::result::Result<Site, CreateFailure> {
     // ONE execution path: this is a thin blocking wrapper over the streamed
     // provision job (`commands::site_provision`) that preserves the old
     // contract exactly — prepare-phase errors (invalid/duplicate domain,
     // declined resolver prompt) surface immediately with nothing created,
     // the await returns only when the site is fully provisioned (and served,
     // when the stack runs), and the fresh `Site` row comes back on success.
-    let snap =
-        super::site_provision::start(&app, state, jobs, site, wp, blueprint_id, ownership)?;
+    // Nothing exists yet: a prepare-phase failure created no row (that is what
+    // running prepare INLINE buys), so its `CreateFailure` carries no site id.
+    let snap = super::site_provision::start(&app, state, jobs, site, wp, blueprint_id, ownership)
+        .map_err(|error| CreateFailure { site_id: None, error })?;
     let settled = loop {
-        let st = super::site_provision::state_of(jobs, &snap.id)?;
+        let st = super::site_provision::state_of(jobs, &snap.id)
+            .map_err(|error| CreateFailure { site_id: None, error })?;
         if st.status != "running" {
             break st;
         }
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     };
     if settled.status == "ok" {
-        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| CreateFailure {
+                site_id: settled.site_id.clone(),
+                error: Error::Other("database lock poisoned".into()),
+            })?;
         let id = settled.site_id.as_deref().unwrap_or_default();
-        core::sites::get(&conn, id)?
-            .ok_or_else(|| Error::Other(format!("created site vanished: {id}")))
+        core::sites::get(&conn, id)
+            .map_err(|error| CreateFailure { site_id: settled.site_id.clone(), error })?
+            .ok_or_else(|| CreateFailure {
+                site_id: settled.site_id.clone(),
+                error: Error::Other(format!("created site vanished: {id}")),
+            })
     } else {
         // Failure reply names the FAILING PHASE + points at the per-job log
         // (CLI callers can't stream the events — this line is their whole
@@ -308,10 +338,16 @@ pub(crate) async fn create_site_owned<R: tauri::Runtime>(
             .log_dir()
             .map(|d| d.join(&settled.log_key).display().to_string())
             .unwrap_or_else(|_| settled.log_key.clone());
-        Err(Error::Other(format!(
-            "site create {} at \"{phase}\": {detail}\n  the site stays listed as \"setup incomplete\" — Retry it from the app, or delete it\n  full log: {log}",
-            settled.status
-        )))
+        // The row EXISTS from prepare onward, so this failure names it — the
+        // caller (and the MCP tool's reply) must not read as "nothing happened"
+        // about a site sitting in the user's list.
+        Err(CreateFailure {
+            site_id: settled.site_id.clone(),
+            error: Error::Other(format!(
+                "site create {} at \"{phase}\": {detail}\n  the site stays listed as \"setup incomplete\" — Retry it from the app, or delete it\n  full log: {log}",
+                settled.status
+            )),
+        })
     }
 }
 

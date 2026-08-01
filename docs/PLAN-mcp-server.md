@@ -593,7 +593,10 @@ honored. Fences:
   layer. (`.rex` is the always-installed backbone, so this only bites a
   half-onboarded install.)
 - **Cap:** max concurrent scratch sites, default 5 (setting). At cap the tool
-  errors naming the count + reclaim options. That is the answer to "an agent
+  errors naming the count + the sites it may delete + TWO ways forward (delete
+  one itself, or ask the user) plus the passive one (they expire) — ✅ built with
+  task 8a. A refusal that states the rule and stops is where a model starts
+  improvising: a different name, then another, then something else entirely. That is the answer to "an agent
   creates twenty" — it can't.
 - Name is a single label (no dots), so an agent can't nest namespaces or squat
   `scratch.rex`. `unique_db_name` already disambiguates colliding slugs

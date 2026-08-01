@@ -114,10 +114,13 @@ export function AgentsMcpCard() {
       {/* The residual — verbatim, above the toggle, not behind an expander. */}
       <p className="mt-3 text-[0.75rem] leading-[1.55] text-rex-text-muted">
         Before you turn this on: this lets an AI agent connect to rexenv and use the tools you've
-        enabled. Today those are read-only — it can look at your sites, their status and logs, but
-        not change or run anything. As rexenv adds more capable tools, an agent will be able to
-        create disposable sites and run code in them, and code in those sites has the same power over
-        rexenv and this machine as code you run yourself. Turn this off when you're not using it.
+        enabled. It can look at your sites — their status and their logs — and it can create
+        disposable &ldquo;scratch&rdquo; sites of its own, put code into them and run it. It cannot
+        change or delete the sites you made yourself: that refusal lives in rexenv, not in the
+        agent's good behaviour. But code running in a scratch site runs as you, with your files and
+        your permissions — the same power over this machine as code you run yourself. rexenv never
+        asks for your administrator password on an agent's behalf, and every call an agent makes is
+        listed below. Turn this off when you're not using it.
       </p>
 
       <div className="mt-3.5 flex items-center gap-[14px] border-t border-rex-border-subtle pt-3.5">

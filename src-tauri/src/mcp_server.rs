@@ -60,12 +60,6 @@
 // surface the Settings card's IPC consumes; `record` is the server's own write.
 pub mod feed;
 mod readctx;
-// The executing registry is EMPTY until the create tool lands (M2a task 8), so
-// its plumbing has no non-test caller yet. That ordering is deliberate — the
-// disjointness guard, the dispatch union and the sweep union land BEFORE the
-// first executing tool, so it arrives into a structure that already refuses to
-// let it be registered unswept or under two names. Drop this allow with task 8.
-#[allow(dead_code)]
 mod scratch;
 mod tools;
 mod view;
@@ -320,7 +314,7 @@ async fn session<R, W, Rt>(
                 // that records the row and THEN fails still names it.
                 let acted = feed::ActedTarget::default();
                 let (reply, outcome, detail) =
-                    fulfill_tool_call(&app, id, &name, &args, &acted).await;
+                    fulfill_tool_call(&app, id, &name, &args, &acted, &client).await;
                 log_action(
                     &app,
                     &client,
@@ -523,6 +517,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     name: &str,
     args: &Value,
     acted: &feed::ActedTarget,
+    client: &str,
 ) -> (String, feed::Outcome, Option<String>) {
     use tauri::Manager;
     let Some(tool) = find_tool(name) else {
@@ -545,7 +540,9 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     let outcome = match tool {
         Tool::Read(t) => (t.handler)(ReadCtx::new(state.inner()), args, acted).await,
         Tool::Scratch(t) => {
-            (t.handler)(scratch::ScratchCtx::new(state.inner()), args, acted).await
+            let creator = AppSiteCreator { app: app.clone() };
+            let ctx = scratch::ScratchCtx::new(state.inner(), &creator, client);
+            (t.handler)(ctx, args, acted).await
         }
     };
     match outcome {
@@ -555,6 +552,67 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
             feed::Outcome::Error,
             Some(e.to_string()),
         ),
+    }
+}
+
+/// The `SiteCreator` the scratch tools run through: the app's OWN provision job,
+/// reached via the app handle.
+///
+/// This exists to erase the `tauri::Runtime` generic — a `static` registry of fn
+/// pointers cannot be generic, and the provision path is. Erasing it here rather
+/// than re-implementing creation for agents is what keeps the one-brain rule: a
+/// scratch site is built by exactly the code that builds a site the user asks
+/// for, ownership being the only difference.
+struct AppSiteCreator<Rt: tauri::Runtime> {
+    app: tauri::AppHandle<Rt>,
+}
+
+impl<Rt: tauri::Runtime> scratch::SiteCreator for AppSiteCreator<Rt> {
+    fn create<'a>(
+        &'a self,
+        new: crate::state::models::NewSite,
+        ownership: crate::core::sites::Ownership,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        crate::state::models::Site,
+                        crate::commands::sites::CreateFailure,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        use tauri::Manager;
+        Box::pin(async move {
+            let state = self.app.try_state::<AppState>().ok_or_else(|| {
+                crate::commands::sites::CreateFailure {
+                    site_id: None,
+                    error: crate::error::Error::Other("rexenv is still starting — try again in a moment".into()),
+                }
+            })?;
+            let jobs = self
+                .app
+                .try_state::<crate::commands::site_provision::ProvisionJobs>()
+                .ok_or_else(|| crate::commands::sites::CreateFailure {
+                    site_id: None,
+                    error: crate::error::Error::Other(
+                        "rexenv cannot create sites right now — its provisioning service is not \
+                         running. The person you're working with may need to restart rexenv."
+                            .into(),
+                    ),
+                })?;
+            crate::commands::sites::create_site_owned(
+                self.app.clone(),
+                state.inner(),
+                jobs.inner(),
+                new,
+                None,
+                None,
+                ownership,
+            )
+            .await
+        })
     }
 }
 
@@ -588,7 +646,8 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     // "every registered tool's output is swept" to "every READ tool's" the first
     // time a scratch tool lands — the surface-coverage defect family, which is
     // exactly what a second registry invites.
-    let sctx = scratch::ScratchCtx::new(state.inner());
+    let creator = AppSiteCreator { app: app.clone() };
+    let sctx = scratch::ScratchCtx::new(state.inner(), &creator, "secret-sweep");
     for (tool, args) in scratch::sweep_plan(fixture_site_id) {
         let text = match (tool.handler)(sctx, &args, &acted).await {
             Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
@@ -1178,36 +1237,61 @@ mod tests {
 
 
     #[test]
-    fn the_enable_moment_copy_cannot_keep_claiming_read_only_once_a_tool_executes() {
-        // #199 is about what M1's TOOLS can do, and M2's arrival does not change
-        // it — but the SOCKET's honest description does change, and the card's
-        // copy is where a user reads it. "Today those are read-only" is true
-        // while the executing registry is empty and false the day it isn't; the
-        // narrow truth sitting where the wide falsehood is the available reading
-        // is exactly the §3.1(c) shape, and this is the moment it would recur.
+    fn the_enable_moment_copy_says_what_an_agent_can_actually_do() {
+        // WHAT THIS CATCHES NOW — because its first job is spent, and a guard
+        // that can never fail again is the shape this project removes.
         //
-        // So it is a guard, not a note: the copy and the registry are checked
-        // against each other, and this fails the instant the first executing tool
-        // lands with stale copy above it. (Cross-layer by `include_str!`, the
-        // read-only import guard's own trick.)
+        // It was written to stop task 8 landing with "Today those are read-only"
+        // above the toggle once an executing tool existed. It did exactly that
+        // (it failed the build, the copy was rewritten). That specific trip
+        // CANNOT recur: the phrase is gone and the registry never empties again.
+        //
+        // What remains is drift on the paragraph, in two directions, and both
+        // are live:
+        //   - REGRESSION (the ban list): a revert, a paste from git history, or
+        //     a "simplify this" edit that reaches for the old wording and puts a
+        //     false sentence back where the user decides.
+        //   - EROSION (the must-say list): the likelier one. The paragraph is
+        //     long, it sits above a toggle, and the obvious edit is to trim it —
+        //     dropping the residual ("as you", #197) or what an agent still
+        //     cannot touch. Deleting the false sentence and saying nothing would
+        //     pass a ban-only guard while leaving the user LESS informed, which
+        //     is why both halves exist.
+        // The registry-empty early return below is now unreachable in practice;
+        // it is kept only so the guard is readable as a rule rather than as a
+        // list of today's strings.
         const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
-        let claims_read_only = CARD.contains("Today those are read-only");
+        // Phrases that are only true while NOTHING an agent calls can execute.
+        const ONLY_TRUE_WHEN_READ_ONLY: &[&str] =
+            &["Today those are read-only", "not change or run anything"];
+        // ...and what the copy must say once something can. Checked as well as
+        // the ban, because deleting the false sentence and saying nothing would
+        // pass a ban-only guard while leaving the user less informed, not more.
+        const MUST_SAY_WHEN_EXECUTING: &[(&str, &str)] = &[
+            ("create", "that an agent can create sites of its own"),
+            ("run it", "that code in them RUNS"),
+            ("as you", "that it runs with the user's own power — the residual, #197"),
+            ("cannot", "what it still cannot touch: the user's own sites"),
+        ];
         if scratch::registry().is_empty() {
+            return; // unreachable in practice — see the note above
+        }
+        for phrase in ONLY_TRUE_WHEN_READ_ONLY {
             assert!(
-                claims_read_only,
-                "the enable-moment copy no longer says what it is being held to — if the wording \
-                 changed deliberately, update this guard's expectation in the same commit"
-            );
-        } else {
-            assert!(
-                !claims_read_only,
-                "the executing registry now has {} tool(s), but the card still tells the user at \
-                 the moment of enabling that the tools are read-only and cannot 'change or run \
-                 anything'. That sentence is now FALSE. Rewrite the enable-moment copy to describe \
-                 what an agent can actually do (create disposable sites, run code in them, with the \
-                 same power over this machine as code the user runs), and keep the paragraph honest \
-                 about the residual: this is a paved road, not a sandbox.",
+                !CARD.contains(phrase),
+                "the executing registry has {} tool(s), but the enable-moment copy still says \
+                 \"{phrase}\" — a sentence that is now FALSE, sitting where the user decides. \
+                 Rewrite it to say what an agent can actually do.",
                 scratch::registry().len()
+            );
+        }
+        for (phrase, why) in MUST_SAY_WHEN_EXECUTING {
+            assert!(
+                CARD.contains(phrase),
+                "the enable-moment copy no longer tells the user {why} (looked for \"{phrase}\"). \
+                 The paragraph is what a security-minded user reads AT the moment of enabling; it \
+                 has to describe the capability honestly, including that this is a paved road and \
+                 not a sandbox."
             );
         }
     }
