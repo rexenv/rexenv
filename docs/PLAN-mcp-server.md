@@ -218,7 +218,7 @@ by design, so the question is what M2's equivalent discipline is — and the ans
 is not the same shape.**
 
 - **M1's guarantee survives M2's arrival untouched, and that is by construction,
-  not by luck.** The guard is `include_str!` over exactly those two files and its
+  not by luck.** ✅ **Built 1–2 Aug (task 7, #209).** The guard is `include_str!` over exactly those two files and its
   claim is scoped to *M1 tools* — it does not say "the MCP surface is read-only",
   and neither does any ledger row (#198–#203) nor the Settings copy (whose "as
   rexenv adds more capable tools" clause was written for this moment). M2's tools
@@ -248,14 +248,36 @@ is not the same shape.**
   no mechanism. That is D7/#197, and M2 is where that row is re-anchored from
   this plan doc to the toggle/registry code.
 
+**What the SOCKET guarantees, once both registries are routed** (added with task
+7, because this is the statement that changes even though #199 does not). M1's
+claim is about what ITS tools can do. The endpoint's claim is a different
+sentence, and it is:
+
+- a call reaches exactly one registry, and its capability is decided by which one
+  it came from — never by the tool's own say-so, never by its arguments, and
+  never by lookup order, since the registries are **disjoint by test**;
+- a READ tool cannot mutate anything (#199, untouched by M2's arrival);
+- an EXECUTING tool can only reach a site the agent OWNS (its context's only door
+  to a site is the origin-checked witness, #208) — and inside such a site it runs
+  the user's code, which is user-level power over the machine (§3.1, #197).
+
+**"The MCP socket is read-only" is therefore true of M1 alone and FALSE of the
+endpoint** the moment a scratch tool lands. This is the §3.1(c) shape again — a
+narrow truth positioned where the wide falsehood is the available reading — so
+the Settings card's enable-moment copy ("Today those are read-only… not change or
+run anything") is **held to the registry by a test**, not by anyone remembering:
+it fails the day the first executing tool ships with that sentence still above the
+toggle, and the failure message says what to write instead.
+
 **Two things M1 leaves that M2 must actively fix, or a shipped claim narrows by
 omission** (both found in the M2 pre-read, neither visible from M1 alone):
 
 1. **The secret-leak sweep enumerates ONE registry** (`tools::sweep_plan`). A
    second registry with the sweep still walking only M1's would silently turn
-   "every registered tool's output is swept" into "every M1 tool's". The sweep
-   must walk **both**, and the required-`sweep_args` discipline is reproduced in
-   the M2 tool struct.
+   "every registered tool's output is swept" into "every M1 tool's". ✅ **Fixed
+   1–2 Aug (task 7):** `sweep_tool_outputs` walks both, and `ScratchTool` carries
+   the same required `sweep_args` field, so an executing tool cannot be
+   registered unswept.
 2. **`tool_target_site` reads `arguments.site_id`** — `scratch_create_site` has
    no `site_id` at call time, so the single most important feed row ("the agent
    created `foo.scratch.rex`") would record no target. ✅ **Fixed 1 Aug (task 4),

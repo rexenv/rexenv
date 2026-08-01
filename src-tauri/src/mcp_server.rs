@@ -16,9 +16,31 @@
 //! **M1 is the read-only, contained tier**, and that is structural, not a
 //! convention: a tool handler receives only a `ReadCtx` (no mutating method,
 //! `readctx`) and the `tools` module imports no manager or command at all —
-//! pinned by the read-only import guard in `tests`. When executing tools arrive
-//! (M2) they go in a *different* module with its own capability; this boundary
-//! does not erode.
+//! pinned by the read-only import guard in `tests`. Executing tools live in a
+//! *different* module with its own capability (`scratch`); this boundary does
+//! not erode.
+//!
+//! **What the SOCKET guarantees, as opposed to what M1's tools guarantee.**
+//! These are two different statements and only one of them is #199. Dispatch
+//! routes BOTH registries, so once the executing registry is non-empty the
+//! honest description of the endpoint is:
+//!
+//! - a call reaches exactly one registry, and its capability is decided by which
+//!   one it came from (`find_tool` → `Tool::Read` gets a `ReadCtx`,
+//!   `Tool::Scratch` a `ScratchCtx`) — never by the tool's own say-so, never by
+//!   its arguments, and never by lookup order, because the two registries are
+//!   disjoint by test;
+//! - a READ tool cannot mutate anything (#199, unchanged by M2's arrival);
+//! - an EXECUTING tool can only reach a site the agent OWNS — its context's only
+//!   door to a site is the `origin`-checked witness (#208) — but within such a
+//!   site it runs the user's code, which is user-level power over this machine
+//!   (PLAN §3.1, ledger #197).
+//!
+//! So "the MCP socket is read-only" is true of M1 alone and **false of the
+//! endpoint** the moment a scratch tool lands. Nothing here, in the plan, or in
+//! the Settings card may say the wider thing — and the card's enable-moment copy
+//! is held to the registry by a test rather than by memory
+//! (`the_enable_moment_copy_cannot_keep_claiming_read_only_once_a_tool_executes`).
 //!
 //! **What "read-only" scopes: the HANDLER, not the call.** A tool call always
 //! writes rexenv's own records — the activity feed, and (M2a) the named scratch
@@ -38,6 +60,13 @@
 // surface the Settings card's IPC consumes; `record` is the server's own write.
 pub mod feed;
 mod readctx;
+// The executing registry is EMPTY until the create tool lands (M2a task 8), so
+// its plumbing has no non-test caller yet. That ordering is deliberate — the
+// disjointness guard, the dispatch union and the sweep union land BEFORE the
+// first executing tool, so it arrives into a structure that already refuses to
+// let it be registered unswept or under two names. Drop this allow with task 8.
+#[allow(dead_code)]
+mod scratch;
 mod tools;
 mod view;
 
@@ -388,11 +417,11 @@ fn dispatch(text: &str) -> Dispatch {
     match (method, id) {
         ("initialize", Some(id)) => Dispatch::Reply(result_response(id, initialize_result(&msg))),
         ("ping", Some(id)) => Dispatch::Reply(result_response(id, json!({}))),
-        ("tools/list", Some(id)) => Dispatch::Reply(result_response(id, tools::tools_list_result())),
+        ("tools/list", Some(id)) => Dispatch::Reply(result_response(id, tools_list_result())),
         ("tools/call", Some(id)) => {
             let name = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
             let target = tool_target_site(&msg);
-            if tools::find(name).is_none() {
+            if find_tool(name).is_none() {
                 Dispatch::Rejected {
                     reply: error_response(id, -32602, &format!("unknown tool: {name}")),
                     log: feed::PendingLog {
@@ -420,6 +449,42 @@ fn dispatch(text: &str) -> Dispatch {
 /// the request's `arguments.site_id`. No other argument is captured (§feed).
 fn tool_target_site(msg: &Value) -> Option<String> {
     msg.pointer("/params/arguments/site_id").and_then(Value::as_str).map(String::from)
+}
+
+/// One registered tool, from either registry — the socket's whole tool surface.
+///
+/// The variants ARE the capability split: a `Read` tool's handler gets a
+/// `ReadCtx` (no mutating method), a `Scratch` tool's gets a `ScratchCtx` whose
+/// only door to a site is the `origin`-checked witness (#208). Dispatch is the
+/// one place that maps a name to a capability, so a tool cannot be routed to a
+/// context its module never gave it.
+enum Tool {
+    Read(&'static tools::ReadTool),
+    Scratch(&'static scratch::ScratchTool),
+}
+
+/// Look a tool up across BOTH registries. Read side first — an M1 name can never
+/// be shadowed by a later scratch tool, and the disjointness guard means that
+/// precedence never has to be exercised (see
+/// `the_two_registries_are_disjoint_and_say_which_side_a_tool_belongs_on`).
+fn find_tool(name: &str) -> Option<Tool> {
+    tools::find(name)
+        .map(Tool::Read)
+        .or_else(|| scratch::find(name).map(Tool::Scratch))
+}
+
+/// The `tools/list` result — the UNION of both registries, which is what the
+/// socket actually offers. A client sees one flat list; the tier a tool belongs
+/// to is a fact about what rexenv will let it do, not something the agent picks.
+fn tools_list_result() -> Value {
+    let mut list = tools::tools_list_result();
+    if let (Some(all), Some(extra)) = (
+        list.get_mut("tools").and_then(Value::as_array_mut),
+        scratch::tools_list_descriptors().as_array(),
+    ) {
+        all.extend(extra.iter().cloned());
+    }
+    list
 }
 
 /// Which site a feed row names, given both provenances.
@@ -460,7 +525,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     acted: &feed::ActedTarget,
 ) -> (String, feed::Outcome, Option<String>) {
     use tauri::Manager;
-    let Some(tool) = tools::find(name) else {
+    let Some(tool) = find_tool(name) else {
         // Defensive: dispatch already rejected unknown tools before here.
         return (
             error_response(id, -32602, &format!("unknown tool: {name}")),
@@ -475,8 +540,15 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
             Some("rexenv is still starting".into()),
         );
     };
-    let ctx = ReadCtx::new(state.inner());
-    match (tool.handler)(ctx, args, acted).await {
+    // The capability is decided HERE, by which registry the tool came from —
+    // never by the tool's own say-so and never by its arguments.
+    let outcome = match tool {
+        Tool::Read(t) => (t.handler)(ReadCtx::new(state.inner()), args, acted).await,
+        Tool::Scratch(t) => {
+            (t.handler)(scratch::ScratchCtx::new(state.inner()), args, acted).await
+        }
+    };
+    match outcome {
         Ok(v) => (result_response(id, tool_success_content(&v)), feed::Outcome::Ok, None),
         Err(e) => (
             result_response(id, tool_error_content(&e.to_string())),
@@ -507,6 +579,18 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     let acted = feed::ActedTarget::default();
     for (tool, args) in tools::sweep_plan(fixture_site_id) {
         let text = match (tool.handler)(ctx, &args, &acted).await {
+            Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
+            Err(e) => e.to_string(),
+        };
+        outputs.push((tool.name, text));
+    }
+    // ...and the executing registry too. Walking only M1's would silently narrow
+    // "every registered tool's output is swept" to "every READ tool's" the first
+    // time a scratch tool lands — the surface-coverage defect family, which is
+    // exactly what a second registry invites.
+    let sctx = scratch::ScratchCtx::new(state.inner());
+    for (tool, args) in scratch::sweep_plan(fixture_site_id) {
+        let text = match (tool.handler)(sctx, &args, &acted).await {
             Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
             Err(e) => e.to_string(),
         };
@@ -602,6 +686,34 @@ fn error_response(id: Value, code: i64, message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The violation message when a name appears in BOTH registries, or `None` when
+    /// they are disjoint.
+    ///
+    /// Phrased for the person who trips it — who is, by definition, mid-way through
+    /// adding a tool: it names the tool, states the rule, and says which side it
+    /// belongs on. A set difference would tell them what happened and not what to
+    /// do. (The import guard's lesson: a guard that fires without teaching gets
+    /// worked around.)
+    fn registry_conflict(read: &[&str], scratch: &[&str]) -> Option<String> {
+        let clash: Vec<&str> = read.iter().copied().filter(|n| scratch.contains(n)).collect();
+        if clash.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "MCP tool name(s) registered in BOTH registries: {}.\n\
+             One name, one capability — a tool belongs to exactly one side:\n\
+             - `mcp_server/tools.rs` (M1) if it only READS: its handler gets a ReadCtx, which has no \
+             mutating method, and the read-only guard scans that module.\n\
+             - `mcp_server/scratch.rs` (M2) if it changes or runs anything: its handler gets a \
+             ScratchCtx, whose only door to a site is the origin-checked witness.\n\
+             Duplicating a name would let the read side shadow the executing one (or the reverse after \
+             any reordering), so the tool an agent called would not be the tool that ran. Delete the \
+             copy from the side it does not belong on.",
+            clash.join(", ")
+        ))
+    }
+
 
     /// The packaged enable-crash guard: `mcp_set_enabled` is a SYNC command, so it
     /// binds OFF the tokio runtime, where `tokio::net::UnixListener::bind` aborts on
@@ -995,6 +1107,109 @@ mod tests {
         refresh_scratch_ttl(&conn, Some(&stale.id));
         let after = store::get_site(&conn, &stale.id).unwrap().unwrap();
         assert!(!after.reap_due("2026-08-01 12:00:00"), "using it bought it another TTL");
+    }
+
+
+    #[test]
+    fn the_two_registries_are_disjoint_and_say_which_side_a_tool_belongs_on() {
+        // The load-bearing half of the module split. One name, one capability:
+        // a duplicate would mean the tool an agent CALLED is not the tool that
+        // RAN (whichever registry dispatch consults first), which is a capability
+        // decided by lookup order instead of by where the tool lives.
+        let read: Vec<&str> = tools::registry().iter().map(|t| t.name).collect();
+        let scratch: Vec<&str> = scratch::registry().iter().map(|t| t.name).collect();
+        // `panic!` with the message itself, NOT `assert_eq!(.., None)`: the
+        // latter prints it Debug-escaped as one long line with literal \n, which
+        // is the guidance made unreadable at the exact moment someone needs it.
+        if let Some(msg) = registry_conflict(&read, &scratch) {
+            panic!("{msg}");
+        }
+
+        // ...and the message a person actually gets. Whoever trips this is
+        // mid-way through adding a tool, so it has to teach the rule, not report
+        // a set difference.
+        let msg = registry_conflict(&["list_sites", "tail_log"], &["scratch_create_site", "tail_log"])
+            .expect("a shared name must be caught");
+        assert!(msg.contains("tail_log"), "names the offending tool: {msg}");
+        assert!(!msg.contains("list_sites"), "names ONLY the offender: {msg}");
+        assert!(msg.contains("mcp_server/tools.rs") && msg.contains("mcp_server/scratch.rs"),
+                "says which side to put it on: {msg}");
+        assert!(msg.contains("only READS") && msg.contains("changes or runs"),
+                "states the rule that decides the side: {msg}");
+        assert!(msg.contains("shadow"), "says what goes wrong, not just that it did: {msg}");
+    }
+
+    #[test]
+    fn tools_list_offers_the_union_of_both_registries() {
+        // What the SOCKET advertises is both registries, flat — the tier is a
+        // fact about what rexenv will let a tool do, never something the agent
+        // selects. Today the scratch side is empty, so this pins the count
+        // relationship rather than a literal.
+        let v = reply(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
+        let listed = v["result"]["tools"].as_array().expect("tools array").len();
+        assert_eq!(
+            listed,
+            tools::registry().len() + scratch::registry().len(),
+            "tools/list must advertise BOTH registries — a tool that exists but isn't listed is \
+             a tool an agent will never call, and one listed twice is a name collision"
+        );
+    }
+
+    #[test]
+    fn a_scratch_handler_can_only_reach_a_site_through_the_origin_checked_witness() {
+        // The capability difference, stated as a property of the CONTEXT rather
+        // than of the tools (there are none yet): `ScratchCtx` has no
+        // `site_by_id`/`sites` — `claim` is the only door, and it refuses the
+        // user's own sites. This is what makes the second registry a different
+        // capability rather than the same one with a different name.
+        use crate::state::models::{test_site, SiteOrigin};
+        use crate::state::store;
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mine = test_site("7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30", "myblog.rex", SiteOrigin::User);
+        store::insert_site(&conn, &mine).unwrap();
+        let theirs =
+            test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        store::insert_site(&conn, &theirs).unwrap();
+        // `ScratchCtx::claim` delegates to the same core door, so assert on it
+        // directly (building an AppState here would need a mock app).
+        assert!(crate::core::scratch::claim(&conn, &theirs.id).is_ok());
+        assert!(crate::core::scratch::claim(&conn, &mine.id).is_err());
+    }
+
+
+    #[test]
+    fn the_enable_moment_copy_cannot_keep_claiming_read_only_once_a_tool_executes() {
+        // #199 is about what M1's TOOLS can do, and M2's arrival does not change
+        // it — but the SOCKET's honest description does change, and the card's
+        // copy is where a user reads it. "Today those are read-only" is true
+        // while the executing registry is empty and false the day it isn't; the
+        // narrow truth sitting where the wide falsehood is the available reading
+        // is exactly the §3.1(c) shape, and this is the moment it would recur.
+        //
+        // So it is a guard, not a note: the copy and the registry are checked
+        // against each other, and this fails the instant the first executing tool
+        // lands with stale copy above it. (Cross-layer by `include_str!`, the
+        // read-only import guard's own trick.)
+        const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
+        let claims_read_only = CARD.contains("Today those are read-only");
+        if scratch::registry().is_empty() {
+            assert!(
+                claims_read_only,
+                "the enable-moment copy no longer says what it is being held to — if the wording \
+                 changed deliberately, update this guard's expectation in the same commit"
+            );
+        } else {
+            assert!(
+                !claims_read_only,
+                "the executing registry now has {} tool(s), but the card still tells the user at \
+                 the moment of enabling that the tools are read-only and cannot 'change or run \
+                 anything'. That sentence is now FALSE. Rewrite the enable-moment copy to describe \
+                 what an agent can actually do (create disposable sites, run code in them, with the \
+                 same power over this machine as code the user runs), and keep the paragraph honest \
+                 about the residual: this is a paved road, not a sandbox.",
+                scratch::registry().len()
+            );
+        }
     }
 
 }

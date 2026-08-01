@@ -218,8 +218,19 @@ first:
     policy statements naming site + rule + way forward, distinct for
     not-found vs not-yours, leaking no path or db name. Documented as NOT a lock
     — destructive writes still re-assert `origin` in their `WHERE`.
-    Next task = 7 (the M2 tool module + capability: registry union in dispatch,
-    the secret sweep walking BOTH registries, guard extended to disjointness).
+    ✓ task 7 — **the two-registry split**, ledger #209: executing tools get their
+    own module + context (`ScratchCtx`, whose only door to a site is the witness),
+    so #199 is untouched rather than widened; dispatch decides capability by
+    WHICH registry a tool came from; `tools/list` and the secret sweep both walk
+    the union. Disjointness guard plant-proven, and it teaches (names the
+    offender, both module paths, the rule, and the shadowing consequence) —
+    `panic!`ed rather than `assert_eq!`ed so the guidance isn't Debug-escaped onto
+    one line. Wrote the SOCKET-level statement (different sentence from M1's) and
+    guarded the card's "Today those are read-only" copy against the registry by
+    `include_str!` — plant-proven to fail the day the first executing tool lands.
+    Next task = 8 (`scratch_create_site`: forced domain, origin at insert,
+    never-prompt resolver flag tested END TO END, cap, honest stack-stopped
+    result, and a test that the path never reaches `run_privileged`).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
