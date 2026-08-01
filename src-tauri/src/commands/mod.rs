@@ -16,6 +16,7 @@ pub mod repo;
 pub mod services;
 pub mod settings;
 pub mod site_provision;
+pub mod scratch;
 pub mod sites;
 pub mod system;
 pub mod terminal;

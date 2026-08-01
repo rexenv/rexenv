@@ -265,9 +265,13 @@ first:
     function; a source guard fails the build if a command stops calling it or a
     new one never does. ⚠ Still open in 10b: the Keep confirm DIALOG (copy
     approved 2 Aug, lands with the Sites UI, task 13).
-    Next = task 9b (the reaper — per-sweep ceiling of 5 + loud log, visible
-    launch summary [copy to the owner FIRST], skip-don't-stop for shared sites
-    incl. a failed stop; **depends on 10b being in**).
+    ◐ task 9b — **the reaper's SWEEP**, ledger #215: skip-don't-stop for shared
+    sites (calling the normal delete path would break #29 unattended), a failed
+    stop is a skip, per-sweep ceiling of 5 with a loud log, outcomes deduped by
+    `record_reap`. **Deliberately NOT wired to launch/hourly**: that lands with
+    the user-visible summary, whose copy is with the owner — a launch sweep
+    without it is a silent bulk delete. Next: approve the summary copy → wire it,
+    then 11–14.
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
