@@ -1,6 +1,7 @@
 # MCP server — let AI agents drive rexenv (scratch sites, DB access, tiered capability)
 
-**Status: SCOPE RULED 29 Jul 2026 — build M1 → M2 → M3, one task at a time.**
+**Status: M1 SHIPPED 30 Jul 2026 (ledger #198–#203). M2 SCOPE RULED 1 Aug 2026 —
+building M2a → M2b → M3, one task at a time.**
 Planned 28 Jul 2026 against `5dbaa8d`, from a full-codebase research pass + an
 adversarial review that rewrote the security model (three blockers, §3.1
 reckoning); scope ruled the next day. D1/D3/D4/D6/D7 settled (§9); D2/D5 open but
@@ -8,6 +9,23 @@ non-blocking; **the M3 database surface is ruled at M3, not now.** The one code
 change already landed ahead of the feature is the mirrored-user GRANT
 wildcard-escaping fix (its own commit, ledger #196 — §3.6). Line numbers are
 anchors taken at `5dbaa8d` — trust the file, verify the line.
+
+**Reconciled against shipped M1 on 1 Aug 2026** (§4/§5/§6/§7.3/§8). What M1
+changed about this plan, so nothing below is read against the pre-M1 codebase:
+
+- **`v26` is spent** — the agent activity feed took it. M2's sites migration is
+  **v27**, and the feed's `actor` column is **v28** (§4.3).
+- **M1 shipped three tools** — `list_sites`, `site_status`, `tail_log`. Mail is
+  **not** in M1 (§7.3 said otherwise); it is M2b.
+- **The M1 module split is now load-bearing** (`mcp_server/tools.rs` +
+  `readctx.rs`, read-only guard #199) and dictates where M2's tools may live and
+  where its TTL refresh may not (§2.6, §4.3).
+- **S1 (1 Aug 2026): the dev-plugin link is a COPY-ON-WRITE CLONE, not a
+  symlink** — `wp_run` makes the symlink's write-back guard unenforceable (§4.4).
+- **S2: `wp_plugin`/`wp_theme` are dropped as tools** — `wp_run` subsumes them
+  (§5).
+- **S3: M2 splits into M2a (the scenario) and M2b (`set_php_version` + mail)**
+  (§7.3).
 
 This doc is the canonical home of the **agent capability model and its honest
 limits** (§3), the **scratch-site lifecycle** (§4), and the **MCP attachment
@@ -191,6 +209,49 @@ calls fine; progress streaming rides the existing "progress streaming over the
 socket" design item (CLI-ROADMAP 🔴) if it lands, and MCP's Tasks extension is
 too new to build on.
 
+### 2.6 The M2 module boundary — M1 gated the VERB, M2 gates the OBJECT
+
+M1's read-only guarantee is structural: a handler receives only a `ReadCtx`,
+which exposes no mutating method and keeps its state field private, and a guard
+scans BOTH `tools.rs` and the `readctx.rs` bridge (#199). **M2 breaks read-only
+by design, so the question is what M2's equivalent discipline is — and the answer
+is not the same shape.**
+
+- **M1's guarantee survives M2's arrival untouched, and that is by construction,
+  not by luck.** The guard is `include_str!` over exactly those two files and its
+  claim is scoped to *M1 tools* — it does not say "the MCP surface is read-only",
+  and neither does any ledger row (#198–#203) nor the Settings copy (whose "as
+  rexenv adds more capable tools" clause was written for this moment). M2's tools
+  therefore live in **`mcp_server/scratch/`** with their own ctx and their own
+  capability; the guard keeps passing, and keeps firing loudly if anyone ever puts
+  a mutating tool back in `tools.rs`.
+- **M2's structural half is the OBJECT, not the verb.** A `ScratchSite` witness
+  newtype — the `confverify::Verified` pattern (`core/confverify.rs:34`) — whose
+  ONLY constructor loads the row and checks `origin == 'agent'`. Every scratch
+  mutator takes it, so a code path that mutates a user site does not compile. The
+  gate lives **in core, not the tool layer** (M7 style), so the CLI and the UI
+  inherit the same refusal and the tool layer is never the only thing standing
+  between an agent and the user's sites. Deletion is by record (`origin` ∧
+  `docroot_managed`) through the existing `delete_site` provenance rules.
+- **What is NOT structural, said plainly: nothing constrains the code that runs
+  inside a scratch site.** Once a plugin activates, the only things left are the
+  tier gate (the dangerous verbs are not tools), the disclosure, and the feed —
+  no mechanism. That is D7/#197, and M2 is where that row is re-anchored from
+  this plan doc to the toggle/registry code.
+
+**Two things M1 leaves that M2 must actively fix, or a shipped claim narrows by
+omission** (both found in the M2 pre-read, neither visible from M1 alone):
+
+1. **The secret-leak sweep enumerates ONE registry** (`tools::sweep_plan`). A
+   second registry with the sweep still walking only M1's would silently turn
+   "every registered tool's output is swept" into "every M1 tool's". The sweep
+   must walk **both**, and the required-`sweep_args` discipline is reproduced in
+   the M2 tool struct.
+2. **`tool_target_site` reads `arguments.site_id`** — `scratch_create_site` has
+   no `site_id` at call time, so the single most important feed row ("the agent
+   created `foo.scratch.rex`") would record no target. `PendingLog.target_site`
+   becomes fillable from the tool's RESULT.
+
 ## 3. Security model — and its honest limits
 
 ### 3.1 The reckoning: running the user's code is user-level power
@@ -288,7 +349,7 @@ the recorded-not-derived rule (`docroot_managed`, v17).
 | Real-site create/delete/rename/move; linked-site creation | Deleting/mutating user work; linked-site creation takes an arbitrary path — a human flow (`validate_linked_docroot`). Agents get scratch sites only |
 | `db.import` / `db.reset` / real-site DB drop | Destructive on user data (`wp_db_import` destructive-by-contract, `commands/wordpress.rs:704`) |
 | Settings mutation (`sites_dir`, TLD, ports…), blueprint CRUD | `sites_dir` repoints what deletion may touch — the 24 Jul incident class. Read-only where needed, never write |
-| Arbitrary file read/write tools | The generic leak/write primitive. `scratch_link_plugin` is NOT an exception to this — it is constrained to be a plugin/theme link, not a file-read primitive (§4.4); the first draft's version WAS such a primitive and is fixed |
+| Arbitrary file read/write tools | The generic leak/write primitive. `scratch_add_package` is NOT an exception to this — it is constrained to a header-bearing plugin/theme source that passes blast-radius validation, not a file-read primitive (§4.4); the first draft's version WAS such a primitive and is fixed |
 | `wp_admin_login_url` on real sites | A one-time admin session handed to the agent. Scratch-only (D2) |
 
 **The 7 `run_privileged` call sites** (exhaustive at `5dbaa8d`, inlined here so
@@ -333,7 +394,25 @@ Leak audit — what each output could carry, and the rule:
 | Site views | docroot/db_name — fine. CA/cert paths, admin-socket path, `site_env` values — not fine | Views carry id/name/domain/type/php/server/origin/status/url/docroot/db_name. **No cert paths, no socket paths, no `site_env`** (users park real secrets there — `commands/sites.rs:573+` round-trips them to the UI; agents never see them) |
 | `db_query` results | Whatever the DB holds. On a **real** site that includes `wp_users` password hashes and `wp_options` API keys/tokens | The T1 grant dialog says so in plain words (§3.6 copy). Row/byte caps bound volume, **not which rows** — the boundary is SELECT-only + the honest dialog, not redaction |
 | Log tails | Access logs carry one-time tokens: `?rexenv_login=` (`wp_login.rs:169-197`), WP password-reset `?key=`, auth cookies | **Scrub known auth/token query params + `Set-Cookie` from returned lines** before any tool sees them (new, in `core/logs` or the view layer). Real-site log tail stays useful for debugging with tokens redacted; `is_safe_key` already blocks traversal |
-| Mail | The Mailpit inbox is **global, no per-site tagging** (`core/mail.rs:65-75`) — it holds real sites' password-reset links and outbound mail | Mail is behind its **own opt-in sub-toggle, default off** (D4 flips): a global inbox carrying reset links is a credential-harvest pivot, not a safe T0 default. When on, scratch-addressed messages are T0; the toggle's copy names the real-site exposure. Every read is feed-logged |
+| Mail | The Mailpit inbox is **global, no per-site tagging** (`core/mail.rs:65-75`) — it holds real sites' password-reset links and outbound mail | Mail is behind its **own opt-in sub-toggle, default off** (D4 flips): a global inbox carrying reset links is a credential-harvest pivot, not a safe T0 default. When on, only **scratch-tagged** messages are T0 — and the tag is one REXENV creates, not one the inbox already has (see below). The toggle's copy names the real-site exposure. Every read is feed-logged |
+
+**The "scratch-addressed" filter, corrected (1 Aug 2026).** The first draft
+assumed the recipient address identifies the site. It does not: WordPress mails
+the *admin* address (`user@example.com`), and Laravel's default `MAIL_FROM` is
+`hello@example.com` — neither carries the site's domain, so a To-address filter
+would be a claim checked against a field that doesn't hold the fact (the
+guard-covers-a-narrower-surface family). So **the tell is one rexenv creates**: a
+scratch-only mu-plugin (the shape `mu-plugins/rexenv-tunnel.php` already uses)
+forces `From` to the scratch site's own domain, and the filter matches that.
+
+The property this buys is **fail-closed, and that is the point**: a message
+without the tell is invisible to the agent, so the failure mode is *the agent
+misses its own mail*, never *the agent reads the user's*. A site's own code can
+overwrite `From` after our filter runs, in which case its mail simply stops being
+visible — again the safe direction. This reasoning goes in **the toggle's own
+copy**, not only here: the user turning it on is the person who needs to know
+their real sites' mail is not in scope and why the scratch mail sometimes isn't
+either.
 | Login URLs | One-time admin session token (`wp_login.rs`) | Scratch sites only (D2); never real sites |
 | `site_status` / doctor | The doctor composite strings can name the admin socket / Caddyfile (`cli_server.rs:1244+`) | The `Agent*` view drops those fields; see the sweep below |
 | Errors | Errors embed paths/commands (port-conflict help embeds a copy-paste fix) | Error strings pass a scrub that never includes the CA key path or the admin socket path; otherwise verbatim — agents need real errors |
@@ -434,8 +513,8 @@ future reopening argument, gated on real demand + T1 + scratch-only + auto-stop
 ### 4.1 A recorded origin, a visible namespace
 
 - **Truth = a column:** `sites.origin TEXT NOT NULL DEFAULT 'user'`
-  (`'user' | 'agent'`), migration **v26** (latest is v25 `mu_dir_created`,
-  `state/db.rs:307`), plus `agent_client TEXT` (the clientInfo string,
+  (`'user' | 'agent'`), migration **v27** — v26 is spent (M1's `agent_actions`
+  feed, `state/db.rs:313`) — plus `agent_client TEXT` (the clientInfo string,
   display-only) and `expires_at TEXT` (nullable). Recorded at create; **no IPC
   path sets `origin='agent'` on an existing row, and nothing flips agent→user
   except user action** (§4.3) — monotonic like `docroot_managed`.
@@ -474,6 +553,29 @@ honored. Fences:
   `scratch.rex`. `unique_db_name` already disambiguates colliding slugs
   (`core/sites.rs:320`).
 
+**The stack is stopped — it half-works, and it must SAY so.** Checked against the
+job (`site_provision.rs:733` `spawn_db`; the job ends in a best-effort
+`mgr.reload`): provisioning starts **the database engine** and nothing else. No
+edge, no `run_privileged`. So an agent creating a scratch site with the stack
+stopped gets a real, fully provisioned site that **does not serve**, and the tool
+must return that as part of its success — `serving: false` plus the §3.3 shape
+("rexenv's stack is stopped — press Start in rexenv"), never a bare "created".
+
+Two consequences for what may be *claimed*, both load-bearing:
+
+- **"No tool starts a service" would be FALSE** — `scratch_create_site` starts
+  MySQL, exactly as creating a site in the UI does. Nothing in the guarantee, the
+  card copy, or a ledger row may say otherwise. What is true and worth saying: it
+  is a user-level start, it is never privileged, and it is never silent (feed row).
+- **"Nothing an agent can call ever asks for an administrator password" is the
+  strongest sentence in the guarantee and the most brittle** — it rests entirely
+  on the never-prompt flag above holding for the WHOLE provision operation, not as
+  an entry precheck (the one-fact/lifetime-guard lesson, twice bitten). Its test
+  drives the operation end to end with the resolver absent and asserts the
+  operation FAILS with the setup message rather than reaching
+  `configure_resolver`; the sentence must be caught by that test the day it stops
+  being true.
+
 ### 4.3 Lifecycle: TTL + cap + reaper + explicit teardown + Keep
 
 "Disposable" = all of these, layered:
@@ -481,46 +583,103 @@ honored. Fences:
 | Mechanism | Behavior |
 |---|---|
 | Explicit teardown | `scratch_delete_site(id)` — T0, refused in core unless `origin='agent'` (origin gate in core, not the tool layer — M7 style) |
-| TTL | `expires_at` = create + 24 h (setting), refreshed by any agent op targeting the site. Idle scratch dies; active scratch lives |
+| TTL | `expires_at` = create + 24 h (setting), refreshed by any agent op targeting the site. Idle scratch dies; active scratch lives. **The refresh lives in the SESSION layer, beside `log_action` — never in a tool handler**: `tools.rs` is scanned by the read-only guard and a refresh is a write, so putting it in a handler would either break M1's boundary or quietly weaken the guard. Recording the action and touching the TTL are the same write, one place. Free consequence: M1's read-only tools refresh a scratch TTL too, which is correct — the agent IS still using the site |
 | Reaper | Launch + hourly in-app sweep: full `delete_site` path (DB drop honors provenance, teardown honors `docroot_managed`) for rows where `origin='agent'` ∧ expired ∧ `docroot_managed=Some(true)`. Deletes **by the record, never by name or path** (the 24 Jul example-cleanup lesson; ledger §8) |
-| Keep, and **user-mutation implies Keep** | The scratch card's Keep action sets `origin='user'` + clears `expires_at`. **And any user-initiated mutation of a scratch row — rename, move, env edit — auto-promotes it to `origin='user'` first**, closing the first draft's hole where a user renames a scratch site, the reaper still sees `origin='agent'` + `expires_at`, and deletes the site the user just adopted. Agents cannot call Keep or promote |
-| Shared-expired = skip **and surface** | A scratch site the user manually shared (live tunnel) is skipped by the reaper (`refuse_if_shared` guards deletion) — but a silent skip is the fossil-tunnel mode reborn. So it becomes a **persistent UI warning + notification** ("an expired agent site is still shared publicly"), re-checked when the tunnel stops |
+| **A reap that FAILS** | `delete_site` already fails safe — a failed database drop leaves the site intact and retryable, never a silent orphan. What was missing is what happens next: **retry at most once per app launch** (never an hourly silent loop), record the failure as a feed row (below), and show the site in the Agent-scratch group as "expired — couldn't be removed: `<reason>`" with Retry / Delete. No new `sites` column: the feed carries the reason, the badge derives from expiry + presence |
+| Keep, and **user-mutation implies Keep** | The scratch card's Keep action sets `origin='user'` + clears `expires_at`. **And any user-initiated mutation of a scratch row — rename, move, env edit, and starting a public share — auto-promotes it to `origin='user'` first**, closing the first draft's hole where a user renames a scratch site, the reaper still sees `origin='agent'` + `expires_at`, and deletes the site the user just adopted. Agents cannot call Keep or promote |
+| Shared = **adopted** (promotion), skip-and-surface = the backstop | Sharing a scratch site IS adoption, so starting a tunnel on an `origin='agent'` row promotes it (`origin='user'`, `expires_at` cleared) and the UI says why — "kept, because you shared it". That collapses the first draft's ugly state (an expired site the reaper permanently refuses to touch) into a visible one-time adoption. The old skip-and-surface stays as the **backstop only**, for the share the promotion path never saw — a rowless orphan adopted at launch (`core/tunnels.rs:485-525`): the reaper skips it (`refuse_if_shared` guards deletion) and raises the persistent warning + notification, re-checked when the tunnel stops |
+
+**Reaps in the activity feed — a typed `actor`, migration v28.** A reap is
+rexenv-initiated, so recording it in `agent_actions` as shipped would make the
+table's implicit claim ("an AI agent did this") false. Leaving it out makes the
+other true claim false — that everything consequential which happens to
+agent-owned sites is visible in one place — and *deleting a site is the most
+consequential event in this lifecycle*. Both claims survive with one typed
+column: `agent_actions.actor` (`'agent' | 'rexenv'`, DEFAULT `'agent'`), reaps
+recorded as `actor='rexenv'`, `tool='scratch_reap'`, `target_site=<id>`, outcome
+ok/error, `detail` = rexenv's OWN bounded reason. The typed-shape discipline
+(#202) is untouched — a new typed column added deliberately, never a free-form
+blob — the `client` on these rows is rexenv itself rather than an agent-asserted
+string, and the card styles them distinctly. #202's wording is amended in the
+same commit.
 
 App closed at expiry → the launch sweep catches up (the tunnel `sweep_startup`
 shape). Services keep serving expired scratch sites until then — harmless
 loopback sites.
 
-### 4.4 The dev-plugin loop — a *constrained* link, not a file primitive
+### 4.4 The dev-plugin loop — a copy-on-write CLONE, not a symlink (S1, ruled 1 Aug 2026)
 
-The scenario's key step — *install the in-development plugin into the scratch
-site* — is `scratch_link_plugin(site_id, source_path)` (and `_theme`): a
-**symlink** into `wp-content/plugins/`, the Valet-style edit-in-repo loop. The
-first draft made this an arbitrary-file-read primitive; the fix has three parts:
+The scenario's key step is *install the in-development plugin into the scratch
+site*. The first draft made it an arbitrary-file-read primitive; the second made
+it a **symlink** (the Valet-style edit-in-repo loop). **Both are wrong, and the
+second one is wrong because of a decision made elsewhere in this plan.**
 
-- **Blast-radius validation.** The target passes `validate_linked_docroot`-grade
+**Why the symlink fell.** D1 ships `wp_run` — raw wp-cli, scratch-only. A raw
+runner can `wp plugin update <linked-slug>` and unpack over the user's real
+checkout, unattended. The symlink design answered that with a linked-slug refusal
+in the vetted `wp_plugin_update`/install commands — but a refusal in the vetted
+path does not constrain a raw runner, and screening argv on a raw runner is
+exactly the **guard-covers-a-narrower-surface-than-its-claim** family (`--force`,
+aliases, `wp eval`, `wp package`, tomorrow's subcommand). That family has already
+produced a cross-site exposure, a data-destruction hole, and a leak in this
+codebase; a fourth instance whose failure mode is *the user's real checkout is
+overwritten by an agent* is not one to ship knowingly.
+
+**The ruling: clone, don't link.** `scratch_add_plugin(site_id, source_path)`
+(and `_theme`) makes a **copy-on-write clone** (APFS `clonefile` — effectively
+instant, near-zero disk) of the source into `wp-content/plugins/`. Writes inside
+the scratch site touch the clone, never the source, so "your checkout is never
+written to" stops being a hope about agent behaviour and becomes a property of
+the filesystem. The edit-in-repo immediacy is bought back with an explicit verb:
+
+- **`scratch_sync_plugin(site_id, slug)` — re-clone from the recorded source.**
+  The texture cost of losing the symlink is real, so **the sync verb is part of
+  the loop, not a footnote**: the tool description states the rhythm ("the scratch
+  site runs the code as of the last sync — call this after you change the plugin")
+  so an agent re-syncs without being told, and the scratch site's own UI card
+  shows the source path and *when it was last synced*, so the first time a user
+  hits "I changed my plugin and the site didn't see it" the answer is already on
+  screen. The source path is **recorded** on the row at add-time, never
+  re-derived, so a sync can only ever re-read where the clone came from.
+- **The guarantee states the snapshot truth in the user's own words** (§6): what
+  runs in the scratch site is the code as of the last sync, not what's in the
+  editor. Cheaper to state than to let users infer it at the moment of confusion.
+- **Blast-radius validation stays, unchanged and non-negotiable** — cloning is
+  not a licence to read: `scratch_add_package(id, "$HOME")` must refuse exactly as
+  hard as linking it would have. Both bullets below apply to the clone.
+- **The clone is a platform-trait op** (macOS impl real, Windows/Linux `todo!()`),
+  and the macOS impl is `/bin/cp -c -R` rather than a new `libc`/`clonefile`
+  binding: `cp -c` is copy-on-write on APFS and *degrades to a plain copy* on a
+  filesystem that can't clone, which is the behaviour we want on a volume that
+  isn't APFS — correctness first, speed where the filesystem offers it. No new
+  crate in the dependency closure for a one-syscall win (§7.1's discipline).
+
+The remaining constraints (unchanged from the symlink design):
+
+- **Blast-radius validation.** The source passes `validate_linked_docroot`-grade
   refusals (`core/sites.rs:810-872`: `/`, `$HOME`, Desktop/Documents/Downloads,
   volume roots, app-data, overlap) — `repo::validate_link_target`
   (`core/repo.rs:1622-1654`) checks only self-nesting/cycles and is NOT enough.
-  Without this, `scratch_link_plugin(id, "/Users/me/.ssh")` would symlink it into
-  the docroot and nginx (which follows symlinks) would serve `id_rsa` — not a
-  dotfile, so the `/.`-segment dotfile guard (`frankenphp.rs:66`, `apache.rs:336`)
-  does not cover it.
-- **Must be a plugin/theme.** The target must contain a plugin header (or
-  `style.css` theme header) before linking — a source tree with no plugin header
-  is refused. Turns "link any directory" into "link a plugin," which is the
-  actual feature.
-- **No write-back over a link.** `wp_plugin_delete`/`_theme_delete` already
-  partition on symlink truth and only unlink (`commands/wordpress.rs:148-178`),
-  but `wp_plugin_update` and install-from-wp.org do **not** — `wp plugin update
-  <linked-slug>` unpacks over the link and destroys the user's real checkout,
-  unattended. So the linked-slug refusal is extended to **update and install**
-  (refuse a slug whose path is a symlink) before those tools are exposed. Ledger
-  row in §8.
+  Without this, `scratch_add_plugin(id, "/Users/me/.ssh")` would put it inside the
+  docroot and the server would happily serve `id_rsa` — not a dotfile, so the
+  `/.`-segment dotfile guard (`frankenphp.rs:66`, `apache.rs:336`) does not cover
+  it. **The clone changes the write direction, not the read direction: this guard
+  is what stops the tool being a file-read primitive, and it applies verbatim.**
+- **Must be a plugin/theme.** The source must contain a plugin header (or
+  `style.css` theme header) before it is cloned — a source tree with no plugin
+  header is refused. Turns "copy any directory in" into "add a plugin," which is
+  the actual feature.
+- **~~No write-back over a link~~ — retired by the clone (S1).** The refusal this
+  bullet specified (extend the linked-slug guard to `wp_plugin_update`/install)
+  was only ever a partial answer, and `wp_run` defeats it entirely. The clone
+  removes the hazard at its root: there is no path from the scratch site back to
+  the source, so nothing needs to remember to refuse. This also moots the vetted
+  `wp_plugin`/`wp_theme` tools' one distinct value — see S2 in §5.
 
-Read-and-serve of the (validated, header-bearing) plugin is then T0: it is the
-user's own machine, loopback, no writes to the source. `wp_run` (D1) or vetted
-`wp_plugin activate` activates it — and per §3.1, activation runs the plugin's
-code as the user, which is the feature, not a leak.
+Read-and-serve of the (validated, header-bearing) clone is then T0: it is the
+user's own machine, loopback, and the source is never written. `wp_run` (D1)
+activates it — and per §3.1, activation runs the plugin's code as the user, which
+is the feature, not a leak.
 
 ### 4.5 Interaction with existing flags — nothing new to invent
 
@@ -530,7 +689,7 @@ code as the user, which is the feature, not a leak.
 | `db_created` | `NULL` (our-provisioning semantics) | `may_drop_database` → dropped at delete (test `may_drop_database(site(None,None))==true`, `commands/sites.rs:978`) |
 | `provisioned` | Normal job semantics | Failed scratch shows "setup incomplete" + Retry; the reaper also collects failed expired scratch |
 | `content_dir`, `mu_dir_created`, `override_port` | Defaults | Unchanged |
-| Linked sites | **Impossible for agents** | `scratch_create_site` never takes a docroot path; linking a whole external docroot is the human flow (`scratch_link_plugin` links a plugin *into* a scratch docroot — different, §4.4) |
+| Linked sites | **Impossible for agents** | `scratch_create_site` never takes a docroot path; linking a whole external docroot is the human flow (`scratch_add_plugin` CLONES a plugin *into* a scratch docroot — different, and after S1 not a link at all, §4.4) |
 
 ## 5. Tool surface — ranked honestly
 
@@ -543,8 +702,8 @@ two headline scenarios real.
 | `site_status(id)` — doctor + serving chain | T0 | **Genuinely useful**: "why isn't it serving" is the #1 agent question. Wraps the doctor composite + one new per-site HTTP probe (edge → vhost → status code), a gap the UI would benefit from too |
 | `tail_log(id, source, lines)` (+ wp-debug), **scrubbed** | T0 | **Genuinely useful**: 502s live in fpm/nginx/wp-debug tails. Existing IPC + guards; token/cookie scrub added (§3.5) |
 | `scratch_create_site` / `scratch_delete_site` (list rides `list_sites`) | T0 | **The centre.** Blueprint param included — seeding is a create-time flag, already built |
-| `scratch_link_plugin` / `scratch_link_theme` | T0 | **The centre's second half**, constrained per §4.4 |
-| `wp_plugin` / `wp_theme` (list/install-from-wp.org/activate/deactivate/update/delete) | T0 scratch; real M4/T1 | **Useful** — vetted ops with core hygiene exist; update/install refuse linked slugs (§4.4) |
+| `scratch_add_package` + `scratch_sync_package` | T0 | **The centre's second half**, clone-not-symlink per §4.4. The sync verb is part of the loop, not an extra. **Plugin and theme are ONE pair of tools, not two** (proposed with S1, veto-able at build time): §4.4 already requires reading the plugin/theme header before cloning, so the kind is a fact rexenv DERIVES, not a parameter the agent asserts — which is both two fewer permanent tools and one less thing an agent can get wrong |
+| ~~`wp_plugin` / `wp_theme` (vetted list/install/activate/…)~~ | — | **DROPPED (S2, 1 Aug 2026).** `wp_run` subsumes them entirely, and their one distinct value — the linked-slug refusal on update/install — is moot under the clone (§4.4). Every tool is a permanent compatibility promise; two fewer |
 | `wp_run(site, argv)` — raw wp-cli | T0, **scratch-only**, origin-gated in core | **Useful; D1.** Per §3.1 it does *not* change the containment story (plugin activation already grants user exec) — it is a usefulness call, not a new hole. Recommend ship scratch-only; the real-site raw-wp refusal stays permanent |
 | `db_query(site_id, sql)` — native driver | T0 scratch (rw own schema); real SELECT-only after a scoped expiring T1 grant | **Co-headline** (§3.6) |
 | `set_php_version(site_id, minor)` | T0 scratch; real M4/T1 | **Genuinely useful**: the compatibility matrix (scratch + plugin, run checks 8.1→8.5) is a real plugin-dev workflow rexenv is uniquely placed for |
@@ -579,11 +738,65 @@ and a `php_artisan(site, argv)` analogue to `wp_run`, are the Laravel headline �
 - **`php_artisan` runner** (scratch-only, origin-gated) — the artisan analogue to
   `wp_run`, same tier reasoning. Useful; pairs with the skeleton. M-later.
 - **Composer path-repo link** for an in-dev package — the Laravel equivalent of
-  `scratch_link_plugin`. Useful; different mechanism. M-later.
+  `scratch_add_package`. Useful; different mechanism (a path repository, where
+  Composer itself symlinks — so S1's reasoning has to be re-run for it, not
+  assumed). M-later.
 
-Roughly 13 tools in the full WordPress build-out; M1+M2 ship 9 (§7.3).
+**Tool count, recounted after S1/S2 (1 Aug 2026).** M1 shipped **3**
+(`list_sites`, `site_status`, `tail_log`). M2a adds **5** (`scratch_create_site`,
+`scratch_delete_site`, `scratch_add_package`, `scratch_sync_package`, `wp_run`).
+M2b adds **3** (`set_php_version`, `mail_list`, `mail_get`). M3 adds **1**
+(`db_query`). That is **12** through M3, plus `wp_login_url` if D2 lands — down
+from the draft's 13-and-growing, because S2 dropped two and the derived
+plugin/theme kind dropped two more. Fewer permanent promises for the same
+scenario.
 
 ## 6. The developer-facing shape
+
+### 6.0 The M2 guarantee — WRITTEN FIRST (1 Aug 2026), and it constrained the design
+
+M1's honest-guarantee paragraph was written last and it was easy, because nothing
+ran. M2's is hard, so it was drafted **before** any task started, deliberately, so
+that a sentence we could not honestly write would expose a wrong scope while
+changing it was still cheap. It did exactly that twice (the retreat in §4.4 that
+became S1, and the "no tool starts a service" sentence §4.2 forbids). This is the
+text; it lands in the Settings card above the M2 tools, near-verbatim:
+
+> **What rexenv guarantees once an agent can create sites — and what it does not.**
+>
+> Every tool that changes anything can only change a site rexenv created for the
+> agent itself. That is a recorded fact (`origin='agent'`, written at creation),
+> never inferred from a name or a path — a site you named `foo.scratch.rex`
+> yourself is yours, and the reaper will not touch it. Your sites, their files,
+> their databases, and every system change rexenv can make (the resolver, the CA,
+> the edge, tunnels, settings) are not reachable from any tool: the refusal lives
+> in core, so the CLI and the UI enforce the same one. Scratch sites are capped,
+> they expire, and they are deleted **by their record** — never by matching a name
+> or a path. Anything you touch yourself becomes yours permanently: rename it,
+> move it, share it, or press Keep, and it stops being disposable. Nothing an
+> agent can call ever asks macOS for an administrator password.
+>
+> That is a fence around **which sites the tools name**. It is not a sandbox, and
+> the difference is the thing to understand before you turn this on: installing
+> and activating a plugin in a scratch site runs that plugin's PHP **as you**,
+> with your files and your permissions. Code running as you can reach rexenv's own
+> CLI socket and do things no MCP tool offers — start the stack (which does prompt
+> you), start a public tunnel. rexenv does not contain that and will not claim to.
+> What it does is refuse to make it easy or silent: those actions are not tools,
+> every call is recorded in the activity feed, and the endpoint is off until you
+> turn it on.
+>
+> **A plugin or theme you add to a scratch site is copied, not linked.** Nothing
+> the agent runs can write back to your checkout — and the flip side is that the
+> scratch site runs your code **as of the last sync**, not what is in your editor
+> right now. Sync again after you change it.
+
+**The brittle sentence, flagged where it lands.** "Nothing an agent can call ever
+asks macOS for an administrator password" is the strongest claim in the paragraph
+and the one most likely to rot: it rests entirely on the never-prompt provision
+flag holding for the whole operation (§4.2). Its ledger row pins the test that
+would catch it going false — end-to-end with the resolver absent, not an entry
+precheck.
 
 - **Settings → "AI agents (MCP)" card, default OFF** — a new API surface into a
   tool that can read real databases and run scratch code should be opt-in, not
@@ -652,11 +865,13 @@ Roughly 13 tools in the full WordPress build-out; M1+M2 ship 9 (§7.3).
 | Tool-output secret leak | `Agent*` view types + serialized-**output** planted-fixture sweep (§3.5); log token-scrub; mail behind opt-in |
 | Auth-prompt fatigue via a tool | No registered tool reaches `run_privileged` — tool-layer test-pinned (§3.3). **NB (§3.1): scratch code can still reach root prompts via the CLI socket — a human still approves each; D7 tracks fully closing it** |
 | `db_query` escapes SELECT via `system`/`tee` or grant wildcards | Native driver (no client-side commands), no `FILE`, `local_infile` off, escaped grant object — L1 adversarial test (§3.6) |
-| `scratch_link_plugin` reads arbitrary files | Blast-radius validation + plugin-header requirement (§4.4) |
-| `wp plugin update` destroys a linked checkout | Linked-slug refusal extended to update/install (§4.4) |
-| Real-site credential harvest via mail/logs | Mail opt-in + scratch-addressed; log token/cookie scrub (§3.5) |
+| `scratch_add_package` reads arbitrary files | Blast-radius validation + plugin/theme-header requirement (§4.4) — unchanged by S1: the clone changed the WRITE direction, not the read direction |
+| An agent's `wp plugin update` destroys the user's checkout | **The clone (S1):** there is no path from the scratch copy back to the source, so no command — vetted or raw — can write to it. Replaces a refusal a raw runner could walk around (§4.4) |
+| Real-site credential harvest via mail/logs | Mail opt-in + the rexenv-created scratch tag, fail-closed (§3.5); log token/cookie scrub |
 | Blanket/standing DB grant | Scoped + expiring + client-change re-consent + feed-surfaced (§3.6) |
-| User renames a scratch site and loses it | User mutation implies Keep (§4.3) |
+| User renames or shares a scratch site and loses it | User mutation implies Keep; sharing promotes to `origin='user'` (§4.3) |
+| A reap fails and the site is silently stuck expired | Fails safe (site intact), retried at most once per launch, recorded `actor='rexenv'`, surfaced with Retry/Delete (§4.3) |
+| The user edits the plugin and the scratch site doesn't see it | The S1 texture cost, answered in the product not the doc: the sync verb's description states the rhythm, and the scratch card shows source + last-synced (§4.4) |
 | Agent floods sites/disk | Cap 5 + TTL + reaper; provision already one-per-domain serialized |
 | Reaper deletes the wrong thing | Deletes by recorded `origin` + `docroot_managed` only; share-guard skip-and-surface; lib-tested (§8) |
 | Shell-less client gains user exec via scratch | **Stated, not hidden (§3.1):** running the user's plugin is user-level power; the master toggle is off by default and the reckoning is documented. D7 tracks the scratch-pool hardening that would narrow it |
@@ -664,11 +879,13 @@ Roughly 13 tools in the full WordPress build-out; M1+M2 ship 9 (§7.3).
 
 ### 7.3 Stages — each ships something real
 
-**M1 — plumbing + read-only diagnosis.** Socket + `rex mcp` shim + registry
-(tiers + tool-layer tests day one) + Settings card + activity feed + the
-serialized-output secret sweep + tools: `list_sites`, `site_status` (incl. the
-new HTTP probe), `tail_log` (scrubbed), and `mail_list`/`mail_get` behind the
-opt-in sub-toggle. *Ships: "ask your agent why the site 502s."* Plumbing, audit
+**M1 — plumbing + read-only diagnosis. SHIPPED 30 Jul 2026** (#198–#203). Socket
++ `rex mcp` shim + registry + Settings card + activity feed + the
+serialized-output secret sweep + **three** tools: `list_sites`, `site_status`
+(stack-state verdicts, deliberately never requesting the site), `tail_log`
+(scrubbed). **Mail did NOT ship in M1** — this line said it would; it is M2b,
+which is where the global-inbox tell (§3.5) is built. *Ships: "ask your agent why
+the site 502s."* Plumbing, audit
 surface, and secrets discipline land here, small — and this is the surface that
 is **genuinely contained** (§3.1c: no code execution). **M1 depends on zero
 scratch machinery** — no `origin` column, no reaper, no DB principals; it ships
@@ -676,12 +893,23 @@ and stands on its own as the contained read-only surface even if M2 slips
 indefinitely. That independence is deliberate: the piece with real containment is
 also the piece that can ship first and alone.
 
-**M2 — scratch sites.** v26 migration (`origin`, `agent_client`, `expires_at`) +
-cap/TTL/reaper/shared-skip-surface + Sites-UI group + Keep + user-mutation-implies-
-Keep + tools: `scratch_create_site` (blueprint param), `scratch_delete_site`,
-`scratch_link_plugin/_theme` (validated), `wp_plugin`/`wp_theme` (scratch,
-linked-slug refusal on update/install), `set_php_version` (scratch), `wp_run`
-(scratch, if D1 = yes). *Ships: the headline scenario end to end.*
+**M2 — scratch sites. SPLIT (S3, 1 Aug 2026) into M2a and M2b**, because even
+after S2 the single milestone carried ~10 tools plus a migration, a reaper and a
+UI section. M2a is the scenario this plan is named for; M2b is two surfaces on
+machinery that already exists and can wait for evidence anyone wants them.
+
+**M2a — the scratch-site scenario.** v27 (`origin`, `agent_client`,
+`expires_at`) + v28 (`agent_actions.actor`) + the `ScratchSite` witness and the
+core origin gate (§2.6) + cap/TTL/reaper/reap-failure/share-promotion + Sites-UI
+group + Keep + user-mutation-implies-Keep + the M2 tool module with the sweep
+walking BOTH registries + tools: `scratch_create_site` (blueprint param),
+`scratch_delete_site`, `scratch_add_package`, `scratch_sync_package`, `wp_run`
+(scratch, D1 = yes). *Ships: the headline scenario end to end.*
+
+**M2b — the two that can wait.** `set_php_version` (scratch — the compatibility
+matrix) and `mail_list`/`mail_get` behind the opt-in sub-toggle with the
+scratch-tag mu-plugin and the fail-closed filter (§3.5). *Ships: the compat
+matrix and the mail-testing loop.*
 
 **M3 — database access.** Native-driver query path + agent principals (escaped
 grants, passwordless loopback, never `client_base_args`), `agent_db_grants`
@@ -694,14 +922,48 @@ T1 consent — the consent dialog lands here in its minimal one-shape form).
 shows, general T1 real-site vetted-WP ops + PHP switch + DB export (the old "M4").
 Everything before is complete without these.
 
-**Minimum useful version = M1 + M2.** M1 alone is a diagnostics toy; M2 makes it
-the feature the plan is named for. M3 completes what was asked. Laravel parity is
-the first thing after.
+**Minimum useful version = M1 + M2a.** M1 alone is a diagnostics toy; M2a makes
+it the feature the plan is named for. M2b and M3 complete what was asked. Laravel
+parity is the first thing after.
 
 Per-stage build order follows the house pattern (conventional commits, one task
 per commit, `verify.sh` green, ledger rows + TODO ticks in the same commit as
 their invariants; live-check example `mcp_socket_check` mirroring
-`cli_socket_check` in M1).
+`cli_socket_check` in M1, joined by `mcp_scratch_check` in M2a).
+
+**M2a task order** (each one commit, `verify.sh` green; ledger numbering
+continues at #204):
+
+1. This reconcile (no new rows; #197's re-anchor noted).
+2. **v27** — `origin`/`agent_client`/`expires_at`, store helpers, upgrade-path
+   test from a v26 db (existing rows read `'user'`), recorded-not-inferred tests
+   in the `docroot_managed` shape.
+3. **v28** — `agent_actions.actor`, `feed::record_system`, card styling; amends
+   #202.
+4. **Feed: result-derived target** — `PendingLog.target_site` fillable from a
+   tool's result, so a create records the site it made (§2.6).
+5. **TTL touch in the session layer**, beside `log_action`; the M1 read-only
+   guard must still pass untouched (§4.3).
+6. **Core origin gate + `ScratchSite` witness** — a planted call passing a user
+   site must fail to COMPILE (§2.6).
+7. **M2 module + capability** — `mcp_server/scratch/`, registry union in
+   dispatch, sweep walks BOTH registries, guard extended to assert the two
+   registries are disjoint (§2.6).
+8. **`scratch_create_site`** — forced domain, origin at insert, never-prompt flag
+   tested END TO END at the provision path, cap, honest stack-stopped result,
+   plus a test pinning the path never reaches `run_privileged` (§4.2).
+9. **`scratch_delete_site` + reaper** — delete by record, once-per-launch retry,
+   reap failures as `actor='rexenv'` feed rows, rowless-share backstop (§4.3).
+10. **Keep + user-mutation promotion** — rename/move/env/**share** (§4.3).
+11. **`scratch_add_package` / `scratch_sync_package`** — clone, blast-radius
+    validation, header requirement, recorded source path (§4.4).
+12. **`wp_run`** — scratch-only, origin-gated in core via the witness,
+    feed-logged (D1).
+13. **Sites UI** — Agent-scratch group, client badge, TTL, last-synced, Keep,
+    expired-but-shared warning, reap rows; WebKit harness scenarios.
+14. **L1 `mcp_scratch_check`** (fixture-owned per `examples/common/mod.rs`,
+    sandbox tier) + the SMOKE-TEST M2 gate — including at least one step only a
+    PACKAGED run can prove (the M1 enable-crash lesson).
 
 ### 7.4 Explicitly out of scope
 
@@ -727,9 +989,13 @@ so a tool-surface test can never be read as a containment guarantee (§3.1):
 | Agent DB principals are never root/reserved, never `'%'`, and the grant object names one database | L0: extend dbmirror grant-shape tests. **The escaping half (`grant_db_object`) already landed as ledger #196, ahead of this feature** |
 | **🚫 The MCP server is NOT a sandbox** (D7): once a client has scratch code execution it has user-level power over rexenv and the machine, reachable to the CLI socket; the tiers give a paved road + no silent amplifier, never containment | 🚫 inherently unprovable — a *containment* claim here would be FALSE, not merely unproven. Lands anchored to the MCP toggle/registry code with M2; forward-recorded now in CLAIM-LEDGER so nothing downstream describes MCP as sandboxed |
 | The agent query path uses the native driver and never calls `client_base_args`; a real-site RO principal cannot write, `system`, or `INTO OUTFILE` | L0 (no-`client_base_args` assertion) + L1 live (attempt write/`system`/outfile, expect failure) |
-| Reaper deletes only `origin='agent'` ∧ expired ∧ `docroot_managed=1`, skips-and-surfaces shared | L0 |
-| `origin` recorded at create; no IPC sets it; agent→user only via Keep or user-mutation | L0 (the `docroot_managed` test pattern) |
-| `scratch_link_plugin` refuses blast-radius paths and non-plugin targets; update/install refuse linked slugs | L0 + L1 (attempt `~/.ssh`, expect refusal) |
+| Reaper deletes only `origin='agent'` ∧ expired ∧ `docroot_managed=1`; a failed reap leaves the site intact, retries at most once per launch, and is RECORDED (`actor='rexenv'`), never silent | L0 |
+| `origin` recorded at create; no IPC sets it; agent→user only via Keep or user-mutation (rename/move/env/**share**) | L0 (the `docroot_managed` test pattern) |
+| `scratch_add_package` refuses blast-radius paths and header-less sources, and CLONES — the source is never written, so no later tool needs to remember to refuse (S1) | L0 + L1 (attempt `~/.ssh`, expect refusal; write inside the scratch copy, assert the source is byte-identical) |
+| **Nothing an agent can call reaches a privileged prompt** — the never-prompt provision flag holds for the WHOLE operation, not as an entry precheck (§4.2). *The guarantee's most brittle sentence; this row is what catches it going false* | L0 end-to-end at the provision path with the resolver ABSENT: the operation fails with the setup message and `configure_resolver` is never reached |
+| The M2 registry is disjoint from M1's, and the secret-leak sweep walks BOTH — a second registry may not silently narrow "every registered tool's output is swept" (§2.6) | L0 (disjointness + sweep-plan union) + `mcp_secret_sweep` live |
+| A scratch mutator cannot be applied to a user site — the `ScratchSite` witness has ONE constructor, which reads `origin` from the row; the gate is in core, so CLI and UI inherit it | Structural (compile) + L0 constructor-scope test |
+| The feed's actor is TYPED: a rexenv-initiated row (reap) can never read as an agent action, and an agent-initiated one can never claim to be rexenv | L0 (round-trip + the card's rendering split) |
 | T1 handlers unreachable without a `ConsentGranted` witness; RO grant is scoped + expiring | Structural (compile) + L0 constructor-scope test |
 | Scratch create refuses (never prompts) when the backbone resolver is missing, via the provision-path never-prompt flag | L0 at the provision path, not the tool layer |
 
@@ -756,7 +1022,12 @@ real thing.
    widen the containment story — it is a usefulness call, and a large one ("run
    whatever check" is the scenario's verb; a vetted list can't name a plugin's
    own commands). Scratch-only, origin-gated in core, feed-logged; the real-site
-   raw-wp refusal stays permanent.
+   raw-wp refusal stays permanent. **Consequence found 1 Aug 2026 and worth
+   keeping attached to this decision:** shipping a raw runner is what made the
+   symlinked dev-plugin's write-back guard unenforceable, and therefore what
+   forced S1 (clone, not symlink — §4.4). A raw-runner decision does not stay
+   local to its own tool; it deletes every guarantee elsewhere that depended on
+   knowing which commands run.
 2. **D2 — `wp_login_url` scratch-only: include?** Recommend include (cheap,
    human-in-the-loop useful); drop without argument if it reads as surface for
    surface's sake.
@@ -767,7 +1038,12 @@ real thing.
 4. **D4 — mail. SETTLED: opt-in sub-toggle, default off.** The global inbox
    carrying reset links (§3.5) makes ambient T0 mail a credential-harvest pivot;
    the sub-toggle keeps the genuinely-useful WP *and* Laravel mail-testing loop
-   available without making it ambient.
+   available without making it ambient. **Amended 1 Aug 2026:** the scoping was
+   specced as "scratch-addressed", which the inbox cannot support — no recipient
+   field carries the site (§3.5). The tell is one rexenv creates (a scratch-only
+   mu-plugin forcing `From`), the filter is fail-closed, and that reasoning goes
+   in the toggle's copy, not only in this doc. Ships in **M2b**, not M1 as §7.3
+   originally said.
 5. **D5 — MCP SDK. SETTLED 29 Jul 2026: no SDK — hand-rolled minimal server**
    (was "pin rmcp 2.2.x"). Reversed on the discovery that every `rmcp` is edition
    2024 / rustc ≥ 1.85, which would force the repo's `rust-version = 1.77.2` floor

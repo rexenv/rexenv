@@ -16,11 +16,8 @@ evidence cited.
   agents" card + per-site SiteDetail section. Ledger #198–#203; wk-checks
   `agents-*`. Diverged from PLAN §7.3 honestly: no mail tools/sub-toggle in M1;
   `site_status` runs nothing (Option A, no HTTP GET); status line is feed-driven
-  not a live-session list. **Next MCP stage = M2 (scratch sites)** — see
-  `docs/PLAN-mcp-server.md §7.3` (on branch `docs/mcp-server-plan`).
-  ⚠ On merge: the plan doc + ledger §-pointers to it are on `docs/mcp-server-plan`
-  (#197 lands from there); add the router row for the plan and recompute the
-  mechanical tally then.
+  not a live-session list. **Next MCP stage = M2a (scratch sites)** — see
+  `docs/PLAN-mcp-server.md §7.3`, reconciled against this shipped M1 on 1 Aug.
 - [ ] **DNS agent answers ARBITRARY names when queried directly** (found in the
   28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
   `127.0.0.1` — the hickory handler is a catch-all, not per-TLD zones
@@ -156,7 +153,7 @@ first:
 - [ ] Stage-3 leftovers awaiting a ruling only if they resurface: none — the
   collision-rename tell-only and pdo_mysql exclusions are SETTLED (pinned by
   tests; do not reopen).
-- [ ] **MCP server — SCOPE RULED 29 Jul 2026, build M1 → M2 → M3**
+- [ ] **MCP server — M1 SHIPPED; M2 SCOPE RULED 1 Aug 2026, building M2a → M2b → M3**
   (`docs/PLAN-mcp-server.md`): expose an MCP server so a dev's AI agent can drive
   rexenv — disposable WordPress "scratch" sites (new `origin='agent'` column,
   TTL+cap+reaper), real-site DB SELECT-only via a native driver, read-only
@@ -167,10 +164,26 @@ first:
   `wp_run` scratch-only), D3 (real-site mutation unpromised), D4 (mail opt-in
   sub-toggle), D6 (tunnels never a tool), D7 (accept the residual, toggle off +
   ledger 🚫) all SETTLED; **D2/D5 open but non-blocking; the M3 DB surface is
-  ruled at M3, not now.** Next task = M1 (diagnostics, zero scratch machinery,
-  independently shippable). One task at a time, owner-verify per task. ✓ ahead of
-  the feature: the mirrored-user GRANT wildcard-escaping fix landed on its own
-  (ledger #196).
+  ruled at M3, not now.** ✓ ahead of the feature: the mirrored-user GRANT
+  wildcard-escaping fix landed on its own (ledger #196).
+  - ✓ **M1 shipped** 30 Jul 2026 — ledger #198–#203.
+  - ✓ **1 Aug 2026 — plan reconciled against shipped M1 + M2 scope ruled**, with
+    the honest guarantee paragraph written FIRST (§6.0) so it constrained the
+    design instead of describing it: it forced S1 and forbade a "no tool starts
+    a service" claim (`scratch_create_site` starts MySQL). **S1** the dev-plugin
+    add is a copy-on-write CLONE + explicit sync, not a symlink — `wp_run` makes
+    the symlink's write-back guard unenforceable, and argv-screening a raw runner
+    is the guard-covers-a-narrower-surface family (4th instance, refused).
+    **S2** `wp_plugin`/`wp_theme` dropped (subsumed by `wp_run`). **S3** M2 splits
+    into M2a (the scenario) / M2b (`set_php_version` + mail). Also corrected:
+    v27/v28 (v26 is spent), mail's "scratch-addressed" filter is unsupportable so
+    the tell is one rexenv creates (fail-closed), reaps get a typed
+    `agent_actions.actor`, and two M1 leftovers that would have narrowed shipped
+    claims by omission (the sweep walks ONE registry; `target_site` is unfillable
+    for a create).
+  - [ ] **M2a — the scratch-site scenario**, 14 tasks in `PLAN §7.3`, one commit
+    each, ledger from #204. Next task = 2 (v27 migration).
+  - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
