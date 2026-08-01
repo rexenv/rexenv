@@ -249,8 +249,16 @@ omission** (both found in the M2 pre-read, neither visible from M1 alone):
    the M2 tool struct.
 2. **`tool_target_site` reads `arguments.site_id`** — `scratch_create_site` has
    no `site_id` at call time, so the single most important feed row ("the agent
-   created `foo.scratch.rex`") would record no target. `PendingLog.target_site`
-   becomes fillable from the tool's RESULT.
+   created `foo.scratch.rex`") would record no target. ✅ **Fixed 1 Aug (task 4),
+   and NOT from the tool's result** as this line first proposed: a result is
+   exactly the channel a future tool could echo an argument through, and the feed
+   is typed to keep agent content out. Instead `ActedTarget` — an out-parameter
+   whose only setter takes a `&Site` (a row from our own sites table), so the
+   recorded id is rexenv-derived by construction. Being an out-parameter rather
+   than a return value is what makes it **survive `?`**: the create records the
+   site the instant the row exists, so a provisioning failure AFTER the insert
+   still names the half-built site. Rule: **a row names a site iff a row for it
+   exists** — nothing created, nothing named (#206).
 
 ## 3. Security model — and its honest limits
 

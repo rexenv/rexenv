@@ -250,6 +250,41 @@ fn default_origin_user() -> SiteOrigin {
     SiteOrigin::User
 }
 
+/// A site row in PRODUCTION shape for tests in other modules — UUID id, an
+/// absolute app-data docroot, a derived `wp_` database name. Shared so a fixture
+/// cannot drift into the friendly-looking shape that hides real bugs (the
+/// `s-ea`/relative-path lesson): every caller gets the shape the app writes.
+#[cfg(test)]
+pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
+    Site {
+        id: id.into(),
+        name: domain.split('.').next().unwrap_or(domain).into(),
+        domain: domain.into(),
+        site_type: SiteType::Wordpress,
+        status: ServiceStatus::Stopped,
+        php_version: "8.3".into(),
+        web_server: WebServer::Nginx,
+        ssl: true,
+        path: format!(
+            "/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/{domain}"
+        ),
+        created_at: "2026-08-01 09:00:00".into(),
+        multisite: MultisiteMode::None,
+        db_name: format!("wp_{}", domain.replace(['.', '-'], "_")),
+        db_engine: SiteDbEngine::Mysql,
+        xdebug: false,
+        override_port: None,
+        provisioned: true,
+        docroot_managed: Some(true),
+        db_created: None,
+        content_dir: None,
+        mu_dir_created: None,
+        origin,
+        agent_client: None,
+        expires_at: None,
+    }
+}
+
 fn default_true() -> bool {
     true
 }

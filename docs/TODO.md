@@ -195,8 +195,14 @@ first:
     "Working — scratch_reap". Default records a known fact; the READ fails the
     other way (unknown actor = rexenv, never the agent). UI: "rexenv · automatic"
     + a reap's unresolvable target reads "(deleted site)", not a bare UUID —
-    all three L2 probes proven to fail on the pre-v28 rendering. Next task = 4
-    (feed: result-derived `target_site`, so a create records the site it made).
+    all three L2 probes proven to fail on the pre-v28 rendering.
+    ✓ task 4 — **`ActedTarget`**, ledger #206 (+#202 amended): a create can name
+    the site it made, WITHOUT the result becoming a channel for agent content —
+    the only setter takes a `&Site` row, and it is an out-parameter so it
+    survives `?` (a provisioning failure after the insert still names the
+    half-built site). A row names a site iff a row exists. Both load-bearing
+    tests proven to fail on a no-op `set`. Next task = 5 (TTL touch in the
+    session layer, beside `log_action`, with the M1 read-only guard untouched).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

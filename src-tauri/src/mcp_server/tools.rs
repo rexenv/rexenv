@@ -28,10 +28,18 @@ const MAX_LOG_LINES: usize = 200;
 /// `Send` so the session task stays `Send`; `'a` borrows the `ReadCtx`.
 pub type ToolFuture<'a> = Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>>;
 
-/// A read-only tool handler: `(ReadCtx, args) -> future of JSON`. `ReadCtx` is
-/// `Copy` (a single `&AppState`), passed by value so the future can borrow it
-/// for `'a` without a nested reference.
-pub type ToolHandler = for<'a> fn(ReadCtx<'a>, &'a Value) -> ToolFuture<'a>;
+/// A read-only tool handler: `(ReadCtx, args, acted) -> future of JSON`.
+/// `ReadCtx` is `Copy` (a single `&AppState`), passed by value so the future can
+/// borrow it for `'a` without a nested reference.
+///
+/// `acted` is the out-parameter a handler uses to name the site REXENV acted on
+/// (`ActedTarget`), for the feed. **M1's handlers never touch it** — they act on
+/// nothing, so their feed target stays the site the agent named. It is in the
+/// signature from here because an M2 create has no `site_id` argument to record
+/// and must not be able to reach the feed through the tool's RESULT (that would
+/// be a channel for agent-influenced content into a deliberately typed record).
+pub type ToolHandler =
+    for<'a> fn(ReadCtx<'a>, &'a Value, &'a super::feed::ActedTarget) -> ToolFuture<'a>;
 
 /// One read-only tool: its MCP name, description, input schema, the arguments
 /// the secret-leak sweep exercises it with, and the handler.
@@ -143,7 +151,12 @@ fn site_id_lines_param() -> Value {
     })
 }
 
-fn list_sites<'a>(ctx: ReadCtx<'a>, _args: &'a Value) -> ToolFuture<'a> {
+fn list_sites<'a>(
+    ctx: ReadCtx<'a>,
+    _args: &'a Value,
+    // M1 acts on nothing — see `ToolHandler`.
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
     Box::pin(async move {
         let sites = ctx.sites()?;
         let serving = ctx.serving_domains()?;
@@ -155,7 +168,11 @@ fn list_sites<'a>(ctx: ReadCtx<'a>, _args: &'a Value) -> ToolFuture<'a> {
     })
 }
 
-fn site_status<'a>(ctx: ReadCtx<'a>, args: &'a Value) -> ToolFuture<'a> {
+fn site_status<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
     Box::pin(async move {
         let id = args
             .get("site_id")
@@ -170,7 +187,11 @@ fn site_status<'a>(ctx: ReadCtx<'a>, args: &'a Value) -> ToolFuture<'a> {
     })
 }
 
-fn tail_log<'a>(ctx: ReadCtx<'a>, args: &'a Value) -> ToolFuture<'a> {
+fn tail_log<'a>(
+    ctx: ReadCtx<'a>,
+    args: &'a Value,
+    _acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
     Box::pin(async move {
         let id = args
             .get("site_id")

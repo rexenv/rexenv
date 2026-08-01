@@ -19,6 +19,13 @@
 //!   the record (e.g. a future db_query's SQL) gets its OWN typed column, added
 //!   deliberately when that tool lands — never a catch-all blob.
 //!
+//!   `target_site` gained a SECOND provenance in M2a and it did not loosen this:
+//!   a handler can name the site rexenv ACTED on ([`ActedTarget`]) — necessary,
+//!   because a create has no `site_id` argument to record — but only by handing
+//!   over a `&Site`, a row from our own sites table. Reading the id out of a
+//!   tool's RESULT would have been the easy version and the wrong one: results
+//!   are the channel a future tool could echo an argument through.
+//!
 //! - **Attribution is typed, because two true claims had to coexist** (v28).
 //!   "An AI agent did this" was true while the session loop was the only
 //!   writer. M2a's reaper breaks it: deleting an expired scratch site is the
@@ -138,6 +145,49 @@ impl Outcome {
     }
 }
 
+/// The site REXENV ACTED ON during a call — the second, narrower way a feed row
+/// gets its target, and the one that carries no agent content.
+///
+/// Until M2a the feed recorded what the agent ASKED for (`arguments.site_id`, a
+/// string off the wire). A create has no such argument — it makes the site — so
+/// the row that matters most would name nothing. This records what rexenv DID.
+///
+/// **Two properties, both structural rather than remembered:**
+///
+/// 1. **It cannot carry agent content.** [`ActedTarget::set`] takes a `&Site` —
+///    a row from rexenv's OWN sites table — and reads its `id`. There is no
+///    constructor from a string, so no handler can route an argument, a tool
+///    result, or anything else off the wire into the feed through here. Same
+///    discipline as `AgentAction::target_label`: rexenv-derived by construction,
+///    and nothing branches on it.
+/// 2. **It survives `?`.** It is an out-parameter, not a return value,
+///    deliberately: a handler records the site the instant the row exists and
+///    then keeps going, so an error thrown LATER (provisioning failing after the
+///    insert) still leaves the target recorded. A `Result<(Value, Target)>`
+///    would drop it on exactly the path where naming the site matters most —
+///    the half-created site the user can now see, retry, or delete.
+///
+/// The consequence is the rule worth stating plainly: **a feed row names a site
+/// if and only if a row for it exists**, and neither half is a guess. Nothing
+/// created ⇒ nothing named; created-then-failed ⇒ named.
+#[derive(Debug, Default)]
+pub struct ActedTarget(std::sync::Mutex<Option<String>>);
+
+impl ActedTarget {
+    /// Record the site rexenv acted on. Takes the ROW, never an id string, so
+    /// the value provably came from our own sites table.
+    pub fn set(&self, site: &crate::state::models::Site) {
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = Some(site.id.clone());
+        }
+    }
+
+    /// The recorded site id, if a handler reached the point of having a row.
+    pub fn take(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|mut s| s.take())
+    }
+}
+
 /// What the session knows about one action — everything but the client name
 /// (session state, supplied at record time).
 #[derive(Debug)]
@@ -162,8 +212,16 @@ pub struct AgentAction {
     /// is rexenv itself, not an agent-asserted string.
     pub client: String,
     pub tool: String,
-    /// The STABLE site id the call named (`arguments.site_id`) — keyed on by
-    /// `recent_for_site`, survives a domain rename. Not human-readable (a UUID).
+    /// The STABLE site id this call CONCERNED — keyed on by `recent_for_site`,
+    /// survives a domain rename. Not human-readable (a UUID).
+    ///
+    /// Two provenances, and the narrower one wins ([`ActedTarget`]): the site
+    /// rexenv ACTED on when a handler reported one (rexenv-derived, from a row
+    /// in our sites table), otherwise the site the agent NAMED
+    /// (`arguments.site_id` — agent content, length-capped like every other
+    /// wire-supplied field). Both are ids of the same kind, so the column stays
+    /// one typed fact; what differs is which one can be trusted, and only the
+    /// rexenv-derived one may appear for a call that took no `site_id`.
     pub target_site: Option<String>,
     /// The named site's CURRENT domain, resolved at READ time (never stored — the
     /// feed keeps only the stable id). `None` when there is no target, or the site

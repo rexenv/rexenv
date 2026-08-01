@@ -275,12 +275,22 @@ async fn session<R, W, Rt>(
                 Some(reply)
             }
             Dispatch::ToolCall { id, name, args } => {
-                let target = args.get("site_id").and_then(Value::as_str).map(String::from);
-                let (reply, outcome, detail) = fulfill_tool_call(&app, id, &name, &args).await;
+                let named = args.get("site_id").and_then(Value::as_str).map(String::from);
+                // The handler may report the site rexenv ACTED on (a create has
+                // no `site_id` to name). It is an out-parameter, so a handler
+                // that records the row and THEN fails still names it.
+                let acted = feed::ActedTarget::default();
+                let (reply, outcome, detail) =
+                    fulfill_tool_call(&app, id, &name, &args, &acted).await;
                 log_action(
                     &app,
                     &client,
-                    &feed::PendingLog { tool: name, target_site: target, outcome, detail },
+                    &feed::PendingLog {
+                        tool: name,
+                        target_site: target_for_record(acted.take(), named),
+                        outcome,
+                        detail,
+                    },
                 );
                 Some(reply)
             }
@@ -402,6 +412,18 @@ fn tool_target_site(msg: &Value) -> Option<String> {
     msg.pointer("/params/arguments/site_id").and_then(Value::as_str).map(String::from)
 }
 
+/// Which site a feed row names, given both provenances.
+///
+/// **What rexenv DID beats what the agent ASKED for**, for two reasons: it is
+/// the more accurate fact when they differ (a tool that resolves elsewhere, or
+/// creates), and it is the only one that exists for a call with no `site_id`.
+/// `named` remains the answer for M1's read tools — including when they fail,
+/// where "the agent asked about a site that isn't there" is the diagnostic worth
+/// keeping. Deliberately pure so both directions are testable without a session.
+fn target_for_record(acted: Option<String>, named: Option<String>) -> Option<String> {
+    acted.or(named)
+}
+
 /// The client's self-reported name from `initialize`, so the feed can attribute
 /// actions. Cheap: only initialize-shaped messages are parsed here.
 fn client_name_if_initialize(text: &str) -> Option<String> {
@@ -425,6 +447,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
     id: Value,
     name: &str,
     args: &Value,
+    acted: &feed::ActedTarget,
 ) -> (String, feed::Outcome, Option<String>) {
     use tauri::Manager;
     let Some(tool) = tools::find(name) else {
@@ -443,7 +466,7 @@ async fn fulfill_tool_call<Rt: tauri::Runtime>(
         );
     };
     let ctx = ReadCtx::new(state.inner());
-    match (tool.handler)(ctx, args).await {
+    match (tool.handler)(ctx, args, acted).await {
         Ok(v) => (result_response(id, tool_success_content(&v)), feed::Outcome::Ok, None),
         Err(e) => (
             result_response(id, tool_error_content(&e.to_string())),
@@ -469,8 +492,11 @@ pub async fn sweep_tool_outputs<Rt: tauri::Runtime>(
     };
     let ctx = ReadCtx::new(state.inner());
     let mut outputs = Vec::new();
+    // The sweep exercises handlers for their OUTPUT; a target they record is
+    // irrelevant here, so each gets a throwaway recorder.
+    let acted = feed::ActedTarget::default();
     for (tool, args) in tools::sweep_plan(fixture_site_id) {
-        let text = match (tool.handler)(ctx, &args).await {
+        let text = match (tool.handler)(ctx, &args, &acted).await {
             Ok(v) => serde_json::to_string(&v).unwrap_or_default(),
             Err(e) => e.to_string(),
         };
@@ -753,4 +779,80 @@ mod tests {
             ],
         );
     }
+
+    #[test]
+    fn what_rexenv_did_beats_what_the_agent_asked_for() {
+        // A create has no `site_id` to name, so the recorded target can only come
+        // from the row rexenv made; a read tool names what the agent asked for,
+        // INCLUDING when it fails — "the agent asked about a site that isn't
+        // there" is the diagnostic worth keeping.
+        let acted = || Some("7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30".to_string());
+        let named = || Some("2b91d0f4-1a33-4e77-9a0c-8d2e4f5a6b1c".to_string());
+        assert_eq!(target_for_record(acted(), None), acted(), "a create names what it made");
+        assert_eq!(target_for_record(None, named()), named(), "a read names the ask");
+        assert_eq!(target_for_record(acted(), named()), acted(), "what happened wins");
+        assert_eq!(target_for_record(None, None), None, "list_sites names nothing");
+    }
+
+    #[tokio::test]
+    async fn a_create_that_fails_after_the_row_exists_still_names_the_site() {
+        // The case this mechanism exists for, and the one a return value would
+        // get wrong. `ActedTarget` is an out-parameter, so a handler records the
+        // site the instant the row exists and a LATER `?` cannot discard it —
+        // which is exactly what a provisioning failure after a successful insert
+        // looks like. The user can see, retry or delete that half-built site, so
+        // the feed must name it.
+        use crate::state::models::{test_site, SiteOrigin};
+
+        // Shaped like the M2 create handler: insert, record, then fail.
+        async fn create_then_fail(acted: &feed::ActedTarget) -> crate::error::Result<Value> {
+            let row = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+            acted.set(&row); // the row exists from here on
+            Err(crate::error::Error::Other("wp core download failed".into()))?;
+            unreachable!()
+        }
+
+        let acted = feed::ActedTarget::default();
+        assert!(create_then_fail(&acted).await.is_err());
+        // No `site_id` argument existed — without the out-parameter this row
+        // would name nothing at all.
+        assert_eq!(
+            target_for_record(acted.take(), None).as_deref(),
+            Some("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24"),
+            "a site that EXISTS must be named even though the call failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_create_that_fails_before_any_row_names_nothing_rather_than_guessing() {
+        // The other half of the same rule, and neither half is a guess: refused
+        // at the cap, or a bad name, or the resolver missing — nothing was
+        // created, so nothing is named. A row naming a site that does not exist
+        // would send the user looking for it.
+        async fn refuse_early(_acted: &feed::ActedTarget) -> crate::error::Result<Value> {
+            Err(crate::error::Error::Other("at the scratch-site cap (5)".into()))
+        }
+        let acted = feed::ActedTarget::default();
+        assert!(refuse_early(&acted).await.is_err());
+        assert_eq!(target_for_record(acted.take(), None), None);
+    }
+
+    #[test]
+    fn a_recorded_target_can_only_be_a_site_row_never_agent_content() {
+        // `ActedTarget::set` takes a `&Site` — a row from rexenv's OWN sites
+        // table — and reads its id. There is deliberately no constructor from a
+        // string, so an argument, a tool result, or anything else off the wire
+        // cannot reach the feed through this channel (the typed-shape discipline
+        // the feed exists to keep). This test pins the VALUE half of that: what
+        // lands is the row's id, not anything the caller chose.
+        use crate::state::models::{test_site, SiteOrigin};
+        let row = test_site("b41d7c58-2e0a-49f6-9a13-7d5c8e2f4011", "shop.rex", SiteOrigin::User);
+        let acted = feed::ActedTarget::default();
+        acted.set(&row);
+        assert_eq!(acted.take().as_deref(), Some(row.id.as_str()));
+        // And it is taken ONCE — a second read cannot re-attribute a stale
+        // target to the next call on the same session.
+        assert_eq!(acted.take(), None);
+    }
+
 }
