@@ -210,8 +210,16 @@ first:
     mutation-proven load-bearing. Audited what the shape narrows: the plan's
     §3.1c "no writes" and `mcp_socket_check`'s "writes nothing" were already
     loose (the feed writes) and are corrected — read-only scopes the HANDLER,
-    not the call. Next task = 6 (core origin gate + the `ScratchSite` witness:
-    a planted call on a user site must fail to COMPILE).
+    not the call.
+    ✓ task 6 — **`core::scratch::ScratchSite`**, ledger #208: the origin gate as
+    a witness type in core (so CLI and UI inherit it), one door (`claim`, which
+    reads the row itself), all three bypasses proven to be compile errors
+    (E0423 / E0451 / E0277) with the captured messages in the row; refusals are
+    policy statements naming site + rule + way forward, distinct for
+    not-found vs not-yours, leaking no path or db name. Documented as NOT a lock
+    — destructive writes still re-assert `origin` in their `WHERE`.
+    Next task = 7 (the M2 tool module + capability: registry union in dispatch,
+    the secret sweep walking BOTH registries, guard extended to disjointness).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

@@ -37,6 +37,7 @@ pub mod proc;
 pub mod proxy;
 pub mod redis;
 pub mod repo;
+pub mod scratch;
 pub mod service_manager;
 pub mod services;
 pub mod setup;

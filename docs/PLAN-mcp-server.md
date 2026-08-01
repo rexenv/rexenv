@@ -225,14 +225,23 @@ is not the same shape.**
   therefore live in **`mcp_server/scratch/`** with their own ctx and their own
   capability; the guard keeps passing, and keeps firing loudly if anyone ever puts
   a mutating tool back in `tools.rs`.
-- **M2's structural half is the OBJECT, not the verb.** A `ScratchSite` witness
-  newtype — the `confverify::Verified` pattern (`core/confverify.rs:34`) — whose
-  ONLY constructor loads the row and checks `origin == 'agent'`. Every scratch
-  mutator takes it, so a code path that mutates a user site does not compile. The
-  gate lives **in core, not the tool layer** (M7 style), so the CLI and the UI
-  inherit the same refusal and the tool layer is never the only thing standing
-  between an agent and the user's sites. Deletion is by record (`origin` ∧
-  `docroot_managed`) through the existing `delete_site` provenance rules.
+- **M2's structural half is the OBJECT, not the verb.** ✅ **Built 1 Aug (task 6,
+  #208):** `core::scratch::ScratchSite`, the `confverify::Verified` pattern —
+  private field (module-private, not `pub(crate)`), no `From`, no other
+  constructor, and the one door (`claim`) reads the row ITSELF so no caller can
+  pass a `Site` it built or edited in memory. All three bypasses are compile
+  errors, captured: E0423, E0451, E0277. The gate lives **in core, not the tool
+  layer** (M7 style), so the CLI and the UI inherit the same refusal. Deletion is
+  by record (`origin` ∧ `docroot_managed`) through the existing `delete_site`
+  provenance rules.
+  - **Refusals are policy statements, not type errors.** An agent reads them, so
+    they name the site, the rule and the way forward — and "there is no such
+    site" is kept distinct from "that one is yours", because those send an agent
+    to different next steps. No path, no database name.
+  - **The witness is not a lock, and the doc says so.** It proves the path was
+    gated when claimed; `origin` can change a moment later (Keep). Destructive
+    writes therefore re-assert `origin = 'agent'` in their own `WHERE` — the same
+    pairing as the TTL touch. A one-time check on a mutable fact is a snapshot.
 - **What is NOT structural, said plainly: nothing constrains the code that runs
   inside a scratch site.** Once a plugin activates, the only things left are the
   tier gate (the dangerous verbs are not tools), the disclosure, and the feed —
