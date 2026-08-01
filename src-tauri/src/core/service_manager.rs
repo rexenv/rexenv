@@ -2723,7 +2723,7 @@ mod tests {
 
     #[test]
     fn site_serving_reflects_each_sites_own_upstream() {
-        use crate::state::models::{MultisiteMode, ServiceStatus, SiteType};
+        use crate::state::models::{MultisiteMode, ServiceStatus, SiteOrigin, SiteType};
         use std::collections::HashMap;
 
         let si = |name: &str, port: u16, running: bool| ServiceInfo {
@@ -2754,6 +2754,9 @@ mod tests {
             db_created: None,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         };
 
         let sites = vec![

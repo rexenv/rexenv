@@ -282,7 +282,7 @@ pub fn wp_debug_log_download(docroot: &Path, content_rel: &str, domain: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteType, WebServer};
+    use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteOrigin, SiteType, WebServer};
 
     fn site(server: WebServer) -> Site {
         Site {
@@ -306,6 +306,9 @@ mod tests {
             db_created: None,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         }
     }
 

@@ -934,7 +934,9 @@ pub async fn delete_site(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteDbEngine, SiteType, WebServer};
+    use crate::state::models::{
+        MultisiteMode, ServiceStatus, Site, SiteDbEngine, SiteOrigin, SiteType, WebServer,
+    };
 
     fn site(docroot_managed: Option<bool>, db_created: Option<bool>) -> Site {
         Site {
@@ -958,6 +960,9 @@ mod tests {
             db_created,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         }
     }
 

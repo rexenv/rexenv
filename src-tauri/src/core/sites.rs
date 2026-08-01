@@ -8,7 +8,9 @@
 use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use crate::state::models::{MultisiteMode, NewSite, ServiceStatus, Site, SiteType, WebServer};
+use crate::state::models::{
+    MultisiteMode, NewSite, ServiceStatus, Site, SiteOrigin, SiteType, WebServer,
+};
 use crate::state::store;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
@@ -412,6 +414,13 @@ fn create_recording_ownership(
         content_dir,
         // No mu-plugins dir has been created by us at insert time (v25).
         mu_dir_created: None,
+        // v27: this is THE human create path, so the site is the user's. The
+        // agent path records `Agent` at ITS own insert (M2a) — deliberately a
+        // separate entry point rather than a bool on this one, so no caller can
+        // pass the wrong flag and no later code has to ask which mode it's in.
+        origin: SiteOrigin::User,
+        agent_client: None,
+        expires_at: None,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -1885,6 +1894,9 @@ mod tests {
             db_created: None,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         }
     }
 
@@ -2132,6 +2144,9 @@ mod tests {
             db_created: None,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         }
     }
 

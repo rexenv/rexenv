@@ -8,7 +8,7 @@
 use rexenv_lib::cli_server;
 use rexenv_lib::state::app::AppState;
 use rexenv_lib::state::models::{
-    MultisiteMode, ServiceStatus, Site, SiteDbEngine, SiteType, WebServer,
+    MultisiteMode, ServiceStatus, Site, SiteDbEngine, SiteOrigin, SiteType, WebServer,
 };
 use serde_json::{json, Value};
 use std::path::Path;
@@ -74,6 +74,9 @@ async fn main() {
             db_created: None,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         },
     )
     .expect("insert site row");

@@ -738,7 +738,7 @@ mod tests {
     }
 
     fn site(ws: WebServer) -> Site {
-        use crate::state::models::{MultisiteMode, ServiceStatus, SiteType};
+        use crate::state::models::{MultisiteMode, ServiceStatus, SiteOrigin, SiteType};
         Site {
             id: "s.test".into(),
             name: "s.test".into(),
@@ -760,6 +760,9 @@ mod tests {
             db_created: None,
             content_dir: None,
             mu_dir_created: None,
+            origin: SiteOrigin::User,
+            agent_client: None,
+            expires_at: None,
         }
     }
 

@@ -326,6 +326,34 @@ const MIGRATIONS: &[&str] = &[
         target_site TEXT, \
         outcome TEXT NOT NULL, \
         detail TEXT);",
+    // v27 — MCP M2a: who a site BELONGS to, and when a disposable one dies.
+    //
+    // `origin` is the tier boundary itself (PLAN §3.2/§4.1): an agent may only
+    // mutate or delete a site recorded as its own. Recorded at insert, NEVER
+    // derived — not from the `.scratch.rex` name (a user who hand-creates one
+    // owns a normal site the reaper must never touch), not from the path.
+    //
+    // NOT NULL DEFAULT 'user' is a default that is CORRECT, not merely
+    // convenient, and that is why it differs from v17/v19/v24's deliberate
+    // nullability. Those columns were nullable because the fact was UNKNOWN for
+    // existing rows and a guess written to disk would outlive its excuse. Here
+    // the fact is known with certainty: no code path could have written 'agent'
+    // before this migration exists, so every pre-v27 row IS the user's. The
+    // default records that fact rather than guessing at it — and it also happens
+    // to be the conservative direction (a 'user' row is never reaped).
+    //
+    // `agent_client` is the MCP client's SELF-REPORTED name from `initialize` —
+    // the one agent-controlled value on this table. Display-only, length-capped
+    // at write, and nothing branches on it (`Site::reap_due` ignores it, pinned
+    // by a test): the feed's `client` column discipline, mirrored.
+    //
+    // `expires_at` is nullable and NULL means NEVER — the shape a user site and
+    // a KEPT scratch site share, so the reaper's predicate treats them
+    // identically by construction rather than by remembering to. Keep clears it;
+    // nothing recomputes an expiry from `created_at`.
+    "ALTER TABLE sites ADD COLUMN origin TEXT NOT NULL DEFAULT 'user';\
+     ALTER TABLE sites ADD COLUMN agent_client TEXT;\
+     ALTER TABLE sites ADD COLUMN expires_at TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -399,6 +427,7 @@ fn migrate_with(conn: &Connection, migrations: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::models::SiteOrigin;
 
     /// Build an in-memory db with migrations applied (no filesystem needed).
     fn memory_db() -> Connection {
@@ -889,6 +918,46 @@ mod tests {
         assert!(store::try_claim_tunnel(&conn, "a.rex", 444, "/sites/a").unwrap());
         store::clear_tunnels(&conn).unwrap();
         assert!(store::list_tunnels(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn v27_every_existing_site_migrates_to_the_users_own_and_never_expires() {
+        // The upgrade path IS the assertion for v27 (the v17/v19/v24 shape:
+        // build at the prior version, insert the OLD way, migrate, read back).
+        //
+        // Unlike those columns, v27's `origin` is NOT NULL DEFAULT 'user' — and
+        // that is a default which is CORRECT rather than convenient. v17/v19/v24
+        // were nullable because the fact was genuinely unknown for existing rows
+        // and a guess on disk outlives its excuse. Here nothing could have
+        // written 'agent' before this migration existed, so every pre-v27 row IS
+        // the user's; the default records a known fact. It is also the
+        // conservative direction — this test proves an untouched site cannot
+        // come out of the upgrade looking reapable.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..26].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        // A row inserted the pre-v27 way, in production shape (a real UUID id,
+        // an absolute app-data docroot) — a friendlier fixture would hide a
+        // column-order slip in `SITE_COLUMNS`.
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path, docroot_managed)
+             VALUES ('7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30','Shop','shop.rex','wordpress','8.3',
+                     '/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/shop.rex', 1)",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        use crate::state::store;
+        let site = store::get_site(&conn, "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30").unwrap().unwrap();
+        assert_eq!(site.origin, SiteOrigin::User, "an existing site is the USER's");
+        assert!(!site.is_scratch());
+        assert_eq!(site.expires_at, None, "no expiry — NULL means never");
+        assert_eq!(site.agent_client, None);
+        // The point of all three: the reaper cannot touch it, at any clock.
+        assert!(!site.reap_due("2099-01-01 00:00:00"));
     }
 
     #[test]

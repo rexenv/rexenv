@@ -182,7 +182,13 @@ first:
     claims by omission (the sweep walks ONE registry; `target_site` is unfillable
     for a create).
   - [ ] **M2a — the scratch-site scenario**, 14 tasks in `PLAN §7.3`, one commit
-    each, ledger from #204. Next task = 2 (v27 migration).
+    each. ✓ task 2 — **v27** (`origin` / `agent_client` / `expires_at`), ledger
+    #204: origin recorded not derived + read conservatively (anything ≠ "agent"
+    is the user's), `expires_at` NULL = never so a user site and a Kept scratch
+    site are indistinguishable to `Site::reap_due` (the ONE expression of the
+    predicate), `agent_client` capped at the write and never branched on.
+    Upgrade-path test proven to fail on a `DEFAULT 'agent'`. Next task = 3 (v28
+    `agent_actions.actor`).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

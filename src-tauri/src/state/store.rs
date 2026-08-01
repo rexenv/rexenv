@@ -10,7 +10,7 @@
 use crate::error::{Error, Result};
 use crate::state::models::{
     Blueprint, BlueprintSpec, GitAsset, MultisiteMode, PhpVersion, ServiceStatus, Site,
-    SiteDbEngine, SiteType, WebServer,
+    SiteDbEngine, SiteOrigin, SiteType, WebServer,
 };
 use rusqlite::{params, Connection, Row};
 
@@ -18,7 +18,22 @@ use rusqlite::{params, Connection, Row};
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
-     docroot_managed, db_created, content_dir, mu_dir_created";
+     docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at";
+
+/// Bound on the AGENT-controlled `agent_client` (v27). It arrives from MCP
+/// `initialize`'s `clientInfo.name`, bounded only by the session's 4 MB line
+/// cap, so it is capped where it is WRITTEN — the same discipline (and the same
+/// bound) as the activity feed's agent-controlled fields.
+const AGENT_CLIENT_MAX: usize = 200;
+
+/// Truncate an agent-supplied client name to [`AGENT_CLIENT_MAX`], on a char
+/// boundary (the value is arbitrary UTF-8 off the wire).
+fn cap_agent_client(v: Option<&str>) -> Option<String> {
+    v.map(|s| match s.char_indices().nth(AGENT_CLIENT_MAX) {
+        Some((cut, _)) => s[..cut].to_string(),
+        None => s.to_string(),
+    })
+}
 
 /// Map a row (selecting `SITE_COLUMNS`) into a `Site`.
 fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
@@ -59,6 +74,14 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         content_dir: row.get(18)?,
         // Nullable by design (v25): NULL = the mu-plugins dir is not ours.
         mu_dir_created: row.get::<_, Option<i64>>(19)?.map(|v| v != 0),
+        // v27. NOT NULL in the schema, and read leniently anyway: anything but
+        // "agent" is the user's site (`SiteOrigin::parse_db`) — one bad cell must
+        // not fail the sites list, and it must never fail toward "reapable".
+        origin: SiteOrigin::parse_db(&row.get::<_, String>(20)?),
+        // v27: agent-asserted, display-only (capped at write).
+        agent_client: row.get(21)?,
+        // v27: NULL = never expires (a user site, or a Kept scratch site).
+        expires_at: row.get(22)?,
     })
 }
 
@@ -72,8 +95,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
         params![
             site.id,
             site.name,
@@ -95,6 +118,11 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.db_created.map(|c| c as i64),
             site.content_dir,
             site.mu_dir_created.map(|c| c as i64),
+            site.origin.as_db(),
+            // Capped HERE, at the write — the one agent-controlled value on the
+            // row never reaches disk unbounded, whatever built the `Site`.
+            cap_agent_client(site.agent_client.as_deref()),
+            site.expires_at,
         ],
     )?;
     Ok(())
@@ -1154,4 +1182,81 @@ pub fn upsert_blueprint(conn: &Connection, bp: &Blueprint) -> Result<()> {
 pub fn delete_blueprint(conn: &Connection, id: &str) -> Result<bool> {
     let affected = conn.execute("DELETE FROM blueprints WHERE id = ?1", [id])?;
     Ok(affected > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::db;
+
+    /// A scratch row in production shape (UUID id, absolute app-data docroot,
+    /// a real `datetime('now')`-style expiry).
+    fn scratch(agent_client: Option<&str>) -> Site {
+        Site {
+            id: "b41d7c58-2e0a-49f6-9a13-7d5c8e2f4011".into(),
+            name: "probe".into(),
+            domain: "probe.scratch.rex".into(),
+            site_type: SiteType::Wordpress,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: WebServer::Nginx,
+            ssl: true,
+            path: "/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/probe.scratch.rex"
+                .into(),
+            created_at: "2026-08-01 09:00:00".into(),
+            multisite: MultisiteMode::None,
+            db_name: "wp_probe_scratch".into(),
+            db_engine: SiteDbEngine::Mysql,
+            xdebug: false,
+            override_port: None,
+            provisioned: true,
+            docroot_managed: Some(true),
+            db_created: None,
+            content_dir: None,
+            mu_dir_created: None,
+            origin: SiteOrigin::Agent,
+            agent_client: agent_client.map(str::to_string),
+            expires_at: Some("2026-08-02 09:00:00".into()),
+        }
+    }
+
+    #[test]
+    fn v27_fields_round_trip_through_the_row_mapping() {
+        // Guards the column-order coupling between SITE_COLUMNS, row_to_site's
+        // indices and insert_site's params — three lists that must agree and
+        // that nothing else would catch until a site read back wrong.
+        let conn = db::open_in_memory().unwrap();
+        let site = scratch(Some("Claude Code"));
+        insert_site(&conn, &site).unwrap();
+        let back = get_site(&conn, &site.id).unwrap().unwrap();
+        assert_eq!(back.origin, SiteOrigin::Agent);
+        assert!(back.is_scratch());
+        assert_eq!(back.agent_client.as_deref(), Some("Claude Code"));
+        assert_eq!(back.expires_at.as_deref(), Some("2026-08-02 09:00:00"));
+        // The neighbours still land where they belong.
+        assert_eq!(back.domain, "probe.scratch.rex");
+        assert_eq!(back.docroot_managed, Some(true));
+        assert_eq!(back.mu_dir_created, None);
+    }
+
+    #[test]
+    fn the_agent_asserted_client_name_is_capped_at_the_write() {
+        // `agent_client` comes off the wire (`clientInfo.name`) bounded only by
+        // the session's 4 MB line cap, so an agent could otherwise drive
+        // megabytes per site row into the app database. Capped HERE — at the
+        // write — so it holds whatever built the `Site`, not only the MCP path.
+        let conn = db::open_in_memory().unwrap();
+        let huge = "A".repeat(10_000);
+        insert_site(&conn, &scratch(Some(&huge))).unwrap();
+        let back = get_site(&conn, "b41d7c58-2e0a-49f6-9a13-7d5c8e2f4011").unwrap().unwrap();
+        assert_eq!(back.agent_client.as_ref().unwrap().chars().count(), AGENT_CLIENT_MAX);
+
+        // Multi-byte input truncates on a char boundary rather than panicking
+        // (the value is arbitrary UTF-8 an agent chose).
+        let conn2 = db::open_in_memory().unwrap();
+        let emoji = "🦀".repeat(1_000);
+        insert_site(&conn2, &scratch(Some(&emoji))).unwrap();
+        let back2 = get_site(&conn2, "b41d7c58-2e0a-49f6-9a13-7d5c8e2f4011").unwrap().unwrap();
+        assert_eq!(back2.agent_client.as_ref().unwrap().chars().count(), AGENT_CLIENT_MAX);
+    }
 }

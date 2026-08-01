@@ -42,7 +42,23 @@ export interface Site {
    *  so it is never dropped; `null` = created by rexenv's own provisioning (or
    *  no database at all). Optional so payloads written before v19 still parse. */
   dbCreated?: boolean | null;
+  /** Who this site belongs to (v27, mirrors the Rust SiteOrigin). `"agent"` =
+   *  a disposable scratch site an AI agent created through the MCP server;
+   *  anything else — including absent — is the user's own site. Optional and
+   *  defaulting to the user's for the same reason the Rust side parses
+   *  leniently: only `"agent"` may ever mean disposable. */
+  origin?: SiteOrigin;
+  /** The MCP client's SELF-REPORTED name (v27) — the scratch card's badge.
+   *  Display ONLY: it is agent-controlled, so nothing may branch on it. */
+  agentClient?: string | null;
+  /** When a scratch site expires (v27). **`null`/absent means never** — the
+   *  shape a user site and a Kept scratch site share, so nothing can treat
+   *  "no expiry" as two different states. */
+  expiresAt?: string | null;
 }
+
+/** Who a site belongs to (mirrors the Rust SiteOrigin). */
+export type SiteOrigin = "user" | "agent";
 
 /** SQL engine backing a site's database (mirrors the Rust SiteDbEngine). */
 export type SiteDbEngine = "mysql" | "mariadb";

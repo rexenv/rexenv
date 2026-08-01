@@ -71,6 +71,41 @@ str_enum!(
     }
 );
 
+/// Who a site belongs to (v27) — the MCP tier boundary itself: an agent may
+/// only mutate or delete a site recorded as `Agent`.
+///
+/// Deliberately NOT a `str_enum!`: those return an error for an unrecognised
+/// stored value, which here would take out the whole sites list over one bad
+/// cell. The safe read is the conservative one — **anything that is not exactly
+/// `"agent"` is the user's site** — because the failure it protects against is
+/// asymmetric: reading a scratch site as the user's leaks some disk until they
+/// delete it, while reading a user's site as scratch feeds it to the reaper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SiteOrigin {
+    User,
+    Agent,
+}
+
+impl SiteOrigin {
+    /// The canonical string used for both JSON and the SQLite TEXT column.
+    pub fn as_db(&self) -> &'static str {
+        match self {
+            SiteOrigin::User => "user",
+            SiteOrigin::Agent => "agent",
+        }
+    }
+
+    /// Read a stored value. Never fails: anything but `"agent"` reads as the
+    /// user's (see the type doc for why that asymmetry is deliberate).
+    pub fn parse_db(s: &str) -> Self {
+        match s {
+            "agent" => SiteOrigin::Agent,
+            _ => SiteOrigin::User,
+        }
+    }
+}
+
 /// A local site as persisted in SQLite and sent to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -155,6 +190,22 @@ pub struct Site {
     /// `None` = not ours / unknown — emptiness alone never makes it deletable.
     #[serde(default)]
     pub mu_dir_created: Option<bool>,
+    /// Who this site belongs to (v27). Recorded at insert, never derived from
+    /// the domain or the path; only user action moves `Agent` → `User` (Keep,
+    /// or any user-initiated mutation), and nothing moves it the other way.
+    #[serde(default = "default_origin_user")]
+    pub origin: SiteOrigin,
+    /// The MCP client's SELF-REPORTED name (v27), for the scratch card's badge.
+    /// **Display-only and agent-controlled** — length-capped at write, and
+    /// nothing branches on it (see [`Site::reap_due`]).
+    #[serde(default)]
+    pub agent_client: Option<String>,
+    /// When a disposable site expires (v27, RFC-3339-ish `datetime('now')`
+    /// text). **`None` means NEVER** — the shape a user site and a KEPT scratch
+    /// site share, so [`Site::reap_due`] cannot treat them differently. Keep
+    /// clears it; nothing recomputes it from `created_at`.
+    #[serde(default)]
+    pub expires_at: Option<String>,
 }
 
 impl Site {
@@ -163,6 +214,40 @@ impl Site {
     pub fn content_dir_rel(&self) -> &str {
         self.content_dir.as_deref().unwrap_or("wp-content")
     }
+
+    /// Is this a site an agent owns — the ONE question the tier boundary asks.
+    pub fn is_scratch(&self) -> bool {
+        self.origin == SiteOrigin::Agent
+    }
+
+    /// May the reaper delete this site right now, at `now` (the `datetime('now')`
+    /// text format)? **The single place the reap predicate is expressed**, so
+    /// "does NULL mean never here too?" has exactly one answer instead of one
+    /// per call site.
+    ///
+    /// Every clause is a recorded fact, and each says no on its own:
+    /// - `origin == Agent` — the user's sites are not the reaper's business,
+    ///   including one the user hand-named `foo.scratch.rex`;
+    /// - `expires_at` is `Some` AND in the past — **`None` is never**, which is
+    ///   what a Kept scratch site looks like after Keep clears it (a stale
+    ///   expiry left on a Kept row would be a reap waiting to happen, so Keep
+    ///   clears the value rather than flipping a second flag);
+    /// - `docroot_managed == Some(true)` — deletion touches a docroot, so it
+    ///   happens only where we RECORDED making one. `None` (a pre-v17 row) is
+    ///   not good enough for an unattended delete, even though the interactive
+    ///   delete path tolerates it.
+    ///
+    /// `agent_client` is deliberately absent: it is the one agent-controlled
+    /// value on the row, and nothing that decides a deletion may read it.
+    pub fn reap_due(&self, now: &str) -> bool {
+        self.is_scratch()
+            && self.docroot_managed == Some(true)
+            && self.expires_at.as_deref().is_some_and(|e| e < now)
+    }
+}
+
+fn default_origin_user() -> SiteOrigin {
+    SiteOrigin::User
 }
 
 fn default_true() -> bool {
@@ -284,4 +369,112 @@ pub struct NewSite {
 
 fn db_engine_mysql() -> SiteDbEngine {
     SiteDbEngine::Mysql
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A site in PRODUCTION shape (UUID id, absolute app-data docroot) — a
+    /// friendlier fixture would let a wrong field read as right.
+    fn site(origin: SiteOrigin, expires_at: Option<&str>, docroot_managed: Option<bool>) -> Site {
+        Site {
+            id: "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30".into(),
+            name: "Shop".into(),
+            domain: "shop.scratch.rex".into(),
+            site_type: SiteType::Wordpress,
+            status: ServiceStatus::Stopped,
+            php_version: "8.3".into(),
+            web_server: WebServer::Nginx,
+            ssl: true,
+            path: "/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/shop.scratch.rex"
+                .into(),
+            created_at: "2026-08-01 09:00:00".into(),
+            multisite: MultisiteMode::None,
+            db_name: "wp_shop_scratch".into(),
+            db_engine: SiteDbEngine::Mysql,
+            xdebug: false,
+            override_port: None,
+            provisioned: true,
+            docroot_managed,
+            db_created: None,
+            content_dir: None,
+            mu_dir_created: None,
+            origin,
+            agent_client: None,
+            expires_at: expires_at.map(str::to_string),
+        }
+    }
+
+    const NOW: &str = "2026-08-01 12:00:00";
+    const PAST: &str = "2026-08-01 11:00:00";
+    const FUTURE: &str = "2026-08-01 13:00:00";
+
+    #[test]
+    fn a_stored_origin_that_isnt_exactly_agent_reads_as_the_users_site() {
+        assert_eq!(SiteOrigin::parse_db("agent"), SiteOrigin::Agent);
+        assert_eq!(SiteOrigin::parse_db("user"), SiteOrigin::User);
+        // Anything else — junk, a future value, an empty cell — reads as the
+        // user's. Erroring here would fail the whole sites list over one cell;
+        // reading it as scratch would feed a real site to the reaper. Only one
+        // of those two failure modes is survivable.
+        for odd in ["", "AGENT", " agent", "robot", "üser"] {
+            assert_eq!(SiteOrigin::parse_db(odd), SiteOrigin::User, "{odd:?}");
+        }
+    }
+
+    #[test]
+    fn null_expiry_means_never_for_a_user_site_and_a_kept_scratch_site_alike() {
+        // The two rows that carry no expiry must be indistinguishable to the
+        // reaper — this is the whole reason Keep CLEARS `expires_at` instead of
+        // setting a second flag beside a stale one.
+        let user = site(SiteOrigin::User, None, Some(true));
+        let kept = site(SiteOrigin::Agent, None, Some(true)); // Keep cleared it
+        assert!(!user.reap_due(NOW));
+        assert!(!kept.reap_due(NOW), "a Kept scratch site never expires");
+        assert!(!user.reap_due("2099-01-01 00:00:00"));
+        assert!(!kept.reap_due("2099-01-01 00:00:00"));
+    }
+
+    #[test]
+    fn reap_is_due_only_for_an_expired_agent_site_whose_docroot_we_recorded_making() {
+        // The one true case.
+        assert!(site(SiteOrigin::Agent, Some(PAST), Some(true)).reap_due(NOW));
+        // Every clause says no on its own.
+        assert!(!site(SiteOrigin::Agent, Some(FUTURE), Some(true)).reap_due(NOW), "not yet expired");
+        assert!(
+            !site(SiteOrigin::User, Some(PAST), Some(true)).reap_due(NOW),
+            "a USER site with a stale expiry is still not the reaper's business — including one \
+             the user hand-named *.scratch.rex"
+        );
+        assert!(
+            !site(SiteOrigin::Agent, Some(PAST), Some(false)).reap_due(NOW),
+            "a docroot we do not own is never deleted unattended"
+        );
+        assert!(
+            !site(SiteOrigin::Agent, Some(PAST), None).reap_due(NOW),
+            "NULL docroot_managed (pre-v17) is not good enough for an UNATTENDED delete, even \
+             though the interactive delete path tolerates it"
+        );
+        // Boundary: expiry exactly now has not passed.
+        assert!(!site(SiteOrigin::Agent, Some(NOW), Some(true)).reap_due(NOW));
+    }
+
+    #[test]
+    fn nothing_about_a_deletion_reads_the_agent_asserted_client_name() {
+        // `agent_client` is the ONE agent-controlled value on the row. It is
+        // display-only, and the place where branching on it would actually hurt
+        // is the predicate that deletes things — so pin it there: two sites
+        // differing ONLY in that field must reap identically, whatever it says.
+        let mut plain = site(SiteOrigin::Agent, Some(PAST), Some(true));
+        let mut hostile = plain.clone();
+        plain.agent_client = Some("Claude Code".into());
+        hostile.agent_client = Some("' OR origin='user".into());
+        assert_eq!(plain.reap_due(NOW), hostile.reap_due(NOW));
+        assert!(hostile.reap_due(NOW));
+        // And a user site stays untouchable no matter what it claims to be.
+        let mut user = site(SiteOrigin::User, Some(PAST), Some(true));
+        user.agent_client = Some("Claude Code".into());
+        assert!(!user.reap_due(NOW));
+    }
 }
