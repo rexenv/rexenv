@@ -10,7 +10,7 @@
 use crate::error::{Error, Result};
 use crate::state::models::{
     Blueprint, BlueprintSpec, GitAsset, MultisiteMode, PhpVersion, ServiceStatus, Site,
-    SiteDbEngine, SiteOrigin, SiteType, WebServer,
+    ScratchPackage, SiteDbEngine, SiteOrigin, SiteType, WebServer,
 };
 use rusqlite::{params, Connection, Row};
 
@@ -526,6 +526,29 @@ pub fn keep_site(conn: &Connection, id: &str) -> Result<bool> {
         params![id],
     )?;
     Ok(affected > 0)
+}
+
+/// The plugins/themes an agent has cloned into a scratch site (v29), newest
+/// sync first. An empty vec is a real answer — "nothing was added" — not a
+/// missing one.
+pub fn scratch_packages(conn: &Connection, site_id: &str) -> Result<Vec<ScratchPackage>> {
+    let mut stmt = conn.prepare(
+        "SELECT site_id, slug, kind, source_path, synced_at, fingerprint FROM scratch_packages \
+         WHERE site_id = ?1 ORDER BY synced_at DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![site_id], |r| {
+            Ok(ScratchPackage {
+                site_id: r.get(0)?,
+                slug: r.get(1)?,
+                kind: r.get(2)?,
+                source_path: r.get(3)?,
+                synced_at: r.get(4)?,
+                fingerprint: r.get(5)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 /// The database's timestamp `hours` from now, in the same format as

@@ -106,6 +106,28 @@ impl SiteOrigin {
     }
 }
 
+/// A plugin or theme an agent CLONED into a scratch site (v29, S1).
+///
+/// The clone is why this is recorded rather than derived: the scratch site runs
+/// a SNAPSHOT of the source, so "where did this come from" and "when was it last
+/// taken" are facts only the add/sync act knows. `kind` is read from the
+/// source's own header before the clone — never a parameter an agent asserts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScratchPackage {
+    pub site_id: String,
+    pub slug: String,
+    /// `plugin` or `theme`, DERIVED from the source's header.
+    pub kind: String,
+    /// Recorded at add time, never re-derived — a sync can only re-read where
+    /// the clone came from.
+    pub source_path: String,
+    pub synced_at: String,
+    /// Stat-only summary of the source tree at sync time. A difference means it
+    /// CHANGED; sameness is a strong hint, not a proof.
+    pub fingerprint: String,
+}
+
 /// A local site as persisted in SQLite and sent to the UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

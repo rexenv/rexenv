@@ -374,6 +374,29 @@ const MIGRATIONS: &[&str] = &[
     // accountability record — and it is also the right forward-compatible read,
     // since a future actor value ('user', say) is by definition not the agent.
     "ALTER TABLE agent_actions ADD COLUMN actor TEXT NOT NULL DEFAULT 'agent';",
+    // v29 — a plugin/theme an agent CLONED into a scratch site (MCP M2a, S1).
+    //
+    // A new table, so unlike v27/v28 there is no existing-row question: it is
+    // born empty by construction. What IS true of existing rows elsewhere: the
+    // scratch sites created before this migration have zero package rows, and
+    // that reads as "nothing was added to this site" — a real answer, not an
+    // unknown, because the tool that adds one did not exist when they were made.
+    //
+    // `kind` is DERIVED from the source's own header before the clone, never a
+    // parameter an agent asserts. `source_path` is RECORDED at add time and
+    // never re-derived, so a sync can only ever re-read where the clone came
+    // from. `fingerprint` is a stat-only summary of the source tree (max mtime,
+    // file count, total bytes) — it detects a change reliably; its absence is a
+    // strong hint, not a proof, which is why the copy says "no changes detected
+    // since" rather than "unchanged".
+    "CREATE TABLE scratch_packages (\
+        site_id     TEXT NOT NULL, \
+        slug        TEXT NOT NULL, \
+        kind        TEXT NOT NULL, \
+        source_path TEXT NOT NULL, \
+        synced_at   TEXT NOT NULL, \
+        fingerprint TEXT NOT NULL, \
+        PRIMARY KEY (site_id, slug));",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1009,6 +1032,35 @@ mod tests {
         assert_eq!(rows[0].client, "Claude Code");
         // And it still drives the status line, exactly as it did before v28.
         assert!(feed::recent_head(&conn, 15).unwrap().is_some());
+    }
+
+    #[test]
+    fn v29_is_born_empty_and_an_existing_scratch_site_has_no_packages() {
+        // A CREATE TABLE, so there is no existing-row migration question — but
+        // the adjacent fact IS worth proving: scratch sites created before v29
+        // (scratch_create_site shipped first) come out with zero package rows,
+        // and that is a real answer — "nothing was added" — not an unknown. The
+        // tool that adds one did not exist when they were made.
+        use crate::state::models::SiteOrigin;
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..28].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        let mut scratch = crate::state::models::test_site(
+            "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24",
+            "probe.scratch.rex",
+            SiteOrigin::Agent,
+        );
+        scratch.expires_at = Some("2099-01-01 00:00:00".into());
+        crate::state::store::insert_site(&conn, &scratch).unwrap();
+        migrate(&conn).unwrap();
+
+        let packages = crate::state::store::scratch_packages(&conn, &scratch.id).unwrap();
+        assert!(packages.is_empty(), "an existing scratch site has no packages — and that is an answer");
+        // The site itself is untouched by the migration.
+        let after = crate::state::store::get_site(&conn, &scratch.id).unwrap().unwrap();
+        assert!(after.is_scratch() && after.expires_at.is_some());
     }
 
     #[test]

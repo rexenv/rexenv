@@ -271,8 +271,13 @@ first:
     `record_reap`. Wired to launch + hourly WITH the
     approved summary (names the domains, silent on a quiet launch). Remaining ◐:
     the skip-don't-stop and delete legs need a live tunnel + real site (L1,
-    task 14). Next = 11–14 (`scratch_add_package`/`sync`, `wp_run`, the Sites UI
-    incl. the Keep dialog + the reap banner, then the L1 example + SMOKE gate).
+    task 14). ◐ task 11 — **v29 `scratch_packages`** landed (new table, born empty;
+    proven that a scratch site created before it reads as "no packages added" —
+    a real answer, not an unknown). Remaining in 11: the header-then-clone
+    ordering with the ambiguous-header refusal, the byte-identical source test in
+    BOTH directions, and the stat-only fingerprint (copy: "no changes detected
+    since", never "unchanged"). Then 12 (`wp_run`), 13 (Sites UI incl. the Keep
+    dialog + the reap banner + last-synced), 14 (L1 + SMOKE gate).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
