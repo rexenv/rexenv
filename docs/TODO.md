@@ -275,10 +275,13 @@ first:
     proven that a scratch site created before it reads as "no packages added" —
     a real answer, not an unknown). ✓ the MECHANISM (ledger #216):
     header-derived kind refusing both/neither, clone_tree proven byte-identical
-    in BOTH directions, stat-only fingerprint with its limit recorded. Remaining
-    in 11: the two TOOLS (`scratch_add_package`/`scratch_sync_package`) wiring
-    blast-radius validation + the v29 row + the "no changes detected since" copy,
-    and the `cp -c` platform-trait optimisation (speed only). Then 12 (`wp_run`), 13 (Sites UI incl. the Keep
+    in BOTH directions, stat-only fingerprint with its limit recorded. ✓ the two TOOLS
+    (ledger #217): claim → blast-radius → header → clone, sync re-reads only the
+    RECORDED source, destination follows the recorded content dir, and the sync
+    copy never claims "unchanged". **Task 11 done.** Deferred from it: the
+    `cp -c` platform-trait optimisation (speed only, behaviour already proven).
+    Next = 12 (`wp_run`), 13 (Sites UI: Agent-scratch group, Keep dialog, reap
+    banner, last-synced), 14 (L1 `mcp_scratch_check` + SMOKE gate). Then 12 (`wp_run`), 13 (Sites UI incl. the Keep
     dialog + the reap banner + last-synced), 14 (L1 + SMOKE gate).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 

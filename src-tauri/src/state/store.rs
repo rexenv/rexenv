@@ -528,6 +528,25 @@ pub fn keep_site(conn: &Connection, id: &str) -> Result<bool> {
     Ok(affected > 0)
 }
 
+/// Record (or re-record) a cloned package. The source path is written ONCE at
+/// add and never changed by a sync — a sync may only re-read where the clone
+/// came from.
+pub fn upsert_scratch_package(conn: &Connection, p: &ScratchPackage) -> Result<()> {
+    conn.execute(
+        "INSERT INTO scratch_packages (site_id, slug, kind, source_path, synced_at, fingerprint) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+         ON CONFLICT(site_id, slug) DO UPDATE SET synced_at = excluded.synced_at, \
+         fingerprint = excluded.fingerprint",
+        params![p.site_id, p.slug, p.kind, p.source_path, p.synced_at, p.fingerprint],
+    )?;
+    Ok(())
+}
+
+/// One recorded package by slug.
+pub fn scratch_package(conn: &Connection, site_id: &str, slug: &str) -> Result<Option<ScratchPackage>> {
+    Ok(scratch_packages(conn, site_id)?.into_iter().find(|p| p.slug == slug))
+}
+
 /// The plugins/themes an agent has cloned into a scratch site (v29), newest
 /// sync first. An empty vec is a real answer — "nothing was added" — not a
 /// missing one.

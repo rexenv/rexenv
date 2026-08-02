@@ -87,6 +87,41 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     }),
     sweep_args: |id| json!({ "site_id": id }),
     handler: delete_site,
+}, ScratchTool {
+    name: "scratch_add_package",
+    description: "Copy a plugin or theme you are developing into a scratch site so it can be \
+                  tested. Takes `site_id` and `source` (the directory holding the plugin's main \
+                  PHP file or the theme's style.css). rexenv works out which it is from the \
+                  source's own header. **It is COPIED, not linked**: nothing the site does can \
+                  write back to the source, and the site runs the code as of this moment — call \
+                  scratch_sync_package after you change it.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "source": { "type": "string", "description": "Absolute path to the plugin/theme directory." }
+        },
+        "required": ["site_id", "source"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id, "source": "/tmp/rexenv-sweep-probe" }),
+    handler: add_package,
+}, ScratchTool {
+    name: "scratch_sync_package",
+    description: "Re-copy a plugin or theme into the scratch site from where it was added, so \
+                  the site runs your latest code. Takes `site_id` and `slug`. The site runs a \
+                  SNAPSHOT — call this after every change you want the site to see.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "slug": { "type": "string", "description": "The package's folder name (from scratch_add_package)." }
+        },
+        "required": ["site_id", "slug"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id, "slug": "sweep-probe" }),
+    handler: sync_package,
 }];
 
 fn create_params() -> Value {
@@ -269,6 +304,10 @@ impl<'a> ScratchCtx<'a> {
         let read = super::readctx::ReadCtx::new(self.state);
         let signals = read.probe_serving(site).await;
         super::view::AgentSiteStatus::from_signals(site, &signals)
+    }
+
+    fn platform(&self) -> &dyn crate::platform::traits::Platform {
+        self.state.platform.as_ref()
     }
 
     fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -623,5 +662,170 @@ mod tests {
         assert!(record_reap(&conn, id, Outcome::Ok, None).unwrap());
         assert!(record_reap(&conn, id, Outcome::Ok, None).unwrap(), "a reap is never deduped away");
         assert_eq!(last_reap(&conn, id).unwrap().unwrap().0, Outcome::Ok);
+    }
+    #[test]
+    fn a_package_lands_in_the_sites_recorded_content_dir_by_kind() {
+        // The destination follows the site's RECORDED content dir (Bedrock's
+        // `app/`, Radicle's `content/`), not a hardcoded wp-content — writing to
+        // a dead wp-content would silently install nothing.
+        let mut site = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        assert!(package_dest(&site, "plugin", "acme").ends_with("wp-content/plugins/acme"));
+        assert!(package_dest(&site, "theme", "acme").ends_with("wp-content/themes/acme"));
+        site.content_dir = Some("app".into());
+        assert!(package_dest(&site, "plugin", "acme").ends_with("app/plugins/acme"));
+    }
+
+    #[test]
+    fn the_sync_wording_never_claims_the_source_is_unchanged() {
+        // The fingerprint is stat-only: a difference is reliable, sameness is a
+        // strong hint. So the copy says what was DETECTED, and hedges the rest.
+        let same = format!(
+            "`acme` was re-copied. No changes were detected in the source since the last sync, \
+             so the site was probably already running this code."
+        );
+        assert!(same.contains("No changes were detected"), "{same}");
+        assert!(!same.contains("unchanged"), "must not claim more than a stat read can know: {same}");
+        assert!(same.contains("probably"), "hedged, deliberately: {same}");
+    }
+
+}
+
+/// Where a package lands inside a site, and what it is called there.
+fn package_dest(site: &Site, kind: &str, slug: &str) -> std::path::PathBuf {
+    std::path::Path::new(&site.path)
+        .join(site.content_dir_rel())
+        .join(if kind == "theme" { "themes" } else { "plugins" })
+        .join(slug)
+}
+
+/// Copy a plugin/theme the user is developing INTO a scratch site (S1).
+fn add_package<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let (id, source) = two_args(args, "site_id", "source", "scratch_add_package")?;
+        let scratch = ctx.claim(&id)?;
+        acted.set(scratch.site());
+        // Blast radius FIRST: cloning is not a licence to read. `$HOME`, a
+        // volume root, Desktop/Documents/Downloads, app-data and overlaps are
+        // refused exactly as hard as linking them would have been (§4.4) — the
+        // clone changed the WRITE direction, not the read direction.
+        let src = {
+            let conn = ctx.db()?;
+            crate::core::sites::validate_linked_docroot(&conn, ctx.platform(), &source)?
+        };
+        // Then the header, on the SOURCE, before anything is copied.
+        let kind = crate::core::scratch::detect_kind(&src)?;
+        let slug = src
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| Error::Other("that source path has no directory name.".into()))?
+            .to_string();
+        let dest = package_dest(scratch.site(), kind, &slug);
+        let _ = std::fs::remove_dir_all(&dest);
+        crate::core::scratch::clone_tree(&src, &dest)?;
+        let fingerprint = crate::core::scratch::fingerprint(&src)?;
+        let synced_at = {
+            let conn = ctx.db()?;
+            let now = crate::state::store::db_now(&conn)?;
+            crate::state::store::upsert_scratch_package(
+                &conn,
+                &crate::state::models::ScratchPackage {
+                    site_id: scratch.id().to_string(),
+                    slug: slug.clone(),
+                    kind: kind.to_string(),
+                    source_path: src.display().to_string(),
+                    synced_at: now.clone(),
+                    fingerprint,
+                },
+            )?;
+            now
+        };
+        Ok(json!({
+            "slug": slug,
+            "kind": kind,
+            "syncedAt": synced_at,
+            "detail": format!(
+                "`{slug}` was COPIED into {} — the site runs it as of now, and nothing it does \
+                 can write back to your source. Call scratch_sync_package after you change it.",
+                scratch.domain()
+            ),
+        }))
+    })
+}
+
+/// Re-copy a recorded package so the site runs the latest code.
+fn sync_package<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let (id, slug) = two_args(args, "site_id", "slug", "scratch_sync_package")?;
+        let scratch = ctx.claim(&id)?;
+        acted.set(scratch.site());
+        let recorded = {
+            let conn = ctx.db()?;
+            crate::state::store::scratch_package(&conn, scratch.id(), &slug)?
+        }
+        .ok_or_else(|| {
+            Error::Other(format!(
+                "`{slug}` was never added to `{}`. Add it with scratch_add_package first.",
+                scratch.domain()
+            ))
+        })?;
+        // Only ever re-reads where the clone CAME FROM — the recorded path,
+        // never one supplied now.
+        let src = std::path::PathBuf::from(&recorded.source_path);
+        if !src.is_dir() {
+            return Err(Error::Other(format!(
+                "the source `{slug}` was copied from is no longer there. If you moved it, add it \
+                 again with scratch_add_package."
+            )));
+        }
+        let now_print = crate::core::scratch::fingerprint(&src)?;
+        // "changed" is reliable; sameness is a strong HINT, not a proof (an edit
+        // preserving mtime, size and count is invisible to a stat-only read) —
+        // so the wording is "no changes detected", never "unchanged".
+        let changed = now_print != recorded.fingerprint;
+        let dest = package_dest(scratch.site(), &recorded.kind, &slug);
+        let _ = std::fs::remove_dir_all(&dest);
+        crate::core::scratch::clone_tree(&src, &dest)?;
+        let synced_at = {
+            let conn = ctx.db()?;
+            let now = crate::state::store::db_now(&conn)?;
+            crate::state::store::upsert_scratch_package(
+                &conn,
+                &crate::state::models::ScratchPackage {
+                    synced_at: now.clone(),
+                    fingerprint: now_print,
+                    ..recorded
+                },
+            )?;
+            now
+        };
+        Ok(json!({
+            "slug": slug,
+            "syncedAt": synced_at,
+            "sourceHadChanged": changed,
+            "detail": if changed {
+                format!("`{slug}` was re-copied — the site now runs your latest code.")
+            } else {
+                format!(
+                    "`{slug}` was re-copied. No changes were detected in the source since the \
+                     last sync, so the site was probably already running this code."
+                )
+            },
+        }))
+    })
+}
+
+fn two_args(args: &Value, a: &str, b: &str, tool: &str) -> Result<(String, String)> {
+    let get = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+    match (get(a), get(b)) {
+        (Some(x), Some(y)) => Ok((x, y)),
+        _ => Err(Error::Other(format!("{tool} needs `{a}` and `{b}`."))),
     }
 }
