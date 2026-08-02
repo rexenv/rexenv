@@ -273,10 +273,12 @@ first:
     the skip-don't-stop and delete legs need a live tunnel + real site (L1,
     task 14). ◐ task 11 — **v29 `scratch_packages`** landed (new table, born empty;
     proven that a scratch site created before it reads as "no packages added" —
-    a real answer, not an unknown). Remaining in 11: the header-then-clone
-    ordering with the ambiguous-header refusal, the byte-identical source test in
-    BOTH directions, and the stat-only fingerprint (copy: "no changes detected
-    since", never "unchanged"). Then 12 (`wp_run`), 13 (Sites UI incl. the Keep
+    a real answer, not an unknown). ✓ the MECHANISM (ledger #216):
+    header-derived kind refusing both/neither, clone_tree proven byte-identical
+    in BOTH directions, stat-only fingerprint with its limit recorded. Remaining
+    in 11: the two TOOLS (`scratch_add_package`/`scratch_sync_package`) wiring
+    blast-radius validation + the v29 row + the "no changes detected since" copy,
+    and the `cp -c` platform-trait optimisation (speed only). Then 12 (`wp_run`), 13 (Sites UI incl. the Keep
     dialog + the reap banner + last-synced), 14 (L1 + SMOKE gate).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 

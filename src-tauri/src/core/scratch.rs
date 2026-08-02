@@ -180,6 +180,121 @@ pub fn due_for_reap(conn: &Connection, now: &str) -> Result<Vec<ScratchSite>> {
         .collect())
 }
 
+// ---------------------------------------------------------------------------
+// The dev-plugin loop: derive the kind, then CLONE (S1 — never a symlink)
+// ---------------------------------------------------------------------------
+
+/// What a source tree is, read from its OWN header — never asserted by a caller.
+///
+/// This is what makes `kind` a fact rexenv derives: an agent cannot claim
+/// "theme" for a plugin directory, because it never gets to claim anything. The
+/// read happens on the SOURCE and BEFORE the clone, so a tree that is neither —
+/// or ambiguously both — is refused rather than half-installed.
+pub fn detect_kind(source: &std::path::Path) -> Result<&'static str> {
+    let has_theme = source.join("style.css").is_file()
+        && header_contains(&source.join("style.css"), "Theme Name:");
+    let mut has_plugin = false;
+    if let Ok(entries) = std::fs::read_dir(source) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|x| x == "php") && header_contains(&p, "Plugin Name:") {
+                has_plugin = true;
+                break;
+            }
+        }
+    }
+    match (has_plugin, has_theme) {
+        (true, false) => Ok("plugin"),
+        (false, true) => Ok("theme"),
+        (true, true) => Err(Error::Other(format!(
+            "`{}` looks like BOTH a plugin and a theme (it has a plugin header and a theme \
+             style.css). rexenv will not guess which — installing the wrong one means testing \
+             against the wrong thing. Point at the plugin or theme directory itself.",
+            source.display()
+        ))),
+        (false, false) => Err(Error::Other(format!(
+            "`{}` has no plugin or theme header, so rexenv can't tell what it is. Point at the \
+             directory that contains the plugin's main PHP file (with its `Plugin Name:` header) \
+             or the theme's `style.css`.",
+            source.display()
+        ))),
+    }
+}
+
+/// Does the first 8 KB of `path` contain `needle`? (WordPress headers live in
+/// the file's opening comment block; reading the whole file would be wasteful on
+/// a large plugin and pointless.)
+fn header_contains(path: &std::path::Path, needle: &str) -> bool {
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else { return false };
+    let mut buf = vec![0u8; 8 * 1024];
+    let Ok(n) = f.read(&mut buf) else { return false };
+    String::from_utf8_lossy(&buf[..n]).contains(needle)
+}
+
+/// A stat-only summary of a source tree: newest mtime, file count, total bytes.
+///
+/// **What it can and cannot tell.** A DIFFERENT fingerprint means the source
+/// changed — reliable. An identical one is a strong hint that it did not, NOT a
+/// proof: an edit that preserves mtime, size and file count simultaneously is
+/// invisible to it. That is why the copy says "no changes detected since" rather
+/// than "unchanged", and why the last-synced timestamp carries the rest.
+///
+/// Stat-only (no reads) so it costs milliseconds on a plugin tree and can run on
+/// every status call; a content hash would be O(bytes) and could not.
+pub fn fingerprint(source: &std::path::Path) -> Result<String> {
+    let (mut newest, mut files, mut bytes) = (0u64, 0u64, 0u64);
+    walk(source, &mut |md: &std::fs::Metadata| {
+        files += 1;
+        bytes += md.len();
+        if let Ok(t) = md.modified() {
+            if let Ok(d) = t.duration_since(std::time::UNIX_EPOCH) {
+                newest = newest.max(d.as_secs());
+            }
+        }
+    })?;
+    Ok(format!("{newest}-{files}-{bytes}"))
+}
+
+fn walk(dir: &std::path::Path, f: &mut impl FnMut(&std::fs::Metadata)) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let md = entry.metadata()?;
+        if md.is_dir() {
+            walk(&entry.path(), f)?;
+        } else if md.is_file() {
+            f(&md);
+        }
+        // Symlinks are neither walked nor followed — a source tree's link is
+        // not ours to chase out of the directory the user pointed at.
+    }
+    Ok(())
+}
+
+/// Copy `source` into `dest` — a SNAPSHOT, so nothing the scratch site does can
+/// reach back to the user's checkout.
+///
+/// The guarantee is the direction, not the mechanism: writes inside the copy
+/// never touch the source, and writes in the source never appear in the copy
+/// until the next sync. On APFS this can be a copy-on-write clone (near-free);
+/// this implementation is the portable one and is correct everywhere — the
+/// `cp -c` optimisation rides a platform trait and is a speed change, never a
+/// behaviour change.
+pub fn clone_tree(source: &std::path::Path, dest: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let md = entry.metadata()?;
+        let target = dest.join(entry.file_name());
+        if md.is_dir() {
+            clone_tree(&entry.path(), &target)?;
+        } else if md.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,4 +373,89 @@ mod tests {
         // agent's — the reaper can never hold a "site to delete" that isn't.
         assert!(due.iter().all(|s| s.site().is_scratch()));
     }
+
+    fn plugin_src(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("rexenv-clone-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("inc")).unwrap();
+        std::fs::write(dir.join("acme.php"), "<?php\n/**\n * Plugin Name: Acme\n */\n").unwrap();
+        std::fs::write(dir.join("inc/lib.php"), b"<?php // lib\n").unwrap();
+        std::fs::write(dir.join("inc/blob.bin"), [0u8, 159, 146, 150]).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_kind_is_read_from_the_source_and_ambiguity_is_refused() {
+        let dir = plugin_src("kind");
+        assert_eq!(detect_kind(&dir).unwrap(), "plugin");
+        // A theme.
+        let theme = dir.join("theme");
+        std::fs::create_dir_all(&theme).unwrap();
+        std::fs::write(theme.join("style.css"), "/*\nTheme Name: Acme\n*/\n").unwrap();
+        assert_eq!(detect_kind(&theme).unwrap(), "theme");
+        // BOTH — refused, never guessed: the wrong install ends with an agent
+        // testing against the wrong thing and reporting confidently.
+        std::fs::write(dir.join("style.css"), "/*\nTheme Name: Acme\n*/\n").unwrap();
+        let err = detect_kind(&dir).unwrap_err().to_string();
+        assert!(err.contains("BOTH") && err.contains("will not guess"), "{err}");
+        // Neither.
+        let plain = dir.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        let err = detect_kind(&plain).unwrap_err().to_string();
+        assert!(err.contains("no plugin or theme header"), "{err}");
+        assert!(err.contains("Plugin Name:"), "says what it looked for: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_write_inside_the_clone_leaves_the_source_byte_identical() {
+        // THE guarantee S1 rests on, asserted directly rather than through the
+        // copy mechanism — this passes whether APFS cloned or bytes were copied.
+        let src = plugin_src("bytes");
+        let before: Vec<(std::path::PathBuf, Vec<u8>)> = ["acme.php", "inc/lib.php", "inc/blob.bin"]
+            .iter()
+            .map(|p| (src.join(p), std::fs::read(src.join(p)).unwrap()))
+            .collect();
+        let dest = src.with_extension("copy");
+        let _ = std::fs::remove_dir_all(&dest);
+        clone_tree(&src, &dest).unwrap();
+        assert_eq!(std::fs::read(dest.join("inc/blob.bin")).unwrap(), vec![0u8, 159, 146, 150]);
+
+        // Write inside the copy three ways.
+        std::fs::write(dest.join("acme.php"), "<?php // clobbered by the agent\n").unwrap();
+        std::fs::write(dest.join("new.php"), "<?php // added\n").unwrap();
+        std::fs::remove_file(dest.join("inc/lib.php")).unwrap();
+
+        for (path, bytes) in &before {
+            assert!(path.exists(), "the source lost a file: {}", path.display());
+            assert_eq!(&std::fs::read(path).unwrap(), bytes, "the source changed: {}", path.display());
+        }
+        assert!(!src.join("new.php").exists(), "a file created in the copy appeared in the source");
+
+        // ...and the reverse: the site runs a SNAPSHOT, so a source edit after
+        // the clone is invisible until the next sync. That is what the sync verb
+        // exists for, so it is pinned rather than implied.
+        std::fs::write(src.join("acme.php"), "<?php\n/**\n * Plugin Name: Acme 2\n */\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("acme.php")).unwrap(),
+            "<?php // clobbered by the agent\n",
+            "a source edit must not appear in the clone"
+        );
+        let _ = std::fs::remove_dir_all(&src);
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    #[test]
+    fn the_fingerprint_changes_when_the_source_does() {
+        let dir = plugin_src("fp");
+        let a = fingerprint(&dir).unwrap();
+        assert_eq!(a, fingerprint(&dir).unwrap(), "stable when nothing changed");
+        std::fs::write(dir.join("inc/lib.php"), b"<?php // lib, edited and longer\n").unwrap();
+        assert_ne!(a, fingerprint(&dir).unwrap(), "a changed source must be detectable");
+        let b = fingerprint(&dir).unwrap();
+        std::fs::write(dir.join("extra.php"), b"<?php\n").unwrap();
+        assert_ne!(b, fingerprint(&dir).unwrap(), "a new file changes it too");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
 }
