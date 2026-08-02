@@ -18,10 +18,17 @@
 //! tiers is not "these ones are trusted": it is that a scratch handler can only
 //! reach sites the agent owns, and cannot obtain a handle to any other.
 //!
-//! The registry is EMPTY until the create tool lands (M2a task 8). That is
-//! deliberate — the plumbing, the disjointness guard, and the sweep union land
-//! first, so the first executing tool arrives into a structure that already
-//! refuses to let it be registered untested or unswept.
+//! The plumbing, the disjointness guard and the sweep union landed BEFORE the
+//! first tool did, deliberately: an executing tool arrives into a structure that
+//! already refuses to let it be registered untested, unlisted or unswept.
+//!
+//! **One scrubber, not one per door.** Anything a tool here re-emits goes
+//! through [`super::view::scrub_log_line`] — `tail_log`'s scrubber (#201), which
+//! is called from this module, never copied into it. wp names the site's
+//! absolute docroot in ordinary success output, so it is the same leak arriving
+//! through a third door; a local "quick scrub" would agree the day it was
+//! written and drift afterwards, which is what
+//! `one_scrubber_serves_every_door_a_docroot_can_leave_by` fails on.
 
 use crate::core::scratch::ScratchSite;
 use crate::core::sites::Ownership;
@@ -122,6 +129,32 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     }),
     sweep_args: |id| json!({ "site_id": id, "slug": "sweep-probe" }),
     handler: sync_package,
+}, ScratchTool {
+    name: "wp_run",
+    description: "Run a WP-CLI command inside a scratch site — activate a plugin, set an option, \
+                  run the plugin's own commands, whatever the check needs. Takes `site_id` and \
+                  `args`, the command as an array of words WITHOUT the leading `wp` (e.g. \
+                  [\"plugin\", \"activate\", \"acme\"]). rexenv decides which site it runs against, \
+                  from `site_id`, so `--path`, `--url`, `--ssh`, `--http` and `@aliases` are \
+                  refused — everything else is yours to run. Only works on scratch sites the agent \
+                  created. The command's exit code, stdout and stderr all come back; a non-zero \
+                  exit is an answer, not a tool failure, so check `succeeded`.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "The WP-CLI command as separate words, without `wp` and without \
+                                `--path` (rexenv adds that): [\"plugin\", \"activate\", \"acme\"]."
+            }
+        },
+        "required": ["site_id", "args"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id, "args": ["option", "get", "home"] }),
+    handler: wp_run,
 }];
 
 fn create_params() -> Value {
@@ -308,6 +341,28 @@ impl<'a> ScratchCtx<'a> {
 
     fn platform(&self) -> &dyn crate::platform::traits::Platform {
         self.state.platform.as_ref()
+    }
+
+    /// The bundled PHP CLI for a site's PHP minor + the wp-cli phar — the same
+    /// pinned, checksum-locked pair the UI and the CLI run (`BinaryProvider`),
+    /// resolved through the platform trait. Downloads on first use, so the
+    /// caller must treat the gap either side of it as a real window.
+    async fn wp_tools(&self, php_minor: &str) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
+        let patch = crate::core::php::patch_for_minor(php_minor).ok_or_else(|| {
+            Error::Other(format!(
+                "this site is set to PHP {php_minor}, which rexenv has no pinned build for — the \
+                 person you're working with can change the site's PHP version in rexenv."
+            ))
+        })?;
+        let php_bin = crate::core::binaries::resolve(self.platform(), "php", patch).await?;
+        // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
+        let wp_phar = crate::core::binaries::resolve_file(
+            self.platform(),
+            "wp-cli",
+            crate::core::binaries::WP_CLI_VERSION,
+        )
+        .await?;
+        Ok((php_bin, wp_phar))
     }
 
     fn db(&self) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -676,6 +731,170 @@ mod tests {
     }
 
     #[test]
+    fn one_scrubber_serves_every_door_a_docroot_can_leave_by() {
+        // #201 closed the docroot leak for `tail_log`. `wp_run` opens a THIRD
+        // door onto the same value — wp prints absolute paths in ordinary
+        // success output — so the fix is one function called twice, never two
+        // that happen to agree. Both halves matter: the behaviour, and the
+        // structural fact that there is only one implementation to drift from.
+
+        // Half one — BEHAVIOUR. The same planted line down both tools' paths.
+        let docroot = "/Users/somebody/Sites/probe.scratch.rex";
+        let line = format!("Success: Created {docroot}/wp-content/plugins/acme/acme.php");
+        let (via_wp_run, truncated) = agent_stream(line.as_bytes(), docroot);
+        let mut tail =
+            super::super::view::AgentLogTail::from_lines("id", "d.rex", docroot, "wp-debug", vec![line.clone()]);
+        let via_tail_log = tail.lines.remove(0);
+        assert!(!truncated, "a short stream is not truncated");
+        assert_eq!(via_wp_run, via_tail_log, "the two doors must agree because they are one function");
+        assert_ne!(via_wp_run, line, "…and non-vacuously: the line WAS changed");
+        assert!(!via_wp_run.contains("/Users/somebody"), "OS username reached the agent: {via_wp_run}");
+        assert!(via_wp_run.contains("<docroot>/wp-content/plugins/acme/acme.php"), "{via_wp_run}");
+
+        // Half two — STRUCTURE. `scrub_log_line` is defined once, in view.rs, and
+        // no tool module grows its own. This is the half that fails on a future
+        // "quick local scrub" rather than letting it pass quietly.
+        assert_eq!(
+            include_str!("view.rs").matches("pub fn scrub_log_line").count(),
+            1,
+            "scrub_log_line must be defined exactly once, in view.rs"
+        );
+        assert!(
+            production_lines(include_str!("scratch.rs"))
+                .iter()
+                .any(|(_, l)| l.split("//").next().unwrap_or("").contains("view::scrub_log_line")),
+            "the executing tools must CALL the shared scrubber — if this call went away, either a \
+             tool stopped scrubbing or it grew its own scrubber; both are the #201 leak returning. \
+             (Checked against production lines only: this test's own prose names the function.)"
+        );
+        for (file, src, canary) in [
+            ("mcp_server/scratch.rs", include_str!("scratch.rs"), "fn agent_stream"),
+            ("mcp_server/tools.rs", include_str!("tools.rs"), "fn tail_log"),
+        ] {
+            let production = production_lines(src);
+            // The scan's own coverage, checked rather than assumed: a
+            // `#[cfg(test)]` module can sit ANYWHERE in a file (in this one it
+            // sits in the middle), and a stripper that cut from it to the end of
+            // the file would skip most of the production code while still
+            // passing — the guard-covers-a-narrower-surface-than-its-claim
+            // family, caught here by planting.
+            assert!(
+                production.iter().any(|(_, l)| l.contains(canary)),
+                "the scan missed `{canary}` in {file} — it is not covering the file it claims to"
+            );
+            for (n, l) in production {
+                // Comments stripped: prose names the tokens to explain the rule.
+                let code = l.split("//").next().unwrap_or("");
+                // A scrubbing ROUTINE — a fn, or a closure bound to a name. A
+                // local named `scrubbed` holding the shared function's OUTPUT is
+                // not one, which is why the closure arm keys on `= |`.
+                let names_one = code.contains("scrub") || code.contains("redact");
+                let defines_a_scrubber =
+                    names_one && (code.contains("fn ") || code.contains("= |"));
+                assert!(
+                    !defines_a_scrubber,
+                    "a SECOND scrubber at {}:{} — `{}`.\n\
+                     Agent-facing output is scrubbed by ONE function, `view::scrub_log_line`, \
+                     because a second one agrees on the day it is written and drifts after (#201 \
+                     was the docroot leaking through tail_log; wp_run was the same value through a \
+                     third door). If the shapes don't fit, WIDEN scrub_log_line and let both \
+                     callers inherit it — do not fork it here.",
+                    file,
+                    n,
+                    code.trim()
+                );
+            }
+        }
+    }
+
+    /// A file's PRODUCTION lines (1-indexed), with any `#[cfg(test)]` module
+    /// removed by brace depth rather than by cutting to end-of-file — the test
+    /// module is not always last, and a guard that assumed it was would quietly
+    /// stop covering everything after it.
+    fn production_lines(src: &str) -> Vec<(usize, &str)> {
+        let mut out = Vec::new();
+        let mut depth: Option<i32> = None;
+        for (i, line) in src.lines().enumerate() {
+            match depth.as_mut() {
+                None if line.trim_start().starts_with("#[cfg(test)]") => depth = Some(0),
+                None => out.push((i + 1, line)),
+                Some(d) => {
+                    *d += line.matches('{').count() as i32 - line.matches('}').count() as i32;
+                    if *d <= 0 && line.contains('}') {
+                        depth = None;
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn wp_run_takes_its_target_from_the_witness_and_refuses_the_agents() {
+        // Ruling 1, at the tool's own door. The screen itself is core's
+        // (`refuse_wp_target_override`, exhaustively tested there); what this
+        // pins is that wp_run's ARGUMENT PARSING cannot smuggle a target past it
+        // — a whole command line in one string, or a non-string entry, would
+        // both reach wp-cli as argv this screen never inspected word by word.
+        let one_string = json!({ "site_id": "x", "args": "plugin activate acme --path=/elsewhere" });
+        let err = wp_argv(&one_string).unwrap_err().to_string();
+        assert!(err.contains("array of separate words"), "{err}");
+        assert!(err.contains("not \"plugin activate acme\""), "shows the shape, not just the rule: {err}");
+
+        assert!(wp_argv(&json!({ "args": [] })).unwrap_err().to_string().contains("at least one word"));
+        assert!(wp_argv(&json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("array of separate words"));
+        let mixed = json!({ "args": ["plugin", 7, "acme"] });
+        assert!(wp_argv(&mixed).unwrap_err().to_string().contains("has to be a string"));
+
+        // A well-formed argv survives intact, word for word — the screen sees
+        // exactly what wp-cli will.
+        let ok = wp_argv(&json!({ "args": ["plugin", "activate", "acme"] })).unwrap();
+        assert_eq!(ok, vec!["plugin", "activate", "acme"]);
+        crate::core::scratch::refuse_wp_target_override(&ok).unwrap();
+    }
+
+    #[test]
+    fn a_wp_run_result_says_whether_it_worked_rather_than_leaving_it_to_be_inferred() {
+        // A non-zero exit comes back as a normal RESULT, not a tool error: the
+        // tool worked, and `wp plugin is-active x` exits 1 to mean "no". The
+        // price of that choice is that the payload must be impossible to skim
+        // past — hence `succeeded`, and a detail that leads with FAILED.
+        let v = serde_json::to_value(AgentWpRun {
+            succeeded: false,
+            exit_code: Some(1),
+            stdout: String::new(),
+            stderr: "Error: The 'acme' plugin could not be found.".into(),
+            truncated: false,
+            detail: "`wp plugin activate acme` FAILED in `probe.scratch.rex` (exit 1). What WP-CLI \
+                     said is in `stderr`."
+                .into(),
+        })
+        .unwrap();
+        assert_eq!(v["succeeded"], false);
+        assert_eq!(v["exitCode"], 1);
+        assert!(v["detail"].as_str().unwrap().contains("FAILED"), "{v}");
+        assert!(v["stderr"].as_str().unwrap().contains("could not be found"), "the reason travels: {v}");
+    }
+
+    #[test]
+    fn a_flood_of_output_is_cut_and_the_cut_is_stated() {
+        // A raw runner can emit a database dump; a tool reply is a context
+        // window. The cap is not the interesting part — the fact that it is
+        // REPORTED is, because silent truncation reads as a complete answer.
+        let flood = "x".repeat(WP_OUTPUT_CAP * 2);
+        let (kept, truncated) = agent_stream(flood.as_bytes(), "/dr");
+        assert!(truncated, "a stream over the cap must report the cut");
+        assert!(kept.len() <= WP_OUTPUT_CAP, "cut at the cap: {}", kept.len());
+        // Multi-byte content is cut on a character boundary, not mid-codepoint.
+        let wide = "é".repeat(WP_OUTPUT_CAP);
+        let (kept, truncated) = agent_stream(wide.as_bytes(), "/dr");
+        assert!(truncated && kept.chars().all(|c| c == 'é'), "cut mid-codepoint");
+    }
+
+    #[test]
     fn the_sync_wording_never_claims_the_source_is_unchanged() {
         // The fingerprint is stat-only: a difference is reliable, sameness is a
         // strong hint. So the copy says what was DETECTED, and hedges the rest.
@@ -820,6 +1039,191 @@ fn sync_package<'a>(
             },
         }))
     })
+}
+
+// ---------------------------------------------------------------------------
+// wp_run — the raw runner (D1), and the two rulings it is built to
+// ---------------------------------------------------------------------------
+
+/// How much of each stream an agent gets back. A raw runner can emit a database
+/// dump; a tool reply is a model's context window.
+const WP_OUTPUT_CAP: usize = 32 * 1024;
+
+/// What a WP-CLI run looks like to an agent.
+///
+/// The exit code and BOTH streams travel, because a raw runner that hides
+/// either is useless: wp writes its answer to stdout and its reason to stderr,
+/// and which one carries the news depends on the command.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentWpRun {
+    /// Exit 0. Named rather than left to be inferred from `exitCode`, because a
+    /// non-zero exit comes back as a normal result (see [`wp_run`]) and the one
+    /// thing that must not be skimmed past is whether it worked.
+    succeeded: bool,
+    exit_code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    /// Whether either stream was cut at the cap — stated, never silent.
+    truncated: bool,
+    detail: String,
+}
+
+/// Run an arbitrary WP-CLI command inside a scratch site.
+///
+/// **The target comes from the WITNESS, not from the agent.** `--path` is
+/// rexenv's, derived from the claimed [`ScratchSite`]'s recorded docroot, and an
+/// agent-supplied `--path`/`--url`/`--ssh`/`--http`/`@alias` is REFUSED
+/// (`core::scratch::refuse_wp_target_override`) rather than overridden. Passing
+/// ours and hoping would not be enough: in WP-CLI a later `--path` wins, so
+/// "ours is appended last" is a race we happen to win, not a rule. The refusal
+/// is the rule.
+///
+/// **There is no subcommand denylist, and that is a decision — not an
+/// oversight.** Activating a plugin already runs arbitrary user-level PHP
+/// (PLAN §3.1, D1, #197), so a list of forbidden verbs would buy nothing real
+/// while LOOKING like protection — the guard-covers-a-narrower-surface-than-its-
+/// claim family this codebase rejected in S1. `wp eval`, `wp db query`, `wp
+/// plugin install --force` all run. What is screened is which SITE, because that
+/// is the tier boundary itself: a closed, small, documented set, where the
+/// narrower-surface failure cannot happen. Refusing "which site" is enforceable;
+/// refusing "which command" isn't.
+///
+/// **Output goes through the SAME scrub as `tail_log`** (`view::scrub_log_line`,
+/// #201). wp re-emits absolute docroot paths constantly — "Created
+/// /Users/<name>/Sites/…" — which is the leak #201 closed for log tails,
+/// arriving through a third door. One function, called from both, never copied.
+fn wp_run<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("wp_run needs a `site_id`.".into()))?;
+        let argv = wp_argv(args)?;
+
+        // THE gate, first: the recorded origin decides, and the witness is the
+        // only handle to a site this module has.
+        let scratch = ctx.claim(id)?;
+        acted.set(scratch.site());
+        // Then the target screen, BEFORE anything is resolved or spawned.
+        crate::core::scratch::refuse_wp_target_override(&argv)?;
+
+        let site = scratch.site();
+        let docroot = std::path::PathBuf::from(&site.path);
+        // Resolving the bundled PHP + wp-cli phar can DOWNLOAD on first use —
+        // minutes, not milliseconds. That is a real window between the claim and
+        // the run, so the recorded fact is re-read immediately before spawning:
+        // the witness proves the path was gated when it claimed, never that the
+        // user has not pressed Keep since (the snapshot rule).
+        let (php_bin, wp_phar) = ctx.wp_tools(&site.php_version).await?;
+        {
+            let conn = ctx.db()?;
+            if !crate::core::scratch::still_the_agents(&conn, scratch.id())? {
+                return Err(Error::Other(format!(
+                    "`{}` is no longer a scratch site — the person you're working with kept it, so \
+                     it is theirs now and agent tools cannot run anything in it.",
+                    scratch.domain()
+                )));
+            }
+        }
+
+        let printed = argv.join(" ");
+        let timeout =
+            std::time::Duration::from_secs(crate::core::scratch::WP_RUN_TIMEOUT_SECS);
+        let out = crate::commands::wordpress::wp_blocking(move || {
+            crate::core::wordpress::wp_run_raw(&php_bin, &wp_phar, &docroot, &argv, timeout)
+        })
+        .await?;
+
+        let dr = site.path.clone();
+        let (stdout, cut_out) = agent_stream(&out.stdout, &dr);
+        let (stderr, cut_err) = agent_stream(&out.stderr, &dr);
+        let succeeded = out.status.success();
+        let exit_code = out.status.code();
+        let mut detail = if succeeded {
+            format!("`wp {printed}` ran in `{}` and succeeded.", scratch.domain())
+        } else {
+            format!(
+                "`wp {printed}` FAILED in `{}` (exit {}). What WP-CLI said is in `stderr`.",
+                scratch.domain(),
+                exit_code.map_or_else(|| "killed by a signal".to_string(), |c| c.to_string())
+            )
+        };
+        if cut_out || cut_err {
+            detail.push_str(&format!(
+                " The output was longer than {} KB and has been cut — run a narrower command if \
+                 you need the rest.",
+                WP_OUTPUT_CAP / 1024
+            ));
+        }
+        let view = AgentWpRun {
+            succeeded,
+            exit_code,
+            stdout,
+            stderr,
+            truncated: cut_out || cut_err,
+            detail,
+        };
+        serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the run: {e}")))
+    })
+}
+
+/// The `args` array, as strings — refusing the shapes that would silently run
+/// the wrong thing (a bare string an agent meant as a whole command line, a
+/// number, an empty array).
+fn wp_argv(args: &Value) -> Result<Vec<String>> {
+    let Some(list) = args.get("args").and_then(Value::as_array) else {
+        return Err(Error::Other(
+            "wp_run needs `args`: the command as an array of separate words, without `wp` — \
+             [\"plugin\", \"activate\", \"acme\"], not \"plugin activate acme\"."
+                .into(),
+        ));
+    };
+    if list.is_empty() {
+        return Err(Error::Other(
+            "wp_run needs at least one word in `args` — the WP-CLI subcommand to run, e.g. \
+             [\"plugin\", \"list\"]."
+                .into(),
+        ));
+    }
+    list.iter()
+        .map(|v| {
+            v.as_str().map(str::to_string).ok_or_else(|| {
+                Error::Other(
+                    "every entry in `args` has to be a string — one WP-CLI word per entry."
+                        .into(),
+                )
+            })
+        })
+        .collect()
+}
+
+/// One captured stream, made fit for an agent: cut at the cap, then scrubbed
+/// line by line through **`view::scrub_log_line`** — `tail_log`'s scrubber
+/// (#201), not a local one. wp names the docroot in ordinary success output, so
+/// this is the same leak arriving through a third door; a second scrubber would
+/// agree the day it was written and drift after.
+///
+/// The cut keeps the HEAD: wp writes its column headers, its `Success:` line and
+/// its first error at the start, so the front of a long stream is the part with
+/// the answer in it. The cut is always reported (`truncated`), never silent.
+fn agent_stream(raw: &[u8], docroot: &str) -> (String, bool) {
+    let text = String::from_utf8_lossy(raw);
+    let mut end = WP_OUTPUT_CAP.min(text.len());
+    while end < text.len() && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let truncated = end < text.len();
+    let scrubbed = text[..end]
+        .lines()
+        .map(|l| super::view::scrub_log_line(l, docroot))
+        .collect::<Vec<_>>()
+        .join("\n");
+    (scrubbed, truncated)
 }
 
 fn two_args(args: &Value, a: &str, b: &str, tool: &str) -> Result<(String, String)> {

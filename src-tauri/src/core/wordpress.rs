@@ -128,6 +128,38 @@ pub fn wp_run(php_bin: &Path, wp_phar: &Path, docroot: &Path, args: &[&str]) -> 
     Ok(wp_cli_checked(php_bin, wp_phar, &full, None)?.trim().to_string())
 }
 
+/// Run an ARBITRARY WP-CLI argv against a docroot, capped by a wall clock, and
+/// hand back the raw `Output` — exit code, stdout and stderr all intact.
+///
+/// For the MCP raw runner (`wp_run`, D1). Two deliberate differences from
+/// [`wp_run`]:
+///
+/// - **A non-zero exit is not an error here.** `wp plugin is-active x` exits 1
+///   to mean "no"; collapsing that into a failure would throw away the answer.
+///   The caller reports the exit code and both streams.
+/// - **A hard timeout, always.** A raw argv can reach an interactive or wedged
+///   child (`wp shell`, a network fetch behind a black hole), and a tool call
+///   that never returns is an agent that never comes back.
+///
+/// `--path` is appended by rexenv and is deliberately LAST — in wp-cli a later
+/// `--path` wins. That ordering is a belt: the caller REFUSES a caller-supplied
+/// one outright ([`crate::core::scratch::refuse_wp_target_override`]), because
+/// winning a race is not the same as not having one. Command-line parameters
+/// also beat any `wp-cli.yml` the child might otherwise pick up.
+pub fn wp_run_raw(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    args: &[String],
+    timeout: Duration,
+) -> Result<Output> {
+    let path = format!("--path={}", docroot.display());
+    let mut cmd = Command::new(php_bin);
+    cmd.arg("-d").arg("memory_limit=512M").arg(wp_phar).args(args).arg(&path);
+    let what = format!("wp {}", args.first().map(String::as_str).unwrap_or(""));
+    run_with_timeout(cmd, timeout, &what)
+}
+
 /// Typed JSON bridge: run a WP-CLI command scoped to a docroot with
 /// `--format=json` and deserialize stdout into `T` (e.g. `Vec<PluginRow>`).
 /// Non-zero exit / stderr surfaces as a clean `Error`, as does a parse failure.

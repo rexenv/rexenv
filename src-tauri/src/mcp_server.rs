@@ -960,9 +960,28 @@ mod tests {
         // registry and runs each tool with these args against a planted fixture.
         // Requiring the field (and this smoke test) means a tool cannot be
         // registered without being exercisable by the sweep.
-        for t in tools::registry() {
-            let args = (t.sweep_args)("fixture-site-id");
-            assert!(args.is_object(), "{}: sweep_args must be a JSON object", t.name);
+        //
+        // BOTH registries, deliberately: checking only M1's would narrow "every
+        // registered tool's output is swept" to "every tool except the widest
+        // ones" — the executing side is where a docroot actually re-enters the
+        // output (`wp_run`), so it is the half that most needs to be in the
+        // sweep (#209).
+        let named: Vec<(&str, Value)> = tools::registry()
+            .iter()
+            .map(|t| (t.name, (t.sweep_args)("fixture-site-id")))
+            .chain(
+                scratch::registry()
+                    .iter()
+                    .map(|t| (t.name, (t.sweep_args)("fixture-site-id"))),
+            )
+            .collect();
+        assert_eq!(
+            named.len(),
+            tools::registry().len() + scratch::registry().len(),
+            "every tool in BOTH registries declares sweep_args"
+        );
+        for (name, args) in named {
+            assert!(args.is_object(), "{name}: sweep_args must be a JSON object");
         }
     }
 

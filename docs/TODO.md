@@ -280,9 +280,23 @@ first:
     RECORDED source, destination follows the recorded content dir, and the sync
     copy never claims "unchanged". **Task 11 done.** Deferred from it: the
     `cp -c` platform-trait optimisation (speed only, behaviour already proven).
-    Next = 12 (`wp_run`), 13 (Sites UI: Agent-scratch group, Keep dialog, reap
-    banner, last-synced), 14 (L1 `mcp_scratch_check` + SMOKE gate). Then 12 (`wp_run`), 13 (Sites UI incl. the Keep
-    dialog + the reap banner + last-synced), 14 (L1 + SMOKE gate).
+    ◐ task 12 — **`wp_run`**, ledger #218: the target comes from the WITNESS
+    (`--path` derived from the claimed site's recorded docroot) and an
+    agent-supplied `--path`/`--url`/`--ssh`/`--http`/`@alias` is REFUSED in
+    **core** — appending ours last only WINS a race, since a later `--path` wins
+    in wp-cli. Recorded in the code and the row in those words: this screens
+    TARGETS (closed, small, the tier boundary itself), unlike the VERB screen S1
+    rejected — and there is therefore **no subcommand denylist, as a decision**,
+    because plugin activation already grants arbitrary user PHP (#197). Witness
+    re-asserted after binary resolution (a first-use download is a real
+    multi-minute window). A non-zero exit is a RESULT, not a tool error. Output
+    runs through `tail_log`'s scrubber — one function, plant-proven on four legs,
+    and the planting found that a naive `#[cfg(test)]` stripper would have
+    skipped most of this file (the test module sits mid-file), so the scan now
+    carries its own coverage canary. Remaining ◐: a real `wp` command against a
+    real scratch site is L1, task 14.
+    Next = 13 (Sites UI: Agent-scratch group, Keep dialog, reap banner,
+    last-synced), 14 (L1 `mcp_scratch_check` + SMOKE gate).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

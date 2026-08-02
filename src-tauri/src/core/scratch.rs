@@ -271,6 +271,79 @@ fn walk(dir: &std::path::Path, f: &mut impl FnMut(&std::fs::Metadata)) -> Result
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// The raw runner's ONE screen: which site, never which command (D1)
+// ---------------------------------------------------------------------------
+
+/// The WP-CLI global parameters that would point a command at something other
+/// than the site rexenv proved the agent owns.
+///
+/// Exhaustive for the argv surface: `--path` (a different install), `--url` (a
+/// different site inside a network), `--ssh` (a different MACHINE), `--http` (a
+/// remote install over HTTP). Aliases (`@name`) are handled separately because
+/// they are positional, and an alias in `~/.wp-cli/config.yml` can carry `path:`
+/// or `ssh:` — the same redirect wearing a different hat.
+pub const WP_TARGET_PARAMS: &[&str] = &["--path", "--url", "--ssh", "--http"];
+
+/// Refuse an argv that names its own target. **The tier boundary, restated at
+/// the one place a raw runner could walk around it.**
+///
+/// rexenv supplies `--path` from the claimed [`ScratchSite`]'s recorded docroot.
+/// Appending ours is not enough on its own: in WP-CLI a later `--path` wins, so
+/// an agent that passes one is either overriding us or racing our position in
+/// the argv. This refuses instead — the target is rexenv's to decide, and there
+/// is exactly one way to say which site: `site_id`.
+///
+/// **Why this is NOT the guard S1 rejected.** That one screened VERBS — is this
+/// subcommand safe? — over an open-ended set (`--force`, `wp eval`, `wp
+/// package`, an alias, tomorrow's subcommand), which is the
+/// guard-covers-a-narrower-surface-than-its-claim family that has already cost
+/// this codebase a cross-site exposure, a data-destruction hole and a leak.
+/// This screens TARGETS: a closed, small, documented set that IS the tier
+/// boundary itself. Refusing "which site" is enforceable; refusing "which
+/// command" isn't — which is exactly why there is no subcommand denylist here
+/// (see [`crate::mcp_server::scratch`]'s `wp_run`).
+///
+/// **What it does not claim.** It is not containment. `wp eval` runs arbitrary
+/// PHP as the user, and PHP can open any path on the machine (§3.1/#197) — the
+/// screen keeps the TOOL's target honest, so `origin='agent'` still means
+/// something for every command rexenv itself routes. It does not, and cannot,
+/// bound what the code inside a scratch site reaches.
+pub fn refuse_wp_target_override(argv: &[String]) -> Result<()> {
+    for arg in argv {
+        // An alias is positional and can carry `path:`/`ssh:` from the user's
+        // own wp-cli config — a redirect rexenv cannot see the contents of.
+        if arg.starts_with('@') {
+            return Err(Error::Other(format!(
+                "`{arg}` is a WP-CLI alias, and rexenv doesn't run commands through aliases: an \
+                 alias can point at another install, or another machine, and rexenv decides which \
+                 site a command runs against — the scratch site you named in `site_id`. Drop it \
+                 and the command runs against that site."
+            )));
+        }
+        let lower = arg.to_ascii_lowercase();
+        if let Some(param) = WP_TARGET_PARAMS
+            .iter()
+            .find(|p| lower == **p || lower.starts_with(&format!("{p}=")))
+        {
+            return Err(Error::Other(format!(
+                "`{param}` isn't allowed here: rexenv decides which site a command runs against, \
+                 from the scratch site you named in `site_id`, and it adds `--path` itself. Drop \
+                 `{param}` and run the command again. To act on a different site, name it in \
+                 `site_id` — it has to be a scratch site the agent created."
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// How long a single agent-run WP-CLI command may take before rexenv kills it.
+///
+/// Generous enough for a plugin install that downloads from wordpress.org,
+/// bounded because a raw runner can reach an interactive or wedged child and a
+/// hung tool call is an agent that never comes back.
+pub const WP_RUN_TIMEOUT_SECS: u64 = 180;
+
 /// Copy `source` into `dest` — a SNAPSHOT, so nothing the scratch site does can
 /// reach back to the user's checkout.
 ///
@@ -458,4 +531,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    #[test]
+    fn every_way_an_argv_can_name_its_own_target_is_refused() {
+        // The closed set, in every FORM wp-cli accepts it: `--x=v`, `--x v`
+        // (refusing the flag is enough — its value is the next token), and a
+        // positional alias. Passing ours and hoping is not enough, because a
+        // later `--path` wins in wp-cli: this refuses rather than races.
+        for param in WP_TARGET_PARAMS {
+            for form in [
+                argv(&["plugin", "list", &format!("{param}=/somewhere/else")]),
+                argv(&["plugin", "list", param, "/somewhere/else"]),
+                // First position, before the subcommand, and upper-cased — a
+                // screen that only looked at the tail, or only at the exact
+                // lowercase spelling, would pass these.
+                argv(&[&format!("{param}=/somewhere/else"), "plugin", "list"]),
+                argv(&[&param.to_ascii_uppercase(), "/somewhere/else", "plugin", "list"]),
+                // After a `--` separator, where a caller might expect parsing to stop.
+                argv(&["eval-file", "x.php", "--", &format!("{param}=/elsewhere")]),
+            ] {
+                let err = refuse_wp_target_override(&form)
+                    .expect_err(&format!("must refuse {form:?}"))
+                    .to_string();
+                assert!(err.contains(param), "the refusal names the parameter: {err}");
+                assert!(err.contains("site_id"), "and the ONE way to say which site: {err}");
+            }
+        }
+        // An alias is positional and can carry `path:`/`ssh:` from the user's own
+        // wp-cli config, so it is the same redirect wearing a different hat.
+        let err = refuse_wp_target_override(&argv(&["@prod", "plugin", "list"]))
+            .expect_err("an alias must be refused")
+            .to_string();
+        assert!(err.contains("@prod") && err.contains("alias"), "{err}");
+    }
+
+    #[test]
+    fn the_screen_refuses_targets_and_leaves_every_command_alone() {
+        // The other half, and the one that says what this guard IS. There is no
+        // subcommand denylist: `eval` (arbitrary PHP), `db query`, `plugin
+        // install --force` and `option update` all pass, deliberately — plugin
+        // activation already grants arbitrary user-level PHP (#197), so
+        // screening verbs would buy nothing while LOOKING like protection. What
+        // is screened is the target, which is the tier boundary itself.
+        for allowed in [
+            argv(&["eval", "echo WP_HOME;"]),
+            argv(&["db", "query", "SELECT 1"]),
+            argv(&["plugin", "install", "acme", "--force", "--activate"]),
+            argv(&["option", "update", "home", "https://x.scratch.rex"]),
+            // Arguments that merely CONTAIN a target word or an @ are not targets.
+            argv(&["user", "create", "bob", "bob@example.com"]),
+            argv(&["option", "update", "siteurl", "--skip-plugins"]),
+            argv(&["config", "set", "WP_DEBUG", "true", "--raw"]),
+        ] {
+            refuse_wp_target_override(&allowed)
+                .unwrap_or_else(|e| panic!("must not screen the COMMAND: {allowed:?} → {e}"));
+        }
+    }
 }
