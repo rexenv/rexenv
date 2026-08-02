@@ -110,4 +110,13 @@ impl<'a> ReadCtx<'a> {
         let content_rel = site.content_dir.clone().unwrap_or_else(|| "wp-content".into());
         core::logs::wp_debug_log_tail(std::path::Path::new(&site.path), &content_rel, lines).map(Some)
     }
+
+    /// The absolute paths rexenv knows it might emit for this site — the input
+    /// to the one scrubber. Built HERE because it needs the platform's `Paths`,
+    /// which `tools.rs` deliberately cannot reach; the handler asks for the set
+    /// rather than assembling one, so a directory added to `Paths` is scrubbed
+    /// without any tool hearing about it.
+    pub fn known_paths(&self, site: &Site) -> super::view::KnownPaths {
+        super::view::KnownPaths::for_site(self.state.platform.paths(), &site.path)
+    }
 }

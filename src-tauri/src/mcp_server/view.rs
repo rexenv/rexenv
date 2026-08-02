@@ -207,10 +207,12 @@ pub struct AgentLogTail {
 }
 
 /// The scope + scrubber caveat, stated where the agent reads it every time.
-const LOG_NOTE: &str = "The site's own WordPress debug log (tail only, capped). The site's own \
-    docroot path, rexenv-issued login tokens, and cookie headers are removed, but this does NOT \
-    make the content safe — a debug log can contain anything the site's code wrote to it (other \
-    paths, request data, config dumps, third-party API responses). Treat it as raw output.";
+const LOG_NOTE: &str = "The site's own WordPress debug log (tail only, capped). Paths rexenv knows \
+    — the site's docroot, rexenv's own directories, the home directory — are replaced with labels \
+    like <docroot>, and rexenv-issued login tokens and cookie headers are removed. This does NOT \
+    make the content safe: a debug log can contain anything the site's code wrote to it (paths \
+    rexenv doesn't know, request data, config dumps, third-party API responses). Treat it as raw \
+    output.";
 
 /// The note when there is no WordPress debug log to read — a non-WordPress site.
 /// A normal, non-concerning answer, not an error.
@@ -219,13 +221,13 @@ const LOG_NOTE_NONE: &str = "This site isn't WordPress, so it has no WordPress d
 
 impl AgentLogTail {
     /// Build from the raw tail, scrubbing each line against known token/cookie
-    /// shapes AND the site's own `docroot` (so an absolute path in a stack trace
+    /// shapes AND the paths rexenv knows (so an absolute path in a stack trace
     /// doesn't hand the agent the docroot + OS username that `AgentSiteView`
     /// drops). `source` is a fixed string from the closed set, never a filename.
     pub fn from_lines(
         id: &str,
         domain: &str,
-        docroot: &str,
+        known: &KnownPaths,
         source: &'static str,
         raw: Vec<String>,
     ) -> Self {
@@ -233,7 +235,7 @@ impl AgentLogTail {
             id: id.to_string(),
             domain: domain.to_string(),
             source,
-            lines: raw.iter().map(|l| scrub_log_line(l, docroot)).collect(),
+            lines: raw.iter().map(|l| scrub_log_line(l, known)).collect(),
             note: LOG_NOTE,
         }
     }
@@ -251,22 +253,96 @@ impl AgentLogTail {
     }
 }
 
-/// Redact KNOWN rexenv-issued tokens and cookie headers from a log line. It
-/// removes THESE specific shapes only — a rexenv login token (`rexenv_login=…`)
-/// and `Cookie:`/`Set-Cookie:` header values. **It does NOT make arbitrary log
-/// content safe**: a debug log holds whatever the site's code logged, and no
-/// pattern list can catch an unknown-shaped secret. The tool's `note` and its
-/// scope limits (closed source set, tail-only, line cap) are the real defence;
-/// this scrub is one honest layer, never a "the log is now safe" claim.
-pub fn scrub_log_line(line: &str, docroot: &str) -> String {
+/// The absolute paths rexenv KNOWS, each with the label that replaces it.
+///
+/// **Derived, not enumerated at the call site.** Every entry but the docroot
+/// comes from the [`Paths`] trait — the one place that already knows where
+/// rexenv keeps things — so a directory added there is scrubbed everywhere
+/// without a second list needing to hear about it. The docroot is the site's
+/// own, and `<home>` is last because it is the least specific: what these paths
+/// really carry is the **OS username**, and home is the prefix that carries it
+/// even in paths rexenv never chose.
+///
+/// Entries are sorted longest-first and applied in that order, so the most
+/// specific label wins: a file under `config_dir` reads `<rexenv-config>/…`, not
+/// `<rexenv-data>/config/…`.
+///
+/// **What this cannot reach, stated where it is built.** The set is closed by
+/// construction — it is *the paths rexenv knows*. Output from a raw runner or a
+/// debug log is arbitrary: a plugin can print a path under `/opt`, another
+/// user's home, a path assembled at runtime, or a secret that is not a path at
+/// all. None of those are reachable by any prefix list, and the claim is
+/// therefore "rexenv's own paths are removed", never "no path escapes".
+pub struct KnownPaths {
+    entries: Vec<(String, &'static str)>,
+}
+
+impl KnownPaths {
+    /// The full set for one site: its docroot, rexenv's own directories, home.
+    pub fn for_site(paths: &dyn crate::platform::traits::Paths, docroot: &str) -> Self {
+        let home = directories::BaseDirs::new().map(|b| b.home_dir().display().to_string());
+        Self::with_home(paths, docroot, home.as_deref())
+    }
+
+    /// Home injected, so the set is testable without depending on whose machine
+    /// the test runs on.
+    fn with_home(
+        paths: &dyn crate::platform::traits::Paths,
+        docroot: &str,
+        home: Option<&str>,
+    ) -> Self {
+        let mut entries = vec![(docroot.to_string(), "<docroot>")];
+        for (dir, label) in [
+            (paths.config_dir(), "<rexenv-config>"),
+            (paths.log_dir(), "<rexenv-logs>"),
+            (paths.bin_dir(), "<rexenv-bin>"),
+            (paths.app_data_dir(), "<rexenv-data>"),
+        ] {
+            if let Ok(d) = dir {
+                entries.push((d.display().to_string(), label));
+            }
+        }
+        if let Some(h) = home {
+            entries.push((h.to_string(), "<home>"));
+        }
+        Self::sorted(entries)
+    }
+
+    fn sorted(mut entries: Vec<(String, &'static str)>) -> Self {
+        // A blank or root prefix would replace everything (or nothing useful) —
+        // an unconfigured path must not turn the scrubber into a shredder.
+        entries.retain(|(p, _)| !p.is_empty() && p != "/");
+        entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.0.cmp(&b.0)));
+        entries.dedup_by(|a, b| a.0 == b.0);
+        KnownPaths { entries }
+    }
+}
+
+/// Redact KNOWN rexenv-issued tokens, cookie headers and rexenv's own absolute
+/// paths from one line of agent-facing text.
+///
+/// **One function, every door.** It scrubs `tail_log`'s log lines and `wp_run`'s
+/// stdout/stderr alike, because they carry the SAME values — a WP fatal's stack
+/// trace and a `Success: Created …` line both print the docroot, and the OS
+/// username inside it, that `AgentSiteView` deliberately drops (#201). A second
+/// scrubber would agree the day it was written and drift after, which
+/// `one_scrubber_serves_every_door_a_docroot_can_leave_by` fails on.
+///
+/// **It does NOT make arbitrary content safe.** It removes THESE shapes: a
+/// rexenv login token (`rexenv_login=…`), `Cookie:`/`Set-Cookie:` values, and
+/// the prefixes in [`KnownPaths`]. A debug log holds whatever the site's code
+/// logged and a raw `wp` command prints whatever it prints; no pattern list
+/// catches an unknown-shaped secret, and no prefix list catches a path rexenv
+/// never chose. The tools' scope limits (closed log source, tail-only, line and
+/// byte caps) and their notes are the rest of the defence; this is one honest
+/// layer, never a "the output is now safe" claim.
+pub fn scrub_log_line(line: &str, known: &KnownPaths) -> String {
     let mut out = redact_token_after(line, "rexenv_login=");
     out = redact_cookie_header(&out);
-    // The site's own docroot is a KNOWN value — redact it so an absolute
-    // stack-trace path doesn't surface the docroot + OS username that
-    // `AgentSiteView` withholds. Other absolute paths the site logged remain
-    // (unknown shapes; the note says the content is not made safe).
-    if !docroot.is_empty() {
-        out = out.replace(docroot, "<docroot>");
+    // Longest prefix first (see `KnownPaths`), applied to the accumulating
+    // string so an already-labelled path can't be re-matched by a shorter one.
+    for (prefix, label) in &known.entries {
+        out = out.replace(prefix.as_str(), label);
     }
     out
 }
@@ -377,37 +453,121 @@ mod tests {
         assert!(detail.contains("tail_log"), "{detail}");
     }
 
+    /// rexenv's paths, in PRODUCTION shape — an absolute macOS app-data root
+    /// under a home directory, with the real nesting. A friendlier fixture
+    /// (`/tmp/x`, a flat layout) would hide both the username the scrub exists
+    /// for and the longest-prefix-wins ordering.
+    struct FakePaths {
+        data: std::path::PathBuf,
+    }
+    impl crate::platform::traits::Paths for FakePaths {
+        fn app_data_dir(&self) -> crate::error::Result<std::path::PathBuf> {
+            Ok(self.data.clone())
+        }
+        fn config_dir(&self) -> crate::error::Result<std::path::PathBuf> {
+            Ok(self.data.join("config"))
+        }
+        fn log_dir(&self) -> crate::error::Result<std::path::PathBuf> {
+            Ok(self.data.join("logs"))
+        }
+        fn bin_dir(&self) -> crate::error::Result<std::path::PathBuf> {
+            Ok(self.data.join("bin"))
+        }
+        fn hosts_file(&self) -> std::path::PathBuf {
+            std::path::PathBuf::from("/etc/hosts")
+        }
+    }
+
+    const HOME: &str = "/Users/somebody";
+
+    fn known(docroot: &str) -> KnownPaths {
+        let paths = FakePaths {
+            data: std::path::PathBuf::from(HOME).join("Library/Application Support/rexenv"),
+        };
+        KnownPaths::with_home(&paths, docroot, Some(HOME))
+    }
+
+    #[test]
+    fn the_scrub_covers_every_path_rexenv_knows_and_the_most_specific_label_wins() {
+        // The widening (12b): `tail_log` leaked the docroot (#201); `wp_run`
+        // re-emits it AND rexenv's own directories — `wp cli info` prints the
+        // wp-cli phar and the pinned PHP binary, both under app-data, both
+        // carrying the OS username. Every entry below is DERIVED from `Paths`,
+        // so a directory added there is scrubbed without a second list hearing
+        // about it.
+        let dr = format!("{HOME}/Sites/probe.scratch.rex");
+        let k = known(&dr);
+
+        let cases = [
+            (format!("PHP Fatal error: boom in {dr}/wp-content/plugins/x.php on line 5"),
+             "<docroot>/wp-content/plugins/x.php"),
+            // Nested under app-data: the SPECIFIC label wins, not `<rexenv-data>/bin/…`.
+            (format!("Error: {HOME}/Library/Application Support/rexenv/bin/wp-cli.phar not found"),
+             "<rexenv-bin>/wp-cli.phar"),
+            (format!("see {HOME}/Library/Application Support/rexenv/logs/php-fpm-8.3.log"),
+             "<rexenv-logs>/php-fpm-8.3.log"),
+            (format!("nginx: {HOME}/Library/Application Support/rexenv/config/nginx.conf"),
+             "<rexenv-config>/nginx.conf"),
+            (format!("db at {HOME}/Library/Application Support/rexenv/rexenv.sqlite3"),
+             "<rexenv-data>/rexenv.sqlite3"),
+            // Under home but none of rexenv's: the username still must not travel.
+            (format!("required {HOME}/Projects/acme/vendor/autoload.php"),
+             "<home>/Projects/acme/vendor/autoload.php"),
+        ];
+        for (line, expected) in cases {
+            let s = scrub_log_line(&line, &k);
+            assert!(s.contains(expected), "expected `{expected}` in `{s}`");
+            assert!(!s.contains(HOME), "the OS username survived: {s}");
+        }
+
+        // And the honest limit, asserted rather than only written: a path rexenv
+        // never chose is NOT reachable by a prefix list, and comes through as-is.
+        let unknown = "Error: /opt/vendor/acme/lib.php is missing";
+        assert_eq!(scrub_log_line(unknown, &k), unknown, "the claim is rexenv's paths, not all paths");
+    }
+
+    #[test]
+    fn a_blank_or_root_prefix_never_turns_the_scrubber_into_a_shredder() {
+        // An unconfigured docroot (a site row mid-provision) must not match
+        // every line, and a `Paths` impl answering `/` must not erase the output.
+        let k = KnownPaths::with_home(&FakePaths { data: std::path::PathBuf::from("/") }, "", None);
+        let line = "Success: Activated plugin 'acme'.";
+        assert_eq!(scrub_log_line(line, &k), line);
+    }
+
     #[test]
     fn the_scrubber_removes_tokens_cookies_and_the_docroot_but_keeps_benign_content() {
-        let dr = "/Users/me/Sites/myblog.rex";
+        let dr = format!("{HOME}/Sites/myblog.rex");
+        let k = known(&dr);
         let token = "TOKENSECRETee55ff66";
-        let scrubbed = scrub_log_line(&format!("GET /wp-login.php?rexenv_login={token}&redir=1"), dr);
+        let scrubbed = scrub_log_line(&format!("GET /wp-login.php?rexenv_login={token}&redir=1"), &k);
         assert!(!scrubbed.contains(token), "login token survived: {scrubbed}");
         assert!(scrubbed.contains("rexenv_login=<redacted>"), "{scrubbed}");
         assert!(scrubbed.contains("redir=1"), "benign query lost — the scrubber over-reached");
 
         let cookie =
-            scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly", dr);
+            scrub_log_line("Set-Cookie: wordpress_logged_in=SECRETVALUE99; Path=/; HttpOnly", &k);
         assert!(!cookie.contains("SECRETVALUE99"), "cookie value survived: {cookie}");
         assert!(cookie.starts_with("Set-Cookie: <redacted>"), "{cookie}");
 
         // A realistic WP stack-trace line: the docroot (and the OS username in
         // it) must NOT reach the agent — this is the assembly-review leak.
         let trace = format!("PHP Fatal error: boom in {dr}/wp-content/plugins/x.php on line 5");
-        let s = scrub_log_line(&trace, dr);
-        assert!(!s.contains(dr), "docroot survived: {s}");
-        assert!(!s.contains("/Users/me"), "OS home/username survived: {s}");
+        let s = scrub_log_line(&trace, &k);
+        assert!(!s.contains(&dr), "docroot survived: {s}");
+        assert!(!s.contains(HOME), "OS home/username survived: {s}");
         assert!(s.contains("<docroot>/wp-content/plugins/x.php"), "{s}");
 
         // Benign content is untouched — the scrubber is not a blanket eraser.
         let benign = "[29-Jul-2026] PHP Warning: undefined variable $x on line 10";
-        assert_eq!(scrub_log_line(benign, dr), benign);
+        assert_eq!(scrub_log_line(benign, &k), benign);
     }
 
     #[test]
     fn the_log_tail_note_never_claims_the_content_is_safe() {
         // The one place a false "logs are sanitised" line would get written.
-        let tail = AgentLogTail::from_lines("id", "d.rex", "/dr", "wp-debug", vec!["a".into()]);
+        let tail =
+            AgentLogTail::from_lines("id", "d.rex", &known("/dr"), "wp-debug", vec!["a".into()]);
         let note = tail.note.to_ascii_lowercase();
         assert!(note.contains("not") && note.contains("safe"), "{}", tail.note);
         assert!(!note.contains("sanitis"), "must not claim sanitised: {}", tail.note);

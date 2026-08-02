@@ -295,6 +295,16 @@ first:
     skipped most of this file (the test module sits mid-file), so the scan now
     carries its own coverage canary. Remaining ◐: a real `wp` command against a
     real scratch site is L1, task 14.
+    ✓ task 12b — **the scrubber widened, not forked** (#201 amended): `wp cli
+    info` and wp's errors print rexenv's own phar / PHP binary / config paths,
+    all carrying the OS username — the same leak through a fourth door. The
+    known-path set is now DERIVED from the `Paths` trait (`KnownPaths`), so a
+    directory added there is scrubbed without a second list hearing about it,
+    and `tail_log` + `wp_run` share it by calling one function. Recorded
+    judgment: the claim is **"the paths rexenv knows are removed", not "no path
+    escapes"** — a plugin can print `/opt/...` or a runtime-built path, and no
+    prefix list reaches that. Asserted, not just written (an `/opt` line comes
+    through unchanged), and stated in both tools' notes.
     Next = 13 (Sites UI: Agent-scratch group, Keep dialog, reap banner,
     last-synced), 14 (L1 `mcp_scratch_check` + SMOKE gate).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.

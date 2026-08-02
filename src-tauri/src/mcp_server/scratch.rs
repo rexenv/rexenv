@@ -25,10 +25,13 @@
 //! **One scrubber, not one per door.** Anything a tool here re-emits goes
 //! through [`super::view::scrub_log_line`] — `tail_log`'s scrubber (#201), which
 //! is called from this module, never copied into it. wp names the site's
-//! absolute docroot in ordinary success output, so it is the same leak arriving
-//! through a third door; a local "quick scrub" would agree the day it was
-//! written and drift afterwards, which is what
-//! `one_scrubber_serves_every_door_a_docroot_can_leave_by` fails on.
+//! absolute docroot in ordinary success output and rexenv's own directories in
+//! its errors, so these are the same values arriving through further doors; a
+//! local "quick scrub" would agree the day it was written and drift afterwards,
+//! which is what `one_scrubber_serves_every_door_a_docroot_can_leave_by` fails
+//! on. The prefix set is [`super::view::KnownPaths`], derived from the `Paths`
+//! trait rather than listed here — and it is *the paths rexenv knows*, never a
+//! claim that no path escapes.
 
 use crate::core::scratch::ScratchSite;
 use crate::core::sites::Ownership;
@@ -529,6 +532,29 @@ mod tests {
     use super::*;
     use crate::state::models::{test_site, SiteOrigin};
 
+    /// rexenv's paths in production shape, for the scrub tests. Not the fixture
+    /// `sandbox()` (no filesystem needed here) — what matters is that the
+    /// prefixes look like a real install, so the OS username is actually present
+    /// for the scrub to have to remove.
+    struct SandboxPaths;
+    impl crate::platform::traits::Paths for SandboxPaths {
+        fn app_data_dir(&self) -> Result<std::path::PathBuf> {
+            Ok("/Users/somebody/Library/Application Support/rexenv".into())
+        }
+        fn config_dir(&self) -> Result<std::path::PathBuf> {
+            Ok("/Users/somebody/Library/Application Support/rexenv/config".into())
+        }
+        fn log_dir(&self) -> Result<std::path::PathBuf> {
+            Ok("/Users/somebody/Library/Application Support/rexenv/logs".into())
+        }
+        fn bin_dir(&self) -> Result<std::path::PathBuf> {
+            Ok("/Users/somebody/Library/Application Support/rexenv/bin".into())
+        }
+        fn hosts_file(&self) -> std::path::PathBuf {
+            "/etc/hosts".into()
+        }
+    }
+
     /// A creator that fails the way provisioning does — AFTER the row exists.
     struct HalfBuilt {
         site_id: String,
@@ -740,10 +766,16 @@ mod tests {
 
         // Half one — BEHAVIOUR. The same planted line down both tools' paths.
         let docroot = "/Users/somebody/Sites/probe.scratch.rex";
+        let known = super::super::view::KnownPaths::for_site(&SandboxPaths, docroot);
         let line = format!("Success: Created {docroot}/wp-content/plugins/acme/acme.php");
-        let (via_wp_run, truncated) = agent_stream(line.as_bytes(), docroot);
-        let mut tail =
-            super::super::view::AgentLogTail::from_lines("id", "d.rex", docroot, "wp-debug", vec![line.clone()]);
+        let (via_wp_run, truncated) = agent_stream(line.as_bytes(), &known);
+        let mut tail = super::super::view::AgentLogTail::from_lines(
+            "id",
+            "d.rex",
+            &known,
+            "wp-debug",
+            vec![line.clone()],
+        );
         let via_tail_log = tail.lines.remove(0);
         assert!(!truncated, "a short stream is not truncated");
         assert_eq!(via_wp_run, via_tail_log, "the two doors must agree because they are one function");
@@ -871,6 +903,7 @@ mod tests {
             detail: "`wp plugin activate acme` FAILED in `probe.scratch.rex` (exit 1). What WP-CLI \
                      said is in `stderr`."
                 .into(),
+            note: WP_RUN_NOTE,
         })
         .unwrap();
         assert_eq!(v["succeeded"], false);
@@ -885,12 +918,12 @@ mod tests {
         // window. The cap is not the interesting part — the fact that it is
         // REPORTED is, because silent truncation reads as a complete answer.
         let flood = "x".repeat(WP_OUTPUT_CAP * 2);
-        let (kept, truncated) = agent_stream(flood.as_bytes(), "/dr");
+        let (kept, truncated) = agent_stream(flood.as_bytes(), &super::super::view::KnownPaths::for_site(&SandboxPaths, "/dr"));
         assert!(truncated, "a stream over the cap must report the cut");
         assert!(kept.len() <= WP_OUTPUT_CAP, "cut at the cap: {}", kept.len());
         // Multi-byte content is cut on a character boundary, not mid-codepoint.
         let wide = "é".repeat(WP_OUTPUT_CAP);
-        let (kept, truncated) = agent_stream(wide.as_bytes(), "/dr");
+        let (kept, truncated) = agent_stream(wide.as_bytes(), &super::super::view::KnownPaths::for_site(&SandboxPaths, "/dr"));
         assert!(truncated && kept.chars().all(|c| c == 'é'), "cut mid-codepoint");
     }
 
@@ -1067,7 +1100,18 @@ struct AgentWpRun {
     /// Whether either stream was cut at the cap — stated, never silent.
     truncated: bool,
     detail: String,
+    /// What was done to the output before the agent saw it. Present so a
+    /// labelled path doesn't send the agent hunting for a directory called
+    /// `<docroot>` — and so the limit is stated where it is read.
+    note: &'static str,
 }
+
+/// The scrub's scope, in the reply. Says what was replaced AND what wasn't:
+/// rexenv can only remove the paths it knows, and a raw `wp` command prints
+/// whatever it prints.
+const WP_RUN_NOTE: &str = "Absolute paths rexenv knows — the site's docroot, rexenv's own \
+    directories, the home directory — are shown as labels like <docroot>. Paths rexenv doesn't \
+    know are printed as WP-CLI wrote them: this is raw command output, not sanitised content.";
 
 /// Run an arbitrary WP-CLI command inside a scratch site.
 ///
@@ -1090,9 +1134,12 @@ struct AgentWpRun {
 /// refusing "which command" isn't.
 ///
 /// **Output goes through the SAME scrub as `tail_log`** (`view::scrub_log_line`,
-/// #201). wp re-emits absolute docroot paths constantly — "Created
-/// /Users/<name>/Sites/…" — which is the leak #201 closed for log tails,
-/// arriving through a third door. One function, called from both, never copied.
+/// #201). wp re-emits absolute paths constantly — "Created /Users/<name>/Sites/…"
+/// on success, rexenv's own phar and PHP binary in errors and `wp cli info` —
+/// every one of them carrying the OS username that `AgentSiteView` drops. One
+/// function, called from both doors, never copied. Its reach is bounded and the
+/// reply says so: rexenv can only label the paths it KNOWS, and a plugin that
+/// prints a path rexenv never chose prints it verbatim.
 fn wp_run<'a>(
     ctx: ScratchCtx<'a>,
     args: &'a Value,
@@ -1139,9 +1186,13 @@ fn wp_run<'a>(
         })
         .await?;
 
-        let dr = site.path.clone();
-        let (stdout, cut_out) = agent_stream(&out.stdout, &dr);
-        let (stderr, cut_err) = agent_stream(&out.stderr, &dr);
+        // The SAME set tail_log scrubs against, derived from `Paths` — wp prints
+        // the docroot in ordinary success output and rexenv's own directories
+        // in errors and `wp cli info` (the phar, the pinned PHP binary), and
+        // every one of those carries the OS username.
+        let known = super::view::KnownPaths::for_site(ctx.platform().paths(), &site.path);
+        let (stdout, cut_out) = agent_stream(&out.stdout, &known);
+        let (stderr, cut_err) = agent_stream(&out.stderr, &known);
         let succeeded = out.status.success();
         let exit_code = out.status.code();
         let mut detail = if succeeded {
@@ -1167,6 +1218,7 @@ fn wp_run<'a>(
             stderr,
             truncated: cut_out || cut_err,
             detail,
+            note: WP_RUN_NOTE,
         };
         serde_json::to_value(view).map_err(|e| Error::Other(format!("serialising the run: {e}")))
     })
@@ -1204,14 +1256,15 @@ fn wp_argv(args: &Value) -> Result<Vec<String>> {
 
 /// One captured stream, made fit for an agent: cut at the cap, then scrubbed
 /// line by line through **`view::scrub_log_line`** — `tail_log`'s scrubber
-/// (#201), not a local one. wp names the docroot in ordinary success output, so
-/// this is the same leak arriving through a third door; a second scrubber would
-/// agree the day it was written and drift after.
+/// (#201), not a local one. wp names the docroot in ordinary success output and
+/// rexenv's own directories in its errors, so this is the same leak arriving
+/// through further doors; a second scrubber would agree the day it was written
+/// and drift after.
 ///
 /// The cut keeps the HEAD: wp writes its column headers, its `Success:` line and
 /// its first error at the start, so the front of a long stream is the part with
 /// the answer in it. The cut is always reported (`truncated`), never silent.
-fn agent_stream(raw: &[u8], docroot: &str) -> (String, bool) {
+fn agent_stream(raw: &[u8], known: &super::view::KnownPaths) -> (String, bool) {
     let text = String::from_utf8_lossy(raw);
     let mut end = WP_OUTPUT_CAP.min(text.len());
     while end < text.len() && !text.is_char_boundary(end) {
@@ -1220,7 +1273,7 @@ fn agent_stream(raw: &[u8], docroot: &str) -> (String, bool) {
     let truncated = end < text.len();
     let scrubbed = text[..end]
         .lines()
-        .map(|l| super::view::scrub_log_line(l, docroot))
+        .map(|l| super::view::scrub_log_line(l, known))
         .collect::<Vec<_>>()
         .join("\n");
     (scrubbed, truncated)

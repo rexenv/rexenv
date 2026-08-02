@@ -86,10 +86,12 @@ static REGISTRY: &[ReadTool] = &[
         name: "tail_log",
         description: "Read the tail of a WordPress site's OWN debug log — its plugin/theme PHP \
                       errors and warnings — the most recent lines (tail-only, capped at 200, \
-                      default 100). rexenv-issued login tokens and cookie headers are removed, \
-                      but the log is otherwise the site's RAW output and is NOT sanitised: it can \
-                      contain whatever the site's code logged (request data, config dumps, API \
-                      responses). Only the WordPress debug log is exposed — shared server, edge, \
+                      default 100). rexenv-issued login tokens, cookie headers and the absolute \
+                      paths rexenv knows (shown as labels like <docroot>) are removed, but the log \
+                      is otherwise the site's RAW output and is NOT sanitised: it can contain \
+                      whatever the site's code logged, including paths rexenv doesn't know \
+                      (request data, config dumps, API responses). Only the WordPress debug log is \
+                      exposed — shared server, edge, \
                       database, and access logs are not. Takes `site_id` and optional `lines`.",
         input_schema: site_id_lines_param,
         sweep_args: |id| json!({ "site_id": id }),
@@ -208,7 +210,7 @@ fn tail_log<'a>(
         // handler stays free of state types. A non-WP site is a normal empty
         // result, not an error (so it isn't a misleading "concerning" feed row).
         let tail = match ctx.wp_debug_log_tail(&site, lines)? {
-            Some(raw) => AgentLogTail::from_lines(&site.id, &site.domain, &site.path, "wp-debug", raw),
+            Some(raw) => AgentLogTail::from_lines(&site.id, &site.domain, &ctx.known_paths(&site), "wp-debug", raw),
             None => AgentLogTail::none_for_non_wordpress(&site.id, &site.domain),
         };
         serde_json::to_value(tail).map_err(|e| Error::Other(format!("serialising log tail: {e}")))
