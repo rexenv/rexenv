@@ -1082,6 +1082,16 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     // row outlived its site as an orphan.
     store::delete_db_import(conn, id)?;
 
+    // The cloned plugins/themes an agent added (v29). Same gap as the import
+    // row above and the same fix: no foreign key, so nothing removes these on
+    // their own. The read path (`all_scratch_packages`) ALSO joins to `sites`,
+    // and that join STAYS — two defences on one fact, the shape used elsewhere
+    // here. They fail differently: this delete keeps the table from growing
+    // orphans, the join keeps a row that somehow survives from ever being shown
+    // as a package of a site that is gone. Removing either because the other
+    // exists is how a fact ends up with none.
+    store::delete_scratch_packages(conn, id)?;
+
     // D2's plain-delete leg: the rewrite records and OUR backups go with the
     // site. Their config file itself is never touched here — reverting first
     // is a choice the delete confirm offers (the default button), never a
@@ -2354,6 +2364,51 @@ mod tests {
     }
 
     #[cfg(target_os = "macos")]
+    #[test]
+    fn a_deleted_sites_packages_go_with_it_and_the_read_still_guards_independently() {
+        // TWO defences on one fact, asserted SEPARATELY — the point of keeping
+        // both is that they fail differently, so a test that only checked the
+        // end result ("no package is listed") would pass with either one gone
+        // and could not tell you which was carrying it.
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let site = create(&conn, sample("Packaged", "packaged.test")).unwrap();
+        let pkg = |site_id: &str, slug: &str| crate::state::models::ScratchPackage {
+            site_id: site_id.to_string(),
+            slug: slug.to_string(),
+            kind: "plugin".into(),
+            source_path: "/tmp/acme".into(),
+            synced_at: "2026-08-04 10:00:00".into(),
+            fingerprint: "1-2-3".into(),
+        };
+        store::upsert_scratch_package(&conn, &pkg(&site.id, "acme")).unwrap();
+        assert_eq!(store::scratch_packages(&conn, &site.id).unwrap().len(), 1, "planted");
+
+        // (1) The DELETE: teardown takes the rows with the site, so the table
+        //     does not grow orphans. Checked against the RAW table, not the
+        //     joined read — the joined read would hide a surviving row and
+        //     report success for the wrong reason.
+        teardown(&conn, &*platform, &site.id).unwrap();
+        let raw: i64 = conn
+            .query_row("SELECT COUNT(*) FROM scratch_packages WHERE site_id = ?1", [&site.id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(raw, 0, "the package rows outlived their site as orphans");
+
+        // (2) The JOIN, still load-bearing on its own: plant a row for a site
+        //     that does not exist — the shape a pre-fix database still carries,
+        //     and the shape any future path that forgets step (1) would create.
+        //     The read must not surface it.
+        store::upsert_scratch_package(&conn, &pkg("no-such-site-id", "ghost")).unwrap();
+        let ghost_raw: i64 = conn
+            .query_row("SELECT COUNT(*) FROM scratch_packages WHERE slug = 'ghost'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ghost_raw, 1, "the fixture must actually plant an orphan, or (2) proves nothing");
+        assert!(
+            store::all_scratch_packages(&conn).unwrap().iter().all(|p| p.slug != "ghost"),
+            "the read surfaced a package of a site that does not exist — the join is not guarding"
+        );
+    }
+
     #[test]
     fn teardown_removes_row_and_per_site_artifacts() {
         let conn = db::open_in_memory().unwrap();

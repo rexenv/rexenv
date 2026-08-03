@@ -390,9 +390,10 @@ first:
     work-around a helpful model would reach for as a failure tell.
     **M2a's code is complete; the remaining M2a work is a release-candidate
     SMOKE run and the two 🔨 legs above.**
-    ⚠ Carried into the next task deliberately (not "if there's room"): delete
-    the site's `scratch_packages` rows in `delete_site_owned` — v29 has no FK,
-    so today they are orphans the read only hides.
+    ✓ **Orphan `scratch_packages` rows closed** (ledger #221): the delete lives
+    in `core::sites::teardown` (not `delete_site_owned`) so the CLI and UI
+    inherit it, and the read's join to `sites` STAYS as the second defence —
+    they fail differently, and each leg is plant-proven on its own.
     ✓ #203's last leg — **L1 `mcp_control_check`** (sandbox tier): the OFF
     switch, built to prove what SMOKE step 4 is a HOLD for rather than the easy
     version. A session that was ALREADY CONNECTED is dropped (not just new

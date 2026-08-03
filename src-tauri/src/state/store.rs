@@ -570,6 +570,18 @@ pub fn scratch_packages(conn: &Connection, site_id: &str) -> Result<Vec<ScratchP
     Ok(rows)
 }
 
+/// Drop a site's recorded packages (v29).
+///
+/// v29 declares `site_id` as a plain column with no foreign key, so nothing
+/// removes these rows on its own — before this they outlived their site as
+/// orphans, exactly the gap `delete_db_import` was added to close for imports.
+/// Called from `sites::teardown`, so the CLI and the UI inherit it rather than
+/// one command remembering.
+pub fn delete_scratch_packages(conn: &Connection, site_id: &str) -> Result<()> {
+    conn.execute("DELETE FROM scratch_packages WHERE site_id = ?1", [site_id])?;
+    Ok(())
+}
+
 /// Every recorded package whose SITE still exists, newest sync first — one read
 /// for a whole page rather than one per row (the `db_import_records` shape).
 ///
