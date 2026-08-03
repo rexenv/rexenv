@@ -51,6 +51,11 @@ pub struct ReadTool {
     /// a planted fixture site. REQUIRED, so a new tool cannot be registered
     /// without the sweep covering its output.
     pub sweep_args: fn(site_id: &str) -> Value,
+    /// What this call was ABOUT, for the feed (v30) — or `None` when the tool's
+    /// name and target already describe it, which is true of every M1 tool.
+    /// REQUIRED like `sweep_args`: a tool must SAY that its name is enough
+    /// rather than be silently assumed to have nothing to add.
+    pub summarise: fn(&Value) -> Option<String>,
     pub handler: ToolHandler,
 }
 
@@ -68,6 +73,7 @@ static REGISTRY: &[ReadTool] = &[
                       serving. Use the returned `id` or `domain` to refer to a site in later calls.",
         input_schema: no_params,
         sweep_args: |_id| json!({}),
+        summarise: |_| None,
         handler: list_sites,
     },
     ReadTool {
@@ -80,6 +86,7 @@ static REGISTRY: &[ReadTool] = &[
                       own code renders correctly is checked with tail_log. Takes `site_id`.",
         input_schema: site_id_param,
         sweep_args: |id| json!({ "site_id": id }),
+        summarise: |_| None,
         handler: site_status,
     },
     ReadTool {
@@ -95,6 +102,7 @@ static REGISTRY: &[ReadTool] = &[
                       database, and access logs are not. Takes `site_id` and optional `lines`.",
         input_schema: site_id_lines_param,
         sweep_args: |id| json!({ "site_id": id }),
+        summarise: |_| None,
         handler: tail_log,
     },
 ];

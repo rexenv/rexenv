@@ -77,6 +77,21 @@ export function AgentActivityFeed({
           )}
         >
           <span className="font-mono text-[0.71875rem] text-rex-text">{r.tool}</span>
+          {r.argsSummary && (
+            /* A VERB, not the command — deliberately unlabelled and dimmed.
+               `plugin activate` does not say which plugin and `eval` says
+               nothing about the code, so a caption like "command" would invite
+               "I can see what the agent did" from something that shows only
+               what KIND of thing it did. The title says the limit out loud.
+               Two `[a-z0-9-]` tokens, clamped in Rust at the write — it cannot
+               carry a separator or impersonate the client slot below. */
+            <span
+              className="flex-none font-mono text-[0.6875rem] text-rex-text-dim"
+              title={`WP-CLI command and subcommand. Not the full command — arguments (which plugin, which option, what code) are not recorded.`}
+            >
+              {r.argsSummary}
+            </span>
+          )}
           {!hideTarget && targetText(r) && (
             <span className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
               → {targetText(r)}

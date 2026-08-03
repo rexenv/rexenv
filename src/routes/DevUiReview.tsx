@@ -524,12 +524,14 @@ const REAPED = "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24";
  *  an unknown-tool) newest, then successes. `targetSite` is the stored UUID; the
  *  card shows `targetLabel` (the resolved domain). */
 const AGENT_ROWS: AgentAction[] = [
-  { id: 7, at: agoStamp(2), actor: "rexenv", client: "rexenv", tool: "scratch_reap", targetSite: REAPED, targetLabel: null, outcome: "ok", detail: "probe.scratch.rex — expired, removed", concerning: false },
-  { id: 6, at: agoStamp(1), actor: "agent", client: "Claude Code", tool: "tail_log", targetSite: EA, targetLabel: "myblog.test", outcome: "error", detail: "no debug.log for this site", concerning: true },
-  { id: 5, at: agoStamp(3), actor: "agent", client: "Claude Code", tool: "site_status", targetSite: SHOP, targetLabel: "shop.test", outcome: "unknown-tool", detail: "no such tool", concerning: true },
-  { id: 4, at: agoStamp(4), actor: "agent", client: "Claude Code", tool: "site_status", targetSite: EA, targetLabel: "myblog.test", outcome: "ok", detail: null, concerning: false },
-  { id: 3, at: agoStamp(9), actor: "agent", client: "Cursor 0.42", tool: "list_sites", targetSite: null, targetLabel: null, outcome: "ok", detail: null, concerning: false },
-  { id: 2, at: agoStamp(24), actor: "agent", client: "Claude Code", tool: "tail_log", targetSite: EA, targetLabel: "myblog.test", outcome: "ok", detail: null, concerning: false },
+  { id: 9, at: agoStamp(1), actor: "agent", client: "Claude Code", tool: "wp_run", targetSite: REAPED, targetLabel: "plugin-test.scratch.rex", outcome: "ok", detail: null, argsSummary: "eval", concerning: false },
+  { id: 8, at: agoStamp(1), actor: "agent", client: "Claude Code", tool: "wp_run", targetSite: REAPED, targetLabel: "plugin-test.scratch.rex", outcome: "ok", detail: null, argsSummary: "plugin activate", concerning: false },
+  { id: 7, at: agoStamp(2), actor: "rexenv", client: "rexenv", tool: "scratch_reap", targetSite: REAPED, targetLabel: null, outcome: "ok", detail: "probe.scratch.rex — expired, removed", argsSummary: null, concerning: false },
+  { id: 6, at: agoStamp(1), actor: "agent", client: "Claude Code", tool: "tail_log", targetSite: EA, targetLabel: "myblog.test", outcome: "error", detail: "no debug.log for this site", argsSummary: null, concerning: true },
+  { id: 5, at: agoStamp(3), actor: "agent", client: "Claude Code", tool: "site_status", targetSite: SHOP, targetLabel: "shop.test", outcome: "unknown-tool", detail: "no such tool", argsSummary: null, concerning: true },
+  { id: 4, at: agoStamp(4), actor: "agent", client: "Claude Code", tool: "site_status", targetSite: EA, targetLabel: "myblog.test", outcome: "ok", detail: null, argsSummary: null, concerning: false },
+  { id: 3, at: agoStamp(9), actor: "agent", client: "Cursor 0.42", tool: "list_sites", targetSite: null, targetLabel: null, outcome: "ok", detail: null, argsSummary: null, concerning: false },
+  { id: 2, at: agoStamp(24), actor: "agent", client: "Claude Code", tool: "tail_log", targetSite: EA, targetLabel: "myblog.test", outcome: "ok", detail: null, argsSummary: null, concerning: false },
 ];
 
 function activityStatusMock(): ActivityStatus {

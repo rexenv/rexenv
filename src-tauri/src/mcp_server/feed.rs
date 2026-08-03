@@ -196,6 +196,11 @@ pub struct PendingLog {
     pub target_site: Option<String>,
     pub outcome: Outcome,
     pub detail: Option<String>,
+    /// What the call was ABOUT, when the tool's name and target don't say (v30).
+    /// Produced by the TOOL's own `summarise`, never by parsing agent JSON here,
+    /// and clamped by [`clamp_summary`] at the write. `None` means "the name and
+    /// target already describe this" — true of seven of the eight tools.
+    pub args_summary: Option<String>,
 }
 
 /// One recorded action, as the card reads it.
@@ -232,6 +237,11 @@ pub struct AgentAction {
     pub outcome: Outcome,
     pub detail: Option<String>,
     /// Whether the card should surface this row prominently.
+    /// What the call was ABOUT, when the tool's name and target don't say (v30).
+    /// `None` for most tools and that is an ANSWER: their name and target
+    /// already describe them. Clamped at the write to `[a-z][a-z0-9-]{0,19}`
+    /// tokens, so it can never impersonate a client name or rexenv's own rows.
+    pub args_summary: Option<String>,
     pub concerning: bool,
 }
 
@@ -262,10 +272,13 @@ fn write(conn: &Connection, actor: FeedActor, client: &str, log: &PendingLog) ->
     let tool = truncate(&log.tool, FIELD_MAX);
     let target = log.target_site.as_deref().map(|s| truncate(s, FIELD_MAX));
     let detail = log.detail.as_deref().map(|d| truncate(d, DETAIL_MAX));
+    // Clamped HERE, at the one writer, not at the summariser — a tool that got
+    // its own validation wrong still cannot put arbitrary text in the feed.
+    let summary = log.args_summary.as_deref().and_then(clamp_summary);
     conn.execute(
-        "INSERT INTO agent_actions (at, actor, client, tool, target_site, outcome, detail) \
-         VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5, ?6)",
-        params![actor.as_db(), client, tool, target, log.outcome.as_db(), detail],
+        "INSERT INTO agent_actions (at, actor, client, tool, target_site, outcome, detail, args_summary) \
+         VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![actor.as_db(), client, tool, target, log.outcome.as_db(), detail, summary],
     )?;
     conn.execute(
         "DELETE FROM agent_actions WHERE id NOT IN \
@@ -275,9 +288,52 @@ fn write(conn: &Connection, actor: FeedActor, client: &str, log: &PendingLog) ->
     Ok(())
 }
 
+/// Tokens allowed in an argument summary, and the reason the rule is this tight.
+///
+/// A summary token must match `[a-z][a-z0-9-]{0,19}` — lowercase, no spaces, no
+/// punctuation but `-`. That is not tidiness. The feed is where a user goes to
+/// find out what an agent did, so text an agent CHOSE, rendered in that list,
+/// could otherwise impersonate the client-name slot, rexenv's own
+/// `rexenv · automatic` rows, or the `·` separators between them. An audit
+/// surface that can be made to lie is worse than one that shows less. The
+/// charset excludes every character such a forgery needs.
+///
+/// A whole summary is up to [`SUMMARY_TOKENS`] such tokens joined by a single
+/// space. Anything that doesn't fit becomes `?` — a token rendered, deliberately,
+/// rather than dropped: "the agent ran something whose name we won't repeat" is
+/// information, and silently omitting it would make an odd call look like an
+/// ordinary one.
+const SUMMARY_TOKEN_MAX: usize = 20;
+const SUMMARY_TOKENS: usize = 2;
+
+/// Does one token fit the summary charset?
+///
+/// THE definition, exported so a summariser can decide where to STOP and the
+/// writer can decide what to REPLACE — two different uses of one rule. A second
+/// copy of this predicate is how the two drift into disagreeing about what is
+/// safe.
+pub fn is_summary_token(t: &str) -> bool {
+    !t.is_empty()
+        && t.len() <= SUMMARY_TOKEN_MAX
+        && t.starts_with(|c: char| c.is_ascii_lowercase())
+        && t.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Clamp a tool-produced summary to the shape above, or `None` if it is empty.
+pub fn clamp_summary(raw: &str) -> Option<String> {
+    let ok = is_summary_token;
+    let out: Vec<&str> = raw
+        .split_whitespace()
+        .take(SUMMARY_TOKENS)
+        .map(|t| if ok(t) { t } else { "?" })
+        .collect();
+    (!out.is_empty()).then(|| out.join(" "))
+}
+
 /// Columns selected for an `AgentAction`, in struct order — shared so `recent`
 /// and `recent_for_site` read the same shape through `row_to_action`.
-const ACTION_COLUMNS: &str = "id, at, actor, client, tool, target_site, outcome, detail";
+const ACTION_COLUMNS: &str =
+    "id, at, actor, client, tool, target_site, outcome, detail, args_summary";
 
 /// Map a row (selecting `ACTION_COLUMNS`) into an `AgentAction`.
 fn row_to_action(r: &rusqlite::Row) -> rusqlite::Result<AgentAction> {
@@ -292,6 +348,9 @@ fn row_to_action(r: &rusqlite::Row) -> rusqlite::Result<AgentAction> {
         target_label: None, // resolved by the command layer, never stored
         outcome,
         detail: r.get(7)?,
+        // Stored clamped (see `clamp_summary`), so nothing here needs to
+        // re-validate — but nothing downstream may relax it either.
+        args_summary: r.get(8)?,
         concerning: outcome.is_concerning(),
     })
 }
@@ -414,7 +473,10 @@ pub fn record_reap(
             target_site: Some(site_id.to_string()),
             outcome,
             detail,
-        },
+                    // A reap is rexenv's own row: `tool` + the site it names
+            // describe it completely, and its reason travels in `detail`.
+            args_summary: None,
+},
     )?;
     Ok(true)
 }
@@ -447,6 +509,7 @@ mod tests {
             target_site: target.map(String::from),
             outcome,
             detail: detail.map(String::from),
+            args_summary: None,
         }
     }
 
@@ -480,13 +543,24 @@ mod tests {
         let keys: Vec<&str> = json.as_object().unwrap().keys().map(String::as_str).collect();
         for k in &keys {
             assert!(
-                // `actor` (v28) is admitted DELIBERATELY, which is the point of
-                // this guard: a field joins the record by someone editing this
-                // list, never by a struct quietly growing. It is a closed enum
-                // rexenv sets, not agent-supplied content.
+                // `actor` (v28) and `argsSummary` (v30) are admitted
+                // DELIBERATELY, which is the point of this guard: a field joins
+                // the record by someone editing this list, never by a struct
+                // quietly growing. `actor` is a closed enum rexenv sets.
+                //
+                // `argsSummary` is the harder admission and the reasoning is
+                // recorded because it is the exact shape this guard exists to
+                // refuse — an "argument summary" is the field that creeps into
+                // "the whole request". It is admitted on three conditions, all
+                // structural: it is produced by the TOOL's own `summarise` (so
+                // the feed layer never parses agent JSON generically), it is
+                // clamped at the single writer to at most two
+                // `[a-z][a-z0-9-]{0,19}` tokens (so it cannot forge a row), and
+                // it carries VERBS only — never argument values. Widen any one
+                // of those and this admission stops being justified.
                 [
                     "id", "at", "actor", "client", "tool", "targetSite", "targetLabel", "outcome",
-                    "detail", "concerning"
+                    "detail", "argsSummary", "concerning"
                 ]
                 .contains(k),
                 "unexpected feed field `{k}` — the record shape grew"
@@ -501,6 +575,83 @@ mod tests {
         record(&conn, "c", &log("site_status", None, Outcome::Error, Some(&huge))).unwrap();
         let d = recent(&conn, 1).unwrap()[0].detail.clone().unwrap();
         assert!(d.chars().count() <= DETAIL_MAX + 1, "detail not bounded: {}", d.chars().count());
+    }
+
+    #[test]
+    fn a_summary_cannot_forge_a_feed_row() {
+        // The clamp is a SECURITY property, not tidiness. The feed is where a
+        // user goes to find out what an agent did, so agent-chosen text rendered
+        // in that list must not be able to impersonate its neighbours: the
+        // client-name slot, rexenv's own "rexenv · automatic" rows, or the `·`
+        // separators between them. Every forgery below needs a character the
+        // charset excludes.
+        for forgery in [
+            "rexenv · automatic",
+            "plugin\nactivate",
+            "Claude Code",
+            "eval; DROP",
+            "·",
+            "PLUGIN",
+            "../../etc",
+            "<script>x</script>",
+        ] {
+            let got = clamp_summary(forgery);
+            let text = got.clone().unwrap_or_default();
+            assert!(
+                text.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == ' ' || c == '?'),
+                "`{forgery}` survived as `{text}` — a character that can forge a row got through"
+            );
+            assert!(!text.contains('·'), "`{forgery}` kept a separator: {text}");
+        }
+        // A refused token renders as `?` rather than vanishing: "the agent ran
+        // something whose name we won't repeat" is information, and dropping it
+        // silently would make an odd call look like an ordinary one.
+        assert_eq!(clamp_summary("PLUGIN activate").as_deref(), Some("? activate"));
+        // The ordinary case is untouched, and stops at two tokens — the values
+        // after the subcommand are the content, and they are not recorded.
+        assert_eq!(clamp_summary("plugin activate acme --force").as_deref(), Some("plugin activate"));
+        assert_eq!(clamp_summary("eval").as_deref(), Some("eval"));
+        // Length is bounded per token, so a long word cannot pad the row out.
+        let long = "a".repeat(40);
+        assert_eq!(clamp_summary(&long).as_deref(), Some("?"));
+        assert_eq!(clamp_summary("   ").as_deref(), None, "whitespace summarises to nothing");
+    }
+
+    #[test]
+    fn a_summary_is_clamped_at_the_WRITE_not_only_at_the_summariser() {
+        // Defence placement, asserted: a tool whose own `summarise` was wrong —
+        // or a future one that skips validation entirely — still cannot put
+        // arbitrary text in the feed, because the single writer clamps.
+        let conn = crate::state::db::open_in_memory().unwrap();
+        record(
+            &conn,
+            "Claude Code",
+            &PendingLog {
+                tool: "wp_run".into(),
+                target_site: None,
+                outcome: Outcome::Ok,
+                detail: None,
+                args_summary: Some("rexenv · automatic".into()),
+            },
+        )
+        .unwrap();
+        let row = &recent(&conn, 1).unwrap()[0];
+        let got = row.args_summary.clone().unwrap_or_default();
+        // Assert the PROPERTY, not the exact string — the first draft of this
+        // asserted `"? ?"` and was wrong, which is the useful part: `rexenv`
+        // splits off as its own token and is all-lowercase-ascii, so it SURVIVES
+        // as a word. That is fine and worth stating rather than hardening away
+        // with a reserved-word denylist (the shape this codebase rejects): what
+        // the clamp guarantees is that no SEPARATOR-bearing, row-shaped string
+        // can be constructed. The word `rexenv` sitting in a dimmed verb slot is
+        // not an impersonation — attribution lives in the typed `actor` (#205)
+        // and its own rendering slot, neither of which this field can reach.
+        assert!(!got.contains('·'), "the writer let a separator through: {got}");
+        assert!(
+            got.split(' ').all(|t| t == "?" || t.chars().all(|c| c.is_ascii_lowercase())),
+            "a token survived that the charset should have refused: {got}"
+        );
+        assert!(got.contains('?'), "the `·` token must be refused, leaving a visible `?`: {got}");
     }
 
     #[test]

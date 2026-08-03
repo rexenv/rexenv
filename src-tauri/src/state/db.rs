@@ -397,6 +397,31 @@ const MIGRATIONS: &[&str] = &[
         synced_at   TEXT NOT NULL, \
         fingerprint TEXT NOT NULL, \
         PRIMARY KEY (site_id, slug));",
+    // v30 — what a tool call was ABOUT, where the tool's name and its target
+    // don't say (MCP M2a follow-up).
+    //
+    // Only ONE tool needs this, and the reason is a property, not a preference:
+    // `wp_run` is the only tool whose action leaves no other record. A create, a
+    // delete, an add and a sync all change state the user can go and look at;
+    // `wp_run`'s effects are inside the site, and its history exists nowhere but
+    // here. Forty rows reading `wp_run · x.scratch.rex · ok` record that a
+    // runner ran, not what it did.
+    //
+    // NULLABLE, and the null is MEANINGFUL: it says "this tool's name and target
+    // already describe it", which is true of seven of the eight. It does not
+    // mean a summary was wanted and missed.
+    //
+    // The typed-shape rule (#202) is intact, and this is the part worth reading
+    // before touching it. The column is NOT a free-form argument dump: each tool
+    // declares its own `summarise` (the `sweep_args` shape), so the feed layer
+    // never parses agent JSON generically, and every value is charset-clamped at
+    // the WRITE to `[a-z][a-z0-9-]{0,19}` per token. That clamp is the security
+    // property, not a tidiness rule — the feed is where a user goes to find out
+    // what an agent did, so text an agent chose, rendered there, could otherwise
+    // impersonate a client name, rexenv's own `rexenv · automatic` rows, or the
+    // `·` separators between them. An audit surface that can be made to lie is
+    // worse than one that shows less.
+    "ALTER TABLE agent_actions ADD COLUMN args_summary TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1032,6 +1057,36 @@ mod tests {
         assert_eq!(rows[0].client, "Claude Code");
         // And it still drives the status line, exactly as it did before v28.
         assert!(feed::recent_head(&conn, 15).unwrap().is_some());
+    }
+
+    #[test]
+    fn v30_leaves_every_existing_row_saying_nothing_rather_than_guessing() {
+        // The upgrade question for a nullable column: what do pre-v30 rows say?
+        // NULL, and that reads as "this tool's name and target already describe
+        // it" — which is TRUE of every row written before v30, because the only
+        // tool the column exists for is the one whose calls it will now describe
+        // going forward. A backfilled guess would have been a fabricated record
+        // in an accountability table.
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..MIGRATIONS.len() - 1].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO agent_actions (at, actor, client, tool, target_site, outcome, detail) \
+             VALUES (datetime('now'), 'agent', 'Claude Code', 'wp_run', 's1', 'ok', NULL)",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        let rows = crate::mcp_server::feed::recent(&conn, 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].args_summary, None,
+            "a pre-v30 row must say nothing, not a guessed summary"
+        );
+        assert_eq!(rows[0].tool, "wp_run", "and everything else about it is untouched");
     }
 
     #[test]

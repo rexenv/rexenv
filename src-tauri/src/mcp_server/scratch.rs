@@ -65,6 +65,10 @@ pub struct ScratchTool {
     /// The arguments the secret-leak sweep calls this tool with. REQUIRED — the
     /// sweep enumerates the registry, so a new tool is covered by construction.
     pub sweep_args: fn(site_id: &str) -> Value,
+    /// What this call was ABOUT, for the feed (v30). REQUIRED, and `None` is the
+    /// right answer for most: a create, a delete and a sync are fully described
+    /// by the tool's name and the site it names.
+    pub summarise: fn(&Value) -> Option<String>,
     pub handler: ToolHandler,
 }
 
@@ -83,6 +87,7 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
                   touches the user's own sites.",
     input_schema: create_params,
     sweep_args: |_id| json!({ "name": "sweep-probe" }),
+    summarise: |_| None,
     handler: create_site,
 }, ScratchTool {
     name: "scratch_delete_site",
@@ -96,6 +101,7 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
         "additionalProperties": false
     }),
     sweep_args: |id| json!({ "site_id": id }),
+    summarise: |_| None,
     handler: delete_site,
 }, ScratchTool {
     name: "scratch_add_package",
@@ -115,6 +121,7 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
         "additionalProperties": false
     }),
     sweep_args: |id| json!({ "site_id": id, "source": "/tmp/rexenv-sweep-probe" }),
+    summarise: summarise_add_package,
     handler: add_package,
 }, ScratchTool {
     name: "scratch_sync_package",
@@ -131,6 +138,7 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
         "additionalProperties": false
     }),
     sweep_args: |id| json!({ "site_id": id, "slug": "sweep-probe" }),
+    summarise: |_| None,
     handler: sync_package,
 }, ScratchTool {
     name: "wp_run",
@@ -157,8 +165,71 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
         "additionalProperties": false
     }),
     sweep_args: |id| json!({ "site_id": id, "args": ["option", "get", "home"] }),
+    summarise: summarise_wp_run,
     handler: wp_run,
 }];
+
+
+/// `wp_run`'s summary: the WP-CLI command and subcommand, e.g. `plugin activate`.
+///
+/// This tool is why the column exists. It is the only one whose action leaves no
+/// other record — a create, a delete, an add and a sync all change state the user
+/// can go and look at, while `wp_run`'s effects are inside the site and its
+/// history exists nowhere but the feed. Rows reading `wp_run · x · ok` record
+/// that a runner ran, not what it did, and `wp plugin list` twelve times is a
+/// different thing to have happened than `wp eval` twelve times.
+///
+/// **Two tokens, no more, and no values.** The command and subcommand are the
+/// shape WP-CLI itself uses. Arguments past them are where the content is — a
+/// plugin slug, an option value, a block of PHP — and none of that belongs in an
+/// accountability record it would also make unreadable.
+///
+/// The tokens are agent-supplied and are made safe by the WRITE's clamp
+/// (`feed::clamp_summary`), not by anything here: whatever this returns, only
+/// `[a-z][a-z0-9-]{0,19}` survives, so it cannot forge a client name, rexenv's
+/// own rows, or the separators between them.
+fn summarise_wp_run(args: &Value) -> Option<String> {
+    let list = args.get("args")?.as_array()?;
+    let words: Vec<&str> = list
+        .iter()
+        .filter_map(Value::as_str)
+        // A flag is not the command — `wp --path=x plugin list` must summarise
+        // as `plugin list`, not as the flag the target screen already refused.
+        .filter(|w| !w.starts_with('-'))
+        // STOP at the first token that isn't command-shaped, rather than taking
+        // two unconditionally. Not every WP-CLI command has a subcommand:
+        // `wp eval '<php>'` takes CODE as its first positional, so a blind
+        // take(2) put the user's PHP in the accountability record. The write's
+        // clamp would have mangled it into a fragment rather than leaked it, but
+        // a fragment of someone's code is not a summary. One shared predicate
+        // (`feed::is_summary_token`) decides here and at the write, so the two
+        // cannot disagree about what is command-shaped.
+        .take_while(|w| super::feed::is_summary_token(w))
+        .take(2)
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
+}
+
+/// `scratch_add_package`'s summary: the folder name being added.
+///
+/// **The reason given for including this was wrong, and the correction matters.**
+/// It was justified as "rexenv-derived — the canonicalised source directory's
+/// name". It is not: `summarise` sees the RAW arguments, before
+/// `validate_linked_docroot` canonicalises anything, so this is the last
+/// component of a path the agent supplied. What makes it safe is the write's
+/// charset clamp, which applies the same whatever the provenance — the same
+/// protection `wp_run` gets. Recorded here because a comment claiming
+/// rexenv-derived provenance would be a false claim about the one thing this
+/// column's safety rests on.
+///
+/// Still worth having: which plugin was added is the one fact the tool's name and
+/// target omit, and unlike a sync it is not visible on the site's card until the
+/// clone has already happened.
+fn summarise_add_package(args: &Value) -> Option<String> {
+    let source = args.get("source")?.as_str()?;
+    let name = source.trim_end_matches('/').rsplit('/').next()?;
+    (!name.is_empty()).then(|| name.to_ascii_lowercase())
+}
 
 fn create_params() -> Value {
     json!({
@@ -925,6 +996,64 @@ mod tests {
         let wide = "é".repeat(WP_OUTPUT_CAP);
         let (kept, truncated) = agent_stream(wide.as_bytes(), &super::super::view::KnownPaths::for_site(&SandboxPaths, "/dr"));
         assert!(truncated && kept.chars().all(|c| c == 'é'), "cut mid-codepoint");
+    }
+
+    #[test]
+    fn the_summary_records_the_verb_and_never_the_values() {
+        // The line this column must not cross. `plugin activate acme` is a verb
+        // and a VALUE; only the verb is recorded. Values are where the content
+        // is — a slug, an option's contents, a block of PHP — and an
+        // accountability record that carried them would be both a channel and
+        // unreadable.
+        let run = |v: Value| summarise_wp_run(&json!({ "args": v }));
+        assert_eq!(run(json!(["plugin", "activate", "acme"])).as_deref(), Some("plugin activate"));
+        assert_eq!(run(json!(["eval", "echo WP_HOME;"])).as_deref(), Some("eval"), "no PHP in the record");
+        assert_eq!(run(json!(["db", "query", "SELECT * FROM wp_users"])).as_deref(), Some("db query"));
+        // A flag is not the command: the target screen already refuses these,
+        // but a refused call is still recorded and must name what it TRIED.
+        assert_eq!(run(json!(["--path=/elsewhere", "plugin", "list"])).as_deref(), Some("plugin list"));
+        // Malformed input summarises to nothing rather than to a guess.
+        assert_eq!(run(json!([])), None);
+        assert_eq!(summarise_wp_run(&json!({})), None);
+        assert_eq!(run(json!(["plugin", 7])).as_deref(), Some("plugin"), "a non-string is skipped");
+
+        // add_package: the folder name, and NOT the path around it — the source
+        // path is the user's own directory and belongs on the site card, not in
+        // every feed row.
+        let add = |p: &str| summarise_add_package(&json!({ "site_id": "x", "source": p }));
+        assert_eq!(add("/Users/me/code/acme-blocks").as_deref(), Some("acme-blocks"));
+        assert_eq!(add("/Users/me/code/acme-blocks/").as_deref(), Some("acme-blocks"), "trailing slash");
+        for out in [add("/Users/me/code/acme-blocks"), add("/x/y")] {
+            let t = out.unwrap_or_default();
+            assert!(!t.contains('/'), "a path component separator reached the summary: {t}");
+        }
+    }
+
+    #[test]
+    fn every_tool_declares_whether_its_name_is_enough() {
+        // `summarise` is REQUIRED on both registries for the same reason
+        // `sweep_args` is: a tool must SAY that its name and target describe it,
+        // rather than be assumed to have nothing to add because nobody looked.
+        // Seven of eight legitimately answer None — that is the answer, not a
+        // gap — and this asserts the ONE that doesn't, so a future edit that
+        // silently drops wp_run's summariser fails here.
+        let probe = json!({ "site_id": "s", "args": ["plugin", "list"], "source": "/tmp/acme" });
+        let summarised: Vec<&str> = super::registry()
+            .iter()
+            .filter(|t| (t.summarise)(&probe).is_some())
+            .map(|t| t.name)
+            .chain(
+                super::super::tools::registry()
+                    .iter()
+                    .filter(|t| (t.summarise)(&probe).is_some())
+                    .map(|t| t.name),
+            )
+            .collect();
+        assert_eq!(
+            summarised,
+            vec!["scratch_add_package", "wp_run"],
+            "exactly the tools whose name and target under-describe them"
+        );
     }
 
     #[test]

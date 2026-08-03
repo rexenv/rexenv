@@ -329,6 +329,14 @@ async fn session<R, W, Rt>(
                 // no `site_id` to name). It is an out-parameter, so a handler
                 // that records the row and THEN fails still names it.
                 let acted = feed::ActedTarget::default();
+                // Ask the TOOL what this call was about, before it runs. Per-tool
+                // rather than a generic reader of `args`, so the feed layer never
+                // parses agent JSON itself (#202); computed BEFORE the handler so
+                // a call that fails is still described by what it tried to do.
+                let args_summary = find_tool(&name).and_then(|t| match t {
+                    Tool::Read(t) => (t.summarise)(&args),
+                    Tool::Scratch(t) => (t.summarise)(&args),
+                });
                 let (reply, outcome, detail) =
                     fulfill_tool_call(&app, id, &name, &args, &acted, &client).await;
                 log_action(
@@ -339,6 +347,7 @@ async fn session<R, W, Rt>(
                         target_site: target_for_record(acted.take(), named),
                         outcome,
                         detail,
+                        args_summary,
                     },
                 );
                 Some(reply)
@@ -416,6 +425,10 @@ fn dispatch(text: &str) -> Dispatch {
                     target_site: None,
                     outcome: feed::Outcome::BadRequest,
                     detail: Some("could not parse the JSON-RPC message".into()),
+                    // Nothing parsed, so there is no tool to ask and nothing to
+                    // summarise. `None` here means the same as everywhere: the
+                    // tool name and target already say what this row is.
+                    args_summary: None,
                 },
             }
         }
@@ -439,6 +452,11 @@ fn dispatch(text: &str) -> Dispatch {
                         target_site: target,
                         outcome: feed::Outcome::UnknownTool,
                         detail: Some("no such tool".into()),
+                        // No such tool, so no summariser exists to ask — and
+                        // deliberately NOT a guess from the raw arguments,
+                        // which is exactly the generic arg-dump the typed shape
+                        // exists to prevent (#202).
+                        args_summary: None,
                     },
                 }
             } else {

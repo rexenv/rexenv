@@ -1142,6 +1142,14 @@ export interface AgentAction {
   targetLabel: string | null;
   outcome: AgentOutcome;
   detail: string | null;
+  /** What the call was ABOUT, when the tool's name and target don't say (v30).
+   *  Null for most tools, and that is an ANSWER rather than a gap: their name
+   *  and target already describe them. At most two `[a-z][a-z0-9-]` tokens,
+   *  clamped in Rust at the write — so it can never impersonate the client-name
+   *  slot, rexenv's own rows, or the separators between them. It is a VERB, not
+   *  the command: `plugin activate` does not say which plugin, and `eval` says
+   *  nothing about the code. */
+  argsSummary: string | null;
   concerning: boolean;
 }
 

@@ -416,10 +416,20 @@ first:
     gate — SMOKE 1–5 then 6–11 (steps 4, 8, 11 are HOLDs), (9) §G.
     ⚠ Between the build and the tap push: recompute the cask sha256 (the
     committed one is a marked stale placeholder) — §D.
-    Deferred, confirmed non-blocking: the argv-in-feed task (bounded
-    rexenv-derived shape — subcommand, maybe first positional — never the
-    command line, per #202's typed-shape rule), `cp -c`, the orphan
-    `scratch_packages` rows, then M2b.
+    ✓ **All three closing items done 4 Aug 2026**, none of them blocking v0.1.0:
+    the orphan `scratch_packages` rows (#221 — deleted in `teardown`, the read's
+    join KEPT as an independent second defence); `cp -c` **retired on
+    measurement** (the premise was backwards — `std::fs::copy` already clones on
+    APFS and beats shelling out; no code written); and **argv-in-feed landed as
+    v30 `args_summary`** (#222), scoped by a property rather than a preference —
+    `wp_run` is the only tool whose action leaves no other record, so it is the
+    only one that needed it (+ `scratch_add_package`'s folder name). A VERB,
+    never a value; per-tool `summarise` so the feed never parses agent JSON;
+    clamped at the single writer to ≤2 `[a-z][a-z0-9-]` tokens, which is what
+    stops agent text forging a row in the audit list. Rendered dimmed and
+    unlabelled — captioning it "command" would overclaim what two tokens say.
+    ⚠ **These stale the c7424fa DMG** (they touch `src-tauri/src/` and `src/`).
+    Next = M2b.
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
