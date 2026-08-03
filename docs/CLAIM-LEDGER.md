@@ -417,6 +417,34 @@ at THING Y ≠ X. They diverge along different axes:
   shape (real UUIDs + a no-bare-UUID probe; a plain-thread bind guard). Memory
   `fixtures-must-look-like-production`; L2's structural blind spot is stated in TESTING.md §1.
 
+- **Unguarded prose rots; guarded prose does not — and this project produced the
+  controlled experiment for it (3 Aug 2026).** Not "docs drift", which invites a
+  shrug and a tidy-up. The finding is sharper and it has a control: **two copies
+  of the same guarantee, written by the same author in the same week, describing
+  the same system — one of them checked by a test, one not.**
+  - The **unchecked** one (`PLAN-mcp-server.md` §6.0) accumulated **three** false
+    sentences over three weeks as scratch sites, `wp_run` and the reaper landed:
+    "your sites … are not reachable from any tool" (true of mutation; M1's read
+    tools reach every site), "share it" as a promotion trigger (removed by #214),
+    "nothing the agent runs can write back to your checkout" (true of the clone,
+    false of `wp eval`). All three are the §3.1(c) shape.
+  - The **checked** one (the Settings card, held by
+    `the_enable_moment_copy_says_what_an_agent_can_actually_do`) is honest on all
+    three points — because when the first executing tool landed, the guard FAILED
+    THE BUILD and the copy was rewritten (#211). It could not rot, so it didn't.
+  - **The difference was a test.** Same author, same weeks, same subject; the
+    only variable was whether a check existed. Every argument for the
+    guard-the-claim discipline before this was a priori — this pair is evidence.
+  - Two corollaries worth keeping attached. **(a) The catch generalises past the
+    catch:** one sentence was pointed out; the other two came from re-reading the
+    rest on the principle that if one claim drifted, others may have. Fixing what
+    you were shown is the smaller half of the job. **(b) The right words already
+    existed, in the wrong place:** #216's row says "the guarantee is the direction
+    rather than the mechanism" — precisely the distinction §6.0 got wrong about
+    the checkout. A claim's precision has to live where the claim is READ, not
+    only where it was reasoned out; a careful ledger row does not immunise a
+    careless paragraph three files away.
+
 **The audit question this adds** — belongs in whatever the audit procedure becomes:
 for every guard, *does the check cover the whole surface the claim names, for the
 whole lifetime the claim spans, on data shaped like production?* If the claim says
