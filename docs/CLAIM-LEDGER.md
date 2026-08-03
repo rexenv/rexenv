@@ -445,6 +445,24 @@ at THING Y ≠ X. They diverge along different axes:
     only where it was reasoned out; a careful ledger row does not immunise a
     careless paragraph three files away.
 
+- **A diff that aggregates BOTH sides the same way will always agree** (found
+  3 Aug 2026, in a verification script rather than in the product — which is
+  where this family is hardest to see, because nothing user-facing is wrong).
+  Re-verifying `THIRD-PARTY-NOTICES.md` before the release, the check keyed
+  each side on crate NAME. Several crates appear in the graph at two versions,
+  so both sides collapsed identically and the comparison reconciled at 367/367
+  — a clean all-clear from a check that was comparing the wrong thing. It was
+  caught only because the count disagreed with the file's own heading (389), and
+  the honest instinct was to doubt the heading. Re-keyed on `(name, version)`:
+  the true totals are 389/389, and **two npm rows turned out to be malformed** —
+  `@tauri-apps/api` and `@tauri-apps/plugin-dialog` had name, version and licence
+  collapsed into one cell, so the table rendered 110 rows against a heading
+  claiming 112. **The graph was fine; the ARTEFACT was wrong, and it is the
+  artefact that ships.** Two lessons: a comparison's key must be as unique as the
+  thing being claimed about, and "regenerate before each release" is not
+  self-checking — the file had been wrong since the day it was generated and
+  three weeks of green gates never looked at it.
+
 **The audit question this adds** — belongs in whatever the audit procedure becomes:
 for every guard, *does the check cover the whole surface the claim names, for the
 whole lifetime the claim spans, on data shaped like production?* If the claim says

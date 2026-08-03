@@ -95,6 +95,24 @@ first:
   guard (#167 — must scan SQL-STRING content, not just the `rusqlite` import, or
   it repeats the surface-coverage shape; see "Defect families" in the ledger).
 
+- [ ] **Live-check transients — a known-unknown, written down so the third one
+  isn't a third undocumented data point.** Two unexplained failures on 3 Aug
+  2026, both during full-suite runs, both passing standalone immediately after
+  and on a clean re-run of the whole tier:
+  - one lib test during `verify.sh` (name NOT captured — it passed before it
+    could be identified; 4 clean runs after);
+  - `apache_site_check` during `verify-full.sh` (passed standalone, then the
+    whole sandbox tier passed at exit 0, then a captured full re-run was green).
+  What is known: both under CPU contention (a vite dev server and/or WebKit in
+  flight), both in checks that bind fixture ports or spawn services, neither
+  reproducible in isolation. What is NOT known: whether it is port contention, a
+  timing assumption, or something in the runner. **Mitigation already landed** —
+  `live-checks.sh` now tees every example to a log and REPLAYS the failing one's
+  last 40 lines next to the verdict, keeping the directory on failure, so the
+  reason survives to the tail and a re-run no longer destroys the evidence
+  (plant-proven). The remaining work is to diagnose the third occurrence when it
+  is captured, not to guess now.
+
 ## Release gates (human, scripted — see the docs named)
 
 - [ ] **PUBLISH-TESTING §A** — Apple-Silicon ad-hoc launch test. Open, and the dmg

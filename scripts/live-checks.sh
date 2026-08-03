@@ -212,11 +212,24 @@ fi
 cargo build --examples
 
 names="$(echo "$TIERS" | awk -v t="$cmd" 'NF == 2 && $2 == t { print $1 }')"
+
+# Keep every example's output, and REPLAY a failure's tail next to the verdict.
+#
+# Why this exists: the verdict is printed at the end, and a failing example's
+# own output is thousands of lines above it. A caller that reads the tail — a
+# human, or `verify-full.sh` piping into one — sees "FAILED — apache_site_check"
+# and no reason, and the honest next move (re-run it) DESTROYS the evidence if
+# the failure was transient. That happened twice in one session, both times
+# under CPU contention, and both times the output was gone before anyone could
+# read it. So the runner keeps it rather than relying on someone remembering to
+# capture it (docs/TODO.md, "live-check transients").
+logdir="$(mktemp -d "${TMPDIR:-/tmp}/rexenv-live-checks-XXXXXX")"
 failed=""
 for name in $names; do
   echo
   echo "── $name ──────────────────────────────────────────"
-  if ! cargo run -q --example "$name"; then
+  # pipefail (set above) makes the pipeline carry cargo's exit code, not tee's.
+  if ! cargo run -q --example "$name" 2>&1 | tee "$logdir/$name.log"; then
     failed="$failed $name"
   fi
 done
@@ -224,6 +237,14 @@ done
 echo
 if [ -n "$failed" ]; then
   echo "live-checks($cmd): FAILED —$failed"
+  for name in $failed; do
+    echo
+    echo "──── $name — last 40 lines (full output: $logdir/$name.log) ────"
+    tail -40 "$logdir/$name.log"
+  done
+  echo
+  echo "live-checks($cmd): FAILED —$failed  (output kept in $logdir)"
   exit 1
 fi
+rm -rf "$logdir"
 echo "live-checks($cmd): all green"
