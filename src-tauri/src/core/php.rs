@@ -50,6 +50,15 @@ pub fn all_minors() -> Vec<String> {
 }
 
 /// The pinned patch build for a minor series (`"8.3"` → `"8.3.31"`), or `None`.
+/// Every PHP minor rexenv ships, oldest first — `["8.0", "8.1", …]`.
+///
+/// Derived from [`binaries::PHP_VERSIONS`] rather than listed again: a refusal
+/// that names the available set is only useful while the set it names is the
+/// real one, and a second hand-maintained list is how that stops being true.
+pub fn available_minors() -> Vec<String> {
+    binaries::PHP_VERSIONS.iter().map(|p| minor_of(p)).collect()
+}
+
 pub fn patch_for_minor(minor: &str) -> Option<&'static str> {
     binaries::PHP_VERSIONS
         .iter()

@@ -167,6 +167,31 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     sweep_args: |id| json!({ "site_id": id, "args": ["option", "get", "home"] }),
     summarise: summarise_wp_run,
     handler: wp_run,
+}, ScratchTool {
+    name: "set_php_version",
+    description: "Change which PHP version a scratch site runs — the compatibility matrix: create a \
+                  site, add the plugin, then run the same checks on 8.1, 8.2, 8.3 and so on. Takes \
+                  `site_id` and `version` (a minor like `8.3`). Only works on scratch sites the \
+                  agent created. If rexenv has no build for the version you ask for it says so and \
+                  names the ones it has — it never quietly uses a nearby version, because a result \
+                  reported against a version that wasn't tested is worse than a refusal. The FIRST \
+                  switch to a given version downloads that PHP build (tens of megabytes), so that \
+                  call can take a while; later switches to it are quick.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "version": { "type": "string", "description": "PHP minor, e.g. `8.3`. Not a patch version." }
+        },
+        "required": ["site_id", "version"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id, "version": "8.3" }),
+    // The version is a closed, rexenv-owned set — but it arrives as agent text,
+    // so it is summarised like every other: shaped by the write's clamp, not
+    // trusted because we expect it to look like `8.3`.
+    summarise: |args| args.get("version").and_then(Value::as_str).map(str::to_string),
+    handler: set_php_version,
 }];
 
 
@@ -411,6 +436,20 @@ impl<'a> ScratchCtx<'a> {
         let read = super::readctx::ReadCtx::new(self.state);
         let signals = read.probe_serving(site).await;
         super::view::AgentSiteStatus::from_signals(site, &signals)
+    }
+
+    /// Switch a proven scratch site's PHP version through the SAME mechanism the
+    /// app's own switch uses — and deliberately NOT through the app's COMMAND.
+    ///
+    /// `commands::sites::set_site_php_version` begins with `promote_if_scratch`,
+    /// which is right for a user (changing PHP is deliberate, so the site is
+    /// theirs) and would be a cap bypass here: an agent switching PHP would adopt
+    /// its own scratch site, clearing the expiry and freeing a slot, so
+    /// switch → create → switch → create is unbounded. `switch_php_version` is
+    /// the mechanism with that policy lifted out (#223); the ownership rule this
+    /// path brings instead is the witness plus the re-assert below.
+    async fn switch_php(&self, scratch: &ScratchSite, version: &str) -> Result<Option<Site>> {
+        crate::commands::sites::switch_php_version(self.state, scratch.id(), version).await
     }
 
     fn platform(&self) -> &dyn crate::platform::traits::Platform {
@@ -999,6 +1038,37 @@ mod tests {
     }
 
     #[test]
+    fn an_unshipped_php_version_is_refused_by_name_never_substituted() {
+        // The import path's rule, and it binds harder for an agent: silently
+        // bumping 7.4 to 8.0 would have it report a compatibility result for a
+        // version it never tested. Worse than a refusal, and invisible.
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut row = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
+        row.expires_at = Some("2099-01-01 00:00:00".into());
+        crate::state::store::insert_site(&conn, &row).unwrap();
+
+        // The refusal lives in CORE, so the CLI and UI give the same answer.
+        let err = crate::core::sites::set_php_version(&conn, &row.id, "7.4").unwrap_err().to_string();
+        assert!(err.contains("no PHP 7.4 build"), "names what was asked for: {err}");
+        for shipped in crate::core::php::available_minors() {
+            assert!(err.contains(&shipped), "the refusal must name `{shipped}`: {err}");
+        }
+        // …and the site is untouched — no substitution, not even a partial one.
+        let after = crate::state::store::get_site(&conn, &row.id).unwrap().unwrap();
+        assert_eq!(after.php_version, row.php_version, "a refused switch changed the row");
+
+        // The named set is DERIVED from the shipped builds, so the sentence
+        // cannot outlive the versions it names. Asserted rather than trusted:
+        // a hand-maintained second list is how a helpful refusal starts lying.
+        assert_eq!(
+            crate::core::php::available_minors().len(),
+            crate::core::binaries::PHP_VERSIONS.len(),
+            "available_minors drifted from the shipped build list"
+        );
+        assert!(crate::core::php::patch_for_minor("8.3").is_some(), "and the set is not empty");
+    }
+
+    #[test]
     fn the_summary_records_the_verb_and_never_the_values() {
         // The line this column must not cross. `plugin activate acme` is a verb
         // and a VALUE; only the verb is recorded. Values are where the content
@@ -1037,22 +1107,49 @@ mod tests {
         // Seven of eight legitimately answer None — that is the answer, not a
         // gap — and this asserts the ONE that doesn't, so a future edit that
         // silently drops wp_run's summariser fails here.
-        let probe = json!({ "site_id": "s", "args": ["plugin", "list"], "source": "/tmp/acme" });
-        let summarised: Vec<&str> = super::registry()
+        // The probe must carry every field ANY summariser reads. That is not
+        // hygiene: `set_php_version` was added with a summariser and this test
+        // still passed, because the probe had no `version` key — so the tool
+        // read as "my name is enough" when it had simply not been asked. The
+        // count check below is what makes that impossible to repeat.
+        let probe = json!({
+            "site_id": "s",
+            "args": ["plugin", "list"],
+            "source": "/tmp/acme",
+            "version": "8.3",
+        });
+        let scratch_summarised: Vec<&str> = super::registry()
             .iter()
             .filter(|t| (t.summarise)(&probe).is_some())
             .map(|t| t.name)
-            .chain(
-                super::super::tools::registry()
-                    .iter()
-                    .filter(|t| (t.summarise)(&probe).is_some())
-                    .map(|t| t.name),
-            )
             .collect();
+        let read_summarised: Vec<&str> = super::super::tools::registry()
+            .iter()
+            .filter(|t| (t.summarise)(&probe).is_some())
+            .map(|t| t.name)
+            .collect();
+        // Registry order, not alphabetical — the list reads as the registry does.
         assert_eq!(
-            summarised,
-            vec!["scratch_add_package", "wp_run"],
-            "exactly the tools whose name and target under-describe them"
+            scratch_summarised,
+            vec!["scratch_add_package", "wp_run", "set_php_version"],
+            "exactly the executing tools whose name and target under-describe them"
+        );
+        assert!(read_summarised.is_empty(), "a READ tool's name and target always describe it");
+        // NON-VACUITY: every tool that DECLARES a real summariser must actually
+        // produce one for the probe. A tool whose summariser reads a field the
+        // probe lacks would otherwise be counted as "None on purpose" — the
+        // exact miss that let set_php_version through.
+        let declared = include_str!("scratch.rs")
+            .split("static REGISTRY:")
+            .nth(1)
+            .and_then(|r| r.split("\nfn ").next())
+            .map(|r| r.matches("summarise: ").count() - r.matches("summarise: |_| None").count())
+            .expect("the registry literal");
+        assert_eq!(
+            declared,
+            scratch_summarised.len(),
+            "a scratch tool declares a summariser the probe never triggers — widen the probe, or \
+             its `None` is an accident rather than the answer that its name is enough"
         );
     }
 
@@ -1406,6 +1503,88 @@ fn agent_stream(raw: &[u8], known: &super::view::KnownPaths) -> (String, bool) {
         .collect::<Vec<_>>()
         .join("\n");
     (scrubbed, truncated)
+}
+
+/// Switch a scratch site's PHP version — the compatibility matrix's one verb.
+fn set_php_version<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let (id, version) = two_args(args, "site_id", "version", "set_php_version")?;
+        // THE gate first: the recorded origin, never the name.
+        let scratch = ctx.claim(&id)?;
+        acted.set(scratch.site());
+        let before = scratch.site().php_version.clone();
+
+        // The version refusal lives in CORE (`core::sites::set_php_version`), so
+        // the CLI and the UI give the same answer and none of them can
+        // substitute a nearby minor. Checked HERE too, before the switch runs,
+        // only so the refusal arrives before a download starts — not as a second
+        // opinion about what is available.
+        let minor = crate::core::php::minor_of(&version);
+        if crate::core::php::patch_for_minor(&minor).is_none() {
+            return Err(Error::Other(format!(
+                "rexenv has no PHP {minor} build, so `{}` was left on PHP {before}. Available: {}. \
+                 rexenv will not quietly use a nearby version — a result you report against a \
+                 version that was never tested is worse than this refusal.",
+                scratch.domain(),
+                crate::core::php::available_minors().join(", ")
+            )));
+        }
+
+        // Switching may DOWNLOAD the pinned build on first use — tens of
+        // megabytes, minutes on a slow link. That is a real window, and the
+        // witness is a snapshot, so the recorded fact is re-read immediately
+        // before the switch: the user may have pressed Keep while the build was
+        // coming down, and this site would then be theirs.
+        {
+            let conn = ctx.db()?;
+            if !crate::core::scratch::still_the_agents(&conn, scratch.id())? {
+                return Err(Error::Other(format!(
+                    "`{}` is no longer a scratch site — the person you're working with kept it, so \
+                     it is theirs now and agent tools cannot change it.",
+                    scratch.domain()
+                )));
+            }
+        }
+        let switched = ctx.switch_php(&scratch, &minor).await?;
+        let Some(site) = switched else {
+            // The row vanished mid-call (deleted, or reaped). Say so plainly
+            // rather than reporting a switch that did not happen.
+            return Err(Error::Other(format!(
+                "`{}` is gone — it was deleted while the switch was running.",
+                scratch.domain()
+            )));
+        };
+        // Report the serving state in M1's vocabulary, for the same reason the
+        // create does: a switch that lands while the stack is stopped is a
+        // SUCCESS whose site does not serve, and the agent must learn that
+        // fixing it is the user's move in rexenv, not a tool to hunt for.
+        let status = ctx.status_of(&site).await;
+        let view = AgentScratchSite {
+            url: format!("https://{}", site.domain),
+            id: site.id.clone(),
+            domain: site.domain.clone(),
+            expires_at: site.expires_at.clone(),
+            status,
+        };
+        let mut out = serde_json::to_value(view)
+            .map_err(|e| Error::Other(format!("serialising the site: {e}")))?;
+        if let Some(obj) = out.as_object_mut() {
+            obj.insert("phpVersion".into(), json!(site.php_version));
+            obj.insert(
+                "detail".into(),
+                json!(if before == site.php_version {
+                    format!("`{}` was already on PHP {before}.", site.domain)
+                } else {
+                    format!("`{}` now runs PHP {} (was {before}).", site.domain, site.php_version)
+                }),
+            );
+        }
+        Ok(out)
+    })
 }
 
 fn two_args(args: &Value, a: &str, b: &str, tool: &str) -> Result<(String, String)> {

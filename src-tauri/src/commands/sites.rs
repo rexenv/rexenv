@@ -537,7 +537,7 @@ pub async fn set_site_php_version(
     // that differs from the agent's path, and it is policy, not mechanism —
     // see `switch_php_version`.
     promote_if_scratch(&state, &id);
-    switch_php_version(&state, &id, &version).await
+    switch_php_version(state.inner(), &id, &version).await
 }
 
 /// Switch a site's PHP version — **the mechanism, with no ownership policy in
@@ -561,12 +561,15 @@ pub async fn set_site_php_version(
 /// recorded origin, and #214's source guard still sees the command calling the
 /// choke point.
 pub(crate) async fn switch_php_version(
-    state: &State<'_, AppState>,
+    state: &AppState,
     id: &str,
     version: &str,
 ) -> Result<Option<Site>> {
     let (site, sites) = {
-        let conn = lock(state)?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
         let updated = core::sites::set_php_version(&conn, id, version)?;
         (updated, core::sites::list(&conn)?)
     };

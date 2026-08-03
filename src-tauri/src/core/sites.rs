@@ -1003,7 +1003,16 @@ pub fn clear_multisite(conn: &Connection, id: &str) -> Result<Option<Site>> {
 pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Option<Site>> {
     let minor = php::minor_of(version);
     if php::patch_for_minor(&minor).is_none() {
-        return Err(Error::Other(format!("unsupported PHP version: {version}")));
+        // NAME what is available; never substitute a neighbouring minor. The
+        // import path settled this rule (`phpTarget: null` when theirs isn't one
+        // we ship, so the user chooses) and it holds harder for an agent: a
+        // silent bump from 7.4 to 8.0 would have it report a compatibility
+        // result for a version it never tested. The set is derived, not listed
+        // again, so this sentence cannot outlive the versions it names.
+        return Err(Error::Other(format!(
+            "rexenv has no PHP {minor} build. Available: {}.",
+            php::available_minors().join(", ")
+        )));
     }
     if !store::set_site_php_version(conn, id, &minor)? {
         return Ok(None);
