@@ -113,10 +113,36 @@ first:
   (plant-proven). The remaining work is to diagnose the third occurrence when it
   is captured, not to guess now.
 
+- [ ] **Verdict receipt — bind the COMMIT path, not just the verdict.** 3 Aug
+  2026: `live-checks.sh ... | tail -3 && git commit` landed a commit on a RED
+  tier, because a pipe replaces the script's exit code with `tail`'s. The
+  documented rule ("verify.sh is the bar; never a piped check") did not hold —
+  it was walked into by the person who wrote it, in the session where it was
+  written about, which is as good an argument as exists that a rule relying on
+  memory is not a control. **Half fixed:** all three verdict-bearing scripts now
+  REFUSE to run with stdout piped (file redirect and TTY still fine;
+  `REXENV_ALLOW_PIPE=1` to opt out), so no `&&` chain can follow a false green.
+  **Still open:** the chain still reaches `git commit`, now after a refusal
+  rather than a red verdict. The structural version is a receipt — `verify.sh`
+  records `green <HEAD> <hash of git status --porcelain>` on success, and a
+  `pre-commit` hook refuses when the receipt is missing or no longer matches the
+  tree, with `--no-verify` as the explicit, traceable override. Scope it to
+  commits that touch code (`src/`, `src-tauri/src/`, `examples/`) so doc-only
+  work isn't gated. NOT done mid-release deliberately: a hook that misfires
+  during the v0.1.0 gates would cost more than it saves.
+
 ## Release gates (human, scripted — see the docs named)
 
 - [ ] **PUBLISH-TESTING §A** — Apple-Silicon ad-hoc launch test. Open, and the dmg
   it names is itself superseded: run it on the release-candidate dmg at publish time.
+  ⚠ **Build it with `npm run release:mac`** (= `tauri build --target
+  universal-apple-darwin`) — NOT a bare `tauri build`, which produces a thin
+  arm64 `rexenv_<v>_aarch64.dmg` that an Intel user cannot run, while INSTALL.md,
+  this document and `homebrew-rexenv/Casks/rexenv.rb` all promise a universal
+  `rexenv_<v>_universal.dmg`. Built wrong once on 3 Aug by reaching for the
+  generic command; naming the COMMAND here rather than the outcome is the fix.
+  Verify before gating: `lipo -archs <app>/Contents/MacOS/rexenv` and the same
+  for `MacOS/rex` must both report `x86_64 arm64`.
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — full tap install dry-run (after Release + tap push;
   recompute the cask sha256 — the committed one is a marked stale placeholder).

@@ -27,6 +27,44 @@
 # EVERY example must be classified here — an unlisted example fails the run
 # (that is the enforcement that new examples declare a tier).
 set -euo pipefail
+
+# ── The verdict must not be pipeable away ─────────────────────────────────────
+# This script's exit code IS the verdict, and a pipe swallows it:
+#   ./scripts/live-checks.sh ... | tail -3 && git commit
+# runs the commit on `tail`'s status, not ours. That trap has been documented
+# since 28 Jul 2026 ("verify-script-not-piped-checks") and was walked into again
+# on 3 Aug by the person who documented it, landing a commit on a RED tier. So
+# it is enforced here rather than remembered — the same reasoning as the
+# unforgeable verdict line itself.
+#
+# A FILE redirect is fine (it keeps every line and the exit code) and so is a
+# terminal. Only a PIPE is refused, because only a pipe both truncates the
+# output and replaces the status.
+#
+# HONEST LIMIT — this closes one half, not both. It makes a piped run refuse to
+# produce a verdict at all, so an `&& git commit` can never chain off a FALSE
+# GREEN. It does NOT stop the chain: `script | tail && git commit` still reaches
+# the commit, now after a loud refusal instead of a red verdict. Structurally
+# binding the commit path needs a recorded-verdict receipt the hook checks
+# (docs/TODO.md, "verdict receipt"); that is deliberately not bolted on mid-
+# release.
+if [ -p /dev/stdout ] && [ "${REXENV_ALLOW_PIPE:-0}" != "1" ]; then
+  cat >&2 <<'PIPEMSG'
+live-checks.sh: refusing to run with stdout piped.
+
+  A pipe replaces this script's exit code with the last command's, so an
+  `&& git commit` after it commits on a verdict that was never checked.
+
+  Redirect to a file instead — it keeps everything, including the status:
+      ./scripts/live-checks.sh ... > /tmp/out.log 2>&1; echo "exit=$?"
+      tail -40 /tmp/out.log
+
+  If you genuinely need a pipe and have handled the status yourself
+  (`set -o pipefail`), re-run with REXENV_ALLOW_PIPE=1.
+PIPEMSG
+  exit 2
+fi
+
 cd "$(dirname "$0")/../src-tauri"
 
 TIERS="
