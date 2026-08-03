@@ -80,6 +80,12 @@ const SCENARIOS = [
   ["agents-idle-empty", "view=agents&astate=idle&feed=empty", []],
   ["agents-off", "view=agents&astate=off", []],
   ["agents-site-section", "view=agents&astate=working&site=1", []],
+  // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
+  // an expired site, an expired one the reaper could not remove — and the two
+  // rows that must render as ORDINARY sites (a Kept one, and a user's own site
+  // hand-named `*.scratch.*`), which is what the probe below checks.
+  ["scratch-rows", "view=scratch", []],
+  ["scratch-keep-dialog", "view=keep", []],
 ];
 
 /** Per-scenario layout assertions (beyond the universal overflow probe).
@@ -164,17 +170,75 @@ const PROBES = {
       }
       return problems;
     }),
+
+  // The Agent-scratch group's ONE rule, checked on rendered text: what is
+  // agent-flavoured is decided by the RECORDED origin, never by the domain.
+  // Both negative rows end in `.scratch.rex` and are `origin: "user"` — a Kept
+  // site and a site the user hand-named — so a predicate that reached for the
+  // suffix (the obvious shortcut) puts someone's real site in the disposable
+  // section and fails here.
+  scratchGroup: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const rowOf = (domain) =>
+        [...document.querySelectorAll("[role=button]")].find((el) =>
+          (el.textContent ?? "").includes(domain),
+        );
+      const agentish = (el) => {
+        const t = el?.textContent ?? "";
+        return /left|expired|Claude Code|Cursor|synced|source moved/.test(t);
+      };
+      for (const own of ["kept.scratch.rex", "mine.scratch.rex"]) {
+        const row = rowOf(own);
+        if (!row) {
+          problems.push(`${own} did not render at all`);
+          continue;
+        }
+        if (agentish(row))
+          problems.push(
+            `${own} is the USER'S site (origin=user) but renders agent state — the group is reading the domain, not the recorded origin`,
+          );
+      }
+      // ...and non-vacuously: the real scratch rows DO carry that state, so a
+      // page that simply rendered no badges anywhere would not pass.
+      const scratch = rowOf("plugin-test.scratch.rex");
+      if (!scratch) problems.push("the scratch row did not render");
+      else if (!agentish(scratch))
+        problems.push("the scratch row shows no client/TTL/sync state — the check above proves nothing");
+      const body = document.body.textContent ?? "";
+      if (!body.includes("Agent scratch")) problems.push("no Agent-scratch group heading");
+      if (!body.includes("source moved"))
+        problems.push("a moved package source does not read as its own state");
+      if (!body.includes("expired — couldn't remove"))
+        problems.push("an expired site the reaper failed on does not say so");
+      return problems;
+    }),
 };
+
+/** Every action `runActions` knows. An unknown one is a scenario bug, not a
+ *  no-op — see the throw below. */
+const KNOWN_ACTIONS = new Set(["consent", "apply", "revert", "confirmRevert", "scrollBottom", "lastMenu"]);
 
 function probeFor(name) {
   if (name.startsWith("dbtab")) return PROBES.dbtab;
   if (name === "pills") return PROBES.pills;
   if (name.startsWith("agents")) return PROBES.agents;
+  if (name === "scratch-rows") return PROBES.scratchGroup;
   return null;
 }
 
 async function runActions(page, actions) {
   for (const a of actions) {
+    if (!KNOWN_ACTIONS.has(a)) {
+      // A typo'd or invented action used to be ignored in silence, so a
+      // scenario could declare setup that never ran and still report green —
+      // found by planting (a probe name was passed here, where it did nothing
+      // and said nothing). Fail loudly instead.
+      throw new Error(
+        `unknown action "${a}" — actions are ${[...KNOWN_ACTIONS].join(", ")}; ` +
+          `per-scenario ASSERTIONS go in PROBES + probeFor(), not in this list`,
+      );
+    }
     if (a === "consent") {
       await page.locator('input[type="checkbox"]').check();
     } else if (a === "apply") {

@@ -1,24 +1,72 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw } from "lucide-react";
+import { FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
-import { PromptDialog } from "@/components/ui/dialog";
+import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert } from "@/lib/ipc";
+import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
-import type { DbImportRecord, Site, SiteResources } from "@/types";
+import type { DbImportRecord, ScratchPackage, Site, SiteResources } from "@/types";
+
+/** **THE scratch predicate — the recorded fact, and nothing else.**
+ *
+ * `origin === "agent"` is written at creation and is the only thing any policy
+ * reads (#204). The `.scratch.<tld>` suffix is UX so a human can scan the list;
+ * a site the USER hand-created at `foo.scratch.rex` is an ordinary site of
+ * theirs and must appear in their own group. Matching on the name here would be
+ * the obvious shortcut and would quietly put someone's real site in the
+ * agent's disposable section. Pinned on both sides: `Site::is_scratch` in Rust
+ * (`a_stored_origin_that_isnt_exactly_agent_reads_as_the_users_site`) and the L2
+ * `scratch-rows` probe here, whose fixture includes a KEPT site and a
+ * hand-named `mine.scratch.rex` — both `origin: "user"`, both ending in
+ * `.scratch.rex`, so the suffix shortcut fails the probe by name.
+ */
+const isScratch = (s: Site) => s.origin === "agent";
+
+/** A scratch site's remaining life, or `null` when it has none.
+ *
+ * `expiresAt` null/absent means **never** — the shape a user's site and a KEPT
+ * scratch site share, deliberately, so nothing can render "kept" as a third
+ * state. Returning null here (rather than a "never" label) is what makes that
+ * true at the render layer too. Stored as a SQLite UTC datetime, so it is
+ * parsed as UTC rather than as the viewer's local time. */
+export function expiryLabel(
+  expiresAt: string | null | undefined,
+): { text: string; expired: boolean } | null {
+  if (!expiresAt) return null;
+  const ms = Date.parse(`${expiresAt.replace(" ", "T")}Z`);
+  if (Number.isNaN(ms)) return null;
+  const left = ms - Date.now();
+  if (left <= 0) return { text: "expired", expired: true };
+  const mins = Math.round(left / 60000);
+  if (mins < 60) return { text: `${mins}m left`, expired: false };
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return { text: `${hours}h left`, expired: false };
+  return { text: `${Math.round(hours / 24)}d left`, expired: false };
+}
+
+/** "5m ago" / "3h ago" / "2d ago" for a recorded sync time (SQLite UTC). */
+export function agoLabel(at: string): string {
+  const ms = Date.parse(`${at.replace(" ", "T")}Z`);
+  if (Number.isNaN(ms)) return "unknown";
+  const mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
+}
 
 /** Compact bytes for the per-site DB size. */
 function fmtBytes(b: number): string {
@@ -175,6 +223,9 @@ export function SiteRow({
   onRename,
   onDuplicate,
   onRetry,
+  onKeep,
+  packages,
+  reapFailure,
 }: {
   site: Site;
   status: Site["status"];
@@ -189,8 +240,17 @@ export function SiteRow({
   onRename: () => void;
   onDuplicate: () => void;
   onRetry?: () => void;
+  /** Adopt this scratch site (Keep). Present only for `origin === "agent"`. */
+  onKeep?: () => void;
+  /** The plugins/themes an agent cloned in — newest sync first. */
+  packages?: ScratchPackage[];
+  /** Why the reaper could not remove this expired site, from its own feed row. */
+  reapFailure?: string;
 }) {
   const t = siteTypeMeta(site.type);
+  const scratch = isScratch(site);
+  const ttl = scratch ? expiryLabel(site.expiresAt) : null;
+  const pkg = scratch ? packages?.[0] : undefined;
   const [copied, setCopied] = useState(false);
   const editor = usePreferredEditor();
   return (
@@ -277,9 +337,18 @@ export function SiteRow({
           xl that reservation is what pushed badge-heavy rows past the window
           edge, so the column yields entirely (supplementary data — SiteDetail
           has the full numbers). */}
-      <div className="hidden xl:contents">
-        <SiteMetrics res={resources} />
-      </div>
+      {/* A scratch row yields the metrics column outright, at every width.
+          The same §C1.2 trade the other breakpoints already make, applied by
+          ROW KIND rather than by width: this row carries three extra facts
+          (client, last-synced, TTL), and of everything competing for the space,
+          a disposable site's shared-pool request rate is the one nobody opened
+          this page for — SiteDetail still has it. Measured, not guessed: the
+          scratch row overflowed by 167px at 1440 and this column reserves 168. */}
+      {!scratch && (
+        <div className="hidden xl:contents">
+          <SiteMetrics res={resources} />
+        </div>
+      )}
       <span
         title={site.ssl ? "SSL · trusted" : "No SSL"}
         className="flex flex-none items-center"
@@ -326,6 +395,59 @@ export function SiteRow({
           DB connected
         </span>
       )}
+      {scratch && site.agentClient && (
+        /* The MCP client's SELF-REPORTED name. Display only — nothing branches
+           on it, because an agent chooses this string (v27). */
+        <span
+          className="hidden flex-none whitespace-nowrap rounded-full border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.625rem] text-rex-text-muted xl:block"
+          title={`Created by "${site.agentClient}" — the name the AI client reports for itself`}
+        >
+          {site.agentClient}
+        </span>
+      )}
+      {pkg && (
+        /* The answer to "I changed my plugin and the site didn't see it",
+           on screen BEFORE the user asks (§4.4). A moved source is its own
+           state: rendering it as a stale timestamp would tell the user the
+           site runs code from a directory that no longer exists. */
+        <span
+          className={cn(
+            "hidden flex-none whitespace-nowrap rounded-full border px-2 py-1 font-mono text-[0.625rem] xl:block",
+            pkg.sourceMissing
+              ? "border-status-warning-border bg-status-warning-bg text-status-warning-bright"
+              : "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted",
+          )}
+          title={
+            pkg.sourceMissing
+              ? `${pkg.slug} was copied from ${pkg.sourcePath}, which isn't there any more — the site still runs the copy taken ${agoLabel(pkg.syncedAt)}. Ask the agent to add it again from its new location.`
+              : `${pkg.slug} (${pkg.kind}) was COPIED from ${pkg.sourcePath}. The site runs that snapshot — edits since are not in it until the agent syncs again.`
+          }
+        >
+          {pkg.sourceMissing
+            ? `${pkg.slug} · source moved`
+            : `${pkg.slug} · synced ${agoLabel(pkg.syncedAt)}`}
+          {packages && packages.length > 1 ? ` +${packages.length - 1}` : ""}
+        </span>
+      )}
+      {ttl && (
+        <span
+          className={cn(
+            "flex-none whitespace-nowrap rounded-full border px-2 py-1 font-mono text-[0.625rem]",
+            ttl.expired
+              ? "border-status-warning-border bg-status-warning-bg text-status-warning-bright"
+              : "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted",
+          )}
+          title={
+            ttl.expired
+              ? reapFailure
+                ? `This scratch site expired and rexenv could not remove it: ${reapFailure}`
+                : "This scratch site has expired — rexenv removes it on its next sweep. Keep it to make it yours."
+              : "rexenv deletes this scratch site once nothing has used it for a while. Anything the agent does with it pushes this out; Keep makes it yours permanently."
+          }
+        >
+          {ttl.expired && reapFailure ? "expired — couldn't remove" : ttl.text}
+        </span>
+      )}
       {site.provisioned ? (
         <StatusPill status={status} className="min-w-[92px]" />
       ) : (
@@ -364,6 +486,18 @@ export function SiteRow({
           </button>
         }
       >
+        {onKeep && (
+          /* Adoption, and the only door an agent does not have. Above Rename
+             because for a scratch site it is the decision the user came for —
+             and renaming would adopt it anyway (#214), which is a surprise
+             rather than a choice. */
+          <MenuItem
+            icon={<PinIcon className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+            onSelect={onKeep}
+          >
+            Keep this site
+          </MenuItem>
+        )}
         <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onRename}>
           Rename
         </MenuItem>
@@ -554,6 +688,63 @@ export function Sites() {
     });
   }, [sites, filter, query, sort, servingMap]);
 
+  // The render split, on the RECORDED fact only (`isScratch`). Counts and the
+  // filter stay over ALL sites: a scratch site is a real site, and grouping is
+  // a way of showing them, not a second class of thing.
+  const scratchVisible = useMemo(() => visible.filter(isScratch), [visible]);
+  const ownVisible = useMemo(() => visible.filter((s) => !isScratch(s)), [visible]);
+
+  // Cloned plugins/themes — one read for the page, only when there is a scratch
+  // site to describe, so a user who has never used an agent never pays for it.
+  const anyScratch = sites.some(isScratch);
+  const { data: packages = [] } = useQuery({
+    queryKey: ["scratch-packages"],
+    queryFn: scratchPackages,
+    enabled: anyScratch,
+  });
+  const packagesBySite = useMemo(() => {
+    const m = new Map<string, ScratchPackage[]>();
+    for (const p of packages) {
+      const list = m.get(p.siteId);
+      if (list) list.push(p);
+      else m.set(p.siteId, [p]);
+    }
+    return m;
+  }, [packages]);
+
+  // Why an expired scratch site is still here, from the reaper's OWN feed row
+  // (#215) — never re-derived. Fetched only when something is actually expired,
+  // which is the only time the answer is asked for.
+  const anyExpired = scratchVisible.some((s) => expiryLabel(s.expiresAt)?.expired);
+  const { data: feed = [] } = useQuery({
+    queryKey: ["agent-activity", "reap-failures"],
+    queryFn: () => agentActivity(null, 50),
+    enabled: anyExpired,
+  });
+  const reapFailures = useMemo(() => {
+    const m = new Map<string, string>();
+    // Newest first, so the FIRST row for a site is its latest word — an older
+    // failure must not outrank a newer success.
+    for (const a of feed) {
+      if (a.tool !== "scratch_reap" || !a.targetSite || m.has(a.targetSite)) continue;
+      if (a.outcome === "error") m.set(a.targetSite, a.detail ?? "rexenv didn't record a reason");
+      else m.set(a.targetSite, "");
+    }
+    return m;
+  }, [feed]);
+
+  const [keepTarget, setKeepTarget] = useState<Site | null>(null);
+  const keep = useMutation({
+    mutationFn: (site: Site) => keepSite(site.id),
+    onSuccess: (changed, site) => {
+      // `false` = it was already the user's (a race with Keep-by-mutation or a
+      // second click). Not an error, and not worth a toast that implies one.
+      if (changed) toast.success(`${site.domain} is yours now — rexenv won't clean it up.`);
+      void qc.invalidateQueries({ queryKey: ["sites"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   const noResults = sites.length > 0 && visible.length === 0;
 
   const newSiteButton = (
@@ -592,6 +783,7 @@ export function Sites() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]">
+        <ReapBanner />
         <ImportBanner />
         {prov.job && (prov.running || prov.job.status !== "ok") && (
           <div className="mb-2 mt-1">
@@ -644,14 +836,16 @@ export function Sites() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col">
-            {visible.map((site) => (
+          (() => {
+            const row = (site: Site) => (
               <SiteRow
                 key={site.id}
                 site={site}
                 status={statusOf(site)}
                 resources={resourcesMap.get(site.id)}
                 dbState={dbStates.get(site.id)}
+                packages={packagesBySite.get(site.id)}
+                reapFailure={reapFailures.get(site.id) || undefined}
                 onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
@@ -659,9 +853,27 @@ export function Sites() {
                 onRename={() => setRenameTarget(site)}
                 onDuplicate={() => setDupSource(site)}
                 onRetry={() => retry.mutate(site)}
+                onKeep={isScratch(site) ? () => setKeepTarget(site) : undefined}
               />
-            ))}
-          </div>
+            );
+            return (
+              <div className="flex flex-col">
+                {ownVisible.map(row)}
+                {scratchVisible.length > 0 && (
+                  <>
+                    {/* The group exists only when there IS one, so a user who
+                        has never used an agent never sees an empty section
+                        telling them the feature exists. */}
+                    <ScratchGroupHeading
+                      count={scratchVisible.length}
+                      tight={ownVisible.length === 0}
+                    />
+                    {scratchVisible.map(row)}
+                  </>
+                )}
+              </div>
+            );
+          })()
         )}
       </div>
       {(showNew || dupSource) && (
@@ -695,6 +907,16 @@ export function Sites() {
           onCancel={() => setRenameTarget(null)}
         />
       )}
+      {keepTarget && (
+        <KeepSiteDialog
+          site={keepTarget}
+          onKeep={() => {
+            keep.mutate(keepTarget);
+            setKeepTarget(null);
+          }}
+          onCancel={() => setKeepTarget(null)}
+        />
+      )}
       {deleteTarget && (
         <DeleteSiteDialog
           site={deleteTarget}
@@ -711,6 +933,111 @@ export function Sites() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * The Agent-scratch section heading.
+ *
+ * Its own component so the L2 fixture reviews the SHIPPED heading rather than a
+ * copy of it — a heading that only ever existed inline would be reviewed by
+ * eye once and never again. It renders only when the group is non-empty (the
+ * caller's job), so a user who has never used an agent never meets an empty
+ * section advertising the feature.
+ */
+export function ScratchGroupHeading({ count, tight }: { count: number; tight?: boolean }) {
+  return (
+    <div className={cn("flex items-center gap-2 px-3 pb-1 pt-5", tight && "pt-1")}>
+      <Bot className="h-3.5 w-3.5 flex-none text-rex-text-faint" strokeWidth={1.8} />
+      <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
+        Agent scratch
+      </span>
+      <span className="font-mono text-[0.625rem] text-rex-text-faint">{count}</span>
+      <span className="min-w-0 truncate text-[0.71875rem] text-rex-text-muted">
+        Disposable sites an AI agent created — rexenv deletes them once nothing has used them for a
+        while. Keep one to make it yours.
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The Keep confirm — **copy approved 2 Aug 2026 and landed verbatim** (#219).
+ *
+ * Every paragraph is doing a job, so none of them is filler to trim later:
+ * the second says what does NOT change (the fear is that adopting rebuilds or
+ * moves something), the third names the default that applies if they do
+ * nothing, and the fourth states there is no un-keep — which is true, and
+ * cheaper to say here than to discover afterwards. The only way back is
+ * deleting the site like any other, and that is the sentence rather than a
+ * disabled "un-keep" nobody would find.
+ */
+export function KeepSiteDialog({
+  site,
+  onKeep,
+  onCancel,
+}: {
+  site: Site;
+  onKeep: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <ConfirmDialog
+      title={`Keep ${site.domain}?`}
+      confirmLabel="Keep this site"
+      onConfirm={onKeep}
+      onCancel={onCancel}
+      message={
+        <div className="flex flex-col gap-2">
+          <p>
+            It becomes one of your own sites: rexenv stops treating it as disposable and will
+            never clean it up. Nothing about the site itself changes — the files, the database
+            and the URL stay exactly as they are, and it keeps working. It also frees a slot, so
+            the agent can create another scratch site right away.
+          </p>
+          <p>Without this, rexenv deletes it once nothing has used it for a while.</p>
+          <p>There&rsquo;s no un-keep — you&rsquo;d delete it like any other site.</p>
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * The scratch reaper's sweep, surfaced once.
+ *
+ * A sweep at launch WITHOUT a summary is a silent bulk delete that a user
+ * returning after a week cannot tell from data loss (#215) — so this exists to
+ * be seen, not to be pretty. It carries rexenv's own text, which names the
+ * domains rather than counting them, so someone recognises a site they cared
+ * about and can act. Dismissible because the feed rows are the durable record:
+ * nothing is lost by closing it. Nothing renders on a quiet launch — the
+ * backend simply never emits, so a user with no scratch sites never learns the
+ * reaper exists.
+ */
+function ReapBanner() {
+  const [summary, setSummary] = useState<string | null>(null);
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    void onScratchReaped((text) => setSummary(text)).then((f) => {
+      un = f;
+    });
+    return () => un?.();
+  }, []);
+  if (!summary) return null;
+  return (
+    <div className="mb-2 mt-1 flex items-start gap-3 rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3">
+      <Bot className="mt-px h-4 w-4 flex-none text-rex-text-muted" strokeWidth={1.7} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[0.8125rem] font-medium text-rex-text">Scratch sites cleaned up</div>
+        <div className="whitespace-pre-line text-[0.71875rem] leading-[1.5] text-rex-text-muted">
+          {summary}
+        </div>
+      </div>
+      <Button variant="ghost" size="icon" aria-label="Dismiss" onClick={() => setSummary(null)}>
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
   );
 }
 

@@ -19,6 +19,10 @@
  *    agents   — the AI-agents (MCP) card. `astate=off|idle|working|erroring`
  *               drives the status line, `feed=empty` empties the activity list,
  *               `site=1` also shows the per-site SiteDetail section
+ *    scratch  — the Agent-scratch rows in every state, INCLUDING the two that
+ *               must not look agent-flavoured (a Kept site, and a user's own
+ *               site hand-named `*.scratch.*`)
+ *    keep     — the Keep confirm dialog
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -27,12 +31,12 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
-import { SiteRow } from "@/routes/Sites";
+import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { toast } from "@/lib/toast";
-import type { ActivityStatus, AgentAction, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, Site } from "@/types";
+import type { ActivityStatus, AgentAction, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site } from "@/types";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -274,6 +278,160 @@ function SitesScaleView() {
   );
 }
 
+/** SQLite-shaped UTC stamp `h` hours from now (negative = in the past). */
+function hoursFromNow(h: number): string {
+  return new Date(Date.now() + h * 3600_000).toISOString().slice(0, 19).replace("T", " ");
+}
+
+/**
+ * The Agent-scratch group, every state it has — and, deliberately, the two
+ * states that must NOT look agent-flavoured at all.
+ *
+ * Rows 5 and 6 are the point of this fixture as much as rows 1–4: a KEPT site
+ * and a site the user hand-named `*.scratch.*` are both `origin: "user"`, so
+ * they must render as ordinary sites with no badge, no TTL and no Keep item. If
+ * either ever picks up an agent badge, the shot shows it.
+ */
+function ScratchView() {
+  const noop = () => {};
+  const rows: Array<{
+    site: Site;
+    packages?: ScratchPackage[];
+    reapFailure?: string;
+    scratch: boolean;
+  }> = [
+    {
+      site: fixtureSite({
+        id: "s-scratch-1",
+        name: "plugin-test",
+        domain: "plugin-test.scratch.rex",
+        path: "/Users/dev/Library/Application Support/rexenv/Sites/plugin-test.scratch.rex",
+        origin: "agent",
+        agentClient: "Claude Code",
+        expiresAt: hoursFromNow(22),
+      }),
+      packages: [
+        {
+          siteId: "s-scratch-1",
+          slug: "acme-blocks",
+          kind: "plugin",
+          sourcePath: "/Users/dev/code/acme-blocks",
+          syncedAt: hoursFromNow(-0.15),
+          sourceMissing: false,
+        },
+        {
+          siteId: "s-scratch-1",
+          slug: "acme-theme",
+          kind: "theme",
+          sourcePath: "/Users/dev/code/acme-theme",
+          syncedAt: hoursFromNow(-3),
+          sourceMissing: false,
+        },
+      ],
+      scratch: true,
+    },
+    {
+      site: fixtureSite({
+        id: "s-scratch-2",
+        name: "compat-81",
+        domain: "compat-81.scratch.rex",
+        origin: "agent",
+        agentClient: "Cursor 0.42",
+        expiresAt: hoursFromNow(0.6),
+        status: "stopped",
+      }),
+      packages: [
+        {
+          siteId: "s-scratch-2",
+          slug: "acme-blocks",
+          kind: "plugin",
+          sourcePath: "/Users/dev/code/acme-blocks-old",
+          syncedAt: hoursFromNow(-30),
+          sourceMissing: true,
+        },
+      ],
+      scratch: true,
+    },
+    {
+      site: fixtureSite({
+        id: "s-scratch-3",
+        name: "old",
+        domain: "old.scratch.rex",
+        origin: "agent",
+        agentClient: "Claude Code",
+        expiresAt: hoursFromNow(-5),
+        status: "stopped",
+      }),
+      scratch: true,
+    },
+    {
+      site: fixtureSite({
+        id: "s-scratch-4",
+        name: "stuck",
+        domain: "stuck.scratch.rex",
+        origin: "agent",
+        agentClient: "Claude Code",
+        expiresAt: hoursFromNow(-40),
+        status: "stopped",
+      }),
+      reapFailure: "its database could not be dropped",
+      scratch: true,
+    },
+    // KEPT: origin flipped to the user's, expiry cleared. Must be an ORDINARY
+    // row — no badge, no TTL, no Keep — because that is what the dialog just
+    // promised ("it becomes one of your own sites").
+    {
+      site: fixtureSite({
+        id: "s-kept",
+        name: "kept",
+        domain: "kept.scratch.rex",
+        origin: "user",
+        agentClient: "Claude Code",
+        expiresAt: null,
+      }),
+      scratch: false,
+    },
+    // The user's OWN site, hand-named to look like a scratch one (#204).
+    {
+      site: fixtureSite({
+        id: "s-handnamed",
+        name: "mine",
+        domain: "mine.scratch.rex",
+        origin: "user",
+        expiresAt: null,
+      }),
+      scratch: false,
+    },
+  ];
+  const own = rows.filter((r) => !r.scratch);
+  const scratch = rows.filter((r) => r.scratch);
+  const row = (r: (typeof rows)[number]) => (
+        <SiteRow
+          key={r.site.id}
+          site={r.site}
+          status={r.site.status}
+          packages={r.packages}
+          reapFailure={r.reapFailure}
+          onOpen={noop}
+          onDelete={noop}
+          onOpenDatabase={noop}
+          onOpenWordpress={noop}
+          onRename={noop}
+          onDuplicate={noop}
+          onRetry={noop}
+          onKeep={r.scratch ? noop : undefined}
+        />
+  );
+  // Same order as the page: the user's own sites, then the group.
+  return (
+    <div className="space-y-0.5">
+      {own.map(row)}
+      <ScratchGroupHeading count={scratch.length} />
+      {scratch.map(row)}
+    </div>
+  );
+}
+
 function BadgesView() {
   const noop = () => {};
   const rows: Array<{ site: Site; dbState?: DbImportRecord["state"] }> = [
@@ -487,6 +645,14 @@ export function DevUiReview() {
         {view === "toast" && <ToastView />}
         {view === "pills" && <PillsView />}
         {view === "agents" && <AgentsView />}
+        {view === "scratch" && <ScratchView />}
+        {view === "keep" && (
+          <KeepSiteDialog
+            site={fixtureSite({ domain: "plugin-test.scratch.rex", origin: "agent" })}
+            onKeep={() => {}}
+            onCancel={() => {}}
+          />
+        )}
       </div>
     </div>
   );

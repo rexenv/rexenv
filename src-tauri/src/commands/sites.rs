@@ -280,6 +280,72 @@ pub(crate) fn promote_if_scratch(state: &AppState, id: &str) {
     }
 }
 
+/// **Keep** — the user adopting a scratch site on purpose (MCP M2a).
+///
+/// The same ONE write as [`promote_if_scratch`], through the same store fn, so
+/// the deliberate door and the implied one cannot express "not disposable any
+/// more" differently. Idempotent by its own `WHERE origin = 'agent'`: keeping a
+/// site twice changes nothing, and keeping a site that was never the agent's is
+/// a no-op rather than an error.
+///
+/// There is no un-keep, deliberately, and the confirm dialog says so — the way
+/// back is deleting the site like any other. Returns whether a row changed, so
+/// the UI can tell "adopted just now" from "already yours".
+#[tauri::command]
+pub async fn keep_site(state: State<'_, AppState>, id: String) -> Result<bool> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+    crate::state::store::keep_site(&conn, &id)
+}
+
+/// A cloned package as the Sites page reads it — the recorded row plus ONE fact
+/// the row cannot carry.
+///
+/// `source_missing` is stat-ed at read time because "the source moved" is a
+/// different state from "nothing changed", and only the filesystem knows which.
+/// Without it a moved source would render as the most reassuring reading of a
+/// stale timestamp, which is the worst version of this field: the user would be
+/// told the site is running code from a directory that is no longer there.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScratchPackageView {
+    pub site_id: String,
+    pub slug: String,
+    pub kind: String,
+    /// The user's OWN project directory — the path they chose and already know.
+    /// Shown so "I changed my plugin and the site didn't see it" is answered on
+    /// screen. (Not the site's docroot, which this view never carries.)
+    pub source_path: String,
+    pub synced_at: String,
+    /// The recorded source is not a directory right now.
+    pub source_missing: bool,
+}
+
+/// Every scratch package whose site still exists — one read for the whole page.
+#[tauri::command]
+pub async fn scratch_packages(state: State<'_, AppState>) -> Result<Vec<ScratchPackageView>> {
+    let rows = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        crate::state::store::all_scratch_packages(&conn)?
+    };
+    Ok(rows
+        .into_iter()
+        .map(|p| ScratchPackageView {
+            source_missing: !std::path::Path::new(&p.source_path).is_dir(),
+            site_id: p.site_id,
+            slug: p.slug,
+            kind: p.kind,
+            source_path: p.source_path,
+            synced_at: p.synced_at,
+        })
+        .collect())
+}
+
 /// Create a site (Phase 2 §1.6 + Phase 3 §1.2): provision it (docroot + cert + DB
 /// row); for a **WordPress** site bring MySQL up and run the one-click installer
 /// (`wp`) so the site is browsable; then — if the stack is running — ensure its

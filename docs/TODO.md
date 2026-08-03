@@ -263,8 +263,8 @@ first:
     deliberately changed this site") replaced §4.3's list — it added the PHP /
     web-server / Xdebug switches and removed share; six commands call one
     function; a source guard fails the build if a command stops calling it or a
-    new one never does. ⚠ Still open in 10b: the Keep confirm DIALOG (copy
-    approved 2 Aug, lands with the Sites UI, task 13).
+    new one never does. ✓ 10b's Keep confirm DIALOG landed with task 13 —
+    the approved copy is recorded verbatim in ledger #219, not referenced.
     ◐ task 9b — **the reaper's SWEEP**, ledger #215: skip-don't-stop for shared
     sites (calling the normal delete path would break #29 unattended), a failed
     stop is a skip, per-sweep ceiling of 5 with a loud log, outcomes deduped by
@@ -305,8 +305,30 @@ first:
     escapes"** — a plugin can print `/opt/...` or a runtime-built path, and no
     prefix list reaches that. Asserted, not just written (an `/opt` line comes
     through unchanged), and stated in both tools' notes.
-    Next = 13 (Sites UI: Agent-scratch group, Keep dialog, reap banner,
-    last-synced), 14 (L1 `mcp_scratch_check` + SMOKE gate).
+    ◐ task 13 — **the Sites UI**, ledger #219: the group reads `origin` and
+    nothing else, so a KEPT site and a user's hand-named `mine.scratch.rex`
+    both render as ordinary rows — plant-proven at L2 (the domain shortcut
+    fails BY NAME). `expiresAt` null yields no label rather than a "never" one,
+    so there is no third state to invent. Keep goes through the SAME single
+    write as the implied promotion; its **approved copy is now recorded
+    verbatim in #219** (it had been referenced-but-not-written, and was
+    unavailable to the session that had to build it). A moved package source is
+    its own state, never a stale timestamp. Scratch rows yield the metrics
+    column — measured (167px overflow at 1440, the column reserves 168).
+    Backend added: `keep_site` + `scratch_packages` commands, `store::
+    all_scratch_packages` (joined to `sites`, because v29 has no FK).
+    Two HARNESS defects found by the planting and fixed here: the new probe was
+    never wired (`probeFor` is a name switch; the scenario tuple's third slot is
+    ACTIONS), and `runActions` swallowed unknown actions silently — it now
+    throws. Remaining ◐: the live page against real scratch rows (task 14 + a
+    packaged look). ⚠ Also open: 10b's Keep dialog is now landed, so that
+    caveat is spent.
+    ⚠ Noticed, not fixed: `scratch_packages` rows are NOT deleted with their
+    site (no FK, no delete hook) — harmless orphans, since ids are UUIDs and
+    the read joins, but worth a cleanup when task 14 touches deletion.
+    Next = 14 (L1 `mcp_scratch_check` + SMOKE gate), then the argv-in-feed task
+    (bounded rexenv-derived shape — subcommand, maybe first positional — never
+    the command line, per #202's typed-shape rule).
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

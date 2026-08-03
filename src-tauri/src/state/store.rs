@@ -570,6 +570,35 @@ pub fn scratch_packages(conn: &Connection, site_id: &str) -> Result<Vec<ScratchP
     Ok(rows)
 }
 
+/// Every recorded package whose SITE still exists, newest sync first — one read
+/// for a whole page rather than one per row (the `db_import_records` shape).
+///
+/// The join is load-bearing, not tidiness: `scratch_packages` carries no foreign
+/// key (v29 declares `site_id` as a plain column), so deleting a site leaves its
+/// package rows behind. Reading through the join means a stale row can never
+/// surface as a package of a site that is gone — the read is correct whatever
+/// the table's leftovers are.
+pub fn all_scratch_packages(conn: &Connection) -> Result<Vec<ScratchPackage>> {
+    let mut stmt = conn.prepare(
+        "SELECT p.site_id, p.slug, p.kind, p.source_path, p.synced_at, p.fingerprint \
+         FROM scratch_packages p JOIN sites s ON s.id = p.site_id \
+         ORDER BY p.synced_at DESC",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(ScratchPackage {
+                site_id: r.get(0)?,
+                slug: r.get(1)?,
+                kind: r.get(2)?,
+                source_path: r.get(3)?,
+                synced_at: r.get(4)?,
+                fingerprint: r.get(5)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 /// The database's timestamp `hours` from now, in the same format as
 /// [`db_now`] — so an expiry written here compares correctly against
 /// `datetime('now')` at reap time. SQLite does the arithmetic, in UTC, with the

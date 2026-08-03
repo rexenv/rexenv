@@ -57,6 +57,25 @@ export interface Site {
   expiresAt?: string | null;
 }
 
+/** A plugin or theme an agent cloned into a scratch site (v29), as the Sites
+ *  page reads it. Mirrors the Rust `ScratchPackageView`. */
+export interface ScratchPackage {
+  siteId: string;
+  slug: string;
+  /** `"plugin"` or `"theme"` — DERIVED from the source's own header at add
+   *  time, never asserted by the agent. */
+  kind: string;
+  /** The USER'S own project directory the clone was taken from — recorded at
+   *  add time and never re-derived. Safe and useful to show: they chose it. */
+  sourcePath: string;
+  /** When the clone was last taken. The site runs a SNAPSHOT as of this
+   *  moment, not what is in the editor now. */
+  syncedAt: string;
+  /** The recorded source is not a directory right now (stat-ed at read).
+   *  A state of its own — never collapse it into "nothing changed". */
+  sourceMissing: boolean;
+}
+
 /** Who a site belongs to (mirrors the Rust SiteOrigin). */
 export type SiteOrigin = "user" | "agent";
 

@@ -631,6 +631,8 @@ pub fn run() {
             commands::sites::set_site_web_server,
             commands::sites::set_site_xdebug,
             commands::sites::delete_site,
+            commands::sites::keep_site,
+            commands::sites::scratch_packages,
             commands::php::list_php_versions,
             commands::php::set_php_version_installed,
             commands::php::set_default_php_version,

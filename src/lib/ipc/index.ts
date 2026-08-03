@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, AgentAction, Blueprint, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
+import type { AppInfo, AgentAction, Blueprint, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -375,6 +375,33 @@ export async function setSiteXdebug(id: string, enabled: boolean): Promise<Site 
 export async function deleteSite(id: string): Promise<boolean> {
   if (!isTauri()) return false;
   return invoke<boolean>("delete_site", { id });
+}
+
+/** **Keep** a scratch site — the user adopting it deliberately. Clears its
+ *  expiry and makes it theirs, through the SAME single write every implied
+ *  promotion (rename, move, PHP switch…) uses. Idempotent; there is no un-keep.
+ *  Returns whether a row actually changed. */
+export async function keepSite(id: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("keep_site", { id });
+}
+
+/** Every plugin/theme an agent has cloned into a scratch site, across all
+ *  sites — one read for the page. Rows whose site is gone are filtered by the
+ *  query itself. */
+export async function scratchPackages(): Promise<ScratchPackage[]> {
+  if (!isTauri()) return [];
+  return invoke<ScratchPackage[]>("scratch_packages");
+}
+
+/** The scratch reaper's summary for a sweep that DID something — names the
+ *  domains it removed and what it left alone. Silent on a quiet launch, so a
+ *  user with no scratch sites never learns the reaper exists. The feed rows are
+ *  the durable record; dismissing the banner loses nothing. */
+export async function onScratchReaped(cb: (summary: string) => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<string>("scratch-reaped", (e) => cb(e.payload));
 }
 
 /** All registered PHP versions (installed + available). Mock fallback outside Tauri. */
