@@ -326,9 +326,32 @@ first:
     ⚠ Noticed, not fixed: `scratch_packages` rows are NOT deleted with their
     site (no FK, no delete hook) — harmless orphans, since ids are UUIDs and
     the read joins, but worth a cleanup when task 14 touches deletion.
-    Next = 14 (L1 `mcp_scratch_check` + SMOKE gate), then the argv-in-feed task
-    (bounded rexenv-derived shape — subcommand, maybe first positional — never
-    the command line, per #202's typed-shape rule).
+    ◐ task 14 — **L1 `mcp_scratch_check` + the SMOKE M2a gate**, ledger #220.
+    The executing registry over a real socket, sandbox tier. Fixture is
+    adversarial where it counts: the USER'S site is named `mine.scratch.rex`,
+    so all four tools refusing it proves the gate reads `origin`. The plugin
+    source lives OUTSIDE the sandbox root (app-data is a blast-radius refusal
+    being tested) behind its own `Drop` guard. **What moved:** #217 ✅ (the
+    wired clone path, source byte-compared incl. a binary blob) and #218 ✅
+    (four target forms refused + a REAL `wp cli info` child whose output is
+    scrubbed — plant-proven both ways: the labels must be present, and removing
+    the scrub fails on a raw app-data path). **What did not, and why:** #215's
+    delete and skip-don't-stop stay 🔨 (need a provisioned DB + a live tunnel;
+    faking either asserts against the fixture, not `delete_site_owned`); #219
+    stays ◐ (a socket check cannot move a rendering claim — it moves at L3 in
+    the PACKAGED webview, SMOKE 6/9/10); and no wp command that BOOTS
+    WordPress is exercised, which leaves wp-cli's loaded behaviour unproven,
+    not any rexenv guard. SMOKE §M2a = 6 steps; **8 (the tier boundary in front
+    of a human) and 11 (no admin prompt) are HOLDs**, and 8 names the
+    work-around a helpful model would reach for as a failure tell.
+    **M2a's code is complete; the remaining M2a work is a release-candidate
+    SMOKE run and the two 🔨 legs above.**
+    ⚠ Carried into the next task deliberately (not "if there's room"): delete
+    the site's `scratch_packages` rows in `delete_site_owned` — v29 has no FK,
+    so today they are orphans the read only hides.
+    Next = the argv-in-feed task (bounded rexenv-derived shape — subcommand,
+    maybe first positional — never the command line, per #202's typed-shape
+    rule), then M2b.
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

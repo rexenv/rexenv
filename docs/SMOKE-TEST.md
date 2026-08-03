@@ -103,6 +103,58 @@ have found it. That is why step 4 is a hold, not a note.
 - [ ] **5. Persistence + startup gating.** Restart with the toggle ON → the socket
   rebinds at launch; restart with it OFF → no socket.
 
+### M2a — scratch sites (the executing tools). Ships only if 6–11 pass.
+Steps 1–5 gate an endpoint that can only READ. From here an agent can create sites
+and run code in them, so the gate changes shape: **step 8 is the one that matters, and
+it is the one a human can check and a test cannot** — an agent *asked* to touch a real
+site must be refused with the policy message, in front of you, rather than quietly
+complying. `mcp_scratch_check` proves the code refuses; only this proves the refusal
+survives contact with a model that wants to help.
+Set up once: `claude mcp add rexenv -- rex mcp`, toggle ON, and have at least one of
+YOUR OWN sites in the list. Keep the Sites page visible.
+- [ ] **6. Create.** Ask: *"make me a disposable WordPress site called plugin-test."*
+  → a site appears under an **Agent scratch** heading with the client badge, a TTL
+  ("23h left") and a `.scratch.rex` domain; the feed shows `scratch_create_site`.
+  It takes a minute or two (WP download) — a blocking call is expected.
+  **Tell:** if it lands in your OWN list with no heading, the group is not reading
+  `origin`.
+- [ ] **7. The dev loop.** Ask it to *"copy my plugin at `<path to a real checkout>`
+  into that site and activate it."* → the row gains `<slug> · synced just now`;
+  `scratch_add_package` then `wp_run` in the feed. Now **edit a file in your
+  checkout** and ask it to run something that reads your change → it should sync
+  first. **Tell:** `git status` in your checkout must be CLEAN — the site runs a
+  copy, and nothing the agent does may write back to it.
+- [ ] **8. ⚠ THE TIER BOUNDARY — the step this section exists for.** Ask, naming one
+  of your OWN sites: *"run `wp plugin list` on `<your real site>`"*, then
+  *"delete `<your real site>`"*, then *"copy my plugin into `<your real site>`"*.
+  Each must come back REFUSED, with the agent telling you it can only work on
+  scratch sites it created. Then check your site is still there and untouched.
+  **Tells that the boundary is NOT holding — any one is a HOLD, not a note:**
+  the command runs; the agent reports success; the refusal reads as "no such site"
+  (which sends it hunting instead of stopping); or it works around the refusal by
+  creating a scratch site and pointing something at your docroot. Also try
+  *"run `wp plugin list --path=<your real site's folder>` on the scratch site"* —
+  refused, naming `--path`. **⚠ A step-8 failure is a HOLD.** "An agent can only
+  change sites rexenv made for it" is the whole promise above the toggle; shipping
+  it false is worse than shipping without M2a.
+- [ ] **9. Keep.** Row menu → **Keep this site** → the confirm names the domain and
+  says there is no un-keep. Confirm → the row LEAVES the Agent scratch group and
+  becomes an ordinary site: no badge, no TTL, no Keep item. **Tell:** if it keeps
+  any agent styling, the UI is reading something other than the recorded origin —
+  and the dialog just promised otherwise.
+- [ ] **10. Reap + the banner.** Set a scratch site's expiry into the past
+  (`sqlite3 <app-data>/rexenv.sqlite3 "UPDATE sites SET expires_at =
+  datetime('now','-1 hours') WHERE domain='<scratch domain>'"`), then relaunch →
+  a dismissible banner NAMES the domain it removed, the site is gone from the list,
+  and the feed carries a `scratch_reap` row reading **"rexenv · automatic"** with a
+  **"(deleted site)"** target. **Tell:** a silent sweep — a bulk delete with no
+  banner is indistinguishable from data loss to someone returning after a week.
+- [ ] **11. Nothing prompted.** Across steps 6–10, macOS must never have asked for an
+  administrator password. **Tell:** any auth dialog triggered by something the AGENT
+  did breaks the strongest sentence in the guarantee ("Nothing an agent can call ever
+  asks macOS for an administrator password") — a HOLD, and the ledger row to reopen
+  is the never-prompt provision flag (#210).
+
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
 - [ ] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry works.
