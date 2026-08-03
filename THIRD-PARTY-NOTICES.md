@@ -14,8 +14,15 @@ rexenv itself is licensed under the Apache License 2.0 (see `LICENSE`).
 
 Where a dependency is dual- or multi-licensed (e.g. "MIT OR Apache-2.0"),
 rexenv uses it under the first permissive option compatible with this
-distribution. Generated from the real dependency graphs on 2026-07-28 —
-regenerate before each release with:
+distribution. Generated from the real dependency graphs on 2026-07-28 and
+re-verified against them on 2026-08-03 (pre-v0.1.0): the Rust closure is
+unchanged at 389 crates and the npm closure at 112 packages — no package added,
+removed, or relicensed, and no licence family that is not already covered below.
+Two npm rows were repaired in that pass: `@tauri-apps/api` and
+`@tauri-apps/plugin-dialog` had name, version and licence collapsed into one
+cell by the original generation, so the `OR` of their dual licence was sitting
+in the version column. The packages and their licences were right; the table
+rendered them wrong. Regenerate before each release with:
 
 ```sh
 # Rust (the app + statically linked deps, macOS graph):
@@ -472,8 +479,8 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | @radix-ui/react-use-layout-effect | 1.1.2 | MIT |
 | @tanstack/query-core | 5.101.1 | MIT |
 | @tanstack/react-query | 5.101.1 | MIT |
-| @tauri-apps/api 2.11.1 Apache-2.0 | OR | MIT |
-| @tauri-apps/plugin-dialog 2.7.1 MIT | OR | Apache-2.0 |
+| @tauri-apps/api | 2.11.1 | Apache-2.0 OR MIT |
+| @tauri-apps/plugin-dialog | 2.7.1 | MIT OR Apache-2.0 |
 | @types/react | 18.3.31 | MIT |
 | @types/react-dom | 18.3.7 | MIT |
 | @xterm/addon-fit | 0.11.0 | MIT |
