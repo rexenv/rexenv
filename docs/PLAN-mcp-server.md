@@ -832,19 +832,35 @@ text; it lands in the Settings card above the M2 tools, near-verbatim:
 
 > **What rexenv guarantees once an agent can create sites — and what it does not.**
 >
-> Every tool that changes anything can only change a site rexenv created for the
-> agent itself. (Using one also keeps it alive: an agent that looks at a scratch
-> site pushes its expiry out, so the disposable sites that disappear are the ones
-> nobody is using.) That is a recorded fact (`origin='agent'`, written at creation),
-> never inferred from a name or a path — a site you named `foo.scratch.rex`
-> yourself is yours, and the reaper will not touch it. Your sites, their files,
-> their databases, and every system change rexenv can make (the resolver, the CA,
-> the edge, tunnels, settings) are not reachable from any tool: the refusal lives
-> in core, so the CLI and the UI enforce the same one. Scratch sites are capped,
-> they expire, and they are deleted **by their record** — never by matching a name
-> or a path. Anything you touch yourself becomes yours permanently: rename it,
-> move it, share it, or press Keep, and it stops being disposable. Nothing an
-> agent can call ever asks macOS for an administrator password.
+> **An agent can SEE every site you have. It can only CHANGE the ones it made
+> itself.** Those are two different sentences and collapsing them is the mistake
+> this paragraph used to make: the read tools — list your sites, diagnose why one
+> isn't serving, tail a WordPress debug log — work on ANY site, because a
+> diagnostic that only saw the agent's own sites would answer no question worth
+> asking. What that exposes is bounded rather than absent: only the site's own
+> WordPress debug log, tail-only and capped, with rexenv-issued tokens, cookie
+> headers and the paths rexenv knows stripped out — and it is raw log content, so
+> whatever your code logged is in it.
+>
+> Everything that CHANGES anything is confined to sites rexenv created for the
+> agent. (Creating one starts rexenv's database engine, exactly as creating a site
+> in the app does — a user-level start, never a privileged one. And using a
+> scratch site keeps it alive: an agent that looks at one pushes its expiry out,
+> so the disposable sites that disappear are the ones nobody is using.) That is a
+> recorded fact (`origin='agent'`, written at creation), never inferred from a
+> name or a path — a site you named `foo.scratch.rex` yourself is yours, and the
+> reaper will not touch it. **No tool can change or delete a site you made, and no
+> tool can make a system change at all**: the resolver, the CA, the edge, tunnels
+> and settings are absent from the tool surface entirely, and the ownership
+> refusal lives in core, so the CLI and the UI enforce the same one. Scratch sites
+> are capped, they expire, and they are deleted **by their record** — never by
+> matching a name or a path. Anything you deliberately change yourself becomes
+> yours permanently: rename it, move it, switch its PHP or web server, toggle
+> Xdebug, edit its environment, or press Keep, and it stops being disposable.
+> (Sharing a scratch site publicly does *not* adopt it — the reaper skips a shared
+> site and tells you, rather than quietly claiming what you only meant to show
+> someone.) Nothing an agent can call ever asks macOS for an administrator
+> password.
 >
 > That is a fence around **which sites the tools name**. It is not a sandbox, and
 > the difference is the thing to understand before you turn this on: installing
@@ -856,10 +872,53 @@ text; it lands in the Settings card above the M2 tools, near-verbatim:
 > every call is recorded in the activity feed, and the endpoint is off until you
 > turn it on.
 >
-> **A plugin or theme you add to a scratch site is copied, not linked.** Nothing
-> the agent runs can write back to your checkout — and the flip side is that the
-> scratch site runs your code **as of the last sync**, not what is in your editor
-> right now. Sync again after you change it.
+> **A plugin or theme you add to a scratch site is copied, not linked.** rexenv
+> never joins the two, so nothing the SITE does — a plugin update, an uninstall, a
+> file write by the code under test — can reach your checkout. The flip side is
+> that the scratch site runs your code **as of the last sync**, not what is in
+> your editor right now; sync again after you change it. What this does not mean
+> is that your checkout is out of reach: an agent running `wp eval` is running PHP
+> as you, and code running as you can write anywhere you can. The copy removes the
+> accident, not the capability.
+
+**RE-READ AGAINST SHIPPED M2a (3 Aug 2026) — three sentences had drifted, and
+all three drifted the same way.** The paragraph was drafted before scratch sites,
+`wp_run` or the reaper existed, which was the point; what it was NOT is
+self-maintaining. Re-read line by line against the shipped tool list, three
+claims were false, and every one is the **§3.1(c) shape** — a sentence true of
+the narrow thing it was describing, positioned where the wider falsehood is the
+available reading:
+
+1. *"Your sites, their files, their databases … are not reachable from any
+   tool."* **False.** Written from M2's vantage, where "reach" meant *mutate* —
+   but M1's `list_sites`/`site_status`/`tail_log` reach every site the user has,
+   and `tail_log` reads their site's own debug log. The available reading was
+   "an agent sees only what it creates," which was never true of any shipped
+   version. Split into two sentences: an agent SEES everything, CHANGES only its
+   own, with the log surface's real bounds stated rather than implied away.
+2. *"rename it, move it, **share it**, or press Keep."* **False since #214**,
+   which deliberately removed sharing from the promotion rule ("sharing a scratch
+   site is sharing a scratch site, not claiming it") — and the list had grown in
+   the other direction: the six commands that actually promote are the PHP,
+   web-server and Xdebug switches, the docroot move, the env edit and the domain
+   change. Corrected, with the share ruling stated so the omission doesn't read
+   as an oversight.
+3. *"Nothing the agent runs can write back to your checkout."* **False since
+   D1.** True of the CLONE — no link, so nothing the *site* does reaches the
+   source — and false as a sentence about the agent, because `wp eval` is
+   arbitrary PHP running as the user and can write anywhere the user can. #216's
+   ledger row was already careful ("the guarantee is the direction rather than
+   the mechanism"); the guarantee paragraph was not.
+
+**What did NOT drift, and why that is the useful part:** none of this reached a
+user. §6.0 says the paragraph lands in the card "near-verbatim" — it did not.
+Task 8b rewrote it for the card (#211) *because the copy guard fired*, and the
+rewritten copy is honest on all three points: it says an agent "can look at your
+sites — their status and their logs", scopes the refusal to "cannot change or
+delete", and makes no claim about the checkout at all. **The guarded text stayed
+true; the unguarded draft rotted.** That is the argument for the must-say list
+gaining the read-across claim (done in the same commit) rather than trusting a
+re-read to happen again.
 
 **The brittle sentence, flagged where it lands.** "Nothing an agent can call ever
 asks macOS for an administrator password" is the strongest claim in the paragraph

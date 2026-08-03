@@ -1319,6 +1319,17 @@ mod tests {
             ("run it", "that code in them RUNS"),
             ("as you", "that it runs with the user's own power — the residual, #197"),
             ("cannot", "what it still cannot touch: the user's own sites"),
+            // Added 3 Aug 2026, from the §6.0 re-read. The plan's guarantee had
+            // drifted into "your sites … are not reachable from any tool", which
+            // is true of MUTATION and false of the read tools — and the reading
+            // it invites ("an agent sees only what it creates") was never true of
+            // any shipped version. This card never said that, because the copy
+            // guard forced it to be rewritten honestly; the unguarded draft
+            // rotted. So the visibility claim joins the must-say list: a trim
+            // that removes it would leave the user believing the narrower thing,
+            // which is the more damaging half — the guarantee is read by people
+            // auditing, this paragraph is read by everyone who turns it on.
+            ("look at your sites", "that an agent can SEE every site, not only its own (§3.1c)"),
         ];
         if scratch::registry().is_empty() {
             return; // unreachable in practice — see the note above
