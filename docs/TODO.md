@@ -349,9 +349,25 @@ first:
     ⚠ Carried into the next task deliberately (not "if there's room"): delete
     the site's `scratch_packages` rows in `delete_site_owned` — v29 has no FK,
     so today they are orphans the read only hides.
-    Next = the argv-in-feed task (bounded rexenv-derived shape — subcommand,
-    maybe first positional — never the command line, per #202's typed-shape
-    rule), then M2b.
+    ✓ #203's last leg — **L1 `mcp_control_check`** (sandbox tier): the OFF
+    switch, built to prove what SMOKE step 4 is a HOLD for rather than the easy
+    version. A session that was ALREADY CONNECTED is dropped (not just new
+    connects denied), and the socket FILE is unlinked (not just closed); then
+    re-enable rebinds and serves. Both plant-proven against the exact bug shape.
+    Fixed while proving it: `serve` unlinked a RE-DERIVED path rather than the
+    one its listener bound — latent in the app, but any other caller's shutdown
+    would have deleted the APP'S socket.
+    **M2a + M1 are code-complete. The release path is settled at nine steps:**
+    (1) ✓ guarantee re-read, (2) ✓ #203, (3) packaged eyeball of the
+    enable-moment paragraph, (4) `verify-full.sh`, (5) regenerate
+    `THIRD-PARTY-NOTICES.md`, (6) fresh DMG, (7) PUBLISH-TESTING §A, (8) the MCP
+    gate — SMOKE 1–5 then 6–11 (steps 4, 8, 11 are HOLDs), (9) §G.
+    ⚠ Between the build and the tap push: recompute the cask sha256 (the
+    committed one is a marked stale placeholder) — §D.
+    Deferred, confirmed non-blocking: the argv-in-feed task (bounded
+    rexenv-derived shape — subcommand, maybe first positional — never the
+    command line, per #202's typed-shape rule), `cp -c`, the orphan
+    `scratch_packages` rows, then M2b.
   - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)

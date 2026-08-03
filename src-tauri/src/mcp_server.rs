@@ -217,13 +217,27 @@ pub async fn serve<Rt: tauri::Runtime>(
     // runtime, where `Handle::current` exists. `bind_socket` did NOT need it (it
     // may be called off the runtime, e.g. the sync enable command); `from_std`
     // does, and this is the first point we are guaranteed to be inside it.
+    // Unlink the socket THIS listener bound, never a re-derived one.
+    //
+    // `serve` used to call `socket_path()` here, which recomputes the default
+    // from the real config dir. In the app those always agree (`start` uses it
+    // for both), so it was latent — but a caller that binds anywhere else (an
+    // example with its own sandbox path) would have had its shutdown delete the
+    // APP'S socket instead of its own. That is the examples-touch-real-state
+    // class this codebase has already been bitten by three times, and the fix is
+    // the one-fact rule: the listener knows where it is, so ask it. If it can't
+    // say, unlink NOTHING — a guessed path is what the bug was.
+    let bound_path = listener.local_addr().ok().and_then(|a| a.as_pathname().map(|p| p.to_path_buf()));
+    let unlink = || {
+        if let Some(p) = &bound_path {
+            let _ = std::fs::remove_file(p);
+        }
+    };
     let listener = match UnixListener::from_std(listener) {
         Ok(l) => l,
         Err(e) => {
             log::error!("mcp: could not adopt the socket into the runtime: {e}");
-            if let Ok(path) = socket_path() {
-                let _ = std::fs::remove_file(path);
-            }
+            unlink();
             return;
         }
     };
@@ -251,9 +265,11 @@ pub async fn serve<Rt: tauri::Runtime>(
     }
     // Accept loop stopped (disabled or app exit): unlink the socket so nothing
     // lingers advertising a dead endpoint and a later enable rebinds cleanly.
-    if let Ok(path) = socket_path() {
-        let _ = std::fs::remove_file(path);
-    }
+    // The socket FILE going away is the security-relevant half — a closed
+    // listener with the node still on disk reads as an endpoint to anything that
+    // stats it, and `mcp_control_check` asserts the file is gone, not merely
+    // that new connects fail.
+    unlink();
 }
 
 /// One MCP session: read newline-delimited JSON-RPC messages, dispatch each,
