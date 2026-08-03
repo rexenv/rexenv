@@ -45,6 +45,33 @@ fn state_of(pid: u32) -> String {
         .unwrap_or_default()
 }
 
+/// Stage a stand-in `cloudflared` at `path` — a SYMLINK to `/bin/bash`, never a
+/// copy.
+///
+/// Both halves of this are load-bearing, and both were wrong until 3 Aug 2026:
+///
+/// - **Symlink, not copy.** A copy of a system binary off the sealed system
+///   volume is SIGKILLed on launch (exit 137, AMFI) on this machine, so every
+///   fake below was dying instantly. The symlink executes the SSV image in place
+///   — so it lives — while `argv[0]`, which is what `pids_named` and the
+///   ownership check read, is still the path we chose.
+/// - **The caller must pass a command bash cannot exec-optimise away.** `-c
+///   "sleep 300"` makes bash `exec` sleep as its last command, replacing argv
+///   with `sleep 300` — so the `cloudflared` name and the `--http-host-header`
+///   pair, the exact things the sweep matches on, disappear. `"sleep 300; :"`
+///   keeps bash resident with its original argv.
+///
+/// Why this mattered more than a flaky fixture: with the fakes dying on their
+/// own, "ours must be KILLED" passed VACUOUSLY (the OS had already killed them)
+/// and "a lookalike must SURVIVE" passed only when the check won the race. The
+/// example was asserting almost nothing about `sweep_rowless` in either
+/// direction — and it stands behind a Tier-1 blast-radius claim (never killing a
+/// process that isn't provably ours).
+fn stage_fake(path: &std::path::Path) {
+    let _ = std::fs::remove_file(path);
+    std::os::unix::fs::symlink("/bin/bash", path).expect("stage the fake cloudflared");
+}
+
 fn main() {
     let (plat, sandbox) = common::sandbox("tunnel-sweep");
     let conn = db::open_for_platform(plat.paths()).expect("open sandbox database");
@@ -68,12 +95,12 @@ fn main() {
     let fake_bin_dir = plat.paths().app_data_dir().expect("sandbox app data").join("bin-fixture");
     std::fs::create_dir_all(&fake_bin_dir).expect("create fixture bin dir");
     let fake_cloudflared = fake_bin_dir.join("cloudflared");
-    std::fs::copy("/bin/bash", &fake_cloudflared).expect("stage fake cloudflared");
+    stage_fake(&fake_cloudflared);
     let ours_doc = docroot_with_muplugin(sandbox.root(), "ours");
     let ours_child = Command::new(&fake_cloudflared)
         .args([
             "-c",
-            "sleep 300",
+            "sleep 300; :",
             "cloudflared",
             "tunnel",
             "--no-autoupdate",
@@ -153,9 +180,9 @@ fn main() {
         plat.paths().app_data_dir().expect("sandbox app data").join("bin-rowless");
     std::fs::create_dir_all(&rowless_bin_dir).expect("create rowless bin dir");
     let rowless_bin = rowless_bin_dir.join("cloudflared");
-    std::fs::copy("/bin/bash", &rowless_bin).expect("stage rowless fake");
+    stage_fake(&rowless_bin);
     let rowless_child = Command::new(&rowless_bin)
-        .args(["-c", "sleep 300", "cloudflared", "tunnel", "--url", "http://127.0.0.1:18088", "--http-host-header", "rowless-ours.rex"])
+        .args(["-c", "sleep 300; :", "cloudflared", "tunnel", "--url", "http://127.0.0.1:18088", "--http-host-header", "rowless-ours.rex"])
         .spawn()
         .expect("spawn rowless fake");
     let mut rowless = common::Reaped::new(rowless_child, 39996, "cloudflared");
@@ -167,12 +194,36 @@ fn main() {
     let _ = std::fs::remove_dir_all(&look_dir);
     std::fs::create_dir_all(&look_dir).expect("create lookalike dir");
     let look_bin = look_dir.join("cloudflared");
-    std::fs::copy("/bin/bash", &look_bin).expect("stage lookalike");
+    stage_fake(&look_bin);
     let look_child = Command::new(&look_bin)
-        .args(["-c", "sleep 300", "cloudflared", "tunnel", "--url", "http://127.0.0.1:18088", "--http-host-header", "lookalike.rex"])
+        .args(["-c", "sleep 300; :", "cloudflared", "tunnel", "--url", "http://127.0.0.1:18088", "--http-host-header", "lookalike.rex"])
         .spawn()
         .expect("spawn lookalike");
     let mut look = common::Reaped::new(look_child, 39995, "cloudflared");
+
+    // NON-VACUITY, asserted BEFORE the sweep runs — and scoped to what it can
+    // actually catch, which is the half that used to fail SILENTLY.
+    //
+    // With the fakes dying on their own (the pre-3-Aug copy-of-/bin/bash, killed
+    // by AMFI), "ours was killed" was satisfied by a process the OS had already
+    // killed — a vacuous pass, invisible. This probe turns that into a named
+    // failure: a fake that is not alive going into the sweep means the
+    // assertions afterwards are about process scheduling, not about
+    // `sweep_rowless`.
+    //
+    // What it does NOT catch, stated rather than assumed: the AMFI kill is
+    // asynchronous, so a fake can pass here and die during the sweep. That case
+    // is caught by the post-sweep SURVIVE assertion (it is how this was found),
+    // and prevented outright by `stage_fake` symlinking rather than copying.
+    // The probe is the belt for the direction that has no natural alarm.
+    for (what, pid) in [("rowless-ours", rowless.id()), ("lookalike", look.id())] {
+        let st = state_of(pid);
+        assert!(
+            !st.is_empty() && !st.starts_with('Z'),
+            "the {what} fixture was not alive going INTO the sweep (ps state {st:?}) — whatever \
+             the assertions below then said, they were not about the sweep"
+        );
+    }
 
     let killed_rowless = tunnels::sweep_rowless(&conn, &*plat);
 
