@@ -322,8 +322,15 @@ first:
     in BOTH directions, stat-only fingerprint with its limit recorded. ✓ the two TOOLS
     (ledger #217): claim → blast-radius → header → clone, sync re-reads only the
     RECORDED source, destination follows the recorded content dir, and the sync
-    copy never claims "unchanged". **Task 11 done.** Deferred from it: the
-    `cp -c` platform-trait optimisation (speed only, behaviour already proven).
+    copy never claims "unchanged". **Task 11 done.** ✓ **The `cp -c` optimisation is RETIRED, on
+    measurement** (4 Aug 2026, PLAN §4.4 + the `clone_tree` doc): the premise was
+    backwards. `std::fs::copy` already uses `fclonefileat` on macOS, so the
+    shipped code IS copy-on-write — a 400 MB file costs 0 bytes of disk — and it
+    beats `/bin/cp -c -R` on wall clock (0.61–0.75 s vs 0.81–1.33 s on a
+    4802-file tree) because it spawns no process. Doing it would have been
+    slower AND added an OS-specific path plus a `todo!()` on Windows/Linux where
+    the portable code works. No code written; the reasoning is recorded at the
+    function so the next person re-measures instead of re-assuming.
     ◐ task 12 — **`wp_run`**, ledger #218: the target comes from the WITNESS
     (`--path` derived from the claimed site's recorded docroot) and an
     agent-supplied `--path`/`--url`/`--ssh`/`--http`/`@alias` is REFUSED in

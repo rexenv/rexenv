@@ -715,12 +715,27 @@ the filesystem. The edit-in-repo immediacy is bought back with an explicit verb:
 - **Blast-radius validation stays, unchanged and non-negotiable** — cloning is
   not a licence to read: `scratch_add_package(id, "$HOME")` must refuse exactly as
   hard as linking it would have. Both bullets below apply to the clone.
-- **The clone is a platform-trait op** (macOS impl real, Windows/Linux `todo!()`),
-  and the macOS impl is `/bin/cp -c -R` rather than a new `libc`/`clonefile`
-  binding: `cp -c` is copy-on-write on APFS and *degrades to a plain copy* on a
-  filesystem that can't clone, which is the behaviour we want on a volume that
-  isn't APFS — correctness first, speed where the filesystem offers it. No new
-  crate in the dependency closure for a one-syscall win (§7.1's discipline).
+- ~~**The clone is a platform-trait op** whose macOS impl is `/bin/cp -c -R`~~ —
+  **RETIRED 4 Aug 2026, on measurement. Do not re-open without re-measuring.**
+  The premise was that the portable `std::fs::copy` recursion is a plain byte
+  copy and that `cp -c` would buy APFS copy-on-write. **It is already
+  copy-on-write**: Rust's `std::fs::copy` uses `fclonefileat` on macOS and falls
+  back to `fcopyfile` when the filesystem can't clone — the exact behaviour this
+  bullet wanted `cp -c` for, without a process spawn and without OS-specific
+  plumbing. Measured on a realistic plugin tree (4802 files, 33 MB):
+
+  | | wall clock (3 runs) | disk consumed by a 400 MB file |
+  |---|---|---|
+  | `std::fs::copy` recursion (**shipped**) | 0.75 / 0.61 / 0.65 s | **0 MB** |
+  | `/bin/cp -c -R` | 0.81 / 1.33 / 0.83 s | 0 MB |
+  | `/bin/cp -R` (plain) | 1.43 / 1.60 / 1.59 s | 400 MB |
+
+  So the "optimisation" is **slower** than what ships, and would additionally
+  cost a process spawn per tree, an OS-specific code path, and a `todo!()` on
+  Windows/Linux where the portable version works today. It buys nothing and
+  costs three things. (`cp -c`'s own degradation was verified too — `cp -c -R`
+  onto a mounted HFS+ volume exits 0 and copies byte-identically — so the man
+  page's claim is true; it simply isn't needed.)
 
 The remaining constraints (unchanged from the symlink design):
 

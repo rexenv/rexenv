@@ -349,10 +349,17 @@ pub const WP_RUN_TIMEOUT_SECS: u64 = 180;
 ///
 /// The guarantee is the direction, not the mechanism: writes inside the copy
 /// never touch the source, and writes in the source never appear in the copy
-/// until the next sync. On APFS this can be a copy-on-write clone (near-free);
-/// this implementation is the portable one and is correct everywhere — the
-/// `cp -c` optimisation rides a platform trait and is a speed change, never a
-/// behaviour change.
+/// until the next sync.
+///
+/// **This is already copy-on-write on APFS, and there is nothing to optimise
+/// here — measured 4 Aug 2026, see PLAN §4.4.** `std::fs::copy` uses
+/// `fclonefileat` on macOS and falls back to `fcopyfile` where the filesystem
+/// can't clone, so a 400 MB file costs 0 bytes of disk and a 4802-file tree
+/// copies faster than shelling out to `/bin/cp -c -R` (no process spawn). The
+/// plan once specified a `cp -c` platform trait for exactly the property this
+/// already has; that item is retired. If you arrive here meaning to make this
+/// faster, re-measure first — the last person to assume found the assumption
+/// backwards.
 pub fn clone_tree(source: &std::path::Path, dest: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(dest)?;
     for entry in std::fs::read_dir(source)? {
