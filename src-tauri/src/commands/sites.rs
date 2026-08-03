@@ -533,11 +533,41 @@ pub async fn set_site_php_version(
     version: String,
 ) -> Result<Option<Site>> {
     // The user is changing this site's PHP version — that adopts it (promotion
-    // choke point; a scratch site they touched is theirs).
+    // choke point; a scratch site they touched is theirs). This is the ONE line
+    // that differs from the agent's path, and it is policy, not mechanism —
+    // see `switch_php_version`.
     promote_if_scratch(&state, &id);
+    switch_php_version(&state, &id, &version).await
+}
+
+/// Switch a site's PHP version — **the mechanism, with no ownership policy in
+/// it**: row update, pinned-build prefetch, pool ensure (plus the debug pool if
+/// the site uses Xdebug), reload, await.
+///
+/// **Why this is extracted rather than shared by calling the command.** The
+/// obvious move — an agent tool calling `set_site_php_version` — is the
+/// one-brain rule pointing at a trap. That command's FIRST act is
+/// `promote_if_scratch`, because a USER changing PHP has adopted the site
+/// (#214). Run it for an agent and switching PHP promotes the scratch site,
+/// clears its expiry and frees a cap slot: switch, promote, create another,
+/// repeat. A cap bypass with an entirely plausible face, arrived at by obeying
+/// the reuse rule.
+///
+/// So the rule needs its sharper form: **reusing a command reuses its POLICY,
+/// and a command's policy can be the wrong one for a different caller.** What
+/// both callers must share is the mechanism; what they must not share is who
+/// the site belongs to afterwards. The Tauri command wraps this with promotion
+/// (user intent); the MCP tool wraps it with `claim` (#208) and re-asserts the
+/// recorded origin, and #214's source guard still sees the command calling the
+/// choke point.
+pub(crate) async fn switch_php_version(
+    state: &State<'_, AppState>,
+    id: &str,
+    version: &str,
+) -> Result<Option<Site>> {
     let (site, sites) = {
-        let conn = lock(&state)?;
-        let updated = core::sites::set_php_version(&conn, &id, &version)?;
+        let conn = lock(state)?;
+        let updated = core::sites::set_php_version(&conn, id, version)?;
         (updated, core::sites::list(&conn)?)
     };
     if let Some(ref s) = site {
@@ -1209,6 +1239,41 @@ mod tests {
     /// so this scans the source for the commands and asserts each one calls the
     /// choke point. A NEW mutation command added later fails here rather than
     /// silently leaving the reaper able to take a site the user just changed.
+    #[test]
+    fn the_extracted_mechanism_carries_no_ownership_policy() {
+        // The other half of #214's guard, and the reason this extraction exists.
+        //
+        // `set_site_php_version` MUST promote (the guard above proves it does).
+        // `switch_php_version` — the mechanism both callers share — must NOT,
+        // because the agent's path runs through it. If promotion leaked down
+        // here, an agent switching PHP would adopt the scratch site: expiry
+        // cleared, a cap slot freed, and the loop switch → promote → create
+        // another is a cap bypass with an entirely plausible face. It would
+        // arrive by OBEYING the reuse rule, which is what makes it worth a
+        // guard rather than a comment.
+        //
+        // Source-scanned, like the guard above, because the property is "this
+        // function does not call that one" — there is no value to assert.
+        const SRC: &str = include_str!("sites.rs");
+        let body = SRC
+            .split("pub(crate) async fn switch_php_version(")
+            .nth(1)
+            .expect("switch_php_version must exist — the agent's PHP switch shares it");
+        // Its body ends at the next top-level item.
+        let body = body.split("\n/// ").next().unwrap_or(body);
+        assert!(
+            !body.contains("promote_if_scratch("),
+            "switch_php_version calls promote_if_scratch. It is the MECHANISM, shared with the \
+             agent's tool — promotion is the USER-intent policy and belongs in the command that \
+             wraps it. Leaving it here makes an agent's PHP switch adopt the scratch site, which \
+             frees a cap slot and turns switch/create into an unbounded loop."
+        );
+        assert!(
+            !body.contains("origin") && !body.contains("expires_at"),
+            "switch_php_version writes ownership state directly — Keep is ONE write (#213)"
+        );
+    }
+
     #[test]
     fn every_user_facing_site_mutation_promotes_through_the_one_choke_point() {
         const SRC: &str = include_str!("sites.rs");
