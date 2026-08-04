@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–3 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–4 of 9 landed.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -180,7 +180,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   reports it as a success. Ledger row, and **plant-proven** — delete the fixture's
   `.distignore` and the refusal must fire with a message a stranger can act on.
 
-- [ ] **4 — Our temp dir, `TMPDIR`, and the sweep.** Fresh dir per run under app-data;
+- [x] **4 — Our temp dir, `TMPDIR`, and the sweep.** ✓ 5 Aug, ledger #232 — `ScratchDir` is a `Drop` guard so the three exits need not be enumerated correctly; `TMPDIR` redirects the tool's litter inside it; `out/` and `tmp/` split so the archive is unambiguous. Plant-proven, including the happy-path-only version that leaks on failure. Fresh dir per run under app-data;
   `TMPDIR` set to it for the child; removed on ok / failed / **cancelled**. Ledger row
   covering all three exits — a sweep proven on the success path only is the
   coverage/surface family, and cancel is the leg that matters, since the tool litters

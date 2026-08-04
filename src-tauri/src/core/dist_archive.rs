@@ -63,6 +63,8 @@ pub struct ArchiveSpec<'a> {
     pub autoload: &'a Path,
     /// An EMPTY rexenv-owned directory — see the module doc.
     pub packages_dir: &'a Path,
+    /// `TMPDIR` for the child — inside the swept scratch dir. See [`ScratchDir`].
+    pub tmp_dir: &'a Path,
     /// The asset checkout (`repo::asset_dest`), symlink or real directory.
     pub source: &'a Path,
     /// Where the archive is written. Ours, never the source's parent.
@@ -282,10 +284,21 @@ fn normalise(p: &Path) -> PathBuf {
 /// a developer who exports `WP_CLI_PACKAGES_DIR` in their shell profile would
 /// otherwise reintroduce exactly what this is here to exclude.
 pub fn env_overrides(spec: &ArchiveSpec<'_>) -> Vec<(String, String)> {
-    vec![(
-        "WP_CLI_PACKAGES_DIR".to_string(),
-        spec.packages_dir.display().to_string(),
-    )]
+    vec![
+        (
+            "WP_CLI_PACKAGES_DIR".to_string(),
+            spec.packages_dir.display().to_string(),
+        ),
+        // dist-archive writes its work into `sys_get_temp_dir()` and NEVER
+        // removes it — on success as much as on failure, and a whole filtered
+        // copy of the plugin whenever the source contains a symlink (measured:
+        // 304 KB for a toy fixture; tens of MB for anything with a vendor dir).
+        // Pointing TMPDIR inside our scratch dir does not fix the tool; it puts
+        // the litter inside the thing we already delete, which is the only fix
+        // available to us. Verified 4 Aug: with TMPDIR set, the system temp dir
+        // gained nothing and the copy appeared here instead.
+        ("TMPDIR".to_string(), spec.tmp_dir.display().to_string()),
+    ]
 }
 
 /// Run one archive build, streaming output to `on_line`. Blocking — callers use
@@ -305,6 +318,7 @@ pub fn run(
     full_env.extend(env_overrides(spec));
     std::fs::create_dir_all(spec.out_dir)?;
     std::fs::create_dir_all(spec.packages_dir)?;
+    std::fs::create_dir_all(spec.tmp_dir)?;
     repo::run_step_streamed(
         supervisor,
         spec.php_bin,
@@ -318,6 +332,162 @@ pub fn run(
         // See the module doc: this command is silent by construction.
         None,
     )
+}
+
+/// A per-run working directory under app-data, removed when it goes out of
+/// scope — **however** the scope is left.
+///
+/// # Why a `Drop` guard rather than three cleanup calls
+///
+/// The archive must be swept on ok, on failure, AND on cancel, and the three
+/// are not equally likely to be remembered: cancel is the one a person writing
+/// the happy path last, and it is also the one that litters hardest, because an
+/// interrupted dist-archive has usually just finished copying the plugin into
+/// its temp dir. Three explicit calls would be the coverage/surface family
+/// written by hand — a claim about every exit, implemented at the exits someone
+/// thought of. `Drop` runs on all of them, including the `?` returns in
+/// between and a panic, so the exits do not have to be enumerated correctly.
+///
+/// # Layout
+///
+/// `out/` is the target handed to dist-archive; `tmp/` is the child's `TMPDIR`.
+/// They are separate so that finding the produced archive is unambiguous — the
+/// tool's own leftovers never land in the directory we scan.
+///
+/// The name carries a fresh UUID, so two runs cannot collide and the target
+/// directory is always EMPTY. That is what makes dist-archive's overwrite prompt
+/// (an uncaught PHP fatal under a non-TTY, measured) unreachable rather than
+/// handled.
+///
+/// # Honest limit
+///
+/// `Drop` covers every way the SCOPE is left; it does not cover the process
+/// dying under it. A SIGKILL or a hard crash mid-archive leaves one directory
+/// behind, holding at most one run's work. Nothing reaps those today, and that
+/// is a deliberate non-feature rather than an oversight: they sit at a known,
+/// named path under app-data (`dist-archive-work/`), a build is seconds of work
+/// so the window is small, and a reaper that deletes directories on a timer is a
+/// larger risk than the litter it collects. Worth revisiting only if the path
+/// ever becomes long-running.
+pub struct ScratchDir(PathBuf);
+
+impl ScratchDir {
+    /// Create `<app-data>/dist-archive-work/<uuid>/{out,tmp}`.
+    pub fn create(paths: &dyn crate::platform::traits::Paths) -> Result<Self> {
+        let dir = paths
+            .app_data_dir()?
+            .join("dist-archive-work")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(dir.join("out"))?;
+        std::fs::create_dir_all(dir.join("tmp"))?;
+        Ok(Self(dir))
+    }
+
+    /// Where the archive is written.
+    pub fn out_dir(&self) -> PathBuf {
+        self.0.join("out")
+    }
+
+    /// The child's `TMPDIR`.
+    pub fn tmp_dir(&self) -> PathBuf {
+        self.0.join("tmp")
+    }
+
+    /// The root, for tests and messages.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        if let Err(e) = std::fs::remove_dir_all(&self.0) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                // Never silent: a leak here grows by a copy of the plugin per
+                // click, and the only symptom would be a disk filling up with
+                // no one able to say what put it there.
+                log::warn!("could not sweep {}: {e}", self.0.display());
+            }
+        }
+    }
+}
+
+/// The whole build, start to finish: work in a scratch dir, hand the produced
+/// archive to `deliver`, sweep whatever happened.
+///
+/// `deliver` exists so the archive leaves the scratch dir before it is removed,
+/// and so this function does not need to know where it goes (Downloads, in
+/// practice — task 5). It receives the produced file and returns the final
+/// path.
+///
+/// Cancel is reported as an error rather than an empty success: a caller that
+/// treated "no archive, exit fine" as a normal outcome would have no way to tell
+/// it apart from a build that produced nothing for a reason worth showing.
+#[allow(clippy::too_many_arguments)]
+pub fn build_and_deliver(
+    paths: &dyn crate::platform::traits::Paths,
+    supervisor: &dyn ProcessSupervisor,
+    php_bin: &Path,
+    wp_phar: &Path,
+    autoload: &Path,
+    packages_dir: &Path,
+    source: &Path,
+    env: &[(String, String)],
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+    deliver: &mut dyn FnMut(&Path) -> Result<PathBuf>,
+) -> Result<PathBuf> {
+    // Armed from here on: every `?` below sweeps.
+    let scratch = ScratchDir::create(paths)?;
+    let out_dir = scratch.out_dir();
+    let tmp_dir = scratch.tmp_dir();
+    let spec = ArchiveSpec {
+        php_bin,
+        wp_phar,
+        autoload,
+        packages_dir,
+        tmp_dir: &tmp_dir,
+        source,
+        out_dir: &out_dir,
+    };
+    let result = run(supervisor, &spec, env, cancel, on_line)?;
+    if result.cancelled {
+        return Err(Error::Other("archive cancelled".into()));
+    }
+    if !result.ok {
+        return Err(Error::Other(format!(
+            "wp dist-archive failed (exit {:?}): {}",
+            result.exit,
+            result.tail.join(" / ")
+        )));
+    }
+    let archive = sole_archive(&out_dir)?;
+    deliver(&archive)
+}
+
+/// The one file dist-archive produced. Scans `out/`, which the tool's leftovers
+/// never reach (they go to `tmp/`), so "exactly one file" is a real invariant
+/// and not a hopeful filter.
+fn sole_archive(out_dir: &Path) -> Result<PathBuf> {
+    let mut found: Vec<PathBuf> = std::fs::read_dir(out_dir)?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    found.sort();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        // The measured shape of a "successful" run that made nothing: with an
+        // occupied target dist-archive prints Skipping and exits 0. Our target
+        // is always empty so this should be unreachable — which is exactly why
+        // it must not be silent if it ever happens.
+        0 => Err(Error::Other(
+            "wp dist-archive reported success but produced no archive".into(),
+        )),
+        n => Err(Error::Other(format!(
+            "wp dist-archive produced {n} files where one was expected: {found:?}"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -356,6 +526,7 @@ mod tests {
             wp_phar: &paths[1],
             autoload: &paths[2],
             packages_dir: &paths[3],
+            tmp_dir: &paths[4],
             source,
             out_dir: out,
         }
@@ -367,6 +538,7 @@ mod tests {
             PathBuf::from("/bin/wp-cli.phar"),
             PathBuf::from("/data/wp-packages/dist-archive-3.1.0/autoload.php"),
             PathBuf::from("/data/wp-packages/none"),
+            PathBuf::from("/data/dist-archive-work/x/tmp"),
         ]
     }
 
@@ -579,6 +751,260 @@ mod tests {
             argv(&spec(&f.link, &out, &p)).is_ok(),
             "an empty .distignore was refused — that is a content judgement we do not make"
         );
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    /// Runs `/bin/sh -c <script>` in place of the real command, with the cwd and
+    /// env `run` chose. Only the child's IDENTITY is faked — the process group,
+    /// the pipes, the cancel path and the scratch-dir lifecycle are all the
+    /// production ones, which is what these tests are about. The script reaches
+    /// the target as `$TMPDIR/../out`, so it also proves `TMPDIR` really is set.
+    struct FakeSupervisor {
+        script: String,
+        seen_tmpdir: std::sync::Mutex<Option<PathBuf>>,
+    }
+
+    impl FakeSupervisor {
+        fn new(script: &str) -> Self {
+            Self { script: script.into(), seen_tmpdir: std::sync::Mutex::new(None) }
+        }
+        fn scratch(&self) -> PathBuf {
+            self.seen_tmpdir
+                .lock()
+                .unwrap()
+                .clone()
+                .expect("the child was never spawned")
+                .parent()
+                .expect("tmp has a parent")
+                .to_path_buf()
+        }
+    }
+
+    impl ProcessSupervisor for FakeSupervisor {
+        fn spawn_streamed(
+            &self,
+            _program: &Path,
+            _args: &[String],
+            cwd: &Path,
+            env: &[(String, String)],
+        ) -> Result<std::process::Child> {
+            use std::os::unix::process::CommandExt;
+            let tmp = env
+                .iter()
+                .filter(|(k, _)| k == "TMPDIR")
+                .next_back()
+                .map(|(_, v)| PathBuf::from(v))
+                .expect("TMPDIR must be set for the child");
+            *self.seen_tmpdir.lock().unwrap() = Some(tmp);
+            Ok(std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&self.script)
+                .current_dir(cwd)
+                .env_clear()
+                .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .process_group(0)
+                .spawn()?)
+        }
+        fn spawn(&self, _p: &Path, _a: &[String]) -> Result<std::process::Child> {
+            unimplemented!("the archive path only ever uses spawn_streamed")
+        }
+        fn spawn_logged(&self, _p: &Path, _a: &[String], _l: &Path) -> Result<std::process::Child> {
+            unimplemented!("the archive path only ever uses spawn_streamed")
+        }
+        fn stop(&self, pid: u32) -> Result<()> {
+            self.stop_group(pid)
+        }
+        fn stop_group(&self, pgid: u32) -> Result<()> {
+            // The real group kill, via /bin/kill — `platform::macos` is private
+            // and this test needs the grandchildren to die, not just the shell.
+            let _ = std::process::Command::new("/bin/kill")
+                .arg("-KILL")
+                .arg(format!("-{pgid}"))
+                .status();
+            Ok(())
+        }
+    }
+
+    struct TmpPaths(PathBuf);
+    impl crate::platform::traits::Paths for TmpPaths {
+        fn app_data_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.clone())
+        }
+        fn config_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.join("config"))
+        }
+        fn log_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.join("logs"))
+        }
+        fn bin_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.join("bin"))
+        }
+        fn hosts_file(&self) -> PathBuf {
+            self.0.join("hosts")
+        }
+    }
+
+    /// Litter exactly as dist-archive does — a directory in `$TMPDIR` that
+    /// nothing ever removes — then behave as `outcome` says.
+    fn script_for(outcome: &str) -> String {
+        let litter = r##"mkdir -p "$TMPDIR/my-plugin.zip6a72" && echo copy > "$TMPDIR/my-plugin.zip6a72/big.bin";"##;
+        match outcome {
+            "ok" => format!(
+                r##"{litter} echo PK > "$TMPDIR/../out/my-plugin.1.2.3.zip"; echo Success"##
+            ),
+            "failed" => format!(r##"{litter} echo failed >&2; exit 1"##),
+            "cancelled" => format!(r##"{litter} sleep 300; :"##),
+            other => panic!("unknown outcome {other}"),
+        }
+    }
+
+    /// Only `stop_group` is needed to cancel from another thread.
+    struct Killer;
+    impl ProcessSupervisor for Killer {
+        fn spawn(&self, _p: &Path, _a: &[String]) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn spawn_logged(&self, _p: &Path, _a: &[String], _l: &Path) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn stop(&self, pid: u32) -> Result<()> {
+            self.stop_group(pid)
+        }
+        fn stop_group(&self, pgid: u32) -> Result<()> {
+            let _ = std::process::Command::new("/bin/kill")
+                .arg("-KILL")
+                .arg(format!("-{pgid}"))
+                .status();
+            Ok(())
+        }
+    }
+
+    fn run_build(outcome: &str, f: &Fixture) -> (Result<PathBuf>, PathBuf, PathBuf) {
+        let paths = TmpPaths(f.root.join("app-data"));
+        let sup = FakeSupervisor::new(&script_for(outcome));
+        let cancel = CancelToken::new();
+        let delivered = f.root.join("Downloads/my-plugin.1.2.3.zip");
+        std::fs::create_dir_all(delivered.parent().unwrap()).unwrap();
+
+        let go = |cancel: &CancelToken| {
+            let mut deliver = |src: &Path| -> Result<PathBuf> {
+                std::fs::copy(src, &delivered)?;
+                Ok(delivered.clone())
+            };
+            build_and_deliver(
+                &paths,
+                &sup,
+                Path::new("/bin/php"),
+                Path::new("/bin/wp-cli.phar"),
+                Path::new("/bin/autoload.php"),
+                &f.root.join("packages"),
+                &f.link,
+                &[("PATH".to_string(), "/usr/bin:/bin".to_string())],
+                cancel,
+                &mut |_| {},
+                &mut deliver,
+            )
+        };
+
+        let out = if outcome == "cancelled" {
+            // Cancel a RUNNING child, not a pending one. Pre-cancelling is a
+            // real path but a different one: `run_step_streamed` returns before
+            // it spawns, so nothing has littered yet and the interesting case —
+            // a killed child that has already written into TMPDIR — never
+            // happens. Found by this test failing with "the child was never
+            // spawned", which is the fixture telling the truth about itself.
+            std::thread::scope(|scope| {
+                scope.spawn(|| {
+                    for _ in 0..500 {
+                        if cancel.current_pgid().is_some() {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    // Let the child get its litter written, so the sweep has
+                    // something real to remove.
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                    cancel.cancel(&Killer);
+                });
+                go(&cancel)
+            })
+        } else {
+            go(&cancel)
+        };
+        (out, sup.scratch(), delivered)
+    }
+
+    #[test]
+    fn the_scratch_dir_is_swept_on_all_three_exits_not_just_the_happy_one() {
+        // The claim is about EVERY exit, so every exit is asserted. Cancel is
+        // the one that matters most and the one a happy-path test would miss:
+        // it is when dist-archive litters hardest, because an interrupted run
+        // has usually just finished copying the plugin into its temp dir.
+        for outcome in ["ok", "failed", "cancelled"] {
+            let f = fixture(&format!("sweep-{outcome}"));
+            let (result, scratch, delivered) = run_build(outcome, &f);
+
+            assert!(
+                !scratch.exists(),
+                "`{outcome}` left the scratch dir behind: {}",
+                scratch.display()
+            );
+            // And the tool's own litter went with it, which is the only reason
+            // TMPDIR is redirected at all.
+            assert!(
+                !scratch.join("tmp/my-plugin.zip6a72").exists(),
+                "`{outcome}` left the child's temp copy behind"
+            );
+
+            match outcome {
+                "ok" => {
+                    assert_eq!(result.unwrap(), delivered);
+                    assert!(delivered.is_file(), "the archive did not survive the sweep");
+                }
+                _ => {
+                    let e = result.expect_err(&format!("`{outcome}` reported success"));
+                    assert!(!delivered.is_file(), "`{outcome}` delivered an archive anyway");
+                    if outcome == "cancelled" {
+                        assert!(e.to_string().contains("cancelled"), "{e}");
+                    }
+                }
+            }
+            let _ = std::fs::remove_dir_all(&f.root);
+        }
+    }
+
+    #[test]
+    fn the_delivered_archive_outlives_the_sweep_because_deliver_runs_first() {
+        // The ordering the whole design rests on: `deliver` is called while the
+        // scratch dir is still alive, and the sweep happens when the guard
+        // drops afterwards. Getting this backwards would delete the archive on
+        // the way out and report success.
+        let f = fixture("order");
+        let (result, scratch, delivered) = run_build("ok", &f);
+        assert_eq!(result.unwrap(), delivered);
+        assert!(delivered.is_file());
+        assert!(!scratch.exists());
+        assert_eq!(std::fs::read_to_string(&delivered).unwrap().trim(), "PK");
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn a_success_that_produced_nothing_is_an_error_not_an_empty_delivery() {
+        // dist-archive exits 0 after printing "Skipping" when its target is
+        // occupied. Ours never is — so if this ever fires something else is
+        // wrong, and silence would hand the user a stale file or nothing at all.
+        let f = fixture("empty-out");
+        let empty = f.root.join("nothing");
+        std::fs::create_dir_all(&empty).unwrap();
+        let err = sole_archive(&empty).expect_err("an empty out dir passed").to_string();
+        assert!(err.contains("produced no archive"), "{err}");
+
+        std::fs::write(empty.join("a.zip"), "x").unwrap();
+        std::fs::write(empty.join("b.zip"), "x").unwrap();
+        assert!(sole_archive(&empty).is_err(), "two archives passed as one");
         let _ = std::fs::remove_dir_all(&f.root);
     }
 
