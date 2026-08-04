@@ -272,6 +272,7 @@ L3 = scripted manual.
 | 145 | wordpress.rs:1120 | UI paths never trusted; slugs/versions can't smuggle argv | ✅ 5 lib tests |
 | 146 | wordpress.rs:1473 | Serialized options never round-tripped / editable | ✅ 3 lib tests |
 | 147 | wordpress.rs:1731 | Success judged after install, never on exit codes | ✅ `wp_install_serve` + command gating |
+| 228 | wordpress.rs:1 (module doc) + wordpress.rs:15/83/149 (every `Command::new(php_bin)`) + binaries.rs:51 (`WP_CLI_VERSION`, checksum-pinned) vs CLAUDE.md non-negotiable ("pinned versions, checksum-locked") | **What is pinned is the PHAR, not the COMMAND SET — recorded 4 Aug 2026, deliberately UNFIXED.** rexenv spawns wp-cli with the ambient environment and never sets `WP_CLI_PACKAGES_DIR`, so WP-CLI resolves `~/.wp-cli/packages/` and **every `wp` rexenv runs can be extended by whatever that user installed there, at any time, at any version, from any source**. Verified live 4 Aug on this dev machine: `wp dist-archive --help` printed a full synopsis from a package installed **Dec 2021** and last pulled from VCS in March — while the same phar with `WP_CLI_PACKAGES_DIR` pointed at an empty dir answers `Error: 'dist-archive' is not a registered wp command`. The module doc's "WP-CLI is a `.phar` run through the bundled PHP" is the **§3.1(c) shape**: true of the *binary*, and positioned where "so what runs is what we pinned" is the available reading. Consequences, stated plainly rather than left to be discovered: (a) the offline/pinned posture does not hold for command RESOLUTION — a third party's `composer`-installed code can load into our process on someone's machine and not on ours; (b) a bug report against any wp-dependent feature is **unreproducible in a way nobody would guess**, because the difference is a directory neither party thinks to mention; (c) it cuts both ways — a user's own global package is also how their existing workflow works today, which is why neutralising it globally is an OWNER DECISION and not a fix (`docs/TODO.md`, Decisions pending). The module doc is left unedited **on purpose**: this landed mid-release and the honest edit belongs with the decision, not ahead of it — that disagreement is itself recorded here so the gap can't be mistaken for nobody having noticed | 🔨 L0+L1 — **currently unguarded and currently untrue as read.** L0: assert every wp-cli spawn site passes an explicit packages dir (a source scan over `Command::new(php_bin)` call sites, which must cover ALL FOUR — `wp_cli`, `wp_cli_timed`, `wp_run_raw` and any future one — or it is the coverage/surface family again). L1: the two-line proof above, run as an example, since it is the only layer that can show the resolution difference. **Neither exists today**; the row is the record, not the proof |
 | 148 | devtools.rs:3 | Missing tool = honest $-fix error, never silent fallback | ✅ 3 lib tests + `devtools_check` |
 | 149 | mail.rs:5 | Port offset avoids standalone Mailpit/Herd Pro | ◐ distinctness ✅; third-party defaults 🚫 |
 | 150 | mail.rs:395 | Wedged Mailpit bounded | ✅ 2 lib tests |
@@ -353,15 +354,26 @@ one day of being written):
 for v in ✅ ◐ 🔨 🚫; do printf "%s " "$v"; grep -c "| $v" docs/CLAIM-LEDGER.md; done
 ```
 
-As of 3 Aug 2026 (master; the dbmirror fix #196, the MCP plan #197, MCP M1
-#198–#203, and M2a's ownership record, feed attribution, target provenance and
+As of 4 Aug 2026 (master; the dbmirror fix #196, the MCP plan #197, MCP M1
+#198–#203, M2a's ownership record, feed attribution, target provenance and
 TTL touch, the scratch witness, the two-registry split, the agent create path and
 the first executing tool, the guarded delete, Keep, the promotion choke point and
 the reaper's sweep, the clone mechanism, the package tools, the raw runner, the
-Sites-UI scratch group and M2a's L1 #204–#220):
-**✅ 139 · ◐ 39 · 🔨 37 · 🚫 5** of 220 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+Sites-UI scratch group and M2a's L1 #204–#220; the deferred-item pair and M2b's
+PHP switch, mail tell, sub-toggle and mail tools #221–#227; the WP-CLI
+packages-dir inheritance #228):
+**✅ 147 · ◐ 38 · 🔨 38 · 🚫 5** of 228 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
+
+**The tally was STALE when this was written, and that is worth a sentence rather
+than a silent correction.** It read "✅ 139 · ◐ 39 · 🔨 37 · 🚫 5 of 220" — the
+3 Aug figures — while #221–#227 had already landed: seven rows, plus one ◐
+upgraded to ✅, all inside a single day's work. The maintenance rule ("same
+commit as the comment") was followed for the ROWS and skipped for the SUMMARY,
+which is the one part of this file anyone reads at a glance. A hand-copied
+aggregate of a mechanically-computable number is drift waiting to happen — the
+one-liner above is three seconds and the reason it exists.
 
 ## 🚫 wording audit (28 Jul 2026)
 
@@ -423,6 +435,43 @@ at THING Y ≠ X. They diverge along different axes:
   Each fixed by making the input production-shaped AND baking a probe that fails on the fake
   shape (real UUIDs + a no-bare-UUID probe; a plain-thread bind guard). Memory
   `fixtures-must-look-like-production`; L2's structural blind spot is stated in TESTING.md §1.
+
+- **The same family at its largest scale: THE MACHINE WAS THE FIXTURE** (4 Aug 2026,
+  ledger #228). The three cases above are a fake string, a fake id and a fake command
+  response — each a thing someone WROTE, and so each findable by reading what was
+  written. This one had nothing written at all. Asked whether the bundled WP-CLI
+  carries `dist-archive`, the check was the obvious one — run it:
+
+  ```
+  $ php wp-cli.phar dist-archive --help
+  NAME  wp dist-archive          ← yes, apparently
+  ```
+
+  It resolved out of `~/.wp-cli/packages/`, installed on this laptop in **December
+  2021** and forgotten. The phar has no such command. Had the answer been taken, the
+  feature would have shipped a button that worked on **exactly one machine in the
+  world**, and the bug report would have read "works here" from the only person who
+  could not reproduce it.
+  - **Why it is worth its own line.** "Verify on this machine" is the DEFAULT
+    instinct, and it is usually the right one — running the thing beats reasoning
+    about it nearly always. This is the case where it is actively misleading, and
+    the reason is structural: a dev machine is the most contaminated environment
+    the software will ever run in, and it is contaminated *precisely* in the
+    direction of making things work. Every capability a developer ever installed is
+    a fixture nobody chose, nobody reviewed, and nobody can see in a diff.
+  - **The tell, and it generalises.** The claim was about what the SHIPPED ARTEFACT
+    contains; the check ran the artefact **plus the machine around it**. Same
+    claim-vs-check divergence as the rest of the family, but the extra term is
+    ambient rather than authored — which is why reading the test would never have
+    found it. What found it was asking *where does this answer come from*, then
+    removing the suspected source (`WP_CLI_PACKAGES_DIR` at an empty dir) and
+    watching the capability disappear.
+  - **The procedure that survives this.** For any "does the bundle contain X",
+    a positive result on a dev machine is **not evidence** — the only sound form is
+    to run it with the ambient sources of X neutralised, and prefer the negative
+    control (prove the capability VANISHES when the suspect source is removed) over
+    the positive (it works). This is the negative-control instinct the plant-proving
+    discipline already uses for guards, pointed at the environment instead of at code.
 
 - **Unguarded prose rots; guarded prose does not — and this project produced the
   controlled experiment for it (3 Aug 2026).** Not "docs drift", which invites a
@@ -503,6 +552,7 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 | #79, #80, #86 | leaked workers defeat probes; adoption downloads on a poll; a poisoned cache ships a binary that can't load |
 | #104/#191-half | a rejected PHP value reaches the live pool anyway |
 | #141, #180-half | wp-cli's internal bounds looser than assumed ⇒ false timeouts/hangs |
+| #228 | a user's `~/.wp-cli/packages` silently extends every `wp` rexenv runs ⇒ behaviour that differs per machine with nothing in any log, diff or bug report naming the difference. The archetype of this tier: not wrong, **unreproducible** |
 | #46, #60 | DNS agent handoff/fallback fails ⇒ sites dark with green health |
 | #12, #20, #23 | tunnel sentinel/gate/argv drift ⇒ wrong lifecycle decisions |
 | #28-half, #32, #174-half | UI renders Live/agreeing status that the registry already knows is false |

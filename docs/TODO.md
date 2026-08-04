@@ -24,6 +24,22 @@ evidence cited.
   (`core/dns.rs` module doc; loopback bind keeps it safe, ledger #44). Harmless
   while only our `/etc/resolver/<tld>` files route to it, but "answers anything"
   is unintended. Scope answers to configured TLDs; NXDOMAIN the rest.
+- [ ] **rexenv's WP-CLI inherits `~/.wp-cli/packages` — the pinned/offline posture
+  does not cover the command set** (found 4 Aug 2026 while costing dist-archive;
+  ledger #228). Every wp-cli spawn (`core/wordpress.rs:15/83/149`) uses the ambient
+  environment and never sets `WP_CLI_PACKAGES_DIR`, so WP-CLI loads whatever a user
+  composer-installed there, whenever, at whatever version. Proven live: `dist-archive`
+  answered from a package installed on this laptop in **Dec 2021**; the same phar with
+  an empty packages dir says `not a registered wp command`. Consequence that matters
+  more than the posture: a bug in any wp-dependent feature can be **unreproducible
+  with nobody able to guess why**, because the difference is a directory neither side
+  mentions. **RECORDED, NOT FIXED — by owner instruction**: neutralising it globally
+  could break someone's existing workflow, so it is a deliberate decision, below.
+  When it is taken, the work is (a) the decision, (b) the spawn sites, (c) the L0
+  scan that must cover ALL FOUR call sites or repeat the coverage/surface family,
+  (d) `core/wordpress.rs:1`, whose module doc reads today as if what runs is what we
+  pinned — **left unedited on purpose** so the release artefact's source tree stayed
+  untouched; the ledger row carries the disagreement in the meantime.
 - [ ] **B29b — fpm pool reap is still one-miss** (`core/php.rs:534-535`): a single
   failed port probe with a dead-looking master reaps the pool, with no
   `ADOPTED_MISS_LIMIT`-style counter and no positive php-fpm title identification
@@ -189,6 +205,19 @@ first:
   texts beside the artifacts (rexenv becomes a distributor of PHP at that moment).
 - [ ] **`rex config get|set`** — parked on which settings keys to allow-list
   (never the whole KV table).
+- [ ] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
+  (raised 4 Aug 2026; ledger #228, finding in "Now" above). Today rexenv's wp-cli
+  loads a user's `~/.wp-cli/packages`. The three options and what each costs:
+  **(a) neutralise** — set `WP_CLI_PACKAGES_DIR` to a rexenv-owned dir on every
+  spawn; the posture becomes true, and a user whose workflow depends on a global
+  package loses it **inside rexenv only**, silently unless we say so;
+  **(b) neutralise with a tell** — same, plus naming it once where it can be read
+  (the wp-cli terminal, the docs), which trades a surprise for a sentence;
+  **(c) accept and document** — the posture claim is narrowed instead, and the
+  unreproducibility stays. Not a code question: (a) can break someone's day, and
+  the reason to decide it deliberately is that nobody would attribute the breakage
+  to us. Blocked on nothing; wanted before anything else leans on wp-cli's command
+  set (the dist-archive plan does, and bundles rather than installs partly for this).
 - [x] **Publish history or start fresh** — DECIDED 28 Jul 2026: **fresh start**.
   The public repo begins at the cleaned HEAD; the private repo keeps full
   history. Reason: the docs cite commit hashes as evidence throughout, and a
