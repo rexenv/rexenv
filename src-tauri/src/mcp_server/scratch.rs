@@ -192,6 +192,43 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
     // trusted because we expect it to look like `8.3`.
     summarise: |args| args.get("version").and_then(Value::as_str).map(str::to_string),
     handler: set_php_version,
+}, ScratchTool {
+    name: "mail_list",
+    description: "List the mail a scratch site has SENT — password resets, notifications, anything \
+                  its code mailed — so you can trigger something and then read it. Takes `site_id` \
+                  and an optional `limit`. It returns only messages rexenv can prove came from that \
+                  scratch site: the user's own sites' mail is never included. Needs the mail setting \
+                  turned on in rexenv, and rexenv's mail catcher running.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "limit": { "type": "integer", "description": "How many recent messages (max 50; default 20)." }
+        },
+        "required": ["site_id"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id }),
+    summarise: |_| None,
+    handler: mail_list,
+}, ScratchTool {
+    name: "mail_get",
+    description: "Read one message a scratch site sent, in full — body, headers, links. Takes \
+                  `site_id` and the `message_id` from mail_list. rexenv checks again that the \
+                  message really came from that scratch site before returning it, so an id from \
+                  anywhere else is refused rather than fetched.",
+    input_schema: || json!({
+        "type": "object",
+        "properties": {
+            "site_id": { "type": "string", "description": "The scratch site's id." },
+            "message_id": { "type": "string", "description": "From mail_list." }
+        },
+        "required": ["site_id", "message_id"],
+        "additionalProperties": false
+    }),
+    sweep_args: |id| json!({ "site_id": id, "message_id": "sweep-probe" }),
+    summarise: |_| None,
+    handler: mail_get,
 }];
 
 
@@ -254,6 +291,170 @@ fn summarise_add_package(args: &Value) -> Option<String> {
     let source = args.get("source")?.as_str()?;
     let name = source.trim_end_matches('/').rsplit('/').next()?;
     (!name.is_empty()).then(|| name.to_ascii_lowercase())
+}
+
+
+/// Bound on `mail_list` — a scope limit, like `tail_log`'s line cap.
+const MAIL_DEFAULT: usize = 20;
+const MAIL_MAX: usize = 50;
+
+/// The honesty contract, in every mail reply.
+const MAIL_NOTE: &str = "Only mail rexenv can PROVE came from this scratch site is returned — \
+    rexenv stamps each scratch site's own address on its outgoing mail and matches on that. Your \
+    own sites' mail is never included. The flip side: if this site's code sets its own From \
+    address, its mail stops being visible here — so an empty result can mean \"nothing was sent\" \
+    or \"the site overrode the stamp\", and rexenv cannot tell those apart.";
+
+/// Does this message carry THIS scratch site's stamp?
+///
+/// **One predicate, used to FILTER the list and to GATE the fetch.** That is the
+/// whole security design of these two tools: Mailpit's ids are global, so
+/// `mail_get` receiving an agent-supplied id must re-prove the message is the
+/// site's rather than trusting that the id came from a filtered list. If the
+/// filter and the gate were separate expressions, `mail_get` would become a read
+/// of any message in the user's inbox — password resets included — behind an id
+/// an agent can simply guess or enumerate.
+fn is_from_scratch(from: &crate::core::mail::MailAddress, domain: &str) -> bool {
+    from.address.eq_ignore_ascii_case(&crate::core::wp_mailtag::stamp_for(domain))
+}
+
+/// The mail surface's own preconditions, refused in the order that gives the
+/// most actionable answer first — and each naming whose move it is.
+fn mail_preconditions(ctx: &ScratchCtx<'_>, scratch: &ScratchSite) -> Result<()> {
+    {
+        let conn = ctx.db()?;
+        if !crate::mcp_server::mail_enabled(&conn) {
+            return Err(Error::Other(
+                "reading mail is turned off. The person you're working with can switch it on in \
+                 rexenv under Settings → AI agents (MCP) → \"Let agents read scratch-site mail\". \
+                 That is their decision, not something an agent can change."
+                    .into(),
+            ));
+        }
+    }
+    // The stamp is a STAT, not an inference — which is what lets an empty result
+    // be told apart from a site rexenv cannot label. Guessing between those from
+    // emptiness alone would teach an agent something false.
+    let site = scratch.site();
+    let docroot = std::path::Path::new(&site.path);
+    if !docroot.is_dir() {
+        return Err(Error::Other(format!(
+            "`{}` has no folder on disk yet, so nothing has stamped its mail. If its setup did not \
+             finish, the person you're working with can retry or remove it in rexenv.",
+            scratch.domain()
+        )));
+    }
+    if !crate::core::wp_mailtag::is_installed(docroot, site.content_dir_rel()) {
+        return Err(Error::Other(format!(
+            "`{}` is not stamping its mail, so rexenv cannot tell its messages from anyone \
+             else's — and it will not guess. This normally means mail was switched on after this \
+             site was made; switching it off and on again in rexenv restamps every scratch site.",
+            scratch.domain()
+        )));
+    }
+    Ok(())
+}
+
+/// A message as an agent sees it — never the raw inbox row.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentMail {
+    id: String,
+    from: String,
+    to: Vec<String>,
+    subject: String,
+    date: String,
+}
+
+/// List what this scratch site has sent.
+fn mail_list<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let id = args
+            .get("site_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| Error::Other("mail_list needs a `site_id`.".into()))?;
+        let scratch = ctx.claim(id)?;
+        acted.set(scratch.site());
+        mail_preconditions(&ctx, &scratch)?;
+        let limit = args
+            .get("limit")
+            .and_then(Value::as_u64)
+            .map_or(MAIL_DEFAULT, |n| (n as usize).clamp(1, MAIL_MAX));
+
+        let inbox = crate::core::mail::list(None).await.map_err(|e| {
+            Error::Other(format!(
+                "rexenv's mail catcher isn't answering, so there is nothing to read yet ({e}). It \
+                 starts with the rest of the stack — that is the user's move in rexenv."
+            ))
+        })?;
+        // FILTER, then cap. Capping first would let the user's mail crowd this
+        // site's out of the window and report an empty result that isn't true.
+        let mine: Vec<AgentMail> = inbox
+            .messages
+            .into_iter()
+            .filter(|m| is_from_scratch(&m.from, scratch.domain()))
+            .take(limit)
+            .map(|m| AgentMail {
+                id: m.id,
+                from: m.from.address,
+                to: m.to.into_iter().map(|a| a.address).collect(),
+                subject: m.subject,
+                date: m.created,
+            })
+            .collect();
+        Ok(json!({
+            "domain": scratch.domain(),
+            "messages": mine,
+            "note": MAIL_NOTE,
+        }))
+    })
+}
+
+/// Read one message in full — after proving again that it is this site's.
+fn mail_get<'a>(
+    ctx: ScratchCtx<'a>,
+    args: &'a Value,
+    acted: &'a super::feed::ActedTarget,
+) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let (id, message_id) = two_args(args, "site_id", "message_id", "mail_get")?;
+        let scratch = ctx.claim(&id)?;
+        acted.set(scratch.site());
+        mail_preconditions(&ctx, &scratch)?;
+
+        let msg = crate::core::mail::detail(&message_id).await.map_err(|e| {
+            Error::Other(format!("there is no message `{message_id}` to read ({e})."))
+        })?;
+        // THE gate, and the reason these two tools share one predicate: the id
+        // arrived from the agent, and Mailpit's ids are global. Trusting that it
+        // came from a filtered list would make this a read of ANY message in the
+        // user's inbox — password resets included — behind an id that can be
+        // guessed. The refusal deliberately does NOT say who the message is
+        // really from: that would answer the question it is refusing.
+        if !is_from_scratch(&msg.from, scratch.domain()) {
+            return Err(Error::Other(format!(
+                "that message did not come from `{}`, so it is not this agent's to read. Use \
+                 mail_list on the scratch site to see the messages that are.",
+                scratch.domain()
+            )));
+        }
+        let known = super::view::KnownPaths::for_site(ctx.platform().paths(), &scratch.site().path);
+        let body: Vec<String> =
+            msg.text.lines().map(|l| super::view::scrub_log_line(l, &known)).collect();
+        Ok(json!({
+            "id": msg.id,
+            "from": msg.from.address,
+            "to": msg.to.into_iter().map(|a| a.address).collect::<Vec<_>>(),
+            "subject": msg.subject,
+            "date": msg.date,
+            "body": body.join("\n"),
+            "note": MAIL_NOTE,
+        }))
+    })
 }
 
 fn create_params() -> Value {
@@ -1035,6 +1236,64 @@ mod tests {
         let wide = "é".repeat(WP_OUTPUT_CAP);
         let (kept, truncated) = agent_stream(wide.as_bytes(), &super::super::view::KnownPaths::for_site(&SandboxPaths, "/dr"));
         assert!(truncated && kept.chars().all(|c| c == 'é'), "cut mid-codepoint");
+    }
+
+    #[test]
+    fn one_predicate_filters_the_list_and_gates_the_fetch() {
+        // The security design of the mail pair, in one assertion. Mailpit's ids
+        // are GLOBAL: `mail_get` receives an agent-supplied id, so it must
+        // re-prove the message is this site's rather than trust that the id came
+        // from a filtered list. If the filter and the gate were separate
+        // expressions they could drift, and the drift's shape is `mail_get`
+        // becoming a read of ANY message in the user's inbox — password resets
+        // included — behind an id an agent can guess or enumerate.
+        let addr = |a: &str| crate::core::mail::MailAddress { name: String::new(), address: a.into() };
+        let domain = "probe.scratch.rex";
+
+        assert!(is_from_scratch(&addr(&crate::core::wp_mailtag::stamp_for(domain)), domain));
+        // Case-insensitive: SMTP addresses are, and a site that upper-cases its
+        // own From would otherwise vanish from its own results.
+        assert!(is_from_scratch(&addr("REXENV-SCRATCH@PROBE.SCRATCH.REX"), domain));
+
+        // Everything else is refused — including the shapes an inbox actually
+        // holds, which is what the user's mail looks like.
+        for foreign in [
+            "wordpress@myblog.rex",              // the user's own site
+            "hello@example.com",                 // Laravel's default MAIL_FROM
+            "admin@probe.scratch.rex",           // the same DOMAIN, not the stamp
+            "rexenv-scratch@evil.rex",           // the stamp shape, another domain
+            "rexenv-scratch@probe.scratch.rex.evil.com", // suffix-extended
+            "x+rexenv-scratch@probe.scratch.rex",        // embedded, not equal
+            "",
+        ] {
+            assert!(
+                !is_from_scratch(&addr(foreign), domain),
+                "`{foreign}` was accepted as this scratch site's mail"
+            );
+        }
+
+        // And the predicate is the SAME one in both call sites — asserted on the
+        // source, because "these two use one function" has no value to compare.
+        let prod = include_str!("scratch.rs");
+        let prod = prod.split("#[cfg(test)]").next().unwrap_or(prod);
+        assert_eq!(
+            prod.matches("is_from_scratch(").count(),
+            3,
+            "the from-match must appear exactly at its definition, the list filter and the fetch \
+             gate — a fourth use, or a second expression doing the same job, is how the filter and \
+             the gate drift into disagreeing about whose mail this is"
+        );
+    }
+
+    #[test]
+    fn the_mail_note_states_what_an_empty_result_cannot_distinguish() {
+        // Fail-closed is only honest if the ambiguity it creates is said out
+        // loud: an empty list means "nothing was sent" OR "the site overrode the
+        // stamp", and rexenv cannot tell which. An agent told only "no mail"
+        // will report that the feature under test is broken.
+        assert!(MAIL_NOTE.contains("never included"), "the scope claim: {MAIL_NOTE}");
+        assert!(MAIL_NOTE.contains("cannot tell those apart"), "the ambiguity, stated: {MAIL_NOTE}");
+        assert!(MAIL_NOTE.contains("overrode the stamp"), "and what the other case IS: {MAIL_NOTE}");
     }
 
     #[test]

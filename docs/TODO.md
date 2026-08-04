@@ -430,7 +430,20 @@ first:
     unlabelled — captioning it "command" would overclaim what two tokens say.
     ⚠ **These stale the c7424fa DMG** (they touch `src-tauri/src/` and `src/`).
     Next = M2b.
-  - [ ] **M2b** — `set_php_version` + mail (sub-toggle, scratch tag). **M3** — DB.
+  - [ ] **M2b** — ◐ nearly done. ✓ the mechanism extraction (#223 — *reusing a
+    command reuses its POLICY*: routing an agent through the app's PHP switch
+    would have inherited `promote_if_scratch`, adopting the scratch site and
+    freeing a cap slot); ✓ `set_php_version` (#224 — unshipped versions refused
+    BY NAME from a DERIVED list, never substituted); ✓ the scratch-mail stamp
+    (#225 — one `stamp_for` shared by writer and reader; also closed a gap where
+    one unswept mu-plugin blocked the v25 dir cleanup for EVERY site); ✓ the
+    sub-toggle (#226 — backfill at the consent moment, which eliminates
+    "predates the feature" as a category; both copy halves on the must-say
+    list); ✓ `mail_list`/`mail_get` (#227 — ONE predicate filters and gates,
+    because Mailpit ids are global and a trusted id would read the user's
+    inbox). Remaining: **task 7, the L1 legs** (a real PHP switch incl. the
+    download window; a real stamped send + a planted foreign message proving
+    fail-closed). **M3** — DB, its own session (T1 consent dialog).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
