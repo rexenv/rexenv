@@ -53,5 +53,6 @@ pub mod tunnels;
 pub mod wp_login;
 pub mod wporg;
 pub mod wp_mailtag;
+pub mod wp_packages;
 pub mod wp_tunnel;
 pub mod wordpress;

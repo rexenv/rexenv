@@ -1,0 +1,7 @@
+/vendor
+/composer.lock
+/.idea
+.phpunit*
+
+/bin/php-parse
+/bin/phpunit

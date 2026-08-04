@@ -1,0 +1,41 @@
+<?php return array(
+    'root' => array(
+        'name' => 'wp-cli/wp-cli',
+        'pretty_version' => '2.12.0',
+        'version' => '2.12.0.0',
+        'reference' => null,
+        'type' => 'library',
+        'install_path' => __DIR__ . '/../../',
+        'aliases' => array(),
+        'dev' => false,
+    ),
+    'versions' => array(
+        'inmarelibero/gitignore-checker' => array(
+            'pretty_version' => '1.0.4',
+            'version' => '1.0.4.0',
+            'reference' => '57cdaa05ceaadaabdb671162ad46e58a133ed9dd',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../inmarelibero/gitignore-checker',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'wp-cli/dist-archive-command' => array(
+            'pretty_version' => 'v3.1.0',
+            'version' => '3.1.0.0',
+            'reference' => 'e91730cddd4b0dc3eb46da588cabee9099ade356',
+            'type' => 'wp-cli-package',
+            'install_path' => __DIR__ . '/../wp-cli/dist-archive-command',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'wp-cli/wp-cli' => array(
+            'pretty_version' => '2.12.0',
+            'version' => '2.12.0.0',
+            'reference' => null,
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../../',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+    ),
+);

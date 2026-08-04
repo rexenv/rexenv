@@ -1,0 +1,8 @@
+.DS_Store
+composer.lock
+node_modules/
+vendor/
+*.log
+phpunit.xml
+phpcs.xml
+.phpcs.xml

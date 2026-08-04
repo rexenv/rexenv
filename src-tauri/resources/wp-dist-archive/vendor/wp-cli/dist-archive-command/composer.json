@@ -1,0 +1,69 @@
+{
+    "name": "wp-cli/dist-archive-command",
+    "type": "wp-cli-package",
+    "description": "Create a distribution .zip or .tar.gz based on a plugin or theme's .distignore file.",
+    "homepage": "https://github.com/wp-cli/dist-archive-command/",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Daniel Bachhuber",
+            "email": "daniel@runcommand.io",
+            "homepage": "https://runcommand.io"
+        }
+    ],
+    "require": {
+        "php": ">=7.2",
+        "wp-cli/wp-cli": "^2",
+        "inmarelibero/gitignore-checker": "^1.0.4"
+    },
+    "require-dev": {
+        "wp-cli/wp-cli-tests": "^5",
+        "wp-cli/scaffold-command": "^2",
+        "wp-cli/extension-command": "^2"
+    },
+    "extra": {
+        "commands": [
+            "dist-archive"
+        ],
+        "readme": {
+            "shields": [
+                "[![Testing](https://github.com/wp-cli/dist-archive-command/actions/workflows/testing.yml/badge.svg)](https://github.com/wp-cli/dist-archive-command/actions/workflows/testing.yml)"
+            ]
+        }
+    },
+    "autoload": {
+        "classmap": [
+            "src/"
+        ],
+        "files": [
+            "dist-archive-command.php"
+        ]
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "scripts": {
+        "behat": "run-behat-tests",
+        "behat-rerun": "rerun-behat-tests",
+        "lint": "run-linter-tests",
+        "phpcs": "run-phpcs-tests",
+        "phpstan": "run-phpstan-tests",
+        "phpcbf": "run-phpcbf-cleanup",
+        "phpunit": "run-php-unit-tests",
+        "prepare-tests": "install-package-tests",
+        "test": [
+            "@lint",
+            "@phpcs",
+            "@phpstan",
+            "@phpunit",
+            "@behat"
+        ]
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "johnpbloch/wordpress-core-installer": true,
+            "phpstan/extension-installer": true
+        },
+        "lock": false
+    }
+}

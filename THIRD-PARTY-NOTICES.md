@@ -2,13 +2,21 @@
 
 This file covers the software DISTRIBUTED with rexenv: the app bundle
 (statically linked Rust crates, the bundled SQLite, the compiled frontend with
-its npm dependencies and fonts) and the `rex` CLI sidecar. It does NOT cover the
+its npm dependencies and fonts, and **two vendored PHP packages** — see below)
+and the `rex` CLI sidecar. It does NOT cover the
 server binaries rexenv downloads onto your machine at runtime (PHP, MySQL,
 MariaDB, PostgreSQL, Redis, nginx, Caddy, FrankenPHP, Apache httpd, Mailpit,
 Adminer, cloudflared, WP-CLI, Composer, Xdebug) — those are fetched from their
 own distributors, checksum-pinned, and carry their own licences; the pinned
 versions and sources are listed in `docs/PORTS.md`, and rexenv redistributes
 none of them.
+
+**One exception, added 4 Aug 2026, and it is a real change to the sentence
+above:** rexenv now *does* redistribute a small amount of third-party PHP. The
+`wp dist-archive` command is not part of WP-CLI, so rexenv carries it rather
+than resolving it from a machine it does not control — the package tree is
+compiled into the app binary and written out on first use. It is listed in its
+own section below.
 
 rexenv itself is licensed under the Apache License 2.0 (see `LICENSE`).
 
@@ -41,6 +49,35 @@ pnpm list --prod --depth Infinity --json
 | JetBrains Mono | Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono) | SIL OFL 1.1 |
 
 The full SIL Open Font License 1.1 text is in the licence-texts section below.
+
+## Vendored PHP (compiled into the app binary; 2 packages)
+
+`wp dist-archive` is not core WP-CLI — it is a separate composer package. rexenv
+vendors it rather than installing it at runtime, so that what the app runs is
+what the app shipped (`src-tauri/src/core/wp_packages.rs`). Both packages are
+MIT; the full text is in the licence-texts section below.
+
+| Package | Version | Source | Licence |
+|---|---|---|---|
+| wp-cli/dist-archive-command | 3.1.0 | https://github.com/wp-cli/dist-archive-command (dist ref `e91730cddd4b`) | MIT |
+| inmarelibero/gitignore-checker | 1.0.4 | https://github.com/inmarelibero/gitignore-checker (dist ref `57cdaa05ceaa`) | MIT |
+
+The tree is committed at `src-tauri/resources/wp-dist-archive/`, and
+`composer.lock` beside it is the authoritative provenance record (exact
+versions, dist references, content hash). Regenerate — and bump — with:
+
+```sh
+./scripts/build-wp-dist-archive.sh                    # at the pinned version
+DIST_ARCHIVE_VERSION=3.2.0 ./scripts/build-wp-dist-archive.sh   # to bump
+```
+
+The versions above, `core::wp_packages::DIST_ARCHIVE_VERSION`, and the vendored
+tree are pinned together: `the_vendored_tree_is_the_version_we_pinned` reads the
+version out of the tree's own `composer/installed.json` and fails the build if
+they disagree, so these rows cannot silently describe a different version than
+the one that ships. Note that dist-archive's version is coupled to the pinned
+WP-CLI: v3.1.0 needs `wp-cli/wp-cli ^2` (our 2.12.0), while v3.2.0 requires
+`^2.13` and will not resolve until WP-CLI is bumped first.
 
 ## SQLite
 

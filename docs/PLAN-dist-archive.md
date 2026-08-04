@@ -1,7 +1,7 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **not started**, by instruction — picked up
-after the release (§G). Availability path **ruled: bundle** (§2, option b).
+**Status:** researched and ruled 4 Aug 2026; **building** — task 1 of 9 landed.
+Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
 distributable `.zip` in the user's Downloads folder, the same way the DB export lands
@@ -156,7 +156,7 @@ the target rule is the tool. Tagged M-later; nothing here needs a retrofit when 
 
 Ledger rows land in the SAME commit as the invariant comment they describe (CLAUDE.md).
 
-- [ ] **1 — Vendor the package, pinned.** Build the two-package tree with composer
+- [x] **1 — Vendor the package, pinned.** ✓ 4 Aug, ledger #229 — 3.1.0 + gitignore-checker 1.0.4 vendored (77 files, 368 KB), embedded via build.rs codegen (no new crate), materialised version-stamped under app-data, version pinned against the tree's own installed.json and plant-proven both ways; notices section + PROVENANCE.md + bump script. Build the two-package tree with composer
   **once, offline-reproducibly**, and land it as a checksum-pinned artefact the app
   resolves like any other binary (`BinaryProvider`) or as a bundled resource — decide by
   which keeps "no network on first use" true, and record which and why. Add both MIT
