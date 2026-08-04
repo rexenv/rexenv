@@ -270,7 +270,8 @@ pub fn backfill_content_dir(conn: &Connection) -> Result<()> {
 /// Remove rexenv's mu-plugin artifacts from a site's docroot at the moments
 /// the site ENDS or changes identity (step 6, 28 Jul 2026) — the linked-repo
 /// lens: a preserved docroot must not keep files we wrote. Removes the tunnel
-/// file (dead origin) and the login file (domain baked in; its owner rule:
+/// file (dead origin), the scratch-mail stamp (M2b), and the login file
+/// (domain baked in; its owner rule:
 /// lives while rexenv manages the site, rewritten by every issue, gone at
 /// delete/rename) across EVERY known layout. `remove_dir` (delete only, not
 /// rename — a still-managed site will likely recreate it): also remove the
@@ -285,6 +286,14 @@ pub fn cleanup_muplugin_artifacts(site: &Site, remove_dir: bool) {
     }
     if let Err(e) = crate::core::wp_login::remove(docroot) {
         log::warn!("sites: could not remove the login mu-plugin for {}: {e}", site.domain);
+    }
+    // The scratch-mail stamp (M2b). Not automatic: this sweep is a
+    // hand-maintained list of the files rexenv owns, while its NAME claims all
+    // of them — so a third owned mu-plugin had to be added here by hand, and
+    // `every_owned_mu_plugin_is_swept_by_the_cleanup_that_claims_them_all`
+    // now fails the build if a fourth is not.
+    if let Err(e) = crate::core::wp_mailtag::disable(docroot) {
+        log::warn!("sites: could not remove the scratch-mail mu-plugin for {}: {e}", site.domain);
     }
     if remove_dir && site.mu_dir_created == Some(true) {
         remove_if_effectively_empty(&docroot.join(site.content_dir_rel()).join("mu-plugins"));
@@ -2416,6 +2425,51 @@ mod tests {
             store::all_scratch_packages(&conn).unwrap().iter().all(|p| p.slug != "ghost"),
             "the read surfaced a package of a site that does not exist — the join is not guarding"
         );
+    }
+
+    #[test]
+    fn every_owned_mu_plugin_is_swept_by_the_cleanup_that_claims_them_all() {
+        // `cleanup_muplugin_artifacts` is named for ALL of rexenv's mu-plugin
+        // artifacts, but its body is a hand-maintained list of three specific
+        // removals. That gap is the narrower-surface family, and it has a real
+        // consequence beyond a stray file: `remove_if_effectively_empty` refuses
+        // to remove the `mu-plugins` dir while anything remains in it, so ONE
+        // unswept file silently defeats the v25 dir cleanup for every site.
+        //
+        // Detection is by the write side: a core module that joins
+        // `"mu-plugins"` owns a file there and must be swept here.
+        const SWEEP: &str = include_str!("sites.rs");
+        let body = SWEEP
+            .split("pub fn cleanup_muplugin_artifacts(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("the cleanup fn");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core");
+        let mut owners: Vec<String> = std::fs::read_dir(&dir)
+            .expect("core/")
+            .flatten()
+            .filter_map(|e| {
+                let p = e.path();
+                let stem = p.file_stem()?.to_str()?.to_string();
+                // `sites.rs` itself joins the path to REMOVE the dir, not to own
+                // a file in it — it is the sweeper, not a sweepee.
+                if stem == "sites" || p.extension()? != "rs" {
+                    return None;
+                }
+                std::fs::read_to_string(&p).ok()?.contains(r#"join("mu-plugins")"#).then_some(stem)
+            })
+            .collect();
+        owners.sort();
+        assert!(!owners.is_empty(), "the detection found nothing — it has stopped working");
+        for owner in &owners {
+            assert!(
+                body.contains(&format!("core::{owner}::")),
+                "`core::{owner}` writes a mu-plugin but cleanup_muplugin_artifacts never removes \
+                 it. One unswept file also blocks the v25 mu-plugins dir removal for EVERY site, \
+                 because the dir is only removed when effectively empty. Add its removal to the \
+                 sweep; the function's name already promises it."
+            );
+        }
     }
 
     #[test]

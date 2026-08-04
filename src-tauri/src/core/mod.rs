@@ -52,5 +52,6 @@ pub mod valet;
 pub mod tunnels;
 pub mod wp_login;
 pub mod wporg;
+pub mod wp_mailtag;
 pub mod wp_tunnel;
 pub mod wordpress;
