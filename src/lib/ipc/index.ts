@@ -1710,12 +1710,19 @@ export async function repoLink(
  *  status line, and the recent activity feed. Off/empty outside Tauri. */
 export async function mcpStatus(): Promise<McpStatus> {
   if (!isTauri())
-    return { enabled: false, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
+    return { enabled: false, mailEnabled: false, connectCommand: "claude mcp add rexenv -- rex mcp", activity: { kind: "off" }, recent: [] };
   return invoke<McpStatus>("mcp_status");
 }
 
 /** Flip the opt-in toggle. Enabling BINDS the endpoint's socket (and only then
  *  reads on); disabling drops live sessions and unlinks it. Returns fresh status. */
+/** Turn the MAIL sub-toggle on or off. Not just a flag: enabling installs
+ *  rexenv's `From` stamp into every scratch site, disabling removes it — so
+ *  "on" means the sites are actually stamped, not that a preference was saved. */
+export async function mcpSetMailEnabled(enable: boolean): Promise<McpStatus> {
+  return invoke<McpStatus>("mcp_set_mail_enabled", { enable });
+}
+
 export async function mcpSetEnabled(enable: boolean): Promise<McpStatus> {
   return invoke<McpStatus>("mcp_set_enabled", { enable });
 }

@@ -79,6 +79,23 @@ pub const SOCKET_FILE: &str = "rexenv-mcp.sock";
 /// the setting alone, so the toggle can never read on while nothing listens.
 pub const MCP_ENABLED_KEY: &str = "mcp_enabled";
 
+/// The MAIL sub-toggle (M2b, D4) — a settings row, deliberately not a schema
+/// change: it is user preference, not a fact about a site.
+///
+/// **What the value MEANS is a filesystem state, not just a flag.** While it is
+/// on, every scratch site carries rexenv's `From` stamp; while it is off, none
+/// does. `mcp_set_mail_enabled` is what keeps those two in step — see its doc
+/// for why the backfill happens at the toggle rather than at provision or
+/// lazily at read.
+pub const MCP_MAIL_ENABLED_KEY: &str = "mcp_mail_enabled";
+
+/// Is the mail sub-toggle on? Default OFF (D4): a global inbox carrying real
+/// sites' password-reset links is not a safe ambient default, so mail is opt-in
+/// even once the endpoint itself is enabled.
+pub fn mail_enabled(conn: &rusqlite::Connection) -> bool {
+    matches!(crate::state::store::get_setting(conn, MCP_MAIL_ENABLED_KEY), Ok(Some(v)) if v == "true")
+}
+
 /// The MCP revision whose stable JSON-RPC core we implement (docs/PLAN §2.1).
 /// Returned when the client requests a version we do not recognise.
 const PROTOCOL_VERSION: &str = "2025-11-25";
@@ -1364,6 +1381,22 @@ mod tests {
             // which is the more damaging half — the guarantee is read by people
             // auditing, this paragraph is read by everyone who turns it on.
             ("look at your sites", "that an agent can SEE every site, not only its own (§3.1c)"),
+            // The MAIL sub-toggle's own load-bearing pair (M2b, D4). This is the
+            // SECOND place a user consents to something, and the first one only
+            // stayed honest because a guard forced it — so both halves are
+            // pinned here rather than trusted:
+            //   - the scope claim, which is what the user is actually deciding;
+            //   - the FAIL-CLOSED direction, which is what a trim cuts first as
+            //     "detail" and is the sentence that makes the scope claim
+            //     survivable when a site overrides the stamp.
+            (
+                "your own sites' mail is never returned",
+                "what the mail sub-toggle does NOT expose — the claim being consented to",
+            ),
+            (
+                "misses its own mail, never that it sees yours",
+                "WHICH WAY mail fails when the stamp is overridden (fail-closed, in plain words)",
+            ),
         ];
         if scratch::registry().is_empty() {
             return; // unreachable in practice — see the note above

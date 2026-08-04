@@ -551,6 +551,8 @@ function mcpStatusMock(): McpStatus {
   const recent = params.get("feed") === "empty" ? [] : AGENT_ROWS;
   return {
     enabled: params.get("astate") !== "off",
+    // `mail=1` shows the sub-toggle ON; default OFF, which is the shipped default.
+    mailEnabled: params.get("mail") === "1",
     connectCommand: "claude mcp add rexenv -- rex mcp",
     activity: activityStatusMock(),
     recent,

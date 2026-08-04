@@ -740,6 +740,7 @@ pub fn run() {
             commands::mcp::mcp_status,
             #[cfg(unix)]
             commands::mcp::mcp_set_enabled,
+            commands::mcp::mcp_set_mail_enabled,
             #[cfg(unix)]
             commands::mcp::agent_activity,
             #[cfg(unix)]

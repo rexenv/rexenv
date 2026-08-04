@@ -1169,4 +1169,8 @@ export interface McpStatus {
   connectCommand: string;
   activity: ActivityStatus;
   recent: AgentAction[];
+  /** The MAIL sub-toggle (M2b) — off by default and INDEPENDENT of `enabled`:
+   *  turning the endpoint on does not turn mail on. While it is true, every
+   *  scratch site carries rexenv's `From` stamp; while false, none does. */
+  mailEnabled: boolean;
 }

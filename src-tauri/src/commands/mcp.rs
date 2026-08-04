@@ -10,7 +10,7 @@
 //! Unix-only, mirroring the unix-socket `mcp_server` module.
 
 use crate::error::{Error, Result};
-use crate::mcp_server::{self, feed, MCP_ENABLED_KEY};
+use crate::mcp_server::{self, feed, MCP_ENABLED_KEY, MCP_MAIL_ENABLED_KEY};
 use crate::state::app::AppState;
 use crate::state::store;
 use serde::Serialize;
@@ -69,6 +69,9 @@ pub struct McpStatus {
     pub activity: ActivityStatus,
     /// Recent feed rows, newest first, the card lists.
     pub recent: Vec<feed::AgentAction>,
+    /// The MAIL sub-toggle (M2b) — off by default, and independent of
+    /// `enabled`: turning the endpoint on does not turn mail on.
+    pub mail_enabled: bool,
 }
 
 /// The header line's state — derived from recent call OUTCOMES, never the socket
@@ -110,7 +113,8 @@ fn status_snapshot(state: &AppState, limit: usize) -> Result<McpStatus> {
             }
         }
     };
-    Ok(McpStatus { enabled, connect_command: CONNECT_COMMAND, activity, recent })
+    let mail_enabled = mcp_server::mail_enabled(&conn);
+    Ok(McpStatus { enabled, connect_command: CONNECT_COMMAND, activity, recent, mail_enabled })
 }
 
 /// The card's single read: toggle state + derived status + recent feed.
@@ -122,6 +126,78 @@ pub fn mcp_status(state: State<'_, AppState>) -> Result<McpStatus> {
 /// Flip the opt-in toggle. Enabling BINDS the socket, and persists "true" only
 /// after the bind succeeds — the toggle never reads on while nothing listens.
 /// Disabling drops every live session, unlinks the socket, and persists "false".
+/// Turn the MAIL sub-toggle on or off — **and put the scratch sites in step with
+/// it**, which is the part that is not a flag flip.
+///
+/// The stamp that makes an agent's own mail findable (`core::wp_mailtag`) is a
+/// file inside each scratch site, so "mail is on" has to mean "every scratch
+/// site carries the stamp". Where that write happens was the real decision:
+///
+/// - **Not lazily, at the first `mail_list`.** The stamp must exist BEFORE the
+///   mail is sent. Installing it when the agent READS is after the site already
+///   sent, so the canonical loop — trigger a password reset, then read it —
+///   would still miss on the first attempt, silently, looking exactly like a
+///   site that overrode `From`. That turns a permanent confusion into a one-shot
+///   one rather than fixing it.
+/// - **Not at every launch.** That writes a `From`-forcing mu-plugin into a
+///   user's sites even when the feature is off — a behaviour change nobody
+///   asked for.
+/// - **Here, at the toggle**, because this is the consent moment. The write is
+///   tied to the decision that authorises it, the stamp is in place before any
+///   agent connects, and disabling removes it. That yields one statable
+///   invariant — *the stamp exists on every scratch site exactly while this is
+///   on* — which **eliminates "this site predates the feature" as a category**
+///   instead of leaving `mail_list` to report it.
+///
+/// Best-effort per site, and deliberately so: a site whose docroot is gone or
+/// never provisioned is SKIPPED with a log, not an error that blocks the
+/// toggle. Whether any individual site is really stamped is answered at READ
+/// time by a stat (`wp_mailtag::is_installed`), which is live — a count
+/// returned from here would be a snapshot that goes stale the moment a site is
+/// created or deleted.
+#[tauri::command]
+pub fn mcp_set_mail_enabled(state: State<'_, AppState>, enable: bool) -> Result<McpStatus> {
+    {
+        let conn = db(&state)?;
+        store::set_setting(&conn, MCP_MAIL_ENABLED_KEY, if enable { "true" } else { "false" })?;
+        let sites = crate::core::sites::list(&conn)?;
+        let (mut stamped, mut skipped) = (0usize, 0usize);
+        for site in sites.iter().filter(|s| s.is_scratch()) {
+            let docroot = std::path::Path::new(&site.path);
+            if !docroot.is_dir() {
+                // Not provisioned, or its folder is gone. Nothing to stamp, and
+                // nothing wrong — `mail_list` reports this state per site.
+                skipped += 1;
+                continue;
+            }
+            let outcome = if enable {
+                crate::core::wp_mailtag::enable(docroot, site.content_dir_rel(), &site.domain)
+                    .map(|created_dir| {
+                        // v25: record ownership of a dir WE made, so teardown
+                        // removes it — never inferred later from emptiness.
+                        if created_dir {
+                            let _ = store::set_site_mu_dir_created(&conn, &site.id);
+                        }
+                    })
+            } else {
+                crate::core::wp_mailtag::disable(docroot)
+            };
+            match outcome {
+                Ok(()) => stamped += 1,
+                Err(e) => {
+                    skipped += 1;
+                    log::warn!("mcp: mail stamp for {} could not be updated: {e}", site.domain);
+                }
+            }
+        }
+        log::info!(
+            "mcp: mail {} — {stamped} scratch site(s) updated, {skipped} skipped",
+            if enable { "enabled" } else { "disabled" }
+        );
+    }
+    status_snapshot(&state, CARD_LIMIT)
+}
+
 #[tauri::command]
 pub fn mcp_set_enabled(
     app: AppHandle,

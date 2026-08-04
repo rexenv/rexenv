@@ -80,6 +80,11 @@ const SCENARIOS = [
   ["agents-idle-empty", "view=agents&astate=idle&feed=empty", []],
   ["agents-off", "view=agents&astate=off", []],
   ["agents-site-section", "view=agents&astate=working&site=1", []],
+  // The MAIL sub-toggle (M2b) — three paragraphs above a toggle, so the width
+  // it has to survive is the narrow one. Both states, since "off by default"
+  // is the shipped one and the one a first-time reader meets.
+  ["agents-mail-off", "view=agents&astate=working", []],
+  ["agents-mail-on", "view=agents&astate=working&mail=1", []],
   // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
   // an expired site, an expired one the reaper could not remove — and the two
   // rows that must render as ORDINARY sites (a Kept one, and a user's own site
@@ -224,6 +229,7 @@ function probeFor(name) {
   if (name === "pills") return PROBES.pills;
   if (name.startsWith("agents")) return PROBES.agents;
   if (name === "scratch-rows") return PROBES.scratchGroup;
+  if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }
 

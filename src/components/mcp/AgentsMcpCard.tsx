@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Copy } from "lucide-react";
-import { mcpStatus, mcpSetEnabled, agentActivityClear } from "@/lib/ipc";
+import { mcpStatus, mcpSetEnabled, mcpSetMailEnabled, agentActivityClear } from "@/lib/ipc";
 import type { ActivityStatus } from "@/types";
 import { toast, toastBackendError } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,19 @@ export function AgentsMcpCard() {
     refetchInterval: 4000, // live feed + self-recovering status line
   });
 
+  const setMailEnabled = useMutation({
+    mutationFn: (on: boolean) => mcpSetMailEnabled(on),
+    onSuccess: (s) => {
+      qc.setQueryData(["mcp-status"], s);
+      toast.success(
+        s.mailEnabled
+          ? "Agents can read scratch-site mail"
+          : "Agents can no longer read any mail",
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+
   const setEnabled = useMutation({
     mutationFn: (on: boolean) => mcpSetEnabled(on),
     onSuccess: (s) => {
@@ -95,6 +108,7 @@ export function AgentsMcpCard() {
   });
 
   const enabled = data?.enabled ?? false;
+  const mailEnabled = data?.mailEnabled ?? false;
   const status = data ? statusLine(data.activity) : null;
   const rows = data?.recent ?? [];
   const connectCommand = data?.connectCommand ?? "claude mcp add rexenv -- rex mcp";
@@ -137,6 +151,45 @@ export function AgentsMcpCard() {
           variant="setting"
           onToggle={() => setEnabled.mutate(!enabled)}
           label="Enable the MCP endpoint"
+        />
+      </div>
+
+      {/* Mail sub-toggle (M2b, D4) — the SECOND place a user consents to
+          something, and off by default independently of the endpoint. The
+          middle paragraph is the honest core: it explains the mechanism and
+          states the failure direction in the same breath, which is what makes
+          "fail-closed" mean something to someone who has never met the term.
+          Held to that by the copy guard's must-say list. */}
+      <div className="mt-3.5 flex items-start gap-[14px] border-t border-rex-border-subtle pt-3.5">
+        <div className="flex-1">
+          <div className="text-[0.84375rem] font-medium text-rex-text">
+            Let agents read scratch-site mail
+          </div>
+          <div className="mt-1 space-y-1.5 text-[0.75rem] leading-[1.55] text-rex-text-muted">
+            <p>
+              rexenv catches mail from every site in one inbox — yours and the agent's together.
+              With this on, an agent can read only the messages that came{" "}
+              <strong className="font-medium text-rex-text">from a scratch site it created</strong>;
+              your own sites' mail is never returned, and that includes password-reset links.
+            </p>
+            <p>
+              The way rexenv tells them apart is a small plugin it installs into each scratch site,
+              which stamps that site's own address on outgoing mail. If a site's code overrides that
+              stamp, its mail simply stops being visible to the agent — so the failure is that the
+              agent misses its own mail, never that it sees yours.
+            </p>
+            <p>
+              Off by default. Switch it back off at any time and the agent stops reading mail
+              entirely.
+            </p>
+          </div>
+        </div>
+        <StartStopToggle
+          running={mailEnabled}
+          busy={setMailEnabled.isPending}
+          variant="setting"
+          onToggle={() => setMailEnabled.mutate(!mailEnabled)}
+          label="Let agents read scratch-site mail"
         />
       </div>
 
