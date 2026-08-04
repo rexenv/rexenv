@@ -1057,6 +1057,10 @@ export interface RepoAssetStatus {
   logKey: string | null;
   /** For symlinked dirs: where the link points (the user's real checkout). */
   linkTarget: string | null;
+  /** Is there a `.distignore` — i.e. can this asset be archived at all? The
+   *  same predicate the command enforces, so the button and the command can
+   *  never disagree. */
+  hasDistignore: boolean;
 }
 
 /** A wp-content dir that looks like a git checkout but isn't managed yet. */

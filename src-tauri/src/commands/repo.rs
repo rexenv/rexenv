@@ -1749,6 +1749,15 @@ pub struct AssetStatusResult {
     pub log_key: Option<String>,
     /// For symlinked dirs: where the link points (the user's real checkout).
     pub link_target: Option<String>,
+    /// Is there a `.distignore` in the checkout — i.e. can this asset be
+    /// archived at all?
+    ///
+    /// The SAME predicate `repo_dist_archive` and `dist_archive::argv` enforce,
+    /// so the button and the command cannot disagree about it (#231). One fact,
+    /// one function, three readers — the alternative is a button that is offered
+    /// and then refuses, or worse, one that is hidden while the command would
+    /// have worked.
+    pub has_distignore: bool,
 }
 
 /// Live git status for one managed (or about-to-be-adopted) asset dir.
@@ -1788,7 +1797,16 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
             .filter(|d| d.join(&log_key).is_file())
             .map(|_| log_key);
         let link_target = std::fs::read_link(&dir).ok().map(|t| t.display().to_string());
-        Ok(AssetStatusResult { status, detached_at, remote, loss_warning, log_key, link_target })
+        let has_distignore = dist_archive::has_distignore(&dir);
+        Ok(AssetStatusResult {
+            status,
+            detached_at,
+            remote,
+            loss_warning,
+            log_key,
+            link_target,
+            has_distignore,
+        })
     })
     .await
     .map_err(|e| Error::Other(format!("status task failed: {e}")))?

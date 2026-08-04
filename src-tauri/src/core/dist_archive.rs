@@ -1263,6 +1263,124 @@ mod tests {
         assert!(!version_missing_from_name(Path::new("/out/my-plugin.0.zip"), src));
     }
 
+    /// Drop `/* … */` blocks and whole-line `//` / ` * ` comments, leaving code
+    /// and string literals. Deliberately conservative: it never touches a `//`
+    /// that appears mid-line, so a URL inside a string survives.
+    fn strip_comments(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        let mut depth = 0usize;
+        for line in src.lines() {
+            let t = line.trim_start();
+            if depth == 0 && (t.starts_with("//") || t.starts_with('*')) {
+                continue;
+            }
+            let mut rest = line;
+            let mut kept = String::new();
+            while !rest.is_empty() {
+                if depth > 0 {
+                    match rest.find("*/") {
+                        Some(i) => {
+                            depth -= 1;
+                            rest = &rest[i + 2..];
+                        }
+                        None => {
+                            rest = "";
+                        }
+                    }
+                } else {
+                    match rest.find("/*") {
+                        Some(i) => {
+                            kept.push_str(&rest[..i]);
+                            depth += 1;
+                            rest = &rest[i + 2..];
+                        }
+                        None => {
+                            kept.push_str(rest);
+                            rest = "";
+                        }
+                    }
+                }
+            }
+            out.push_str(&kept);
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn the_archive_button_copy_says_what_the_feature_actually_does() {
+        // The copy guard, in the module that owns the FACTS the copy states —
+        // so when a rule here changes, the sentence that promises it is next to
+        // the change rather than three files away. That placement is #197's
+        // lesson: a careful ledger row does not immunise a careless paragraph
+        // elsewhere.
+        //
+        // EROSION is the live risk, not regression. The strings are long, they
+        // sit in a tooltip, and the obvious edit is to shorten them. Two
+        // clauses are load-bearing and are the two a trim removes first:
+        //
+        //   - "Nothing is written into the checkout" — what makes the button
+        //     safe to click on a folder the user cares about. dist-archive's
+        //     own default writes BESIDE the source, and for a linked asset that
+        //     is the user's repository (#230).
+        //   - "would report that as a success" — the specific dishonesty, and
+        //     therefore the reason the button REFUSES rather than warns (#231).
+        //     "silently succeed" or "may include unwanted files" would both
+        //     pass a vaguer guard while dropping the point.
+        const PANEL_SRC: &str = include_str!("../../../src/components/wordpress/RepoPanel.tsx");
+        // Scan what RENDERS, not what the file says about itself.
+        //
+        // The first version scanned the whole file and PASSED with both
+        // load-bearing clauses deleted from the tooltip — because the comment
+        // above those constants quotes them while explaining that they are
+        // load-bearing. The guard was reading its own explanation. That is this
+        // project's own defect family, committed inside the guard written to
+        // prevent it: the claim is about what the USER SEES, and the check read
+        // a superset that includes prose merely mentioning the words.
+        let panel = strip_comments(PANEL_SRC);
+        let panel = panel.as_str();
+        assert!(
+            panel.contains("const ARCHIVE_TITLE"),
+            "the comment stripper ate the source — every check below would pass \
+             on an empty string"
+        );
+        assert!(
+            !panel.contains("LOAD-BEARING"),
+            "comment text survived the strip; the guard can be satisfied by prose again"
+        );
+        const MUST_SAY: &[(&str, &str)] = &[
+            ("Nothing is written into the checkout", "LOAD-BEARING: why it is safe on a linked asset"),
+            ("would report that as a success", "LOAD-BEARING: the specific dishonesty the refusal exists for"),
+            (".distignore", "the file the whole feature turns on, named"),
+            (".git and node_modules", "what a zip without one would actually contain"),
+            (
+                "Add a .distignore file at the top of this checkout",
+                "WHERE to put it — 'add one' leaves the location a guess for the reader who needs this most",
+            ),
+            (".gitignore syntax", "how to write it, for someone meeting the file for the first time"),
+            ("saved to Downloads", "where the result went"),
+            (
+                "no version found in the plugin header, style.css or composer.json",
+                "the quiet note: an unversioned name is legitimate, discovering it after upload is not",
+            ),
+        ];
+        for (phrase, why) in MUST_SAY {
+            assert!(
+                panel.contains(phrase),
+                "the archive copy no longer says `{phrase}` — {why}.\n\
+                 If the wording genuinely changed, change it HERE too and say why; \
+                 do not delete the row to make the build pass."
+            );
+        }
+        // And the button is offered on the same fact the command enforces. A
+        // hard-coded `true`, or a second local check, would put the offer and
+        // the run back in disagreement — the thing #231 pins.
+        assert!(
+            panel.contains("!s.hasDistignore"),
+            "the archive button no longer gates on the recorded .distignore fact"
+        );
+    }
+
     #[test]
     fn only_one_place_in_this_module_builds_a_dist_archive_argv() {
         // The drift guard behind "a guard that reads the argv reads what runs".

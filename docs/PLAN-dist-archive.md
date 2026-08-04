@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–6 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–7 of 9 landed.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -196,7 +196,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   entry, same one-job-per-dir busy check, same `repo-<domain>-<dir>.log`, same streamed
   state/output events. Returns the **real produced path**.
 
-- [ ] **7 — The button.** One in the git-ops row (`RepoPanel.tsx:376`), same `BTN`, same
+- [x] **7 — The button.** ✓ 5 Aug, ledger #235 — copy approved with the 'at the top of this checkout' redline, landed verbatim and pinned by a copy guard whose own first version was defective (it read its own explanatory comment) and was fixed to scan only what renders. One in the git-ops row (`RepoPanel.tsx:376`), same `BTN`, same
   `opsDisabled`. Disabled with a title naming the missing `.distignore` and the fix.
   Result names the **filename actually produced** (§1.5), plus a quiet note when no
   version was found. Copy reviewed before it lands, then held by the copy guard.

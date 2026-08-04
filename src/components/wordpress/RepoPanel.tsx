@@ -16,6 +16,7 @@ import {
   repoBranches,
   repoCancel,
   repoCheck,
+  repoDistArchive,
   repoGitOp,
   repoPullRefs,
   repoRunOfferedSteps,
@@ -30,7 +31,8 @@ import {
   tailLog,
 } from "@/lib/ipc";
 import type { GitAsset, RepoJobState } from "@/types";
-import { toastBackendError } from "@/lib/toast";
+import { revealPath } from "@/lib/ipc";
+import { toast, toastBackendError } from "@/lib/toast";
 import { LogPane, mergeTailAndStreamed, REPO_SCRIPTS_DISCLOSURE, StepDot } from "./repoJobUi";
 import { RefPicker } from "./RefPicker";
 
@@ -38,6 +40,20 @@ const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 const LOG_CAP = 500;
+
+/** Archive-button copy, kept together because it is guarded as a unit
+ *  (`core/dist_archive.rs`, the copy guard). The two load-bearing clauses are
+ *  "Nothing is written into the checkout" and "would report that as a success":
+ *  the first is what makes the button safe to click on a folder the user cares
+ *  about, the second is why it refuses rather than warns. They are the two a
+ *  later trim removes first. */
+const ARCHIVE_TITLE =
+  "wp dist-archive — builds a distributable zip from .distignore and saves it to Downloads. Nothing is written into the checkout.";
+const ARCHIVE_BLOCKED_TITLE =
+  "No .distignore in this checkout — without one the zip would include .git and node_modules, and dist-archive would report that as a success. Add a .distignore file at the top of this checkout (.gitignore syntax) listing what must not ship.";
+const ARCHIVE_BUSY_TITLE = "another job is running for this checkout";
+const NO_VERSION_NOTE =
+  "no version found in the plugin header, style.css or composer.json, so the name carries none";
 
 function Chip({ children, tone }: { children: React.ReactNode; tone?: "warn" | "ok" }) {
   const color =
@@ -207,6 +223,28 @@ export function RepoPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [watchLines, watchLogOpen]);
 
+  // The archive result arrives on the job-state event, not from the mutation —
+  // the mutation returns the moment the job STARTS. Keyed by job id so a
+  // remount or a second state emission cannot toast the same zip twice.
+  const toastedArchive = useRef<string | null>(null);
+  useEffect(() => {
+    const archive = opJob?.archive;
+    if (!opJob || opJob.op !== "dist-archive" || !archive) return;
+    if (toastedArchive.current === opJob.id) return;
+    toastedArchive.current = opJob.id;
+    // The name that actually exists — never a predicted one. For a linked
+    // asset it comes from the user's own folder, and collision numbering may
+    // have moved it.
+    const message = archive.versionMissing
+      ? `${archive.fileName} saved to Downloads — ${NO_VERSION_NOTE}.`
+      : `${archive.fileName} saved to Downloads`;
+    toast.success(message, {
+      label: "Show in Finder",
+      onClick: () => void revealPath(archive.path).catch(toastBackendError),
+    });
+    qc.invalidateQueries({ queryKey: statusKey });
+  }, [opJob, qc, statusKey]);
+
   const runOp = useMutation({
     mutationFn: (args: { op: "fetch" | "pull" | "checkout" | "push"; ref?: string }) =>
       repoGitOp(siteId, kind, asset.dirName, args.op, args.ref ?? null),
@@ -250,6 +288,19 @@ export function RepoPanel({
       void tailLog(snap.logKey, 300)
         .then((tail) => setOpLines((streamed) => mergeTailAndStreamed(tail, streamed)))
         .catch(() => {});
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const buildZip = useMutation({
+    mutationFn: () => repoDistArchive(siteId, kind, asset.dirName),
+    onSuccess: (snap) => {
+      adoptedRef.current = true;
+      setOpJob(snap);
+      setOpLines([]);
+      setOpLogOpen(true);
+      qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+        old ? [...old.filter((j) => j.id !== snap.id), snap] : [snap],
+      );
     },
     onError: (e) => toastBackendError(e),
   });
@@ -400,6 +451,24 @@ export function RepoPanel({
               }
             >
               Push
+            </button>
+            {/* Build zip — a verb, like the rest of the row. Deliberately
+                DISABLED rather than hidden when there is no .distignore:
+                hiding it teaches nothing, and the person who needs this is the
+                one who has never heard of the file. */}
+            <button
+              className={BTN}
+              disabled={opsDisabled || buildZip.isPending || !s.hasDistignore}
+              onClick={() => buildZip.mutate()}
+              title={
+                !s.hasDistignore
+                  ? ARCHIVE_BLOCKED_TITLE
+                  : opsDisabled || buildZip.isPending
+                    ? ARCHIVE_BUSY_TITLE
+                    : ARCHIVE_TITLE
+              }
+            >
+              Build zip
             </button>
             <RefPicker
               value={checkoutRef}
