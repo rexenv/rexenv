@@ -952,6 +952,18 @@ export interface RepoJobState {
   inspection: RepoInspection | null;
   nodeWarning: string | null;
   finishedOk: boolean;
+  /** Set by ops that PRODUCE a file (today: "dist-archive"); null otherwise. */
+  archive: ArchiveResult | null;
+}
+
+/** What a dist-archive job left the user with. `path` is the file that really
+ *  exists after collision numbering — never a predicted name. */
+export interface ArchiveResult {
+  path: string;
+  fileName: string;
+  /** No version in the plugin header, style.css or composer.json, so the name
+   *  carries none. Not an error — worth saying quietly, not blocking on. */
+  versionMissing: boolean;
 }
 
 /** One streamed wp.org install job — the `wp-install://state/<id>` payload.

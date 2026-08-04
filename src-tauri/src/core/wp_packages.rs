@@ -55,6 +55,19 @@ fn tree_dir(paths: &dyn Paths) -> Result<PathBuf> {
         .join(format!("dist-archive-{DIST_ARCHIVE_VERSION}")))
 }
 
+/// An empty, rexenv-owned directory to point `WP_CLI_PACKAGES_DIR` at.
+///
+/// Named rather than built inline at the call site, because "an empty
+/// directory" is the whole mechanism: it is what makes a user's own globally
+/// installed packages irrelevant to a command rexenv chose the version of. It
+/// stays empty by never being written to — nothing here creates anything
+/// inside it.
+pub fn empty_packages_dir(paths: &dyn Paths) -> Result<PathBuf> {
+    let dir = paths.app_data_dir()?.join("wp-packages").join("none");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 /// Materialise the vendored tree (idempotent) and return the path to hand to
 /// `wp --require=…`.
 ///

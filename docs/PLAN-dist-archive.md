@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–5 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–6 of 9 landed.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -192,7 +192,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   in temp, the numbering is ours and §1.4's prompt is structurally unreachable — state
   that in the doc comment, since it is the reason the fatal never needs handling.
 
-- [ ] **6 — `repo_dist_archive` command.** Beside `repo_script_job`: same `RepoJobs`
+- [x] **6 — `repo_dist_archive` command.** ✓ 5 Aug, ledger #234 — same RepoJobs entry, busy check, log key and events as `repo_script_job`; `.distignore` and the three binaries resolved before the job exists; `ArchiveResult` returns the real path plus `versionMissing`. IPC wrapper + TS type landed with it. Beside `repo_script_job`: same `RepoJobs`
   entry, same one-job-per-dir busy check, same `repo-<domain>-<dir>.log`, same streamed
   state/output events. Returns the **real produced path**.
 

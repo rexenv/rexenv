@@ -1634,6 +1634,16 @@ export async function repoScriptJob(
   return invoke<RepoJobState>("repo_script_job", { siteId, kind, dirName, script });
 }
 
+/** Build a distributable zip from a git-managed asset into Downloads. Refuses
+ *  before starting a job when the checkout has no `.distignore`. */
+export async function repoDistArchive(
+  siteId: string,
+  kind: "plugin" | "theme",
+  dirName: string,
+): Promise<RepoJobState> {
+  return invoke<RepoJobState>("repo_dist_archive", { siteId, kind, dirName });
+}
+
 /** Start watching (npm run dev/watch/…): a session process — dies with the
  *  app, never auto-restarts. One watcher per asset dir. */
 export async function repoWatchStart(

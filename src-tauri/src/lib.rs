@@ -772,6 +772,7 @@ pub fn run() {
             commands::site_provision::site_provision_active,
             commands::repo::repo_scripts,
             commands::repo::repo_script_job,
+            commands::repo::repo_dist_archive,
             commands::repo::repo_watch_start,
             commands::repo::repo_watch_stop,
             commands::repo::repo_watches,

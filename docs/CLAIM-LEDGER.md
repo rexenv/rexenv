@@ -343,6 +343,7 @@ L3 = scripted manual.
 | 192 | commands/wordpress.rs:150 | Symlinked plugin dir unlinked, never wp-cli-deleted | ✅ lib test |
 | 193 | commands/wordpress.rs:350 | Commands scoped: site row must exist in OUR db | 🔨 L0 |
 | 194 | commands/downloads.rs:64 | Leaving onboarding never cancels downloads | ✅ 2 lib tests + example |
+| 234 | commands/repo.rs (`repo_dist_archive`, `run_archive_job`, `ArchiveResult`) | **The archive is a repo job like every other one, and the two things that can fail early do.** Same `RepoJobs` entry, same one-at-a-time-per-dir refusal keyed on the asset dir, same `repo-<domain>-<dir>.log`, same state/output events — a second job system for one button would be a second place for cancel, logging and busy-checking to drift. Resolved BEFORE the job exists so a failure belongs to the click rather than to a red step someone must open a log to understand: the `.distignore` precondition and the three binaries (PHP, the phar, the vendored tree). The precondition is the **same `require_distignore`** the spawn path enforces, called earlier — never a second copy, since a command-layer copy would drift the first time the rule changed and only one of them would be on the path that matters. `ArchiveResult` carries the file that **actually exists** after collision numbering, never a predicted name, plus `version_missing` — dist-archive silently omits the version when it can't find one, and the log records both facts because a toast is transient and a log file is not | ✅ 2 lib source-scan guards. **Plant-proven**: replacing the shared call with a local `.distignore` check fails naming exactly what went wrong. The `op` string and step key are pinned too, since the UI switches on the first and a reader greps for the second. The job's live behaviour (streaming, cancel, busy refusal) rests on #232's coverage of `build_and_deliver` plus the existing repo-job machinery, and is exercised end-to-end at task 8/9 rather than here |
 
 ## MCP server (PROPOSED — pre-implementation posture, `docs/PLAN-mcp-server.md`)
 
@@ -369,8 +370,8 @@ the first executing tool, the guarded delete, Keep, the promotion choke point an
 the reaper's sweep, the clone mechanism, the package tools, the raw runner, the
 Sites-UI scratch group and M2a's L1 #204–#220; the deferred-item pair and M2b's
 PHP switch, mail tell, sub-toggle and mail tools #221–#227; the WP-CLI
-packages-dir inheritance #228; the vendored dist-archive tree #229, its argv rules #230, the .distignore precondition #231, the scratch-dir sweep #232 and the Downloads placement #233):
-**✅ 152 · ◐ 38 · 🔨 38 · 🚫 5** of 233 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+packages-dir inheritance #228; the vendored dist-archive tree #229, its argv rules #230, the .distignore precondition #231, the scratch-dir sweep #232, the Downloads placement #233 and the job command #234):
+**✅ 153 · ◐ 38 · 🔨 38 · 🚫 5** of 234 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

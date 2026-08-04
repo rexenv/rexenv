@@ -14,7 +14,7 @@
 //! state (`AppState`, `RepoJobs`) is re-fetched inside via `app.state()` —
 //! no long-lived borrows across threads.
 
-use crate::core::{binaries, devtools, php, repo, sites};
+use crate::core::{binaries, devtools, dist_archive, php, repo, sites, wp_packages};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::store;
@@ -52,6 +52,9 @@ struct JobEntry {
     log_path: PathBuf,
     /// One-shot script jobs (op == "script"): (package manager, script).
     script: Option<(String, String)>,
+    /// Archive jobs (op == "dist-archive"): everything resolved before the
+    /// job existed, so the worker cannot fail on a download.
+    archive_tools: Option<ArchiveTools>,
     cancel: repo::CancelToken,
     /// One step at a time per job — a second `repo_run_step` while one runs
     /// is refused, not queued.
@@ -80,6 +83,34 @@ pub struct RepoJobState {
     pub node_warning: Option<String>,
     /// Every listed step has succeeded → the UI offers Activate.
     pub finished_ok: bool,
+    /// Set by ops that PRODUCE a file (today: "dist-archive"). None for every
+    /// other op, in the shape `node_warning` and `inspection` already use.
+    pub archive: Option<ArchiveResult>,
+}
+
+/// What an archive job left the user with. The path is the one that actually
+/// exists — never a predicted name (`PLAN-dist-archive.md` §1.5).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveResult {
+    /// Absolute path in Downloads, after collision numbering.
+    pub path: String,
+    /// The file name alone, for the UI to show without truncating a path.
+    pub file_name: String,
+    /// dist-archive found no version in style.css, the plugin header or
+    /// composer.json, so the name carries none. Not an error — a plugin may
+    /// legitimately have no version — but silence here is the kind of thing
+    /// found later, at the worst moment.
+    pub version_missing: bool,
+}
+
+/// Resolved before an archive job is created: a download failure should be an
+/// error from the click, not a red step inside a job.
+struct ArchiveTools {
+    php_bin: PathBuf,
+    wp_phar: PathBuf,
+    autoload: PathBuf,
+    packages_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -265,6 +296,7 @@ pub async fn repo_add<R: tauri::Runtime>(
         dest: dest.clone(),
         log_path,
         script: None,
+        archive_tools: None,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true), // the clone worker below
         state: Mutex::new(RepoJobState {
@@ -280,6 +312,7 @@ pub async fn repo_add<R: tauri::Runtime>(
             inspection: None,
             node_warning: None,
             finished_ok: false,
+            archive: None,
         }),
     });
     {
@@ -715,6 +748,7 @@ pub async fn repo_check<R: tauri::Runtime>(
         dest: dest.clone(),
         log_path,
         script: None,
+        archive_tools: None,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true),
         state: Mutex::new(RepoJobState {
@@ -730,6 +764,7 @@ pub async fn repo_check<R: tauri::Runtime>(
             inspection: None,
             node_warning: None,
             finished_ok: false,
+            archive: None,
         }),
     });
     {
@@ -942,6 +977,7 @@ pub async fn repo_git_op<R: tauri::Runtime>(
         dest: dest.clone(),
         log_path,
         script: None,
+        archive_tools: None,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true), // the worker below
         state: Mutex::new(RepoJobState {
@@ -957,6 +993,7 @@ pub async fn repo_git_op<R: tauri::Runtime>(
             inspection: None,
             node_warning: None,
             finished_ok: false,
+            archive: None,
         }),
     });
     {
@@ -1190,6 +1227,7 @@ pub async fn repo_script_job<R: tauri::Runtime>(
         dest: dest.clone(),
         log_path,
         script: Some((manager.clone(), script.clone())),
+        archive_tools: None,
         cancel: repo::CancelToken::new(),
         step_running: AtomicBool::new(true),
         state: Mutex::new(RepoJobState {
@@ -1205,6 +1243,7 @@ pub async fn repo_script_job<R: tauri::Runtime>(
             inspection: None,
             node_warning: None,
             finished_ok: false,
+            archive: None,
         }),
     });
     {
@@ -1269,6 +1308,173 @@ fn run_script_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>) 
             set_step(app, entry, "script", "failed", Some(e.to_string()));
         }
         Ok(()) => set_step(app, entry, "script", "ok", None),
+    }
+}
+
+/// Build a distributable `.zip` from a git-managed plugin/theme checkout and
+/// leave it in Downloads (op == "dist-archive").
+///
+/// Deliberately the SAME job machinery as every other repo action — one entry in
+/// `RepoJobs`, the same one-at-a-time-per-dir refusal, the same
+/// `repo-<domain>-<dir>.log`, the same state/output events. A second job system
+/// for one button would be a second place for cancel, logging and busy-checking
+/// to be subtly different.
+///
+/// Two things are resolved BEFORE the job exists, so a missing `.distignore` or
+/// an un-downloaded PHP is an error from the click rather than a red step the
+/// user has to open a log to understand:
+///
+/// - the `.distignore` precondition — the SAME `require_distignore` that
+///   `dist_archive::argv` enforces on the spawn path, called earlier for a
+///   better failure, never a second copy of the rule;
+/// - PHP, the WP-CLI phar, and the vendored dist-archive tree.
+#[tauri::command]
+pub async fn repo_dist_archive<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    jobs: State<'_, RepoJobs>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<RepoJobState> {
+    let site = site_of(&state, &site_id)?;
+    let dir_name = repo::validate_dir_name(&dir_name)?;
+    let dest = repo::asset_dest(
+        std::path::Path::new(&site.path),
+        site.content_dir_rel(),
+        &kind,
+        &dir_name,
+    )?;
+    let canonical = dest
+        .canonicalize()
+        .map_err(|e| Error::Other(format!("{}: {e}", dest.display())))?;
+    dist_archive::require_distignore(&canonical)?;
+
+    let php_minor = php::minor_of(&site.php_version).to_string();
+    let patch = php::patch_for_minor(&php_minor)
+        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {php_minor}")))?;
+    let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+    let wp_phar =
+        binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION).await?;
+    // Writes ~370 KB once per version, then a single `is_file` on every later
+    // call — cheap enough to keep here, where a failure is still the click's.
+    let autoload = wp_packages::ensure_dist_archive(state.platform.paths())?;
+    let packages_dir = wp_packages::empty_packages_dir(state.platform.paths())?;
+
+    let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+    let log_path = state.platform.paths().log_dir()?.join(&log_key);
+    let id = uuid::Uuid::new_v4().to_string();
+    let seq = jobs.next_seq.fetch_add(1, Ordering::SeqCst);
+    let entry = Arc::new(JobEntry {
+        id: id.clone(),
+        seq,
+        site_id: site_id.clone(),
+        kind: kind.clone(),
+        php_minor,
+        dir_name: dir_name.clone(),
+        url: String::new(),
+        git_ref: None,
+        dest: dest.clone(),
+        log_path,
+        script: None,
+        archive_tools: Some(ArchiveTools { php_bin, wp_phar, autoload, packages_dir }),
+        cancel: repo::CancelToken::new(),
+        step_running: AtomicBool::new(true),
+        state: Mutex::new(RepoJobState {
+            id: id.clone(),
+            site_id,
+            kind,
+            dir_name,
+            url: String::new(),
+            git_ref: None,
+            op: "dist-archive".into(),
+            log_key,
+            steps: vec![step("archive", "wp dist-archive")],
+            inspection: None,
+            node_warning: None,
+            finished_ok: false,
+            archive: None,
+        }),
+    });
+    {
+        let mut map = jobs.jobs.lock().expect("jobs lock");
+        let busy = map
+            .values()
+            .any(|e| e.dest == dest && e.step_running.load(Ordering::SeqCst));
+        if busy {
+            return Err(Error::Other(format!(
+                "a job for {} is already running — wait for it (or cancel it) first.",
+                entry.state.lock().expect("job state lock").dir_name
+            )));
+        }
+        map.insert(id.clone(), entry.clone());
+    }
+    let _ = std::fs::write(&entry.log_path, "");
+    let worker = entry.clone();
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_archive_job(&worker_app, &worker);
+        worker.step_running.store(false, Ordering::SeqCst);
+    });
+    Ok(snapshot(&entry))
+}
+
+fn run_archive_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>) {
+    let state = app.state::<AppState>();
+    let jobs = app.state::<RepoJobs>();
+    set_step(app, entry, "archive", "running", None);
+    let mut sink = make_sink(app.clone(), entry.clone());
+    let mut produced: Option<ArchiveResult> = None;
+    let outcome = (|| -> Result<()> {
+        let tools = entry
+            .archive_tools
+            .as_ref()
+            .ok_or_else(|| Error::Other("archive job without resolved tools".into()))?;
+        let env = shell_env(&state, &jobs, false)?;
+        let canonical = entry.dest.canonicalize()?;
+        let landed = dist_archive::build_and_deliver(
+            state.platform.paths(),
+            state.platform.supervisor(),
+            &tools.php_bin,
+            &tools.wp_phar,
+            &tools.autoload,
+            &tools.packages_dir,
+            &entry.dest,
+            &env,
+            &entry.cancel,
+            &mut sink,
+            &mut |archive| dist_archive::deliver_to_downloads(archive),
+        )?;
+        let version_missing = dist_archive::version_missing_from_name(&landed, &canonical);
+        // The log is the honest channel, so it says both facts there too — the
+        // toast is transient and the log file is not.
+        sink(&format!("→ saved to {}", landed.display()));
+        if version_missing {
+            sink("note: no version found in the plugin header, style.css or composer.json — the file name carries none");
+        }
+        produced = Some(ArchiveResult {
+            file_name: landed
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            path: landed.display().to_string(),
+            version_missing,
+        });
+        Ok(())
+    })();
+    if let Some(result) = produced {
+        entry.state.lock().expect("job state lock").archive = Some(result);
+    }
+    match outcome {
+        Err(e) if entry.cancel.is_cancelled() => {
+            sink(&format!("✕ {e}"));
+            set_step(app, entry, "archive", "cancelled", None);
+        }
+        Err(e) => {
+            sink(&format!("✕ {e}"));
+            set_step(app, entry, "archive", "failed", Some(e.to_string()));
+        }
+        Ok(()) => set_step(app, entry, "archive", "ok", None),
     }
 }
 
@@ -1783,6 +1989,41 @@ mod tests {
 
     fn st(key: &str, status: &str) -> RepoStepState {
         RepoStepState { key: key.into(), label: key.into(), status: status.into(), error: None }
+    }
+
+    #[test]
+    fn the_archive_command_owns_no_copy_of_the_distignore_rule() {
+        // The command checks `.distignore` before creating a job so the failure
+        // belongs to the click rather than to a red step in a log. That is only
+        // safe while it is the SAME check `dist_archive::argv` enforces on the
+        // spawn path — a second copy here would be the redundant-computation
+        // family, and the two would drift the first time the rule changed.
+        let src = include_str!("repo.rs");
+        let production = src.split("#[cfg(test)]").next().expect("production half");
+        assert!(
+            production.contains("dist_archive::require_distignore("),
+            "the archive command no longer calls the shared precondition"
+        );
+        assert!(
+            !production.contains("\".distignore\""),
+            "commands/repo.rs has grown its own .distignore literal — the rule \
+             now lives in two places and only one of them is on the spawn path"
+        );
+    }
+
+    #[test]
+    fn an_archive_job_declares_the_op_the_ui_and_the_log_agree_on() {
+        // `op` is what the RepoPanel switches on and what a reader greps for in
+        // a log. Pinned here so renaming it stays a deliberate act.
+        let src = include_str!("repo.rs");
+        assert!(
+            src.contains("op: \"dist-archive\".into()"),
+            "the archive job's op string changed"
+        );
+        assert!(
+            src.contains("step(\"archive\", \"wp dist-archive\")"),
+            "the archive job's single step changed"
+        );
     }
 
     #[test]
