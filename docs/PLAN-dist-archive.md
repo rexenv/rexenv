@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–4 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–5 of 9 landed.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -186,7 +186,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   coverage/surface family, and cancel is the leg that matters, since the tool litters
   hardest exactly when interrupted.
 
-- [ ] **5 — Land it in Downloads.** Mirror `logs::download` / `database::export_to_downloads`
+- [x] **5 — Land it in Downloads.** ✓ 5 Aug, ledger #233 — numbered on collision like the DB export, exclusion from `hard_link`/`create_new` rather than a prior `exists()` check, `EXDEV` fallback removes its own partial. The collision test was rewritten after planting showed it did not discriminate. Mirror `logs::download` / `database::export_to_downloads`
   exactly: `UserDirs::download_dir()`, **numbered on collision** (`name.1.2.3.zip`, then
   `-1`, `-2`), **never overwrite**, partial removed on failure. Because the build happens
   in temp, the numbering is ours and §1.4's prompt is structurally unreachable — state

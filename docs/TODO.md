@@ -101,6 +101,9 @@ evidence cited.
 - [ ] Nits (batch into any nearby commit): `src/components/ui/dialog.tsx:101`
   interpolated Tailwind class (`mt-${…}` defeats JIT scanning);
   `core/wp_login.rs:185` comment says "256-bit" for a ~244-bit token; the
+  THIRD copy of the four-line `downloads_dir()` helper (`core/logs.rs:145`,
+  `core/database.rs:145`, `core/dist_archive.rs` — one `UserDirs` call with
+  nothing to drift, but three is where that stops being the argument); the
   `validate_linked_docroot` per-call `list(conn)` cost note
   (`core/sites.rs:875` — fine at current scale, hoist if imports grow).
 

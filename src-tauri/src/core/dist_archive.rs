@@ -465,6 +465,127 @@ pub fn build_and_deliver(
     deliver(&archive)
 }
 
+/// The user's Downloads folder.
+///
+/// A third copy of the four lines `logs::downloads_dir` and
+/// `database::export_to_downloads` already carry. Left duplicated rather than
+/// extracted mid-feature — the fact is one `UserDirs` call with nothing to
+/// drift — but three is the number at which that stops being true, so it is
+/// filed as a nit in `docs/TODO.md`.
+fn downloads_dir() -> Result<PathBuf> {
+    directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
+        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))
+}
+
+/// Move the finished archive into Downloads, **never overwriting** — the same
+/// convention as the database export and the log downloads: `name.zip`, then
+/// `name-1.zip`, `name-2.zip`.
+///
+/// # Never overwriting is enforced by the filesystem, not by a check
+///
+/// The obvious shape — pick a name nothing occupies, then `rename` onto it —
+/// leaves a window between the check and the write, and `rename` on Unix
+/// replaces the destination **silently**. So "never overwrites" would rest on a
+/// race being unlikely. `hard_link` fails with `AlreadyExists` instead, which
+/// makes the reservation and the exclusion the same operation: if the name was
+/// taken between the loop and the call, the link fails and the loop advances.
+/// The link is to the scratch file, so when the scratch dir is swept moments
+/// later the data stays and the user is left with an ordinary file.
+///
+/// The fallback covers the one case a link cannot: a Downloads folder on a
+/// different volume (`EXDEV`). There the copy is opened with `create_new`, which
+/// is the same exclusive guarantee, and a partial copy is removed rather than
+/// left looking like a finished archive — the lesson `export_to_downloads`
+/// already carries, where a truncated dump is worse than no dump.
+///
+/// # Why the overwrite prompt never needs handling
+///
+/// This is also the reason the archive is BUILT in a scratch dir rather than
+/// straight into Downloads. dist-archive's own collision handling is an
+/// interactive prompt that becomes an uncaught PHP fatal under a non-TTY
+/// (measured; `PLAN-dist-archive.md` §1.4). Because the tool only ever writes
+/// into an empty directory we just made, it can never reach that path — the
+/// collision is ours to resolve, here, with a convention the user already knows
+/// from every other file rexenv hands them.
+pub fn deliver_to_downloads(archive: &Path) -> Result<PathBuf> {
+    deliver_into(archive, &downloads_dir()?)
+}
+
+/// [`deliver_to_downloads`] with the destination supplied — the whole body, so
+/// the tests exercise the real placement logic instead of a re-implementation of
+/// it. Nothing in a lib test may write to the user's actual Downloads folder.
+pub(crate) fn deliver_into(archive: &Path, dir: &Path) -> Result<PathBuf> {
+    let stem = archive
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok_or_else(|| Error::Other(format!("{} has no file name", archive.display())))?;
+    let ext = archive.extension().map(|e| e.to_string_lossy().into_owned());
+    let named = |n: u32| -> PathBuf {
+        let base = if n == 0 { stem.clone() } else { format!("{stem}-{n}") };
+        match &ext {
+            Some(e) => dir.join(format!("{base}.{e}")),
+            None => dir.join(base),
+        }
+    };
+
+    for n in 0..1000 {
+        let dest = named(n);
+        match std::fs::hard_link(archive, &dest) {
+            Ok(()) => return Ok(dest),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            // Cross-volume, or a filesystem without links: copy, exclusively.
+            Err(_) => return copy_exclusive(archive, dir, &named),
+        }
+    }
+    Err(Error::Other(format!(
+        "there are already 1000 copies of {stem} in {} — tidy some away first",
+        dir.display()
+    )))
+}
+
+/// The `EXDEV` path: `create_new` reserves the name atomically, and a failed
+/// copy takes its own partial file with it.
+fn copy_exclusive(
+    archive: &Path,
+    dir: &Path,
+    named: &dyn Fn(u32) -> PathBuf,
+) -> Result<PathBuf> {
+    for n in 0..1000 {
+        let dest = named(n);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&dest) {
+            Ok(_) => {
+                if let Err(e) = std::fs::copy(archive, &dest) {
+                    let _ = std::fs::remove_file(&dest);
+                    return Err(e.into());
+                }
+                return Ok(dest);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(Error::Other(format!("could not find a free name in {}", dir.display())))
+}
+
+/// Did dist-archive find a version to put in the name?
+///
+/// It names the file `{dir}.{version}.zip`, and `{dir}.zip` when no version is
+/// discoverable from `style.css`, the plugin header or `composer.json` — with no
+/// warning and exit 0. The UI says so quietly rather than failing: shipping an
+/// unversioned zip is a real thing to do, but silently handing someone
+/// `my-plugin.zip` when they expected `my-plugin.1.2.3.zip` is the kind of
+/// surprise found later, at the worst moment.
+///
+/// The knowledge lives here because the naming rule is this module's, not the
+/// UI's.
+pub fn version_missing_from_name(archive: &Path, canonical_source: &Path) -> bool {
+    match (archive.file_stem(), canonical_source.file_name()) {
+        (Some(stem), Some(dir)) => stem == dir,
+        _ => false,
+    }
+}
+
 /// The one file dist-archive produced. Scans `out/`, which the tool's leftovers
 /// never reach (they go to `tmp/`), so "exactly one file" is a real invariant
 /// and not a hopeful filter.
@@ -1006,6 +1127,140 @@ mod tests {
         std::fs::write(empty.join("b.zip"), "x").unwrap();
         assert!(sole_archive(&empty).is_err(), "two archives passed as one");
         let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn downloads_are_numbered_on_collision_and_never_overwrite() {
+        // The same convention the database export and the log downloads use, so
+        // a user meets one rule for every file rexenv hands them.
+        let dir = std::env::temp_dir().join(format!("rexenv-dl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.bin");
+
+        let mut landed = Vec::new();
+        for i in 0..3 {
+            std::fs::write(&src, format!("build-{i}")).unwrap();
+            // The archive keeps its produced name; only the destination moves.
+            let staged = dir.join("stage");
+            std::fs::create_dir_all(&staged).unwrap();
+            let archive = staged.join("my-plugin.1.2.3.zip");
+            let _ = std::fs::remove_file(&archive);
+            std::fs::copy(&src, &archive).unwrap();
+            landed.push(deliver_into(&archive, &dir).unwrap());
+        }
+        assert_eq!(
+            landed
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["my-plugin.1.2.3.zip", "my-plugin.1.2.3-1.zip", "my-plugin.1.2.3-2.zip"],
+        );
+        // Nothing was overwritten: each landing still holds its own build.
+        for (i, p) in landed.iter().enumerate() {
+            assert_eq!(std::fs::read_to_string(p).unwrap(), format!("build-{i}"));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_exclusion_comes_from_the_write_itself_not_from_a_look_beforehand() {
+        // This test earns its place by DISCRIMINATING. The first version
+        // occupied the name with an ordinary file, which "check `exists()`,
+        // then `rename`" survives just as well — so it asserted the claim
+        // without testing it. Planting the racy shape passed, which is how that
+        // was found.
+        //
+        // A DANGLING SYMLINK separates them. `Path::exists()` follows links, so
+        // it answers *false* for a name that is unmistakably taken; `rename`
+        // would then destroy it. `hard_link` gets EEXIST from the kernel and
+        // moves on. The gap between what a check believes and what the
+        // filesystem holds is the whole reason the reservation and the
+        // exclusion have to be one operation.
+        let dir = std::env::temp_dir().join(format!("rexenv-dlrace-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("stage")).unwrap();
+        let occupied = dir.join("my-plugin.1.2.3.zip");
+        std::os::unix::fs::symlink(dir.join("no-such-target"), &occupied).unwrap();
+        assert!(!occupied.exists(), "the fixture needs a name `exists()` denies");
+        assert!(occupied.symlink_metadata().is_ok(), "but that is really there");
+
+        let archive = dir.join("stage/my-plugin.1.2.3.zip");
+        std::fs::write(&archive, "ours").unwrap();
+        let landed = deliver_into(&archive, &dir).unwrap();
+
+        assert_eq!(landed.file_name().unwrap(), "my-plugin.1.2.3-1.zip");
+        assert!(
+            occupied.symlink_metadata().is_ok(),
+            "the occupied name was clobbered — placement looked before it wrote"
+        );
+        assert_eq!(std::fs::read_to_string(&landed).unwrap(), "ours");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_ordinary_existing_file_of_the_same_name_survives_too() {
+        let dir = std::env::temp_dir().join(format!("rexenv-dlkeep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("stage")).unwrap();
+        std::fs::write(dir.join("my-plugin.1.2.3.zip"), "SOMEONE ELSE'S FILE").unwrap();
+        let archive = dir.join("stage/my-plugin.1.2.3.zip");
+        std::fs::write(&archive, "ours").unwrap();
+
+        let landed = deliver_into(&archive, &dir).unwrap();
+        assert_eq!(landed.file_name().unwrap(), "my-plugin.1.2.3-1.zip");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("my-plugin.1.2.3.zip")).unwrap(),
+            "SOMEONE ELSE'S FILE"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_cross_volume_fallback_reserves_exclusively_and_leaves_no_partial() {
+        // EXDEV: a Downloads folder on another volume can't take a hard link.
+        // The copy path has to keep both guarantees — exclusive naming, and no
+        // half-written file left looking like a finished archive.
+        let dir = std::env::temp_dir().join(format!("rexenv-dlx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("stage")).unwrap();
+        let archive = dir.join("stage/my-plugin.1.2.3.zip");
+        std::fs::write(&archive, "PK-payload").unwrap();
+        std::fs::write(dir.join("my-plugin.1.2.3.zip"), "existing").unwrap();
+
+        let stem = "my-plugin.1.2.3".to_string();
+        let named = |n: u32| -> PathBuf {
+            let base = if n == 0 { stem.clone() } else { format!("{stem}-{n}") };
+            dir.join(format!("{base}.zip"))
+        };
+        let landed = copy_exclusive(&archive, &dir, &named).unwrap();
+        assert_eq!(landed.file_name().unwrap(), "my-plugin.1.2.3-1.zip");
+        assert_eq!(std::fs::read_to_string(&landed).unwrap(), "PK-payload");
+        assert_eq!(std::fs::read_to_string(dir.join("my-plugin.1.2.3.zip")).unwrap(), "existing");
+
+        // A copy that fails must take its own placeholder with it, or the user
+        // is left with an empty .zip that looks like a build.
+        let gone = dir.join("stage/vanished.zip");
+        let named2 = |n: u32| -> PathBuf {
+            dir.join(if n == 0 { "vanished.zip".into() } else { format!("vanished-{n}.zip") })
+        };
+        assert!(copy_exclusive(&gone, &dir, &named2).is_err());
+        assert!(
+            !dir.join("vanished.zip").exists(),
+            "a failed copy left its placeholder behind"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_versionless_archive_is_recognisable_from_its_name() {
+        // dist-archive names it {dir}.{version}.zip, or {dir}.zip when no
+        // version is discoverable — silently, exit 0. The UI says so quietly;
+        // the rule for knowing lives here, where the naming knowledge is.
+        let src = Path::new("/Users/dev/code/my-plugin");
+        assert!(version_missing_from_name(Path::new("/out/my-plugin.zip"), src));
+        assert!(!version_missing_from_name(Path::new("/out/my-plugin.1.2.3.zip"), src));
+        assert!(!version_missing_from_name(Path::new("/out/my-plugin.0.zip"), src));
     }
 
     #[test]
