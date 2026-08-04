@@ -19,6 +19,15 @@
 //! paths (#201/#218); and every call lands in the feed while the scratch site's
 //! TTL moves (#206/#207).
 //!
+//! M2b adds two more: `set_php_version` refuses an unshipped version BY NAME
+//! and leaves the row untouched, then really switches a warm minor — and the
+//! switched site is asserted still to be the AGENT'S, which is #223's cap bypass
+//! (a promotion here would free a slot) checked on the wired path rather than
+//! only in a source guard. And the mail surface's three states, which are told
+//! apart by a STAT and so need no Mailpit: off-by-default refuses naming the
+//! setting, enabling stamps the agent's site and NOT the user's, an unstamped
+//! site refuses rather than returning nothing, and disabling removes the stamp.
+//!
 //! Does NOT prove, and says so rather than implying otherwise:
 //!
 //! - **The reaper's delete and its skip-don't-stop leg (#215).** Deleting for
@@ -31,6 +40,11 @@
 //!   exercised on a core command. What that leaves unproven is wp-cli's
 //!   behaviour with WordPress loaded — not any rexenv guard, all of which sit
 //!   before the child is spawned.
+//! - **The mail FILTER over real messages.** Matching a stamped send and
+//!   rejecting a planted foreign one needs Mailpit running, which is `stack`
+//!   tier. What is proven here is the discrimination that decides whether the
+//!   filter is even consulted; the match itself is `is_from_scratch`'s unit
+//!   test, and #227 stays ◐ for the live leg.
 //!
 //! # Fixture ownership (the invariant — `examples/common/mod.rs`)
 //!
@@ -144,7 +158,7 @@ async fn main() {
                 name: name.into(),
                 domain: domain.into(),
                 site_type: SiteType::Wordpress,
-                php_version: "8.3".into(),
+                php_version: "8.2".into(),
                 web_server: WebServer::Nginx,
                 path: String::new(),
                 db_engine: SiteDbEngine::Mysql,
@@ -165,6 +179,17 @@ async fn main() {
         rusqlite::params![docroot.to_string_lossy(), ours.id],
     )
     .expect("record the agent's site");
+    // The USER'S site gets a real docroot too. Without it the mail backfill
+    // would skip it for the wrong reason — "no folder on disk" rather than "not
+    // the agent's" — and the assertion that it is never stamped would pass even
+    // if the backfill ignored `origin` entirely.
+    let theirs_docroot = sites_dir.join("mine.scratch.rex");
+    std::fs::create_dir_all(theirs_docroot.join("wp-content")).expect("user docroot");
+    conn.execute(
+        "UPDATE sites SET path = ?1 WHERE id = ?2",
+        rusqlite::params![theirs_docroot.to_string_lossy(), theirs.id],
+    )
+    .expect("give the user's site a docroot");
     let expiry_before: String = conn
         .query_row("SELECT expires_at FROM sites WHERE id = ?1", [&ours.id], |r| r.get(0))
         .expect("read the fixture expiry");
@@ -354,6 +379,105 @@ async fn main() {
     );
     println!("✓ wp_run ran a real wp child; rexenv's own paths and the home dir are scrubbed from its output");
 
+    // 9) M2b — the PHP switch, for real. Every pinned minor is warm in the
+    //    shared binary cache on a developer machine, so this is offline at the
+    //    sandbox tier exactly as the tier promises.
+    let (is_err, text) = call(
+        &mut stream, &mut reader, 70, "set_php_version",
+        serde_json::json!({ "site_id": ours.id, "version": "7.4" }),
+    );
+    assert!(is_err, "an unshipped version must be refused: {text}");
+    assert!(text.contains("no PHP 7.4 build"), "names what was asked for: {text}");
+    for shipped in rexenv_lib::core::php::available_minors() {
+        assert!(text.contains(&shipped), "the refusal must name `{shipped}`: {text}");
+    }
+    assert!(text.contains("never tested"), "and WHY it won't substitute: {text}");
+    // The row is untouched by a refusal — no partial switch.
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        let now = rexenv_lib::state::store::get_site(&conn, &ours.id).unwrap().unwrap();
+        assert_eq!(now.php_version, "8.2", "a refused switch changed the row");
+    }
+
+    let (is_err, text) = call(
+        &mut stream, &mut reader, 71, "set_php_version",
+        serde_json::json!({ "site_id": ours.id, "version": "8.3" }),
+    );
+    assert!(!is_err, "a shipped version must switch: {text}");
+    let run: Value = serde_json::from_str(&text).expect("set_php_version returns JSON");
+    assert_eq!(run["phpVersion"], "8.3", "{run}");
+    assert!(run["detail"].as_str().unwrap().contains("was 8.2"), "names both versions: {run}");
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().unwrap();
+        let now = rexenv_lib::state::store::get_site(&conn, &ours.id).unwrap().unwrap();
+        assert_eq!(now.php_version, "8.3", "the switch did not reach the row");
+        // And it did NOT adopt the site — the #223 cap-bypass, checked on the
+        // wired path rather than only in the source guard.
+        assert!(now.is_scratch(), "the agent's PHP switch PROMOTED the site — a cap bypass");
+        assert!(now.expires_at.is_some(), "…and cleared its expiry");
+    }
+    println!("✓ set_php_version: 7.4 refused by name (row untouched), 8.2→8.3 switched, site NOT promoted");
+
+    // 10) M2b — mail. The three states are told apart by a STAT, so they are
+    //     provable here without Mailpit; what needs a running Mailpit is the
+    //     filter over real messages, and that is stated below rather than faked.
+    let (is_err, text) = call(
+        &mut stream, &mut reader, 80, "mail_list",
+        serde_json::json!({ "site_id": ours.id }),
+    );
+    assert!(is_err, "mail is off by default — reading it must be refused: {text}");
+    assert!(text.contains("turned off"), "names the state: {text}");
+    assert!(text.contains("Settings"), "and where to change it: {text}");
+    assert!(text.contains("not something an agent can change"), "and whose decision: {text}");
+
+    // Enabling BACKFILLS the stamp into every scratch site — the invariant that
+    // removes "this site predates the feature" as a category (#226).
+    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), true)
+        .expect("enable mail");
+    let stamp_file = docroot.join("wp-content/mu-plugins/rexenv-scratch-mail.php");
+    assert!(stamp_file.is_file(), "enabling mail did not stamp an existing scratch site");
+    let stamped = std::fs::read_to_string(&stamp_file).unwrap();
+    assert!(
+        stamped.contains(&rexenv_lib::core::wp_mailtag::stamp_for("probe.scratch.rex")),
+        "the stamp written does not carry what the filter matches on:\n{stamped}"
+    );
+    assert!(
+        !stamped.contains(&rexenv_lib::core::wp_mailtag::stamp_for("mine.scratch.rex")),
+        "the USER'S site's address was stamped into the agent's site"
+    );
+    // The user's own site is never stamped — the backfill reads `origin`, and
+    // this fixture's user site is deliberately named `*.scratch.rex` AND has a
+    // real docroot, so the only thing that can be skipping it is its origin.
+    assert!(
+        theirs_docroot.is_dir(),
+        "the user's fixture site must have a real docroot, or the next assertion is vacuous"
+    );
+    assert!(
+        !theirs_docroot.join("wp-content/mu-plugins/rexenv-scratch-mail.php").exists(),
+        "the backfill stamped a site the user owns"
+    );
+
+    // Stamp REMOVED behind rexenv's back: the refusal must say rexenv cannot
+    // tell this site's mail apart — never guess, and never silently return
+    // nothing (which is what the user's inbox leaking would look like).
+    std::fs::remove_file(&stamp_file).expect("remove the stamp");
+    let (is_err, text) = call(
+        &mut stream, &mut reader, 81, "mail_list",
+        serde_json::json!({ "site_id": ours.id }),
+    );
+    assert!(is_err, "an unstamped site must be refused, not silently empty: {text}");
+    assert!(text.contains("not stamping its mail"), "names the state: {text}");
+    assert!(text.contains("will not guess"), "and that rexenv refuses to infer: {text}");
+
+    // Disabling removes the stamp everywhere — the other half of the invariant.
+    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), true).expect("re-enable");
+    assert!(stamp_file.is_file(), "re-enabling did not restamp");
+    rexenv_lib::commands::mcp::mcp_set_mail_enabled(app.state::<AppState>(), false).expect("disable");
+    assert!(!stamp_file.exists(), "disabling left the stamp behind");
+    println!("✓ mail: off-by-default refused, enable stamps ONLY the agent's site, an unstamped site refuses rather than returning nothing, disable removes it");
+
     // 8) Every call recorded, and using the site kept it alive (#206/#207).
     {
         let state = app.state::<AppState>();
@@ -389,6 +513,8 @@ async fn main() {
          site refused by RECORD by all four tools, target-naming argv refused, a real clone that \
          leaves the source byte-identical, a real wp child whose output is scrubbed of rexenv's \
          own paths. NOT covered here (and ◐ in the ledger): the reaper's real delete and its \
-         skip-don't-stop leg, which need a provisioned site and a live tunnel."
+         skip-don't-stop leg, which need a provisioned site and a live tunnel; and the mail \
+         FILTER over real messages, which needs Mailpit running (the three-state discrimination \
+         above is stat-based and needs none)."
     );
 }

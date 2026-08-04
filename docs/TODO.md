@@ -441,9 +441,18 @@ first:
     "predates the feature" as a category; both copy halves on the must-say
     list); ✓ `mail_list`/`mail_get` (#227 — ONE predicate filters and gates,
     because Mailpit ids are global and a trusted id would read the user's
-    inbox). Remaining: **task 7, the L1 legs** (a real PHP switch incl. the
-    download window; a real stamped send + a planted foreign message proving
-    fail-closed). **M3** — DB, its own session (T1 consent dialog).
+    inbox). ✓ task 7 — the L1 legs ride `mcp_scratch_check`: the PHP
+    refusal by name (row untouched) + a real 8.2→8.3 switch, with the site
+    asserted still the AGENT'S afterwards — #223's cap bypass checked on the
+    wired path, not only in a source guard; and the mail three-state
+    discrimination, with "the user's site is never stamped" made non-vacuous
+    (its fixture has a real docroot, so origin is the only thing skipping it)
+    and plant-proven. **M2b is code-complete.**
+    ⚠ Two legs stay open BY TIER, not by omission: the PHP DOWNLOAD window
+    (every minor is warm on a dev machine — needs a cold cache, `network`), and
+    the mail MATCH over real messages (needs Mailpit running, `stack`). Both
+    are one small example each if wanted; neither blocks v0.1.0.
+    **M3** — DB, its own session (T1 consent dialog).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
