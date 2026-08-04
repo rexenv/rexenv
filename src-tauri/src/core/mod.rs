@@ -21,6 +21,7 @@ pub mod dbmirror;
 pub mod dbrestore;
 pub mod dbsource;
 pub mod devtools;
+pub mod dist_archive;
 pub mod dns;
 pub mod downloads;
 pub mod firefox;

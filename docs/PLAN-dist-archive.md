@@ -165,7 +165,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   tree's version is asserted against a pinned constant, so a silent bump is a build
   failure, not a behaviour change.
 
-- [ ] **2 — `core/dist_archive.rs`, the mechanism.** Resolve the asset dir via the
+- [x] **2 — `core/dist_archive.rs`, the mechanism.** ✓ 4 Aug, ledger #230 — one argv builder that REFUSES the tool's own default target under both of a linked checkout's names, resolved-path comparison on both sides, `WP_CLI_PACKAGES_DIR` neutralised for this spawn only, no idle watchdog by policy. 6 lib tests, two of which caught the code. Resolve the asset dir via the
   existing `repo::asset_dest` (unchanged for cloned and linked). Spawn through
   `run_step_streamed` — the existing program+args+cwd+env runner with process-group
   cancel — as `php -d memory_limit=512M wp-cli.phar --require=<vendored>/autoload.php
