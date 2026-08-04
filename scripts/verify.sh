@@ -53,5 +53,11 @@ cd "$(dirname "$0")/.."
 # reasoned allows; new warnings fail the build.
 (cd src-tauri && cargo clippy --lib -- -D warnings)
 npx tsc --noEmit
+# The ledger's tally is a claim about the ledger, so it is checked like one.
+# It went stale within a day of being typed (4 Aug 2026) while every ROW obeyed
+# the same-commit rule — this project's own finding is that unguarded prose rots
+# and guarded prose doesn't, so the number is generated and enforced rather than
+# remembered.
+./scripts/ledger-tally.sh --check
 
 echo "verify: all green"

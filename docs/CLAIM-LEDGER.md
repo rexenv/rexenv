@@ -13,7 +13,10 @@ not contracts — trust the file, verify the line.
 **Maintenance rule (also in CLAUDE.md): an invariant comment isn't finished until its
 ledger row exists with a verdict — same commit, like the TODO tick.** A ledger that
 drifts is worse than none; this project has already shipped one false safety comment
-and two doc-drift audits.
+and two doc-drift audits. **The rule covers the TALLY as much as the row** — that half
+was skipped once and is now enforced by `scripts/ledger-tally.sh --check` in
+`verify.sh`, so a row can no longer land while the summary still describes the file
+as it was yesterday.
 
 Verdicts:
 - ✅ **proven** — a named lib test or example exercises exactly this claim.
@@ -366,14 +369,22 @@ packages-dir inheritance #228):
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
-**The tally was STALE when this was written, and that is worth a sentence rather
-than a silent correction.** It read "✅ 139 · ◐ 39 · 🔨 37 · 🚫 5 of 220" — the
-3 Aug figures — while #221–#227 had already landed: seven rows, plus one ◐
-upgraded to ✅, all inside a single day's work. The maintenance rule ("same
-commit as the comment") was followed for the ROWS and skipped for the SUMMARY,
-which is the one part of this file anyone reads at a glance. A hand-copied
-aggregate of a mechanically-computable number is drift waiting to happen — the
-one-liner above is three seconds and the reason it exists.
+**The tally was STALE when this was written, and it is now GENERATED rather than
+typed.** It read "✅ 139 · ◐ 39 · 🔨 37 · 🚫 5 of 220" — the 3 Aug figures —
+while #221–#227 had already landed: seven rows, plus one ◐ upgraded to ✅, all
+inside a single day's work. The maintenance rule ("same commit as the comment")
+was followed for the ROWS and skipped for the SUMMARY, which is the one part of
+a 500-line file anyone reads at a glance.
+
+Telling people to recompute was already the rule, and the rule is what failed —
+so `scripts/ledger-tally.sh` now computes the line, and `verify.sh` **fails the
+build when this file disagrees with it**. A stale tally is no longer possible to
+commit. It also refuses when the verdict counts don't sum to the row count,
+which catches the sharper failure: a row with no leading verdict, or two, leaves
+a tally that still adds up while no longer counting what it claims to.
+Plant-proven on both, using the real 139/220 figures. The `plus N 🚫 premises`
+clause below is hand-curated and deliberately outside the check — it names
+specific rows, so it is a claim about which, not how many.
 
 ## 🚫 wording audit (28 Jul 2026)
 
