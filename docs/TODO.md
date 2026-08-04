@@ -80,6 +80,21 @@ evidence cited.
   origin; refuse when that backend isn't up; replace `ensure_tunnelable`'s
   "can't be shared yet" refusal (`core/tunnels.rs:117-123`). Probe/mu-plugin/row
   machinery are origin-agnostic.
+- [ ] **`wp dist-archive` in the RepoPanel — build a distributable zip to Downloads**
+  (researched + ruled 4 Aug 2026, NOT started; **first thing after the release**).
+  Full plan and every measurement in `docs/PLAN-dist-archive.md`; 9 tasks, one commit
+  each. Availability **ruled: bundle** the MIT package tree (~470 KB, one zero-dep
+  transitive) and load it with `--require` — proven to register with an empty packages
+  dir; `wp package install` rejected (network + composer at runtime + writes a dir we
+  don't own), a Rust reimplementation rejected (a compatibility claim we'd defend
+  forever). The three findings that shape it: **no `.gitignore` fallback exists** at
+  v3.1.0/v3.2.0, so a missing `.distignore` ships `.git` + `node_modules` **as a
+  `Success:`** ⇒ the feature REFUSES rather than warns; the tool **litters `TMPDIR` and
+  never sweeps** (304 KB measured per run in the copy branch) ⇒ our own temp dir with
+  `TMPDIR` pointed at it, swept on all three exits; and an occupied target makes the
+  interactive prompt a **PHP fatal under a non-TTY** ⇒ build in temp so the path is
+  never occupied. MCP tagged M-later (it can't ride `wp_run`: the zip lands somewhere
+  an agent may not choose).
 - [ ] **WP Manager cron list: arguments display** — placeholder for QA's exact
   complaint (likely the event-args column in the SiteDetail cron tab). Get the
   repro or drop after the next QA round.

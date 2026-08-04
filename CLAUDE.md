@@ -97,6 +97,7 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | Valet/Herd database import — dump/restore, provenance, credentials (Stage 2) | `docs/PLAN-valet-herd-db-import.md` |
 | Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
 | MCP server — agents drive rexenv, scratch sites, capability tiers (proposed) | `docs/PLAN-mcp-server.md` |
+| `wp dist-archive` — distributable zip from a repo asset (ruled, not started) | `docs/PLAN-dist-archive.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |
 | Design system, honest-UI rules, comp divergences | `docs/DESIGN.md` (+ `design/*.dc.html` comps, historical) |
