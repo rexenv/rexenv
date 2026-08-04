@@ -36,10 +36,10 @@ evidence cited.
   mentions. **RECORDED, NOT FIXED — by owner instruction**: neutralising it globally
   could break someone's existing workflow, so it is a deliberate decision, below.
   When it is taken, the work is (a) the decision, (b) the spawn sites, (c) the L0
-  scan that must cover ALL FOUR call sites or repeat the coverage/surface family,
-  (d) `core/wordpress.rs:1`, whose module doc reads today as if what runs is what we
-  pinned — **left unedited on purpose** so the release artefact's source tree stayed
-  untouched; the ledger row carries the disagreement in the meantime.
+  scan that must cover ALL FOUR call sites or repeat the coverage/surface family.
+  ✓ (d) **done 4 Aug** — `core/wordpress.rs`'s module doc now states it plainly
+  ("What is pinned here is the BINARY, not the COMMAND SET"), so the code and
+  ledger #228 no longer disagree while the decision waits.
 - [ ] **B29b — fpm pool reap is still one-miss** (`core/php.rs:534-535`): a single
   failed port probe with a dead-looking master reaps the pool, with no
   `ADOPTED_MISS_LIMIT`-style counter and no positive php-fpm title identification

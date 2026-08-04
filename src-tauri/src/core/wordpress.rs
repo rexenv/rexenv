@@ -4,6 +4,26 @@
 //! Invocation is identical on every OS (the per-OS bit is which `php` binary,
 //! resolved via `BinaryProvider`), so this runs the command directly and
 //! captures output (unlike `ProcessSupervisor`, which is for long-lived services).
+//!
+//! # What is pinned here is the BINARY, not the COMMAND SET (ledger #228)
+//!
+//! Read the line above as "so what runs is what we pinned" and you would be
+//! wrong, which is why this paragraph exists. Every spawn below inherits the
+//! ambient environment and none of them sets `WP_CLI_PACKAGES_DIR`, so WP-CLI
+//! also loads `~/.wp-cli/packages/` — whatever that user composer-installed
+//! there, at whatever version, whenever. Verified 4 Aug 2026: `wp dist-archive`
+//! answered from a package installed on a dev machine in **December 2021**,
+//! while the same phar with an empty packages dir replies `'dist-archive' is
+//! not a registered wp command`.
+//!
+//! The cost that matters is not the posture, it is REPRODUCIBILITY: a bug in
+//! anything below can depend on a directory that appears in no log, no diff and
+//! no bug report, so "works here" and "fails there" have no visible cause. Left
+//! as-is deliberately — neutralising it globally can break a workflow a user
+//! already relies on, so it is an owner decision (`docs/TODO.md`, Decisions
+//! pending), not a fix to slip in. **Anything that must run a command we chose
+//! bundles it and passes `--require`** (`core::wp_packages`), rather than
+//! trusting resolution it does not control.
 
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
