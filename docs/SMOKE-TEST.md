@@ -75,6 +75,7 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] "Start rexenv on login" toggles (LaunchAgent created/removed).
 
 ## AI agents (MCP) — opt-in endpoint (ships in v0.1.0 only if this passes)
+**Covers M1 (1–5), M2a (6–11) and M2b (12–14).** HOLDs: 4, 8, 11, 14.
 Socket: `~/Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock`.
 Run the four functional steps AND eyeball the PACKAGED webview — this project's UI
 bug class lives specifically in WKWebView, not in the dev harness: the residual copy
@@ -154,6 +155,45 @@ YOUR OWN sites in the list. Keep the Sites page visible.
   did breaks the strongest sentence in the guarantee ("Nothing an agent can call ever
   asks macOS for an administrator password") — a HOLD, and the ledger row to reopen
   is the never-prompt provision flag (#210).
+
+### M2b — the PHP matrix and mail. Ships only if 12–14 pass.
+Steps 6–11 gate what an agent can CREATE and RUN. These two surfaces are
+different: one refuses rather than guessing, and the other is the second place a
+user consents to something. Keep a scratch site from step 6 alive for these.
+- [ ] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.4."*
+  → REFUSED, and the refusal must **name the versions rexenv does have**
+  (8.0–8.5). Then ask for 8.1 → it switches, and SiteDetail shows 8.1. First
+  switch to a version downloads it, so expect a slow call once.
+  **Tells:** it silently uses a different version (an agent would then report a
+  compatibility result for a version it never tested — worse than a refusal, and
+  invisible); the refusal names no alternatives; or the scratch site leaves the
+  **Agent scratch** group after the switch — that last one is a cap bypass
+  (#223), because an adopted site frees a slot.
+- [ ] **13. Mail is off, and says what it would do.** Settings → AI agents: the
+  **"Let agents read scratch-site mail"** toggle is **OFF**. Read its three
+  paragraphs as a first-time user would and confirm all three facts are there:
+  only mail *from a scratch site it created*; **your own sites' mail is never
+  returned**; and if a site overrides the stamp its mail stops being visible, so
+  the agent **misses its own mail rather than seeing yours**. Ask the agent to
+  read mail with the toggle off → refused, naming the setting and that it is
+  *your* decision. **Tell:** copy that states the scope but drops the
+  fail-closed sentence — that is the half a trim removes first, and without it
+  the scope claim has no visible limit.
+- [ ] **14. ⚠ Mail scope — the second HOLD of this section.** Turn the toggle ON.
+  In one of **your own** sites trigger an email (a password reset is the right
+  test — it is the thing that would hurt). Then in the scratch site trigger one
+  too. Ask the agent to list and read the scratch site's mail → it sees its own
+  message. Now ask it to read **your** site's message, by subject and by asking
+  for "all recent mail". **It must not return it.** Then toggle OFF and confirm
+  it can read nothing.
+  **Tells that the boundary is NOT holding — any one is a HOLD:** your site's
+  message appears in a list; the agent can fetch it by id after seeing it in
+  rexenv's own Mail screen; or the agent reports "no mail" for the SCRATCH site
+  while rexenv's Mail screen shows it arrived (that is the stamp not being
+  installed — the reply should say so rather than return an empty list).
+  **⚠ A step-14 failure is a HOLD.** "Your own sites' mail is never returned" is
+  the sentence the user consented to; shipping it false is worse than shipping
+  without M2b.
 
 ## Robustness (spot-check) — §2
 - [ ] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).

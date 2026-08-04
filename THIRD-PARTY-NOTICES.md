@@ -15,7 +15,8 @@ rexenv itself is licensed under the Apache License 2.0 (see `LICENSE`).
 Where a dependency is dual- or multi-licensed (e.g. "MIT OR Apache-2.0"),
 rexenv uses it under the first permissive option compatible with this
 distribution. Generated from the real dependency graphs on 2026-07-28 and
-re-verified against them on 2026-08-03 (pre-v0.1.0): the Rust closure is
+re-verified against them on 2026-08-03 and again on 2026-08-04 after MCP M2a/M2b
+(which added no dependency — checked, not assumed): the Rust closure is
 unchanged at 389 crates and the npm closure at 112 packages — no package added,
 removed, or relicensed, and no licence family that is not already covered below.
 Two npm rows were repaired in that pass: `@tauri-apps/api` and
