@@ -88,6 +88,7 @@ pub fn argv(spec: &ArchiveSpec<'_>) -> Result<Vec<String>> {
             spec.source.display()
         )));
     }
+    require_distignore(&source)?;
     let out = resolve_for_compare(spec.out_dir);
     // A linked checkout has TWO parents: `wp-content/plugins/` (where rexenv
     // points at it) and the user's own `~/code/` (where it lives, and where
@@ -107,6 +108,84 @@ pub fn argv(spec: &ArchiveSpec<'_>) -> Result<Vec<String>> {
         out.display().to_string(),
         "--force".into(),
     ])
+}
+
+/// Does this checkout have the file that decides what ships?
+///
+/// Checked at the **canonical** source, because that is where dist-archive
+/// looks — a linked asset's `.distignore` lives in the user's repository, not
+/// beside the symlink. The UI asks this to decide whether the action is offered
+/// at all; [`require_distignore`] is the same fact enforced on the spawn path,
+/// so the button and the command can never disagree about it.
+pub fn has_distignore(source: &Path) -> bool {
+    source
+        .canonicalize()
+        .map(|dir| dir.join(".distignore").is_file())
+        .unwrap_or(false)
+}
+
+/// A starter `.distignore`, quoted verbatim in the refusal.
+///
+/// Because the refusal has to be actionable by the person who hits it, and that
+/// person is a plugin developer who may never have heard of `.distignore` —
+/// "no .distignore found" alone sends them to a search engine rather than to a
+/// fix. These are the entries wp-cli's own documentation opens with, plus the
+/// two that cause the damage in practice (`node_modules`, `vendor` is
+/// deliberately NOT here — plenty of plugins ship theirs).
+pub const DISTIGNORE_STARTER: &str = ".git\n.github\n.gitignore\n.distignore\n\
+                                     node_modules\ntests\n*.dist\n";
+
+/// Refuse to archive a checkout with no `.distignore`.
+///
+/// **This is the feature, not a safety rail around it.** Without the file,
+/// dist-archive archives *everything* — `.git`, `node_modules`, editor
+/// droppings — and reports it as `Success:` with exit 0 (measured; see
+/// `docs/PLAN-dist-archive.md` §1.2). There is no `.gitignore` fallback: that
+/// existed before 3.0 and is gone, so the harmful outcome is the DEFAULT one and
+/// it announces itself as a success. A zip like that, uploaded to wp.org or sent
+/// to a client, is worse than no zip.
+///
+/// A PRECONDITION, deliberately — never a warning recovered from the child's
+/// output. Reading it afterwards would mean the archive already exists, and then
+/// the honest options are to delete something we just made or to hand over a
+/// file we have told the user not to trust. It also lives inside [`argv`], the
+/// one function that builds the spawn, so no future caller can route around it.
+///
+/// # Where the line is, and why it is there
+///
+/// Only ABSENCE is refused. An **empty** `.distignore`, or one that fails to
+/// exclude `.git`, is not — and that is a decision, not an oversight. Judging
+/// the CONTENT would mean deciding whether a given set of patterns actually
+/// excludes a given path, which is gitignore-matching semantics: precisely the
+/// compatibility claim this feature refused to own when it chose to vendor the
+/// package rather than reimplement it (`PLAN-dist-archive.md` §2). Absence is a
+/// fact rexenv can check without owning any semantics; content is not. Creating
+/// the file at all is an explicit act by the developer, and past that point what
+/// ships is theirs to decide.
+pub fn require_distignore(canonical_source: &Path) -> Result<()> {
+    if canonical_source.join(".distignore").is_file() {
+        return Ok(());
+    }
+    let name = canonical_source
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| canonical_source.display().to_string());
+    Err(Error::Other(format!(
+        "{name} has no .distignore, so the archive would contain everything in \
+         the checkout — including .git and node_modules.\n\n\
+         wp dist-archive decides what to leave out from a .distignore file, and \
+         it does NOT fall back to .gitignore. With no such file it archives the \
+         lot and still reports success, so rexenv stops here instead.\n\n\
+         Create .distignore in {} listing what must not ship. A usual start:\n\n\
+         {}\n\
+         The syntax is .gitignore's.",
+        canonical_source.display(),
+        DISTIGNORE_STARTER
+            .lines()
+            .map(|l| format!("    {l}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )))
 }
 
 /// The rules, kept apart from argv assembly so they can be read as rules.
@@ -263,6 +342,11 @@ mod tests {
         std::fs::create_dir_all(&plugins).unwrap();
         let link = plugins.join("awesome-slug");
         std::os::unix::fs::symlink(&real, &link).unwrap();
+        // Archivable by default: the target rules are what these tests are
+        // about, and a missing .distignore would refuse every one of them for
+        // the wrong reason — a fixture that passes a test by failing earlier
+        // proves nothing about the rule under test.
+        std::fs::write(real.join(".distignore"), ".git\nnode_modules\n").unwrap();
         Fixture { root, real, link }
     }
 
@@ -396,6 +480,109 @@ mod tests {
     }
 
     #[test]
+    fn a_checkout_without_a_distignore_never_reaches_a_spawn() {
+        // The feature's point. Without the file the tool archives .git and
+        // node_modules and reports Success — so this must fail BEFORE the
+        // command runs, not be read back out of its output afterwards.
+        let f = fixture("nodistignore");
+        let p = stub_paths();
+        let out = f.root.join("tmp/out");
+        std::fs::remove_file(f.real.join(".distignore")).unwrap();
+
+        let err = argv(&spec(&f.link, &out, &p))
+            .expect_err("a checkout with no .distignore was archived")
+            .to_string();
+
+        // Actionable by someone who has never heard of .distignore: WHAT is
+        // missing, WHERE to put it, WHY it matters, and something to paste.
+        for must_say in [
+            ".distignore",
+            "node_modules",
+            ".git",
+            "does NOT fall back to .gitignore",
+            "reports success",
+        ] {
+            assert!(err.contains(must_say), "the refusal never says `{must_say}`:\n{err}");
+        }
+        assert!(
+            err.contains(&f.real.display().to_string()),
+            "the refusal does not say WHERE to create the file:\n{err}"
+        );
+        for starter in DISTIGNORE_STARTER.lines() {
+            assert!(err.contains(starter), "the starter file omits `{starter}`:\n{err}");
+        }
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn the_distignore_is_looked_for_in_the_users_repository_not_beside_the_link() {
+        // Same lesson as the target rules, on the other input: for a linked
+        // asset the file lives in the user's own checkout. A check against the
+        // symlink's directory would refuse a plugin that has one, and — worse —
+        // accept one that only has a stray file in wp-content/plugins.
+        let f = fixture("wherefile");
+        let p = stub_paths();
+        let out = f.root.join("tmp/out");
+        std::fs::remove_file(f.real.join(".distignore")).unwrap();
+        std::fs::write(f.link.parent().unwrap().join(".distignore"), ".git\n").unwrap();
+
+        assert!(
+            argv(&spec(&f.link, &out, &p)).is_err(),
+            "a .distignore in wp-content/plugins was mistaken for the plugin's own"
+        );
+        assert!(!has_distignore(&f.link), "and the UI predicate agrees");
+
+        std::fs::write(f.real.join(".distignore"), ".git\n").unwrap();
+        assert!(argv(&spec(&f.link, &out, &p)).is_ok(), "the real one was not found");
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn the_button_and_the_command_can_never_disagree_about_the_file() {
+        // `has_distignore` decides whether the action is OFFERED and
+        // `require_distignore` decides whether it RUNS. Two predicates for one
+        // fact is the redundant-computation family: this pins them to the same
+        // answer in every state, including the one where the path is gone.
+        let f = fixture("agree");
+        let p = stub_paths();
+        let out = f.root.join("tmp/out");
+        for present in [true, false, true] {
+            if present {
+                std::fs::write(f.real.join(".distignore"), ".git\n").unwrap();
+            } else {
+                let _ = std::fs::remove_file(f.real.join(".distignore"));
+            }
+            assert_eq!(
+                has_distignore(&f.link),
+                argv(&spec(&f.link, &out, &p)).is_ok(),
+                "the offer and the run disagree with .distignore present={present}"
+            );
+        }
+        assert!(!has_distignore(&f.root.join("gone")), "a missing path is not archivable");
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
+    fn an_empty_distignore_is_accepted_and_that_is_a_decision() {
+        // The stated limit, asserted so it stays a decision rather than becoming
+        // an oversight someone quietly "fixes". Judging the CONTENT of the file
+        // means deciding whether a pattern set excludes a given path — that is
+        // gitignore-matching semantics, exactly the compatibility claim this
+        // feature declined to own when it vendored the package instead of
+        // reimplementing it. Absence is checkable without owning any semantics;
+        // adequacy is not, and creating the file is the developer's explicit act.
+        let f = fixture("empty");
+        let p = stub_paths();
+        let out = f.root.join("tmp/out");
+        std::fs::write(f.real.join(".distignore"), "").unwrap();
+        assert!(
+            argv(&spec(&f.link, &out, &p)).is_ok(),
+            "an empty .distignore was refused — that is a content judgement we do not make"
+        );
+        let _ = std::fs::remove_dir_all(&f.root);
+    }
+
+    #[test]
     fn only_one_place_in_this_module_builds_a_dist_archive_argv() {
         // The drift guard behind "a guard that reads the argv reads what runs".
         // If a second call site ever assembles its own arguments, every test
@@ -414,3 +601,4 @@ mod tests {
         );
     }
 }
+

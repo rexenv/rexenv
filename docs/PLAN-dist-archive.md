@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — task 1 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–3 of 9 landed.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -174,7 +174,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   Ledger row: *the target handed to `dist-archive` is never the asset dir's parent* —
   and the guard must read the **argv actually spawned**, not a constant beside it.
 
-- [ ] **3 — Refuse when `.distignore` is absent.** A precondition checked before the run,
+- [x] **3 — Refuse when `.distignore` is absent.** ✓ 4 Aug, ledger #231 — a precondition inside `argv` (not a warning read back), checked at the canonical source, one predicate shared with the UI, message plant-proven to stay actionable. Empty files accepted as a stated limit. A precondition checked before the run,
   naming what is missing and why it matters, never a warning recovered from output.
   This is the feature's point (§1.2): the default case is the harmful one, and the tool
   reports it as a success. Ledger row, and **plant-proven** — delete the fixture's
