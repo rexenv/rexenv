@@ -32,6 +32,57 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] Tools → Maintenance: toggle **Maintenance mode** on → site shows "briefly unavailable" in a private window; off → normal again.
 - [ ] Tools → Backup & restore: **Export database** writes a `.sql` to Downloads; **Import database** round-trips it (make a post → export → delete the post → import → post is back).
 
+## Git assets — Build zip
+Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
+**Link folder** to one of your own. Everything below is on that asset's repo
+panel (the Fetch / Pull / Push row).
+
+*Coverage note, so it reads as a boundary rather than an oversight: the rest of
+the Git panel — add, link, adopt, pull, checkout, push, scripts, watchers — has
+no SMOKE step today and is covered by `repo_*` examples only.*
+
+- [ ] **1. No `.distignore`, no button.** On a checkout without one, **Build zip**
+  is **visible and disabled**. Hover it and read the tooltip cold, as someone who
+  has never heard of the file: it must say what is missing, that a zip without it
+  would include `.git` and `node_modules`, that **dist-archive would report that
+  as a success**, and **where** to create the file ("at the top of this
+  checkout") in `.gitignore` syntax.
+  **Tells:** the button is hidden rather than disabled (hiding it teaches
+  nothing, and the person who needs this is the one who has never met
+  `.distignore`); or the tooltip says only "no .distignore found", which sends a
+  developer to a search engine instead of to a fix.
+- [ ] **2. ⚠ Build it, then OPEN the zip. A failure here is a HOLD.** Add a
+  `.distignore` (the tooltip's starter list will do), refresh the panel, click
+  **Build zip**. A job runs with a streamed log and a Cancel button, and a toast
+  names the file with **Show in Finder**. Then actually open the archive —
+  double-click it, or `unzip -l` it — and look at the entries.
+  **Tells, any one a HOLD:** `.git/` or `node_modules/` inside the zip; the
+  archive named after rexenv's label rather than the folder; or a zip that is
+  suspiciously large. This is the whole feature: a distributable that ships a
+  repo's history or its dependencies can be uploaded to wp.org or sent to a
+  client before anyone notices, and the tool rexenv drives calls that outcome a
+  success. **This is the only step where the artefact has to be inspected rather
+  than reported on** — every other check in this file can be read off a screen.
+- [ ] **3. Nothing was written into your checkout.** In the checkout itself run
+  `git status`. It must be **clean** — no stray `.zip`, no build directory.
+  **Tell:** anything new. `wp dist-archive`'s own default writes the archive
+  *beside* the source, and for a linked asset that is your own repository; the
+  tooltip promises this does not happen, so this is that promise, checked.
+- [ ] **4. A linked folder keeps ITS name.** Link a folder whose directory name
+  differs from the name you gave it in rexenv (e.g. `~/code/my-awesome-plugin`
+  linked as `awesome-slug`) and build. The file is named from **your folder**
+  (`my-awesome-plugin.1.2.3.zip`), not from rexenv's label, and the toast shows
+  the name that was actually produced.
+  **Tell:** a zip named `awesome-slug.…`. rexenv renaming someone's plugin to
+  match its own label is worse than a name that differs from it — and this is
+  deliberately not hidden, so it should be visible and correct rather than
+  smoothed over.
+- [ ] **5. Twice, and nothing is overwritten.** Click **Build zip** again without
+  moving the first file. The second lands as `…-1.zip`, the first is untouched.
+  If the plugin has no `Version:` header, the toast says so quietly and the name
+  carries no version — a note, not a failure.
+  **Tell:** the first file replaced, or a silent no-op.
+
 ## Mail (Mailpit)
 - [ ] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments).
 - [ ] Opening the message shows its HTML/text body.

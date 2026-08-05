@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–8 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **COMPLETE** — all 9 tasks landed 4–5 Aug 2026.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -208,7 +208,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   installed since 2021. Declare the tier in `scripts/live-checks.sh`; fixtures
   production-shaped per `examples/common/mod.rs`.
 
-- [ ] **9 — SMOKE step.** One numbered step in the MCP-style gate shape: a real plugin
+- [x] **9 — SMOKE step.** ✓ 5 Aug — new §Git assets section, 5 steps, with step 2 a HOLD (the zip must be opened and inspected). Ledger #236 amended rather than a new row. Also states plainly that the rest of the Git panel has no SMOKE coverage. One numbered step in the MCP-style gate shape: a real plugin
   checkout with and without `.distignore`, the zip opened and **looked at**, and the
   linked-asset case where the link name differs from the folder name (§1.5) — the one
   the UI is deliberately not hiding.
