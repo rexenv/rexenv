@@ -18,6 +18,7 @@ import {
   repoCheck,
   repoDistArchive,
   repoGitOp,
+  repoJobState,
   repoPullRefs,
   repoRunOfferedSteps,
   repoRunStep,
@@ -37,9 +38,29 @@ import { LogPane, mergeTailAndStreamed, REPO_SCRIPTS_DISCLOSURE, StepDot } from 
 import { RefPicker } from "./RefPicker";
 
 const BTN =
-  "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center gap-1.5 rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 const LOG_CAP = 500;
+
+/** The ONLY steps the offered row may render: the three a job can APPEND after
+ *  detecting changed dependencies. It was a blacklist of op-step keys, so every
+ *  op added later leaked into the row — "archive" rendered a bogus
+ *  "Dependencies changed with this dist-archive — re-install below" plus a
+ *  "Run all" / "wp dist-archive" pair under Build zip. A whitelist cannot leak:
+ *  keys live in `commands/repo.rs` (`step("composer"|"install"|"build", …)`). */
+const OFFERABLE_STEPS = ["composer", "install", "build"];
+
+/** Zip toasts already announced, keyed by job id — module scope ON PURPOSE.
+ *  The panel unmounts whenever the asset row is collapsed, so a per-mount ref
+ *  re-announced the same zip on every re-expand: a one-step job never sets
+ *  `finishedOk` (backend requires ≥2 steps), so the finished archive job is
+ *  re-adopted on each mount and its `archive` field arrives again. */
+const toastedArchives = new Set<string>();
+
+/** Inline job spinner for a button whose start call is still in flight. */
+function BtnSpinner() {
+  return <Loader2 className="h-3 w-3 animate-rex-spin" />;
+}
 
 /** Archive-button copy, kept together because it is guarded as a unit
  *  (`core/dist_archive.rs`, the copy guard). The two load-bearing clauses are
@@ -166,10 +187,16 @@ export function RepoPanel({
   // Live subscriptions for the op job.
   useEffect(() => {
     if (!opJob?.id) return;
+    const jobId = opJob.id;
+    const jobLogKey = opJob.logKey;
     let dead = false;
+    // Set by the first live state event, so the catch-up snapshot below can
+    // never overwrite a newer fact with an older read.
+    let sawEvent = false;
     const un: Array<() => void> = [];
-    void onRepoJobState(opJob.id, (s) => {
+    void onRepoJobState(jobId, (s) => {
       if (dead) return;
+      sawEvent = true;
       setOpJob(s);
       qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
         old ? old.map((j) => (j.id === s.id ? s : j)) : old,
@@ -181,9 +208,40 @@ export function RepoPanel({
         qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
       }
     }).then((u) => un.push(u));
-    void onRepoJobOutput(opJob.id, (line) => {
+    void onRepoJobOutput(jobId, (line) => {
       if (!dead) setOpLines((l) => [...l.slice(-(LOG_CAP - 1)), line]);
     }).then((u) => un.push(u));
+    // Catch-up: Tauri does not replay events, and listener registration is
+    // async — everything the job emitted between the spawn and the attach is
+    // gone. A short job (dist-archive, an up-to-date fetch) fits ENTIRELY in
+    // that window, which left its step frozen at pending "○" with an empty log:
+    // the build looked like it had never started, and the pending step then
+    // rendered the offered row too. Re-read the authoritative snapshot + log
+    // tail once attached; a live event that beat us here wins.
+    void repoJobState(jobId)
+      .then((s) => {
+        if (dead || sawEvent) return;
+        setOpJob(s);
+        qc.setQueryData(jobsKey, (old: RepoJobState[] | undefined) =>
+          old ? old.map((j) => (j.id === s.id ? s : j)) : old,
+        );
+        // Same settle-invalidation as the event path — the missed event was
+        // often the LAST one, which is exactly the one that refreshes header
+        // and provenance.
+        if (s.steps.every((st) => st.status !== "running")) {
+          qc.invalidateQueries({ queryKey: statusKey });
+          qc.invalidateQueries({ queryKey: branchesKey });
+          qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
+        }
+      })
+      .catch(() => {});
+    if (jobLogKey) {
+      void tailLog(jobLogKey, 300)
+        .then((tail) => {
+          if (!dead) setOpLines((streamed) => mergeTailAndStreamed(tail, streamed));
+        })
+        .catch(() => {});
+    }
     return () => {
       dead = true;
       un.forEach((u) => u());
@@ -224,14 +282,14 @@ export function RepoPanel({
   }, [watchLines, watchLogOpen]);
 
   // The archive result arrives on the job-state event, not from the mutation —
-  // the mutation returns the moment the job STARTS. Keyed by job id so a
-  // remount or a second state emission cannot toast the same zip twice.
-  const toastedArchive = useRef<string | null>(null);
+  // the mutation returns the moment the job STARTS. Keyed by job id in a
+  // module-level set so neither a second state emission NOR a remount (collapse
+  // + re-expand of the asset row) can announce the same zip twice.
   useEffect(() => {
     const archive = opJob?.archive;
     if (!opJob || opJob.op !== "dist-archive" || !archive) return;
-    if (toastedArchive.current === opJob.id) return;
-    toastedArchive.current = opJob.id;
+    if (toastedArchives.has(opJob.id)) return;
+    toastedArchives.add(opJob.id);
     // The name that actually exists — never a predicted one. For a linked
     // asset it comes from the user's own folder, and collision numbering may
     // have moved it.
@@ -343,15 +401,14 @@ export function RepoPanel({
   const detachedReason = "Detached HEAD (tag or PR checkout) — check out a branch first";
   const clean = s ? s.changed === 0 && s.untracked === 0 : false;
   const opRunning = opJob?.steps.some((st) => st.status === "running") ?? false;
+  // Which button is waiting on its OWN start call. The job card only appears
+  // once the call returns, and for Build zip that call first resolves PHP +
+  // the WP-CLI phar (a download, on a cold machine) — without this the click
+  // looked like it did nothing at all.
+  const pendingOp = runOp.isPending ? (runOp.variables?.op ?? null) : null;
   const opsDisabled = opRunning || runOp.isPending || checkDeps.isPending;
   const offeredSteps = useMemo(
-    () =>
-      // Exclusion list = every job kind's own op step — only the dependency
-      // steps (composer/install/build) belong in the offered row. "check"
-      // and "script" were missing and rendered as dead buttons.
-      (opJob?.steps ?? []).filter(
-        (st) => !["fetch", "pull", "checkout", "push", "check", "script"].includes(st.key),
-      ),
+    () => (opJob?.steps ?? []).filter((st) => OFFERABLE_STEPS.includes(st.key)),
     [opJob],
   );
   const branchOptions = useMemo(() => {
@@ -430,7 +487,7 @@ export function RepoPanel({
               disabled={opsDisabled}
               onClick={() => runOp.mutate({ op: "fetch" })}
             >
-              Fetch
+              {pendingOp === "fetch" && <BtnSpinner />} Fetch
             </button>
             <button
               className={BTN}
@@ -438,7 +495,7 @@ export function RepoPanel({
               onClick={() => runOp.mutate({ op: "pull" })}
               title={s.detached ? detachedReason : "git pull --ff-only — never merges for you"}
             >
-              Pull
+              {pendingOp === "pull" && <BtnSpinner />} Pull
             </button>
             <button
               className={BTN}
@@ -450,7 +507,7 @@ export function RepoPanel({
                   : "git push (sets upstream automatically when missing; never force)"
               }
             >
-              Push
+              {pendingOp === "push" && <BtnSpinner />} Push
             </button>
             {/* Build zip — a verb, like the rest of the row. Deliberately
                 DISABLED rather than hidden when there is no .distignore:
@@ -468,7 +525,7 @@ export function RepoPanel({
                     : ARCHIVE_TITLE
               }
             >
-              Build zip
+              {buildZip.isPending && <BtnSpinner />} Build zip
             </button>
             <RefPicker
               value={checkoutRef}
@@ -525,7 +582,7 @@ export function RepoPanel({
               }
               onClick={() => runOp.mutate({ op: "checkout", ref: checkoutRef })}
             >
-              Checkout
+              {pendingOp === "checkout" && <BtnSpinner />} Checkout
             </button>
             <button
               className={BTN}
@@ -533,7 +590,7 @@ export function RepoPanel({
               onClick={() => checkDeps.mutate()}
               title="Zero-exec check: are composer/npm deps missing or stale? Runs no repo code — installs stay behind explicit clicks"
             >
-              Check deps
+              {checkDeps.isPending && <BtnSpinner />} Check deps
             </button>
           </div>
 
