@@ -96,6 +96,7 @@ db_source_check sandbox
 db_version_switch_check network
 delete_site_serve service
 devtools_check sandbox
+dist_archive_check sandbox
 dotfile_guard_check sandbox
 dns_serve demo
 dns_ssl_autostart_check system

@@ -1,6 +1,6 @@
 # PLAN — `wp dist-archive` in the RepoPanel: build a distributable zip
 
-**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–7 of 9 landed.
+**Status:** researched and ruled 4 Aug 2026; **building** — tasks 1–8 of 9 landed.
 Availability path **ruled: bundle** (§2, option b).
 
 Ship one button in the Git/asset panel that turns a plugin or theme checkout into a
@@ -201,7 +201,7 @@ Ledger rows land in the SAME commit as the invariant comment they describe (CLAU
   Result names the **filename actually produced** (§1.5), plus a quiet note when no
   version was found. Copy reviewed before it lands, then held by the copy guard.
 
-- [ ] **8 — The proofs.** L0 for the argv, the refusal, the collision numbering and the
+- [x] **8 — The proofs.** ✓ 5 Aug, ledger #236 — L0 across tasks 2–5 (19 lib tests in the module); L1 `dist_archive_check` (sandbox tier) with the negative control baked in and plant-proven both ways. Downloads deliberately not exercised — stated, not omitted. L0 for the argv, the refusal, the collision numbering and the
   sweep's three exits. **L1 (`sandbox` tier)** for the one thing no unit test reaches:
   the vendored command **resolves with `WP_CLI_PACKAGES_DIR` neutralised** — the negative
   control from §1.1, so this can never again pass because a dev machine had the package
