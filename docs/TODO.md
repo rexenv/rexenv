@@ -80,10 +80,13 @@ evidence cited.
   origin; refuse when that backend isn't up; replace `ensure_tunnelable`'s
   "can't be shared yet" refusal (`core/tunnels.rs:117-123`). Probe/mu-plugin/row
   machinery are origin-agnostic.
-- [ ] **`wp dist-archive` in the RepoPanel — build a distributable zip to Downloads**
-  (researched + ruled 4 Aug 2026, NOT started; **first thing after the release**).
-  Full plan and every measurement in `docs/PLAN-dist-archive.md`; 9 tasks, one commit
-  each. Availability **ruled: bundle** the MIT package tree (~470 KB, one zero-dep
+- [x] **`wp dist-archive` in the RepoPanel — build a distributable zip to Downloads**
+  ✓ **shipped 5 Aug 2026**, all 9 tasks (`docs/PLAN-dist-archive.md`, one commit each),
+  ledger **#229–#236**, SMOKE §Git assets (5 steps, step 2 a HOLD — the zip is opened).
+  ✓ **6 Aug** — three panel faults from the first real use, fixed in `d93afde` and
+  written up in the plan's §8: the step frozen at pending (lost pre-attach events), the
+  bogus offered row under Build zip, the zip re-announced on every re-expand.
+  Researched + ruled 4 Aug 2026. Availability **ruled: bundle** the MIT package tree (~470 KB, one zero-dep
   transitive) and load it with `--require` — proven to register with an empty packages
   dir; `wp package install` rejected (network + composer at runtime + writes a dir we
   don't own), a Rust reimplementation rejected (a compatibility claim we'd defend

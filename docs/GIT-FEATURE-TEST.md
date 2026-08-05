@@ -259,6 +259,12 @@ What's left for you = the panel in the packaged app + your real remotes:
    return → the op card is still there streaming (same reconnect machinery
    as §8). Ops are refused while an install/build job runs for the same
    dir (one job per dir).
+5. **The FAST op is the one to check** (regression, 6 Aug — `d93afde`): fetch
+   on an already-up-to-date repo, i.e. an op that finishes in well under a
+   second. Its step must still end at ✓ with its log lines present. A step
+   frozen at `○` with an empty log means the panel attached its listeners
+   after the job had already finished and never caught up — the fault only
+   the shortest jobs can show, and the one that made Build zip look dead.
 
 ## 11. Phase C — scripts + watch (added 18 Jul)
 

@@ -82,6 +82,18 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   If the plugin has no `Version:` header, the toast says so quietly and the name
   carries no version — a note, not a failure.
   **Tell:** the first file replaced, or a silent no-op.
+- [ ] **6. The panel tells the truth while it works, and says it once.** Watch the
+  job card during a build: the step shows a **spinning** glyph and the log fills —
+  not a static `○` with "(no output yet)" for the whole run. When it finishes:
+  exactly ONE toast, and the row under the step is empty — no "Dependencies changed
+  … re-install below", no "Run all", no second "wp dist-archive" button (nothing
+  changed a dependency; this is a zip). Then collapse the asset row with the git
+  badge and re-expand it: the panel comes back with the finished job and **no new
+  toast**.
+  **Tells:** a step that never moves (the panel missed the events the job emitted
+  before it was listening — the build looks dead and its log looks empty); an
+  offered-install row under a build; or a zip announced again on every re-expand,
+  which teaches you to stop reading the toast that matters.
 
 ## Mail (Mailpit)
 - [ ] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments).

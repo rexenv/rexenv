@@ -223,7 +223,42 @@ the run (3) · the temp sweep covers all three exits (4) · Downloads never over
 · the produced filename is reported, never predicted (7) · the command resolves without
 the ambient packages dir (8, L1).
 
-## 7. Related
+## 7. After shipping — what the first real use found (6 Aug 2026, `d93afde`)
+
+Three faults, none in `core/dist_archive.rs` and none about the archive itself:
+the panel around it. Recorded here because two of them are older than this feature
+and Build zip only made them visible.
+
+1. **The step sat at pending `○` for the whole run** — read as "nothing is
+   happening", which is what it looked like. Not styling: `StepDot` does spin, the
+   step never reached `running`. Tauri does not replay events and listener
+   registration is `await`ed, so everything a job emits between the spawn and the
+   attach is **lost** — and a short job (dist-archive, an up-to-date fetch) fits
+   ENTIRELY inside that window, log tail included ("(no output yet)"). The panel now
+   re-reads `repo_job_state` + the log tail once its listeners are attached, and
+   drops that read if a live event beat it there. Every start button also spins while
+   its own call is in flight: `repo_dist_archive` resolves PHP and the WP-CLI phar
+   BEFORE the job exists, so on a cold machine the click showed nothing at all.
+   *The general fact, not a dist-archive one: an event stream with an async attach
+   needs a catch-up read, or the fastest jobs are exactly the ones that look dead.*
+2. **A bogus offered row under Build zip** — "Dependencies changed with this
+   dist-archive — re-install below" plus "Run all" / "wp dist-archive" buttons.
+   The offered row filtered by a BLACKLIST of op-step keys, so every op added after
+   it was written leaked into the row; `archive` was simply the next one. Now a
+   whitelist of the three steps a job can append (`composer`/`install`/`build`,
+   `commands/repo.rs`) — the same coverage/surface family as ledger #197, fixed the
+   way that family has to be fixed: state the closed set, not the exceptions.
+3. **The zip re-announced itself on every re-expand** of the asset row. The
+   toast dedup was a per-mount ref and collapsing the row unmounts the panel; the
+   finished archive job is then re-adopted on each mount, because `set_step` only
+   sets `finished_ok` for jobs with **≥ 2 steps** and every single-step job
+   (`archive`, `fetch`, `pull`, `check`, `script`) therefore never reports finished.
+   Dedup moved to a module-level set of job ids. **The `≥ 2` rule is still there** —
+   left alone deliberately: `finishedOk` also drives GitAddPanel's post-clone UI, so
+   changing its meaning is its own task with its own evidence, not a rider on a
+   toast fix.
+
+## 8. Related
 
 `docs/PLAN-linked-sites.md` (what may be written into a user's folder) ·
 `docs/PLAN-mcp-server.md` (the M-later tool) · ledger **#228** and the "machine was the
