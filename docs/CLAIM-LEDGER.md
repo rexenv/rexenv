@@ -562,6 +562,19 @@ at THING Y ≠ X. They diverge along different axes:
   thing being claimed about, and "regenerate before each release" is not
   self-checking — the file had been wrong since the day it was generated and
   three weeks of green gates never looked at it.
+  - **And the same file, again, 5 Aug — this time the DIRECTION was wrong.**
+    Reconciling npm for the dist-archive release: 112 documented rows against a
+    **127-package** production closure. Fifteen packages were undocumented, all
+    MIT, several genuinely bundled — `scheduler` (React's), `loose-envify`,
+    `js-tokens` and `util-deprecate` are all in `dist/assets/*.js`. Three prior
+    passes reported "112/112, nothing added" because each checked only
+    `table ⊆ graph`: every row documented does exist, which was true, and
+    nothing ever asked whether the graph held rows the table did not.
+    **`graph − table` is the direction that finds an omission, and it is the one
+    that matters — a notice you never wrote is exactly the one nobody misses.**
+    Note the shape difference from the entry above: that one compared the wrong
+    KEY, this one compared in one DIRECTION. A set comparison has two ways to be
+    vacuously reassuring and this file has now produced both of them.
 
 **The audit question this adds** — belongs in whatever the audit procedure becomes:
 for every guard, *does the check cover the whole surface the claim names, for the

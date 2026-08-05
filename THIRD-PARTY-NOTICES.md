@@ -23,15 +23,26 @@ rexenv itself is licensed under the Apache License 2.0 (see `LICENSE`).
 Where a dependency is dual- or multi-licensed (e.g. "MIT OR Apache-2.0"),
 rexenv uses it under the first permissive option compatible with this
 distribution. Generated from the real dependency graphs on 2026-07-28 and
-re-verified against them on 2026-08-03 and again on 2026-08-04 after MCP M2a/M2b
-(which added no dependency — checked, not assumed): the Rust closure is
-unchanged at 389 crates and the npm closure at 112 packages — no package added,
-removed, or relicensed, and no licence family that is not already covered below.
-Two npm rows were repaired in that pass: `@tauri-apps/api` and
+re-verified on 2026-08-03, 2026-08-04 and 2026-08-05. The Rust closure is
+unchanged at 389 crates.
+
+**The npm table was INCOMPLETE from the day it was generated, and the 5 Aug
+pass found it: 112 rows against a 127-package production closure.** Fifteen
+packages were missing, all MIT, several of them genuinely bundled — `scheduler`
+(React's) is in `dist/assets/*.js`, and so are `loose-envify`, `js-tokens` and
+`util-deprecate`. They are added above.
+
+The earlier passes did not catch it because they only checked one direction:
+every documented row was verified to exist in the graph, which was true, and
+nothing asked whether the graph held rows the table did not. "112/112" was a
+real comparison of the wrong set. A reconciliation has to run BOTH ways —
+`graph − table` is the direction that finds an omission, and it is the direction
+that matters, because a notice you never wrote is exactly the one nobody misses.
+
+Two npm rows were repaired in the 4 Aug pass: `@tauri-apps/api` and
 `@tauri-apps/plugin-dialog` had name, version and licence collapsed into one
-cell by the original generation, so the `OR` of their dual licence was sitting
-in the version column. The packages and their licences were right; the table
-rendered them wrong. Regenerate before each release with:
+cell by the original generation. The packages and their licences were right; the
+table rendered them wrong. Regenerate before each release with:
 
 ```sh
 # Rust (the app + statically linked deps, macOS graph):
@@ -484,7 +495,7 @@ used unmodified; their source is available from crates.io at the exact versions
 listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 `webpki-roots` (CDLA-Permissive-2.0) packages Mozilla's CA trust data.
 
-## npm packages (production closure bundled by Vite; 112 packages)
+## npm packages (production closure bundled by Vite; 127 packages)
 
 | Package | Version | Licence |
 |---|---|---|
@@ -519,6 +530,7 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | @tanstack/react-query | 5.101.1 | MIT |
 | @tauri-apps/api | 2.11.1 | Apache-2.0 OR MIT |
 | @tauri-apps/plugin-dialog | 2.7.1 | MIT OR Apache-2.0 |
+| @types/prop-types | 15.7.15 | MIT |
 | @types/react | 18.3.31 | MIT |
 | @types/react-dom | 18.3.7 | MIT |
 | @xterm/addon-fit | 0.11.0 | MIT |
@@ -536,22 +548,32 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | cmdk | 1.1.1 | MIT |
 | commander | 4.1.1 | MIT |
 | cookie | 1.1.1 | MIT |
+| cssesc | 3.0.0 | MIT |
+| csstype | 3.2.3 | MIT |
 | detect-node-es | 1.1.0 | MIT |
 | didyoumean | 1.2.2 | Apache-2.0 |
 | dlv | 1.1.3 | MIT |
+| es-errors | 1.3.0 | MIT |
 | fast-glob | 3.3.3 | MIT |
 | fastq | 1.20.1 | ISC |
 | fdir | 6.5.0 | MIT |
 | fill-range | 7.1.1 | MIT |
 | fsevents | 2.3.3 | MIT |
-| glob-parent | 5.1.2 | ISC |
+| function-bind | 1.1.2 | MIT |
+| get-nonce | 1.0.1 | MIT |
 | glob-parent | 6.0.2 | ISC |
+| glob-parent | 5.1.2 | ISC |
+| hasown | 2.0.4 | MIT |
 | is-binary-path | 2.1.0 | MIT |
+| is-core-module | 2.16.2 | MIT |
+| is-extglob | 2.1.1 | MIT |
 | is-glob | 4.0.3 | MIT |
 | is-number | 7.0.0 | MIT |
 | jiti | 1.21.7 | MIT |
+| js-tokens | 4.0.0 | MIT |
 | lilconfig | 3.1.3 | MIT |
 | lines-and-columns | 1.2.4 | MIT |
+| loose-envify | 1.4.0 | MIT |
 | lucide-react | 0.469.0 | ISC |
 | merge2 | 1.4.1 | MIT |
 | micromatch | 4.0.8 | MIT |
@@ -560,6 +582,7 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | normalize-path | 3.0.0 | MIT |
 | object-assign | 4.1.1 | MIT |
 | object-hash | 3.0.0 | MIT |
+| path-parse | 1.0.7 | MIT |
 | picocolors | 1.1.1 | ISC |
 | picomatch | 2.3.2 | MIT |
 | picomatch | 4.0.4 | MIT |
@@ -585,9 +608,11 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | resolve | 1.22.12 | MIT |
 | reusify | 1.1.0 | MIT |
 | run-parallel | 1.2.0 | MIT |
+| scheduler | 0.23.2 | MIT |
 | set-cookie-parser | 2.7.2 | MIT |
 | source-map-js | 1.2.1 | BSD-3-Clause |
 | sucrase | 3.35.1 | MIT |
+| supports-preserve-symlinks-flag | 1.0.0 | MIT |
 | tailwind-merge | 2.6.1 | MIT |
 | tailwindcss | 3.4.19 | MIT |
 | tailwindcss-animate | 1.0.7 | MIT |
@@ -599,6 +624,7 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | tslib | 2.8.1 | 0BSD |
 | use-callback-ref | 1.3.3 | MIT |
 | use-sidecar | 1.1.3 | MIT |
+| util-deprecate | 1.0.2 | MIT |
 | zustand | 5.0.14 | MIT |
 
 ## Licence texts
