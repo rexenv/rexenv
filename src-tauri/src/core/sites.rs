@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, frankenphp, php, proxy, services, ssl, tld, tunnels};
+use crate::core::{adminer, binaries, frankenphp, php, proxy, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{
@@ -1474,6 +1474,7 @@ fn nginx_site_for(
         body_limit: body_limits.get(&php::minor_of(&s.php_version)).copied(),
         // Sites run on their pool's own settings — only the Adminer vhost (§5.2)
         // overrides ini per request.
+        read_timeout: None,
         php_value: None,
         env: site_env.get(&s.id).cloned().unwrap_or_default(),
     }
@@ -1579,15 +1580,21 @@ pub fn rebuild_configs_for(
         .collect();
     // Internal Adminer vhost (§5.2): served by the default php-fpm pool, rooted at
     // its isolated docroot. Not a Site → never a tunnel origin (§9).
+    // Big-dump import is this vhost's job — ONE cap driving nginx and PHP
+    // together, so neither 413s nor silently truncates (§5.2). Adminer runs on
+    // the DEFAULT pool, so it takes the larger of the generous floor and what
+    // that pool's own settings already allow: the floor can only raise a limit,
+    // never hold a user who configured more down to it.
+    let adminer_cap =
+        adminer::import_cap(body_limits.get(&php::minor_of(binaries::PHP_VERSION)).copied());
     nginx_sites.push(services::NginxSite {
         domain: adminer::ADMINER_HOST.to_string(),
         docroot: adminer::docroot(platform)?,
         php_fpm_port: services::PHP_FPM_PORT,
         rewrite: services::RewriteMode::Single,
-        // Big-dump import is this vhost's job — a fixed generous cap, nginx and
-        // PHP raised TOGETHER so neither 413s nor silently truncates (§5.2).
-        body_limit: Some(adminer::MAX_IMPORT_BYTES),
-        php_value: Some(adminer::IMPORT_PHP_VALUE.to_string()),
+        body_limit: Some(adminer_cap),
+        read_timeout: Some(adminer::IMPORT_TIMEOUT_SECS),
+        php_value: Some(adminer::import_php_value(adminer_cap)),
         env: Vec::new(),
     });
     let (nginx_conf, nginx_prefix) =

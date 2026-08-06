@@ -61,6 +61,7 @@ async fn main() -> ExitCode {
         php_fpm_port: FPM_PORT,
         rewrite: services::RewriteMode::Single,
         body_limit: None,
+        read_timeout: None,
         php_value: None,
         env: Vec::new(),
     };

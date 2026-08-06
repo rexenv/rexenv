@@ -34,9 +34,17 @@ pub fn generate_fpm_config(
     // Pool sizing guards the "every site hangs while the UI shows running" spiral:
     // ALL default sites share this one pool, so N wall-clock-stuck workers (heavy
     // plugin imports, loopback self-requests) starve every site at once — the port
-    // still accepts, so no probe sees it. `request_terminate_timeout` (wall clock —
-    // PHP's own max_execution_time only counts CPU time on unix) recycles a stuck
-    // worker after 5min; `pm.max_requests` recycles leaky workers.
+    // still accepts, so no probe sees it. `request_terminate_timeout` recycles a
+    // stuck worker after 5min; `pm.max_requests` recycles leaky workers.
+    //
+    // This comment used to say max_execution_time "only counts CPU time on unix",
+    // which is why request_terminate_timeout was described as the only wall-clock
+    // guard. NOT TRUE of our builds: `nginx_php_serve` had a plain `sleep(66)`
+    // killed at "Maximum execution time of 30 seconds exceeded" (6 Aug 2026), so
+    // max_execution_time bites wall time here. request_terminate_timeout still
+    // earns its place — it kills a worker PHP's own limit can't (a hang inside a
+    // blocking extension call, and any request where the setting was raised) —
+    // but it is not the only thing standing between a long request and a kill.
     //
     // Wrap the value in DOUBLE quotes: PHP's ini parser strips the outer quotes
     // but preserves the inner single-quoted binary path verbatim, so the shim's
@@ -315,6 +323,13 @@ pub struct NginxSite {
     /// never 413s an upload PHP would accept (the "raised upload_max_filesize
     /// but uploads still fail" lie). `None` ⇒ the http-level default applies.
     pub body_limit: Option<u64>,
+    /// FastCGI read/send timeout in SECONDS, or `None` for nginx's own 60s
+    /// default. Set it only where nginx must NOT be the component that gives up:
+    /// a timeout here returns 504 while php-fpm keeps working, so the user sees
+    /// a failure over a job that is still running (a half-loaded database, for an
+    /// import). php-fpm's `request_terminate_timeout` is the guard that should
+    /// fire — it actually ends the work.
+    pub read_timeout: Option<u64>,
     /// Per-request `PHP_VALUE` ini lines for this vhost (`key=value`, one per
     /// line), or `None` for the pool's own settings. php-fpm applies these OVER
     /// the pool's overridable `php_value[…]` lines, so a single vhost can raise
@@ -441,6 +456,12 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
         .body_limit
         .map(|b| format!("\t\tclient_max_body_size {b};\n"))
         .unwrap_or_default();
+    // Both directions: `read` covers PHP's think time (the long one), `send`
+    // covers streaming a multi-GB body up to the pool.
+    let timeout = site
+        .read_timeout
+        .map(|s| format!("\t\t\tfastcgi_read_timeout {s}s;\n\t\t\tfastcgi_send_timeout {s}s;\n"))
+        .unwrap_or_default();
     // nginx has no literal newline inside a quoted string, but it does expand the
     // `\n` escape — which is what php-fpm needs to split PHP_VALUE into ini lines.
     let php_value = site
@@ -462,6 +483,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t\t\tfastcgi_pass 127.0.0.1:{fpm};\n\
          \t\t\tfastcgi_index index.php;\n\
          {params}\
+         {timeout}\
          {php_value}\
          {env}\
          \t\t}}\n\
@@ -858,6 +880,7 @@ mod tests {
                 php_fpm_port: 9783,
                 rewrite: mode,
                 body_limit: None,
+                read_timeout: None,
                 php_value: None,
                 env: Vec::new(),
             }],
@@ -914,6 +937,20 @@ mod tests {
         // No env → no extra params, config identical shape to before.
         let none = generate_nginx_config(&nginx_cfg(RewriteMode::Single));
         assert!(!none.contains("API_URL"));
+    }
+
+    #[test]
+    fn read_timeout_is_per_server_and_covers_both_directions() {
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.sites[0].read_timeout = Some(86_400);
+        let out = generate_nginx_config(&cfg);
+        assert!(out.contains("fastcgi_read_timeout 86400s;"), "got: {out}");
+        // Send too: a multi-GB body streams UP to the pool, and nginx's default
+        // there is the same 60s.
+        assert!(out.contains("fastcgi_send_timeout 86400s;"), "got: {out}");
+        assert!(out.find("fastcgi_read_timeout").unwrap() > out.find("location ~ \\.php$").unwrap());
+        // None ⇒ nginx's own default, unchanged for every site.
+        assert!(!generate_nginx_config(&nginx_cfg(RewriteMode::Single)).contains("timeout"));
     }
 
     #[test]
@@ -995,6 +1032,7 @@ mod tests {
             php_fpm_port: 9783,
             rewrite: RewriteMode::Single,
             body_limit: None,
+            read_timeout: None,
             php_value: None,
             env: Vec::new(),
         });

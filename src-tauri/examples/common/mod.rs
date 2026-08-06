@@ -299,10 +299,18 @@ pub fn fixture_db(tag: &str) -> (rusqlite::Connection, FixtureDb) {
 /// std-only: a probe with its own connection pool would hide first-connection
 /// failures.
 pub fn http_get(port: u16, host: &str, path: &str) -> String {
+    http_get_timeout(port, host, path, Duration::from_secs(5))
+}
+
+/// [`http_get`] with an explicit client read timeout — for probes that are
+/// deliberately SLOWER than a server-side default under test (nginx's own
+/// 60s `fastcgi_read_timeout`, say), where the 5s default would time out the
+/// prober instead of the thing being proven.
+pub fn http_get_timeout(port: u16, host: &str, path: &str, timeout: Duration) -> String {
     use std::io::{Read, Write};
     let run = || -> std::io::Result<String> {
         let mut s = std::net::TcpStream::connect(("127.0.0.1", port))?;
-        s.set_read_timeout(Some(Duration::from_secs(5)))?;
+        s.set_read_timeout(Some(timeout))?;
         write!(s, "GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n")?;
         let mut out = String::new();
         s.read_to_string(&mut out)?;

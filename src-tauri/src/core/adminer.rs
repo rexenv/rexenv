@@ -25,22 +25,59 @@ pub const PROXY_SCHEME: &str = "rexdb";
 /// NEVER a public tunnel origin (§9) — it isn't a site.
 pub const ADMINER_HOST: &str = "adminer.rexenv.rex";
 
-/// Largest SQL dump the Adminer vhost accepts, in bytes — nginx's
+/// FLOOR for the largest SQL dump the Adminer vhost accepts, in bytes — nginx's
 /// `client_max_body_size` for the vhost AND the PHP upload/post limits it runs
-/// with ([`IMPORT_PHP_VALUE`]), set together so nginx never 413s a body PHP
-/// would take. FIXED, deliberately: Adminer does NOT track the default pool's
-/// per-version PHP settings the way a site's block does (`php::nginx_body_limits`).
-/// Those bound what a *site* accepts off the network; importing a big dump is
-/// this vhost's whole job, and it's loopback-only (§5.2). Before this cap the
-/// vhost inherited the 128m http-level default and 413'd every larger dump —
-/// with no setting anywhere that could raise it.
+/// with ([`import_php_value`]), set together from one number so nginx never 413s
+/// a body PHP would take. Before this cap the vhost inherited the 128m
+/// http-level default and 413'd every larger dump — with no setting anywhere
+/// that could raise it.
+///
+/// A FLOOR, not the value: the vhost takes the LARGER of this and the default
+/// pool's own configured limit (`php::nginx_body_limits`), so it can only ever
+/// raise what the user already asked for. A flat cap looked simpler and was
+/// wrong — a user running the default pool at `upload_max_filesize = 6G` would
+/// have had Adminer, alone, silently held to 2G by the thing meant to unblock
+/// imports. Importing a big dump is this vhost's whole job, and it's
+/// loopback-only (§5.2), so it gets the generous floor for free.
 pub const MAX_IMPORT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-/// Per-request `PHP_VALUE` ini lines for the Adminer vhost, mirroring
-/// [`MAX_IMPORT_BYTES`]. php-fpm applies these over the pool's OVERRIDABLE
-/// `php_value[…]` lines, so the shared default pool — and every site on it —
-/// keeps the user's own upload limits.
-pub const IMPORT_PHP_VALUE: &str = "upload_max_filesize=2048M\npost_max_size=2048M";
+/// The vhost's actual cap: the floor, or the default pool's own configured
+/// limit when that's larger (`None` = the pool stores neither upload key, so
+/// PHP's small defaults apply and only the floor matters).
+pub fn import_cap(pool_limit: Option<u64>) -> u64 {
+    pool_limit.unwrap_or(0).max(MAX_IMPORT_BYTES)
+}
+
+/// Per-request `PHP_VALUE` ini lines for the Adminer vhost, for a cap of
+/// `bytes` — the SAME number the vhost's `client_max_body_size` gets, derived
+/// once so nginx and PHP cannot disagree. php-fpm applies these over the pool's
+/// OVERRIDABLE `php_value[…]` lines, so the shared default pool — and every site
+/// on it — keeps the user's own upload limits.
+///
+/// Plain byte integers, not `2048M`: the cap is a `u64` and PHP's ini parser
+/// takes a bare number as bytes, so no shorthand rounding sits between the two
+/// values.
+pub fn import_php_value(bytes: u64) -> String {
+    format!("upload_max_filesize={bytes}\npost_max_size={bytes}")
+}
+
+/// FastCGI read/send timeout for the Adminer vhost, in seconds.
+///
+/// Replaying a large dump takes minutes; nginx's own default is 60s, so an
+/// import 504'd while php-fpm kept importing — the user got a failure page over
+/// a job still running, and a database left in an unknown middle state (SQL
+/// replay is not wrapped in a transaction). nginx must never be the component
+/// that gives up here: php-fpm's `request_terminate_timeout` is the guard that
+/// actually ENDS the work.
+///
+/// The value is the SettingKind bound on `max_execution_time` (`php::SETTINGS`),
+/// not a guess: `request_terminate_timeout` is `max(max_execution_time, 300)`,
+/// and `max_execution_time` can't be stored above 86400 — so this is ≥ every
+/// terminate value the app can produce, for every version, whatever the user
+/// sets later. A per-version derived timeout would have to be recomputed on
+/// every settings change and would silently under-shoot if that recompute were
+/// ever missed; this can't drift, and a test pins it to the spec's own maximum.
+pub const IMPORT_TIMEOUT_SECS: u64 = 86_400;
 
 /// Query flag a rexenv deep-link sets to request a one-click scoped session (§11.4).
 pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
@@ -532,21 +569,59 @@ mod tests {
     #[test]
     fn import_php_limits_never_exceed_the_nginx_cap() {
         // The 413 this pair exists to kill comes back the moment PHP is told it
-        // may accept MORE than nginx will pass — so pin BOTH keys against the cap
-        // (and require both to be present, or a typo'd key reverts to PHP's 2M/8M
-        // defaults with nothing failing).
-        let mut seen = 0;
-        for line in IMPORT_PHP_VALUE.lines() {
-            let (key, value) = line.split_once('=').expect("key=value");
-            let bytes = crate::core::php::parse_php_size(value).expect("php size");
-            assert!(
-                bytes <= MAX_IMPORT_BYTES,
-                "{key} ({value}) exceeds the nginx cap ({MAX_IMPORT_BYTES} bytes) — nginx 413s first"
-            );
-            assert!(matches!(key, "upload_max_filesize" | "post_max_size"), "unexpected key {key}");
-            seen += 1;
+        // may accept MORE than nginx will pass, or LESS than the dump — so check
+        // both keys land on EXACTLY the cap they're rendered for (and that both
+        // are present, or a typo'd key reverts to PHP's 2M/8M with nothing
+        // failing). Across the floor and a user-raised cap alike.
+        for cap in [MAX_IMPORT_BYTES, 10 * 1024 * 1024 * 1024] {
+            let rendered = import_php_value(cap);
+            let mut seen = 0;
+            for line in rendered.lines() {
+                let (key, value) = line.split_once('=').expect("key=value");
+                let bytes = crate::core::php::parse_php_size(value).expect("php size");
+                assert_eq!(bytes, cap, "{key} ({value}) does not match the nginx cap {cap}");
+                assert!(
+                    matches!(key, "upload_max_filesize" | "post_max_size"),
+                    "unexpected key {key}"
+                );
+                seen += 1;
+            }
+            assert_eq!(seen, 2, "both upload_max_filesize and post_max_size must be set");
         }
-        assert_eq!(seen, 2, "both upload_max_filesize and post_max_size must be set");
+    }
+
+    #[test]
+    fn the_import_cap_can_only_raise_what_the_pool_already_allows() {
+        // The floor unblocks a default pool…
+        assert_eq!(import_cap(None), MAX_IMPORT_BYTES);
+        assert_eq!(import_cap(Some(64 << 20)), MAX_IMPORT_BYTES);
+        // …but a user running the pool at 6G keeps 6G here. Holding Adminer —
+        // and only Adminer — below the user's own configured limit would be the
+        // same silent-cap bug this const exists to remove, wearing a bigger number.
+        let six_gb = 6 * 1024 * 1024 * 1024;
+        assert_eq!(import_cap(Some(six_gb)), six_gb);
+        assert_eq!(import_cap(Some(MAX_IMPORT_BYTES)), MAX_IMPORT_BYTES);
+    }
+
+    #[test]
+    fn the_vhost_timeout_outlasts_every_terminate_timeout_the_app_can_produce() {
+        // php-fpm's request_terminate_timeout is max(max_execution_time, 300) —
+        // so nginx outlasting the SPEC'S MAXIMUM max_execution_time means nginx
+        // can never 504 a request php-fpm would still be serving, for any
+        // version, at any setting the user can save. Raising that spec bound
+        // without raising this const brings the 504 back: fail here if it moves.
+        let spec = crate::core::php::SETTINGS
+            .iter()
+            .find(|s| s.key == "max_execution_time")
+            .expect("whitelisted");
+        let max = match spec.kind {
+            crate::core::php::SettingKind::Int { max, .. } => u64::try_from(max).expect("positive"),
+            _ => panic!("max_execution_time is an Int setting"),
+        };
+        assert!(
+            IMPORT_TIMEOUT_SECS >= max.max(300),
+            "nginx would give up at {IMPORT_TIMEOUT_SECS}s while php-fpm serves until {max}s"
+        );
     }
 
     #[test]
