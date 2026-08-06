@@ -16,17 +16,71 @@ matters**, and whether it's **🚧 publish-blocking** or **🟢 nice-to-have**.
 
 ---
 
+## A0) 🚧 Artefact integrity — check the shipped binary, PER SLICE
+
+**Why this is its own step, and why "per slice" is the whole point.** A universal
+binary is two binaries in a trench coat. Anything embedded at compile time is
+embedded *per architecture*, so a build that carried it in one slice and not the
+other would work perfectly on the machine that built it and fail on every user
+with the other chip. That is the arm64-DMG mistake (§A's history) in a subtler
+shape: last time the artefact was thin and it was obvious; a half-populated fat
+binary is invisible to `lipo -archs`, which only reports that both slices exist.
+
+Run before §A, on the dmg you are about to test. Two minutes.
+
+```sh
+cd <your rexenv checkout>
+APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/rexenv.app"
+DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_0.1.0_universal.dmg"
+
+# 1. Identity of what you are about to test — record these next to the §A result.
+shasum -a 256 "$DMG"
+git rev-parse --short HEAD; git status --porcelain | wc -l   # EXPECT: 0 uncommitted
+ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | wc -l  # EXPECT: 1
+
+# 2. Both slices present in both binaries.
+lipo -archs "$APP/Contents/MacOS/rexenv"     # EXPECT: x86_64 arm64
+lipo -archs "$APP/Contents/Resources/rex"    # EXPECT: x86_64 arm64
+
+# 3. Embedded payloads are in the ARM SLICE ON ITS OWN, not merely somewhere in
+#    the fat binary. Today that is the vendored `wp dist-archive` PHP tree
+#    (core::wp_packages) — the feature exists precisely so the command is
+#    CARRIED rather than resolved from the machine, and a tree present in only
+#    one slice would quietly restore the machine dependency for half of users.
+lipo -thin arm64 "$APP/Contents/MacOS/rexenv" -output /tmp/rexenv-arm64
+strings -a /tmp/rexenv-arm64 | grep -c Dist_Archive_Command   # EXPECT: > 0
+lipo -thin x86_64 "$APP/Contents/MacOS/rexenv" -output /tmp/rexenv-x86
+strings -a /tmp/rexenv-x86 | grep -c Dist_Archive_Command     # EXPECT: > 0
+rm -f /tmp/rexenv-arm64 /tmp/rexenv-x86
+```
+
+**Expected:** clean tree, one dmg, both slices in both binaries, and a non-zero
+count in **each** slice separately. A zero on either side is a HOLD — do not run
+§A on that artefact, rebuild it.
+
+**Add a line here whenever something new is compiled INTO the binary.** The check
+is only as complete as its list of payloads, and a payload nobody added is the
+one that ships in one slice.
+
 ## A) 🚧 RE-RUN NEEDED on the fresh dmg — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
 
-**STATUS:** §A passed twice before (2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`), but a **fresh build
-`rexenv_0.1.0_universal.dmg` sha256 `0e57f11c…` (2026-07-22)** now supersedes those — it adds the entire
-deferred pass (21 fixes: B25 timeout family, the cert pass B6/B13, B7/B15/B28/B29, B12/B16/B26/B30, and
-the B20 recorded-port allocator + migration). Ad-hoc signing is unchanged, so the launch behavior should
-hold, but **re-confirm §A on `0e57f11c…` before announcing the tap** (all 21 fixes post-date the last
-pass). Steps below (§A-orig) — use the `0e57f11c…` dmg. On pass, the tap approach is re-validated for the
-shipping artifact. (Canonical cask sha256 still recomputed from the uploaded Release asset — see §D.)
+**STATUS:** §A passed twice before (2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`), and the
+2026-07-22 `0e57f11c…` rebuild superseded those. **Both are now superseded again** by the
+current artefact — `rexenv_0.1.0_universal.dmg` sha256 `f6252374…`, built 2026-08-05 from
+commit `8f36625` (MCP M2a/M2b, then the `wp dist-archive` feature). Run §A0 first, then §A
+on `f6252374…`, then record the sha next to the result.
 
-_(Prior passes: 2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…` — both superseded by the `0e57f11c…` rebuild.)_
+Ad-hoc signing has not changed across any of these rebuilds, so the launch behaviour
+should hold — but each rebuild carries work the previous pass never saw, which is why
+§A is re-run rather than inherited. _(The 07-22 build added the deferred 21-fix pass:
+the B25 timeout family, the B6/B13 cert pass, B7/B15/B28/B29, B12/B16/B26/B30 and the
+B20 recorded-port allocator + migration. The 08-05 build adds MCP M2a/M2b and
+`wp dist-archive`, the first feature to compile third-party code into the binary —
+hence §A0.)_ On pass, the tap approach is re-validated for the shipping artefact.
+(Canonical cask sha256 is still recomputed from the UPLOADED Release asset — see §D —
+never from a local build.)
+
+_(Prior passes: 2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`, and the 2026-07-22 `0e57f11c…` rebuild — all superseded by `f6252374…`.)_
 
 ## A2) ✅ PASSED (2026-07-21) — first-run PHP download resume on a real flaky link
 

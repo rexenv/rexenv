@@ -576,6 +576,27 @@ at THING Y ≠ X. They diverge along different axes:
     KEY, this one compared in one DIRECTION. A set comparison has two ways to be
     vacuously reassuring and this file has now produced both of them.
 
+- **Checks that all compare the same way agree with each other and with nothing
+  else** (5 Aug 2026 — the generalisation the notices defect forced, and it is
+  worth stating apart from that instance). `THIRD-PARTY-NOTICES.md` was
+  reconciled three times, by two different methods, across three weeks. All three
+  passes asked `is every row I have real?` and none asked `is every real thing a
+  row?`. They agreed — 112/112 each time — and the agreement was the problem: it
+  read as corroboration when it was one check run three times. Fifteen bundled
+  packages were undocumented throughout.
+  - **Repetition is not independence.** Re-running a check, or writing a second
+    one that shares the first one's direction, key, or fixture, multiplies
+    confidence without adding coverage. That is the most expensive shape here,
+    because effort spent on it feels like diligence.
+  - **The cheap defence** is to ask what would have to be true for the check to
+    pass while the claim is false, and then test THAT: the missing direction, the
+    non-unique key, the production-shaped input. Every entry in this section is
+    an instance of failing to ask it.
+  - Note the family this closes over. Wrong KEY (crates collapsed by name), wrong
+    DIRECTION (notices, three times), wrong SURFACE (narrower, and — #235 —
+    wider), wrong LIFETIME, wrong DATA. A set comparison has that many ways to be
+    vacuously reassuring, and this project has now produced all of them.
+
 **The audit question this adds** — belongs in whatever the audit procedure becomes:
 for every guard, *does the check cover the whole surface the claim names, for the
 whole lifetime the claim spans, on data shaped like production?* If the claim says

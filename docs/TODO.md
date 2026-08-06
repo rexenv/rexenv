@@ -35,8 +35,11 @@ evidence cited.
   with nobody able to guess why**, because the difference is a directory neither side
   mentions. **RECORDED, NOT FIXED — by owner instruction**: neutralising it globally
   could break someone's existing workflow, so it is a deliberate decision, below.
-  When it is taken, the work is (a) the decision, (b) the spawn sites, (c) the L0
-  scan that must cover ALL FOUR call sites or repeat the coverage/surface family.
+  ✓ (a) **DECIDED 5 Aug 2026 — neutralise WITH A TELL** (see Decisions pending for
+  the reasoning and the scope). Queued as the first thing after v0.1.0: it is a
+  behaviour change and wants its own verification rather than riding an artefact
+  that was gated before it existed. (b) the spawn sites and (c) the L0 scan that
+  must cover ALL FOUR or repeat the coverage/surface family remain open.
   ✓ (d) **done 4 Aug** — `core/wordpress.rs`'s module doc now states it plainly
   ("What is pinned here is the BINARY, not the COMMAND SET"), so the code and
   ledger #228 no longer disagree while the decision waits.
@@ -226,19 +229,26 @@ first:
   texts beside the artifacts (rexenv becomes a distributor of PHP at that moment).
 - [ ] **`rex config get|set`** — parked on which settings keys to allow-list
   (never the whole KV table).
-- [ ] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
-  (raised 4 Aug 2026; ledger #228, finding in "Now" above). Today rexenv's wp-cli
-  loads a user's `~/.wp-cli/packages`. The three options and what each costs:
-  **(a) neutralise** — set `WP_CLI_PACKAGES_DIR` to a rexenv-owned dir on every
-  spawn; the posture becomes true, and a user whose workflow depends on a global
-  package loses it **inside rexenv only**, silently unless we say so;
-  **(b) neutralise with a tell** — same, plus naming it once where it can be read
-  (the wp-cli terminal, the docs), which trades a surprise for a sentence;
-  **(c) accept and document** — the posture claim is narrowed instead, and the
-  unreproducibility stays. Not a code question: (a) can break someone's day, and
-  the reason to decide it deliberately is that nobody would attribute the breakage
-  to us. Blocked on nothing; wanted before anything else leans on wp-cli's command
-  set (the dist-archive plan does, and bundles rather than installs partly for this).
+- [x] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
+  — **DECIDED 5 Aug 2026: (b) NEUTRALISE WITH A TELL.** Queued as the FIRST thing
+  after v0.1.0 ships; deliberately not on the release artefact, because it is a
+  behaviour change and wants its own verification rather than riding a build that
+  was gated before it existed. Ledger #228 stays 🔨 until it lands.
+  **The reasoning, recorded so it is not re-derived**: neutralising alone would hand
+  someone who genuinely relies on a global package a bare `not a registered wp
+  command` with no explanation — the same unreproducibility pointed the other way.
+  Accept-and-document would make the ledger honest and leave every future bug report
+  just as unexplainable. The TELL is what makes it a fix rather than a trade: pin the
+  command set, and **when a packages dir exists that WOULD have contributed, say so**,
+  so a user learns what changed and why instead of discovering that a capability
+  vanished.
+  **Scope when picked up:** (a) set `WP_CLI_PACKAGES_DIR` at every wp-cli spawn
+  (`core/wordpress.rs:15/83/149` + any later one); (b) the L0 scan that must cover ALL
+  of them or repeat the coverage/surface family; (c) detect the would-have-contributed
+  case and surface it once, not per call; (d) **the tell's wording comes for approval
+  before it lands**, and joins a must-say list afterwards — the same route the MCP card
+  copy and the Build-zip tooltip took.
+
 - [x] **Publish history or start fresh** — DECIDED 28 Jul 2026: **fresh start**.
   The public repo begins at the cleaned HEAD; the private repo keeps full
   history. Reason: the docs cite commit hashes as evidence throughout, and a
