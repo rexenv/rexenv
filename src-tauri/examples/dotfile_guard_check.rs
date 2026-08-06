@@ -61,6 +61,7 @@ async fn main() -> ExitCode {
         php_fpm_port: FPM_PORT,
         rewrite: services::RewriteMode::Single,
         body_limit: None,
+        php_value: None,
         env: Vec::new(),
     };
     let (conf, prefix) = services::write_nginx_config(&*plat, HTTP_PORT, vec![site]).unwrap();

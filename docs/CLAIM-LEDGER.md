@@ -94,6 +94,7 @@ L3 = scripted manual.
 | 41 | adminer.rs:130 | Autologin guard keyed per target server | ✅ `autologin_guard_is_keyed_per_target_server` |
 | 42 | adminer.rs:342 | Never follow off the vhost | ✅ `relative_locations_resolve_on_the_vhost` |
 | 43 | adminer.rs:44 | Partitioned-cookie rewrite defeats ITP in the iframe | ◐ behavior ✅ `adminer_proxy_check`; ITP causal attribution 🚫 |
+| 237 | adminer.rs:30 | The Adminer vhost's nginx cap and its PHP upload/post limits are raised TOGETHER, so nginx never 413s a dump PHP would accept — and the per-request `PHP_VALUE` leaves the shared default pool (and every site on it) on the user's own limits | ✅ `import_php_limits_never_exceed_the_nginx_cap` (pins both keys against the cap; a typo'd key would silently revert to PHP's 2M/8M) + `php_value_is_one_escaped_param_inside_the_php_location` (nginx's `\n` escape, not a literal newline) + live `nginx_php_serve`: a pool written with NO settings answers `upload=2048M post=2048M` through a REAL `nginx -t` + php-fpm, so the values can only have come from the param. **Found by a user's 413 on a >128 MB dump** — the vhost had `body_limit: None` and inherited the 128m http default with no setting anywhere that could raise it |
 
 ## core/dns.rs + core/tld.rs
 
@@ -372,8 +373,9 @@ the first executing tool, the guarded delete, Keep, the promotion choke point an
 the reaper's sweep, the clone mechanism, the package tools, the raw runner, the
 Sites-UI scratch group and M2a's L1 #204–#220; the deferred-item pair and M2b's
 PHP switch, mail tell, sub-toggle and mail tools #221–#227; the WP-CLI
-packages-dir inheritance #228; the vendored dist-archive tree #229, its argv rules #230, the .distignore precondition #231, the scratch-dir sweep #232, the Downloads placement #233, the job command #234, the button copy #235 and the L1 negative control #236):
-**✅ 155 · ◐ 38 · 🔨 38 · 🚫 5** of 236 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+packages-dir inheritance #228; the vendored dist-archive tree #229, its argv rules #230, the .distignore precondition #231, the scratch-dir sweep #232, the Downloads placement #233, the job command #234, the button copy #235 and the L1 negative control #236; the
+Adminer import cap #237):
+**✅ 156 · ◐ 38 · 🔨 38 · 🚫 5** of 237 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

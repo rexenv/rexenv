@@ -1472,6 +1472,9 @@ fn nginx_site_for(
         php_fpm_port: pool_port_for_site(s),
         rewrite: rewrite_mode_for(s.multisite),
         body_limit: body_limits.get(&php::minor_of(&s.php_version)).copied(),
+        // Sites run on their pool's own settings — only the Adminer vhost (§5.2)
+        // overrides ini per request.
+        php_value: None,
         env: site_env.get(&s.id).cloned().unwrap_or_default(),
     }
 }
@@ -1581,7 +1584,10 @@ pub fn rebuild_configs_for(
         docroot: adminer::docroot(platform)?,
         php_fpm_port: services::PHP_FPM_PORT,
         rewrite: services::RewriteMode::Single,
-        body_limit: None,
+        // Big-dump import is this vhost's job — a fixed generous cap, nginx and
+        // PHP raised TOGETHER so neither 413s nor silently truncates (§5.2).
+        body_limit: Some(adminer::MAX_IMPORT_BYTES),
+        php_value: Some(adminer::IMPORT_PHP_VALUE.to_string()),
         env: Vec::new(),
     });
     let (nginx_conf, nginx_prefix) =

@@ -315,6 +315,13 @@ pub struct NginxSite {
     /// never 413s an upload PHP would accept (the "raised upload_max_filesize
     /// but uploads still fail" lie). `None` ⇒ the http-level default applies.
     pub body_limit: Option<u64>,
+    /// Per-request `PHP_VALUE` ini lines for this vhost (`key=value`, one per
+    /// line), or `None` for the pool's own settings. php-fpm applies these OVER
+    /// the pool's overridable `php_value[…]` lines, so a single vhost can raise
+    /// a limit without touching the shared pool or any other site on it.
+    /// OURS ONLY — never user input (unlike `env`, which is validated); the
+    /// renderer escapes newlines for nginx and nothing else.
+    pub php_value: Option<String>,
     /// Per-site user env vars (§1.6), VALIDATED by `site_env::validate` —
     /// emitted as `fastcgi_param` lines so they ride the request (shared pools
     /// untouched; getenv() + $_SERVER, not $_ENV).
@@ -434,6 +441,13 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
         .body_limit
         .map(|b| format!("\t\tclient_max_body_size {b};\n"))
         .unwrap_or_default();
+    // nginx has no literal newline inside a quoted string, but it does expand the
+    // `\n` escape — which is what php-fpm needs to split PHP_VALUE into ini lines.
+    let php_value = site
+        .php_value
+        .as_deref()
+        .map(|v| format!("\t\t\tfastcgi_param PHP_VALUE \"{}\";\n", v.replace('\n', "\\n")))
+        .unwrap_or_default();
     format!(
         "\n\tserver {{\n\
          \t\tlisten 127.0.0.1:{port};\n\
@@ -448,6 +462,7 @@ fn server_block(http_port: u16, site: &NginxSite) -> String {
          \t\t\tfastcgi_pass 127.0.0.1:{fpm};\n\
          \t\t\tfastcgi_index index.php;\n\
          {params}\
+         {php_value}\
          {env}\
          \t\t}}\n\
          \t}}\n",
@@ -843,6 +858,7 @@ mod tests {
                 php_fpm_port: 9783,
                 rewrite: mode,
                 body_limit: None,
+                php_value: None,
                 env: Vec::new(),
             }],
         }
@@ -901,6 +917,29 @@ mod tests {
     }
 
     #[test]
+    fn php_value_is_one_escaped_param_inside_the_php_location() {
+        let mut cfg = nginx_cfg(RewriteMode::Single);
+        cfg.sites[0].php_value = Some("upload_max_filesize=2048M\npost_max_size=2048M".into());
+        let out = generate_nginx_config(&cfg);
+        // ONE param, ini lines joined by nginx's `\n` escape — a literal newline
+        // inside the quoted string would not survive nginx's config parser.
+        assert!(
+            out.contains(
+                "fastcgi_param PHP_VALUE \"upload_max_filesize=2048M\\npost_max_size=2048M\";"
+            ),
+            "got: {out}"
+        );
+        assert_eq!(out.matches("PHP_VALUE").count(), 1);
+        assert!(!out.contains("upload_max_filesize=2048M\npost_max_size"), "raw newline emitted");
+        // Inside the `.php` location, after the template params.
+        let php_loc = out.find("location ~ \\.php$").unwrap();
+        assert!(out.find("PHP_VALUE").unwrap() > php_loc);
+        assert!(out.find("PHP_VALUE").unwrap() > out.find("fastcgi_param HTTPS").unwrap());
+        // None ⇒ nothing emitted; the pool's own settings stand.
+        assert!(!generate_nginx_config(&nginx_cfg(RewriteMode::Single)).contains("PHP_VALUE"));
+    }
+
+    #[test]
     fn dotfile_paths_are_denied_before_php_execution() {
         // A cloned plugin's `.git/`, a repo `.env`: 404 (root /.well-known/
         // exempt). Regex locations match in ORDER — the deny must precede the
@@ -956,6 +995,7 @@ mod tests {
             php_fpm_port: 9783,
             rewrite: RewriteMode::Single,
             body_limit: None,
+            php_value: None,
             env: Vec::new(),
         });
         let out = generate_nginx_config(&cfg);

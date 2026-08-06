@@ -8,7 +8,7 @@
 //! fixture ports, sandbox docroot, `Reaped` guards, and the probes the doc
 //! header used to ask a human to run with curl.
 
-use rexenv_lib::core::{binaries, services};
+use rexenv_lib::core::{adminer, binaries, services};
 use std::fs;
 use std::process::ExitCode;
 use std::thread;
@@ -38,7 +38,8 @@ async fn main() -> ExitCode {
     fs::create_dir_all(&docroot).unwrap();
     fs::write(
         docroot.join("index.php"),
-        "<?php echo 'rexenv-php-ok '.PHP_VERSION.\"\\n\"; ?>\n",
+        "<?php echo 'rexenv-php-ok '.PHP_VERSION.\"\\n\";\n\
+         echo 'upload='.ini_get('upload_max_filesize').' post='.ini_get('post_max_size').\"\\n\"; ?>\n",
     )
     .unwrap();
     fs::write(docroot.join("hi.txt"), "rexenv-static-ok\n").unwrap();
@@ -55,6 +56,10 @@ async fn main() -> ExitCode {
         php_fpm_port: FPM_PORT,
         rewrite: services::RewriteMode::Single,
         body_limit: None,
+        // Exercise the Adminer vhost's per-request ini override through a REAL
+        // `nginx -t` + php-fpm: the `\n` escape must survive nginx's parser and
+        // reach PHP as two ini lines (a literal newline fails to parse).
+        php_value: Some(adminer::IMPORT_PHP_VALUE.to_string()),
         env: Vec::new(),
     };
     let (conf, prefix) = services::write_nginx_config(&*plat, HTTP_PORT, vec![site]).unwrap();
@@ -70,6 +75,14 @@ async fn main() -> ExitCode {
     // The probes the header used to delegate to a human's curl.
     let php = common::http_get(HTTP_PORT, domain, "/");
     checks.is("PHP served via FastCGI", php.contains("rexenv-php-ok"), &php);
+    // The pool was written with NO settings (PHP's own 2M/8M defaults), so
+    // 2048M in the response can only have come from the PHP_VALUE param — proof
+    // the `\n` escape reached php-fpm as two ini lines, not one garbled key.
+    checks.is(
+        "PHP_VALUE raises upload_max_filesize + post_max_size for the vhost",
+        php.contains("upload=2048M post=2048M"),
+        &php,
+    );
     let stat = common::http_get(HTTP_PORT, domain, "/hi.txt");
     checks.is("static file served", stat.contains("rexenv-static-ok"), &stat);
 

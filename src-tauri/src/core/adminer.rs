@@ -25,6 +25,23 @@ pub const PROXY_SCHEME: &str = "rexdb";
 /// NEVER a public tunnel origin (§9) — it isn't a site.
 pub const ADMINER_HOST: &str = "adminer.rexenv.rex";
 
+/// Largest SQL dump the Adminer vhost accepts, in bytes — nginx's
+/// `client_max_body_size` for the vhost AND the PHP upload/post limits it runs
+/// with ([`IMPORT_PHP_VALUE`]), set together so nginx never 413s a body PHP
+/// would take. FIXED, deliberately: Adminer does NOT track the default pool's
+/// per-version PHP settings the way a site's block does (`php::nginx_body_limits`).
+/// Those bound what a *site* accepts off the network; importing a big dump is
+/// this vhost's whole job, and it's loopback-only (§5.2). Before this cap the
+/// vhost inherited the 128m http-level default and 413'd every larger dump —
+/// with no setting anywhere that could raise it.
+pub const MAX_IMPORT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Per-request `PHP_VALUE` ini lines for the Adminer vhost, mirroring
+/// [`MAX_IMPORT_BYTES`]. php-fpm applies these over the pool's OVERRIDABLE
+/// `php_value[…]` lines, so the shared default pool — and every site on it —
+/// keeps the user's own upload limits.
+pub const IMPORT_PHP_VALUE: &str = "upload_max_filesize=2048M\npost_max_size=2048M";
+
 /// Query flag a rexenv deep-link sets to request a one-click scoped session (§11.4).
 pub const AUTOLOGIN_FLAG: &str = "rexenv_auto";
 
@@ -510,6 +527,26 @@ mod tests {
         // An absolute off-vhost Location must NOT be followed.
         let foreign = url.join("https://example.com/x").unwrap();
         assert_ne!(foreign.host_str(), Some(ADMINER_HOST));
+    }
+
+    #[test]
+    fn import_php_limits_never_exceed_the_nginx_cap() {
+        // The 413 this pair exists to kill comes back the moment PHP is told it
+        // may accept MORE than nginx will pass — so pin BOTH keys against the cap
+        // (and require both to be present, or a typo'd key reverts to PHP's 2M/8M
+        // defaults with nothing failing).
+        let mut seen = 0;
+        for line in IMPORT_PHP_VALUE.lines() {
+            let (key, value) = line.split_once('=').expect("key=value");
+            let bytes = crate::core::php::parse_php_size(value).expect("php size");
+            assert!(
+                bytes <= MAX_IMPORT_BYTES,
+                "{key} ({value}) exceeds the nginx cap ({MAX_IMPORT_BYTES} bytes) — nginx 413s first"
+            );
+            assert!(matches!(key, "upload_max_filesize" | "post_max_size"), "unexpected key {key}");
+            seen += 1;
+        }
+        assert_eq!(seen, 2, "both upload_max_filesize and post_max_size must be set");
     }
 
     #[test]
