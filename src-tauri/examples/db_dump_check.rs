@@ -79,9 +79,20 @@ async fn main() {
 
     let client = database::mysql_client_bin(&basedir);
     database::create_database(&client, PORT, DB).expect("create source db");
+    // A latin1 column and a BLOB, populated with bytes that are NOT valid UTF-8
+    // — which is what a real WordPress database holds and what a real mysqldump
+    // then writes. Reading that artifact as text failed a 2 GB migration AFTER
+    // the dump succeeded ("stream did not contain valid UTF-8", 8 Aug 2026), so
+    // the fixture carries the bytes rather than trusting the unit test alone.
+    // 0xE9 is latin1 'é'; 0xFF/0xFE/0x80 cannot appear in valid UTF-8 at all.
     let seed = format!(
-        "USE {DB}; CREATE TABLE wp_posts (id INT PRIMARY KEY, title TEXT); \
-         INSERT INTO wp_posts VALUES (1,'hello'),(2,'p)ss;w(rd survives'),(3,'third');"
+        "USE {DB}; \
+         CREATE TABLE wp_posts (id INT PRIMARY KEY, title TEXT, \
+            legacy VARCHAR(64) CHARACTER SET latin1, raw BLOB); \
+         INSERT INTO wp_posts VALUES \
+            (1,'hello', 0xE9E8FF, 0xFFFE0080), \
+            (2,'p)ss;w(rd survives', 'plain', NULL), \
+            (3,'third', 0x80818283, 0xDEADBEEF);"
     );
     let out = std::process::Command::new(&client)
         .args(["--no-defaults", "--protocol=TCP", "--host=127.0.0.1"])
@@ -187,7 +198,14 @@ async fn main() {
     let DumpOutcome::Done { artifact, manifest } = outcome else {
         panic!("not cancelled");
     };
-    let body = std::fs::read_to_string(&artifact).unwrap();
+    // The artifact is READ AS BYTES here for the same reason the scanner is:
+    // a fixture that could only be read as a String would be testing a dump
+    // this example is specifically seeded not to produce.
+    let raw = std::fs::read(&artifact).unwrap();
+    let not_utf8 = std::str::from_utf8(&raw).is_err();
+    println!("  artifact genuinely contains non-UTF-8 bytes: {not_utf8}");
+    ok &= not_utf8;
+    let body = String::from_utf8_lossy(&raw).into_owned();
     let monotonic = progress_points.windows(2).all(|w| w[0] <= w[1]);
     println!("  artifact: {} ({} bytes, mode {:o})", artifact.display(), manifest.artifact_bytes, mode_of(&artifact));
     println!("  progress points: {} (monotonic: {monotonic})", progress_points.len());
@@ -320,7 +338,8 @@ async fn main() {
     )
     .expect("the dump must succeed once the unreadable table is skipped");
     let DumpOutcome::Done { artifact: a3, manifest: m3 } = fixed else { panic!("not cancelled") };
-    let body3 = std::fs::read_to_string(&a3).unwrap();
+    // Bytes again: this artifact carries the same latin1/BLOB rows.
+    let body3 = String::from_utf8_lossy(&std::fs::read(&a3).unwrap()).into_owned();
     let kept_the_data = body3.contains("p)ss;w(rd survives") && body3.contains("wp_empty");
     let left_out = !body3.contains("CREATE TABLE `wp_broken`");
     println!("  dump succeeded: {} tables; healthy data present: {kept_the_data}; wp_broken absent: {left_out}", m3.table_count);

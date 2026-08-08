@@ -596,30 +596,78 @@ pub struct ScanReport {
     pub tables: Vec<String>,
 }
 
+/// Find `needle` in `hay` — there is no `[u8]::find`, and the scan below works
+/// on bytes on purpose (see [`scan_artifact`]).
+fn find_sub(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || hay.len() < needle.len() {
+        return None;
+    }
+    hay.windows(needle.len()).position(|w| w == needle)
+}
+
+fn count_sub(hay: &[u8], needle: &[u8]) -> u64 {
+    if needle.is_empty() {
+        return 0;
+    }
+    let mut n = 0;
+    let mut i = 0;
+    while let Some(at) = find_sub(&hay[i..], needle) {
+        n += 1;
+        i += at + needle.len();
+    }
+    n
+}
+
 /// Scan the artifact once, streaming — it can be gigabytes.
+///
+/// BYTES, NOT TEXT, and that is the whole point of the rewrite. A dump is not
+/// UTF-8 and was never promised to be: a WordPress database carries latin1
+/// columns, `BLOB`s written raw, and serialized PHP holding whatever bytes an
+/// old plugin stored. Reading it with `BufRead::lines()` (which yields
+/// `String`) failed a real 2 GB migration with `io error: stream did not
+/// contain valid UTF-8` — AFTER the dump had succeeded, so the user paid the
+/// full copy and got nothing (8 Aug 2026).
+///
+/// Every pattern this looks for is ASCII, so byte comparison finds exactly what
+/// the string version found on valid input, and simply doesn't care about the
+/// rest of the line. Table names go through `from_utf8_lossy`: they come out of
+/// a backtick-quoted identifier the server itself wrote, and a replacement char
+/// in a pathological name is a cosmetic wrong in one manifest entry — never a
+/// failed migration.
 pub fn scan_artifact(path: &Path) -> Result<ScanReport> {
     let file = std::fs::File::open(path)?;
-    let reader = std::io::BufReader::new(file);
+    let mut reader = std::io::BufReader::new(file);
     let mut f = Findings::default();
     let mut tables = Vec::new();
-    for (i, line) in reader.lines().enumerate() {
-        let line = line?;
-        if i == 0 && line.starts_with("/*!999999\\-") {
-            f.skip_sandbox_line = true;
+    let mut line: Vec<u8> = Vec::with_capacity(8 * 1024);
+    let mut first = true;
+    loop {
+        line.clear();
+        if reader.read_until(b'\n', &mut line)? == 0 {
+            break;
         }
-        // mysqldump/mariadb-dump always backtick: CREATE TABLE `name` (
-        if let Some(rest) = line.strip_prefix("CREATE TABLE `") {
-            if let Some(end) = rest.find('`') {
-                tables.push(rest[..end].to_string());
+        while matches!(line.last(), Some(b'\n' | b'\r')) {
+            line.pop();
+        }
+        if first {
+            first = false;
+            if line.starts_with(b"/*!999999\\-") {
+                f.skip_sandbox_line = true;
             }
         }
-        f.definer_count += line.matches("DEFINER=").count() as u64;
-        if line.contains("IDENTIFIED WITH mysql_native_password")
-            || line.contains("IDENTIFIED WITH 'mysql_native_password'")
+        // mysqldump/mariadb-dump always backtick: CREATE TABLE `name` (
+        if let Some(rest) = line.strip_prefix(b"CREATE TABLE `".as_slice()) {
+            if let Some(end) = find_sub(rest, b"`") {
+                tables.push(String::from_utf8_lossy(&rest[..end]).into_owned());
+            }
+        }
+        f.definer_count += count_sub(&line, b"DEFINER=");
+        if find_sub(&line, b"IDENTIFIED WITH mysql_native_password").is_some()
+            || find_sub(&line, b"IDENTIFIED WITH 'mysql_native_password'").is_some()
         {
             f.native_password = true;
         }
-        if line.contains("NO_AUTO_CREATE_USER") {
+        if find_sub(&line, b"NO_AUTO_CREATE_USER").is_some() {
             f.no_auto_create_user = true;
         }
     }
@@ -947,6 +995,53 @@ mod tests {
         assert!(m.contains("needs about"), "{m}");
         assert!(m.contains("free"), "{m}");
         assert!(m.contains("estimate"), "{m}");
+    }
+
+    #[test]
+    fn the_scan_reads_a_dump_that_is_not_utf8() {
+        // The exact shape that killed a 2 GB migration AFTER the dump had
+        // already succeeded: latin1 bytes and a raw blob inside INSERT data.
+        // 0xFF is not valid UTF-8 in any position, so `BufRead::lines()` fails
+        // the whole file — and with it the dump the user just waited for.
+        let dir = std::env::temp_dir().join(format!("rexenv-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("binary.sql");
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(b"CREATE TABLE `wp_posts` (\n");
+        bytes.extend_from_slice(b"INSERT INTO `wp_posts` VALUES (1,'caf");
+        bytes.push(0xE9); // latin1 'e-acute' — lone continuation byte
+        bytes.extend_from_slice(b"'),(2,'");
+        bytes.extend_from_slice(&[0xFF, 0xFE, 0x00, 0x80]); // raw blob bytes
+        bytes.extend_from_slice(b"');\n");
+        bytes.extend_from_slice(b"/*!50017 DEFINER=`root`@`localhost` */ DEFINER=x\n");
+        bytes.extend_from_slice(b"CREATE TABLE `wp_options` (\n");
+        bytes.extend_from_slice(b"  ... NO_AUTO_CREATE_USER ...\n");
+        std::fs::write(&path, &bytes).unwrap();
+
+        let report = scan_artifact(&path).expect("a non-UTF-8 dump must still scan");
+        assert_eq!(report.tables, vec!["wp_posts", "wp_options"]);
+        assert_eq!(report.findings.definer_count, 2, "both DEFINERs on the binary line");
+        assert!(report.findings.no_auto_create_user);
+        assert!(!report.findings.skip_sandbox_line);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn the_sandbox_line_is_still_detected_only_on_the_first_line() {
+        // The `first` flag replaced an enumerate() index — a rewrite is exactly
+        // where an "only line 0" rule turns into "any line".
+        let dir = std::env::temp_dir().join(format!("rexenv-sandbox-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let head = dir.join("head.sql");
+        std::fs::write(&head, "/*!999999\\- enable the sandbox mode */\nCREATE TABLE `t` (\n")
+            .unwrap();
+        assert!(scan_artifact(&head).unwrap().findings.skip_sandbox_line);
+        // Same text further down is NOT the sandbox line.
+        let mid = dir.join("mid.sql");
+        std::fs::write(&mid, "CREATE TABLE `t` (\n/*!999999\\- enable the sandbox mode */\n")
+            .unwrap();
+        assert!(!scan_artifact(&mid).unwrap().findings.skip_sandbox_line);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

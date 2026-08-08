@@ -159,12 +159,16 @@ pub fn feed(
         .ok_or_else(|| Error::Other("restore client has no stdin".into()))?;
     let mut stderr_pipe = child.stderr.take();
     let stderr_thread = std::thread::spawn(move || {
-        let mut buf = String::new();
+        // Bytes then lossy, never `read_to_string`: the client quotes the row it
+        // choked on, so a latin1 or blob column puts non-UTF-8 into the very
+        // message that explains the failure. Reading it as text would drop that
+        // message on the floor and leave the user with a bare "restore failed".
+        let mut raw: Vec<u8> = Vec::new();
         if let Some(p) = stderr_pipe.as_mut() {
             use std::io::Read;
-            let _ = p.read_to_string(&mut buf);
+            let _ = p.read_to_end(&mut raw);
         }
-        buf
+        String::from_utf8_lossy(&raw).into_owned()
     });
 
     let kill = |child: &mut std::process::Child| {
@@ -180,10 +184,13 @@ pub fn feed(
         let _ = child.wait();
     };
 
-    // Skip the flagged sandbox line, if any.
+    // Skip the flagged sandbox line, if any. Bytes, not `read_line`: the same
+    // reason `scan_artifact` reads bytes — a dump is not UTF-8, and here the
+    // failure would be worse than an error, because the `let _ =` would swallow
+    // it and feed a stream whose first line was partially consumed.
     if manifest.findings.skip_sandbox_line {
-        let mut first = String::new();
-        let _ = reader.read_line(&mut first);
+        let mut first: Vec<u8> = Vec::new();
+        let _ = reader.read_until(b'\n', &mut first);
     }
 
     let mut fed: u64 = 0;
