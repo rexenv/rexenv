@@ -55,6 +55,10 @@ export interface Site {
    *  shape a user site and a Kept scratch site share, so nothing can treat
    *  "no expiry" as two different states. */
   expiresAt?: string | null;
+  /** Folder inside `path` that the web server roots at (v32). `""`/absent = the
+   *  path itself; a Laravel site rexenv created stores `"public"`, keeping its
+   *  `.env` above anything served. Display only — the backend decides it. */
+  docrootSubdir?: string;
 }
 
 /** A plugin or theme an agent cloned into a scratch site (v29), as the Sites

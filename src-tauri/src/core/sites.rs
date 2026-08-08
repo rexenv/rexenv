@@ -395,6 +395,17 @@ fn create_recording_ownership(
     // Non-WP sites never consult it.
     let content_dir = (new.site_type == SiteType::Wordpress)
         .then(|| detect_content_dir_rel(Path::new(&new.path)).to_string());
+    // What the web server roots at, decided ONCE here (v32). A Laravel project
+    // WE create keeps `.env` at `path` and serves `path/public`; a LINKED one
+    // was detected by reading the disk and its stored path ALREADY points at
+    // the folder to serve (`DetectedProject::docroot_rel` was applied at link
+    // time), so appending `public` again would serve a directory that does not
+    // exist. Ownership of the docroot is exactly that distinction.
+    let docroot_subdir = if new.site_type == SiteType::Laravel && docroot_managed {
+        LARAVEL_DOCROOT_SUBDIR.to_string()
+    } else {
+        String::new()
+    };
     let site = Site {
         id: Uuid::new_v4().to_string(),
         name: new.name,
@@ -441,6 +452,7 @@ fn create_recording_ownership(
             Ownership::User => None,
             Ownership::Agent { ttl_hours, .. } => Some(store::db_time_from_now(conn, *ttl_hours)?),
         },
+        docroot_subdir,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -805,7 +817,7 @@ pub fn detect_project(root: &Path) -> DetectedProject {
     if has("artisan") && has("public/index.php") {
         return DetectedProject {
             site_type: SiteType::Laravel,
-            docroot_rel: "public".into(),
+            docroot_rel: LARAVEL_DOCROOT_SUBDIR.into(),
             label: "Laravel",
             existing_install: true,
         };
@@ -1181,11 +1193,19 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     Ok(Teardown { existed: true, docroot_removed })
 }
 
-/// Whether a site type needs a database provisioned (the pluggable DB stage —
-/// Blank PHP: none; WordPress/Laravel: MySQL, done in §8/§9).
+/// Whether a site type needs a database provisioned (Blank PHP: none;
+/// WordPress/Laravel: yes). Called by the provision job to decide the `db`
+/// phase and by teardown's drop decision — ONE answer, so a type can never be
+/// given a database name it never gets a database for (which is exactly what
+/// Laravel sites had while this function sat with no callers at all).
 pub fn needs_database(site_type: SiteType) -> bool {
     matches!(site_type, SiteType::Wordpress | SiteType::Laravel)
 }
+
+/// The folder a Laravel project serves from — its front controller lives in
+/// `public/index.php` and `.env` deliberately does NOT. One constant, used by
+/// both detection (linked projects) and creation (`docroot_subdir`).
+pub const LARAVEL_DOCROOT_SUBDIR: &str = "public";
 
 /// The validated TLD of `domain` — its last label, returned only after the
 /// full domain validation (charset, labels, TLD policy) passes. Callers use it
@@ -1491,7 +1511,9 @@ fn nginx_site_for(
 ) -> services::NginxSite {
     services::NginxSite {
         domain: s.domain.clone(),
-        docroot: PathBuf::from(&s.path),
+        // v32: what we SERVE, which is the project root for most sites and
+        // `public/` for a Laravel project we created — never `s.path` directly.
+        docroot: s.served_root(),
         php_fpm_port: pool_port_for_site(s),
         rewrite: rewrite_mode_for(s.multisite),
         body_limit: body_limits.get(&php::minor_of(&s.php_version)).copied(),
@@ -2024,6 +2046,7 @@ mod tests {
             origin: SiteOrigin::User,
             agent_client: None,
             expires_at: None,
+            docroot_subdir: String::new(),
         }
     }
 
@@ -2274,6 +2297,7 @@ mod tests {
             origin: SiteOrigin::User,
             agent_client: None,
             expires_at: None,
+            docroot_subdir: String::new(),
         }
     }
 

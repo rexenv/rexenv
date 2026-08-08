@@ -599,6 +599,7 @@ mod tests {
             origin: SiteOrigin::User,
             agent_client: None,
             expires_at: None,
+            docroot_subdir: String::new(),
         };
         assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
         for ws in [WebServer::Apache, WebServer::Frankenphp] {

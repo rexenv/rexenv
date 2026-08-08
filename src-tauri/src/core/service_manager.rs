@@ -782,7 +782,7 @@ impl ServiceManager {
                     s.domain.clone(),
                     Desired {
                         kind,
-                        docroot: PathBuf::from(&s.path),
+                        docroot: s.served_root(),
                         port,
                         fpm_port: sites::pool_port_for_site(s),
                         rewrite: sites::rewrite_mode_for(s.multisite),
@@ -1727,7 +1727,7 @@ impl ServiceManager {
                     platform,
                     kind,
                     &domain,
-                    &PathBuf::from(&site.path),
+                    &site.served_root(),
                     sites::recorded_override_port(site).unwrap_or_else(|| kind.port(&domain)),
                     sites::pool_port_for_site(site),
                     sites::rewrite_mode_for(site.multisite),
@@ -2757,6 +2757,7 @@ mod tests {
             origin: SiteOrigin::User,
             agent_client: None,
             expires_at: None,
+            docroot_subdir: String::new(),
         };
 
         let sites = vec![

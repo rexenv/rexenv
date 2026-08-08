@@ -763,6 +763,7 @@ mod tests {
             origin: SiteOrigin::User,
             agent_client: None,
             expires_at: None,
+            docroot_subdir: String::new(),
         }
     }
 

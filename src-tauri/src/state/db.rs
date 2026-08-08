@@ -436,6 +436,17 @@ const MIGRATIONS: &[&str] = &[
     // rows, not an unknown — this is the rare backfill where the old behaviour
     // makes the default a fact rather than a guess.
     "ALTER TABLE db_imports ADD COLUMN skipped_tables TEXT NOT NULL DEFAULT '';",
+    // v32 — the folder INSIDE the site path that the web server actually roots
+    // at. Empty (the default, and every pre-v32 row) means the path itself.
+    //
+    // Laravel is why: `composer create-project` writes a project whose entry
+    // point is `public/`, with `.env` — database credentials — sitting one level
+    // ABOVE it. Serving the project root would publish that file, so the served
+    // root and the project root are two different facts and the row must hold
+    // both: teardown removes `path` (the whole project), the vhost roots at
+    // `path/docroot_subdir`. Read ONLY through `Site::served_root()` so the two
+    // can never drift into a per-call-site guess.
+    "ALTER TABLE sites ADD COLUMN docroot_subdir TEXT NOT NULL DEFAULT '';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1138,25 +1149,30 @@ mod tests {
         // (scratch_create_site shipped first) come out with zero package rows,
         // and that is a real answer — "nothing was added" — not an unknown. The
         // tool that adds one did not exist when they were made.
-        use crate::state::models::SiteOrigin;
         let conn = Connection::open_in_memory().unwrap();
         for (i, stmt) in MIGRATIONS[..28].iter().enumerate() {
             conn.execute_batch(stmt).unwrap();
             conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
         }
-        let mut scratch = crate::state::models::test_site(
-            "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24",
-            "probe.scratch.rex",
-            SiteOrigin::Agent,
-        );
-        scratch.expires_at = Some("2099-01-01 00:00:00".into());
-        crate::state::store::insert_site(&conn, &scratch).unwrap();
+        // Inserted with the columns that existed AT v28, in raw SQL — the same
+        // discipline the older era tests use. Going through `insert_site` would
+        // write today's column list into a v28 schema, so every future `sites`
+        // column would break this test for a reason that has nothing to do with
+        // what it proves (v32 did exactly that).
+        let id = "c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24";
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path, origin, expires_at)
+             VALUES (?1, 'probe', 'probe.scratch.rex', 'wordpress', '8.3',
+                     '/Users/x/rexenv/Sites/probe.scratch.rex', 'agent', '2099-01-01 00:00:00')",
+            [id],
+        )
+        .unwrap();
         migrate(&conn).unwrap();
 
-        let packages = crate::state::store::scratch_packages(&conn, &scratch.id).unwrap();
+        let packages = crate::state::store::scratch_packages(&conn, id).unwrap();
         assert!(packages.is_empty(), "an existing scratch site has no packages — and that is an answer");
         // The site itself is untouched by the migration.
-        let after = crate::state::store::get_site(&conn, &scratch.id).unwrap().unwrap();
+        let after = crate::state::store::get_site(&conn, id).unwrap().unwrap();
         assert!(after.is_scratch() && after.expires_at.is_some());
     }
 

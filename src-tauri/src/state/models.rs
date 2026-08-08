@@ -228,9 +228,35 @@ pub struct Site {
     /// clears it; nothing recomputes it from `created_at`.
     #[serde(default)]
     pub expires_at: Option<String>,
+    /// Folder INSIDE [`Site::path`] that the web server roots at (v32). `""`
+    /// (the default, and every pre-v32 row) means the path itself. Laravel sets
+    /// `public`, keeping `.env` — the site's database credentials — one level
+    /// above anything the web server will ever serve.
+    ///
+    /// Never read this field directly to build a docroot; call
+    /// [`Site::served_root`]. `path` stays the thing teardown removes.
+    #[serde(default)]
+    pub docroot_subdir: String,
 }
 
 impl Site {
+    /// The directory the web server roots at: [`Site::path`] joined with
+    /// [`Site::docroot_subdir`] when the site has one.
+    ///
+    /// THE single answer to "what do we serve" — vhost, override backend and
+    /// tunnel docroot all call this, so a site whose entry point is a subfolder
+    /// can never be served from its project root by one code path while another
+    /// gets it right. (`path` remains the project root: what teardown removes,
+    /// what composer/artisan run in.)
+    pub fn served_root(&self) -> std::path::PathBuf {
+        let root = std::path::PathBuf::from(&self.path);
+        if self.docroot_subdir.is_empty() {
+            root
+        } else {
+            root.join(&self.docroot_subdir)
+        }
+    }
+
     /// The recorded content dir relative to the docroot, defaulting to WP's
     /// stock `wp-content` when no record exists yet.
     pub fn content_dir_rel(&self) -> &str {
@@ -304,6 +330,7 @@ pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
         origin,
         agent_client: None,
         expires_at: None,
+        docroot_subdir: String::new(),
     }
 }
 
@@ -460,7 +487,30 @@ mod tests {
             origin,
             agent_client: None,
             expires_at: expires_at.map(str::to_string),
+            docroot_subdir: String::new(),
         }
+    }
+
+    /// The whole point of `docroot_subdir`: a Laravel project's `.env` — its
+    /// database credentials — sits at `path`, one level ABOVE everything the
+    /// web server may ever reach. If these two answers were ever the same
+    /// value, that file would be a public URL.
+    #[test]
+    fn served_root_is_the_subdir_and_never_the_project_root_that_holds_dot_env() {
+        let mut s = site(SiteOrigin::User, None, Some(true));
+        s.site_type = SiteType::Laravel;
+        s.path = "/Users/x/rexenv/Sites/shop.rex".into();
+        s.docroot_subdir = "public".into();
+        assert_eq!(s.served_root(), std::path::PathBuf::from("/Users/x/rexenv/Sites/shop.rex/public"));
+        assert!(!s.served_root().starts_with(
+            std::path::PathBuf::from("/Users/x/rexenv/Sites/shop.rex").join(".env")
+        ));
+
+        // Empty (every pre-v32 row, every WordPress site, every LINKED project
+        // whose stored path already points at the folder to serve) means the
+        // path itself — appending anything there would serve a missing dir.
+        s.docroot_subdir = String::new();
+        assert_eq!(s.served_root(), std::path::PathBuf::from("/Users/x/rexenv/Sites/shop.rex"));
     }
 
     const NOW: &str = "2026-08-01 12:00:00";

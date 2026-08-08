@@ -18,7 +18,8 @@ use rusqlite::{params, Connection, Row};
 /// reads the same shape.
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
-     docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at";
+     docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, \
+     docroot_subdir";
 
 /// Bound on the AGENT-controlled `agent_client` (v27). It arrives from MCP
 /// `initialize`'s `clientInfo.name`, bounded only by the session's 4 MB line
@@ -82,6 +83,9 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         agent_client: row.get(21)?,
         // v27: NULL = never expires (a user site, or a Kept scratch site).
         expires_at: row.get(22)?,
+        // v32: "" = serve `path` itself, which is every pre-v32 row and every
+        // site whose entry point IS its root. Read via `Site::served_root()`.
+        docroot_subdir: row.get(23)?,
     })
 }
 
@@ -95,8 +99,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
         params![
             site.id,
             site.name,
@@ -123,6 +127,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             // row never reaches disk unbounded, whatever built the `Site`.
             cap_agent_client(site.agent_client.as_deref()),
             site.expires_at,
+            site.docroot_subdir,
         ],
     )?;
     Ok(())
@@ -1388,6 +1393,7 @@ mod tests {
             origin: SiteOrigin::Agent,
             agent_client: agent_client.map(str::to_string),
             expires_at: Some("2026-08-02 09:00:00".into()),
+            docroot_subdir: String::new(),
         }
     }
 

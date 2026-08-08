@@ -77,6 +77,7 @@ async fn main() {
             origin: SiteOrigin::User,
             agent_client: None,
             expires_at: None,
+            docroot_subdir: String::new(),
         },
     )
     .expect("insert site row");
