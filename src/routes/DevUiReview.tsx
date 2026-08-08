@@ -33,10 +33,11 @@ import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
+import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { toast } from "@/lib/toast";
-import type { ActivityStatus, AgentAction, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site } from "@/types";
+import type { ActivityStatus, AgentAction, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site, SiteProvisionState } from "@/types";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -450,6 +451,50 @@ function ScratchView() {
   );
 }
 
+/** The provision card at the width it actually renders in (the New Site
+ *  dialog body), with the LONGEST real phase label and a long domain at once.
+ *  This row broke in the real app: the phase label was `flex-none`, so a long
+ *  backend label pushed the domain out of the row entirely. The card must
+ *  truncate, never overflow — nothing here may reach past the dialog edge. */
+function ProvisionCardView() {
+  const job = (over: Partial<SiteProvisionState>): SiteProvisionState => ({
+    id: "9f1c7e40-2b6a-4d18-9d3c-58a71f0e4b22",
+    domain: "acme-reviews-staging.rex",
+    siteId: "26ed7ab8-d2c4-450b-bf4a-64531f64fe7e",
+    phases: [
+      { key: "prepare", label: "preparing site (domain, certificate)", status: "ok" },
+      { key: "fetch", label: "downloading binaries", status: "ok" },
+      { key: "db", label: "starting database", status: "ok" },
+      { key: "app_install", label: "installing Laravel", status: "running" },
+      { key: "configure", label: "creating database + .env", status: "pending" },
+      { key: "serve", label: "starting to serve", status: "pending" },
+    ],
+    phaseCursor: 3,
+    pct: 62,
+    status: "running",
+    summary: null,
+    error: null,
+    logKey: "site-provision-9f1c7e40.log",
+    downloadIds: [],
+    ...over,
+  });
+  const lines = ["$ composer create-project laravel/laravel .", "Generating optimized autoload files"];
+  return (
+    // The dialog body's own width — a card that fits at 860px but not here is
+    // exactly the bug this view exists to catch.
+    <div className="w-[420px] rounded-xl border border-rex-border bg-rex-surface-1 p-4">
+      <div className="space-y-3">
+        <SiteProvisionCard job={job({})} lines={lines} onCancel={() => {}} />
+        <SiteProvisionCard
+          job={job({ status: "failed", error: "composer create-project failed: exit 1", phaseCursor: 3 })}
+          lines={lines}
+          onCancel={() => {}}
+        />
+      </div>
+    </div>
+  );
+}
+
 function BadgesView() {
   const noop = () => {};
   const rows: Array<{ site: Site; dbState?: DbImportRecord["state"] }> = [
@@ -656,6 +701,7 @@ export function DevUiReview() {
         {view === "sites" && <SitesScaleView />}
         {view === "delete" && <DeleteView />}
         {view === "badges" && <BadgesView />}
+        {view === "provision" && <ProvisionCardView />}
         {view === "resolver" && (
           <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
             <div className="text-[0.8125rem] font-medium text-rex-text">Valet / Herd</div>

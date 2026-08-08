@@ -138,7 +138,10 @@ export function SiteProvisionCard({
   const trackState = running ? "run" : job.status === "ok" ? "ok" : "stopped";
 
   return (
-    <div className="rounded-md border border-rex-border bg-rex-surface-1 px-2.5 py-2">
+    <div
+      className="rounded-md border border-rex-border bg-rex-surface-1 px-2.5 py-2"
+      data-probe="provision-card"
+    >
       <div className="flex items-center gap-2">
         {running ? (
           <Loader2 className="h-3.5 w-3.5 flex-none animate-rex-spin text-brand" />
@@ -155,23 +158,22 @@ export function SiteProvisionCard({
             {job.status === "ok" ? "✓" : job.status === "cancelled" ? "–" : "✕"}
           </span>
         )}
-        <span className="min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-rex-text">
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-rex-text"
+          data-probe="provision-domain"
+        >
           creating {job.domain}
         </span>
-        {running && phase && (
-          <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
-            {phase.label}
-          </span>
-        )}
-        {!running && failedish && phase && (
-          <span className="flex-none font-mono text-[0.6875rem] text-status-error-bright">
-            failed at: {phase.label}
-          </span>
-        )}
+        {/* The phase label used to live HERE, competing with the domain and
+            both buttons for one row. Backend labels vary in length by a factor
+            of three ("db" → "installing Laravel"), so at the New Site dialog's
+            width the long ones pushed the domain out of the row entirely. It
+            now renders on the detail line below, where it has the width to be
+            read — and the header keeps a fixed cast: domain, Cancel, log. */}
         {/* Cancel visible from the START — the escape for the long network
             phases; never hidden behind the log toggle. */}
         {running && (
-          <button className={BTN} onClick={onCancel}>
+          <button className={`${BTN} flex-none`} onClick={onCancel}>
             Cancel
           </button>
         )}
@@ -210,13 +212,29 @@ export function SiteProvisionCard({
               </div>
             </div>
           ))}
-      <div
-        className={`mt-1.5 truncate font-mono text-[0.6875rem] ${
-          !running && failedish ? "text-status-error-bright" : "text-rex-text-muted"
-        }`}
-        title={detail ?? undefined}
-      >
-        {detail}
+      <div className="mt-1.5 flex items-baseline gap-1.5 font-mono text-[0.6875rem]">
+        {phase && (running || failedish) && (
+          <span
+            className={`min-w-0 max-w-[60%] shrink-0 truncate ${
+              failedish ? "text-status-error-bright" : "text-rex-text"
+            }`}
+            data-probe="provision-phase"
+            title={phase.label}
+          >
+            {failedish ? `failed at: ${phase.label}` : phase.label}
+          </span>
+        )}
+        {phase && (running || failedish) && detail && (
+          <span className="flex-none text-rex-text-dim">·</span>
+        )}
+        <span
+          className={`min-w-0 flex-1 truncate ${
+            !running && failedish ? "text-status-error-bright" : "text-rex-text-muted"
+          }`}
+          title={detail ?? undefined}
+        >
+          {detail}
+        </span>
       </div>
       {running && silentFor >= 10 && (
         <div className="mt-0.5 font-mono text-[0.625rem] text-rex-text-dim">

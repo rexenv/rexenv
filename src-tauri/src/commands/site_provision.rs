@@ -170,8 +170,11 @@ fn phase_defs(
     // that step the site would run on a file the Databases screen never shows.
     if matches!(site_type, SiteType::Laravel) && !linked {
         v.push(("db", "starting database"));
-        v.push(("app_install", "installing Laravel (composer create-project)"));
-        v.push(("configure", "creating database, wiring .env, running migrations"));
+        // Labels stay in the same size class as the WordPress ones: they render
+        // on ONE row beside the domain and the buttons, so a long one is a
+        // layout problem, not just wordy. The full commands stream to the log.
+        v.push(("app_install", "installing Laravel"));
+        v.push(("configure", "creating database + .env"));
     }
     v.push(("serve", "starting to serve"));
     v

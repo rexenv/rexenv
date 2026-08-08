@@ -89,6 +89,12 @@ const SCENARIOS = [
   // an expired site, an expired one the reaper could not remove — and the two
   // rows that must render as ORDINARY sites (a Kept one, and a user's own site
   // hand-named `*.scratch.*`), which is what the probe below checks.
+  // The provision card at the New Site dialog's own width, with the longest
+  // real phase label. This row shipped broken: the phase label was `flex-none`,
+  // so a long backend label ("installing Laravel (composer create-project)")
+  // pushed the domain clean out of the row. Probe below, plus the universal
+  // overflow assertion.
+  ["provision-long-label", "view=provision", []],
   ["scratch-rows", "view=scratch", []],
   ["scratch-keep-dialog", "view=keep", []],
 ];
@@ -109,6 +115,32 @@ const PROBES = {
       if (!frame) return ["no Adminer iframe in the DOM"];
       const h = frame.getBoundingClientRect().height;
       if (h < 300) problems.push(`iframe height ${Math.round(h)}px — percentage chain collapsed`);
+      return problems;
+    }),
+  // The provision card's header row: everything must stay INSIDE the card, and
+  // "creating <domain>" must still be readable. The shipped bug had the domain
+  // at zero width while the phase label ran past the card's right edge, so both
+  // halves are asserted — a truncated label with no domain left is not a pass.
+  provisionRow: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const cards = document.querySelectorAll('[data-probe="provision-card"]');
+      if (!cards.length) return ["no provision card in the DOM"];
+      for (const card of cards) {
+        const cr = card.getBoundingClientRect();
+        const domain = card.querySelector('[data-probe="provision-domain"]');
+        const label = card.querySelector('[data-probe="provision-phase"]');
+        if (!domain) { problems.push("no domain span"); continue; }
+        const dr = domain.getBoundingClientRect();
+        if (dr.width < 60) problems.push(`domain squeezed to ${dr.width.toFixed(1)}px`);
+        if (dr.height > 24) problems.push(`domain wrapped (${dr.height.toFixed(1)}px tall)`);
+        for (const [what, el] of [["domain", domain], ["phase label", label]]) {
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (r.right > cr.right + 0.5) problems.push(`${what} overflows the card by ${(r.right - cr.right).toFixed(1)}px`);
+          if (r.height > 24) problems.push(`${what} wrapped (${r.height.toFixed(1)}px tall)`);
+        }
+      }
       return problems;
     }),
   // The WKWebView metrics fix, committed as a check: every pill at least the
@@ -229,6 +261,7 @@ function probeFor(name) {
   if (name === "pills") return PROBES.pills;
   if (name.startsWith("agents")) return PROBES.agents;
   if (name === "scratch-rows") return PROBES.scratchGroup;
+  if (name.startsWith("provision")) return PROBES.provisionRow;
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }
