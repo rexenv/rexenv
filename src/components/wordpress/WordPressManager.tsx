@@ -391,7 +391,10 @@ export function WordPressManager({
  *  `multisite` prop refreshes via ["sites"] and this tab flips to NetworkPanel. */
 function ConvertPanel({ siteId, domain }: { siteId: string; domain: string }) {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<Exclude<MultisiteMode, "none">>("subdirectory");
+  // Subdomain, matching New Site's multisite toggle — the two screens create
+  // the same kind of network, and the choice is permanent enough that a
+  // different default in each place is a trap.
+  const [mode, setMode] = useState<Exclude<MultisiteMode, "none">>("subdomain");
 
   const convert = useMutation({
     mutationFn: () => wpMultisiteConvert(siteId, mode),
