@@ -3,8 +3,10 @@
 The live design reference (extracted 28 Jul 2026 from the historical
 `docs/archive/DESIGN_BRIEF.md` + `docs/archive/DESIGN-GAPS.md`, refreshed to
 as-shipped). Token values live in `src/styles/tokens.css` + the Tailwind theme —
-never hardcode hex. Screen comps: `design/*.dc.html` (one per screen; historical,
-aspirational — see "intentional divergences" below before "fixing" toward one).
+never hardcode hex. Screen comps (`design/*.dc.html`, one per screen; historical,
+aspirational) were removed from the tree pre-publication (2026-08-08) — recover them
+from git history if needed, and see "intentional divergences" below before "fixing"
+the shipped UI toward one.
 
 ## Design DNA
 

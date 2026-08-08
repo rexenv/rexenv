@@ -102,5 +102,5 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Cutting a release — CI pipeline, draft gate, tap auto-bump | `docs/RELEASING.md` (cask itself lives in `rexenv/homebrew-tap`) |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |
-| Design system, honest-UI rules, comp divergences | `docs/DESIGN.md` (+ `design/*.dc.html` comps, historical) |
+| Design system, honest-UI rules, comp divergences | `docs/DESIGN.md` (comps removed from tree — in git history) |
 | Why a past decision / phase evidence / audit trail | `docs/archive/` — **historical, may contradict current code; never trust without checking** |

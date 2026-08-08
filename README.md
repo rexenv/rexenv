@@ -91,7 +91,6 @@ rexenv/
 ├── LICENSE · NOTICE · THIRD-PARTY-NOTICES.md · SECURITY.md
 ├── CLAUDE.md                   # agent router: rules + doc index
 ├── CONTRIBUTING.md             # build/run · the gate · conventions · deliberate decisions · DCO
-├── design/                     # reference comps (*.dc.html) — one per screen
 ├── docs/                       # ARCHITECTURE · MAP · TESTING · CLAIM-LEDGER · PORTS
 │   │                           #   TODO · INSTALL · SMOKE-TEST · PUBLISH-TESTING
 │   │                           #   CLI-ROADMAP · SIGNING · DESIGN · PLAN-*.md
