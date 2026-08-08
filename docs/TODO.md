@@ -48,12 +48,20 @@ evidence cited.
   `ADOPTED_MISS_LIMIT`-style counter and no positive php-fpm title identification
   (the adopted-service reap got both in B29). Surfaced in the July codebase review;
   previously tracked only there.
-- [ ] **New Site "Laravel" card promises an installer that doesn't exist**
-  (`src/components/sites/NewSiteDialog.tsx:66` — "A fresh Laravel app via the
-  installer…"): `SiteType::Laravel` is serve-only; `phase_defs` has no Laravel
-  install phases and nothing invokes `laravel new`/`create-project`. Honest-UI
-  bug: fix the copy (serve-an-existing-app) or build the flow. Surfaced by the
-  UI review + migration plan; tracked by neither until now.
+- [x] **New Site "Laravel" card promises an installer that doesn't exist** —
+  the flow was BUILT rather than the copy softened (9 Aug 2026, `cfe4be3` +
+  `fb4ae08` + `52c4783`). ✓ Evidence: `phase_defs` gains db → app_install →
+  configure for `SiteType::Laravel`; `core::laravel` runs
+  `composer create-project laravel/laravel` through the site's bundled PHP,
+  wires `.env` (DB_* + APP_URL) and re-runs the migrations against the site's
+  database — the skeleton's own post-create `migrate` runs while `.env` still
+  says sqlite, so without that step the MySQL database stays empty; `.env` is
+  kept OUT of the served tree by v32 `docroot_subdir` + `Site::served_root()`,
+  with a backfill for pre-existing Laravel rows; `db_created` is recorded so
+  delete drops the database instead of orphaning it. Live-verified against
+  laravel/framework ^13.8. Remaining nit, deliberately not changed: the derived
+  database name keeps the `wp_` prefix for every type (renaming touches the v6
+  backfill mirror; cosmetic only).
 - [ ] **Onboarding does no :443 probe** (migration plan §3a, gap 2 of 2): a
   shadow-binding Herd/other proxy at onboarding time is only discovered later by
   the watchdog. `proxy::edge_answers_as_ours` exists and is called from Start-all,

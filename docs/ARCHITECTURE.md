@@ -443,6 +443,25 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   which would mean executing the user's code during a scan — and knows the
   docroot is often a subfolder (Bedrock `web/`, Laravel/Symfony `public/`, Craft
   `web/`, Magento `pub/`).
+- **The served root is not always the site root.** `sites.docroot_subdir` (v32) +
+  `Site::served_root()` are the ONE place the two are combined — the nginx vhost,
+  the FrankenPHP/Apache override and the desired-state map all call it. `path`
+  stays the project root: what teardown removes and where Composer/artisan run.
+  A **created Laravel** site is the reason: `composer create-project` puts the
+  front controller in `public/` and `.env` — the site's database credentials —
+  one level above it, so serving the project root would publish that file. A
+  **linked** project's stored path already points at the folder to serve, so it
+  keeps an empty subdir (v32 backfills `public` only for `docroot_managed = 1`).
+- **Laravel sites are installed, not just served.** `phase_defs` gives a managed
+  Laravel site db → `app_install` (`core::laravel::create_project` —
+  `composer create-project laravel/laravel` run through the SITE's bundled PHP,
+  never a system composer, which may be a wrapper rather than a phar) →
+  `configure` (create the database, `wire_env` the `.env`, then re-run the
+  migrations). The re-run is load-bearing: the skeleton's own post-create script
+  runs `artisan migrate` while `.env` still says sqlite, so the tables land in
+  `database/database.sqlite` and the site's MySQL database would otherwise stay
+  empty. `db_created` is recorded at create so delete drops that database
+  (non-WordPress types drop only on that explicit provenance).
 - `AppState` (`state/app.rs`) = db + platform + monitor + CA + ServiceManager + Terminals/
   Tunnels registries, **field-level locks** (see §5 locking rule).
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding
