@@ -8,7 +8,17 @@ import { TECH_INPUT } from "@/lib/utils";
  *  reliably support window.alert/confirm/prompt, so we use these instead.
  *  Exported for dialogs whose shape ConfirmDialog can't express (e.g. the
  *  connected-site delete, which needs two consequence-naming actions). */
-export function Overlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+export function Overlay({
+  onClose,
+  children,
+  cardClassName = "w-[380px]",
+}: {
+  onClose: () => void;
+  children: React.ReactNode;
+  /** Width/sizing of the card — override for dialogs that need more room
+   *  than the 380px confirm-dialog default (e.g. the licenses viewer). */
+  cardClassName?: string;
+}) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -19,7 +29,7 @@ export function Overlay({ onClose, children }: { onClose: () => void; children: 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="w-[380px] rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl"
+        className={`${cardClassName} rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

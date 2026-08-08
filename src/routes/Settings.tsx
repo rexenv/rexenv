@@ -1,7 +1,12 @@
 import { useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast, toastBackendError } from "@/lib/toast";
-import { confirm } from "@/components/ui/dialog";
+import { confirm, Overlay } from "@/components/ui/dialog";
+// Bundled verbatim at build time (`?raw`) so the app can show its own legal
+// text offline — the About row must not depend on a website or the repo
+// being reachable (or public).
+import licenseText from "../../LICENSE?raw";
+import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
@@ -1084,29 +1089,59 @@ function CrownBadge({ size }: { size: number }) {
   );
 }
 
+/** In-app viewer for the legal text bundled with this exact binary: the
+ *  NOTICE line, THIRD-PARTY-NOTICES.md, then the full Apache-2.0 LICENSE.
+ *  Rendered from `?raw` imports, so it always matches what shipped. */
+function LicensesDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <Overlay onClose={onClose} cardClassName="w-[680px] max-w-[92vw]">
+      <div className="flex items-center justify-between">
+        <div className="text-[0.9375rem] font-semibold text-rex-text">Licenses &amp; credits</div>
+        <Button variant="secondary" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+      <div className="mt-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">
+        rexenv © 2026 Linkon Miyan — Apache License 2.0. Everything below ships inside this
+        app bundle; the server binaries rexenv downloads at runtime carry their own licenses.
+      </div>
+      <pre className="mt-4 max-h-[62vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-rex-border-subtle bg-rex-surface-0 p-4 font-mono text-[0.6875rem] leading-[1.6] text-rex-text-muted">
+        {noticesText}
+        {"\n\n" + "─".repeat(72) + "\n\n"}
+        {licenseText}
+      </pre>
+    </Overlay>
+  );
+}
+
 /** The About section — identity, version, links, credits. */
 function AboutSetting() {
   const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
+  const [showLicenses, setShowLicenses] = useState(false);
+  // A string opens externally (arrow-out icon, URL shown); a function runs
+  // in-app (chevron icon). The icon is the promise — keep it truthful.
   const linkRow = (
     icon: React.ReactNode,
     color: string,
     label: string,
-    url: string | null,
+    target: string | (() => void),
   ) => (
     <button
-      onClick={() => url && void openExternal(url).catch(toastBackendError)}
+      onClick={() =>
+        typeof target === "string" ? void openExternal(target).catch(toastBackendError) : target()
+      }
       className="flex w-full items-center gap-3 border-b border-rex-border-subtle py-[14px] text-left transition-opacity last:border-b-0 hover:opacity-80"
     >
       <span className="flex flex-none" style={{ color }}>
         {icon}
       </span>
       <span className="flex-1 text-[0.84375rem] text-rex-text">{label}</span>
-      {url && (
+      {typeof target === "string" && (
         <span className="font-mono text-[0.6875rem] text-rex-text-dim">
-          {url.replace(/^https?:\/\//, "")}
+          {target.replace(/^https?:\/\//, "")}
         </span>
       )}
-      {url ? (
+      {typeof target === "string" ? (
         <ArrowUpRight className="h-[15px] w-[15px] flex-none text-rex-text-dim" strokeWidth={1.7} />
       ) : (
         <ChevronRight className="h-[15px] w-[15px] flex-none text-rex-text-dim" strokeWidth={1.7} />
@@ -1159,9 +1194,11 @@ function AboutSetting() {
           <ShieldCheck className="h-[17px] w-[17px]" strokeWidth={1.7} />,
           "var(--rex-accent-teal)",
           "Licenses & credits",
-          null,
+          () => setShowLicenses(true),
         )}
       </div>
+
+      {showLicenses && <LicensesDialog onClose={() => setShowLicenses(false)} />}
 
       <div className="text-center text-[0.71875rem] leading-[1.6] text-rex-text-faint">
         Built on open source — nginx, PHP, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared.
