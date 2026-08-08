@@ -346,6 +346,7 @@ L3 = scripted manual.
 | 188 | commands/sites.rs:311 | Share guards hold for the tunnel's lifetime | 🔨 L0 |
 | 189 | commands/sites.rs:465 | Delete ordered so the row never points at a missing path | 🔨 L0 |
 | 190 | commands/sites.rs:853 | Deleted site's tunnel killed first; mirrored user dropped by record | ◐ record ✅; kill ordering 🔨 L1 |
+| 242 | commands/sites.rs (`relink_site_docroot`) + core/sites.rs (`check_docroot_relink`) | **Re-pointing a site RECORDS where the user already moved their files — it never writes, copies or deletes one.** This is the whole reason a linked/imported docroot (`docroot_managed = false`) may relocate at all where `move_site_docroot` is refused (#101, PLAN-linked-sites §14.2: that path deletes the old tree after a cross-volume copy, which is not ours to do to the user's own project). The consent the dialog asks for is a record change, so anything touching the filesystem here would take an action the user never agreed to. The preflight only proves the destination is servable — absolute, a real directory (a FILE is refused), not the current path, and free of the characters that can't be emitted into the generated nginx/Caddy config — and it runs BEFORE anything is recorded. The flag stays 0: re-pointing never re-claims a folder | ✅ `re_pointing_a_site_records_the_new_path_and_touches_no_file` (source-scanned, because the property is an ABSENCE — no `std::fs::`, `move_dir`, `remove_dir_all`, `copy_dir_recursive`, `fs::rename`; the positive half asserts the preflight, the path write and the reload are all still there) + `relinking_a_moved_folder_takes_only_a_real_directory` (all five refusals, and the same fixture proving `check_docroot_move` still says no to that site). **Scope: the command's shape and the preflight, NOT a live re-point** — that a re-pointed site actually SERVES from the new folder needs the stack, so it stays 🔨 L1 |
 | 191 | commands/php.rs:102 | Never brick a pool (validation + candidate `-t` gate) | ◐ validation ✅; candidate isolation 🔨 L1 (= #104) |
 | 192 | commands/wordpress.rs:150 | Symlinked plugin dir unlinked, never wp-cli-deleted | ✅ lib test |
 | 193 | commands/wordpress.rs:350 | Commands scoped: site row must exist in OUR db | 🔨 L0 |
@@ -380,7 +381,7 @@ PHP switch, mail tell, sub-toggle and mail tools #221–#227; the WP-CLI
 packages-dir inheritance #228; the vendored dist-archive tree #229, its argv rules #230, the .distignore precondition #231, the scratch-dir sweep #232, the Downloads placement #233, the job command #234, the button copy #235 and the L1 negative control #236; the
 Adminer import cap #237 and its FastCGI timeout #238; the unreadable-table skip
 #239, its positive-proof probe #240 and the bytes-not-text artifact #241):
-**✅ 160 · ◐ 38 · 🔨 38 · 🚫 5** of 241 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 161 · ◐ 38 · 🔨 38 · 🚫 5** of 242 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

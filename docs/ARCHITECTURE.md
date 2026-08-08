@@ -352,7 +352,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   folder — never deleted. Decided where the fact is known (create / link / move)
   and monotonic toward safety (only ever 1 → 0; linked sites refuse
   `move_site_docroot` outright, since a cross-volume move copies then DELETES the
-  source). Nullable with NO default, because a default would have to guess for
+  source). Such a folder still relocates — the user moves it, then
+  `relink_site_docroot` RECORDS the new path and reloads the config, touching no
+  file (`check_docroot_relink` only proves the destination is a real, servable
+  directory). Refusing to move it is about who may write files, not about
+  freezing an imported site where it landed. Nullable with NO default, because a default would have to guess for
   moved-out rows whose confirm dialog promises they are kept; a Rust backfill
   (`sites::backfill_docroot_managed`, the v14 pattern) evaluates the legacy
   lexical sites-dir test ONCE per existing row and freezes it, so upgrades change

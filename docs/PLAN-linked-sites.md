@@ -43,6 +43,10 @@ Two invariants:
 - **Decided where the fact is known** — we either made the directory or we didn't.
 - **Monotonic toward safety** — a move may downgrade 1→0, never upgrade 0→1. Linked
   sites refuse `move_site_docroot` entirely; moving the user's project isn't ours to do.
+  *(Shipped 8 Aug: that refusal no longer strands an imported site. `relink_site_docroot`
+  lets the user move the folder themselves and RE-POINT rexenv at it — record + config
+  reload, no file op, so §14.2's data-loss path is never on this route. The flag stays
+  0; re-pointing never re-claims a folder.)*
 
 **Why this is structural.** After migration, `teardown` consults one recorded boolean.
 The path comparison happens exactly once per row — at create, link, move, or backfill —

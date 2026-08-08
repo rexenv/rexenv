@@ -125,6 +125,9 @@ first:
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled
   takeover rollback (#49), cancelled-dump server-side (#116), delete-kill ordering
   (#190).
+- [ ] Live re-point (#242 L1): a linked site pointed at a folder the user moved
+  actually SERVES from it — the shape and the preflight are lib-proven, the
+  serving half needs the stack (sandbox-tier example or SMOKE).
 - [ ] Then: Apache/FrankenPHP dotfile legs (#103), fpm candidate isolation
   (#104/#191), manifest HEAD+digest sweep, Bedrock live provision (#35),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping

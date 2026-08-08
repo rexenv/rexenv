@@ -1377,6 +1377,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn re_pointing_a_site_records_the_new_path_and_touches_no_file() {
+        const SRC: &str = include_str!("sites.rs");
+        // The whole promise of the re-point path — the confirm dialog says "no
+        // file is copied, moved or deleted", and it is the ONLY reason we let a
+        // linked/imported folder (the USER's own project) be relocated at all
+        // where `move_site_docroot` is refused. A future edit that reaches for
+        // the filesystem here would break that silently: the user is not
+        // consenting to a copy, only to a record change.
+        let at = SRC.find("pub async fn relink_site_docroot(").expect("command not found");
+        let end = SRC[at..].find("\n}\n").expect("unterminated fn") + at;
+        let body = &SRC[at..end];
+        for banned in
+            ["std::fs::", "move_dir(", "remove_dir_all(", "copy_dir_recursive(", "fs::rename("]
+        {
+            assert!(
+                !body.contains(banned),
+                "relink_site_docroot calls `{banned}` — re-pointing must only RECORD where the \
+                 user already moved their files. Anything that writes, copies or deletes belongs \
+                 in move_site_docroot, behind its own consent + verify + delete-last ordering."
+            );
+        }
+        // ...and it does record + serve from there: preflight, path write, reload.
+        for required in ["check_docroot_relink(", "core::sites::set_path(", "mgr.reload("] {
+            assert!(body.contains(required), "relink_site_docroot no longer calls `{required}`");
+        }
+    }
+
     /// What the choke point does to a real scratch row — the EFFECT half.
     ///
     /// Honest scope: this does NOT drive `change_site_domain` end to end (that

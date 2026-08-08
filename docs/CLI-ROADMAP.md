@@ -46,6 +46,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `site rename <domain> <name>` | `rename_site` | ✓ | shipped 16 Jul — round-trip live |
 | `site domain <domain> <new-domain> [--yes]` | `change_site_domain` | ✓ | shipped 16 Jul — confirm-gated; passthrough, live-verify against the running app (guard blocks override bounce in the harness) |
 | `site move <domain> <dest-parent>` | `move_site_docroot` | ✓ | shipped 16 Jul — passthrough (preflights backend-side); verify in-app once |
+| `site relink <domain> <path>` | `relink_site_docroot` | 🟢 | IPC shipped 8 Aug — the re-point path for a linked/imported folder the USER moved (`site move` refuses those); records the path + reloads, touches no file |
 | `site php <domain> <minor>` | `set_site_php_version` | ✓ | shipped 16 Jul — 8.3→8.4→8.3 live, 200 both ways |
 | `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | ✓ | shipped 16 Jul — passthrough; verify against the running app (override stop is guard-blocked in the harness) |
 | `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
