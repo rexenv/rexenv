@@ -225,7 +225,14 @@ pub enum LiveCheck {
     SigninRefused(String),
     /// The named database isn't there; `available` is what is (user schemas).
     DatabaseMissing { available: Vec<String> },
-    Ready(SourceSize),
+    Ready {
+        size: SourceSize,
+        /// Base tables the SOURCE server cannot read back (see
+        /// [`unreadable_tables`]). Carried here rather than discovered by the
+        /// dump so the caller can say so BEFORE spending minutes on a copy —
+        /// and so it is impossible to run a dump without having asked.
+        unreadable: Vec<String>,
+    },
 }
 
 /// The size answer the disk check needs.
@@ -279,7 +286,143 @@ pub fn preflight_live(
         .map_err(|e| Error::Other(format!("asking the source for `{db}`'s size: {e}")))?;
     let mut cols = out.lines().last().unwrap_or_default().split('\t');
     let mut next = || cols.next().and_then(|c| c.trim().parse::<u64>().ok()).unwrap_or(0);
-    Ok(LiveCheck::Ready(SourceSize { table_count: next(), data_bytes: next(), total_bytes: next() }))
+    let size = SourceSize { table_count: next(), data_bytes: next(), total_bytes: next() };
+    let unreadable = unreadable_tables(client, defaults, db)?;
+    Ok(LiveCheck::Ready { size, unreadable })
+}
+
+/// Base tables the source lists but cannot actually read back, so the dump can
+/// skip them by name instead of dying on the first one.
+///
+/// WHY THIS EXISTS. `mysqldump` aborts the whole database on the first table it
+/// can't read: one dead plugin-analytics table ends a migration that had 173
+/// perfectly good tables in it, and the user is told only that "the dump
+/// failed". A real 2 GB WordPress database on a user's Mac (8 Aug 2026) had 12
+/// such tables — 10 InnoDB whose `.ibd` files were gone (error 1812,
+/// "Tablespace is missing") and 2 MyISAM missing their data files. phpMyAdmin
+/// exported the same database without complaint because it skips what it can't
+/// read; rexenv produced nothing at all.
+///
+/// HOW. One `SELECT '<name>', COUNT(*) FROM (SELECT 1 FROM `<name>` LIMIT 1)`
+/// per table, all of them fed to ONE client run on STDIN under `--force`. A
+/// table is judged READABLE only by printing its own name — positive proof, so
+/// nothing rests on parsing an error string, which is server-version and locale
+/// dependent (the same broken table says "Tablespace is missing" (1812) when its
+/// file was deleted and "Tablespace has been discarded" (1814) when it was
+/// discarded). `COUNT(*)` over the derived table guarantees exactly one output
+/// row, so an EMPTY table (0 rows) still proves itself readable; `LIMIT 1`
+/// inside keeps it O(1) rather than a table scan.
+///
+/// STDIN, NOT `-e`, and this is load-bearing: `--force` continues past a failed
+/// statement only for batch input. With the same statements in `-e` the client
+/// stops dead at the first error, so every table after the first broken one
+/// looks unreadable — measured against the real client, 8 Aug 2026, and caught
+/// by `db_dump_check`'s §7 before it shipped.
+///
+/// Views are deliberately not probed: they hold no data of their own, and
+/// `mysqldump` writes them from their definition. A view over a broken table is
+/// therefore still dumped, and fails at restore time as a view — a different
+/// failure with a different fix.
+///
+/// A probe that itself fails to run returns EMPTY, not an error: this is an
+/// optimisation of the dump, and being unable to check must never be the thing
+/// that blocks a migration that would have worked.
+pub fn unreadable_tables(client: &Path, defaults: &DefaultsFile, db: &str) -> Result<Vec<String>> {
+    let list = client_query(
+        client,
+        defaults,
+        &format!(
+            "SELECT table_name FROM information_schema.tables \
+             WHERE table_schema = '{}' AND table_type = 'BASE TABLE' ORDER BY table_name",
+            sql_escape(db)
+        ),
+    );
+    let Ok(list) = list else { return Ok(Vec::new()) };
+    let tables: Vec<String> =
+        list.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    if tables.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // ONE client run for the whole schema — on stdin, so there is no argv limit
+    // to chunk around and no per-table process cost.
+    let script: String =
+        tables.iter().map(|t| probe_statement(t)).collect::<Vec<_>>().join("\n");
+    let mut readable: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if let Ok(out) = client_script_forcing(client, defaults, db, &script) {
+        for line in out.lines() {
+            if let Some(name) = line.split('\t').next() {
+                let name = name.trim();
+                if !name.is_empty() {
+                    readable.insert(name.to_string());
+                }
+            }
+        }
+    }
+    // Nothing proved readable in a database whose size query just worked? That
+    // is a broken probe (a client that rejects `--force`, an output shape we
+    // don't parse), not a database where every table is dead. Believing it
+    // would skip EVERY table and hand back an empty dump that looks like a
+    // successful migration — the worst outcome available here. Fall back to
+    // "skip nothing" and let mysqldump speak for itself.
+    if readable.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(tables.into_iter().filter(|t| !readable.contains(t)).collect())
+}
+
+/// The one-row readability probe for a table. `COUNT(*)` over a `LIMIT 1`
+/// derived table: always exactly one output row (so an empty table is readable,
+/// not missing), and never a full scan.
+fn probe_statement(table: &str) -> String {
+    format!(
+        "SELECT '{}', COUNT(*) FROM (SELECT 1 FROM `{}` LIMIT 1) AS rexenv_probe;",
+        sql_escape(table),
+        escape_ident(table)
+    )
+}
+
+/// A backtick-quoted identifier's body: doubling is the only escape MySQL and
+/// MariaDB have inside backticks.
+fn escape_ident(s: &str) -> String {
+    s.replace('`', "``")
+}
+
+/// The probe's client run: statements on STDIN (not `-e`) with `--force`, so a
+/// statement that errors does not stop the ones after it. stdout is the answer;
+/// stderr is the expected per-error noise and is ignored by construction.
+///
+/// The exit status is deliberately NOT treated as failure: `--force` still exits
+/// non-zero when any statement errored, which is the normal case here. What
+/// matters is which names reached stdout.
+fn client_script_forcing(
+    client: &Path,
+    defaults: &DefaultsFile,
+    db: &str,
+    script: &str,
+) -> std::result::Result<String, String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new(client)
+        .arg(format!("--defaults-extra-file={}", defaults.path().display())) // MUST be first
+        .args(["--connect-timeout=10", "-N", "-B", "--force"])
+        .arg(db)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    // Write on a thread: a schema in the thousands can exceed the pipe buffer,
+    // and the child is writing to its own stdout at the same time — writing
+    // inline would deadlock once both pipes fill.
+    let mut stdin = child.stdin.take().ok_or("no stdin on the client")?;
+    let owned = script.to_string();
+    let writer = std::thread::spawn(move || {
+        let _ = stdin.write_all(owned.as_bytes());
+        // Dropping closes the pipe, which is the client's EOF.
+    });
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let _ = writer.join();
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// One `-e` query through the interactive client. Batch mode, no header, and
@@ -416,6 +559,15 @@ pub struct Manifest {
     /// restored database — not by count equality, because a pre-existing
     /// target legitimately holds tables the dump never mentioned.
     pub tables: Vec<String>,
+    /// Tables the SOURCE could not read back, left out of the copy on purpose
+    /// (see [`unreadable_tables`]). Recorded so the artifact can never be
+    /// mistaken for a complete copy later — `tables` alone would look like the
+    /// whole database to anyone reading the manifest afterwards.
+    ///
+    /// `#[serde(default)]` because the struct is `deny_unknown_fields` and
+    /// manifests written before this field existed must still load.
+    #[serde(default)]
+    pub skipped_tables: Vec<String>,
     pub findings: Findings,
 }
 
@@ -534,6 +686,10 @@ pub struct DumpRequest<'a> {
     pub dump_tool_label: &'a str,
     /// Where the artifact and manifest land (`<app-data>/db-imports`).
     pub dest_dir: &'a Path,
+    /// Tables to leave out, from [`unreadable_tables`]. Empty on the healthy
+    /// path, where the argv is byte-identical to what it was before skipping
+    /// existed.
+    pub skip_tables: &'a [String],
 }
 
 /// How a dump ended.
@@ -567,6 +723,14 @@ pub fn dump_tool_flags(tool_vendor: Vendor, source_version: &str) -> Vec<String>
     args
 }
 
+/// `--ignore-table=<db>.<table>` for each table to leave out — the flag both
+/// vendors spell the same way, repeated once per table (there is no list form).
+/// Names go through verbatim: they came from the server's own
+/// `information_schema`, and they are argv values, not shell words.
+pub fn ignore_table_args(db: &str, skip: &[String]) -> Vec<String> {
+    skip.iter().map(|t| format!("--ignore-table={db}.{t}")).collect()
+}
+
 /// Run the dump. Requires the gate's witness AND the disk answer — the
 /// signature is the preflight order.
 ///
@@ -591,6 +755,7 @@ pub fn dump(
     let mut args: Vec<String> =
         vec![format!("--defaults-extra-file={}", defaults.path().display())]; // MUST be first
     args.extend(dump_tool_flags(req.tool_vendor, req.source_version));
+    args.extend(ignore_table_args(req.db, req.skip_tables));
     args.push(format!("--result-file={}", partial.display()));
     args.push(req.db.to_string());
 
@@ -683,6 +848,7 @@ pub fn dump(
             .map(|d| d.as_secs())
             .unwrap_or(0),
         tables: scan.tables,
+        skipped_tables: req.skip_tables.to_vec(),
         findings: scan.findings,
     };
     platform
@@ -784,6 +950,57 @@ mod tests {
     }
 
     #[test]
+    fn the_probe_proves_readability_positively_and_quotes_both_ways() {
+        // The name is a STRING LITERAL (sql_escape) and an IDENTIFIER (backtick
+        // doubling) in the same statement — two different escapes, and getting
+        // either wrong on a table called `wp_o'brien` or ``wp_`x` `` turns a
+        // readability probe into a syntax error that reads as "table broken".
+        let s = probe_statement("wp_posts");
+        assert_eq!(
+            s,
+            "SELECT 'wp_posts', COUNT(*) FROM (SELECT 1 FROM `wp_posts` LIMIT 1) AS rexenv_probe;"
+        );
+        assert!(probe_statement("wp_o'brien").contains("'wp_o''brien'"), "literal not escaped");
+        assert!(probe_statement("wp_o'brien").contains("`wp_o'brien`"), "identifier mangled");
+        assert!(probe_statement("wp_`x").contains("`wp_``x`"), "backtick not doubled");
+        // COUNT(*) over a LIMIT 1 derived table: one row ALWAYS, so an empty
+        // table proves itself readable instead of looking missing…
+        assert!(s.contains("COUNT(*)"));
+        // …and LIMIT 1 keeps it off a full scan of a multi-GB table.
+        assert!(s.contains("LIMIT 1"));
+    }
+
+    #[test]
+    fn ignore_args_are_one_per_table_and_absent_when_nothing_is_skipped() {
+        // The healthy path must be byte-identical to before skipping existed —
+        // every migration that works today has to keep working the same way.
+        assert!(ignore_table_args("shop", &[]).is_empty());
+        assert_eq!(
+            ignore_table_args("shop", &["wp_a".into(), "wp_b".into()]),
+            vec!["--ignore-table=shop.wp_a", "--ignore-table=shop.wp_b"]
+        );
+    }
+
+    #[test]
+    fn a_manifest_written_before_skipping_existed_still_loads() {
+        // `deny_unknown_fields` + a new field is the classic way to make old
+        // artifacts unreadable. A pre-v31 manifest has no `skippedTables`; it
+        // must load as "skipped nothing", which is what that build did.
+        let old = r#"{
+            "domain": "old.test", "database": "old", "sourceHost": "127.0.0.1",
+            "sourcePort": 3306, "sourceVendor": "mysql", "sourceVersion": "8.0.27",
+            "targetEngine": "mysql", "targetVersion": "8.4.6", "artifactBytes": 10,
+            "tableCount": 2, "dumpTool": "mysqldump 8.4.6", "createdAtUnix": 1,
+            "tables": ["wp_posts", "wp_options"],
+            "findings": {"skipSandboxLine": false, "definerCount": 0,
+                         "nativePassword": false, "noAutoCreateUser": false}
+        }"#;
+        let m: Manifest = serde_json::from_str(old).expect("a pre-skip manifest must still load");
+        assert!(m.skipped_tables.is_empty());
+        assert_eq!(m.tables.len(), 2);
+    }
+
+    #[test]
     fn the_manifest_type_cannot_carry_a_credential() {
         // Not "we remembered to strip it" — the fields don't exist. This test
         // pins the full key set so a future field is a conscious decision.
@@ -800,6 +1017,7 @@ mod tests {
             table_count: 7,
             dump_tool: "mysqldump 8.4.6".into(),
             created_at_unix: 1_753_000_000,
+            skipped_tables: Vec::new(),
             tables: vec!["wp_posts".into()],
             findings: Findings::default(),
         };
@@ -810,8 +1028,8 @@ mod tests {
             keys,
             vec![
                 "artifactBytes", "createdAtUnix", "database", "domain", "dumpTool",
-                "findings", "sourceHost", "sourcePort", "sourceVendor", "sourceVersion",
-                "tableCount", "tables", "targetEngine", "targetVersion",
+                "findings", "skippedTables", "sourceHost", "sourcePort", "sourceVendor",
+                "sourceVersion", "tableCount", "tables", "targetEngine", "targetVersion",
             ],
             "a new manifest field must be added here knowingly — and never a credential"
         );
@@ -845,6 +1063,7 @@ mod tests {
             table_count: 1,
             dump_tool: "mysqldump".into(),
             created_at_unix: 0,
+            skipped_tables: Vec::new(),
             tables: vec![],
             findings: Findings::default(),
         };

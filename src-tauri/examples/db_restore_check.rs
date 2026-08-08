@@ -121,12 +121,14 @@ async fn main() {
     };
     let defaults = dbdump::DefaultsFile::create(&*plat, &dest, &src_conn).unwrap();
     let size = match dbdump::preflight_live(&cleared, &client, &defaults, SRC_DB).unwrap() {
-        LiveCheck::Ready(s) => s,
+        LiveCheck::Ready { size, .. } => size,
         other => panic!("{other:?}"),
     };
     let preflight = dbdump::check_disk(size, &dest).expect("disk ok");
     let dump_tool = basedir.join("bin/mysqldump");
     let req = DumpRequest {
+        // This fixture's source is healthy; Half B's concern is the artifact.
+        skip_tables: &[],
         tool: &dump_tool,
         tool_vendor: Vendor::Mysql,
         db: SRC_DB,

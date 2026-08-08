@@ -2516,6 +2516,7 @@ mod tests {
                 size_bytes: 1,
                 source_label: "src".into(),
                 mirrored_user: Some("rex_teardown_test".into()),
+                skipped_tables: Vec::new(),
             },
         )
         .unwrap();

@@ -736,6 +736,10 @@ pub struct DbImportRecord {
     /// `None` = their config connects as a reserved account (root): the
     /// interim change is three keys, and the copy must say so.
     pub mirrored_user: Option<String>,
+    /// Tables the SOURCE could not read, deliberately left out of the copy
+    /// (v31). Empty on a complete copy. Present on the record — not only in the
+    /// import log — because the log is pruned and the missing data is permanent.
+    pub skipped_tables: Vec<String>,
     pub imported_at: String,
 }
 
@@ -752,6 +756,7 @@ pub struct NewDbImport {
     pub size_bytes: u64,
     pub source_label: String,
     pub mirrored_user: Option<String>,
+    pub skipped_tables: Vec<String>,
 }
 
 /// Upsert the settled import outcome for a site (a re-import replaces it)
@@ -759,11 +764,11 @@ pub struct NewDbImport {
 /// they meant to write.
 pub fn upsert_db_import(conn: &Connection, r: &NewDbImport) -> Result<DbImportRecord> {
     conn.execute(
-        "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, verified)
-         VALUES (?1, 'imported', ?2, ?3, ?4, ?5, ?6, NULL)
+        "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, skipped_tables, verified)
+         VALUES (?1, 'imported', ?2, ?3, ?4, ?5, ?6, ?7, NULL)
          ON CONFLICT(site_id) DO UPDATE SET
            state = 'imported', db_name = ?2, table_count = ?3, size_bytes = ?4,
-           source_label = ?5, mirrored_user = ?6, verified = NULL,
+           source_label = ?5, mirrored_user = ?6, skipped_tables = ?7, verified = NULL,
            imported_at = datetime('now')",
         params![
             r.site_id,
@@ -772,6 +777,7 @@ pub fn upsert_db_import(conn: &Connection, r: &NewDbImport) -> Result<DbImportRe
             r.size_bytes as i64,
             r.source_label,
             r.mirrored_user,
+            encode_skipped(&r.skipped_tables),
         ],
     )?;
     get_db_import(conn, &r.site_id)?
@@ -852,13 +858,26 @@ fn row_to_db_import(row: &Row) -> rusqlite::Result<DbImportRecord> {
         size_bytes: row.get::<_, i64>(4)? as u64,
         source_label: row.get(5)?,
         mirrored_user: row.get(6)?,
+        skipped_tables: decode_skipped(&row.get::<_, String>(9)?),
         imported_at: row.get(7)?,
     })
 }
 
+/// Skipped-table names as ONE column: newline-separated, which cannot collide
+/// with a table name (MySQL identifiers can hold spaces and commas, but a
+/// newline cannot survive `information_schema` → argv → here without being
+/// visible, and no dump tool would have accepted it either).
+fn encode_skipped(tables: &[String]) -> String {
+    tables.join("\n")
+}
+
+fn decode_skipped(raw: &str) -> Vec<String> {
+    raw.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_string).collect()
+}
+
 pub fn get_db_import(conn: &Connection, site_id: &str) -> Result<Option<DbImportRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at, verified
+        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at, verified, skipped_tables
          FROM db_imports WHERE site_id = ?1",
     )?;
     let mut rows = stmt.query_map([site_id], row_to_db_import)?;
@@ -867,7 +886,7 @@ pub fn get_db_import(conn: &Connection, site_id: &str) -> Result<Option<DbImport
 
 pub fn list_db_imports(conn: &Connection) -> Result<Vec<DbImportRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at, verified
+        "SELECT site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, imported_at, verified, skipped_tables
          FROM db_imports",
     )?;
     let rows = stmt.query_map([], row_to_db_import)?;
@@ -1389,6 +1408,34 @@ mod tests {
         assert_eq!(back.domain, "probe.scratch.rex");
         assert_eq!(back.docroot_managed, Some(true));
         assert_eq!(back.mu_dir_created, None);
+    }
+
+    #[test]
+    fn v31_skipped_tables_round_trip_and_an_empty_list_stays_empty() {
+        // Same column-order coupling as v27, one table over — the SELECTs read
+        // `skipped_tables` at index 9 while `imported_at` sits at 7, so a
+        // mis-numbered index would silently render the timestamp as a table name.
+        let conn = db::open_in_memory().unwrap();
+        let site = scratch(None);
+        insert_site(&conn, &site).unwrap();
+        let with_skips = NewDbImport {
+            site_id: site.id.clone(),
+            db_name: "shop".into(),
+            table_count: 173,
+            size_bytes: 2_101_867_055,
+            source_label: "MySQL 8.0.27 at 127.0.0.1:3306".into(),
+            mirrored_user: Some("wp".into()),
+            skipped_tables: vec!["wp_wsal_metadata".into(), "wp_post_views".into()],
+        };
+        let rec = upsert_db_import(&conn, &with_skips).unwrap();
+        assert_eq!(rec.skipped_tables, vec!["wp_wsal_metadata", "wp_post_views"]);
+        assert_eq!(rec.table_count, 173);
+        assert_eq!(rec.imported_at.len(), 19, "imported_at must not have shifted columns");
+        // Re-importing cleanly must CLEAR the list, not leave the old one
+        // standing — a stale skip list would report missing data that is now
+        // present, which is the same lie in the other direction.
+        let clean = NewDbImport { skipped_tables: Vec::new(), ..with_skips };
+        assert!(upsert_db_import(&conn, &clean).unwrap().skipped_tables.is_empty());
     }
 
     #[test]

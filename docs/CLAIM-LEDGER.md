@@ -241,6 +241,8 @@ L3 = scripted manual.
 | 116 | dbdump.rs:23 | ⚠ Cancelled dump changes nothing server-side | 🔨 L1 (metadata locks after mid-dump kill) |
 | 117 | dbdump.rs:56 | Ours = positive identification, never a string match | ✅ lib test |
 | 118 | dbdump.rs:388 | Manifest carries no credential (type-level) | ✅ `the_manifest_type_cannot_carry_a_credential` |
+| 239 | dbdump.rs:310 | One table the SOURCE can't read no longer ends the whole migration: the probe finds them, the dump skips them by name, and what was skipped is recorded — never dropped silently | ✅ `db_dump_check` §7, **plant-proven both ways**: a table with a discarded tablespace is planted, the CONTROL dump (skipping nothing) fails exactly as the user's did, and the same dump skipping what the probe found succeeds with the healthy data present, `wp_broken` absent, and the manifest naming the omission. An EMPTY table is proven READABLE in the same run (the `COUNT(*)` shape), and a healthy database reports `[]` — so the probe can't pass by crying wolf. Verified against the reporting user's REAL 185-table database: the shipped probe shape names the same 12 tables that one-at-a-time probing found, and 185−12 = the 173 phpMyAdmin exported. **Found because rexenv gave the user nothing where phpMyAdmin gave a complete 2 GB dump** |
+| 240 | dbdump.rs:344 | The probe reports a table unreadable only by that table's OWN silence — never by parsing an error string, and never all of them at once | ✅ `the_probe_proves_readability_positively_and_quotes_both_ways` (both escapes: string literal AND backtick identifier) + the all-unreadable guard: a verdict of "every table is dead" for a database whose size query just worked is discarded, because believing it would produce an EMPTY dump that looks like a successful migration. **The mechanism was wrong on the first cut and the live check caught it**: `--force` does not continue past errors for `-e` statements, only for batch input, so one broken table hid every table after it — measured against the real client, fixed by feeding stdin, and the guard is what turned that into "found nothing" instead of "skip everything" |
 | 119 | dbrestore.rs:3 | Strand-then-refuse-cleanup order has no code path | ✅ lib test |
 | 120 | dbrestore.rs:18 | Retry is drop-and-refeed; pre-existing DB never dropped | ✅ 2 lib tests + 2 examples |
 | 121 | dbrestore.rs:27 | "Some tables exist" can never read as success | ✅ lib test |
@@ -375,8 +377,9 @@ the reaper's sweep, the clone mechanism, the package tools, the raw runner, the
 Sites-UI scratch group and M2a's L1 #204–#220; the deferred-item pair and M2b's
 PHP switch, mail tell, sub-toggle and mail tools #221–#227; the WP-CLI
 packages-dir inheritance #228; the vendored dist-archive tree #229, its argv rules #230, the .distignore precondition #231, the scratch-dir sweep #232, the Downloads placement #233, the job command #234, the button copy #235 and the L1 negative control #236; the
-Adminer import cap #237 and its FastCGI timeout #238):
-**✅ 157 · ◐ 38 · 🔨 38 · 🚫 5** of 238 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+Adminer import cap #237 and its FastCGI timeout #238; the unreadable-table skip
+#239 and its positive-proof probe #240):
+**✅ 159 · ◐ 38 · 🔨 38 · 🚫 5** of 240 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

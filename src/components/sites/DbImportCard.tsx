@@ -34,6 +34,35 @@ import type {
   Site,
 } from "@/types";
 
+/** Tables the source couldn't read, so the copy doesn't have them.
+ *
+ *  ONE component used by every state that describes the copy — the same reason
+ *  the record itself is one fact: a partial copy described as complete in one
+ *  panel and partial in another is worse than either. It renders nothing when
+ *  the copy is complete, so the healthy path is unchanged. */
+function SkippedTables({ tables }: { tables: string[] }) {
+  if (tables.length === 0) return null;
+  return (
+    <div className="rounded-md border border-status-warning-border bg-status-warning-bg/30 p-2 text-xs">
+      <p>
+        <strong>
+          {tables.length} table{tables.length === 1 ? "" : "s"} could not be read on the
+          source and {tables.length === 1 ? "is" : "are"} NOT in this copy.
+        </strong>{" "}
+        Their data files are missing or damaged where they came from, so nothing could
+        read them — rexenv copied everything else rather than stopping.
+      </p>
+      <ul className="mt-1.5 space-y-0.5">
+        {tables.map((t) => (
+          <li key={t} className="font-mono text-[0.6875rem] text-rex-text-secondary">
+            {t}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function bytes(n: number): string {
   if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
@@ -250,6 +279,7 @@ export function DbImportCard({ site }: { site: Site }) {
                     ", and the site answered over HTTP without a database error"}
                   .
                 </p>
+                <SkippedTables tables={record.skippedTables} />
                 {preview?.status === "ready" && preview.laravelCacheWarning && (
                   <p className="text-xs text-rex-text-secondary">
                     This site has a cached config (
@@ -371,6 +401,7 @@ export function DbImportCard({ site }: { site: Site }) {
                   {record.sourceLabel} into rexenv's{" "}
                   {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}.
                 </p>
+                <SkippedTables tables={record.skippedTables} />
                 {preview === undefined && (
                   <p>Checking which database the site's config points at…</p>
                 )}

@@ -13,7 +13,11 @@
 //!      progress signal is real byte growth;
 //!   5. cancel mid-dump leaves NO artifact, NO manifest, no `.partial`;
 //!   6. an interrupted dump (a stray `.partial`, an artifact whose manifest is
-//!      missing or stale) can never be loaded for restore.
+//!      missing or stale) can never be loaded for restore;
+//!   7. a table the SOURCE cannot read is FOUND by the probe and SKIPPED by the
+//!      dump — with a control leg proving that same table still aborts a dump
+//!      that doesn't skip it (the bug a user hit on 8 Aug 2026: 12 dead plugin
+//!      tables in a 2 GB database ended the whole migration).
 
 use rexenv_lib::core::dbcompat::{compat, Source, Target, Version};
 use rexenv_lib::core::dbdump::{self, DumpOutcome, DumpRequest, LiveCheck, OurEngine, SelfImport};
@@ -139,10 +143,14 @@ async fn main() {
         }
     }
     let size = match dbdump::preflight_live(&cleared, &client, &defaults, DB).unwrap() {
-        LiveCheck::Ready(s) => {
-            println!("  {DB} -> ready: {} tables, {} data bytes", s.table_count, s.data_bytes);
-            ok &= s.table_count == 1;
-            s
+        LiveCheck::Ready { size, unreadable } => {
+            println!("  {DB} -> ready: {} tables, {} data bytes", size.table_count, size.data_bytes);
+            ok &= size.table_count == 1;
+            // A healthy database reports NOTHING unreadable. Stated here so the
+            // §7 finding below can't be a probe that always cries wolf.
+            println!("  unreadable on a healthy database: {unreadable:?} (want [])");
+            ok &= unreadable.is_empty();
+            size
         }
         other => panic!("expected Ready: {other:?}"),
     };
@@ -163,6 +171,7 @@ async fn main() {
         target_version: binaries::MYSQL_VERSION,
         dump_tool_label: "mysqldump 8.4.6",
         dest_dir: &dest,
+        skip_tables: &[],
     };
     let mut progress_points: Vec<u64> = Vec::new();
     let outcome = dbdump::dump(
@@ -223,9 +232,110 @@ async fn main() {
     println!("  .partial refused: {partial_refused}; size-mismatch refused: {}", stale.is_err());
     ok &= partial_refused && stale.is_err();
 
+    println!("\n=== 7. a table the source can't read is found, and skipped ===");
+    // Plant the REAL failure, not a simulation of it: DISCARD TABLESPACE is how
+    // an InnoDB table loses its .ibd, and it produces the same error 1812
+    // ("Tablespace is missing for table") that ended a user's 2 GB migration.
+    // wp_empty is planted alongside it for the opposite reason — an EMPTY table
+    // must still prove itself readable, or the probe would skip live tables
+    // that simply have no rows yet.
+    let plant = format!(
+        "USE {DB}; \
+         CREATE TABLE wp_empty (id INT PRIMARY KEY); \
+         CREATE TABLE wp_broken (id INT PRIMARY KEY, note TEXT) ENGINE=InnoDB; \
+         INSERT INTO wp_broken VALUES (1,'doomed'); \
+         ALTER TABLE wp_broken DISCARD TABLESPACE;"
+    );
+    let out = std::process::Command::new(&client)
+        .args(["--no-defaults", "--protocol=TCP", "--host=127.0.0.1"])
+        .arg(format!("--port={PORT}"))
+        .args(["--user=root", "-e", &plant])
+        .output()
+        .expect("plant");
+    assert!(out.status.success(), "plant failed: {}", String::from_utf8_lossy(&out.stderr));
+    // The plant must actually be broken, or everything below proves nothing.
+    let reads = std::process::Command::new(&client)
+        .args(["--no-defaults", "--protocol=TCP", "--host=127.0.0.1"])
+        .arg(format!("--port={PORT}"))
+        .args(["--user=root", "-e", &format!("SELECT * FROM {DB}.wp_broken")])
+        .output()
+        .expect("probe plant");
+    // Either wording counts, and the difference is the point: a table whose file
+    // was DELETED says "Tablespace is missing" (1812, what the user's database
+    // said); one DISCARDed says "Tablespace has been discarded" (1814). DISCARD
+    // is the only way to plant this deterministically, and the probe must not
+    // care which — it never reads the error text.
+    let stderr = String::from_utf8_lossy(&reads.stderr).to_string();
+    let planted = !reads.status.success()
+        && (stderr.contains("Tablespace is missing")
+            || stderr.contains("Tablespace has been discarded"));
+    println!("  planted wp_broken actually unreadable: {planted}");
+    ok &= planted;
+
+    let found = dbdump::unreadable_tables(&client, &defaults, DB).expect("probe runs");
+    println!("  probe found: {found:?} (want exactly [wp_broken])");
+    ok &= found == vec!["wp_broken".to_string()];
+    // The empty table is READABLE — the COUNT(*) shape earning its place.
+    ok &= !found.contains(&"wp_empty".to_string());
+    ok &= !found.contains(&"wp_posts".to_string());
+
+    // CONTROL: the same database, same tool, skipping NOTHING. This must fail —
+    // it is what makes the leg below mean "the skip fixed it" rather than "that
+    // table was harmless all along".
+    let dest3 = sandbox.root().join("db-imports-broken");
+    let defaults3 = dbdump::DefaultsFile::create(&*plat, &dest3, &conn_for(PORT)).unwrap();
+    let size3 = match dbdump::preflight_live(&cleared, &client, &defaults3, DB).unwrap() {
+        LiveCheck::Ready { size, unreadable } => {
+            ok &= unreadable == vec!["wp_broken".to_string()];
+            size
+        }
+        other => panic!("expected Ready: {other:?}"),
+    };
+    let preflight3 = dbdump::check_disk(size3, &dest3).expect("disk fits");
+    let control = dbdump::dump(
+        &cleared,
+        &*plat,
+        &preflight3,
+        &DumpRequest { dest_dir: &dest3, skip_tables: &[], ..req },
+        &defaults3,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    );
+    let control_failed = control.is_err();
+    println!("  control (skip nothing) -> {}", match &control {
+        Err(e) => format!("failed as it must: {e}"),
+        Ok(_) => "SUCCEEDED (wrong — the plant isn't biting)".into(),
+    });
+    ok &= control_failed;
+
+    // THE FIX: same everything, skipping what the probe found.
+    let fixed = dbdump::dump(
+        &cleared,
+        &*plat,
+        &preflight3,
+        &DumpRequest { dest_dir: &dest3, skip_tables: &found, ..req },
+        &defaults3,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    )
+    .expect("the dump must succeed once the unreadable table is skipped");
+    let DumpOutcome::Done { artifact: a3, manifest: m3 } = fixed else { panic!("not cancelled") };
+    let body3 = std::fs::read_to_string(&a3).unwrap();
+    let kept_the_data = body3.contains("p)ss;w(rd survives") && body3.contains("wp_empty");
+    let left_out = !body3.contains("CREATE TABLE `wp_broken`");
+    println!("  dump succeeded: {} tables; healthy data present: {kept_the_data}; wp_broken absent: {left_out}", m3.table_count);
+    println!("  manifest records the omission: {:?}", m3.skipped_tables);
+    ok &= kept_the_data && left_out;
+    // The manifest must SAY what is missing — an artifact that silently lacks a
+    // table is the same data loss with none of the warning.
+    ok &= m3.skipped_tables == vec!["wp_broken".to_string()];
+    ok &= !m3.tables.contains(&"wp_broken".to_string());
+    ok &= dbdump::load_manifest(&dest3, "dumpcheck.test").is_ok();
+
     mysqld.reap();
     drop(defaults);
     drop(defaults2);
+    drop(defaults3);
     drop(missing_defaults);
 
     if ok {

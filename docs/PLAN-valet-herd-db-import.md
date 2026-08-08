@@ -458,6 +458,39 @@ names what the user does next, and every "retry" claim has a test that proves it
 | restore failed, we created the DB | `db_created = 1` database, partially populated | Retry — **drops and recreates**, then restores | `db_restore_check` case 3 |
 | restore failed, DB pre-existed | their/our pre-existing DB, possibly modified | reported, **never auto-dropped**; user decides | `db_restore_check` case 4 |
 | cancelled | as the boundary it stopped at, stated | Retry | cancel test |
+| **some tables unreadable AT THE SOURCE** | a copy of everything else, with the omission named in the job log, the manifest and the import record | nothing — the migration completed; recover those tables from a backup if they mattered | `db_dump_check` §7 (control leg + skip leg) |
+
+### 7.1 An unreadable table is not a failed migration (added 8 Aug 2026)
+
+A user's 2 GB WordPress database had 12 tables the source server could not read —
+10 InnoDB whose `.ibd` files were gone (error 1812) and 2 MyISAM missing their data
+files. `mysqldump` aborts the whole database on the first one, so rexenv produced
+NOTHING and reported only "the dump failed". phpMyAdmin exported the same database
+without complaint, because it skips what it cannot read. The user's reasonable
+conclusion was that rexenv was broken; 173 of their 185 tables were perfectly
+copyable, and every one of them was lost to a dead analytics table.
+
+The rule this establishes: **the source's damage is not ours to inherit, and it is
+not ours to hide either.** So the preflight asks which tables the source can
+actually read, the dump excludes the rest by name, and what was excluded is
+recorded in three places that outlive the job — the log (while it runs), the
+manifest (with the artifact) and `db_imports.skipped_tables` (what the panel and
+badge render from). A copy that silently lacked tables would be the same data loss
+with none of the warning, which is why the skip is never a footnote on a success.
+
+Two design points worth not re-deciding:
+
+- **Readability is proved positively.** A table counts as readable only when its
+  own probe statement prints its own name. Nothing parses an error string — the
+  same broken table says "Tablespace is missing" (1812) or "Tablespace has been
+  discarded" (1814) depending on how it broke, and error text is server-version
+  and locale dependent.
+- **The probe feeds the client on STDIN, not `-e`.** `--force` continues past a
+  failed statement only for batch input; with `-e` the client stops at the first
+  error, so one broken table would hide every table after it. The first cut got
+  this wrong and `db_dump_check` §7 caught it — the "nothing proved readable ⇒
+  trust nothing, skip nothing" guard is what kept that bug from becoming an empty
+  dump that looked like a successful migration.
 
 `db_restore_check` is an example, not a unit test, because the thing that broke in
 Stage 1 broke *below* the level unit tests reach. Case 3 is the one that matters and is

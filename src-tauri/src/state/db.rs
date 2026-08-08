@@ -422,6 +422,20 @@ const MIGRATIONS: &[&str] = &[
     // `·` separators between them. An audit surface that can be made to lie is
     // worse than one that shows less.
     "ALTER TABLE agent_actions ADD COLUMN args_summary TEXT;",
+    // v31 — tables the source could not read, left out of the copy.
+    //
+    // `table_count` alone makes an incomplete copy indistinguishable from a
+    // complete one: 173 tables reads as a whole database unless something says
+    // 12 more existed and did not come. The import log says it, but logs are
+    // pruned and this record is what the summary, badge and detail panel render
+    // from — the missing data outlives the log that announced it.
+    //
+    // NOT NULL DEFAULT '' rather than nullable: every pre-v31 row was written by
+    // a build that ABORTED on an unreadable table, so a copy that settled `ok`
+    // back then provably skipped nothing. Empty is the true answer for those
+    // rows, not an unknown — this is the rare backfill where the old behaviour
+    // makes the default a fact rather than a guess.
+    "ALTER TABLE db_imports ADD COLUMN skipped_tables TEXT NOT NULL DEFAULT '';",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -831,6 +845,7 @@ mod tests {
                 size_bytes: 1,
                 source_label: "MySQL 8.0.27 at 127.0.0.1:3306".into(),
                 mirrored_user: None,
+                skipped_tables: Vec::new(),
             },
         )
         .unwrap();
@@ -867,6 +882,7 @@ mod tests {
                 size_bytes: 2,
                 source_label: "src".into(),
                 mirrored_user: Some("wp".into()),
+                skipped_tables: Vec::new(),
             },
         )
         .unwrap();
@@ -881,10 +897,36 @@ mod tests {
         assert_eq!(v["verified"], "signin+http");
         assert_eq!(
             v.as_object().unwrap().keys().collect::<Vec<_>>(),
-            ["dbName", "importedAt", "mirroredUser", "siteId", "sizeBytes", "sourceLabel", "state", "tableCount", "verified"]
+            ["dbName", "importedAt", "mirroredUser", "siteId", "sizeBytes", "skippedTables", "sourceLabel", "state", "tableCount", "verified"]
                 .iter()
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn v31_backfills_every_existing_import_to_skipped_nothing() {
+        // The upgrade question for a NOT NULL DEFAULT: what do pre-v31 rows say?
+        // "Nothing was skipped" — and here that is a FACT, not a guess: the build
+        // that wrote those rows aborted the whole dump on the first unreadable
+        // table, so a row that settled `imported` could not have skipped one.
+        let conn = memory_db();
+        use crate::state::store;
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES ('old','Blog','old.test','wordpress','8.3','/x')",
+            [],
+        )
+        .unwrap();
+        // Write the row the pre-v31 way: every column EXCEPT skipped_tables.
+        conn.execute(
+            "INSERT INTO db_imports (site_id, state, db_name, table_count, size_bytes, source_label, mirrored_user, verified)
+             VALUES ('old','imported','old',12,34,'src',NULL,NULL)",
+            [],
+        )
+        .unwrap();
+        let rec = store::get_db_import(&conn, "old").unwrap().unwrap();
+        assert!(rec.skipped_tables.is_empty(), "a pre-v31 row must read as a complete copy");
+        assert_eq!(rec.table_count, 12);
     }
 
     #[test]

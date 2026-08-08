@@ -376,9 +376,13 @@ async fn run<R: tauri::Runtime>(
     let (src_client, src_dump) = src_engine.sql_client_bins(platform, &src_engine_version).await?;
 
     let defaults = dbdump::DefaultsFile::create(platform, &dest_dir, &conn_info)?;
-    let size = match dbdump::preflight_live(&cleared, &src_client, &defaults, &conn_info.database)?
-    {
-        dbdump::LiveCheck::Ready(s) => s,
+    let (size, skip_tables) = match dbdump::preflight_live(
+        &cleared,
+        &src_client,
+        &defaults,
+        &conn_info.database,
+    )? {
+        dbdump::LiveCheck::Ready { size, unreadable } => (size, unreadable),
         dbdump::LiveCheck::SigninRefused(detail) => {
             return Err(Error::Other(
                 DbSiteStatus::CredentialsRejected {
@@ -411,6 +415,22 @@ async fn run<R: tauri::Runtime>(
         entry,
         &format!("{} tables, ~{} bytes; disk ok", size.table_count, size.total_bytes),
     );
+    // Said BEFORE the copy starts and named one per line: a skipped table is
+    // data the user does not get, so it is never a footnote on a success.
+    if !skip_tables.is_empty() {
+        log_line(
+            app,
+            entry,
+            &format!(
+                "{} table(s) can't be read on the source and will be SKIPPED — the copy \
+                 will be missing them:",
+                skip_tables.len()
+            ),
+        );
+        for t in &skip_tables {
+            log_line(app, entry, &format!("  skipped: {t}"));
+        }
+    }
 
     // ── dump ────────────────────────────────────────────────────────────────
     enter_phase(entry, 1);
@@ -429,6 +449,7 @@ async fn run<R: tauri::Runtime>(
         target_version: &target_version,
         dump_tool_label: &format!("{} {}", if source_vendor == Vendor::Mariadb { "mariadb-dump" } else { "mysqldump" }, src_engine_version),
         dest_dir: &dest_dir,
+        skip_tables: &skip_tables,
     };
     let estimated = preflight.estimated_dump_bytes.max(1);
     let app2 = app.clone();
@@ -583,6 +604,10 @@ async fn run<R: tauri::Runtime>(
                 MirrorOutcome::Mirrored { user } => Some(user.clone()),
                 MirrorOutcome::RefusedReserved { .. } => None,
             },
+            // From the MANIFEST, not the local variable: the manifest is what
+            // the artifact actually was, and a re-import from an existing
+            // artifact settles this record without re-running the probe.
+            skipped_tables: manifest.skipped_tables.clone(),
         };
         crate::state::store::upsert_db_import(&conn, &new)?
     };

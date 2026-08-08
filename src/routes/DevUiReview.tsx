@@ -70,6 +70,7 @@ const RECORD_BASE = {
   sizeBytes: 24 * 1024 * 1024,
   sourceLabel: "MySQL 8.0.27 at 127.0.0.1:3306",
   mirroredUser: null as string | null,
+  skippedTables: [] as string[],
   importedAt: "2026-07-27 10:00:00",
 };
 
@@ -77,6 +78,23 @@ function record(): DbImportRecord | null {
   switch (params.get("rec")) {
     case "imported":
       return { ...RECORD_BASE, state: "imported" };
+    // A copy that is deliberately INCOMPLETE — the source could not read these
+    // tables, so they are not here. Names and counts are the real ones from the
+    // 8 Aug 2026 database that produced this state, not friendly placeholders:
+    // long plugin table names are what the list has to lay out.
+    case "importedPartial":
+      return {
+        ...RECORD_BASE,
+        tableCount: 173,
+        state: "imported",
+        skippedTables: [
+          "wp_betterdocs_analytics",
+          "wp_betterdocs_search_keyword",
+          "wp_betterlinks_clicks",
+          "wp_woocommerce_sessions",
+          "wp_wsal_occurrences",
+        ],
+      };
     case "connected":
       return { ...RECORD_BASE, mirroredUser: "rex_myblog_test", state: "connected", verified: "signin" };
     case "connectedHttp":

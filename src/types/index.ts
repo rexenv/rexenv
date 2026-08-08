@@ -257,6 +257,10 @@ interface DbImportRecordCommon {
   sourceLabel: string;
   /** Null = their config connects as root: the interim change is three keys. */
   mirroredUser: string | null;
+  /** Tables the SOURCE server could not read back, left out of the copy on
+   *  purpose. Empty on a complete copy. Rendered wherever the copy is
+   *  described: `tableCount` alone makes an incomplete copy look complete. */
+  skippedTables: string[];
   importedAt: string;
 }
 
