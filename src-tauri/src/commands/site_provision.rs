@@ -140,6 +140,42 @@ fn append_line<R: tauri::Runtime>(app: &AppHandle<R>, entry: &ProvisionEntry, li
     let _ = app.emit(&output_event(&entry.id), line.to_string());
 }
 
+
+/// May a blueprint be applied to the site about to be created?
+///
+/// A blueprint is a WORDPRESS preset — plugins, themes, multisite mode,
+/// WP_DEBUG, language — and [`phase_defs`] gives the blueprint phase only to a
+/// MANAGED WordPress site. Every other combination used to be ACCEPTED and then
+/// silently do nothing, which is the dishonest half: the caller believed the
+/// preset applied. The dialog no longer offers the field outside that case, and
+/// this is the same rule for callers that never see a dialog (CLI, MCP).
+///
+/// `path` is the linked-folder path from `NewSite`: non-empty means "serve this
+/// folder in place", which rexenv adopts as-is and installs nothing into.
+fn ensure_blueprint_applies(
+    site_type: SiteType,
+    path: &str,
+    blueprint_id: Option<&str>,
+) -> Result<()> {
+    if !blueprint_id.is_some_and(|id| !id.is_empty()) {
+        return Ok(());
+    }
+    if !matches!(site_type, SiteType::Wordpress) {
+        return Err(Error::Other(format!(
+            "blueprints apply to WordPress sites only — this is a {} site",
+            site_type.as_db()
+        )));
+    }
+    if !path.trim().is_empty() {
+        return Err(Error::Other(
+            "this site serves an existing folder, which rexenv adopts as-is — a blueprint would \
+             install into someone else's project"
+                .into(),
+        ));
+    }
+    Ok(())
+}
+
 /// The job's applicable phases, in execution order. Weights renormalize over
 /// exactly this set (`ProvisionProgress`) — no reserved slice can fail to fill.
 ///
@@ -384,6 +420,10 @@ pub(crate) fn start<R: tauri::Runtime>(
         core::dns::DEFAULT_DNS_PORT,
         ownership.resolver_prompt(),
     )?;
+
+    // Refused HERE, before the row exists, so the caller gets a prepare-phase
+    // error with nothing created rather than a half-site to clean up.
+    ensure_blueprint_applies(site.site_type, &site.path, blueprint_id.as_deref())?;
 
     let (created, blueprint) = {
         let conn = lock_db(state)?;
@@ -1257,6 +1297,53 @@ async fn streamed_step<R: tauri::Runtime>(
 mod tests {
     use super::*;
     use crate::core::sites::Ownership;
+
+    /// The blueprint rule, stated once. Accepting a blueprint for a site that
+    /// has no blueprint phase is the dishonest failure — it succeeds and does
+    /// nothing — so every non-WordPress combination must be an ERROR whose
+    /// message says why, not a quiet no-op.
+    #[test]
+    fn a_blueprint_is_refused_wherever_no_blueprint_phase_would_run() {
+        // The one case that works: a WordPress site whose folder we create.
+        assert!(ensure_blueprint_applies(SiteType::Wordpress, "", Some("bp-1")).is_ok());
+
+        for ty in [SiteType::Laravel, SiteType::Php] {
+            let err = ensure_blueprint_applies(ty, "", Some("bp-1")).unwrap_err().to_string();
+            assert!(err.contains("WordPress sites only"), "{ty:?}: {err}");
+            assert!(err.contains(ty.as_db()), "the message must name the type: {err}");
+        }
+
+        // A LINKED WordPress folder is adopted as-is — `phase_defs` gives it no
+        // blueprint phase either, and installing into someone's own project is
+        // the worse half of the bug.
+        let err = ensure_blueprint_applies(SiteType::Wordpress, "/Users/x/Sites/theirs", Some("bp-1"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("adopts as-is"), "{err}");
+
+        // No blueprint asked for: every type passes, including the ones above.
+        for ty in [SiteType::Wordpress, SiteType::Laravel, SiteType::Php] {
+            assert!(ensure_blueprint_applies(ty, "", None).is_ok());
+            assert!(ensure_blueprint_applies(ty, "", Some("")).is_ok(), "empty id means none");
+            assert!(ensure_blueprint_applies(ty, "/Users/x/theirs", None).is_ok());
+        }
+    }
+
+    /// The guard and the phase list must agree: exactly the shape that ACCEPTS
+    /// a blueprint is the shape that gets a blueprint phase to run it in.
+    #[test]
+    fn the_guard_admits_exactly_the_shapes_phase_defs_gives_a_blueprint_phase() {
+        for ty in [SiteType::Wordpress, SiteType::Laravel, SiteType::Php] {
+            for linked in [false, true] {
+                let path = if linked { "/Users/x/Sites/theirs" } else { "" };
+                let admitted = ensure_blueprint_applies(ty, path, Some("bp-1")).is_ok();
+                let has_phase =
+                    phase_defs(ty, true, linked).iter().any(|(k, _)| *k == "blueprint");
+                assert_eq!(admitted, has_phase, "{ty:?} linked={linked}");
+            }
+        }
+    }
+
     use crate::platform::traits::{DnsManager, Paths, PrivilegeManager};
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};

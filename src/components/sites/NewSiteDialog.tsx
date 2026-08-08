@@ -201,7 +201,10 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
         installingWp
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
           : undefined,
-        blueprintId || undefined,
+        // Gated on the SAME fact that renders the field, not on the field being
+        // visible right now: picking a blueprint and then stepping back to
+        // choose Laravel would otherwise submit a stale id the backend refuses.
+        (installingWp && blueprintId) || undefined,
       ),
     onSuccess: (snap) => prov.start(snap),
     onError: (e) => toastBackendError(e),
@@ -261,6 +264,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           ) : (
             <Step2
               blueprints={blueprints}
+              showBlueprints={installingWp}
               blueprintId={blueprintId}
               onPickBlueprint={onPickBlueprint}
               name={name}
@@ -430,6 +434,8 @@ const FIELD_SELECT =
 
 function Step2(p: {
   blueprints: import("@/types").Blueprint[];
+  /** WordPress-only, and only when we're the ones installing it. */
+  showBlueprints: boolean;
   blueprintId: string;
   onPickBlueprint: (id: string) => void;
   name: string;
@@ -474,7 +480,13 @@ function Step2(p: {
   const domainBase = p.domainBase || "my-site";
   return (
     <div className="flex flex-col gap-3">
-      {p.blueprints.length > 0 && (
+      {/* Blueprints are a WORDPRESS preset (plugins, themes, multisite mode,
+          WP_DEBUG, language) and the backend applies them only to a managed
+          WordPress site — offering the field for Laravel or Blank PHP, or for
+          a folder we merely adopt, promised something that then silently did
+          nothing. `installingWp` is the same fact the WordPress fields below
+          use, so the two can't drift. */}
+      {p.showBlueprints && p.blueprints.length > 0 && (
         <Field label="Start from blueprint">
           <select value={p.blueprintId} onChange={(e) => p.onPickBlueprint(e.target.value)} className={FIELD_SELECT}>
             <option value="">None (custom)</option>
