@@ -9,8 +9,8 @@ matters**, and whether it's **🚧 publish-blocking** or **🟢 nice-to-have**.
 - All code fixes are unit-tested and green — `cd src-tauri && cargo test --lib` → **336
   passed / 0 failed**, `cargo build --examples` clean, `tsc --noEmit` clean.
 - The tap **static** side: the built app is validly ad-hoc signed (`codesign --verify`
-  passes), universal `x86_64 arm64`, and `homebrew-rexenv/Casks/rexenv.rb` passes
-  `brew style`.
+  passes), universal `x86_64 arm64`, and the cask — now living in its own repo,
+  `github.com/rexenv/homebrew-tap` — passes `brew style --cask rexenv/tap/rexenv`.
 - **C) B31 CSP packaged smoke test — ✅ DONE** (packaged build, every flow worked, no
   `Refused to … violates CSP` lines). Not re-listed here.
 
@@ -64,11 +64,13 @@ one that ships in one slice.
 
 ## A) 🚧 RE-RUN NEEDED on the fresh dmg — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
 
-**STATUS:** §A passed twice before (2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`), and the
-2026-07-22 `0e57f11c…` rebuild superseded those. **Both are now superseded again** by the
-current artefact — `rexenv_0.1.0_universal.dmg` sha256 `f6252374…`, built 2026-08-05 from
-commit `8f36625` (MCP M2a/M2b, then the `wp dist-archive` feature). Run §A0 first, then §A
-on `f6252374…`, then record the sha next to the result.
+**STATUS:** §A passed on three earlier artefacts (2026-07-20 `d48bc8ba…`, 2026-07-21
+`8d201724…`, 2026-07-22 `0e57f11c…`); the 2026-08-05 `f6252374…` rebuild superseded those
+and was itself never §A-tested. **All are now superseded** by the release candidate —
+`rexenv_0.1.0_universal.dmg` sha256 `aed8ad6a…`, built **2026-08-08** from commit `3ae658d`
+on a clean tree. **§A0 PASSED on it** (both binaries `x86_64 arm64`; `Dist_Archive_Command`
+present in each slice separately; `codesign --verify --deep --strict` OK; single dmg).
+§A itself is still OPEN — run it on `aed8ad6a…` and record the sha next to the result.
 
 Ad-hoc signing has not changed across any of these rebuilds, so the launch behaviour
 should hold — but each rebuild carries work the previous pass never saw, which is why
@@ -80,7 +82,8 @@ hence §A0.)_ On pass, the tap approach is re-validated for the shipping artefac
 (Canonical cask sha256 is still recomputed from the UPLOADED Release asset — see §D —
 never from a local build.)
 
-_(Prior passes: 2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`, and the 2026-07-22 `0e57f11c…` rebuild — all superseded by `f6252374…`.)_
+_(Prior passes: 2026-07-20 `d48bc8ba…`, 2026-07-21 `8d201724…`, 2026-07-22 `0e57f11c…`; then
+the untested `f6252374…` — all superseded by `aed8ad6a…`.)_
 
 ## A2) ✅ PASSED (2026-07-21) — first-run PHP download resume on a real flaky link
 
@@ -159,18 +162,19 @@ combined into a single privileged shell by the fix).
 
 ## D) 🚧 Full custom-tap install dry-run — once the dmg is on GitHub Releases
 
-**Why:** the real end-to-end a user experiences. Only doable after you (1) push the
-`homebrew-rexenv/` contents to `github.com/rudlinkon/homebrew-rexenv`, and (2) upload the dmg
-to a Release tagged `v0.1.0` on `github.com/rudlinkon/rexenv`, then **recompute the sha256
-from the uploaded asset** and bump the cask if it differs from the provisional one.
+**Why:** the real end-to-end a user experiences. The tap repo exists and is public —
+`github.com/rexenv/homebrew-tap` (2026-08-08), `brew tap rexenv/tap` resolves and
+`brew style --cask rexenv/tap/rexenv` is clean. What is still missing: (1) `rexenv/rexenv`
+is **private**, so the cask's download URL is not publicly fetchable, and (2) there is no
+`v0.1.0` Release carrying the dmg. Do both, then **re-verify the sha256 against the
+DOWNLOADED asset** (never the local build) and bump the cask if it differs.
 
 ```sh
-# One-time online cask audit (may ask you to add `verified: "github.com/rudlinkon/rexenv/"`
-# to the url stanza — trivial to add):
-brew audit --cask --new rudlinkon/rexenv/rexenv    # after the tap is pushed
+# One-time online cask audit:
+brew audit --cask --new --online rexenv/tap/rexenv   # after the Release exists
 
 # The user path:
-brew tap rudlinkon/rexenv
+brew tap rexenv/tap
 brew install --cask rexenv                         # EXPECT: downloads, installs, postflight de-quarantines
 open -a rexenv                                     # EXPECT: launches (no Gatekeeper block)
 which rex && rex --version                         # EXPECT: rex on PATH, prints version

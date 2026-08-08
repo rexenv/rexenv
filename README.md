@@ -106,7 +106,9 @@ rexenv/
 ├── scripts/                    # verify.sh (THE pre-commit bar) · verify-full.sh
 │   │                           #   live-checks.sh (tiered L1 runner) · build-cli.sh
 │   └── wk-checks/              # Playwright WebKit render checks (L2) + README
-├── homebrew-rexenv/            # staging copy of the future Homebrew tap (cask + README)
+│
+│   # The Homebrew cask is NOT in this repo — it lives in github.com/rexenv/homebrew-tap
+│   # (`brew tap rexenv/tap`), which is the single source of truth for it.
 │
 ├── src/                        # ── FRONTEND (React + TS) ──
 │   ├── main.tsx                # React entry

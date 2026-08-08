@@ -181,7 +181,7 @@ first:
   ⚠ **Build it with `npm run release:mac`** (= `tauri build --target
   universal-apple-darwin`) — NOT a bare `tauri build`, which produces a thin
   arm64 `rexenv_<v>_aarch64.dmg` that an Intel user cannot run, while INSTALL.md,
-  this document and `homebrew-rexenv/Casks/rexenv.rb` all promise a universal
+  this document and the cask in `rexenv/homebrew-tap` all promise a universal
   `rexenv_<v>_universal.dmg`. Built wrong once on 3 Aug by reaching for the
   generic command; naming the COMMAND here rather than the outcome is the fix.
   Verify before gating: `lipo -archs <app>/Contents/MacOS/rexenv` and the same
