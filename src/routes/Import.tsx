@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { Track } from "@/components/shell/DownloadPanel";
 import {
+  onValetImportProgress,
   onValetImportRow,
   resolverHandBack,
   resolverTakeOver,
@@ -14,7 +16,12 @@ import {
   valetImportCancel,
   valetImportRun,
 } from "@/lib/ipc";
-import type { ImportCandidate, ImportOutcome, ResolverTldStatus } from "@/types";
+import type {
+  ImportCandidate,
+  ImportOutcome,
+  ImportProgress,
+  ResolverTldStatus,
+} from "@/types";
 
 const CHECK =
   "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
@@ -90,6 +97,7 @@ export function Import() {
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [running, setRunning] = useState(false);
   const [withDatabases, setWithDatabases] = useState(false);
+  const [progress, setProgress] = useState<ImportProgress | null>(null);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const ready = useMemo(() => candidates.filter(selectable).map((c) => c.domain), [candidates]);
@@ -104,14 +112,21 @@ export function Import() {
   }, [ready]);
 
   // Rows settle one at a time; show each as it lands rather than all at the end.
+  // Progress ticks in between, so a long site (or a multi-GB database) is never
+  // a silent wait.
   useEffect(() => {
     let dead = false;
-    const un = onValetImportRow((row) => {
-      if (!dead) setOutcomes((o) => ({ ...o, [row.domain]: row }));
-    });
+    const subs = [
+      onValetImportRow((row) => {
+        if (!dead) setOutcomes((o) => ({ ...o, [row.domain]: row }));
+      }),
+      onValetImportProgress((p) => {
+        if (!dead) setProgress(p);
+      }),
+    ];
     return () => {
       dead = true;
-      void un.then((f) => f());
+      subs.forEach((s) => void s.then((f) => f()));
     };
   }, []);
 
@@ -125,10 +140,12 @@ export function Import() {
       }),
     onMutate: () => {
       setOutcomes({});
+      setProgress(null);
       setRunning(true);
     },
     onSuccess: (r) => {
       setRunning(false);
+      setProgress(null);
       qc.invalidateQueries({ queryKey: ["sites"] });
       void refetch();
       const bits = [`${r.imported} imported`];
@@ -147,6 +164,8 @@ export function Import() {
       }
     },
     onError: (e) => {
+      // The bar is LEFT where the work stopped — rolling it back or hiding it
+      // would erase which sites did come over before the run died.
       setRunning(false);
       toastBackendError(e);
     },
@@ -216,6 +235,15 @@ export function Import() {
               <ResolverConsent key={t.tld} tld={t} onDone={() => void refetch()} />
             ))}
 
+            {progress && (
+              <ImportProgressCard
+                progress={progress}
+                running={running}
+                outcomes={outcomes}
+                onCancel={() => void valetImportCancel()}
+              />
+            )}
+
             <div className="overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
               <div className="flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5">
                 <input
@@ -248,11 +276,6 @@ export function Import() {
                       ⓘ
                     </span>
                   </label>
-                  {running && (
-                    <Button variant="ghost" onClick={() => void valetImportCancel()}>
-                      Cancel after current
-                    </Button>
-                  )}
                   <Button
                     variant="primary"
                     disabled={picked.size === 0 || running}
@@ -263,7 +286,25 @@ export function Import() {
                 </div>
               </div>
               {candidates.map((c) => {
-                const pill = statusPill(c, outcomes[c.domain]);
+                // While the batch runs, a picked row that hasn't settled says
+                // where it stands — in flight or still queued — instead of
+                // showing the pre-run "ready" it no longer means.
+                const live =
+                  running && picked.has(c.domain) && !outcomes[c.domain]
+                    ? progress?.domain === c.domain
+                      ? { label: "importing…", waiting: false }
+                      : { label: "waiting", waiting: true }
+                    : null;
+                const pill = live
+                  ? {
+                      label: live.label,
+                      tone: live.waiting
+                        ? "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted"
+                        : "border-brand bg-rex-surface-2 text-rex-text-bright",
+                      title: live.waiting ? undefined : (progress?.detail ?? undefined),
+                      db: null,
+                    }
+                  : statusPill(c, outcomes[c.domain]);
                 const can = selectable(c) && !running;
                 return (
                   <div
@@ -352,6 +393,84 @@ export function Import() {
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * What the batch is doing right now.
+ *
+ * Honesty rules (the provision-card family):
+ * - the bar is the BACKEND's `pct`: completed rows plus the running job's own
+ *   phase-weighted pct — real completions, never a time estimate. Monotonic,
+ *   99-capped until the batch settles,
+ * - the step line is the running job's OWN label, verbatim; nothing here is
+ *   invented by the screen,
+ * - when the run ends early the bar FREEZES where the work stopped, and the
+ *   settled counts below it say what actually came over.
+ */
+function ImportProgressCard({
+  progress: p,
+  running,
+  outcomes,
+  onCancel,
+}: {
+  progress: ImportProgress;
+  running: boolean;
+  outcomes: Record<string, ImportOutcome>;
+  onCancel: () => void;
+}) {
+  const settled = Object.values(outcomes);
+  const imported = settled.filter((o) => o.status === "imported").length;
+  const failed = settled.filter((o) => o.status === "failed").length;
+  const skipped = settled.filter((o) => o.status === "skipped").length;
+  const headline =
+    p.stage === "site" || p.stage === "database"
+      ? `${p.stage === "database" ? "Copying the database for" : "Importing"} ${p.domain ?? ""}`
+      : p.stage === "scanning"
+        ? "Reading your Valet and Herd setup"
+        : p.stage === "resolvers"
+          ? "Making these domains resolve to rexenv"
+          : p.stage === "php"
+            ? "Getting PHP ready"
+            : p.stage === "checking"
+              ? "Checking your sites will load"
+              : "Finished";
+
+  return (
+    <div className="rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          {running && (
+            <Loader2 className="h-3.5 w-3.5 flex-none animate-rex-spin text-rex-text-muted" />
+          )}
+          <span className="truncate text-[0.84375rem] text-rex-text">{headline}</span>
+        </div>
+        <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
+          {p.index > 0 ? `site ${p.index} · ` : ""}
+          {p.done} of {p.total} done · {p.pct}%
+        </span>
+      </div>
+      <div className="mt-2">
+        <Track pct={p.pct} state={running ? "run" : p.stage === "done" ? "ok" : "stopped"} />
+      </div>
+      <div className="mt-1.5 flex items-baseline justify-between gap-3">
+        <span className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+          {p.detail ?? (running ? "working…" : "stopped")}
+        </span>
+        {running && (
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel after current
+          </Button>
+        )}
+      </div>
+      {settled.length > 0 && (
+        <div className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
+          {imported} imported
+          {failed > 0 && ` · ${failed} failed`}
+          {skipped > 0 && ` · ${skipped} skipped`}
+        </div>
+      )}
+    </div>
   );
 }
 

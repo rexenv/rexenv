@@ -340,6 +340,127 @@ fn import_event() -> &'static str {
     "valet-import://row"
 }
 
+fn progress_event() -> &'static str {
+    "valet-import://progress"
+}
+
+/// Where the batch is RIGHT NOW — the screen's only in-flight signal.
+///
+/// Honesty contract (the provision-card family):
+/// - every field comes from work that actually happened: `done` counts terminal
+///   rows, `site_pct` is the running job's OWN backend-computed pct, `detail` is
+///   that job's own step label verbatim — nothing here is a time estimate,
+/// - `pct` is monotonic and capped at 99 until the batch settles,
+/// - a failure freezes the bar where the work stopped: the failed row still
+///   counts as done, so the bar advances by real completions only.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProgress {
+    /// Rows the user asked for — the denominator, fixed for the whole run.
+    pub total: usize,
+    /// Rows with a terminal outcome (imported, failed or skipped).
+    pub done: usize,
+    /// 1-based position of the site being worked on; 0 during the shared
+    /// preparation steps that belong to no single site.
+    pub index: usize,
+    pub domain: Option<String>,
+    /// `scanning` · `resolvers` · `php` · `site` · `database` · `checking` ·
+    /// `done`.
+    pub stage: String,
+    /// The running job's own step label, verbatim.
+    pub detail: Option<String>,
+    /// The current site's own fraction, 0..100 (its provision job, plus its
+    /// database job when databases were requested).
+    pub site_pct: u8,
+    /// The whole batch, 0..100.
+    pub pct: u8,
+}
+
+/// The batch bar: settled rows plus the in-flight site's own fraction, each
+/// row weighted equally. Capped at 99 — only the settle emits 100, so the bar
+/// can never claim a finished batch while a site is still running.
+fn batch_pct(done: usize, site_pct: u8, total: usize) -> u8 {
+    if total == 0 {
+        return 0;
+    }
+    let units = done as u32 * 100 + site_pct as u32;
+    (units / total as u32).min(99) as u8
+}
+
+/// Emits batch progress. Owns the two facts a single tick can't know on its
+/// own: how many rows have settled, and how far the bar has already come.
+struct Batch<'a, R: tauri::Runtime> {
+    app: &'a tauri::AppHandle<R>,
+    total: usize,
+    done: usize,
+    /// Databases were requested, so each site's bar is shared between its
+    /// provision job and its database job.
+    with_db: bool,
+    /// Highest pct emitted — the bar never rolls back.
+    last: std::sync::atomic::AtomicU8,
+}
+
+/// The share of one site's bar that its provision job owns when a database
+/// import follows it. The rest is the database's.
+const SITE_SHARE_WITH_DB: u16 = 60;
+
+impl<R: tauri::Runtime> Batch<'_, R> {
+    fn tick(
+        &self,
+        stage: &str,
+        index: usize,
+        domain: Option<&str>,
+        detail: Option<String>,
+        site_pct: u8,
+    ) {
+        use tauri::Emitter;
+        let pct = batch_pct(self.done, site_pct, self.total);
+        let pct = if stage == "done" {
+            100
+        } else {
+            pct.max(self.last.load(std::sync::atomic::Ordering::SeqCst))
+        };
+        self.last.store(pct, std::sync::atomic::Ordering::SeqCst);
+        let _ = self.app.emit(
+            progress_event(),
+            ImportProgress {
+                total: self.total,
+                done: self.done,
+                index,
+                domain: domain.map(str::to_string),
+                stage: stage.to_string(),
+                detail,
+                site_pct,
+                pct,
+            },
+        );
+    }
+
+    fn provision_share(&self, pct: u8) -> u8 {
+        provision_share(pct, self.with_db)
+    }
+
+    fn db_share(&self, pct: u8) -> u8 {
+        db_share(pct)
+    }
+}
+
+/// The provision job's pct scaled into the site's share of the bar. With a
+/// database to follow it, a finished provision is 60 of the site's 100 — "site
+/// created" is not "site finished".
+fn provision_share(pct: u8, with_db: bool) -> u8 {
+    if with_db {
+        (pct as u16 * SITE_SHARE_WITH_DB / 100) as u8
+    } else {
+        pct
+    }
+}
+
+/// The database job's pct, scaled into the rest of the site's share.
+fn db_share(pct: u8) -> u8 {
+    (SITE_SHARE_WITH_DB + pct as u16 * (100 - SITE_SHARE_WITH_DB) / 100) as u8
+}
+
 /// Import the selected Valet/Herd sites, one at a time.
 ///
 /// Sequential by design: the download hub has a single batch slot, each serve
@@ -371,6 +492,15 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     }
     jobs.cancel.store(false, Ordering::SeqCst);
     let done = scopeguard(|| jobs.running.store(false, Ordering::SeqCst));
+
+    let mut batch = Batch {
+        app: &app,
+        total: request.domains.len(),
+        done: 0,
+        with_db: request.import_databases,
+        last: std::sync::atomic::AtomicU8::new(0),
+    };
+    batch.tick("scanning", 0, None, Some("re-reading your Valet and Herd setup".into()), 0);
 
     // Re-scan rather than trusting the list we were handed: the screen's rows
     // are a suggestion, and the folders may have changed since it rendered.
@@ -423,7 +553,11 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         .collect();
     tlds.sort();
     tlds.dedup();
+    // Rows the queue already rejected are terminal — the bar starts where the
+    // real work does, not at zero.
+    batch.done = outcomes.len();
     for tld in &tlds {
+        batch.tick("resolvers", 0, None, Some(format!("making .{tld} resolve to rexenv")), 0);
         match core::dns::resolver_owner(
             state.platform.as_ref(),
             tld,
@@ -464,19 +598,23 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // Unlocked, before anything takes the services lock (the prefetch-before-lock
     // invariant), and once per minor rather than per site.
     for m in &minors {
+        batch.tick("php", 0, None, Some(format!("getting PHP {m} ready")), 0);
         let plan = core::downloads::plan_for_php(state.platform.as_ref(), m);
         core::downloads::prefetch(state.platform.as_ref(), &format!("Import (PHP {m})"), &plan)
             .await?;
     }
 
-    for (c, php) in queue {
+    for (i, (c, php)) in queue.into_iter().enumerate() {
+        let index = i + 1;
         if jobs.cancel.load(Ordering::SeqCst) {
             let row = skipped(&c.domain, "cancelled before this site was started");
             let _ = app.emit(import_event(), row.clone());
             outcomes.push(row);
+            batch.done += 1;
             continue;
         }
-        let mut row = import_one(&app, &state, &provision, &c, &php).await;
+        batch.tick("site", index, Some(&c.domain), Some("starting".into()), 0);
+        let mut row = import_one(&app, &state, &provision, &c, &php, &batch, index).await;
         // Opt-in database import, per site, CONTINUE ON FAILURE exactly like
         // the sites themselves: a database that won't come over must not cost
         // the rest of the batch, and every row states what happened to its
@@ -484,15 +622,21 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         if request.import_databases {
             row.db = Some(match (&row.status[..], &row.site_id) {
                 ("imported", Some(site_id)) => {
-                    import_db_for(&app, &state, &db_jobs, &provision, site_id).await
+                    import_db_for(
+                        &app, &state, &db_jobs, &provision, site_id, &batch, index,
+                        &row.domain,
+                    )
+                    .await
                 }
                 _ => "skipped: the site itself didn't import".to_string(),
             });
         }
         let _ = app.emit(import_event(), row.clone());
         outcomes.push(row);
+        batch.done += 1;
     }
 
+    batch.tick("checking", 0, None, Some("checking your sites will load".into()), 0);
     // ONE probe for the whole batch: per-site would add seconds each.
     let serving_blocked = !core::proxy::edge_answers_as_ours(
         core::adminer::ADMINER_HOST,
@@ -500,6 +644,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     )
     .await;
 
+    batch.tick("done", 0, None, None, 0);
     drop(done);
     let imported = outcomes.iter().filter(|o| o.status == "imported").count();
     let failed = outcomes.iter().filter(|o| o.status == "failed").count();
@@ -526,12 +671,16 @@ pub async fn valet_import_run<R: tauri::Runtime>(
 /// Run the ONE database-import job for a freshly imported site and wait for it
 /// to settle. The same job the SiteDetail button starts — no parallel
 /// implementation to drift (the import_one rule, applied again).
+#[allow(clippy::too_many_arguments)]
 async fn import_db_for<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     state: &State<'_, AppState>,
     db_jobs: &State<'_, crate::commands::db_import::DbImportJobs>,
     provision: &State<'_, crate::commands::site_provision::ProvisionJobs>,
     site_id: &str,
+    batch: &Batch<'_, R>,
+    index: usize,
+    domain: &str,
 ) -> String {
     // A site with no database config is the common non-WP case — an honest
     // skip, not a failure.
@@ -569,9 +718,21 @@ async fn import_db_for<R: tauri::Runtime>(
         Ok(s) => s,
         Err(e) => return format!("failed: {e}"),
     };
+    batch.tick(
+        "database",
+        index,
+        Some(domain),
+        Some("copying the database".into()),
+        batch.db_share(0),
+    );
     loop {
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         match crate::commands::db_import::db_import_state(db_jobs.clone(), site_id.to_string()) {
+            Ok(Some(st)) if st.id == snap.id && st.status == "running" => {
+                let label = st.phases.get(st.phase_cursor).map(|p| p.label.clone());
+                batch.tick("database", index, Some(domain), label, batch.db_share(st.pct));
+                continue;
+            }
             Ok(Some(st)) if st.id == snap.id && st.status != "running" => {
                 return match st.status.as_str() {
                     "ok" => "imported".into(),
@@ -613,6 +774,8 @@ async fn import_one<R: tauri::Runtime>(
     provision: &State<'_, crate::commands::site_provision::ProvisionJobs>,
     c: &ImportCandidate,
     php: &str,
+    batch: &Batch<'_, R>,
+    index: usize,
 ) -> ImportOutcome {
     let site = crate::state::models::NewSite {
         name: c.name.clone(),
@@ -651,7 +814,17 @@ async fn import_one<R: tauri::Runtime>(
     let settled = loop {
         match crate::commands::site_provision::state_of(provision, &snap.id) {
             Ok(st) if st.status != "running" => break st,
-            Ok(_) => tokio::time::sleep(std::time::Duration::from_millis(300)).await,
+            Ok(st) => {
+                let label = st.phases.get(st.phase_cursor).map(|p| p.label.clone());
+                batch.tick(
+                    "site",
+                    index,
+                    Some(&c.domain),
+                    label,
+                    batch.provision_share(st.pct),
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            }
             Err(e) => {
                 return ImportOutcome {
                     domain: c.domain.clone(),
@@ -697,4 +870,33 @@ fn scopeguard<F: FnOnce()>(f: F) -> impl Drop {
         }
     }
     G(Some(f))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The bar advances only on real completions, and one running site can
+    /// never fill it — a 3-site batch with site 1 mid-flight stays inside its
+    /// own third.
+    #[test]
+    fn the_batch_bar_only_ever_shows_settled_rows_plus_the_running_one() {
+        assert_eq!(batch_pct(0, 0, 3), 0);
+        assert_eq!(batch_pct(0, 99, 3), 33);
+        assert_eq!(batch_pct(1, 0, 3), 33);
+        assert_eq!(batch_pct(2, 50, 3), 83);
+        // Every row settled still can't print 100 — only the settle tick does.
+        assert_eq!(batch_pct(3, 0, 3), 99);
+        assert_eq!(batch_pct(0, 0, 0), 0);
+    }
+
+    /// With databases requested, a site's provision job owns 60 of its 100 and
+    /// the database owns the rest — so "site done" is never "site finished".
+    #[test]
+    fn a_requested_database_keeps_the_last_40_of_its_sites_share() {
+        assert_eq!(provision_share(100, true), 60);
+        assert_eq!(db_share(0), 60);
+        assert_eq!(db_share(100), 100);
+        assert_eq!(provision_share(100, false), 100);
+    }
 }

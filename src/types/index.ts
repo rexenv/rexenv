@@ -228,6 +228,32 @@ export interface ImportOutcome {
   db: string | null;
 }
 
+/** Where a running import is right now — the screen's only in-flight signal.
+ *
+ *  Honest by construction: `done` counts terminal rows, `sitePct` is the
+ *  running job's OWN backend-computed pct, `detail` is that job's own step
+ *  label verbatim. `pct` is monotonic, capped at 99 until the batch settles,
+ *  and a failed row still counts as done — the bar advances on real
+ *  completions only, never on a clock. */
+export interface ImportProgress {
+  /** Rows the user asked for — fixed for the whole run. */
+  total: number;
+  /** Rows with a terminal outcome (imported, failed or skipped). */
+  done: number;
+  /** 1-based position of the site being worked on; 0 during the shared
+   *  preparation steps that belong to no single site. */
+  index: number;
+  domain: string | null;
+  stage: "scanning" | "resolvers" | "php" | "site" | "database" | "checking" | "done";
+  /** The running job's own step label, verbatim. */
+  detail: string | null;
+  /** The current site's own fraction, 0..100 (provision, plus its database
+   *  job when databases were requested). */
+  sitePct: number;
+  /** The whole batch, 0..100. */
+  pct: number;
+}
+
 /** End-of-run summary: which succeeded, which didn't, and why. */
 export interface ImportResult {
   outcomes: ImportOutcome[];

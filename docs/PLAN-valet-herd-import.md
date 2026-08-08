@@ -340,6 +340,14 @@ Components to copy, all existing:
   rows, live status keyed by row id. No batch-job machinery exists to reuse and none is
   proposed — the loop is one job at a time, and the screen owns the roll-up.
 
+**Shipped since:** the batch also streams `valet-import://progress` (`ImportProgress`)
+between the terminal row events, because a large site — or a multi-GB database — was
+otherwise minutes of silence. The tick carries the stage, the running job's OWN phase
+label verbatim, that job's pct, and a batch pct of `settled rows + the in-flight site's
+fraction` (60/40 split between a site and its database when databases were requested).
+Honest by the provision-card rules: monotonic, 99-capped until settle, frozen where the
+work stopped, and every number comes from a job that really reported it.
+
 ## 8. Commit sequence
 
 1. `fix(dns)` — ownership classification; `ensure_resolver` refuses a foreign file
