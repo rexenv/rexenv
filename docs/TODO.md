@@ -519,6 +519,16 @@ first:
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
+- [ ] **In-app PHP/engine patch updates** (`docs/PLAN-binary-updates.md`, proposed
+  8 Aug 2026): Herd updates PHP patches from its own UI; we ship one pinned patch
+  per minor and a user waits for a rexenv release. Blocker is NOT the UI —
+  static-php publishes no checksums, so every digest is a compiled-in const
+  (`binaries.rs:478`) and an unpinned version is unresolvable by construction.
+  Needs a signed version manifest (ed25519, pubkey compiled in, monotonic serial,
+  compiled-in pins as the floor). Open: key custody, pin cadence, mirror-or-not,
+  PHP-only vs engines too. §9 has the half-day read-only version ("8.3.32 exists")
+  if the release-side work isn't wanted.
+
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If
   built: a deliberate site-page action, offered only when the linked folder is
