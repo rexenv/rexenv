@@ -15,7 +15,8 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, getSetting, listEditors, listSites, deleteSite, openInEditor, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
+import { defaultTld, listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
+import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, ScratchPackage, Site, SiteResources } from "@/types";
@@ -193,21 +194,6 @@ function SortButton({ value, onCycle }: { value: Sort; onCycle: () => void }) {
       {SORT_LABEL[value]}
     </button>
   );
-}
-
-/** The editor "Open in editor" targets: the preferred_editor setting when it is
- *  still installed, else the first detected editor, else null (no editor). */
-function usePreferredEditor() {
-  const { data: editors = [] } = useQuery({
-    queryKey: ["editors"],
-    queryFn: listEditors,
-    staleTime: 60_000,
-  });
-  const { data: preferred } = useQuery({
-    queryKey: ["setting", "preferred_editor"],
-    queryFn: () => getSetting("preferred_editor"),
-  });
-  return editors.find((e) => e.id === preferred) ?? editors[0] ?? null;
 }
 
 /** Exported for the dev harness (`?panel=provision` badge check). */
@@ -506,19 +492,7 @@ export function SiteRow({
         </MenuItem>
         <MenuItem
           icon={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-          onSelect={() => {
-            // Open the whole site folder as a PROJECT in the user's editor
-            // (preferred_editor setting, else first detected). No editor →
-            // say so honestly and reveal the folder instead.
-            if (editor) {
-              openInEditor(editor.id, site.path).catch(toastBackendError);
-            } else {
-              toast.info(
-                "No code editor found (VS Code, Cursor, PhpStorm, Zed, Sublime…) — opening the folder in Finder instead.",
-              );
-              void openExternal(site.path).catch(toastBackendError);
-            }
-          }}
+          onSelect={() => openSiteInEditor(editor, site.path)}
         >
           {editor ? `Open in ${editor.name}` : "Open in editor"}
         </MenuItem>

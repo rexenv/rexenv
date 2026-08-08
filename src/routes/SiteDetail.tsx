@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Code,
   Copy,
   Database,
   ExternalLink,
@@ -22,6 +23,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { Placeholder } from "@/components/common/Placeholder";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
+import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
@@ -353,6 +355,7 @@ function Overview({
 }) {
   const url = `https://${site.domain}`;
   const wpConfig = `${site.path}/wp-config.php`;
+  const editor = usePreferredEditor();
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.label ?? site.webServer;
 
   return (
@@ -456,6 +459,12 @@ function Overview({
                 onClick={() => void openWpAdmin(site)}
               />
             )}
+            <QuickTile
+              icon={<Code className="h-4 w-4" />}
+              iconColor="text-rex-text-muted"
+              label={editor ? `Open in ${editor.name}` : "Open in editor"}
+              onClick={() => openSiteInEditor(editor, site.path)}
+            />
             <QuickTile
               icon={<Database className="h-4 w-4" />}
               iconColor="text-rex-text-muted"
