@@ -96,7 +96,11 @@ export function Import() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [running, setRunning] = useState(false);
-  const [withDatabases, setWithDatabases] = useState(false);
+  // ON by default: rexenv is the whole stack, so someone migrating off Valet
+  // or Herd is migrating their databases too — a site imported without one
+  // still reads the old engine, which is the surprise, not the copy. Visible
+  // and untickable before the run, so it stays a choice.
+  const [withDatabases, setWithDatabases] = useState(true);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
@@ -386,8 +390,9 @@ export function Import() {
             <div className="text-[0.6875rem] leading-[1.55] text-rex-text-muted">
               Importing links each folder where it already is — nothing is copied or moved, and
               deleting a site in rexenv never deletes your folder. Your Valet and Herd setup is
-              left exactly as it is, so you can go back at any time. Databases aren't brought
-              over yet: imported sites keep pointing at whatever they point at today.
+              left exactly as it is, so you can go back at any time. Databases are COPIED, never
+              moved — the old one is only read, and each site keeps using it until you switch it
+              over on its Database tab.
             </div>
           </div>
         )}

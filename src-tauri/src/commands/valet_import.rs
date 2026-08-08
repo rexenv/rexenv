@@ -296,8 +296,11 @@ pub struct ImportRequest {
     /// don't ship the version they pinned.
     #[serde(default)]
     pub php: std::collections::HashMap<String, String>,
-    /// Opt-in (D4): after each site imports, run the SAME per-site database
-    /// import job for it. Off by default — the checkbox is the consent.
+    /// After each site imports, run the SAME per-site database import job for
+    /// it. The SCREEN ticks this by default (rexenv is the whole stack, so a
+    /// migration is a database migration too); the wire default stays off so a
+    /// caller that never mentions databases never copies one. Either way the
+    /// copy is a READ of theirs — the old database is never written or moved.
     #[serde(default)]
     pub import_databases: bool,
 }

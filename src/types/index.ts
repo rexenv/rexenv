@@ -209,7 +209,8 @@ export interface ImportRequest {
   domains: string[];
   /** Per-domain PHP minor, for rows where they had to choose. */
   php: Record<string, string>;
-  /** Opt-in: after each site imports, also run its database import. */
+  /** After each site imports, also run its database import. The screen ticks
+   *  this by default; the old database is only ever read. */
   importDatabases?: boolean;
 }
 
