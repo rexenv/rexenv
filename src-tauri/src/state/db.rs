@@ -446,7 +446,17 @@ const MIGRATIONS: &[&str] = &[
     // both: teardown removes `path` (the whole project), the vhost roots at
     // `path/docroot_subdir`. Read ONLY through `Site::served_root()` so the two
     // can never drift into a per-call-site guess.
-    "ALTER TABLE sites ADD COLUMN docroot_subdir TEXT NOT NULL DEFAULT '';",
+    // The backfill is a SAFETY fix, not tidiness. Laravel sites created before
+    // the install flow shipped got an empty folder and this column's default,
+    // so the day anyone puts a real Laravel app in one — by hand, or by
+    // deleting and recreating into the same path — nginx would root at the
+    // project directory and `.env` would be a public URL. Scoped to docroots
+    // rexenv OWNS (`docroot_managed = 1`), exactly the rule `sites::create`
+    // applies: a LINKED project's stored path already points at the folder to
+    // serve, and pre-v17 rows (NULL) are left alone rather than guessed at.
+    "ALTER TABLE sites ADD COLUMN docroot_subdir TEXT NOT NULL DEFAULT '';
+     UPDATE sites SET docroot_subdir = 'public'
+      WHERE type = 'laravel' AND docroot_managed = 1;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -938,6 +948,43 @@ mod tests {
         let rec = store::get_db_import(&conn, "old").unwrap().unwrap();
         assert!(rec.skipped_tables.is_empty(), "a pre-v31 row must read as a complete copy");
         assert_eq!(rec.table_count, 12);
+    }
+
+    /// v32's backfill decides where nginx roots for Laravel sites that predate
+    /// the install flow. Getting it wrong in EITHER direction is a real bug:
+    /// too eager and a linked project is served from a folder that isn't there;
+    /// too shy and a managed project's `.env` sits inside the served tree.
+    #[test]
+    fn v32_backfills_public_only_for_laravel_docroots_rexenv_owns() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Everything up to (not including) v32.
+        for (i, stmt) in MIGRATIONS[..31].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        for (id, ty, managed) in [
+            ("managed", "laravel", Some(1)),   // ours: created into an empty folder
+            ("linked", "laravel", Some(0)),    // theirs: path ALREADY ends in /public
+            ("prev17", "laravel", None),       // unknown ownership — never guessed at
+            ("wp", "wordpress", Some(1)),      // a WP docroot IS the served root
+        ] {
+            conn.execute(
+                "INSERT INTO sites (id, name, domain, type, php_version, path, docroot_managed)
+                 VALUES (?1, ?1, ?1 || '.rex', ?2, '8.3', '/Users/x/rexenv/Sites/' || ?1, ?3)",
+                rusqlite::params![id, ty, managed],
+            )
+            .unwrap();
+        }
+        migrate(&conn).unwrap();
+
+        let subdir = |id: &str| -> String {
+            conn.query_row("SELECT docroot_subdir FROM sites WHERE id = ?1", [id], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(subdir("managed"), "public", "a Laravel docroot we own serves public/");
+        assert_eq!(subdir("linked"), "", "a linked path already points at what it serves");
+        assert_eq!(subdir("prev17"), "", "unknown ownership is left alone, not guessed");
+        assert_eq!(subdir("wp"), "", "WordPress serves its docroot itself");
     }
 
     #[test]
