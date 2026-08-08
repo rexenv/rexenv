@@ -192,7 +192,11 @@ first:
 - [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
 - [ ] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only.
 - [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass (only ever
-  type-checked; Stage 1's status line now says so).
+  type-checked; Stage 1's status line now says so). **Grew step 9 on 8 Aug**: the
+  batch progress card (`valet-import://progress`) — its arithmetic is L0-proven, but
+  that `detail` really is the child job's own label and that the bar FREEZES rather
+  than rolls back on a mid-batch failure are 🔨 L2 (ledger #243) and only this pass
+  covers them today.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): first pass
   10 Jul 2026 green except multisite-convert (UI didn't exist yet — since built);
   re-verify converted-multisite + onboarding fixes + the TLD v1 Done-when list

@@ -340,7 +340,13 @@ Components to copy, all existing:
   rows, live status keyed by row id. No batch-job machinery exists to reuse and none is
   proposed — the loop is one job at a time, and the screen owns the roll-up.
 
-**Shipped since:** the batch also streams `valet-import://progress` (`ImportProgress`)
+**Shipped since (8 Aug 2026):** "also copy databases" is now TICKED by default on the
+screen — rexenv is the whole stack, so someone leaving Valet/Herd is leaving their
+database engine too, and the unticked box left them with imported sites still reading
+the old engine. The WIRE default stays off (`#[serde(default)]`), so only the screen
+opts in and a scripted caller that never mentions databases never copies one.
+
+The batch also streams `valet-import://progress` (`ImportProgress`)
 between the terminal row events, because a large site — or a multi-GB database — was
 otherwise minutes of silence. The tick carries the stage, the running job's OWN phase
 label verbatim, that job's pct, and a batch pct of `settled rows + the in-flight site's

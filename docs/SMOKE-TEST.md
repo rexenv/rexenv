@@ -101,9 +101,13 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 
 ## Database (Adminer deep-link)
 - [ ] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login.
+- [ ] Overview → Quick links → **Database** opens THIS site's Database tab, not the engines screen (8 Aug).
+- [ ] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
 
 ## Multisite
-- [ ] Convert the WP site to **subdirectory** multisite; Network tab shows the mode + sub-site list.
+- [ ] Convert the WP site to multisite. **The convert panel starts on subdomain**, matching
+      New Site's toggle (8 Aug — the two screens used to default differently, and the mode
+      can't be changed afterwards). Pick either; Network tab shows the mode + sub-site list.
 - [ ] Create a sub-site; it appears in the list and loads.
 
 ## Public sharing (Tunnels) — needs internet

@@ -34,6 +34,18 @@ aspirational — see "intentional divergences" below before "fixing" toward one)
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
 - Unknowable state says so ("can't determine") instead of guessing.
+- **A batch reports the job it is actually running** — the step line is that job's own
+  phase label verbatim, the count moves only on terminal rows (a FAILED row still
+  counts), and a long child job (a multi-GB dump) keeps the bar alive on its own
+  phases. Minutes of silence is a bug, not a quiet success.
+- **A floor may sit on the spinner, never on the work.** Operations too fast to see
+  (the `/import` rescan) get a ~550ms minimum spin so the click reads as an action —
+  paired with the real timestamp of what's on screen (`scanned 12s ago`), so the proof
+  it ran is a fact, not the animation.
+- **Chrome may lead with a RECORDED fact, never with a guess.** Where a slow probe
+  decides what to render (`wp-info` boots WP-CLI three times), render from what we
+  already recorded (`site.type`) and let the live answer correct it — the fix for
+  pop-in is an earlier true source, not a placeholder.
 - WKWebView is the shipping engine: verify layout/metrics in the WebKit harness
   (`scripts/wk-checks/`), not Chrome — pill widths, %-height chains and dialog
   behaviour all differ there.

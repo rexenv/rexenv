@@ -320,9 +320,14 @@ exactly with the scan, not that any machine matches the original pass.
 7. **Selection** — select-all ticks only the ready ones; the indeterminate
    state shows on a partial selection; disabled rows can't be ticked; the count
    in the bar matches; Rescan preserves nothing stale.
-8. **Import one site.** Pick a small static/PHP one. Note the **"also copy databases"**
-   opt-in checkbox (off by default — Stage-2, `Import.tsx`): the doc's populated-list
-   steps predate it. Leave it OFF for the first pass. Expect the admin prompt ONCE, up
+   - **Rescan feedback** (8 Aug): the icon must visibly spin (a 550ms floor sits on
+     the SPINNER, never on the scan), the button reads "Rescanning…", and the
+     subtitle carries the list's real age — `scanned just now` → `12s ago`. A rescan
+     that finds nothing new must still be visibly a rescan.
+8. **Import one site.** Pick a small static/PHP one. **"also copy databases" is TICKED
+   by default** (8 Aug: rexenv is the whole stack, so a migration is a database migration
+   too — the wire default stays off, only the screen opts in). **Untick it for the first
+   pass**; the DB flow is the second pass below and §I in full. Expect the admin prompt ONCE, up
    front, before any site is created (the DB copy, when enabled, adds no admin prompt —
    it's a loopback SQL read/restore). Watch the row flip to `imported`. Then: it appears
    in Sites with the **external** badge, `https://<domain>` loads THEIR files, and
@@ -332,14 +337,28 @@ exactly with the scan, not that any machine matches the original pass.
      The site keeps using the OLD database until you switch it over (its Database tab shows
      the exact change), the row carries a **DB pill**, and the summary reports "N databases
      copied / N failed". This is the Stage-2 flow §I exercises in full.
-9. **Continue-on-failure** — hard to force naturally; if you want it, rename a
-   project folder between the scan and the import so one row fails, and confirm
-   the rest still import and the summary names the failure.
-10. **Cancel** — with several selected, cancel mid-run: the current site
+9. **Progress while it runs** (8 Aug, `valet-import://progress`). A card above the
+   list, with the batch bar. Assert it is REPORTING, not animating:
+   - the step line matches the phase the site's own provision job is on (open its log
+     via the row's outcome to cross-check), and switches to the database job's own
+     phases when databases are on;
+   - `n of N done` only ever counts rows that reached a terminal outcome — a failed row
+     still counts;
+   - the bar never goes backwards, never reaches 100 while a site is still running, and
+     FREEZES where it stopped if the run ends early;
+   - unsettled picked rows read `importing…` (the in-flight one) or `waiting`, never the
+     pre-run `ready`;
+   - **a multi-GB database is the case this exists for** — during a long dump the bar
+     must keep moving on the database job's phases, not sit still.
+10. **Continue-on-failure** — hard to force naturally; if you want it, rename a
+    project folder between the scan and the import so one row fails, and confirm
+    the rest still import and the summary names the failure.
+11. **Cancel** — the button sits beside the progress bar (moved off the header bar
+    with the card). With several selected, cancel mid-run: the current site
     finishes, the rest report `skipped`, and no half-created site appears.
-11. **Settings → DNS & SSL** — the "N sites can be imported" row appears and
+12. **Settings → DNS & SSL** — the "N sites can be imported" row appears and
     navigates to `/import`.
-12. **Banner dismissal** — Dismiss on Sites, reload the app, it stays dismissed.
+13. **Banner dismissal** — Dismiss on Sites, reload the app, it stays dismissed.
 
 **CLEAN-VM only** (cannot be exercised here):
 - The **empty state** (no Valet or Herd at all) — the "No Valet or Herd sites
