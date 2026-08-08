@@ -46,6 +46,7 @@ import {
   openExternal,
   pickFolder,
   regenerateSiteCert,
+  relinkSiteDocroot,
   renameSite,
   setSiteEnv,
   revealPath,
@@ -585,6 +586,33 @@ function SettingsTab({ site }: { site: Site }) {
     if (ok) moveSite.mutate(parent);
   };
 
+  const relinkSite = useMutation({
+    mutationFn: (path: string) => relinkSiteDocroot(site.id, path),
+    onSuccess: (s) => {
+      qc.invalidateQueries();
+      toast.success(`Site now served from ${s?.path ?? "the new location"}`);
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const askRelink = async () => {
+    const picked = await pickFolder("Choose the folder that now holds the site", site.path);
+    if (!picked) return;
+    const ok = await confirm({
+      title: "Point the site at this folder?",
+      message: (
+        <>
+          rexenv will serve <span className="font-mono">{site.domain}</span> from{" "}
+          <span className="font-mono">{picked}</span> instead of{" "}
+          <span className="font-mono">{site.path}</span>. No file is copied, moved or deleted —
+          only the recorded location changes, so move the files yourself first. Pick the folder
+          that holds the site's files (the one with index.php / wp-config.php), not its parent.
+        </>
+      ),
+      confirmLabel: "Point here",
+    });
+    if (ok) relinkSite.mutate(picked);
+  };
+
   const { data: cert, isLoading: certLoading } = useQuery({
     queryKey: ["site-cert", site.id],
     queryFn: () => siteCertInfo(site.id),
@@ -690,11 +718,19 @@ function SettingsTab({ site }: { site: Site }) {
             <div className="truncate font-mono text-[0.78125rem] text-rex-text-bright">{site.path}</div>
             <div className="mt-1 text-[0.75rem] text-rex-text-dim">
               {site.docrootManaged === false
-                ? "Your own folder — rexenv serves it in place and never moves or deletes it."
+                ? "Your own folder — rexenv serves it in place and never moves or deletes it. Moved it yourself? Point rexenv at the new location."
                 : "Move the site's files to another folder — domain, database and certificate stay the same."}
             </div>
           </div>
-          {site.docrootManaged !== false && (
+          {site.docrootManaged === false ? (
+            <Button
+              variant="secondary"
+              disabled={relinkSite.isPending}
+              onClick={() => void askRelink()}
+            >
+              {relinkSite.isPending ? "Pointing…" : "Point at new folder…"}
+            </Button>
+          ) : (
             <Button
               variant="secondary"
               disabled={moveSite.isPending}

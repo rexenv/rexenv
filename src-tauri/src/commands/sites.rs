@@ -759,6 +759,77 @@ pub async fn move_site_docroot(
     Ok(updated)
 }
 
+/// Re-point a site at a docroot the USER moved themselves: `path` is the folder
+/// itself, and rexenv touches no file — it records the new location, then
+/// regenerates + reloads the config so the web server serves from there. This
+/// is the path for a linked/imported folder (`docroot_managed = false`), which
+/// `move_site_docroot` refuses to relocate because it isn't ours to copy and
+/// delete. Retriable and non-destructive: the old folder (if it still exists)
+/// is left exactly as it is. Returns the updated site.
+#[tauri::command]
+pub async fn relink_site_docroot(
+    state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
+    id: String,
+    path: String,
+) -> Result<Site> {
+    // The user is changing this site's docroot — that adopts it (promotion
+    // choke point; a scratch site they touched is theirs).
+    promote_if_scratch(&state, &id);
+    let dest = std::path::PathBuf::from(&path);
+    let site = {
+        let conn = lock(&state)?;
+        let site = core::sites::get(&conn, &id)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        core::sites::check_docroot_relink(&site, &dest)?;
+        site
+    };
+    // Same lifetime guard as the move: a live tunnel serves THIS docroot and
+    // its v23 row records it for mu-plugin removal, so swapping the folder
+    // under a running share changes what the public link serves mid-flight.
+    crate::commands::tunnels::refuse_if_shared(
+        &tunnels,
+        &state,
+        &site.domain,
+        "re-pointing it would change what the live link serves",
+    )?;
+
+    let (updated, sites) = {
+        let conn = lock(&state)?;
+        let updated = core::sites::set_path(&conn, state.platform.as_ref(), &id, &dest)?
+            .ok_or_else(|| Error::Other(format!("site not found: {id}")))?;
+        if let Err(e) =
+            crate::state::store::set_tunnel_docroot(&conn, &updated.domain, &updated.path)
+        {
+            log::warn!("sites: could not re-point the tunnel record for {}: {e}", updated.domain);
+        }
+        (updated, core::sites::list(&conn)?)
+    };
+
+    // Regenerate + reload so nginx's root (and any FrankenPHP override) points
+    // at the new path. Retriable: the row is already correct, so a later
+    // reload/start also serves from the new location.
+    let reload = async {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            } else {
+                Vec::new()
+            }
+        };
+        core::service_manager::await_ready(checks).await
+    };
+    reload.await.map_err(|e| {
+        Error::Other(format!(
+            "The site now points at {path}, but the config reload failed — it may not serve \
+             until services reload. Retry from Services → Restart. ({e})"
+        ))
+    })?;
+
+    Ok(updated)
+}
+
 /// One env-var row as the UI sends it (name/value strings).
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct EnvVarInput {
@@ -1288,6 +1359,7 @@ mod tests {
             "pub async fn set_site_php_version(",
             "pub async fn set_site_xdebug(",
             "pub async fn move_site_docroot(",
+            "pub async fn relink_site_docroot(",
             "pub async fn set_site_env(",
             "pub async fn change_site_domain(",
         ];

@@ -574,6 +574,29 @@ pub fn check_docroot_move(site: &Site, dest_parent: &Path) -> Result<PathBuf> {
     Ok(target)
 }
 
+/// Preflight for RE-POINTING a site at a folder the user moved themselves —
+/// `dest` is the docroot ITSELF (not a parent), and rexenv touches no file:
+/// it only records where the files now live. The complement of
+/// [`check_docroot_move`], which is refused for a folder we don't own; here
+/// the user did the moving, so ownership is not the question — only that the
+/// destination is a real, servable directory.
+pub fn check_docroot_relink(site: &Site, dest: &Path) -> Result<()> {
+    validate_docroot_path(&dest.display().to_string())?;
+    if !dest.is_absolute() {
+        return Err(Error::Other("destination must be an absolute path".into()));
+    }
+    if !dest.is_dir() {
+        return Err(Error::Other(format!(
+            "{} isn't a folder on disk — pick the folder that now holds the site's files",
+            dest.display()
+        )));
+    }
+    if dest == Path::new(&site.path) {
+        return Err(Error::Other("the site already points at that folder".into()));
+    }
+    Ok(())
+}
+
 /// Move a docroot to `target` (which must not exist — see [`check_docroot_move`]).
 /// Same volume: one `fs::rename`. Anything else (cross-volume rename fails):
 /// recursive copy → VERIFY (every file present with matching size) → the caller
@@ -2771,6 +2794,38 @@ mod tests {
         assert!(!out.docroot_removed);
         assert!(outside.exists(), "the moved-out folder must survive deletion");
         let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn relinking_a_moved_folder_takes_only_a_real_directory() {
+        let conn = db::open_in_memory().unwrap();
+
+        let (dir, new) = docroot_fixture("relink");
+        let linked = create_recording_ownership(&conn, new, false, Ownership::User).unwrap();
+
+        // The whole point of the re-point path: a folder rexenv refuses to MOVE
+        // is still one it will follow after the user moved it themselves.
+        assert!(check_docroot_move(&linked, &std::env::temp_dir()).is_err());
+        let (dest, _) = docroot_fixture("relink-dest");
+        check_docroot_relink(&linked, &dest).expect("a real folder is accepted");
+
+        // Every rejection, before anything is recorded.
+        let missing = dest.join("no-such-folder");
+        let err = check_docroot_relink(&linked, &missing).unwrap_err().to_string();
+        assert!(err.contains("isn't a folder"), "{err}");
+        let file = dest.join("index.php");
+        std::fs::write(&file, "x").unwrap();
+        assert!(check_docroot_relink(&linked, &file).is_err(), "a FILE is not a docroot");
+        let same = check_docroot_relink(&linked, Path::new(&linked.path)).unwrap_err().to_string();
+        assert!(same.contains("already points"), "{same}");
+        assert!(check_docroot_relink(&linked, Path::new("relative/x")).is_err());
+        // Unemittable in the generated configs — rejected at input, as on create.
+        let bad = dest.join("we$ird");
+        std::fs::create_dir_all(&bad).unwrap();
+        assert!(check_docroot_relink(&linked, &bad).is_err(), "$ breaks the nginx config");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&dest);
     }
 
     #[cfg(target_os = "macos")]

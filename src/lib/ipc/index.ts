@@ -118,6 +118,16 @@ export async function moveSiteDocroot(id: string, destParent: string): Promise<S
   return invoke<Site>("move_site_docroot", { id, destParent });
 }
 
+/** Re-point a site at a docroot the USER moved themselves — `path` is the
+ *  folder itself. rexenv touches no file: it records the new location and
+ *  reloads the config. This is how a linked/imported folder relocates, since
+ *  `moveSiteDocroot` refuses to copy-and-delete a folder we don't own.
+ *  Null outside Tauri. */
+export async function relinkSiteDocroot(id: string, path: string): Promise<Site | null> {
+  if (!isTauri()) return null;
+  return invoke<Site>("relink_site_docroot", { id, path });
+}
+
 /** Import the selected Valet/Herd sites, one at a time.
  *
  *  Sequential and CONTINUE-ON-FAILURE: each site is independent, so a failure

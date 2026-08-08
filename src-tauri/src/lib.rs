@@ -606,6 +606,7 @@ pub fn run() {
             commands::sites::rename_site,
             commands::sites::change_site_domain,
             commands::sites::move_site_docroot,
+            commands::sites::relink_site_docroot,
             commands::sites::inspect_linked_folder,
             commands::valet_import::scan_valet_import,
             commands::valet_import::resolver_take_over,
