@@ -26,6 +26,16 @@ import type {
 const CHECK =
   "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
 
+/** How old the list on screen is. The rescan itself is too fast to see, so
+ *  this — a real timestamp of the data being rendered — is what proves it ran. */
+function ago(at: number, now: number): string {
+  const s = Math.max(0, Math.round((now - at) / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+
 /** A row can be ticked only when importing it needs no further decision. */
 function selectable(c: ImportCandidate): boolean {
   return c.status.status === "importable" && !!c.servePath;
@@ -89,10 +99,27 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
  */
 export function Import() {
   const qc = useQueryClient();
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, refetch, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ["valet-scan"],
     queryFn: scanValetImport,
   });
+  // A rescan of a few dozen folders finishes in milliseconds, so the spinner
+  // came and went inside one frame and the click read as "nothing happened".
+  // The floor is on the SPINNER only — never on the scan, and the "scanned N
+  // ago" line beside it is the real timestamp of the data on screen.
+  const [spinFloor, setSpinFloor] = useState(false);
+  const rescan = async () => {
+    setSpinFloor(true);
+    const min = new Promise((r) => setTimeout(r, 550));
+    await Promise.all([refetch(), min]);
+    setSpinFloor(false);
+  };
+  const scanning = isFetching || spinFloor;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, []);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Record<string, ImportOutcome>>({});
   const [running, setRunning] = useState(false);
@@ -184,13 +211,15 @@ export function Import() {
         subtitle={
           isLoading
             ? "Scanning…"
-            : `${candidates.length} found · ${ready.length} ready to import`
+            : scanning
+              ? "Rescanning…"
+              : `${candidates.length} found · ${ready.length} ready to import · scanned ${ago(dataUpdatedAt, now)}`
         }
         showSearch={false}
         action={
-          <Button variant="secondary" onClick={() => void refetch()} disabled={isFetching || running}>
-            <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isFetching && "animate-rex-spin")} />
-            Rescan
+          <Button variant="secondary" onClick={() => void rescan()} disabled={scanning || running}>
+            <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", scanning && "animate-rex-spin")} />
+            {scanning ? "Rescanning…" : "Rescan"}
           </Button>
         }
       />
