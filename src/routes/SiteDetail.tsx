@@ -245,7 +245,9 @@ export function SiteDetail() {
                 });
                 if (ok) switchServer.mutate(srv);
               }}
-              onDatabase={() => navigate("/databases")}
+              // THIS site's database, like every other tile here — the engines
+              // screen is a different question and lives in the sidebar.
+              onDatabase={() => navigate(`/sites/${site.id}/database`)}
               onTerminal={() => navigate(`/sites/${site.id}/terminal`)}
               onViewLogs={() => navigate(`/sites/${site.id}/logs`)}
             />
