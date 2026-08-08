@@ -44,6 +44,15 @@ the shipped UI toward one.
   (the `/import` rescan) get a ~550ms minimum spin so the click reads as an action —
   paired with the real timestamp of what's on screen (`scanned 12s ago`), so the proof
   it ran is a fact, not the animation.
+- **An irreversible action is gated by typing its own domain — and the domain is
+  copyable.** Site delete, site reset and db-import overwrite all use ONE gate
+  (`ui/type-to-confirm.tsx`, `ConfirmDialog confirmPhrase=`): the phrase carries a
+  copy button, the input takes the focus the default button used to (so Enter fires
+  nothing), and every destructive button in that dialog stays disabled until the
+  typed value matches. Delete used to be a plain OK — one stray Enter from losing a
+  site — while reset made you retype a domain you couldn't select. The copy button is
+  half the rule: a gate people can only satisfy by retyping from memory is a gate
+  people learn to skim. Match is trimmed, because a pasted value drags whitespace.
 - **Chrome may lead with a RECORDED fact, never with a guess.** Where a slow probe
   decides what to render (`wp-info` boots WP-CLI three times), render from what we
   already recorded (`site.type`) and let the live answer correct it — the fix for

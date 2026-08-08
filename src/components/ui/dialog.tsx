@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { create } from "zustand";
 import { Button } from "@/components/ui/button";
 import { TECH_INPUT } from "@/lib/utils";
+import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 
 /** Shared overlay + centered card for in-app modals. WKWebView (Tauri) doesn't
  *  reliably support window.alert/confirm/prompt, so we use these instead.
@@ -39,12 +40,16 @@ export function Overlay({
   );
 }
 
-/** In-app replacement for `window.confirm`. */
+/** In-app replacement for `window.confirm`. Pass `confirmPhrase` for the
+ *  irreversible ones: the confirm button then stays disabled until the user
+ *  types (or pastes — the phrase carries a copy button) that exact string, so
+ *  a delete can't be one stray Enter away. */
 export function ConfirmDialog({
   title,
   message,
   confirmLabel = "Confirm",
   danger = false,
+  confirmPhrase,
   onConfirm,
   onCancel,
 }: {
@@ -52,18 +57,28 @@ export function ConfirmDialog({
   message?: React.ReactNode;
   confirmLabel?: string;
   danger?: boolean;
+  confirmPhrase?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const [typed, setTyped] = useState("");
+  const gated = confirmPhrase !== undefined;
+  const match = gated && confirmPhraseMatches(typed, confirmPhrase);
   return (
     <Overlay onClose={onCancel}>
       <div className="text-[0.9375rem] font-semibold text-rex-text">{title}</div>
       {message && <div className="mt-2 text-[0.8125rem] leading-[1.55] text-rex-text-muted">{message}</div>}
+      {gated && <TypeToConfirm phrase={confirmPhrase} value={typed} onChange={setTyped} autoFocus />}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} autoFocus>
+        <Button
+          variant={danger ? "danger" : "primary"}
+          disabled={gated && !match}
+          onClick={onConfirm}
+          autoFocus={!gated}
+        >
           {confirmLabel}
         </Button>
       </div>

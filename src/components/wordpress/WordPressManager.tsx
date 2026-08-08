@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast, toastBackendError } from "@/lib/toast";
 import { confirm, PromptDialog } from "@/components/ui/dialog";
+import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, Trash2, UserPlus, X } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
@@ -1192,7 +1193,7 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
     onError: (e) => toastBackendError(e),
   });
   const busy = doImport.isPending;
-  const match = typed === domain;
+  const match = confirmPhraseMatches(typed, domain);
   const fileName = file?.split("/").pop() ?? null;
   return (
     <div
@@ -1235,17 +1236,7 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
           <FileUp className="h-3.5 w-3.5" />
           {fileName ? `File: ${fileName}` : "Choose .sql file…"}
         </button>
-        <div className="mt-4 text-[0.78125rem] text-rex-text-muted">
-          Type <span className="font-mono text-rex-text">{domain}</span> to confirm:
-        </div>
-        <input {...TECH_INPUT}
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          placeholder={domain}
-          disabled={busy}
-          autoFocus
-          className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-status-error-border"
-        />
+        <TypeToConfirm phrase={domain} value={typed} onChange={setTyped} disabled={busy} autoFocus />
         <div className="mt-4 flex justify-end gap-2">
           <button className={BTN} disabled={busy} onClick={onClose}>
             Cancel
@@ -1498,7 +1489,7 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
     },
     onError: (e) => toastBackendError(e),
   });
-  const match = typed === domain;
+  const match = confirmPhraseMatches(typed, domain);
   const busy = reset.isPending;
   return (
     <div
@@ -1548,17 +1539,7 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
               <Download className="h-3.5 w-3.5" />
               {dbExport.isPending ? "Exporting…" : "Export database first"}
             </button>
-            <div className="mt-4 text-[0.78125rem] text-rex-text-muted">
-              Type <span className="font-mono text-rex-text">{domain}</span> to confirm:
-            </div>
-            <input {...TECH_INPUT}
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={domain}
-              disabled={busy}
-              autoFocus
-              className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-status-error-border"
-            />
+            <TypeToConfirm phrase={domain} value={typed} onChange={setTyped} disabled={busy} autoFocus />
             <div className="mt-4 flex justify-end gap-2">
               <button className={BTN} disabled={busy} onClick={onClose}>
                 Cancel

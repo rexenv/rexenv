@@ -424,6 +424,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   `connected` (still true) and drops the row. Site delete: mirrored users drop by the
   RECORD (never re-derived), non-WordPress databases drop only on `db_created = 1`,
   and the connected-site confirm names both outcomes (revert-then-delete default).
+  Both delete confirms (and site reset, and db-import overwrite) are gated on typing
+  the site's domain, shown with a copy button — see the honest-UI rule in
+  `docs/DESIGN.md`.
   Pools pin `mysqli.default_socket` at our MySQL socket (compiled default EMPTY →
   strictly additive for `DB_HOST=localhost` imports); `pdo_mysql` stays out
   permanently (its compiled default is Homebrew's `/tmp/mysql.sock` — an override

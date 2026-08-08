@@ -36,7 +36,9 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
       empty tables here means the re-run after wiring regressed.
 - [ ] New Site → Laravel / Blank PHP show **no** "Start from blueprint" field
       (blueprints are WordPress-only); WordPress still shows it.
-- [ ] Delete the site → its database is gone from the Databases screen too.
+- [ ] Delete the site → the confirm's **Delete site** button is disabled until the
+  domain is typed; the copy button next to the domain fills it by paste. Then its
+  database is gone from the Databases screen too.
 
 ## Site Settings tab
 - [ ] Site → **Settings** shows real content: rename sticks (Sites list updates), DB name matches Adminer, cert card shows issued/expires dates + SANs.

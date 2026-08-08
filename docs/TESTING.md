@@ -136,7 +136,11 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   are now the `pills` probe, and `SiteProvisionCard` gained the `provisionRow` probe on
   9 Aug 2026 — after a long backend phase label pushed the site's domain out of the
   card in the shipped app (ledger #248). The probe failed the first attempted fix,
-  which is the argument for having it.
+  which is the argument for having it. The `deleteGate` probe (9 Aug 2026) joined them
+  when site delete gained the type-the-domain gate: it types into every delete variant
+  and asserts EVERY destructive button — the connected variant has two — is dead on an
+  empty box and on a near-miss, and live on the exact domain. Proven by removing the
+  `disabled` binding: both widths failed.
 - `uireview.js` cannot fail (assertion-free screenshots, overflow non-fatal, not in
   `run-all.js`). **Fixed:** it asserts now — horizontal overflow is a failure, pageerror
   and console.error are failures, per-scenario probes run — and it is in `run-all.js`.

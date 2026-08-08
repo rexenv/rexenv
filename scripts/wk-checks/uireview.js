@@ -250,6 +250,42 @@ const PROBES = {
         problems.push("an expired site the reaper failed on does not say so");
       return problems;
     }),
+
+  // The delete confirm's type-the-domain gate, on EVERY delete variant (the
+  // connected one has two destructive buttons, and both must be gated — a gate
+  // that covers one button in a dialog is the same false guard this project has
+  // paid for before). Runs after the screenshot, so it may type into the page:
+  // empty → every destructive button disabled; a near-miss → still disabled;
+  // the exact domain (trailing space, since the copy button invites a paste) →
+  // all enabled. The copy button must exist, or the gate is retype-from-memory.
+  deleteGate: async (page) => {
+    const problems = await page.evaluate(() => {
+      const out = [];
+      if (!document.querySelector('[data-probe="confirm-copy"]'))
+        out.push("no copy button beside the domain");
+      const input = document.querySelector('[data-probe="confirm-input"]');
+      if (!input) out.push("no type-to-confirm input");
+      return out;
+    });
+    if (problems.length) return problems;
+    const destructive = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll("button")]
+          .filter((b) => /^(Delete site|Delete without reverting|Revert, then delete)$/.test((b.textContent || "").trim()))
+          .map((b) => ({ label: b.textContent.trim(), disabled: b.disabled })),
+      );
+    const before = await destructive();
+    if (!before.length) return ["no destructive button in the delete confirm"];
+    for (const b of before) if (!b.disabled) problems.push(`"${b.label}" is live with an EMPTY confirm box`);
+    const phrase = await page.getAttribute('[data-probe="confirm-input"]', "placeholder");
+    await page.fill('[data-probe="confirm-input"]', phrase.slice(0, -1));
+    for (const b of await destructive())
+      if (!b.disabled) problems.push(`"${b.label}" is live on a near-miss ("${phrase.slice(0, -1)}")`);
+    await page.fill('[data-probe="confirm-input"]', `${phrase} `);
+    for (const b of await destructive())
+      if (b.disabled) problems.push(`"${b.label}" stays dead after the exact domain was entered`);
+    return problems;
+  },
 };
 
 /** Every action `runActions` knows. An unknown one is a scenario bug, not a
@@ -262,6 +298,7 @@ function probeFor(name) {
   if (name.startsWith("agents")) return PROBES.agents;
   if (name === "scratch-rows") return PROBES.scratchGroup;
   if (name.startsWith("provision")) return PROBES.provisionRow;
+  if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }

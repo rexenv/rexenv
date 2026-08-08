@@ -8,8 +8,10 @@
  * revert-then-delete the default; everything else keeps the ordinary
  * ConfirmDialog with the copy naming exactly what this delete drops.
  */
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Overlay } from "@/components/ui/dialog";
+import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import type { DbImportRecord, Site } from "@/types";
 
 export function DeleteSiteDialog({
@@ -27,6 +29,11 @@ export function DeleteSiteDialog({
   onRevertThenDelete: () => void;
   onCancel: () => void;
 }) {
+  /* Hoisted above the variant split: the connected branch is the only one that
+     uses it, but a hook can't sit after an early return. */
+  const [typed, setTyped] = useState("");
+  const match = confirmPhraseMatches(typed, site.domain);
+
   if (dbState !== "connected") {
     return (
       <ConfirmDialog
@@ -60,6 +67,7 @@ export function DeleteSiteDialog({
         }
         confirmLabel="Delete site"
         danger
+        confirmPhrase={site.domain}
         onConfirm={onPlainDelete}
         onCancel={onCancel}
       />
@@ -108,9 +116,12 @@ export function DeleteSiteDialog({
           This can't be undone.
         </p>
       </div>
+      {/* Both actions below delete the site, so the gate sits ABOVE them and
+          disables both; the input takes the focus the default button used to. */}
+      <TypeToConfirm phrase={site.domain} value={typed} onChange={setTyped} autoFocus />
       <div className="mt-4 space-y-2">
         <div className="rounded-lg border border-rex-border-subtle p-3">
-          <Button variant="primary" className="w-full" autoFocus onClick={onRevertThenDelete}>
+          <Button variant="primary" className="w-full" disabled={!match} onClick={onRevertThenDelete}>
             Revert, then delete
           </Button>
           <p className="mt-2 text-[0.78125rem] leading-[1.5] text-rex-text-muted">
@@ -129,7 +140,7 @@ export function DeleteSiteDialog({
           </p>
         </div>
         <div className="rounded-lg border border-rex-border-subtle p-3">
-          <Button variant="danger" className="w-full" onClick={onPlainDelete}>
+          <Button variant="danger" className="w-full" disabled={!match} onClick={onPlainDelete}>
             Delete without reverting
           </Button>
           <p className="mt-2 text-[0.78125rem] leading-[1.5] text-rex-text-muted">
