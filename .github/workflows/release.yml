@@ -1,0 +1,151 @@
+# Release pipeline — tag (or run from the Actions tab) → universal dmg → DRAFT release.
+#
+# The release is created as a DRAFT on purpose: CI can prove everything about the
+# artefact EXCEPT the one publish-blocking gate that needs a human at a real Mac —
+# docs/PUBLISH-TESTING.md §A (quarantine → Gatekeeper block → xattr -rd → launches).
+# Flow: this workflow drafts the release with the dmg attached; you download the
+# asset, run §A on it, then click "Publish release" on GitHub. Publishing fires
+# update-tap.yml, which bumps the Homebrew cask from the PUBLISHED asset's hash.
+#
+# Two ways to start a release, both end in the same draft:
+#   1. git tag v<version> && git push origin v<version>
+#   2. Actions tab → "Release" → Run workflow → type the version (creates the tag
+#      for you; tags pushed with the workflow token do not re-trigger this).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.1.0 — must match tauri.conf.json)"
+        required: true
+
+permissions:
+  contents: write # create the tag (dispatch path) + the draft release
+
+jobs:
+  release:
+    name: Build universal dmg and draft the release
+    runs-on: macos-14
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── One version, everywhere. A tag that disagrees with the configs would
+      #    ship a dmg whose filename and cask URL never match — fail loudly first.
+      - name: Check the tag matches every declared version
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          for f in \
+            "$(jq -r .version src-tauri/tauri.conf.json)" \
+            "$(jq -r .version package.json)" \
+            "$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)" \
+            "$(sed -n 's/^version = "\(.*\)"/\1/p' cli/Cargo.toml | head -1)"; do
+            if [ "$f" != "$V" ]; then
+              echo "::error::Version mismatch: tag says $V but a manifest says $f" >&2
+              echo "  tauri.conf.json / package.json / src-tauri/Cargo.toml / cli/Cargo.toml must all be $V" >&2
+              exit 1
+            fi
+          done
+          echo "version check: everything agrees on $V"
+
+      - name: Create and push the tag (dispatch path only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "tag $TAG already exists locally"
+          elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "tag $TAG already exists on origin"
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          else
+            git tag "$TAG"
+            git push origin "refs/tags/$TAG"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust (both Apple targets)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            cli
+
+      # ── The pre-commit bar, run as the release bar too. verify.sh refuses a
+      #    piped stdout by design; the file redirect is its sanctioned form and
+      #    `exit $code` carries the real verdict.
+      - name: verify.sh (lib tests + examples + clippy + tsc)
+        run: |
+          set -uo pipefail
+          ./scripts/verify.sh > verify.log 2>&1
+          code=$?
+          cat verify.log
+          exit $code
+
+      - name: Build the universal dmg
+        run: pnpm release:mac
+
+      # ── docs/PUBLISH-TESTING.md §A0, the automatable half: a universal binary
+      #    is two binaries in a trench coat, and anything embedded at compile
+      #    time is embedded per slice. Add a line here whenever something new is
+      #    compiled into the binary.
+      - name: "§A0 artefact integrity — per-slice checks"
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/rexenv.app"
+          DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg"
+          test -f "$DMG" || { echo "::error::expected dmg not found: $DMG" >&2; ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/ >&2; exit 1; }
+          [ "$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | wc -l)" -eq 1 ]
+
+          [ "$(lipo -archs "$APP/Contents/MacOS/rexenv")" = "x86_64 arm64" ]
+          [ "$(lipo -archs "$APP/Contents/MacOS/rex")" = "x86_64 arm64" ]
+
+          # Embedded payloads must be in EACH slice on its own, not merely
+          # somewhere in the fat binary (a half-populated fat binary is invisible
+          # to `lipo -archs`). Today's list: the vendored `wp dist-archive` tree.
+          for arch in arm64 x86_64; do
+            lipo -thin "$arch" "$APP/Contents/MacOS/rexenv" -output "/tmp/rexenv-$arch"
+            n=$(strings -a "/tmp/rexenv-$arch" | grep -c Dist_Archive_Command || true)
+            rm -f "/tmp/rexenv-$arch"
+            [ "$n" -gt 0 ] || { echo "::error::Dist_Archive_Command missing from the $arch slice" >&2; exit 1; }
+            echo "slice $arch: Dist_Archive_Command x$n"
+          done
+
+          codesign --verify --deep --strict "$APP"
+          echo "§A0: all green"
+
+      - name: Draft the release with the dmg attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg"
+          shasum -a 256 "$DMG" | awk '{print $1 "  rexenv_'"$V"'_universal.dmg"}' > "rexenv_${V}_universal.dmg.sha256"
+          cat "rexenv_${V}_universal.dmg.sha256"
+          gh release create "$TAG" \
+            --draft \
+            --verify-tag \
+            --title "rexenv $V" \
+            --generate-notes \
+            --notes "> ⚠️ Draft until docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing this release auto-updates the Homebrew cask in rexenv/homebrew-tap." \
+            "$DMG" "rexenv_${V}_universal.dmg.sha256"
+          echo "draft release $TAG created — run §A on the attached dmg, then publish it"

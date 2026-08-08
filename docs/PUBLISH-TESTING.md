@@ -164,10 +164,11 @@ combined into a single privileged shell by the fix).
 
 **Why:** the real end-to-end a user experiences. The tap repo exists and is public —
 `github.com/rexenv/homebrew-tap` (2026-08-08), `brew tap rexenv/tap` resolves and
-`brew style --cask rexenv/tap/rexenv` is clean. What is still missing: (1) `rexenv/rexenv`
-is **private**, so the cask's download URL is not publicly fetchable, and (2) there is no
-`v0.1.0` Release carrying the dmg. Do both, then **re-verify the sha256 against the
-DOWNLOADED asset** (never the local build) and bump the cask if it differs.
+`brew style --cask rexenv/tap/rexenv` is clean. Release + cask-bump are now **automated**
+(`docs/RELEASING.md`): a tag drafts the Release with the dmg, publishing it pushes the
+version + sha256 bump to the tap from the PUBLISHED asset. What is still missing before
+this section can run: (1) `rexenv/rexenv` is **private**, so the cask's download URL is
+not publicly fetchable, and (2) no Release has been published yet.
 
 ```sh
 # One-time online cask audit:

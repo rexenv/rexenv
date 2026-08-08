@@ -1,0 +1,69 @@
+# Publishing a release → bump the Homebrew cask in rexenv/homebrew-tap.
+#
+# Fires when a draft release is PUBLISHED (i.e. after the human §A gate — see
+# release.yml). The sha256 is computed from the asset DOWNLOADED off the release,
+# never from a local build — the rule docs/PUBLISH-TESTING.md §D states, enforced
+# here by construction: this runner never built anything.
+#
+# Needs one secret: TAP_PUSH_TOKEN — a fine-grained PAT with Contents read/write
+# on rexenv/homebrew-tap only (the default GITHUB_TOKEN cannot push cross-repo).
+name: Update Homebrew tap
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  bump-cask:
+    name: Bump version + sha256 in rexenv/homebrew-tap
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the published dmg and hash it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          V="${TAG#v}"
+          ASSET="rexenv_${V}_universal.dmg"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$ASSET"
+          SHA=$(shasum -a 256 "$ASSET" | awk '{print $1}')
+          echo "downloaded $ASSET — sha256 $SHA"
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "SHA256=$SHA" >> "$GITHUB_ENV"
+
+      - name: Check out the tap
+        uses: actions/checkout@v4
+        with:
+          repository: rexenv/homebrew-tap
+          token: ${{ secrets.TAP_PUSH_TOKEN }}
+          path: tap
+
+      - name: Rewrite the cask stanzas and push
+        run: |
+          set -euo pipefail
+          CASK=tap/Casks/rexenv.rb
+
+          sed -i -E "s|^(  version \").*(\")$|\1${VERSION}\2|" "$CASK"
+          sed -i -E "s|^(  sha256 \").*(\")$|\1${SHA256}\2|" "$CASK"
+
+          # The edit must have landed EXACTLY — a sed that silently matched
+          # nothing would push an unchanged cask and report success.
+          grep -q "^  version \"${VERSION}\"$" "$CASK"
+          grep -q "^  sha256 \"${SHA256}\"$" "$CASK"
+
+          cd tap
+          if git diff --quiet; then
+            echo "cask already at ${VERSION} / ${SHA256} — nothing to push"
+            exit 0
+          fi
+          git config user.name "rexenv-release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git commit -a -m "rexenv ${VERSION}" \
+            -m "Automated bump from the published release ${VERSION}; sha256 computed from the downloaded release asset by the update-tap workflow."
+          git push
+          echo "tap bumped — users get it via: brew update && brew upgrade --cask rexenv"
