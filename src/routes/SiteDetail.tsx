@@ -15,13 +15,13 @@ import {
   Loader2,
   Lock,
   LockOpen,
-  Settings,
   TerminalSquare,
   Trash2,
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { Placeholder } from "@/components/common/Placeholder";
+import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
@@ -318,8 +318,8 @@ function SiteHeader({
           </Button>
           {isWordpress && (
             <Button variant="primary" disabled={adminBusy} onClick={onOpenAdmin}>
-              <Settings className="h-[15px] w-[15px]" strokeWidth={1.7} />
-              {adminBusy ? "Signing in…" : "Open admin"}
+              <WordPressIcon className="h-[15px] w-[15px]" />
+              {adminBusy ? "Signing in…" : "Magic Login"}
             </Button>
           )}
         </div>
@@ -450,9 +450,9 @@ function Overview({
             />
             {isWordpress && (
               <QuickTile
-                icon={<ExternalLink className="h-4 w-4" />}
+                icon={<WordPressIcon className="h-4 w-4" />}
                 iconColor="text-rex-accent-blue"
-                label="WP admin"
+                label="Magic Login"
                 onClick={() => void openWpAdmin(site)}
               />
             )}
