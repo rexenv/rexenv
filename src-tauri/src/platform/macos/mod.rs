@@ -843,9 +843,24 @@ impl DnsAgentManager for MacosDnsAgent {
     }
 
     fn kickstart(&self) -> Result<()> {
-        let plist = self.plist_path()?;
-        let _ = Self::launchctl(&["unload", "-w"], &plist);
-        Self::launchctl(&["load", "-w"], &plist)
+        // Restart the job IN PLACE (`launchctl kickstart -k`), never unload/load:
+        // an unload+load pair RE-REGISTERS the login item with Background Task
+        // Management, and macOS posts an "App Background Activity" notification
+        // for every re-registration — the old pair here fired that nag on every
+        // watchdog kick (31 in one health log). Kickstart restarts the process
+        // under the EXISTING registration, so launchd relaunches the resolver
+        // and the user hears nothing.
+        let uid = String::from_utf8(std::process::Command::new("id").arg("-u").output()?.stdout)
+            .map_err(|e| Error::Other(format!("id -u produced non-UTF-8 output: {e}")))?;
+        let target = format!("gui/{}/{DNS_AGENT_LABEL}", uid.trim());
+        let st = std::process::Command::new("launchctl").args(["kickstart", "-k", &target]).status()?;
+        if st.success() {
+            return Ok(());
+        }
+        // Job unknown to launchd (e.g. someone ran `launchctl unload` by hand):
+        // fall back to a plain load — a REGISTRATION, not a re-registration, so
+        // the one notification it may show is honest (the item really was gone).
+        Self::launchctl(&["load", "-w"], &self.plist_path()?)
     }
 
     fn uninstall(&self) -> Result<()> {
