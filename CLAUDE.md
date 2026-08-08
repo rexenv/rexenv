@@ -77,6 +77,37 @@ The system mental model lives in `docs/ARCHITECTURE.md` — read it for any feat
   steps, one task at a time; commit per task; tick finished items in `docs/TODO.md` with
   ✓ evidence. Surface assumptions before non-trivial work; keep changes surgical.
 
+## Docs ship WITH the code, in the same commit (non-negotiable)
+
+A commit that changes behaviour and leaves the docs describing yesterday is not
+finished — it is a commit plus a debt nobody is tracking. This project has already
+paid for that twice (a doc asserting a guard that no longer existed; a tally stale
+within a day of being written), and the rule that failed was "remember to update
+the docs later". So: **before every commit, walk the list below and update what the
+change touched — in that same commit, not a follow-up.**
+
+| If the change touches… | Update |
+|---|---|
+| any behaviour a user sees or a subsystem's mental model | `docs/ARCHITECTURE.md` |
+| a new/renamed/deleted module, or a new entry point | `docs/MAP.md` (+ README's structure tree) |
+| an invariant comment ("never", "always", "the ONE place") | `docs/CLAIM-LEDGER.md` — row + verdict + the tally (`scripts/ledger-tally.sh`, enforced by verify.sh) |
+| what a layer can/can't prove, or a new probe/example/tier | `docs/TESTING.md`, `scripts/live-checks.sh` |
+| a flow a release must be tested against by hand | `docs/SMOKE-TEST.md` (or `docs/PUBLISH-TESTING.md` for publish gates) |
+| a port, a pinned binary version, a checksum | `docs/PORTS.md` |
+| an open item finished, or a new one discovered | `docs/TODO.md` — tick with ✓ evidence, or add the row |
+| install/first-run behaviour, or a user-facing prompt | `docs/INSTALL.md` |
+| the release pipeline or the cask | `docs/RELEASING.md` (cask lives in `rexenv/homebrew-tap`) |
+| a design token, a component rule, an honest-UI promise | `docs/DESIGN.md` |
+| a `rex` command or its IPC | `docs/CLI-ROADMAP.md` |
+
+Two rules with teeth, learned the hard way:
+- **A doc that is now WRONG outranks a doc that is merely incomplete.** When a fix
+  closes a gap some doc lists as open, correcting that entry is part of the fix —
+  a stale "zero coverage here" sends the next reader to build what already exists.
+- **Say what it cost, not just what it does.** The durable half of these files is
+  the failure that motivated the rule; a line that records only the current
+  behaviour gets deleted by the next person who finds it obvious.
+
 ## Router — for X, read Y
 
 | Task | Read |

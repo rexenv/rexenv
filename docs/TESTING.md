@@ -130,10 +130,16 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 - `commands/` orchestration honesty (ledger #175, #181–182, #186, #188–190).
 - `webview_dialogs.rs` — zero tests, three stacked wry/WebKit claims (#166).
 - Frontend honest-UI surface: StatusPill non-running states, StartStopToggle,
-  StatusFooter, Tunnels tri-state, SiteProvisionCard — zero programmatic coverage; the
-  WKWebView pill-metrics fix was verified once by hand and never committed as a check.
+  StatusFooter, Tunnels tri-state — the WKWebView pill-metrics fix was verified once by
+  hand and never committed as a check. **Both halves of this bullet have since been
+  closed and the entry is kept as the record of what the gap cost:** the pill metrics
+  are now the `pills` probe, and `SiteProvisionCard` gained the `provisionRow` probe on
+  9 Aug 2026 — after a long backend phase label pushed the site's domain out of the
+  card in the shipped app (ledger #248). The probe failed the first attempted fix,
+  which is the argument for having it.
 - `uireview.js` cannot fail (assertion-free screenshots, overflow non-fatal, not in
-  `run-all.js`).
+  `run-all.js`). **Fixed:** it asserts now — horizontal overflow is a failure, pageerror
+  and console.error are failures, per-scenario probes run — and it is in `run-all.js`.
 
 ## 2. The claim inventory
 

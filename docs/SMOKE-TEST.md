@@ -22,6 +22,22 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] Site loads at **`https://<name>.rex`** with a valid lock (no cert warning).
 - [ ] **WP admin** opens (`/wp-admin`); "Log in as" magic link logs in.
 
+## Core: Laravel (the second create flow)
+- [ ] **New site** → Laravel → create; the card runs `installing Laravel` (Composer
+      streams package lines) then `creating database + .env`, and settles ok.
+- [ ] Site loads at **`https://<name>.rex`** — the Laravel welcome page, valid lock.
+- [ ] **`https://<name>.rex/.env` 404s.** The served root is `public/`, so the file
+      holding the site's DB credentials must not be reachable. This is the check
+      that would catch a docroot regression, and nothing else on this list would.
+- [ ] `~/rexenv/Sites/<name>.rex/` holds the whole project (artisan, composer.json,
+      `public/`), and `.env` names this site's database — not `sqlite`.
+- [ ] Databases screen lists that database **with the migration tables** (users,
+      cache, jobs): the skeleton migrates into SQLite before `.env` is wired, so
+      empty tables here means the re-run after wiring regressed.
+- [ ] New Site → Laravel / Blank PHP show **no** "Start from blueprint" field
+      (blueprints are WordPress-only); WordPress still shows it.
+- [ ] Delete the site → its database is gone from the Databases screen too.
+
 ## Site Settings tab
 - [ ] Site → **Settings** shows real content: rename sticks (Sites list updates), DB name matches Adminer, cert card shows issued/expires dates + SANs.
 
