@@ -320,6 +320,18 @@ pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedB
     plan
 }
 
+/// Laravel install tooling for a site create: the minor's PHP CLI build (which
+/// runs the phar, so Composer's platform checks match the site's own PHP) and
+/// the pinned Composer phar itself.
+pub fn plan_for_laravel_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+    let mut plan = Vec::new();
+    if let Some(patch) = php::patch_for_minor(minor) {
+        plan.push(PlannedBinary::new(platform, "php", patch));
+    }
+    plan.push(PlannedBinary::new(platform, "composer", binaries::COMPOSER_VERSION));
+    plan
+}
+
 /// The FrankenPHP override backend — for site create/switch onto FrankenPHP,
 /// whose `reconcile_overrides` (inside the locked reload) must hit cache.
 pub fn plan_for_override(platform: &dyn Platform, server: WebServer) -> Vec<PlannedBinary> {

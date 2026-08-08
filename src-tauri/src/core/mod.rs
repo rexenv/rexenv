@@ -26,6 +26,7 @@ pub mod dns;
 pub mod downloads;
 pub mod firefox;
 pub mod frankenphp;
+pub mod laravel;
 pub mod logs;
 pub mod mail;
 pub mod mariadb;

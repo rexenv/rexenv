@@ -1102,11 +1102,12 @@ fn may_drop_database(site: &crate::state::models::Site) -> bool {
 /// Whether THIS site's delete drops `site.db_name` (settled 28 Jul 2026):
 /// [`may_drop_database`]'s provenance rules, scoped by type. WordPress keeps
 /// yesterday's behaviour (NULL = our own provisioning made it). Every other
-/// type drops ONLY on the explicit import provenance `Some(true)`:
-/// non-WordPress provisioning never creates a database, so NULL there means
-/// "we never made one" — and the derived `db_name` could collide with a
-/// database the user made themselves. Dropping on NULL for those would be
-/// data loss wearing a cleanup's clothes.
+/// type drops ONLY on the explicit provenance `Some(true)` — set by an import,
+/// and (since the Laravel create flow shipped) by Laravel provisioning right
+/// after it creates the database. NULL there still means "we never made one",
+/// and the derived `db_name` could collide with a database the user made
+/// themselves: dropping on NULL for those would be data loss wearing a
+/// cleanup's clothes.
 fn should_drop_database(site: &crate::state::models::Site) -> bool {
     match site.site_type {
         SiteType::Wordpress => may_drop_database(site),

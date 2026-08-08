@@ -39,6 +39,24 @@ pub(crate) async fn wp_tools(
     Ok((php_bin, wp_phar))
 }
 
+/// The same pair for Laravel: the site's PHP CLI build + the pinned Composer
+/// phar. Composer is ALWAYS run through this PHP (never a system `composer`,
+/// which can be a wrapper script rather than a phar — Herd ships one), so
+/// `create-project`'s platform checks are made against the PHP the app runs on.
+pub(crate) async fn composer_tools(
+    state: &State<'_, AppState>,
+    php_minor: &str,
+) -> Result<(PathBuf, PathBuf)> {
+    let patch = php::patch_for_minor(php_minor)
+        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {php_minor}")))?;
+    let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+    // A .phar (not a Mach-O) → resolve_file: no chmod/codesign step.
+    let composer_phar =
+        binaries::resolve_file(state.platform.as_ref(), "composer", binaries::COMPOSER_VERSION)
+            .await?;
+    Ok((php_bin, composer_phar))
+}
+
 /// Detect whether a site runs WordPress, plus its core version + multisite flag.
 /// A non-WordPress docroot (e.g. a Blank-PHP site) returns `isWordpress: false`.
 #[tauri::command]

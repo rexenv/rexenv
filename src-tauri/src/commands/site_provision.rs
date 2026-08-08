@@ -23,7 +23,7 @@
 //!   rather than assuming they exist.
 
 use crate::commands::repo::{shell_env, EnvSnapshot, RepoJobs};
-use crate::commands::wordpress::wp_tools;
+use crate::commands::wordpress::{composer_tools, wp_tools};
 use crate::core::db::DbEngine;
 use crate::core::{self, blueprints, database, downloads, repo, service_manager, sites, wordpress};
 use crate::error::{Error, Result};
@@ -164,6 +164,15 @@ fn phase_defs(
             v.push(("blueprint", "applying blueprint"));
         }
     }
+    // Laravel: the same shape one type over. The app comes from Composer rather
+    // than a core zip, and `configure` both creates the database and points the
+    // skeleton's `.env` at it — a fresh Laravel defaults to SQLite, so without
+    // that step the site would run on a file the Databases screen never shows.
+    if matches!(site_type, SiteType::Laravel) && !linked {
+        v.push(("db", "starting database"));
+        v.push(("app_install", "installing Laravel (composer create-project)"));
+        v.push(("configure", "creating database, wiring .env, running migrations"));
+    }
     v.push(("serve", "starting to serve"));
     v
 }
@@ -195,6 +204,13 @@ fn build_plan(
     if matches!(site.site_type, SiteType::Wordpress) && !linked {
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
         plan.extend(downloads::plan_for_wp_tooling(state.platform.as_ref(), minor));
+    }
+    // Laravel needs the same database engine, and Composer + the PHP CLI to run
+    // it — the phar is executed by the SITE's PHP so `create-project`'s platform
+    // checks are made against the PHP the app will actually run on.
+    if matches!(site.site_type, SiteType::Laravel) && !linked {
+        plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
+        plan.extend(downloads::plan_for_laravel_tooling(state.platform.as_ref(), minor));
     }
     plan
 }
@@ -745,6 +761,7 @@ async fn drive<R: tauri::Runtime>(
     // step so it can't run a step that has no phase to report into.
     let linked = site.docroot_managed == Some(false);
     let is_wp = matches!(site.site_type, SiteType::Wordpress) && !linked;
+    let is_laravel = matches!(site.site_type, SiteType::Laravel) && !linked;
     let minor = core::php::minor_of(&site.php_version);
 
     if is_wp {
@@ -920,6 +937,191 @@ async fn drive<R: tauri::Runtime>(
             finish_phase(app, entry, progress, ix, "ok", None);
             bail_if_cancelled!();
         }
+    }
+
+    if is_laravel {
+        // ── db ───────────────────────────────────────────────────────────
+        let ix = phase_index(entry, "db");
+        enter_phase(app, entry, ix);
+        let engine = DbEngine::from_site(site.db_engine);
+        let check = {
+            let mut mgr = state.services.lock().await;
+            match mgr.spawn_db(state.platform.as_ref(), engine).await {
+                Ok(c) => c,
+                Err(e) => return JobEnd::Failed(format!("database start failed: {e}")),
+            }
+        };
+        if let Err(e) = service_manager::await_ready(check.into_iter().collect()).await {
+            return JobEnd::Failed(format!("database not ready: {e}"));
+        }
+        finish_phase(app, entry, progress, ix, "ok", None);
+        bail_if_cancelled!();
+
+        let (php_bin, composer_phar) = match composer_tools(&state, &minor).await {
+            Ok(t) => t,
+            Err(e) => return JobEnd::Failed(e.to_string()),
+        };
+        let env = {
+            let a = app.clone();
+            match tauri::async_runtime::spawn_blocking(move || {
+                let st = a.state::<AppState>();
+                shell_env(&st, &a.state::<RepoJobs>(), false)
+            })
+            .await
+            {
+                Ok(Ok(env)) => env,
+                Ok(Err(e)) => return JobEnd::Failed(e.to_string()),
+                Err(e) => return JobEnd::Failed(format!("env worker died: {e}")),
+            }
+        };
+        // The PROJECT root — `site.path`, not `served_root()`. Composer, the
+        // `.env` and artisan all live one level above what nginx serves, which
+        // is the entire point of `docroot_subdir` (v32).
+        let project = PathBuf::from(&site.path);
+        let engine_version = match super::database::effective_db_version(&state, engine) {
+            Ok(v) => v,
+            Err(e) => return JobEnd::Failed(e.to_string()),
+        };
+        let (db_client, _) =
+            match engine.sql_client_bins(state.platform.as_ref(), &engine_version).await {
+                Ok(c) => c,
+                Err(e) => return JobEnd::Failed(e.to_string()),
+            };
+
+        // ── app_install ──────────────────────────────────────────────────
+        let ix = phase_index(entry, "app_install");
+        enter_phase(app, entry, ix);
+        if core::laravel::is_installed(&project) {
+            // A retry after a later phase failed: the app is already there and
+            // `create-project` would refuse the non-empty directory anyway.
+            finish_phase(app, entry, progress, ix, "skipped", Some("Laravel app already present"));
+        } else {
+            let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+            let (p2, c2, d2) = (php_bin.clone(), composer_phar.clone(), project.clone());
+            let created = tauri::async_runtime::spawn_blocking(move || {
+                let st = a2.state::<AppState>();
+                let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                core::laravel::create_project(
+                    st.platform.supervisor(),
+                    &p2,
+                    &c2,
+                    &d2,
+                    &env2,
+                    &e2.cancel,
+                    &mut on_line,
+                )
+            })
+            .await;
+            match created {
+                Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
+                Ok(Err(e)) if e.to_string().contains("cancelled") => return JobEnd::Cancelled,
+                Ok(Err(e)) => return JobEnd::Failed(format!("composer create-project failed: {e}")),
+                Err(e) => return JobEnd::Failed(format!("composer worker died: {e}")),
+            }
+        }
+        bail_if_cancelled!();
+
+        // ── configure ────────────────────────────────────────────────────
+        let ix = phase_index(entry, "configure");
+        enter_phase(app, entry, ix);
+        let port = engine.port();
+        let (dbc, dbn) = (db_client.clone(), site.db_name.clone());
+        match tauri::async_runtime::spawn_blocking(move || database::create_database(&dbc, port, &dbn))
+            .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => return JobEnd::Failed(format!("database create failed: {e}")),
+            Err(e) => return JobEnd::Failed(format!("db worker died: {e}")),
+        }
+        append_line(app, entry, &format!("created database `{}`", site.db_name));
+        // Record the PROVENANCE, not just the fact: `should_drop_database` only
+        // drops a non-WordPress site's database on `db_created == Some(true)`,
+        // because for every other type NULL used to mean "provisioning never
+        // made one". Laravel provisioning now does, so without this line
+        // deleting the site would leave its database behind forever.
+        {
+            let (a2, sid) = (app.clone(), site.id.clone());
+            let recorded = tauri::async_runtime::spawn_blocking(move || {
+                let st = a2.state::<AppState>();
+                let conn = lock_db(&st)?;
+                crate::state::store::set_site_db_created(&conn, &sid, true)
+            })
+            .await;
+            match recorded {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => return JobEnd::Failed(format!("recording the database failed: {e}")),
+                Err(e) => return JobEnd::Failed(format!("db-record worker died: {e}")),
+            }
+        }
+
+        let env_file = core::laravel::env_path(&project);
+        let db_settings = core::laravel::DbSettings {
+            connection: "mysql".into(),
+            host: "127.0.0.1".into(),
+            port,
+            database: site.db_name.clone(),
+            username: "root".into(),
+            password: String::new(),
+        };
+        let app_url = format!("https://{}", site.domain);
+        match std::fs::read_to_string(&env_file) {
+            Ok(original) => {
+                let wired = core::laravel::wire_env(&original, &app_url, &db_settings);
+                if let Err(e) = std::fs::write(&env_file, wired) {
+                    return JobEnd::Failed(format!("writing {} failed: {e}", env_file.display()));
+                }
+                append_line(app, entry, ".env wired to this site's database and URL");
+            }
+            // Composer proved the app is installed, so a missing `.env` is a
+            // real anomaly (the skeleton's post-create script writes it) — the
+            // site would run on Laravel's SQLite default and nothing would say
+            // so. Fail loudly rather than serve a site whose database is a
+            // fiction.
+            Err(e) => {
+                return JobEnd::Failed(format!(
+                    "the Laravel app installed but has no .env to wire ({}): {e}",
+                    env_file.display()
+                ))
+            }
+        }
+
+        // Re-run the migrations against the database we just wired.
+        //
+        // Not optional, and not belt-and-braces: `composer create-project` runs
+        // `artisan migrate --graceful` in its post-create script, and at that
+        // moment the skeleton's `.env` still says SQLite — so the users/cache/
+        // jobs tables were created inside `database/database.sqlite`, and the
+        // MySQL database this site advertises is EMPTY. Skipping this would ship
+        // a site whose Databases screen shows a database the app never filled.
+        // The stray SQLite file is left alone (it is the project's own file, and
+        // deleting what Composer wrote would be a surprise) — it is simply no
+        // longer the connection `.env` names.
+        {
+            let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+            let (p2, d2) = (php_bin.clone(), project.clone());
+            let migrated = tauri::async_runtime::spawn_blocking(move || {
+                let st = a2.state::<AppState>();
+                let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                core::laravel::artisan(
+                    st.platform.supervisor(),
+                    &p2,
+                    &d2,
+                    &["migrate", "--force"],
+                    &env2,
+                    &e2.cancel,
+                    &mut on_line,
+                )
+            })
+            .await;
+            match migrated {
+                Ok(Ok(())) => append_line(app, entry, "migrations applied to the site's database"),
+                Ok(Err(e)) if e.to_string().contains("cancelled") => return JobEnd::Cancelled,
+                Ok(Err(e)) => return JobEnd::Failed(format!("php artisan migrate failed: {e}")),
+                Err(e) => return JobEnd::Failed(format!("artisan worker died: {e}")),
+            }
+        }
+        finish_phase(app, entry, progress, ix, "ok", None);
+        bail_if_cancelled!();
     }
 
     // ── serve ────────────────────────────────────────────────────────────
