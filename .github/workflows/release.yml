@@ -5,7 +5,8 @@
 # docs/PUBLISH-TESTING.md §A (quarantine → Gatekeeper block → xattr -rd → launches).
 # Flow: this workflow drafts the release with the dmg attached; you download the
 # asset, run §A on it, then click "Publish release" on GitHub. Publishing fires
-# update-tap.yml, which bumps the Homebrew cask from the PUBLISHED asset's hash.
+# the tap's own update-cask.yml (in rexenv/homebrew-tap), which bumps the Homebrew
+# cask from the PUBLISHED asset's hash — see docs/RELEASING.md.
 #
 # Two ways to start a release, both end in the same draft:
 #   1. git tag v<version> && git push origin v<version>
