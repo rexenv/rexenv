@@ -141,7 +141,14 @@ export function SiteDetail() {
     );
   }
 
-  const isWordpress = !!wp?.isWordpress;
+  // `wp-info` boots WP-CLI three times, so on a first visit its answer lands a
+  // second or two in — long enough that the WordPress tab and Magic Login
+  // POPPED IN after the page had settled. Until it resolves, fall back to the
+  // site's OWN recorded type (set at create/import, already in hand from the
+  // sites list) so the chrome is right immediately; the live answer corrects it
+  // the moment it arrives — including the "recorded as WordPress but the
+  // install never finished" case, where the tab goes away again.
+  const isWordpress = wpResolved ? !!wp?.isWordpress : site.type === "wordpress";
   const isServing = !!serving?.find((s) => s.domain === site.domain)?.serving;
   const active: TabKey = tab ?? "overview";
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
