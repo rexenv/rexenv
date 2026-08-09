@@ -2215,9 +2215,10 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   });
   // Same streamed update as the plugin panel — a theme download is the same
   // wp-cli upgrader, and was the same silent wait.
-  const upd = useUpdateStream("themes", siteId, (names) => wpThemeUpdate(siteId, names), () =>
-    qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
-  );
+  const upd = useUpdateStream("themes", siteId, (names) => wpThemeUpdate(siteId, names), (_r, names) => {
+    dropCheckedUpdates<WpTheme>(qc, ["wp-themes", siteId, "updates"], names);
+    qc.invalidateQueries({ queryKey: ["wp-themes", siteId] });
+  });
   const busy = run.isPending || upd.pending;
 
   const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
@@ -2762,8 +2763,9 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   // An update is the one plugin op that takes tens of seconds (WooCommerce and
   // Elementor download tens of MB), so it runs on its own stream rather than
   // the shared `run` above, which could only say "busy".
-  const upd = useUpdateStream("plugins", siteId, (names) => wpPluginUpdate(siteId, names), () => {
+  const upd = useUpdateStream("plugins", siteId, (names) => wpPluginUpdate(siteId, names), (_r, names) => {
     setSelected(new Set());
+    dropCheckedUpdates<WpPlugin>(qc, ["wp-plugins", siteId, "updates"], names);
     qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
   });
   const busy = run.isPending || upd.pending;
@@ -3106,6 +3108,23 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   );
 }
 
+/** Forget what the update-CHECK pass said about the items we just updated.
+ *
+ *  Both lists merge the slow checked pass over the fast one, and invalidating
+ *  does not erase cached data — it refetches. The checked pass takes seconds
+ *  (api.wordpress.org), so without this its stale row keeps claiming
+ *  "update · v1.3.4 → 3.3.5" over a plugin that is already at 3.3.5: the badge
+ *  and the arrow come back for a few seconds right after the work finished.
+ *  Dropping the row falls back to the fast list's own truth (version from
+ *  disk, no claimed update) until the real answer lands. */
+function dropCheckedUpdates<T extends { name: string }>(
+  qc: ReturnType<typeof useQueryClient>,
+  key: unknown[],
+  names: string[],
+) {
+  qc.setQueryData<T[]>(key, (old) => old?.filter((row) => !names.includes(row.name)));
+}
+
 /** What the backend tracker calls the single core item (it has no slug), so
  *  the panel starts the run under the same name the stream reports. */
 const CORE_ITEM = "WordPress";
@@ -3118,7 +3137,7 @@ function useUpdateStream<T>(
   channel: "plugins" | "themes" | "core",
   siteId: string,
   run: (names: string[]) => Promise<T>,
-  onDone: (result: T) => void,
+  onDone: (result: T, names: string[]) => void,
 ) {
   // `updating` is the argv order we sent, which is the order wp-cli works in.
   const [updating, setUpdating] = useState<string[]>([]);
@@ -3138,7 +3157,14 @@ function useUpdateStream<T>(
       setProgress(null);
       return run(names);
     },
-    onSuccess: onDone,
+    // Braces, NOT `onSuccess: onDone` — react-query AWAITS a promise returned
+    // from this callback, so a caller that ended with `qc.invalidateQueries()`
+    // (an implicit-return arrow) kept the mutation pending, and the bar sat at
+    // 100% for the whole slow wp.org re-check before vanishing. Discarding the
+    // return here means no caller can block the bar by accident.
+    onSuccess: (result, names) => {
+      onDone(result, names);
+    },
     onError: (e) => toastBackendError(e),
     onSettled: () => {
       setUpdating([]);

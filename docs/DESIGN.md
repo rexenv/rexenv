@@ -49,6 +49,13 @@ the shipped UI toward one.
   "Failed". The version an update installs is shown BEFORE the click (`v10.8.1 →
   10.9.0`) on plugins and themes alike, because "update" alone made the user run it
   to find out.
+- **A bar ends when the WORK ends, and a stale badge may not outlive it.** Two ways
+  this broke on first real use, both worth remembering: a progress callback that
+  returns its refetch promise keeps the run "pending" through a slow re-check, so the
+  bar sits at 100% doing nothing; and invalidating a slow list REFETCHES rather than
+  erases, so its cached "update available" row is merged back over work already done
+  and the badge reappears for a few seconds. Drop what you know is now false instead
+  of waiting for the slow truth to catch up.
 - **A floor may sit on the spinner, never on the work.** Operations too fast to see
   (the `/import` rescan) get a ~550ms minimum spin so the click reads as an action —
   paired with the real timestamp of what's on screen (`scanned 12s ago`), so the proof
