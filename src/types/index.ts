@@ -587,6 +587,8 @@ export interface WpPlugin {
   status: string; // active | inactive | active-network | must-use | dropin
   version: string;
   update: string; // none | available | …
+  /** The version the update installs; empty until the update-check pass lands. */
+  updateVersion: string;
   /** Human title from the plugin header; may be empty (drop-ins) — fall back to the slug. */
   title: string;
 }

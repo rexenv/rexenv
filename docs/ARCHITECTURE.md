@@ -569,6 +569,13 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`.
 - **Blueprints** (`core/blueprints.rs`): reusable presets (plugins/themes/WP_DEBUG/
   multisite) applied AFTER the one-click install.
+- **Plugin/theme lists are TWO passes** (`useWpPlugins`/`useWpThemes`): an instant
+  `--skip-update-check` list, then a background list WITH the api.wordpress.org
+  check (seconds when slow, a hang when offline) that supplies the `update` badge
+  **and `update_version` — the version the update installs**, rendered as
+  `v10.8.1 → 10.9.0`. The arrow is drawn from that field alone, never inferred
+  from the badge: the fast pass genuinely does not know the target, and a guessed
+  version is worse than none.
 - **Add plugin/theme from Git** (`core/repo.rs` + `core/devtools.rs` +
   `commands/repo.rs`): paste URL (https/ssh/scp/`owner/repo`; forge `/tree/`
   URLs preselect the branch) → `ls-remote` probe (URL+auth validated BEFORE

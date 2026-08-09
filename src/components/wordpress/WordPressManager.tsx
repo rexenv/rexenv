@@ -260,8 +260,13 @@ function useWpPlugins(siteId: string) {
   const plugins = useMemo(() => {
     const base = fast.data ?? [];
     if (!updates.data) return base;
-    const upd = new Map(updates.data.map((p) => [p.name, p.update]));
-    return base.map((p) => ({ ...p, update: upd.get(p.name) ?? p.update }));
+    // The badge AND the target version both come from the checked pass — the
+    // fast list can't know either (it ran with --skip-update-check).
+    const upd = new Map(updates.data.map((p) => [p.name, p]));
+    return base.map((p) => {
+      const u = upd.get(p.name);
+      return u ? { ...p, update: u.update, updateVersion: u.updateVersion } : p;
+    });
   }, [fast.data, updates.data]);
   return { plugins, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
 }
@@ -3057,6 +3062,8 @@ function PluginRow({
 }) {
   const active = p.status === "active" || p.status === "active-network";
   const updatable = p.update === "available";
+  /** The version the update installs — empty until the checked pass lands. */
+  const target = updatable ? p.updateVersion : "";
   // Must-use plugins and drop-ins load automatically by their location on disk
   // — WordPress has no activate/deactivate (or wp-cli delete) for them, so
   // offering those controls would be a lie. Lock them with an explanation.
@@ -3120,10 +3127,18 @@ function PluginRow({
           {p.name}
           {/* Drop-ins/mu often have no version — show nothing, never a bare "v". */}
           {p.version && <span> · v{p.version}</span>}
+          {/* The arrow only appears once the update-check pass supplied a real
+              target — never invent one from the badge alone. */}
+          {p.version && target && <span className="text-amber-400/90"> → {target}</span>}
         </div>
       </div>
       {updatable && (
-        <button className={BTN + " flex items-center gap-1"} disabled={busy} onClick={onUpdate} title="Update">
+        <button
+          className={BTN + " flex items-center gap-1"}
+          disabled={busy}
+          onClick={onUpdate}
+          title={target ? `Update to ${target}` : "Update"}
+        >
           <ArrowUpCircle className="h-3.5 w-3.5" />
         </button>
       )}

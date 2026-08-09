@@ -500,9 +500,18 @@ pub struct WpPlugin {
     /// slug then.
     #[serde(default)]
     pub title: String,
+    /// The version the update would install. WP-CLI fills this ONLY on a real
+    /// update check — with `--skip-update-check` it comes back empty, so the
+    /// fast first list has no arrow and the background pass supplies it.
+    ///
+    /// The only two-word field here, so it's also the only one where WP-CLI's
+    /// name and the frontend's differ: `rename` gives the UI `updateVersion`,
+    /// the `alias` keeps reading WP-CLI's `update_version`.
+    #[serde(default, rename = "updateVersion", alias = "update_version")]
+    pub update_version: String,
 }
 
-/// `wp plugin list` (name, status, version, update, title). `check_updates:
+/// `wp plugin list` (name, status, version, update, update_version, title). `check_updates:
 /// false` passes `--skip-update-check` — the default check hits
 /// api.wordpress.org on EVERY list (seconds when slow, a hang when offline),
 /// so the UI lists fast without it and refreshes update badges in a
@@ -516,7 +525,7 @@ pub fn plugin_list(
     let mut args = vec![
         "plugin",
         "list",
-        "--fields=name,status,update,version,title",
+        "--fields=name,status,update,update_version,version,title",
     ];
     if !check_updates {
         args.push("--skip-update-check");
