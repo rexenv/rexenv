@@ -619,6 +619,8 @@ export interface WpTheme {
   status: string; // active | inactive | parent
   version: string;
   update: string; // none | available | …
+  /** The version the update installs; empty until the update-check pass lands. */
+  updateVersion: string;
   /** The theme's screenshot.* preview as a `data:` URL; null when it has none. */
   screenshot?: string | null;
 }

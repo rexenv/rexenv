@@ -811,15 +811,16 @@ export async function wpPluginUpdate(id: string, names: string[]): Promise<void>
   await invoke("wp_plugin_update", { id, names });
 }
 
-/** Subscribe to a site's plugin-update progress (WP-CLI's own phases).
+/** Subscribe to a site's update progress (WP-CLI's own phases) for one noun.
  *  Returns an unlisten fn. */
-export async function onWpPluginUpdate(
+export async function onWpUpdate(
+  channel: "plugins" | "themes" | "core",
   siteId: string,
   cb: (p: WpUpdateProgress) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
-  return listen<WpUpdateProgress>(`wp-update://plugins/${siteId}`, (e) => cb(e.payload));
+  return listen<WpUpdateProgress>(`wp-update://${channel}/${siteId}`, (e) => cb(e.payload));
 }
 
 /** Delete plugins (bulk-capable). No-op outside Tauri. */
@@ -831,9 +832,9 @@ export async function wpPluginDelete(id: string, names: string[]): Promise<void>
 // ── WordPress Manager — themes (§6.2) ───────────────────────────────────────
 
 const mockWpThemes: WpTheme[] = [
-  { name: "twentytwentyfive", status: "active", version: "1.2", update: "none" },
-  { name: "twentytwentyfour", status: "inactive", version: "1.3", update: "available" },
-  { name: "twentytwentythree", status: "inactive", version: "1.6", update: "none" },
+  { name: "twentytwentyfive", status: "active", version: "1.2", update: "none", updateVersion: "" },
+  { name: "twentytwentyfour", status: "inactive", version: "1.3", update: "available", updateVersion: "1.4" },
+  { name: "twentytwentythree", status: "inactive", version: "1.6", update: "none", updateVersion: "" },
 ];
 
 /** List a site's themes (`wp theme list`), each with its screenshot as a

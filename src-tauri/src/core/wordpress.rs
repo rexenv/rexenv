@@ -607,30 +607,33 @@ pub fn plugin_update(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[St
 /// network error. 420s lets WP's message be the one the user reads.
 pub const UPDATE_IDLE_LIMIT: Duration = Duration::from_secs(420);
 
-/// `wp plugin update …` with WP-CLI's own progress pumped to `on_line` as it
-/// arrives, so the UI can show which item is at which phase instead of a
-/// silent spinner. Blocking — call under `spawn_blocking`.
+/// `wp <plugin|theme> update …` / `wp core update` with WP-CLI's own progress
+/// pumped to `on_line` as it arrives, so the UI can show which item is at
+/// which phase instead of a silent spinner. Blocking — call under
+/// `spawn_blocking`.
 ///
 /// The captured [`plugin_update`] above stays the path for callers with no
 /// sink (it is also the one with the hard total cap); this one is bounded by
 /// SILENCE, which is the honest bound for a download whose duration nobody
 /// can predict.
-pub fn plugin_update_streamed(
+pub fn update_streamed(
     supervisor: &dyn crate::platform::traits::ProcessSupervisor,
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
+    kind: UpdateKind,
     names: &[String],
     on_line: &mut dyn FnMut(&str),
 ) -> Result<()> {
-    if names.is_empty() {
+    // Core has no item list; plugins/themes with an empty one have no work.
+    if names.is_empty() && kind != UpdateKind::Core {
         return Ok(());
     }
     let mut args: Vec<String> = vec![
         "-d".into(),
         "memory_limit=512M".into(),
         wp_phar.display().to_string(),
-        "plugin".into(),
+        kind.noun().into(),
         "update".into(),
     ];
     args.extend(names.iter().cloned());
@@ -652,15 +655,93 @@ pub fn plugin_update_streamed(
         return Ok(());
     }
     Err(Error::Other(format!(
-        "wp plugin update failed (exit {:?}): {}",
+        "wp {} update failed (exit {:?}): {}",
+        kind.noun(),
         res.exit,
         res.tail.join(" / ")
     )))
 }
 
-/// One step of WP-CLI's per-item update sequence. The order is WP-CLI's own
-/// (`Upgrader` output), so `weight` is a real STEP POSITION — not a guess at
-/// elapsed time and never a byte count, which WP-CLI does not report.
+/// What a streamed update is updating. The step sequence is shared (it is
+/// WP's one `WP_Upgrader`), but the SETTLED line differs per noun and core
+/// adds two of its own — so the noun is a parameter, not three parsers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateKind {
+    Plugin,
+    Theme,
+    Core,
+}
+
+impl UpdateKind {
+    /// The wp-cli noun (`wp <noun> update`).
+    pub fn noun(self) -> &'static str {
+        match self {
+            Self::Plugin => "plugin",
+            Self::Theme => "theme",
+            Self::Core => "core",
+        }
+    }
+
+    /// The wp.org download-URL segment a slug can be read out of. Core's
+    /// archive is `/release/wordpress-6.8.2-no-content.zip` — a version, not a
+    /// slug — so core reads none.
+    fn url_segment(self) -> Option<&'static str> {
+        match self {
+            Self::Plugin => Some("/plugin/"),
+            Self::Theme => Some("/theme/"),
+            Self::Core => None,
+        }
+    }
+
+    /// Lines that mean ONE item finished, with whether that item failed.
+    /// Every phrase is WP's/WP-CLI's own (`class-plugin-upgrader.php`,
+    /// `class-theme-upgrader.php`, wp-cli's `core update`).
+    fn settled(self) -> &'static [(&'static str, bool)] {
+        match self {
+            Self::Plugin => {
+                &[("Plugin updated successfully", false), ("Plugin update failed", true)]
+            }
+            Self::Theme => {
+                &[("Theme updated successfully", false), ("Theme update failed", true)]
+            }
+            // wp-cli's own success line; `Error:` is how it ends a failed run.
+            Self::Core => &[
+                ("Success: WordPress updated successfully", false),
+                ("Success: WordPress is up to date", false),
+                ("Success: WordPress is at the latest version", false),
+                ("Error:", true),
+            ],
+        }
+    }
+
+    /// Steps only this noun prints, tried BEFORE the shared table.
+    fn extra_steps(self) -> &'static [(&'static str, &'static str, f32)] {
+        match self {
+            // wp-cli announces the target version before handing off to the
+            // upgrader, and does its own file cleanup after it.
+            Self::Core => &[
+                ("Updating to version", "Preparing", 0.05),
+                ("Starting update", "Preparing", 0.05),
+                ("Downloading WordPress", "Downloading", 0.15),
+                ("Cleaning up files", "Cleaning up", 0.9),
+                ("No files found that need cleaning up", "Cleaning up", 0.9),
+                ("File removed:", "Cleaning up", 0.9),
+            ],
+            _ => &[],
+        }
+    }
+}
+
+/// One step of WP-CLI's per-item update sequence. The order is WP's own
+/// (`WP_Upgrader`'s string table), so `weight` is a real STEP POSITION — not a
+/// guess at elapsed time and never a byte count, which WP-CLI does not report.
+///
+/// The translation entries matter more than they look: WP updates language
+/// packs INSIDE a plugin/theme update ("Some of your translations need
+/// updating…"), so `Translation updated successfully.` is NOT an item
+/// finishing. Treating it as one over-counted the bar — it is a STEP here, and
+/// deliberately never a settle.
 const UPDATE_STEPS: &[(&str, &str, f32)] = &[
     ("Enabling Maintenance mode", "Preparing", 0.05),
     ("Downloading update from", "Downloading", 0.15),
@@ -668,16 +749,20 @@ const UPDATE_STEPS: &[(&str, &str, f32)] = &[
     ("Unpacking the update", "Unpacking", 0.55),
     ("Installing the latest version", "Installing", 0.75),
     ("Removing the old version", "Cleaning up", 0.9),
+    ("Some of your translations need updating", "Updating translations", 0.92),
+    ("Translation updated successfully", "Updating translations", 0.93),
+    ("Translation update failed", "Updating translations", 0.93),
     ("Disabling Maintenance mode", "Finishing", 0.95),
 ];
 
-/// A live view of a streamed plugin update, fed one WP-CLI line at a time.
+/// A live view of a streamed update, fed one WP-CLI line at a time.
 ///
 /// Progress is counted in ITEMS FINISHED (`done`/`total`) plus the current
 /// item's step position — both facts WP-CLI actually announces. Nothing here
 /// invents a percentage from a clock.
 #[derive(Debug, Clone)]
 pub struct UpdateTracker {
+    kind: UpdateKind,
     names: Vec<String>,
     done: usize,
     current: String,
@@ -702,11 +787,20 @@ pub struct UpdateSnapshot {
 }
 
 impl UpdateTracker {
-    pub fn new(names: &[String]) -> Self {
+    /// `names` is the argv list for plugins/themes. Core takes an empty list:
+    /// it is one item, named for the screen ("WordPress"), which is also why
+    /// its bar is a single item's step positions.
+    pub fn new(kind: UpdateKind, names: &[String]) -> Self {
+        let names = if kind == UpdateKind::Core && names.is_empty() {
+            vec!["WordPress".to_string()]
+        } else {
+            names.to_vec()
+        };
         Self {
-            names: names.to_vec(),
-            done: 0,
+            kind,
             current: names.first().cloned().unwrap_or_default(),
+            names,
+            done: 0,
             phase: "Starting".into(),
             step: 0.0,
         }
@@ -717,25 +811,23 @@ impl UpdateTracker {
     /// a phase, so the bar never advances on noise.
     pub fn feed(&mut self, line: &str) -> bool {
         let l = line.trim();
-        if let Some(slug) = downloaded_slug(l) {
+        if let Some(slug) = downloaded_slug(self.kind, l) {
             self.current = slug;
         }
-        if l.starts_with("Plugin updated successfully")
-            || l.starts_with("Plugin update failed")
-            || l.starts_with("Translation updated successfully")
-        {
-            // An item settled: bank it and point at the next name we were
-            // given (WP-CLI processes them in argv order).
-            self.done = (self.done + 1).min(self.names.len());
-            self.step = 0.0;
-            self.phase =
-                if l.contains("failed") { "Failed".into() } else { "Updated".into() };
-            if let Some(next) = self.names.get(self.done) {
-                self.current = next.clone();
+        for (needle, failed) in self.kind.settled() {
+            if l.starts_with(needle) {
+                // An item settled: bank it and point at the next name we were
+                // given (WP-CLI processes them in argv order).
+                self.done = (self.done + 1).min(self.names.len());
+                self.step = 0.0;
+                self.phase = if *failed { "Failed".into() } else { "Updated".into() };
+                if let Some(next) = self.names.get(self.done) {
+                    self.current = next.clone();
+                }
+                return true;
             }
-            return true;
         }
-        for (needle, label, weight) in UPDATE_STEPS {
+        for (needle, label, weight) in self.kind.extra_steps().iter().chain(UPDATE_STEPS) {
             if l.starts_with(needle) {
                 self.phase = (*label).into();
                 self.step = *weight;
@@ -763,14 +855,16 @@ impl UpdateTracker {
 /// (`Downloading update from https://downloads.wordpress.org/plugin/query-monitor.3.19.0.zip...`).
 /// Premium/self-hosted plugins download from arbitrary URLs — those return
 /// `None` and the tracker keeps the argv-order name rather than showing a
-/// filename that is not a slug.
-fn downloaded_slug(line: &str) -> Option<String> {
+/// filename that is not a slug. Core has no slug in its URL at all.
+fn downloaded_slug(kind: UpdateKind, line: &str) -> Option<String> {
+    let segment = kind.url_segment()?;
     let rest = line.strip_prefix("Downloading update from ")?;
-    let file = rest.rsplit_once("/plugin/").map(|(_, f)| f)?;
+    let file = rest.rsplit_once(segment).map(|(_, f)| f)?;
     let slug = file.split('.').next()?;
     (!slug.is_empty() && slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
         .then(|| slug.to_string())
 }
+
 /// Delete one or more plugins (`wp plugin delete …`).
 pub fn plugin_delete(php_bin: &Path, wp_phar: &Path, docroot: &Path, names: &[String]) -> Result<String> {
     plugin_verb(php_bin, wp_phar, docroot, "delete", names)
@@ -817,6 +911,10 @@ pub struct WpTheme {
     pub version: String,
     #[serde(default, deserialize_with = "de_update")]
     pub update: String,
+    /// The version the update would install — same rule as [`WpPlugin`]: only
+    /// a real update check fills it, so the fast list shows no arrow.
+    #[serde(default, rename = "updateVersion", alias = "update_version")]
+    pub update_version: String,
     #[serde(default)]
     pub screenshot: Option<String>,
 }
@@ -844,7 +942,7 @@ fn theme_screenshot(docroot: &Path, content_rel: &str, slug: &str) -> Option<Str
     None
 }
 
-/// `wp theme list` (name, status, version, update) + each theme's screenshot as
+/// `wp theme list` (name, status, version, update, update_version) + each theme's screenshot as
 /// a `data:` URL. `check_updates: false` passes `--skip-update-check` (same
 /// api.wordpress.org round-trip as [`plugin_list`]).
 pub fn theme_list(
@@ -854,7 +952,9 @@ pub fn theme_list(
     content_rel: &str,
     check_updates: bool,
 ) -> Result<Vec<WpTheme>> {
-    let mut args = vec!["theme", "list"];
+    // The field list is EXPLICIT because `update_version` is not in wp-cli's
+    // default set for themes — without it the arrow would silently never show.
+    let mut args = vec!["theme", "list", "--fields=name,status,update,update_version,version"];
     if !check_updates {
         args.push("--skip-update-check");
     }
@@ -2537,7 +2637,7 @@ mod tests {
     #[test]
     fn tracker_follows_wp_cli_through_a_two_plugin_update() {
         let ns = names(&["query-monitor", "woocommerce"]);
-        let mut t = UpdateTracker::new(&ns);
+        let mut t = UpdateTracker::new(UpdateKind::Plugin, &ns);
         let mut seen: Vec<(usize, String, String)> = Vec::new();
         for line in REAL_UPDATE_OUTPUT {
             if t.feed(line) {
@@ -2557,7 +2657,7 @@ mod tests {
     #[test]
     fn table_rows_and_noise_never_move_the_bar() {
         let ns = names(&["query-monitor"]);
-        let mut t = UpdateTracker::new(&ns);
+        let mut t = UpdateTracker::new(UpdateKind::Plugin, &ns);
         for line in ["| query-monitor | 3.18.0 | 3.19.0 | Updated |", "Warning: something", ""] {
             assert!(!t.feed(line), "{line:?} must not count as a phase");
         }
@@ -2570,7 +2670,7 @@ mod tests {
         // a tracker that only knew the download line would sit at "Starting"
         // for the whole run — the exact dead air this exists to remove.
         let ns = names(&["query-monitor"]);
-        let mut t = UpdateTracker::new(&ns);
+        let mut t = UpdateTracker::new(UpdateKind::Plugin, &ns);
         assert!(t.feed("Using cached file '/Users/x/.wp-cli/cache/plugin/query-monitor-3.19.0.zip'..."));
         let s = t.snapshot("");
         assert_eq!((s.phase.as_str(), s.current.as_str()), ("Downloading (cached)", "query-monitor"));
@@ -2580,7 +2680,7 @@ mod tests {
     #[test]
     fn a_failed_item_is_banked_and_named_failed() {
         let ns = names(&["broken", "fine"]);
-        let mut t = UpdateTracker::new(&ns);
+        let mut t = UpdateTracker::new(UpdateKind::Plugin, &ns);
         assert!(t.feed("Plugin update failed."));
         let s = t.snapshot("");
         // Banked (the run moved on) but NOT reported as updated.
@@ -2591,19 +2691,98 @@ mod tests {
     fn a_premium_download_url_keeps_the_argv_name_instead_of_a_filename() {
         assert_eq!(
             downloaded_slug(
+                UpdateKind::Plugin,
                 "Downloading update from https://downloads.wordpress.org/plugin/woocommerce.10.9.0.zip..."
             ),
             Some("woocommerce".into())
         );
         // Not a wp.org /plugin/ URL → no slug to trust.
         assert_eq!(
-            downloaded_slug("Downloading update from https://example.com/dl?token=abc123..."),
+            downloaded_slug(UpdateKind::Plugin, "Downloading update from https://example.com/dl?token=abc123..."),
             None
         );
         let ns = names(&["elementor-pro"]);
-        let mut t = UpdateTracker::new(&ns);
+        let mut t = UpdateTracker::new(UpdateKind::Plugin, &ns);
         t.feed("Downloading update from https://my.elementor.com/download/xyz.zip...");
         assert_eq!(t.snapshot("").current, "elementor-pro");
+    }
+
+    #[test]
+    fn a_translation_pass_inside_an_update_is_a_step_and_never_a_finished_item() {
+        // WP updates language packs INSIDE a plugin/theme update
+        // (`class-language-pack-upgrader.php` — "Some of your translations
+        // need updating…"), and its success line reads "Translation updated
+        // successfully." Counting that as an item banked one plugin per
+        // translation pass: the bar ran ahead of the work and could hit 100%
+        // with plugins still updating.
+        let ns = names(&["query-monitor", "woocommerce"]);
+        let mut t = UpdateTracker::new(UpdateKind::Plugin, &ns);
+        assert!(t.feed("Some of your translations need updating. Sit tight for a few more seconds while they are updated as well."));
+        assert!(t.feed("Translation updated successfully."));
+        let s = t.snapshot("");
+        assert_eq!(s.done, 0, "a translation pass is not a plugin finishing");
+        assert_eq!(s.phase, "Updating translations");
+        // The real item completion still banks.
+        assert!(t.feed("Plugin updated successfully."));
+        assert_eq!(t.snapshot("").done, 1);
+    }
+
+    /// `wp theme update` — the same upgrader with the theme string table
+    /// (`class-theme-upgrader.php`: `remove_old` says "of the theme",
+    /// `process_success` "Theme updated successfully.").
+    #[test]
+    fn tracker_follows_a_theme_update_and_reads_the_theme_url_segment() {
+        let ns = names(&["twentytwentyfour"]);
+        let mut t = UpdateTracker::new(UpdateKind::Theme, &ns);
+        for line in [
+            "Enabling Maintenance mode...",
+            "Downloading update from https://downloads.wordpress.org/theme/twentytwentyfour.1.3.zip...",
+            "Unpacking the update...",
+            "Installing the latest version...",
+            "Removing the old version of the theme...",
+        ] {
+            assert!(t.feed(line), "{line:?} should be a phase");
+        }
+        assert_eq!(t.snapshot("").current, "twentytwentyfour");
+        // A PLUGIN tracker must not settle on the theme's line, and vice
+        // versa — the nouns are the whole reason `kind` exists.
+        assert!(t.feed("Theme updated successfully."));
+        assert_eq!(t.snapshot("").done, 1);
+        let mut p = UpdateTracker::new(UpdateKind::Plugin, &ns);
+        p.feed("Theme updated successfully.");
+        assert_eq!(p.snapshot("").done, 0);
+    }
+
+    /// `wp core update` — wp-cli's own lines around WP's upgrader (verified in
+    /// the pinned 2.12.0 phar: "Updating to version %s (%s)...",
+    /// "Cleaning up files...", "No files found that need cleaning up.",
+    /// "Success: WordPress updated successfully.").
+    #[test]
+    fn tracker_follows_a_core_update_as_a_single_item() {
+        let mut t = UpdateTracker::new(UpdateKind::Core, &[]);
+        assert_eq!(t.snapshot("").current, "WordPress", "core names itself");
+        for line in [
+            "Updating to version 6.8.2 (en_US)...",
+            "Downloading update from https://downloads.wordpress.org/release/wordpress-6.8.2-no-content.zip...",
+            "Unpacking the update...",
+            "Cleaning up files...",
+            "No files found that need cleaning up.",
+        ] {
+            assert!(t.feed(line), "{line:?} should be a phase");
+        }
+        // Core's archive is named for a VERSION, not a slug — nothing in that
+        // URL may be mistaken for one.
+        assert_eq!(t.snapshot("").current, "WordPress");
+        assert!(t.feed("Success: WordPress updated successfully."));
+        let s = t.snapshot("");
+        assert_eq!((s.done, s.total, s.fraction), (1, 1, 1.0));
+    }
+
+    #[test]
+    fn a_core_update_that_errors_ends_as_failed_not_as_done() {
+        let mut t = UpdateTracker::new(UpdateKind::Core, &[]);
+        assert!(t.feed("Error: Download failed. cURL error 6: Could not resolve host"));
+        assert_eq!(t.snapshot("").phase, "Failed");
     }
 
     #[test]

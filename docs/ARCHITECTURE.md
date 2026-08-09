@@ -575,11 +575,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   **and `update_version` — the version the update installs**, rendered as
   `v10.8.1 → 10.9.0`. The arrow is drawn from that field alone, never inferred
   from the badge: the fast pass genuinely does not know the target, and a guessed
-  version is worse than none.
-- **A plugin update STREAMS** (`core::wordpress::plugin_update_streamed` +
-  `UpdateTracker` → `wp-update://plugins/<siteId>`): one wp-cli call, its stdout
-  pumped line-by-line through `repo::run_step_streamed`, parsed into (item, phase,
-  step) and emitted per line. Bounded by SILENCE (`UPDATE_IDLE_LIMIT`, 420s), not by
+  version is worse than none. `update_version` is NOT in wp-cli's default theme
+  field set, so `theme_list` names its fields explicitly — the silent-empty trap.
+- **Every update STREAMS — plugins, themes and core** (`core::wordpress::
+  update_streamed` + `UpdateTracker`, keyed by `UpdateKind` →
+  `wp-update://{plugins,themes,core}/<siteId>`): one wp-cli call, its stdout pumped
+  line-by-line through `repo::run_step_streamed`, parsed into (item, phase, step)
+  and emitted per line. One parser, not three: it is WP's one `WP_Upgrader` wearing
+  a noun, so only the SETTLED line differs (plus core's own two, and core is a
+  single self-named item). **A language-pack pass runs INSIDE a plugin/theme
+  update** — its "Translation updated successfully." is a step, never an item
+  finishing; counting it banked a plugin per translation and ran the bar ahead of
+  the work. Bounded by SILENCE (`UPDATE_IDLE_LIMIT`, 420s), not by
   a total cap — deliberately past WP's own 300s `download_url` attempt cap so WP's
   error is the one the user reads instead of our kill. ONE command, not a UI variant:
   CLI/MCP callers just have no listener. The captured `plugin_update` (hard total

@@ -206,11 +206,11 @@ first:
   than rolls back on a mid-batch failure are 🔨 L2 (ledger #243) and only this pass
   covers them today.
 - [ ] **Plugin-update progress — the WIRING half** (ledger #249, 9 Aug 2026): the
-  tracker is L0-proven against WP core's own strings and the pinned phar, but that
-  the emit reaches the WordPress tab and the bar really advances during a live
-  WooCommerce/Elementor download is unproven at any layer. Needs one run against a
-  real site (a plugin held one version back), or an L2 case rendering the panel with
-  a scripted event stream.
+  tracker is L0-proven against WP core's own strings and the pinned phar (plugins,
+  themes and core), but that the emit reaches the WordPress tab and the bar really
+  advances during a live WooCommerce/Elementor/core download is unproven at any
+  layer. Needs one run against a real site (a plugin held one version back), or an
+  L2 case rendering the panel with a scripted event stream.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): first pass
   10 Jul 2026 green except multisite-convert (UI didn't exist yet — since built);
   re-verify converted-multisite + onboarding fixes + the TLD v1 Done-when list

@@ -758,7 +758,7 @@ where
             let state = app_state(app)?;
             let (id, names) = (need_str(&args, "id", cmd)?, need_names(&args, cmd)?);
             if cmd == "wp.theme.update" {
-                commands::wordpress::wp_theme_update(state.clone(), id, names).await?;
+                commands::wordpress::wp_theme_update(app.app_handle().clone(), state.clone(), id, names).await?;
             } else {
                 commands::wordpress::wp_theme_delete(state.clone(), id, names).await?;
             }
@@ -851,7 +851,7 @@ where
         "wp.core-update" => {
             let state = app_state(app)?;
             let msg =
-                commands::wordpress::wp_core_update(state.clone(), need_str(&args, "id", cmd)?)
+                commands::wordpress::wp_core_update(app.app_handle().clone(), state.clone(), need_str(&args, "id", cmd)?)
                     .await?;
             Ok(json!({ "message": msg }))
         }

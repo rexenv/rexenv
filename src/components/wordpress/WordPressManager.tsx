@@ -58,7 +58,7 @@ import {
   wpOrgSearchPlugins,
   wpOrgSearchThemes,
   wpPluginUpdate,
-  onWpPluginUpdate,
+  onWpUpdate,
   wpPlugins,
   wpPrimaryAdmin,
   wpSuperAdminAdd,
@@ -289,8 +289,11 @@ function useWpThemes(siteId: string) {
   const themes = useMemo(() => {
     const base = fast.data ?? [];
     if (!updates.data) return base;
-    const upd = new Map(updates.data.map((t) => [t.name, t.update]));
-    return base.map((t) => ({ ...t, update: upd.get(t.name) ?? t.update }));
+    const upd = new Map(updates.data.map((t) => [t.name, t]));
+    return base.map((t) => {
+      const u = upd.get(t.name);
+      return u ? { ...t, update: u.update, updateVersion: u.updateVersion } : t;
+    });
   }, [fast.data, updates.data]);
   return { themes, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
 }
@@ -871,11 +874,13 @@ function ToolsPanel({
     onError: (e) => toastBackendError(e),
   });
 
-  const coreUpdate = useMutation({
-    mutationFn: () => wpCoreUpdate(siteId),
-    onSuccess: (out) => setCoreOut(out),
-    onError: (e) => toastBackendError(e),
-  });
+  // Core is ONE item, and it names itself: the backend tracker calls it
+  // "WordPress" (there is no slug to report), so the panel starts the run
+  // under that same name and the two agree about what the bar is measuring.
+  const coreUpdate = useUpdateStream("core", siteId, () => wpCoreUpdate(siteId), (out) =>
+    setCoreOut(out),
+  );
+  const coreUpdating = coreUpdate.rowUpdate(CORE_ITEM);
   const coreReinstall = useMutation({
     mutationFn: () => wpCoreReinstall(siteId),
     onSuccess: (out) => setCoreOut(out),
@@ -900,7 +905,7 @@ function ToolsPanel({
       }),
     onError: (e) => toastBackendError(e),
   });
-  const working = coreUpdate.isPending || coreReinstall.isPending;
+  const working = coreUpdate.pending || coreReinstall.isPending;
   const [resetOpen, setResetOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const maintBtn = BTN + " flex w-full items-center justify-center gap-1.5";
@@ -1121,15 +1126,25 @@ function ToolsPanel({
         <div className="flex flex-col gap-2">
           <button
             className={maintBtn}
-            disabled={coreUpdate.isPending}
+            disabled={coreUpdate.pending}
             onClick={() => {
               setCoreOut(null);
-              coreUpdate.mutate();
+              coreUpdate.start([CORE_ITEM]);
             }}
           >
             <RefreshCw className="h-3.5 w-3.5" />
             Update core
           </button>
+          {/* A core update downloads a full release — the same dead air the
+              plugin list had, so it reports wp-cli's own steps too. */}
+          {coreUpdating && (
+            <div className="flex flex-col gap-1">
+              <ProgressBar fraction={coreUpdating.fraction} />
+              <span className="text-center font-mono text-[0.625rem] text-rex-text-muted">
+                {coreUpdating.phase}
+              </span>
+            </div>
+          )}
           <button
             className={maintBtn}
             disabled={coreReinstall.isPending}
@@ -2198,7 +2213,12 @@ function ThemesPanel({ siteId }: { siteId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
     onError: (e) => toastBackendError(e),
   });
-  const busy = run.isPending;
+  // Same streamed update as the plugin panel — a theme download is the same
+  // wp-cli upgrader, and was the same silent wait.
+  const upd = useUpdateStream("themes", siteId, (names) => wpThemeUpdate(siteId, names), () =>
+    qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
+  );
+  const busy = run.isPending || upd.pending;
 
   const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
   const gitAssets = useQuery({
@@ -2409,7 +2429,8 @@ function ThemesPanel({ siteId }: { siteId: string }) {
               }
               busy={busy}
               onActivate={() => run.mutate(() => wpThemeActivate(siteId, t.name))}
-              onUpdate={() => run.mutate(() => wpThemeUpdate(siteId, [t.name]))}
+              onUpdate={() => upd.start([t.name])}
+              updating={upd.rowUpdate(t.name)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete theme "${t.name}"?`, t.name))
                   run.mutate(() => wpThemeDelete(siteId, [t.name]));
@@ -2436,6 +2457,7 @@ function ThemeCard({
   busy,
   onActivate,
   onUpdate,
+  updating,
   onDelete,
 }: {
   t: WpTheme;
@@ -2445,10 +2467,14 @@ function ThemeCard({
   busy: boolean;
   onActivate: () => void;
   onUpdate: () => void;
+  /** Live position in a running update, or null when this card isn't in one. */
+  updating?: { fraction: number; phase: string } | null;
   onDelete: () => void;
 }) {
   const active = t.status === "active";
   const updatable = t.update === "available";
+  /** The version the update installs — empty until the checked pass lands. */
+  const target = updatable ? t.updateVersion : "";
   return (
     <div
       className={`flex flex-col rounded-xl border bg-rex-surface-1 ${
@@ -2510,15 +2536,33 @@ function ThemeCard({
             </span>
           )}
         </div>
-        <div className="font-mono text-[0.6875rem] text-rex-text-dim">v{t.version}</div>
+        <div className="font-mono text-[0.6875rem] text-rex-text-dim">
+          v{t.version}
+          {/* Drawn only from the checked pass's own target — never guessed
+              from the badge. */}
+          {target && <span className="text-amber-400/90"> → {target}</span>}
+        </div>
+        {updating && (
+          <div className="flex flex-col gap-1">
+            <ProgressBar fraction={updating.fraction} />
+            <span className="truncate font-mono text-[0.625rem] text-rex-text-muted">
+              {updating.phase}
+            </span>
+          </div>
+        )}
         <div className="mt-auto flex items-center gap-1.5">
           {!active && (
             <button className={BTN + " flex-1"} disabled={busy} onClick={onActivate}>
               Activate
             </button>
           )}
-          {updatable && (
-            <button className={BTN + " flex items-center gap-1"} disabled={busy} onClick={onUpdate} title="Update">
+          {updatable && !updating && (
+            <button
+              className={BTN + " flex items-center gap-1"}
+              disabled={busy}
+              onClick={onUpdate}
+              title={target ? `Update to ${target}` : "Update"}
+            >
               <ArrowUpCircle className="h-3.5 w-3.5" />
             </button>
           )}
@@ -2716,52 +2760,13 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   });
 
   // An update is the one plugin op that takes tens of seconds (WooCommerce and
-  // Elementor download tens of MB), so it gets its OWN mutation plus the live
-  // wp-cli phase stream — the shared `run` above would only say "busy".
-  // `updating` is the argv order we sent, which is the order wp-cli works in.
-  const [updating, setUpdating] = useState<string[]>([]);
-  const [progress, setProgress] = useState<WpUpdateProgress | null>(null);
-  useEffect(() => {
-    let stop: (() => void) | undefined;
-    let dead = false;
-    onWpPluginUpdate(siteId, setProgress).then((un) => (dead ? un() : (stop = un)));
-    return () => {
-      dead = true;
-      stop?.();
-    };
-  }, [siteId]);
-  const update = useMutation({
-    mutationFn: (names: string[]) => {
-      setUpdating(names);
-      setProgress(null);
-      return wpPluginUpdate(siteId, names);
-    },
-    onSuccess: () => {
-      setSelected(new Set());
-      qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
-    },
-    onError: (e) => toastBackendError(e),
-    onSettled: () => {
-      setUpdating([]);
-      setProgress(null);
-    },
+  // Elementor download tens of MB), so it runs on its own stream rather than
+  // the shared `run` above, which could only say "busy".
+  const upd = useUpdateStream("plugins", siteId, (names) => wpPluginUpdate(siteId, names), () => {
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
   });
-  const busy = run.isPending || update.isPending;
-
-  /** Where one row is in the run — null when it isn't part of it. Rows before
-   *  the cursor are done, the cursor's row carries wp-cli's phase, the rest
-   *  are honestly "Queued" (wp-cli has not touched them yet). */
-  const rowUpdate = (name: string): { fraction: number; phase: string } | null => {
-    const idx = updating.indexOf(name);
-    if (idx < 0) return null;
-    if (!progress) return { fraction: 0, phase: "Starting" };
-    if (idx < progress.done) return { fraction: 1, phase: "Updated" };
-    if (name === progress.current) {
-      const step = progress.fraction * Math.max(progress.total, 1) - progress.done;
-      return { fraction: Math.min(Math.max(step, 0), 1), phase: progress.phase };
-    }
-    return { fraction: 0, phase: "Queued" };
-  };
+  const busy = run.isPending || upd.pending;
 
   const toggleSel = (name: string) =>
     setSelected((s) => {
@@ -2989,16 +2994,18 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
       {/* Run bar — a multi-plugin update outlives the selection (which clears
           on success), so it gets its own row: how many are done, and which
           plugin the run is actually sitting on. */}
-      {updating.length > 1 && (
+      {upd.updating.length > 1 && (
         <div className="flex items-center gap-3 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[0.75rem]">
           <Loader2 className="h-3.5 w-3.5 flex-none animate-spin text-brand" />
           <span className="font-mono text-[0.71875rem] text-rex-text">
-            {progress ? `${progress.done} of ${progress.total}` : `0 of ${updating.length}`}
-            {progress?.current && <span className="text-rex-text-muted"> · {progress.current}</span>}
+            {upd.progress ? `${upd.progress.done} of ${upd.progress.total}` : `0 of ${upd.updating.length}`}
+            {upd.progress?.current && (
+              <span className="text-rex-text-muted"> · {upd.progress.current}</span>
+            )}
           </span>
-          <ProgressBar fraction={progress?.fraction ?? 0} className="flex-1" />
+          <ProgressBar fraction={upd.progress?.fraction ?? 0} className="flex-1" />
           <span className="w-[110px] text-right text-rex-text-muted">
-            {progress?.phase ?? "Starting"}
+            {upd.progress?.phase ?? "Starting"}
           </span>
         </div>
       )}
@@ -3019,7 +3026,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           <button className={BTN} disabled={busy} onClick={() => run.mutate(() => wpPluginDeactivate(siteId, selNames))}>
             Deactivate
           </button>
-          <button className={BTN} disabled={busy} onClick={() => update.mutate(selNames)}>
+          <button className={BTN} disabled={busy} onClick={() => upd.start(selNames)}>
             Update
           </button>
           <button
@@ -3080,8 +3087,8 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               onSelect={() => toggleSel(p.name)}
               onActivate={() => run.mutate(() => wpPluginActivate(siteId, [p.name]))}
               onDeactivate={() => run.mutate(() => wpPluginDeactivate(siteId, [p.name]))}
-              onUpdate={() => update.mutate([p.name])}
-              updating={rowUpdate(p.name)}
+              onUpdate={() => upd.start([p.name])}
+              updating={upd.rowUpdate(p.name)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete plugin "${p.name}"?`, [p.name]))
                   run.mutate(() => wpPluginDelete(siteId, [p.name]));
@@ -3097,6 +3104,68 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
       </div>
     </div>
   );
+}
+
+/** What the backend tracker calls the single core item (it has no slug), so
+ *  the panel starts the run under the same name the stream reports. */
+const CORE_ITEM = "WordPress";
+
+/** Plumbing for a STREAMED wp-cli update (plugins, themes or core): the live
+ *  phase stream, the mutation that starts the run, and where each item stands.
+ *  Shared because all three are the same wp-cli upgrader wearing a noun —
+ *  three copies would have been three places for the bar to start lying. */
+function useUpdateStream<T>(
+  channel: "plugins" | "themes" | "core",
+  siteId: string,
+  run: (names: string[]) => Promise<T>,
+  onDone: (result: T) => void,
+) {
+  // `updating` is the argv order we sent, which is the order wp-cli works in.
+  const [updating, setUpdating] = useState<string[]>([]);
+  const [progress, setProgress] = useState<WpUpdateProgress | null>(null);
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let dead = false;
+    onWpUpdate(channel, siteId, setProgress).then((un) => (dead ? un() : (stop = un)));
+    return () => {
+      dead = true;
+      stop?.();
+    };
+  }, [channel, siteId]);
+  const mutation = useMutation({
+    mutationFn: (names: string[]) => {
+      setUpdating(names);
+      setProgress(null);
+      return run(names);
+    },
+    onSuccess: onDone,
+    onError: (e) => toastBackendError(e),
+    onSettled: () => {
+      setUpdating([]);
+      setProgress(null);
+    },
+  });
+  /** Where one item is in the run — null when it isn't part of it. Items
+   *  before the cursor are done, the cursor's carries wp-cli's phase, the rest
+   *  are honestly "Queued" (wp-cli has not touched them yet). */
+  const rowUpdate = (name: string): { fraction: number; phase: string } | null => {
+    const idx = updating.indexOf(name);
+    if (idx < 0) return null;
+    if (!progress) return { fraction: 0, phase: "Starting" };
+    if (idx < progress.done) return { fraction: 1, phase: "Updated" };
+    if (name === progress.current) {
+      const step = progress.fraction * Math.max(progress.total, 1) - progress.done;
+      return { fraction: Math.min(Math.max(step, 0), 1), phase: progress.phase };
+    }
+    return { fraction: 0, phase: "Queued" };
+  };
+  return {
+    updating,
+    progress,
+    rowUpdate,
+    pending: mutation.isPending,
+    start: (names: string[]) => mutation.mutate(names),
+  };
 }
 
 /** A determinate bar for a real, reported position — every caller feeds it a
