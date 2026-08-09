@@ -260,14 +260,13 @@ function useWpPlugins(siteId: string) {
   });
   const plugins = useMemo(() => {
     const base = fast.data ?? [];
-    if (!updates.data) return base;
-    // The badge AND the target version both come from the checked pass — the
-    // fast list can't know either (it ran with --skip-update-check).
-    const upd = new Map(updates.data.map((p) => [p.name, p]));
-    return base.map((p) => {
-      const u = upd.get(p.name);
-      return u ? { ...p, update: u.update, updateVersion: u.updateVersion } : p;
-    });
+    // The badge AND the target version normally come from the checked pass,
+    // but `--skip-update-check` does NOT mean "no update info": it means "read
+    // the update transient without refreshing it", so the fast row carries a
+    // claim too — an older one. Either way it is a claim, and `verdict` is
+    // what decides whether it may be shown.
+    const upd = new Map((updates.data ?? []).map((p) => [p.name, p]));
+    return base.map((p) => verdict(p, upd.get(p.name) ?? p));
   }, [fast.data, updates.data]);
   return { plugins, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
 }
@@ -288,12 +287,8 @@ function useWpThemes(siteId: string) {
   });
   const themes = useMemo(() => {
     const base = fast.data ?? [];
-    if (!updates.data) return base;
-    const upd = new Map(updates.data.map((t) => [t.name, t]));
-    return base.map((t) => {
-      const u = upd.get(t.name);
-      return u ? { ...t, update: u.update, updateVersion: u.updateVersion } : t;
-    });
+    const upd = new Map((updates.data ?? []).map((t) => [t.name, t]));
+    return base.map((t) => verdict(t, upd.get(t.name) ?? t));
   }, [fast.data, updates.data]);
   return { themes, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
 }
@@ -877,9 +872,13 @@ function ToolsPanel({
   // Core is ONE item, and it names itself: the backend tracker calls it
   // "WordPress" (there is no slug to report), so the panel starts the run
   // under that same name and the two agree about what the bar is measuring.
-  const coreUpdate = useUpdateStream("core", siteId, () => wpCoreUpdate(siteId), (out) =>
-    setCoreOut(out),
-  );
+  const coreUpdate = useUpdateStream("core", siteId, () => wpCoreUpdate(siteId), (out) => {
+    setCoreOut(out);
+    // The core VERSION shown elsewhere (Overview, the version switcher's
+    // "current") comes from `wp-info` — without this it kept naming the
+    // release we just left, the same stale-after-update fault the lists had.
+    qc.invalidateQueries({ queryKey: ["wp-info", siteId] });
+  });
   const coreUpdating = coreUpdate.rowUpdate(CORE_ITEM);
   const coreReinstall = useMutation({
     mutationFn: () => wpCoreReinstall(siteId),
@@ -2215,10 +2214,9 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   });
   // Same streamed update as the plugin panel — a theme download is the same
   // wp-cli upgrader, and was the same silent wait.
-  const upd = useUpdateStream("themes", siteId, (names) => wpThemeUpdate(siteId, names), (_r, names) => {
-    dropCheckedUpdates<WpTheme>(qc, ["wp-themes", siteId, "updates"], names);
-    qc.invalidateQueries({ queryKey: ["wp-themes", siteId] });
-  });
+  const upd = useUpdateStream("themes", siteId, (names) => wpThemeUpdate(siteId, names), (_r, names) =>
+    settleAfterUpdate<WpTheme>(qc, ["wp-themes", siteId], names),
+  );
   const busy = run.isPending || upd.pending;
 
   const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
@@ -2765,8 +2763,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   // the shared `run` above, which could only say "busy".
   const upd = useUpdateStream("plugins", siteId, (names) => wpPluginUpdate(siteId, names), (_r, names) => {
     setSelected(new Set());
-    dropCheckedUpdates<WpPlugin>(qc, ["wp-plugins", siteId, "updates"], names);
-    qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
+    settleAfterUpdate<WpPlugin>(qc, ["wp-plugins", siteId], names);
   });
   const busy = run.isPending || upd.pending;
 
@@ -3108,21 +3105,72 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   );
 }
 
-/** Forget what the update-CHECK pass said about the items we just updated.
+/** Settle the two caches after a SUCCESSFUL update of `names`, then refetch.
  *
- *  Both lists merge the slow checked pass over the fast one, and invalidating
- *  does not erase cached data — it refetches. The checked pass takes seconds
- *  (api.wordpress.org), so without this its stale row keeps claiming
- *  "update · v1.3.4 → 3.3.5" over a plugin that is already at 3.3.5: the badge
- *  and the arrow come back for a few seconds right after the work finished.
- *  Dropping the row falls back to the fast list's own truth (version from
- *  disk, no claimed update) until the real answer lands. */
-function dropCheckedUpdates<T extends { name: string }>(
+ *  Dropping the checked row alone was not enough, and the reason is timing:
+ *  the checked pass on a real site takes tens of seconds to over a minute (it
+ *  re-checks every plugin against wp.org AND every premium plugin's own update
+ *  API), so a pass that started BEFORE the update is usually still in flight
+ *  when the update finishes. Its answer describes the OLD disk, and landing
+ *  after the drop it put the badge and the arrow straight back — for as long
+ *  as the next check took, which is what "still showing minutes later" was.
+ *
+ *  So: cancel that in-flight check FIRST, then erase what it and the fast list
+ *  claim about the updated items (wp-cli exited 0, so they are at the version
+ *  it just installed), and only then invalidate — the refetch is now the only
+ *  writer left. */
+function settleAfterUpdate<T extends { name: string; update: string; updateVersion: string }>(
   qc: ReturnType<typeof useQueryClient>,
   key: unknown[],
   names: string[],
 ) {
-  qc.setQueryData<T[]>(key, (old) => old?.filter((row) => !names.includes(row.name)));
+  const forget = (rows: T[] | undefined) =>
+    rows?.map((row) =>
+      names.includes(row.name) ? { ...row, update: "none", updateVersion: "" } : row,
+    );
+  void qc.cancelQueries({ queryKey: key }).then(() => {
+    qc.setQueryData<T[]>([...key, "updates"], (old) => old?.filter((r) => !names.includes(r.name)));
+    qc.setQueryData<T[]>(key, forget);
+    qc.invalidateQueries({ queryKey: key });
+  });
+}
+
+/** Is `next` a strictly newer version than `have`? Compared segment by numeric
+ *  segment ("1.1.11" IS newer than "1.1.3.8" — a string compare says the
+ *  opposite). Anything non-numeric (`1.2.0-beta1`) can't be ordered, so a mere
+ *  difference counts as newer — the conservative answer for an update offer. */
+function isNewerVersion(next: string, have: string): boolean {
+  const segs = (v: string) => v.split(/[.\-+_]/).map((s) => (/^\d+$/.test(s) ? Number(s) : NaN));
+  const a = segs(next);
+  const b = segs(have);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (Number.isNaN(x) || Number.isNaN(y)) return next !== have;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+/** The ONE place a row's update verdict is decided, for plugins and themes
+ *  alike: a row may claim an update only when the offered version is newer
+ *  than the one on disk. A claim of "update to X" over an item already AT X is
+ *  unrenderable — which is what makes the badge's return after a finished
+ *  update impossible rather than merely unlikely. WP-CLI reports such a claim
+ *  whenever its source is stale: an in-flight pre-update check, or a premium
+ *  plugin's own updater caching its answer for hours. An empty target (the
+ *  fast pass can report `available` with no version) can't be ordered, so it
+ *  is left alone — the badge shows with no arrow, as before. */
+function verdict<T extends { version: string; update: string; updateVersion: string }>(
+  row: T,
+  claim: { update: string; updateVersion: string },
+): T {
+  const honest =
+    claim.update === "available" &&
+    (claim.updateVersion === "" || isNewerVersion(claim.updateVersion, row.version));
+  return honest
+    ? { ...row, update: claim.update, updateVersion: claim.updateVersion }
+    : { ...row, update: "none", updateVersion: "" };
 }
 
 /** What the backend tracker calls the single core item (it has no slug), so

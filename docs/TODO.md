@@ -211,6 +211,15 @@ first:
   advances during a live WooCommerce/Elementor/core download is unproven at any
   layer. Needs one run against a real site (a plugin held one version back), or an
   L2 case rendering the panel with a scripted event stream.
+- [ ] **The update-claim rule has no test to hold it** (ledger #250, 9 Aug 2026):
+  `verdict`/`isNewerVersion` — a row may claim an update only when the offered
+  version is newer than the installed one — is a pure function, and the repo has no
+  JS test runner to hold a pure function. Cheap proof without adding one:
+  `uireview.js` already drives the panel over the `mockWpPlugins` list, so a mock
+  row claiming an update to its OWN version (and one claiming `1.1.11` over
+  `1.1.3.8`, which a string compare gets backwards) asserts both directions in the
+  rendered list. The TIMING half (cancel-then-settle beats an in-flight check) needs
+  a real site — same run as the #249 wiring pass above.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): first pass
   10 Jul 2026 green except multisite-convert (UI didn't exist yet — since built);
   re-verify converted-multisite + onboarding fixes + the TLD v1 Done-when list

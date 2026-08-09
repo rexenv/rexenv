@@ -56,6 +56,13 @@ the shipped UI toward one.
   erases, so its cached "update available" row is merged back over work already done
   and the badge reappears for a few seconds. Drop what you know is now false instead
   of waiting for the slow truth to catch up.
+- **"Update to X" over something already at X is a lie the UI must not be able to
+  tell.** Dropping the stale row was not enough: the slow check that was already
+  RUNNING when the update started landed afterwards and put the badge back, so the
+  button stayed for as long as the next check took — minutes on a site full of
+  premium plugins. The durable half is the rule, not the plumbing: a row's update
+  claim is checked against the version on disk (`verdict`), so no source — stale
+  cache, in-flight check, a plugin's own updater caching for hours — can render one.
 - **A floor may sit on the spinner, never on the work.** Operations too fast to see
   (the `/import` rescan) get a ~550ms minimum spin so the click reads as an action —
   paired with the real timestamp of what's on screen (`scanned 12s ago`), so the proof

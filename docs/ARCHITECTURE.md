@@ -577,6 +577,26 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   from the badge: the fast pass genuinely does not know the target, and a guessed
   version is worse than none. `update_version` is NOT in wp-cli's default theme
   field set, so `theme_list` names its fields explicitly — the silent-empty trap.
+  **A row may claim an update only when the offered version is NEWER than the one
+  on disk** (`verdict` + `isNewerVersion`, the ONE place either list decides it):
+  `--skip-update-check` does not mean "no update info", it means "read the update
+  transient without refreshing it", so BOTH passes hand up a claim that can be
+  stale. After a finished update the stale claim is `update → the version we just
+  installed`, and it kept the badge and the arrow on a plugin already at that
+  version — unrenderable now, whatever the source (an in-flight pre-update check,
+  or a premium plugin's own updater caching its answer for hours). Compared
+  segment-by-numeric-segment: a string compare says `1.1.11` is older than
+  `1.1.3.8`.
+- **A finished update SETTLES both caches before it refetches** (`settleAfterUpdate`).
+  The checked pass on a real site takes tens of seconds to over a minute (every
+  plugin against wp.org, plus every premium plugin's own API), so a check that
+  started BEFORE the update is usually still running when the update ends — and its
+  answer, describing the old disk, landed on top of the fix and put the badge back
+  for as long as the NEXT check took. So: cancel the in-flight check first, then
+  erase what both caches claim about the updated items (wp-cli exited 0 — they are
+  at the version it installed), and only then invalidate, leaving the refetch as the
+  only writer. Core does the same by invalidating `wp-info`, which is where the core
+  version every other card shows comes from.
 - **Every update STREAMS — plugins, themes and core** (`core::wordpress::
   update_streamed` + `UpdateTracker`, keyed by `UpdateKind` →
   `wp-update://{plugins,themes,core}/<siteId>`): one wp-cli call, its stdout pumped
