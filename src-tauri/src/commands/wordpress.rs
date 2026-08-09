@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::models::{MultisiteMode, Site};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{Emitter, Manager, State};
 
 /// Run a blocking WP-CLI call off the async runtime. Every call spawns PHP and
 /// boots WordPress (hundreds of ms; installs/updates take seconds), and
@@ -154,11 +154,50 @@ pub async fn wp_plugin_deactivate(state: State<'_, AppState>, id: String, names:
     wp_blocking(move || core::wordpress::plugin_deactivate(&php, &wp, &docroot, &names).map(|_| ())).await
 }
 
-/// Update one or more plugins.
+/// The per-site event a plugin update streams its progress on. One channel per
+/// site: two concurrent updates on the SAME site would fight over WordPress's
+/// maintenance mode anyway, so there is nothing to disambiguate.
+pub fn plugin_update_event(site_id: &str) -> String {
+    format!("wp-update://plugins/{site_id}")
+}
+
+/// Update one or more plugins, streaming WP-CLI's own phases on
+/// [`plugin_update_event`] as they arrive.
+///
+/// ONE code path, not a UI-only variant: the CLI/MCP callers simply have no
+/// listener, and an unheard emit costs nothing. A big plugin (WooCommerce,
+/// Elementor) spends tens of seconds inside a single wp-cli call, and the
+/// silent version of this command read as a frozen app.
 #[tauri::command]
-pub async fn wp_plugin_update(state: State<'_, AppState>, id: String, names: Vec<String>) -> Result<()> {
+pub async fn wp_plugin_update<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<'_, AppState>,
+    id: String,
+    names: Vec<String>,
+) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
-    wp_blocking(move || core::wordpress::plugin_update(&php, &wp, &docroot, &names).map(|_| ())).await
+    let event = plugin_update_event(&id);
+    wp_blocking(move || {
+        // The supervisor is borrowed from AppState INSIDE the blocking task
+        // (the repo-job pattern): `AppState.platform` is a `Box`, so it can't
+        // cross the spawn — the `AppHandle` can.
+        let state = app.state::<AppState>();
+        let mut tracker = core::wordpress::UpdateTracker::new(&names);
+        let mut on_line = |line: &str| {
+            if tracker.feed(line) {
+                let _ = app.emit(&event, tracker.snapshot(line));
+            }
+        };
+        core::wordpress::plugin_update_streamed(
+            state.platform.supervisor(),
+            &php,
+            &wp,
+            &docroot,
+            &names,
+            &mut on_line,
+        )
+    })
+    .await
 }
 
 /// Delete one or more plugins.

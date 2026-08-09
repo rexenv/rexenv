@@ -735,7 +735,8 @@ where
                     commands::wordpress::wp_plugin_deactivate(state.clone(), id, names).await?
                 }
                 "wp.plugin.update" => {
-                    commands::wordpress::wp_plugin_update(state.clone(), id, names).await?
+                    commands::wordpress::wp_plugin_update(app.app_handle().clone(), state.clone(), id, names)
+                        .await?
                 }
                 _ => commands::wordpress::wp_plugin_delete(state.clone(), id, names).await?,
             }

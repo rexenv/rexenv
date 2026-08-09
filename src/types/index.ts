@@ -593,6 +593,18 @@ export interface WpPlugin {
   title: string;
 }
 
+/** One progress snapshot of a running plugin update (mirrors the Rust
+ *  UpdateSnapshot). `fraction` = items finished + the current item's STEP
+ *  position — WP-CLI reports no bytes, so nothing here is a byte percentage. */
+export interface WpUpdateProgress {
+  total: number;
+  done: number;
+  current: string; // slug being updated
+  phase: string; // "Downloading" | "Unpacking" | … (WP-CLI's own step)
+  fraction: number; // 0..1
+  line: string; // the raw wp-cli line
+}
+
 /** A core language row (mirrors the Rust WpLanguage DTO / `wp language core list`). */
 export interface WpLanguage {
   language: string; // locale code, e.g. fr_FR

@@ -58,6 +58,7 @@ import {
   wpOrgSearchPlugins,
   wpOrgSearchThemes,
   wpPluginUpdate,
+  onWpPluginUpdate,
   wpPlugins,
   wpPrimaryAdmin,
   wpSuperAdminAdd,
@@ -82,7 +83,7 @@ import type { WpDebugFlag } from "@/lib/ipc";
 import { GitAddPanel } from "./GitAddPanel";
 import { RepoPanel } from "./RepoPanel";
 import { LinkFolderPanel } from "./LinkFolderPanel";
-import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpInstallState, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUser } from "@/types";
+import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpInstallState, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import { WpInstallCard } from "./WpInstallCard";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
@@ -2713,7 +2714,54 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     },
     onError: (e) => toastBackendError(e),
   });
-  const busy = run.isPending;
+
+  // An update is the one plugin op that takes tens of seconds (WooCommerce and
+  // Elementor download tens of MB), so it gets its OWN mutation plus the live
+  // wp-cli phase stream — the shared `run` above would only say "busy".
+  // `updating` is the argv order we sent, which is the order wp-cli works in.
+  const [updating, setUpdating] = useState<string[]>([]);
+  const [progress, setProgress] = useState<WpUpdateProgress | null>(null);
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let dead = false;
+    onWpPluginUpdate(siteId, setProgress).then((un) => (dead ? un() : (stop = un)));
+    return () => {
+      dead = true;
+      stop?.();
+    };
+  }, [siteId]);
+  const update = useMutation({
+    mutationFn: (names: string[]) => {
+      setUpdating(names);
+      setProgress(null);
+      return wpPluginUpdate(siteId, names);
+    },
+    onSuccess: () => {
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
+    },
+    onError: (e) => toastBackendError(e),
+    onSettled: () => {
+      setUpdating([]);
+      setProgress(null);
+    },
+  });
+  const busy = run.isPending || update.isPending;
+
+  /** Where one row is in the run — null when it isn't part of it. Rows before
+   *  the cursor are done, the cursor's row carries wp-cli's phase, the rest
+   *  are honestly "Queued" (wp-cli has not touched them yet). */
+  const rowUpdate = (name: string): { fraction: number; phase: string } | null => {
+    const idx = updating.indexOf(name);
+    if (idx < 0) return null;
+    if (!progress) return { fraction: 0, phase: "Starting" };
+    if (idx < progress.done) return { fraction: 1, phase: "Updated" };
+    if (name === progress.current) {
+      const step = progress.fraction * Math.max(progress.total, 1) - progress.done;
+      return { fraction: Math.min(Math.max(step, 0), 1), phase: progress.phase };
+    }
+    return { fraction: 0, phase: "Queued" };
+  };
 
   const toggleSel = (name: string) =>
     setSelected((s) => {
@@ -2938,6 +2986,23 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
         <PluginFilterTabs value={filter} onChange={setFilter} counts={counts} />
       </div>
 
+      {/* Run bar — a multi-plugin update outlives the selection (which clears
+          on success), so it gets its own row: how many are done, and which
+          plugin the run is actually sitting on. */}
+      {updating.length > 1 && (
+        <div className="flex items-center gap-3 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[0.75rem]">
+          <Loader2 className="h-3.5 w-3.5 flex-none animate-spin text-brand" />
+          <span className="font-mono text-[0.71875rem] text-rex-text">
+            {progress ? `${progress.done} of ${progress.total}` : `0 of ${updating.length}`}
+            {progress?.current && <span className="text-rex-text-muted"> · {progress.current}</span>}
+          </span>
+          <ProgressBar fraction={progress?.fraction ?? 0} className="flex-1" />
+          <span className="w-[110px] text-right text-rex-text-muted">
+            {progress?.phase ?? "Starting"}
+          </span>
+        </div>
+      )}
+
       {/* Bulk bar */}
       {selNames.length > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-brand/40 bg-rex-surface-1 p-2.5 text-[0.75rem]">
@@ -2954,7 +3019,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           <button className={BTN} disabled={busy} onClick={() => run.mutate(() => wpPluginDeactivate(siteId, selNames))}>
             Deactivate
           </button>
-          <button className={BTN} disabled={busy} onClick={() => run.mutate(() => wpPluginUpdate(siteId, selNames))}>
+          <button className={BTN} disabled={busy} onClick={() => update.mutate(selNames)}>
             Update
           </button>
           <button
@@ -3015,7 +3080,8 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               onSelect={() => toggleSel(p.name)}
               onActivate={() => run.mutate(() => wpPluginActivate(siteId, [p.name]))}
               onDeactivate={() => run.mutate(() => wpPluginDeactivate(siteId, [p.name]))}
-              onUpdate={() => run.mutate(() => wpPluginUpdate(siteId, [p.name]))}
+              onUpdate={() => update.mutate([p.name])}
+              updating={rowUpdate(p.name)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete plugin "${p.name}"?`, [p.name]))
                   run.mutate(() => wpPluginDelete(siteId, [p.name]));
@@ -3033,6 +3099,27 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   );
 }
 
+/** A determinate bar for a real, reported position — every caller feeds it a
+ *  fraction wp-cli announced (items done + the current item's step), never an
+ *  elapsed-time guess. */
+function ProgressBar({ fraction, className }: { fraction: number; className?: string }) {
+  const pct = Math.round(Math.min(Math.max(fraction, 0), 1) * 100);
+  return (
+    <div
+      className={cn("h-1 overflow-hidden rounded-full bg-rex-surface-2", className)}
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div
+        className="h-full rounded-full bg-brand transition-[width] duration-300"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
 function PluginRow({
   p,
   git,
@@ -3045,6 +3132,7 @@ function PluginRow({
   onActivate,
   onDeactivate,
   onUpdate,
+  updating,
   onDelete,
 }: {
   p: WpPlugin;
@@ -3058,6 +3146,8 @@ function PluginRow({
   onActivate: () => void;
   onDeactivate: () => void;
   onUpdate: () => void;
+  /** Live position in a running update, or null when this row isn't in one. */
+  updating?: { fraction: number; phase: string } | null;
   onDelete: () => void;
 }) {
   const active = p.status === "active" || p.status === "active-network";
@@ -3132,15 +3222,26 @@ function PluginRow({
           {p.version && target && <span className="text-amber-400/90"> → {target}</span>}
         </div>
       </div>
-      {updatable && (
-        <button
-          className={BTN + " flex items-center gap-1"}
-          disabled={busy}
-          onClick={onUpdate}
-          title={target ? `Update to ${target}` : "Update"}
-        >
-          <ArrowUpCircle className="h-3.5 w-3.5" />
-        </button>
+      {/* Updating beats the button: the click is spent, and what the user
+          needs now is which wp-cli step this plugin is on. */}
+      {updating ? (
+        <div className="flex w-[132px] flex-none flex-col gap-1">
+          <ProgressBar fraction={updating.fraction} />
+          <span className="truncate font-mono text-[0.625rem] text-rex-text-muted">
+            {updating.phase}
+          </span>
+        </div>
+      ) : (
+        updatable && (
+          <button
+            className={BTN + " flex items-center gap-1"}
+            disabled={busy}
+            onClick={onUpdate}
+            title={target ? `Update to ${target}` : "Update"}
+          >
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+          </button>
+        )
       )}
       <span
         className={cn(

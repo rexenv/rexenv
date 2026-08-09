@@ -40,6 +40,14 @@ the shipped UI toward one.
   phase label verbatim, the count moves only on terminal rows (a FAILED row still
   counts), and a long child job (a multi-GB dump) keeps the bar alive on its own
   phases. Minutes of silence is a bug, not a quiet success.
+- **A long tool call shows the TOOL's own steps, not a spinner.** A plugin update is
+  one wp-cli call that can run for tens of seconds (WooCommerce, Elementor), so it
+  streams WP-CLI's upgrader phases and the bar advances on items wp-cli announced as
+  settled plus the current item's STEP position — never on elapsed time, and never as
+  a byte percentage, which wp-cli does not report. Items it hasn't reached read
+  "Queued" instead of a bar at zero, and a failed item is banked but labelled
+  "Failed". The version an update installs is shown BEFORE the click (`v10.8.1 →
+  10.9.0`), because "update" alone made the user run it to find out.
 - **A floor may sit on the spinner, never on the work.** Operations too fast to see
   (the `/import` rescan) get a ~550ms minimum spin so the click reads as an action —
   paired with the real timestamp of what's on screen (`scanned 12s ago`), so the proof
