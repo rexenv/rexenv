@@ -44,7 +44,13 @@ the shipped UI toward one.
   line of the tool's own error and stops (the rest is the card's and the log's job);
   steps that are still pending, or were skipped because an earlier one failed, stay
   silent rather than reporting work that did not happen. The rule generalises: if the
-  visible state does not change on its own when the work lands, the work has to say so.
+  visible state does not change on its own when the work lands, the work has to say so —
+  which is why plugin and theme Activate/Deactivate/Delete/Install/Update now report
+  too: the row they flip is routinely off screen on a 26-plugin list. What they may
+  CLAIM is bounded by what is known: an install announces its settled job (with
+  `partial` kept as its own outcome, not rounded to success or failure) and says nothing
+  when it merely starts; an update states a count only on the path where wp-cli's exit
+  code proves every item landed.
 - **A panel showing something rexenv does not own re-reads it when the user comes
   back — and offers a way to ask.** Plugin/theme state lives in WordPress and the
   git branch lives in the checkout; both change from wp-admin, a terminal, or the

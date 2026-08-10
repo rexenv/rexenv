@@ -114,6 +114,29 @@ type PendingInstall = { slug: string; icon: string | null };
 /** Streamed-install card state shared by the plugin/theme panels: start a
  *  job, subscribe to its `wp-install://` events, re-adopt after a remount,
  *  refresh the list + clear the queue on settle. */
+/** Announce a settled install ONCE. wp-cli's own summary is preferred when it
+ *  has one — "partial" is a real outcome here (three slugs, one bad) and
+ *  flattening it to success or failure would be a lie in one direction or the
+ *  other. */
+function announceInstall(s: WpInstallState): void {
+  if (announcedInstalls.has(s.id)) return;
+  announcedInstalls.add(s.id);
+  const what = subject(s.slugs, s.kind);
+  const detail = s.summary?.split("\n").find((l) => l.trim() !== "")?.trim();
+  switch (s.status) {
+    case "ok":
+      return toast.success(`Installed ${what}`);
+    case "partial":
+      return toast.info(detail ? `Installed some of ${what}: ${detail}` : `Installed some of ${what}`);
+    case "cancelled":
+      return toast.info(`Install of ${what} cancelled`);
+    case "timed_out":
+      return toast.error(`Install of ${what} timed out`);
+    default:
+      return toast.error(detail ? `Install of ${what} failed: ${detail}` : `Install of ${what} failed`);
+  }
+}
+
 function useWpInstall(
   siteId: string,
   kind: "plugin" | "theme",
@@ -145,6 +168,7 @@ function useWpInstall(
       if (s.status !== "running") {
         qc.invalidateQueries({ queryKey: listKey });
         if (s.status === "ok") onOk();
+        announceInstall(s);
       }
     }).then((u) => un.push(u));
     void onWpInstallOutput(job.id, (l) => {
@@ -251,6 +275,31 @@ const WP_QUERY = { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } as
 // per return, and only for the panel that is actually open (react-query
 // refetches ACTIVE queries only).
 const WP_LIVE = { staleTime: 0, refetchOnWindowFocus: true, retry: 1 } as const;
+
+/** One list action plus the sentence it earns when it succeeds. Pairing them at
+ *  the CALL SITE is the point: a shared mutation that only knew "something
+ *  finished" could say nothing useful, which is how these buttons ended up
+ *  silent. */
+interface Action {
+  fn: () => Promise<void>;
+  /** Omitted when the call only STARTS streamed work: the install job announces
+   *  its own outcome when it settles, and a "done" at spawn time would be a
+   *  claim about work that has not run yet. */
+  done?: string;
+}
+
+/** What a toast should CALL the target of an action: the item itself when there
+ *  is one, a count when it is a bulk run. The name is what the user selected —
+ *  never a slug we guessed. */
+function subject(names: string[], noun: "plugin" | "theme"): string {
+  return names.length === 1 ? names[0] : `${names.length} ${noun}s`;
+}
+
+/** Install jobs already announced, keyed by job id — module scope, because the
+ *  panel unmounts on every sub-tab switch and a re-adopted settled job would
+ *  otherwise announce itself again on each return (the same trap the repo
+ *  panel's zip toast fell into). */
+const announcedInstalls = new Set<string>();
 
 /** Plugins in two passes: an instant list (no update check), then a background
  *  pass with the wordpress.org update check (slow; a hang when offline) that
@@ -2319,9 +2368,15 @@ function ThemesPanel({ siteId }: { siteId: string }) {
 
   const { themes, isLoading, isError, error, refetch, isFetching } = useWpThemes(siteId);
 
+  // Every action carries what to SAY when it lands: activating a theme or
+  // deleting one finishes in a list that may have scrolled, and an action that
+  // reports nothing is indistinguishable from one that did nothing.
   const run = useMutation({
-    mutationFn: (fn: () => Promise<void>) => fn(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["wp-themes", siteId] }),
+    mutationFn: (a: Action) => a.fn(),
+    onSuccess: (_r, a) => {
+      if (a.done) toast.success(a.done);
+      qc.invalidateQueries({ queryKey: ["wp-themes", siteId] });
+    },
     onError: (e) => toastBackendError(e),
   });
   // Same streamed update as the plugin panel — a theme download is the same
@@ -2466,7 +2521,11 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             disabled={busy || install.running || installSlugs.length === 0}
             onClick={() => {
               const slugs = installSlugs;
-              run.mutate(() => wpInstallJob(siteId, "theme", slugs, activateOnAdd).then(install.start));
+              run.mutate({
+                fn: () => wpInstallJob(siteId, "theme", slugs, activateOnAdd).then(install.start),
+                // No `done`: the install runs on its own stream and announces
+                // itself when it settles (useWpInstall).
+              });
             }}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -2543,12 +2602,12 @@ function ThemesPanel({ siteId }: { siteId: string }) {
                   : adoptRepo(t.name)
               }
               busy={busy}
-              onActivate={() => run.mutate(() => wpThemeActivate(siteId, t.name))}
+              onActivate={() => run.mutate({ fn: () => wpThemeActivate(siteId, t.name), done: `Activated ${t.name}` })}
               onUpdate={() => upd.start([t.name])}
               updating={upd.rowUpdate(t.name)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete theme "${t.name}"?`, t.name))
-                  run.mutate(() => wpThemeDelete(siteId, [t.name]));
+                  run.mutate({ fn: () => wpThemeDelete(siteId, [t.name]), done: `Deleted ${t.name}` });
               }}
             />
             {openRepo === t.name && assetFor(t.name) && (
@@ -2865,9 +2924,11 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     return true;
   });
 
+  // Same contract as the themes panel: the action names its own outcome.
   const run = useMutation({
-    mutationFn: (fn: () => Promise<void>) => fn(),
-    onSuccess: () => {
+    mutationFn: (a: Action) => a.fn(),
+    onSuccess: (_r, a) => {
+      if (a.done) toast.success(a.done);
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ["wp-plugins", siteId] });
     },
@@ -3051,7 +3112,11 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             disabled={busy || install.running || installSlugs.length === 0}
             onClick={() => {
               const slugs = installSlugs;
-              run.mutate(() => wpInstallJob(siteId, "plugin", slugs, activateOnAdd).then(install.start));
+              run.mutate({
+                fn: () => wpInstallJob(siteId, "plugin", slugs, activateOnAdd).then(install.start),
+                // No `done`: the install runs on its own stream and announces
+                // itself when it settles (useWpInstall).
+              });
             }}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -3137,10 +3202,10 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             Clear
           </button>
           <div className="flex-1" />
-          <button className={BTN} disabled={busy} onClick={() => run.mutate(() => wpPluginActivate(siteId, selNames))}>
+          <button className={BTN} disabled={busy} onClick={() => run.mutate({ fn: () => wpPluginActivate(siteId, selNames), done: `Activated ${subject(selNames, "plugin")}` })}>
             Activate
           </button>
-          <button className={BTN} disabled={busy} onClick={() => run.mutate(() => wpPluginDeactivate(siteId, selNames))}>
+          <button className={BTN} disabled={busy} onClick={() => run.mutate({ fn: () => wpPluginDeactivate(siteId, selNames), done: `Deactivated ${subject(selNames, "plugin")}` })}>
             Deactivate
           </button>
           <button className={BTN} disabled={busy} onClick={() => upd.start(selNames)}>
@@ -3151,7 +3216,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             disabled={busy}
             onClick={async () => {
               if (await confirmDelete(`Delete ${selNames.length} plugin(s)?`, selNames))
-                run.mutate(() => wpPluginDelete(siteId, selNames));
+                run.mutate({ fn: () => wpPluginDelete(siteId, selNames), done: `Deleted ${subject(selNames, "plugin")}` });
             }}
           >
             Delete
@@ -3202,13 +3267,13 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               selected={selected.has(p.name)}
               busy={busy}
               onSelect={() => toggleSel(p.name)}
-              onActivate={() => run.mutate(() => wpPluginActivate(siteId, [p.name]))}
-              onDeactivate={() => run.mutate(() => wpPluginDeactivate(siteId, [p.name]))}
+              onActivate={() => run.mutate({ fn: () => wpPluginActivate(siteId, [p.name]), done: `Activated ${p.name}` })}
+              onDeactivate={() => run.mutate({ fn: () => wpPluginDeactivate(siteId, [p.name]), done: `Deactivated ${p.name}` })}
               onUpdate={() => upd.start([p.name])}
               updating={upd.rowUpdate(p.name)}
               onDelete={async () => {
                 if (await confirmDelete(`Delete plugin "${p.name}"?`, [p.name]))
-                  run.mutate(() => wpPluginDelete(siteId, [p.name]));
+                  run.mutate({ fn: () => wpPluginDelete(siteId, [p.name]), done: `Deleted ${p.name}` });
               }}
             />
             {openRepo === p.name && assetFor(p.name) && (
@@ -3329,6 +3394,14 @@ function useUpdateStream<T>(
     // 100% for the whole slow wp.org re-check before vanishing. Discarding the
     // return here means no caller can block the bar by accident.
     onSuccess: (result, names) => {
+      // wp-cli exits non-zero if any item failed, so reaching here means every
+      // requested item updated — the count is safe to say. (A failure lands in
+      // onError, which surfaces wp-cli's own message.)
+      toast.success(
+        channel === "core"
+          ? "WordPress core updated"
+          : `Updated ${subject(names, channel === "plugins" ? "plugin" : "theme")}`,
+      );
       onDone(result, names);
     },
     onError: (e) => toastBackendError(e),

@@ -142,6 +142,13 @@ const OP_JOB_FAILED = {
   ],
 };
 
+/** `?panel=wp-add&plugins=list`: two ordinary rows — one active, one not — so a
+ *  single toggle click is an unambiguous Activate or Deactivate. */
+const WP_PLUGIN_ROWS = [
+  { name: "akismet", status: "active", version: "5.3", update: "none", updateVersion: "", title: "Akismet Anti-spam" },
+  { name: "hello-dolly", status: "inactive", version: "1.7.2", update: "none", updateVersion: "", title: "Hello Dolly" },
+];
+
 const ASSET_STATUS = {
   branch: "feat/x",
   detached: false,
@@ -537,8 +544,16 @@ export function DevGitPanel() {
         case "wp_install_cancel":
           return null;
         // `?panel=wp-add` (chips-above-input layout check) mocks:
+        // `?plugins=list` gives the panel real rows so `wptoast.js` can act on
+        // one; the default stays empty (the chips-above-input layout check).
         case "wp_plugins":
-          return [];
+          return params.get("plugins") === "list" ? WP_PLUGIN_ROWS : [];
+        // The list actions themselves: they resolve, and what the panel SAYS
+        // about them is the thing under test.
+        case "wp_plugin_activate":
+        case "wp_plugin_deactivate":
+        case "wp_plugin_delete":
+          return null;
         case "wp_org_plugin_icons":
           return {};
         case "repo_assets":

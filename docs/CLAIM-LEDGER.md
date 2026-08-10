@@ -353,6 +353,8 @@ L3 = scripted manual.
 
 | 256 | components/wordpress/RepoPanel.tsx (the settle-announce effect) + components/ui/toaster.tsx | **Every repo-panel action reports its outcome exactly once.** The ops are streamed jobs that finish minutes after the click and change nothing visible outside the card, so a completed Pull/Push/Build zip/Run-script was indistinguishable from one that never started. Announced per STEP as it settles, keyed `<jobId>:<stepKey>` in module scope — per-mount state would re-announce on every collapse/re-expand of the asset row (the bug already paid for once by the zip toast), and the panel's post-attach snapshot re-read would double every one of them. Pending and skipped steps say nothing; a successful zip keeps its own file-named toast with Show in Finder rather than getting a second, vaguer one | ✅ `wk-checks/repotoast.js` — asserts once-only for both a settled and a FAILED op (against `role="status"`, so the job card's own copy cannot satisfy it), that the failure toast carries git's first error line and not the second, and that pending/skipped steps stay silent. Red before the change (0 toasts) |
 
+| 257 | components/wordpress/WordPressManager.tsx (`Action`, `announceInstall`, `useUpdateStream`) | **A plugin/theme action says what it did, and never says more than it knows.** Activate/Deactivate/Delete flipped a row and reported nothing — on a 26-row list the row is off screen by the time the call returns, so the toggle was feedback nobody could see. Each action now carries its own past-tense sentence AT THE CALL SITE (a shared mutation only ever knew "something finished", which is how these ended up silent), naming the item, or a count for a bulk run. The claims are bounded by what is actually known: an INSTALL toasts from the settled job — including `partial` as its own outcome, because three slugs with one bad is neither success nor failure — and the start of one says nothing at all; an UPDATE toasts only on the success path, where wp-cli's non-zero exit for any failed item means the count is safe to state | ◐ Activate/Deactivate ✅ `wk-checks/wptoast.js` (once each, verb + name, asserted against `role="status"` so the row's own label cannot satisfy it; red before the change). Delete sits behind the type-to-confirm gate and the install/update/`partial` paths need a streamed harness — 🔨 L2 (extend the `?install=` fixtures the install card already has) |
+
 ## commands/ (honesty layer)
 
 | # | Anchor | Claim | Verdict |
@@ -416,7 +418,7 @@ Adminer import cap #237 and its FastCGI timeout #238; the unreadable-table skip
 Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249):
-**✅ 169 · ◐ 42 · 🔨 40 · 🚫 5** of 256 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 169 · ◐ 43 · 🔨 40 · 🚫 5** of 257 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
