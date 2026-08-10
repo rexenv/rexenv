@@ -10,7 +10,7 @@ import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
-import { cn, TECH_INPUT } from "@/lib/utils";
+import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -1001,8 +1001,13 @@ function BlueprintsSetting() {
           className="h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
         />
         <div className="flex items-center justify-between">
-          <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-            <input type="checkbox" checked={wpDebug} onChange={(e) => setWpDebug(e.target.checked)} />
+          <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+            <input
+              type="checkbox"
+              checked={wpDebug}
+              onChange={(e) => setWpDebug(e.target.checked)}
+              className={CHECK_INPUT}
+            />
             Enable WP_DEBUG
           </label>
           <Button variant="primary" disabled={save.isPending || !name.trim()} onClick={add}>

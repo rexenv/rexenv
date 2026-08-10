@@ -5,7 +5,7 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { toast, toastBackendError } from "@/lib/toast";
-import { cn } from "@/lib/utils";
+import { CHECK_INPUT, cn } from "@/lib/utils";
 import { Track } from "@/components/shell/DownloadPanel";
 import {
   onValetImportProgress,
@@ -22,9 +22,6 @@ import type {
   ImportProgress,
   ResolverTldStatus,
 } from "@/types";
-
-const CHECK =
-  "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 /** How old the list on screen is. The rescan itself is too fast to see, so
  *  this — a real timestamp of the data being rendered — is what proves it ran. */
@@ -281,7 +278,7 @@ export function Import() {
               <div className="flex items-center gap-3 border-b border-rex-border-subtle px-4 py-2.5">
                 <input
                   type="checkbox"
-                  className={CHECK}
+                  className={CHECK_INPUT}
                   checked={allPicked}
                   disabled={ready.length === 0 || running}
                   ref={(el) => {
@@ -296,7 +293,7 @@ export function Import() {
                   <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
                     <input
                       type="checkbox"
-                      className={CHECK}
+                      className={CHECK_INPUT}
                       checked={withDatabases}
                       disabled={running}
                       onChange={(e) => setWithDatabases(e.target.checked)}
@@ -346,7 +343,7 @@ export function Import() {
                   >
                     <input
                       type="checkbox"
-                      className={CHECK}
+                      className={CHECK_INPUT}
                       checked={picked.has(c.domain)}
                       disabled={!can}
                       title={selectable(c) ? undefined : pill.title}
@@ -567,7 +564,7 @@ function ResolverConsent({ tld, onDone }: { tld: ResolverTldStatus; onDone: () =
       <label className="mt-3 flex cursor-pointer items-start gap-2 text-[0.75rem] text-rex-text">
         <input
           type="checkbox"
-          className={cn(CHECK, "mt-0.5")}
+          className={cn(CHECK_INPUT, "mt-0.5")}
           checked={agreed}
           onChange={(e) => setAgreed(e.target.checked)}
         />

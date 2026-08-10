@@ -4,7 +4,7 @@ import { confirm, PromptDialog } from "@/components/ui/dialog";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpCircle, Check, Download, ExternalLink, FileUp, Globe, Loader2, Lock, LogIn, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, Trash2, UserPlus, X } from "lucide-react";
-import { cn, TECH_INPUT } from "@/lib/utils";
+import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import {
   openExternal,
@@ -104,9 +104,6 @@ const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
 
 /** Row-selection checkbox — big enough to hit, pointer cursor. */
-const CHECK =
-  "h-4 w-4 shrink-0 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40";
-
 /** One queued install target in the tag-style Add bar (plugins & themes).
  *  `icon` is wp.org art (plugin icon / theme screenshot); null → letter tile. */
 type PendingInstall = { slug: string; icon: string | null };
@@ -1056,8 +1053,13 @@ function ToolsPanel({
               />
             </div>
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-                <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
+              <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+                <input
+                  type="checkbox"
+                  checked={dryRun}
+                  onChange={(e) => setDryRun(e.target.checked)}
+                  className={CHECK_INPUT}
+                />
                 Dry run (report only, don't change data)
               </label>
               <button
@@ -2525,7 +2527,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
               type="checkbox"
               checked={activateOnAdd}
               onChange={(e) => setActivateOnAdd(e.target.checked)}
-              className={CHECK}
+              className={CHECK_INPUT}
             />
             Activate
           </label>
@@ -3124,7 +3126,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               type="checkbox"
               checked={activateOnAdd}
               onChange={(e) => setActivateOnAdd(e.target.checked)}
-              className={CHECK}
+              className={CHECK_INPUT}
             />
             Activate
           </label>
@@ -3268,7 +3270,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               disabled={selectable.length === 0}
               aria-label="Select all plugins"
               title="Select all"
-              className={CHECK}
+              className={CHECK_INPUT}
             />
             <span className="flex-1">Plugin</span>
             <span className="w-[150px]">Status</span>
@@ -3526,7 +3528,7 @@ function PluginRow({
         disabled={immutable}
         title={immutable ? immutableWhy : undefined}
         aria-label={`Select ${p.name}`}
-        className={CHECK}
+        className={CHECK_INPUT}
       />
       {/* Icon spans the title + slug lines, wp-admin style; letter tile when
           the plugin isn't on wp.org (custom, mu, drop-in) or icons are loading. */}
