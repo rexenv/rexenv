@@ -63,6 +63,14 @@ the shipped UI toward one.
   Refresh control for the case focus cannot cover — a change made while rexenv
   already HAS focus. Cost is bounded on purpose: only the open panel's queries
   refetch, and only local reads join in (the PR-ref `ls-remote` stays lazy).
+- **A counter that cannot advance is not shown at all.** The install card's "installing
+  item k of N" advances on wp-cli's per-item header — which only the wp.org path
+  prints. Adding "Upload zip" as a second source of the SAME job would have parked that
+  line at "item 1 of 2" for the whole run: clamped, plausible, and false from the first
+  item onward. It is omitted for zip jobs instead, and the bar (which is built to run
+  BEHIND on missing lines, never ahead) carries the progress alone. Generalised:
+  reusing a card for a second source means re-asking which of its numbers that source
+  can still feed — nothing beats a stale something.
 - Unknowable state says so ("can't determine") instead of guessing.
 - **A batch reports the job it is actually running** — the step line is that job's own
   phase label verbatim, the count moves only on terminal rows (a FAILED row still

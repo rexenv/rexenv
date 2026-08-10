@@ -6,7 +6,13 @@
 //!      "Using cached file '…'" — HOME survived env_clear + login-shell
 //!      snapshot, ~/.wp-cli/cache genuinely works (wp-cli's own line, not an
 //!      assertion of ours),
-//!   3. cancel mid-download: status "cancelled", process group dead.
+//!   3. cancel mid-download: status "cancelled", process group dead,
+//!   4. the ZIP source (wp-admin's "upload a zip"): a real archive built from
+//!      an installed plugin dir installs through the SAME job, and the
+//!      documented consequence holds live — wp-cli prints no per-item
+//!      `Installing name (version)` header on this path, so the attempt
+//!      cursor stays 0 while the bar still reaches 100. That is exactly why
+//!      the card hides the cursor for zip jobs instead of showing "1 of N".
 //! Bootstrap mirrors wp_plugins_check (real MySQL + real WP install; reuses
 //! a running MySQL on :13306, else starts one). Network required.
 //! Run: `cargo run --example wp_install_stream_check`
@@ -92,7 +98,7 @@ async fn main() {
     let mut failures: Vec<String> = Vec::new();
 
     // Helpers: start a job, collect its output lines, wait for settle.
-    let start = |slugs: Vec<String>, activate: bool| {
+    let start_from = |source: &'static str, slugs: Vec<String>, activate: bool| {
         let handle = handle.clone();
         async move {
             wp_install::wp_install_job(
@@ -102,12 +108,14 @@ async fn main() {
                 handle.state::<wp_install::WpInstallJobs>(),
                 site_id_of(&handle),
                 "plugin".into(),
+                source.into(),
                 slugs,
                 activate,
             )
             .await
         }
     };
+    let start = |slugs: Vec<String>, activate: bool| start_from("wporg", slugs, activate);
     fn site_id_of<R: tauri::Runtime>(h: &tauri::AppHandle<R>) -> String {
         let state = h.state::<AppState>();
         let conn = state.db.lock().unwrap();
@@ -267,6 +275,72 @@ async fn main() {
     if fin.pct >= 100 {
         failures.push(format!("job3 cancelled but pct {} (must stay <100)", fin.pct));
     }
+
+    // ── 4. The ZIP source: a real archive, through the same job ──────────
+    // Built from the plugin job 2 reinstalled, so the archive has the exact
+    // shape WordPress expects (one top-level dir) without shipping a binary
+    // fixture. Everything here lives in a dir named after this process.
+    let zip_dir = std::env::temp_dir().join(format!("rexenv-wpizip-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&zip_dir);
+    let zip_path = zip_dir.join("hello-dolly.zip");
+    let plugins_dir = docroot.join("wp-content/plugins");
+    let zipped = std::process::Command::new("zip")
+        .args(["-qr", &zip_path.display().to_string(), "hello-dolly"])
+        .current_dir(&plugins_dir)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !zipped || !zip_path.is_file() {
+        failures.push("job4: could not build the fixture zip (is `zip` on PATH?)".into());
+    } else {
+        // WordPress refuses to unpack over an existing plugin dir — the zip
+        // flow's real precondition, not a test convenience.
+        wordpress::plugin_delete(&php, &wp, &docroot, &["hello-dolly".into()])
+            .expect("delete hello-dolly");
+        let snap = start_from("zip", vec![zip_path.display().to_string()], false)
+            .await
+            .expect("start job 4");
+        let lines = collect_lines(&snap.id);
+        let fin = wait_settled(snap.id.clone()).await;
+        let ls = lines.lock().unwrap().clone();
+        println!(
+            "job4 (zip): status={} cursor={}/{} pct={} summary={:?}",
+            fin.status, fin.item_cursor, fin.items_total, fin.pct, fin.summary
+        );
+        for l in &ls {
+            println!("  | {l}");
+        }
+        if fin.status != "ok" {
+            failures.push(format!("job4 status {} (want ok)", fin.status));
+        }
+        if fin.source != "zip" {
+            failures.push(format!("job4 source {:?} (want zip)", fin.source));
+        }
+        if !docroot.join("wp-content/plugins/hello-dolly").is_dir() {
+            failures.push("job4: exit ok but the plugin dir is not there".into());
+        }
+        // The documented consequence, live: no per-item header on this path.
+        // If wp-cli ever starts printing one, the card's "hide the cursor for
+        // zip" rule becomes a lie in the other direction — catch it here.
+        if ls.iter().any(|l| wordpress::is_install_item_header(l)) {
+            failures.push("job4: wp-cli DID print a per-item header for a zip — the card hides the cursor on the assumption it never does".into());
+        }
+        if fin.item_cursor != 0 {
+            failures.push(format!("job4 cursor {} (a zip job's cursor never advances)", fin.item_cursor));
+        }
+        if fin.pct != 100 {
+            failures.push(format!("job4 final pct {} (want 100)", fin.pct));
+        }
+        // The gate, live: the same job refuses a path that isn't a real zip.
+        let bad = start_from("zip", vec![zip_dir.join("nope.zip").display().to_string()], false)
+            .await;
+        match bad {
+            Err(e) if e.to_string().contains("no such file") => {}
+            other => failures.push(format!("job4 gate let a missing zip through: {other:?}")),
+        }
+    }
+    // Fixture-owned: the dir this run created, by name.
+    let _ = std::fs::remove_dir_all(&zip_dir);
 
     // Cleanup: site dir + row + throwaway db; stop MySQL only if we started
     // it. site_id resolved BEFORE taking the db lock — site_id_of locks the

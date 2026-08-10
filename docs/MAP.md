@@ -29,7 +29,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Binaries (download-on-demand, pins, bundles) | `core/binaries.rs`, `core/downloads.rs` (hub) | `commands/downloads.rs` | BinaryProvider, Paths | #83–90; `download_progress_check` |
 | Sites (provision, linked sites, move/rename/delete, streamed provisioning) | `core/sites.rs`, `core/site_env.rs`, `core/site_metrics.rs` | `commands/sites.rs`, `commands/site_provision.rs` | Paths, ShellRunner | #91–101; `site_provision_check`, `linked_site_check` |
 | Laravel create (composer create-project, .env wiring, migrations) | `core/laravel.rs` | `commands/site_provision.rs` (Laravel phases), `commands/wordpress.rs` (`composer_tools`) | ShellRunner, BinaryProvider | `core::laravel` unit tests (.env shapes, install markers) |
-| WordPress ops (wp-cli, manager, streamed installs, wp.org search) | `core/wordpress.rs`, `core/wporg.rs`, `core/blueprints.rs` | `commands/wordpress.rs` (60 cmds), `commands/wp_install.rs`, `commands/blueprints.rs` | ShellRunner | #141–147; `wp_install_serve`, `wp_install_stream_check` |
+| WordPress ops (wp-cli, manager, streamed installs from wp.org OR a local zip, wp.org search) | `core/wordpress.rs` (`ensure_slugs` / `ensure_zip_paths` — one gate per source), `core/wporg.rs`, `core/blueprints.rs` | `commands/wordpress.rs` (60 cmds), `commands/wp_install.rs` (`source: wporg\|zip`), `commands/blueprints.rs` | ShellRunner | #141–147, #259–260; `wp_install_serve`, `wp_install_stream_check` (job 4 = the zip leg) |
 | "Log in as" magic link | `core/wp_login.rs` | `commands/wordpress.rs` | — | #33–36; `wp_login_check` |
 | Loopback DNS for PHP (WP-Cron/self-calls under c-ares) | `core/wp_dns.rs` | installed by `commands/site_provision.rs` (settle-ok), re-installed by `commands/sites.rs` (rename), swept for all sites by `lib.rs` (launch) | — | #251–253; `wp_dns_check` |
 | Tunnels (cloudflared, health probe, mu-plugin rewrite) | `core/tunnels.rs`, `core/wp_tunnel.rs` | `commands/tunnels.rs` | ProcessSupervisor | #1–32; `tunnel_check`, `tunnel_sweep`, `tunnel_muplugin_check` |
@@ -59,6 +59,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
 | IPC bridge (the ONLY invoke path; 217 exports) | — | `src/lib/ipc/index.ts` |
+| Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useDownloads.ts` |
 | Freshness: "the user came back" (native window focus → query refetch) | — | `src/lib/window-focus.ts` (wired in `src/main.tsx`); consumers: `components/wordpress/{WordPressManager,RepoPanel}.tsx`; probe `wk-checks/focusrefresh.js` |
 | Shell / theme / state | — | `src/components/shell/*`, `src/lib/theme.ts`, Zustand UI state, TanStack Query server state |

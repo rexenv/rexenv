@@ -83,8 +83,9 @@ import type { WpDebugFlag } from "@/lib/ipc";
 import { GitAddPanel } from "./GitAddPanel";
 import { RepoPanel } from "./RepoPanel";
 import { LinkFolderPanel } from "./LinkFolderPanel";
+import { ZipAddPanel } from "./ZipAddPanel";
 import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpInstallState, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUpdateProgress, WpUser } from "@/types";
-import { WpInstallCard } from "./WpInstallCard";
+import { WpInstallCard, installLabels } from "./WpInstallCard";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -118,7 +119,7 @@ type PendingInstall = { slug: string; icon: string | null };
 function announceInstall(s: WpInstallState): void {
   if (announcedInstalls.has(s.id)) return;
   announcedInstalls.add(s.id);
-  const what = subject(s.slugs, s.kind);
+  const what = subject(installLabels(s), s.kind);
   const detail = s.summary?.split("\n").find((l) => l.trim() !== "")?.trim();
   switch (s.status) {
     case "ok":
@@ -225,13 +226,18 @@ function SlugTag({ slug, icon, onRemove }: { slug: string; icon: string | null; 
 /** wp.org ↔ Git source switch for the add bar (plugins & themes). `gitBusy`
  *  marks a live add-from-Git job so it stays visible from the wp.org tab —
  *  the job survives the panel (backend registry), the UI must say so. */
+/** Where a new plugin/theme comes from. "wporg" and "zip" are the same
+ *  streamed install job (different backend gate); "git"/"link" are their own
+ *  flows. */
+type AddSource = "wporg" | "zip" | "git" | "link";
+
 function SourceTabs({
   source,
   onChange,
   gitBusy,
 }: {
-  source: "wporg" | "git" | "link";
-  onChange: (s: "wporg" | "git" | "link") => void;
+  source: AddSource;
+  onChange: (s: AddSource) => void;
   gitBusy?: boolean;
 }) {
   return (
@@ -239,6 +245,7 @@ function SourceTabs({
       {(
         [
           ["wporg", "WordPress.org"],
+          ["zip", "Upload zip"],
           ["git", "From Git"],
           ["link", "Link folder"],
         ] as const
@@ -2393,7 +2400,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
   );
   const busy = run.isPending || upd.pending;
 
-  const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
+  const [source, setSource] = useState<AddSource>("wporg");
   const gitAssets = useQuery({
     queryKey: ["repo-assets", siteId],
     queryFn: () => repoAssets(siteId),
@@ -2484,6 +2491,13 @@ function ThemesPanel({ siteId }: { siteId: string }) {
           <GitAddPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
         ) : source === "link" ? (
           <LinkFolderPanel siteId={siteId} kind="theme" onInstalled={refreshAfterGit} />
+        ) : source === "zip" ? (
+          <ZipAddPanel
+            siteId={siteId}
+            kind="theme"
+            busy={busy || install.running}
+            onStarted={install.start}
+          />
         ) : (
         <>
         {/* Selected items live ABOVE the input row — the input keeps its full
@@ -2547,13 +2561,6 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             Install{installSlugs.length > 1 ? ` (${installSlugs.length})` : ""}
           </button>
         </div>
-        {install.job && (
-          <WpInstallCard
-            job={install.job}
-            lines={install.lines}
-            onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
-          />
-        )}
         {showSearch && (
           <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
@@ -2578,6 +2585,15 @@ function ThemesPanel({ siteId }: { siteId: string }) {
           </div>
         )}
         </>
+        )}
+        {/* ONE card for both install sources — wp.org and zip run the same
+            job, so a tab switch mid-install must not hide the running work. */}
+        {(source === "wporg" || source === "zip") && install.job && (
+          <WpInstallCard
+            job={install.job}
+            lines={install.lines}
+            onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
+          />
         )}
       </div>
 
@@ -2976,7 +2992,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
   const someSelected = selectable.some((n) => selected.has(n));
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectable));
 
-  const [source, setSource] = useState<"wporg" | "git" | "link">("wporg");
+  const [source, setSource] = useState<AddSource>("wporg");
   const gitAssets = useQuery({
     queryKey: ["repo-assets", siteId],
     queryFn: () => repoAssets(siteId),
@@ -3083,6 +3099,13 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           <GitAddPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
         ) : source === "link" ? (
           <LinkFolderPanel siteId={siteId} kind="plugin" onInstalled={refreshAfterGit} />
+        ) : source === "zip" ? (
+          <ZipAddPanel
+            siteId={siteId}
+            kind="plugin"
+            busy={busy || install.running}
+            onStarted={install.start}
+          />
         ) : (
         <>
         {/* Selected items live ABOVE the input row — the input keeps its full
@@ -3146,13 +3169,6 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             Install{installSlugs.length > 1 ? ` (${installSlugs.length})` : ""}
           </button>
         </div>
-        {install.job && (
-          <WpInstallCard
-            job={install.job}
-            lines={install.lines}
-            onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
-          />
-        )}
         {showSearch && (
           <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-lg border border-rex-border-strong bg-rex-surface-1 shadow-xl">
             {search.isLoading ? (
@@ -3177,6 +3193,15 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           </div>
         )}
         </>
+        )}
+        {/* ONE card for both install sources — wp.org and zip run the same
+            job, so a tab switch mid-install must not hide the running work. */}
+        {(source === "wporg" || source === "zip") && install.job && (
+          <WpInstallCard
+            job={install.job}
+            lines={install.lines}
+            onCancel={() => wpInstallCancel(install.job!.id).catch(toastBackendError)}
+          />
         )}
       </div>
 

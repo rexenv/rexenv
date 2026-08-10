@@ -1,4 +1,5 @@
-/** Live install-progress card (wp.org add flow). Honesty rules (B25 —
+/** Live install-progress card — shared by BOTH add sources (wp.org slugs and
+ *  "Upload zip"; one backend job, one card). Honesty rules (B25 —
  *  wp-cli is opaque mid-download, no byte signal exists):
  *  - the bar is PHASE-based (`job.pct`, computed backend-side): each tick is
  *    a line wp-cli actually printed — observed discrete progress, NOT the
@@ -8,7 +9,9 @@
  *    100, never resets;
  *  - phase label = wp-cli's last output line VERBATIM;
  *  - "installing item k of N" is an ATTEMPT cursor, never "k done" — bar and
- *    cursor advance on the same header lines, one story;
+ *    cursor advance on the same header lines, one story. A ZIP job prints no
+ *    such headers at all, so its cursor can never move: the card omits it
+ *    rather than parking it at "1 of N" (nothing beats a stale something);
  *  - silence is shown honestly ("no output for Ns" — the download phase can
  *    legitimately sit for minutes printing nothing, and a bar PARKED at a
  *    percentage reads as frozen without it) with Cancel as the escape,
@@ -21,6 +24,16 @@ import { LogPane } from "./repoJobUi";
 
 const BTN =
   "rounded-md border border-rex-border bg-rex-surface-2 px-2.5 py-1 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40";
+
+/** What to CALL each item on screen. A zip job's items are absolute paths —
+ *  the file name is the only part a person recognises, and a full
+ *  `/Users/…/Downloads/…` in a toast pushes the outcome off the end of the
+ *  line. The full path stays in the log (and in `job.slugs`), never invented
+ *  or shortened there. */
+export function installLabels(job: WpInstallState): string[] {
+  if (job.source !== "zip") return job.slugs;
+  return job.slugs.map((p) => p.split("/").filter(Boolean).pop() ?? p);
+}
 
 const END_COPY: Partial<Record<WpInstallState["status"], string>> = {
   cancelled:
@@ -85,10 +98,17 @@ export function WpInstallCard({
             {job.status === "ok" ? "✓" : job.status === "cancelled" ? "–" : "✕"}
           </span>
         )}
-        <span className="min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-rex-text">
-          {job.kind} install · {job.slugs.join(" ")}
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-[0.71875rem] text-rex-text"
+          title={job.source === "zip" ? job.slugs.join("\n") : undefined}
+        >
+          {job.kind} install{job.source === "zip" ? " (zip)" : ""} ·{" "}
+          {installLabels(job).join(" ")}
         </span>
-        {running && job.itemsTotal > 1 && (
+        {/* Zip jobs print no per-item header, so the cursor would sit at "1 of
+            N" for the whole batch — a number that stopped being true. Nothing
+            beats a stale something. */}
+        {running && job.source !== "zip" && job.itemsTotal > 1 && (
           <span className="flex-none font-mono text-[0.6875rem] text-rex-text-muted">
             installing item {Math.min(Math.max(job.itemCursor, 1), job.itemsTotal)} of{" "}
             {job.itemsTotal}

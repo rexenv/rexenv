@@ -254,7 +254,9 @@ first:
   plus the packaged-GUI walks still noted inside their shipped entries: MariaDB
   site from the dialog, Apache site in-app, DB version switch from the Databases
   row, Settings CLI-install card, ref-picker on a real many-branch repo, wp.org
-  chips + streamed installs, New Site streamed provisioning card.
+  chips + streamed installs, New Site streamed provisioning card, **Upload zip
+  through the real native file dialog** (SMOKE §WordPress Manager — L0 proves
+  the gate, L1 the install, L2 the card; nothing can drive the picker).
 - [ ] **PUBLISH-TESTING §E / §L** — 🟢 nice-to-haves (B22/B23 datadir recovery,
   B4 submodule clone, B24 wp-cli `--`, B20/B28/B29/B7 runtime wiring; §L Phase-A
   tcpdump one-off, re-run per reqwest bump).

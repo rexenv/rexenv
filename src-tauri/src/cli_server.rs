@@ -703,6 +703,9 @@ where
                 wjobs,
                 id,
                 kind.into(),
+                // The CLI takes wp.org slugs only — `rex wp plugin install`
+                // has no zip form (the zip source is a picked-file flow).
+                "wporg".into(),
                 vec![slug],
                 activate,
             )

@@ -19,6 +19,19 @@
 //!   the plugin/theme list refresh is the source of active-state truth,
 //! - per-JOB log files (`wp-install-<domain>-<id8>.log`, last 5 kept per
 //!   domain) — a failed install's log survives the next attempt.
+//!
+//! Two sources share this one job: `wporg` (slugs) and `zip` (absolute local
+//! archives the user picked in the native dialog — the wp-admin "upload a
+//! zip" move). wp-cli takes both as positionals, so the streaming, cancel,
+//! log and progress paths are literally the same code; only the GATE differs
+//! (`ensure_slugs` vs `ensure_zip_paths` — never one loosened gate).
+//! One honest consequence, and the UI states it rather than papering over it:
+//! a zip install prints NO per-item `Installing name (version)` header (that
+//! header is the wp.org repo path), so `item_cursor` never advances for
+//! `source == "zip"` and the card hides the cursor instead of showing a stale
+//! "item 1 of N". The bar still moves — `InstallProgress` is designed to run
+//! BEHIND on missing lines, never ahead — it just gets its ticks from the
+//! unpack/install/activate milestones alone.
 
 use crate::commands::repo::{shell_env, RepoJobs};
 use crate::commands::wordpress::wp_tools;
@@ -71,6 +84,12 @@ pub struct WpInstallState {
     pub site_id: String,
     /// "plugin" | "theme".
     pub kind: String,
+    /// "wporg" (slugs) | "zip" (absolute local .zip paths). The UI needs it to
+    /// label the card honestly — a path is not a slug, and showing one where
+    /// the other belongs is how a card starts lying quietly.
+    pub source: String,
+    /// The install ARGUMENTS, verbatim as wp-cli received them: wp.org slugs,
+    /// or absolute .zip paths when `source == "zip"`.
     pub slugs: Vec<String>,
     pub items_total: usize,
     pub item_cursor: usize,
@@ -131,6 +150,7 @@ pub async fn wp_install_job<R: tauri::Runtime>(
     jobs: State<'_, WpInstallJobs>,
     site_id: String,
     kind: String,
+    source: String,
     slugs: Vec<String>,
     activate: bool,
 ) -> Result<WpInstallState> {
@@ -140,7 +160,14 @@ pub async fn wp_install_job<R: tauri::Runtime>(
     if slugs.is_empty() {
         return Err(Error::Other("nothing to install".into()));
     }
-    wordpress::ensure_slugs(&kind, &slugs)?;
+    // Two sources, two gates — never one loosened gate. wp.org stays
+    // slugs-only (a URL/path/zip there is still refused); a local archive is
+    // an EXPLICIT choice the caller has to name, and is validated as a file.
+    match source.as_str() {
+        "wporg" => wordpress::ensure_slugs(&kind, &slugs)?,
+        "zip" => wordpress::ensure_zip_paths(&kind, &slugs)?,
+        other => return Err(Error::Other(format!("unknown install source \"{other}\""))),
+    }
     let site = {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         sites::get(&conn, &site_id)?.ok_or_else(|| Error::Other(format!("no site {site_id}")))?
@@ -167,6 +194,7 @@ pub async fn wp_install_job<R: tauri::Runtime>(
             id: id.clone(),
             site_id,
             kind: kind.clone(),
+            source: source.clone(),
             slugs: slugs.clone(),
             items_total: slugs.len(),
             item_cursor: 0,

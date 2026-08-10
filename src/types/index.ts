@@ -1017,16 +1017,22 @@ export interface ArchiveResult {
   versionMissing: boolean;
 }
 
-/** One streamed wp.org install job — the `wp-install://state/<id>` payload.
+/** One streamed install job — the `wp-install://state/<id>` payload.
  *  Honesty contract: `itemCursor` is an ATTEMPT cursor ("installing item k
  *  of N", never "k done" — an already-installed slug prints no header yet
- *  counts as a summary success); `summary` is the verbatim terminal
- *  Success:/Error: line; "ok" does NOT imply activation (chained --activate
- *  failures don't touch the exit code — the list refresh is that truth). */
+ *  counts as a summary success), and it does NOT advance at all when
+ *  `source === "zip"` (wp-cli prints the per-item header only on the wp.org
+ *  path), so the card hides it there rather than showing a frozen "1 of N";
+ *  `summary` is the verbatim terminal Success:/Error: line; "ok" does NOT
+ *  imply activation (chained --activate failures don't touch the exit code —
+ *  the list refresh is that truth). */
 export interface WpInstallState {
   id: string;
   siteId: string;
   kind: "plugin" | "theme";
+  /** Where the items came from — decides what `slugs` holds and how it reads. */
+  source: "wporg" | "zip";
+  /** The install arguments verbatim: wp.org slugs, or absolute .zip paths. */
   slugs: string[];
   itemsTotal: number;
   itemCursor: number;

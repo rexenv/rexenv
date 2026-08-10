@@ -53,6 +53,24 @@ export async function pickSqlFile(title: string): Promise<string | null> {
   return typeof picked === "string" ? picked : null;
 }
 
+/** Native file picker limited to `.zip` archives (the plugin/theme upload
+ *  flow). Multi-select — wp-cli installs a batch in one job. Returns absolute
+ *  paths, empty when the user cancelled. */
+export async function pickZipFiles(title: string): Promise<string[]> {
+  if (!isTauri()) {
+    const typed = window.prompt(title, "");
+    return typed ? [typed] : [];
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const picked = await open({
+    multiple: true,
+    title,
+    filters: [{ name: "Zip archive", extensions: ["zip"] }],
+  });
+  if (typeof picked === "string") return [picked];
+  return Array.isArray(picked) ? picked : [];
+}
+
 /** App name/version/platform for the About card. Mock fallback outside Tauri. */
 export async function getAppInfo(): Promise<AppInfo> {
   if (!isTauri()) return mockAppInfo;
@@ -1526,16 +1544,18 @@ export async function onRepoJobOutput(
   return listen<string>(`repo-job://output/${id}`, (e) => cb(e.payload));
 }
 
-/** Start a STREAMED wp.org install job (live phase lines, attempt cursor,
- *  cancel). Returns the initial snapshot; progress via `onWpInstallState`/
- *  `onWpInstallOutput`. */
+/** Start a STREAMED install job (live phase lines, attempt cursor, cancel).
+ *  `source` picks what `slugs` means and which backend gate runs it: wp.org
+ *  slugs, or absolute local `.zip` paths from `pickZipFiles`. Returns the
+ *  initial snapshot; progress via `onWpInstallState`/`onWpInstallOutput`. */
 export async function wpInstallJob(
   siteId: string,
   kind: "plugin" | "theme",
   slugs: string[],
   activate: boolean,
+  source: "wporg" | "zip" = "wporg",
 ): Promise<WpInstallState> {
-  return invoke<WpInstallState>("wp_install_job", { siteId, kind, slugs, activate });
+  return invoke<WpInstallState>("wp_install_job", { siteId, kind, source, slugs, activate });
 }
 
 /** Cancel a running install (kills the wp-cli process group — safe; the UI

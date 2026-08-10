@@ -244,6 +244,7 @@ const WPI_BASE = {
   id: "wpi-dev",
   siteId: "dev",
   kind: "plugin" as const,
+  source: "wporg" as const,
   slugs: ["akismet", "bbpress"],
   itemsTotal: 2,
   logKey: "wp-install-dev.rex-wpi-dev.log",
@@ -273,6 +274,28 @@ const WPI_CANCELLED = {
   status: "cancelled",
   summary: null,
 };
+/** The ZIP source (`?panel=wp-add&install=zip`): absolute paths, and
+ *  `itemCursor: 0` because wp-cli prints no per-item header on this path —
+ *  the fixture carries the real backend value so the card's "hide the cursor
+ *  for zip" rule is under the eye, not asserted from a friendly fake. */
+const WPI_ZIP = {
+  ...WPI_BASE,
+  source: "zip" as const,
+  slugs: [
+    "/Users/dev/Downloads/advanced-custom-fields-pro-6.3.11.zip",
+    "/Users/dev/Downloads/gravityforms_2.8.17.zip",
+  ],
+  itemCursor: 0,
+  pct: 37,
+  status: "running",
+  summary: null,
+};
+const WPI_ZIP_LINES = [
+  "Unpacking the package...",
+  "Installing the plugin...",
+  "Plugin installed successfully.",
+  "Unpacking the package...",
+];
 const WPI_LINES = [
   "Installing Akismet Anti-spam (5.3)",
   "Downloading installation package from https://downloads.wordpress.org/plugin/akismet.5.3.zip...",
@@ -498,7 +521,7 @@ export function DevGitPanel() {
           return key.includes("site-provision-")
             ? PROV_LINES
             : key.includes("wp-install-")
-              ? WPI_LINES
+              ? (params.get("install") === "zip" ? WPI_ZIP_LINES : WPI_LINES)
               : key.includes("-check")
                 ? CHECK_LINES
                 : TAIL_LINES;
@@ -533,7 +556,9 @@ export function DevGitPanel() {
             : { batch: null, items: [] };
         // `?panel=wp-add` install-card mocks (`&install=running|partial`):
         case "wp_install_active":
-          return params.get("install") === "running"
+          return params.get("install") === "zip"
+            ? WPI_ZIP
+            : params.get("install") === "running"
             ? WPI_RUNNING
             : params.get("install") === "partial"
               ? WPI_PARTIAL

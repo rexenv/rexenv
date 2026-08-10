@@ -882,13 +882,57 @@ fn valid_slug(slug: &str) -> bool {
 
 /// Refuse anything that isn't a bare wp.org slug BEFORE it reaches `wp … install`
 /// — where a URL/path/zip would install arbitrary code and a leading `-` a flag.
+/// The wp.org source stayed EXACTLY this strict when the zip source landed: a
+/// local archive goes through [`ensure_zip_paths`], a separate gate on a
+/// separate argument, never through a loosened slug.
 pub(crate) fn ensure_slugs(kind: &str, slugs: &[String]) -> Result<()> {
     for slug in slugs {
         if !valid_slug(slug) {
             return Err(Error::Other(format!(
                 "invalid {kind} slug \"{slug}\": expected a wp.org slug (lowercase letters, \
-                 digits, hyphens) — installing from a URL, path, or zip isn't supported here."
+                 digits, hyphens) — to install a .zip, use the Upload zip source."
             )));
+        }
+    }
+    Ok(())
+}
+
+/// Gate for the "Upload zip" source: a LOCAL archive the user picked in the
+/// native file dialog, the only non-wp.org install source. Deliberately its
+/// own gate rather than a hole in [`valid_slug`] — the wp.org path still
+/// refuses every URL, path and zip.
+///
+/// Each check is load-bearing, and the ones that look cosmetic are not:
+/// - **absolute** — wp-cli runs with `--path=<docroot>`, and a relative
+///   argument resolves against the CWD, so "the file the user pointed at" and
+///   "the file WordPress unpacks" could be two different files. It also makes
+///   argv smuggling impossible without a separate check: a path starting with
+///   `/` can never be read as a flag.
+/// - **`.zip` extension** (ASCII-case-insensitive) — wp-cli treats an argument
+///   as a local archive ONLY when `pathinfo(…, EXTENSION) === 'zip'`;
+///   anything else silently falls through to a wp.org SLUG lookup. Without
+///   this check, picking `theme.tar.gz` would not fail as "not a zip", it
+///   would fail as "plugin not found in the directory" — the wrong story.
+/// - **an existing regular file** — same fall-through: a directory or a
+///   deleted path becomes a wp.org lookup for a filename-shaped slug.
+pub(crate) fn ensure_zip_paths(kind: &str, paths: &[String]) -> Result<()> {
+    for p in paths {
+        let path = Path::new(p);
+        if !path.is_absolute() {
+            return Err(Error::Other(format!(
+                "invalid {kind} archive \"{p}\": expected an absolute path to a .zip file."
+            )));
+        }
+        let is_zip = path
+            .extension()
+            .is_some_and(|e| e.as_encoded_bytes().eq_ignore_ascii_case(b"zip"));
+        if !is_zip {
+            return Err(Error::Other(format!(
+                "\"{p}\" is not a .zip file — WordPress installs a {kind} from a zip archive."
+            )));
+        }
+        if !path.is_file() {
+            return Err(Error::Other(format!("no such file: \"{p}\".")));
         }
     }
     Ok(())
@@ -2836,6 +2880,46 @@ mod tests {
         assert!(refuse("https://evil.example/x.zip").contains("invalid plugin slug"));
         assert!(refuse("--activate").contains("invalid plugin slug"));
         assert!(ensure_slugs("plugin", &["akismet".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn zip_source_takes_only_an_absolute_existing_zip_file() {
+        // The "Upload zip" gate. Every rejection here is a case wp-cli would
+        // otherwise turn into a wp.org SLUG lookup (it only treats a
+        // `pathinfo == zip` argument as a local archive) — i.e. the wrong
+        // failure message for the wrong reason, which is why the gate exists
+        // at all rather than letting wp-cli sort it out.
+        let dir = std::env::temp_dir().join(format!("rexenv-zipgate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join("my-plugin.zip");
+        std::fs::write(&zip, b"PK\x03\x04").unwrap();
+        let upper = dir.join("Other-Plugin.ZIP"); // an export from a Mac zips as .ZIP
+        std::fs::write(&upper, b"PK\x03\x04").unwrap();
+        let tarball = dir.join("my-plugin.tar.gz");
+        std::fs::write(&tarball, b"\x1f\x8b").unwrap();
+        let subdir = dir.join("unpacked.zip"); // a DIRECTORY that ends in .zip
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let ok = |p: &std::path::Path| ensure_zip_paths("plugin", &[p.display().to_string()]);
+        assert!(ok(&zip).is_ok());
+        assert!(ok(&upper).is_ok(), "the extension check is case-insensitive");
+        assert!(ensure_zip_paths(
+            "plugin",
+            &[zip.display().to_string(), upper.display().to_string()]
+        )
+        .is_ok());
+
+        let err = |p: String| ensure_zip_paths("theme", &[p]).unwrap_err().to_string();
+        assert!(err("my-plugin.zip".into()).contains("absolute"), "relative path");
+        assert!(err("--activate".into()).contains("absolute"), "a flag is not absolute");
+        assert!(err(tarball.display().to_string()).contains("not a .zip file"));
+        assert!(err(dir.join("gone.zip").display().to_string()).contains("no such file"));
+        assert!(err(subdir.display().to_string()).contains("no such file"), "a dir is not a file");
+        // One bad entry fails the whole batch — no partial spawn.
+        assert!(ensure_zip_paths("plugin", &[zip.display().to_string(), "x".into()]).is_err());
+
+        // Fixture-owned cleanup only (the dir this test created, by name).
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

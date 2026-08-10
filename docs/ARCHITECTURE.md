@@ -629,6 +629,22 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   error is the one the user reads instead of our kill. ONE command, not a UI variant:
   CLI/MCP callers just have no listener. The captured `plugin_update` (hard total
   cap) stays for callers with no sink.
+- **Adding a plugin/theme has FOUR sources, and two of them are the same job**
+  (`SourceTabs`): WordPress.org search, **Upload zip**, From Git, Link folder.
+  wp.org and zip both run `commands/wp_install.rs` — same streamed card, same
+  Cancel, same per-job log — because wp-cli takes a slug and a local archive in
+  the same positional slot. What differs is the GATE, and it is two gates
+  rather than one loosened one: `ensure_slugs` (wp.org: `^[a-z0-9][a-z0-9-]*$`,
+  so a URL/path/zip is still refused there) and `ensure_zip_paths` (absolute +
+  `.zip` + an existing regular file). The zip is read where it sits — nothing
+  is copied, unpacked or uploaded by rexenv; WordPress's own installer does the
+  unpacking, which is why a badly-shaped archive fails exactly as it would in
+  wp-admin. **One honest consequence, stated rather than hidden:** wp-cli
+  prints its per-item `Installing name (version)` header only on the wp.org
+  path, so a zip job's attempt cursor can never advance — the card omits the
+  cursor instead of parking it at "item 1 of N", and the bar runs on the
+  unpack/install/activate milestones alone (`InstallProgress` may run BEHIND
+  the work, never ahead). The `rex` CLI keeps slugs only.
 - **Add plugin/theme from Git** (`core/repo.rs` + `core/devtools.rs` +
   `commands/repo.rs`): paste URL (https/ssh/scp/`owner/repo`; forge `/tree/`
   URLs preselect the branch) → `ls-remote` probe (URL+auth validated BEFORE

@@ -122,6 +122,7 @@ rexenv/
 │   │   ├── common/             # StatusPill, StartStopToggle, Placeholder, …
 │   │   ├── sites/              # NewSiteDialog (+ blueprint picker)
 │   │   ├── wordpress/          # WordPressManager (plugins/themes/users/network/tools)
+│   │   │                       #   add sources: ZipAddPanel · GitAddPanel · LinkFolderPanel
 │   │   ├── database/           # AdminerFrame
 │   │   └── terminal/           # SiteTerminal (xterm.js)
 │   ├── lib/

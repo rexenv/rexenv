@@ -46,6 +46,14 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 ## WordPress Manager
 - [ ] Plugins tab lists plugins; install + activate a plugin works.
 - [ ] Themes tab lists themes; activate works.
+- [ ] **Upload zip** (the native file dialog is unmockable — L2 renders the card from a
+  fixture, only this walk proves the picker): Plugins → **Upload zip** → Choose .zip →
+  pick a real plugin zip (a premium one, or any download from wp.org) → Install. The
+  card names the FILE, not the path, shows no "installing item k of N", and the plugin
+  appears in the list below. Repeat once on the Themes tab. **Then the refusals, which
+  are the half a happy path never sees:** pick nothing → Install stays disabled; try a
+  zip that is not a plugin → the failure quotes WordPress's own words, and the list
+  below still tells the truth.
 - [ ] **External change, no manual dance** (the only place the NATIVE focus event can
   be tested — no browser has one, so `wk-checks/focusrefresh.js` proves the wiring and
   this proves the event): with the Plugins tab OPEN, deactivate a plugin in wp-admin,
