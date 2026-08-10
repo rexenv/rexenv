@@ -42,6 +42,19 @@ const toasts = (page) =>
   const list = await open("plugins=list");
   if ((await toasts(list)).length !== 0) fails.push("a toast appeared before any click");
 
+  // Control metrics: the Add bar's "Activate" box was the browser's own ~12px
+  // default next to 18px list checkboxes — small enough that QA read it as a
+  // different kind of control. Every checkbox on this panel is one control.
+  const boxes = await list.evaluate(() =>
+    [...document.querySelectorAll('input[type="checkbox"]')].map((n) => {
+      const r = n.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    }),
+  );
+  const odd = boxes.filter((b) => b.w !== boxes[0].w || b.h !== boxes[0].h);
+  if (boxes.length < 2) fails.push("the panel rendered fewer checkboxes than expected");
+  if (odd.length) fails.push(`checkbox sizes disagree: ${JSON.stringify(boxes)}`);
+
   await list.getByLabel("Deactivate akismet").click();
   let said = await about(list, "akismet");
   if (said.length !== 1) fails.push(`deactivate announced ${said.length}× (want 1)`);

@@ -2517,8 +2517,16 @@ function ThemesPanel({ siteId }: { siteId: string }) {
             placeholder={pending.length ? "Add another…" : "Search WordPress.org or enter a slug…"}
             className="h-[30px] min-w-[180px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
           />
-          <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-            <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
+          {/* Same CHECK class as the list rows: unstyled, this rendered as the
+              browser's own ~13px box with no accent colour, visibly smaller
+              than every other checkbox on the screen (QA, 11 Aug 2026). */}
+          <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+            <input
+              type="checkbox"
+              checked={activateOnAdd}
+              onChange={(e) => setActivateOnAdd(e.target.checked)}
+              className={CHECK}
+            />
             Activate
           </label>
           <button
@@ -3108,8 +3116,16 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
             placeholder={pending.length ? "Add another…" : "Search WordPress.org or enter a slug…"}
             className="h-[30px] min-w-[180px] flex-1 rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
           />
-          <label className="flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
-            <input type="checkbox" checked={activateOnAdd} onChange={(e) => setActivateOnAdd(e.target.checked)} />
+          {/* Same CHECK class as the list rows: unstyled, this rendered as the
+              browser's own ~13px box with no accent colour, visibly smaller
+              than every other checkbox on the screen (QA, 11 Aug 2026). */}
+          <label className="flex cursor-pointer items-center gap-1.5 text-[0.75rem] text-rex-text-muted">
+            <input
+              type="checkbox"
+              checked={activateOnAdd}
+              onChange={(e) => setActivateOnAdd(e.target.checked)}
+              className={CHECK}
+            />
             Activate
           </label>
           <button
