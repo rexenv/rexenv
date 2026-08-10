@@ -31,6 +31,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Laravel create (composer create-project, .env wiring, migrations) | `core/laravel.rs` | `commands/site_provision.rs` (Laravel phases), `commands/wordpress.rs` (`composer_tools`) | ShellRunner, BinaryProvider | `core::laravel` unit tests (.env shapes, install markers) |
 | WordPress ops (wp-cli, manager, streamed installs, wp.org search) | `core/wordpress.rs`, `core/wporg.rs`, `core/blueprints.rs` | `commands/wordpress.rs` (60 cmds), `commands/wp_install.rs`, `commands/blueprints.rs` | ShellRunner | #141–147; `wp_install_serve`, `wp_install_stream_check` |
 | "Log in as" magic link | `core/wp_login.rs` | `commands/wordpress.rs` | — | #33–36; `wp_login_check` |
+| Loopback DNS for PHP (WP-Cron/self-calls under c-ares) | `core/wp_dns.rs` | installed by `commands/site_provision.rs` (settle-ok), re-installed by `commands/sites.rs` (rename), swept for all sites by `lib.rs` (launch) | — | #251–253; `wp_dns_check` |
 | Tunnels (cloudflared, health probe, mu-plugin rewrite) | `core/tunnels.rs`, `core/wp_tunnel.rs` | `commands/tunnels.rs` | ProcessSupervisor | #1–32; `tunnel_check`, `tunnel_sweep`, `tunnel_muplugin_check` |
 | Mail (Mailpit + sendmail shim) | `core/mail.rs` | `commands/mail.rs` | BinaryProvider, ProcessSupervisor | #149–150; `mailpit_check`, `mail_route_check` |
 | Adminer (internal vhost, deep links) | `core/adminer.rs` | `commands/database.rs` | — | #37–43; `adminer_*_check` |

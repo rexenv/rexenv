@@ -538,6 +538,24 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
 - **"Log in as"** (`core/wp_login.rs`): one-time, single-use, loopback-only magic link
   via a mu-plugin.
+- **A site can reach ITSELF** (`core/wp_dns.rs`, 10 Aug 2026): the bundled static-php
+  builds link libcurl against **c-ares**, which resolves from `/etc/resolv.conf` ALONE
+  and never reads macOS split-DNS (`/etc/resolver/<tld>`) — where rexenv publishes every
+  TLD it serves. So inside php-fpm `gethostbyname("x.rex")` answered `127.0.0.1` while
+  `curl` to the same host died with errno 6, and **WP-Cron stopped on every hosted
+  WordPress site with nothing logged** (it spawns itself with a fire-and-forget HTTP
+  request and never checks the result). Site Health loopbacks, REST self-calls and
+  sibling-site requests failed the same way; WP-CLI hid it (cron events run in-process,
+  no HTTP). The fix is an auto-managed mu-plugin (`rexenv-dns.php`) that, on
+  `http_api_curl`, hands cURL the address the SYSTEM resolver already has
+  (`CURLOPT_RESOLVE`) — but ONLY for hosts whose TLD has an `/etc/resolver/` file naming
+  a **loopback** nameserver, so a VPN's split-DNS and all public DNS are untouched. It
+  bakes in nothing per-site (no domain, no TLD list), which is why a domain change or a
+  new TLD needs no rewrite; it no-ops on threaded-resolver builds (FrankenPHP) by its
+  first guard. Installed at provision, re-installed after a rename (the mu-plugin sweep
+  removes it), and swept for every WordPress site at launch — the launch pass is what
+  makes it true for sites that predate it. The real elimination of the bug class is a
+  PHP build using curl's threaded resolver (open, `docs/TODO.md`).
 - **Tunnels** (`core/tunnels.rs` + `core/wp_tunnel.rs` + `commands/tunnels.rs`):
   per-site cloudflared quick tunnel, scoped to ONE site Host, outbound-only. Behind
   the edge `REMOTE_ADDR` is always `127.0.0.1`, so loopback-only enforcement keys off

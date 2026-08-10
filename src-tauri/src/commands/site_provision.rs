@@ -673,6 +673,14 @@ async fn run_provision_job<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         if let Ok(conn) = lock_db(&state) {
             let _ = crate::state::store::set_site_provisioned(&conn, &site.id, true);
+            // A WordPress site cannot reach ITSELF over its .rex hostname
+            // without this (bundled PHP resolves via c-ares, blind to
+            // /etc/resolver) — WP-Cron would be dead from the first minute,
+            // silently. Installed here, at the ONE path every create takes;
+            // the startup pass in lib.rs is the backstop, not the mechanism.
+            if let Ok(Some(fresh)) = crate::core::sites::get(&conn, &site.id) {
+                crate::core::wp_dns::ensure_for_site(&conn, &fresh);
+            }
         };
     }
     emit_state(&app, &entry);

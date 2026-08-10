@@ -18,6 +18,22 @@ evidence cited.
   `site_status` runs nothing (Option A, no HTTP GET); status line is feed-driven
   not a live-session list. **Next MCP stage = M2a (scratch sites)** — see
   `docs/PLAN-mcp-server.md §7.3`, reconciled against this shipped M1 on 1 Aug.
+- [x] **PHP could not resolve `.rex` — WP-Cron silently dead on every hosted site**
+  (filed 10 Aug 2026). The bundled static-php builds link libcurl against **c-ares**,
+  which reads `/etc/resolv.conf` alone and never `/etc/resolver/<tld>`; `gethostbyname`
+  worked, every `curl` to a rexenv host returned errno 6, and WP-Cron never reports a
+  failed spawn. ✓ Fixed by the `rexenv-dns.php` mu-plugin (`core/wp_dns.rs`) —
+  `CURLOPT_RESOLVE` from the system resolver's own answer, restricted to
+  loopback-served resolver zones; installed at provision, re-installed after a rename,
+  swept for all sites at launch. Ledger #251–253; `wp_dns_check` reproduces the bug
+  (errno 6) and proves the fix (200) under the real bundled PHP.
+- [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
+  fix for #251 — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
+  a plugin, and not non-WordPress PHP apps rexenv hosts). Needs a self-built
+  static-php (`--enable-threaded-resolver` instead of `--enable-ares`) for 6 minors ×
+  cli/fpm × 2 arches, i.e. the same self-hosted-artifact path the Xdebug debug build is
+  blocked on (`docs/xdebug-debug-build.md`). Until then `wp_dns_check` FAILS LOUDLY the
+  day a build stops using c-ares — that is the signal this item is done.
 - [ ] **DNS agent answers ARBITRARY names when queried directly** (found in the
   28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
   `127.0.0.1` — the hickory handler is a catch-all, not per-TLD zones

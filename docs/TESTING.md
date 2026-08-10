@@ -47,11 +47,16 @@ it can:
 - **Cost:** seconds. **Runs:** every `verify.sh`. **Bug class:** logic regressions,
   drift in our own generation/parsing, unrepresentable-state violations.
 
-### L1 — Tool (`src-tauri/examples/*.rs`, 105 live checks)
+### L1 — Tool (`src-tauri/examples/*.rs`, 106 live checks)
 
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real
-  process lifecycle (adopt/orphan/reap), real filesystem layouts. **This layer caught
+  process lifecycle (adopt/orphan/reap), real filesystem layouts, **what a bundled
+  binary was COMPILED with** (`wp_dns_check`, sandbox tier: the bundled PHP's libcurl
+  uses c-ares, so it cannot see `/etc/resolver` — a fact no Rust test can hold, and the
+  reason WP-Cron was silently dead on every site until 10 Aug 2026; the check asserts
+  the bug still reproduces AND that the mu-plugin fixes it, so it also goes red the day
+  a threaded-resolver rebuild makes the whole class obsolete). **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS

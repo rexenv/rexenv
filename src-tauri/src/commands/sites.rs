@@ -1060,6 +1060,14 @@ pub async fn change_site_domain(
     // the next share / login recreates them with the new domain. The dir
     // stays (the site is still managed and will likely want it again).
     core::sites::cleanup_muplugin_artifacts(&updated, false);
+    // ...except the loopback-DNS file, which the sweep just took: it bakes in
+    // NOTHING per-site, and the site is still managed. Re-install now — without
+    // this, a Change domain silently un-fixes WP-Cron until the next launch,
+    // which is the exact silence this file exists to end.
+    {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::wp_dns::ensure_for_site(&conn, &updated);
+    }
     if let Ok(dir) = core::ssl::site_cert_dir(state.platform.paths(), &old_domain) {
         let _ = std::fs::remove_dir_all(dir);
     }

@@ -243,6 +243,12 @@ pub fn run() {
                     // manager — status shows them running, Stop all works, Start all
                     // skips them. (Replaces the old stop-orphans-at-boot behavior.)
                     let sites = core::sites::list(&conn).unwrap_or_default();
+                    // Bundled PHP resolves through c-ares, which never reads
+                    // macOS split-DNS — so a site could not reach itself and
+                    // WP-Cron died silently (10 Aug 2026). The mu-plugin that
+                    // fixes it is installed per site at provision; this pass is
+                    // what covers the sites that predate it, or lost the file.
+                    core::wp_dns::ensure_all(&conn, &sites);
                     // Opt-in "start services when rexenv opens" (Settings) — read
                     // while the connection is still ours; acted on below, after
                     // AppState is managed and survivors are adopted.

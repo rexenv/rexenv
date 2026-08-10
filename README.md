@@ -160,6 +160,7 @@ rexenv/
         │   ├── proxy.rs        # Caddy edge (unix-socket admin, root daemon, adoption)
         │   ├── database.rs · mariadb.rs · postgres.rs · redis.rs · db.rs   # engines + DbEngine
         │   ├── wordpress.rs · wp_login.rs · wporg.rs      # WP-CLI ops, magic login, wp.org search
+        │   ├── wp_dns.rs      # mu-plugin so a site can reach itself (c-ares vs /etc/resolver)
         │   ├── dns.rs · tld.rs · ssl.rs · firefox.rs      # resolver + TLD policy, CA
         │   ├── tunnels.rs · wp_tunnel.rs                  # cloudflared shares + URL rewrite
         │   ├── valet.rs        # read-only Valet/Herd discovery (import Stage 1)

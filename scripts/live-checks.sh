@@ -171,6 +171,7 @@ wp_create_serve network
 wp_debug_log_check demo
 wp_debug_toggle_check demo
 wp_info_check network
+wp_dns_check sandbox
 wp_install_serve network
 wp_install_stream_check network
 wp_login_check network

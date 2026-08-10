@@ -295,6 +295,13 @@ pub fn cleanup_muplugin_artifacts(site: &Site, remove_dir: bool) {
     if let Err(e) = crate::core::wp_mailtag::disable(docroot) {
         log::warn!("sites: could not remove the scratch-mail mu-plugin for {}: {e}", site.domain);
     }
+    // The loopback-DNS file. Domain-agnostic, so a RENAME does not need it
+    // gone — but this sweep is also the site's exit, and a preserved docroot
+    // must not keep files we wrote. The rename path re-installs it right after
+    // calling this (`commands::sites::change_site_domain`).
+    if let Err(e) = crate::core::wp_dns::remove(docroot) {
+        log::warn!("sites: could not remove the loopback-DNS mu-plugin for {}: {e}", site.domain);
+    }
     if remove_dir && site.mu_dir_created == Some(true) {
         remove_if_effectively_empty(&docroot.join(site.content_dir_rel()).join("mu-plugins"));
     }

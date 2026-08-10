@@ -52,6 +52,7 @@ pub mod terminal;
 pub mod tld;
 pub mod valet;
 pub mod tunnels;
+pub mod wp_dns;
 pub mod wp_login;
 pub mod wporg;
 pub mod wp_mailtag;
