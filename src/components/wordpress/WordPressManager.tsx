@@ -1419,13 +1419,28 @@ function CronCard({ siteId }: { siteId: string }) {
 
   const busy = runDue.isPending || runHook.isPending;
 
+  // A real site schedules dozens of hooks; finding one by eye means scrolling a
+  // 300px window. Filter on the hook name (and recurrence — "45 minutes" is how
+  // people remember an odd one out).
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = !events ? [] : !q
+    ? events
+    : events.filter(
+        (e) => e.hook.toLowerCase().includes(q) || e.recurrence.toLowerCase().includes(q),
+      );
+
   return (
     <Card title="Cron">
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-[0.75rem] text-rex-text-muted">
-            {events ? `${events.length} scheduled event(s)` : "…"} — local dev has no visitors,
-            so overdue events are normal; run them on demand.
+            {!events
+              ? "…"
+              : q
+                ? `${shown.length} of ${events.length} scheduled event(s)`
+                : `${events.length} scheduled event(s)`}{" "}
+            — local dev has no visitors, so overdue events are normal; run them on demand.
           </span>
           <button
             className={BTN + " flex items-center gap-1.5"}
@@ -1436,6 +1451,26 @@ function CronCard({ siteId }: { siteId: string }) {
             {runDue.isPending ? "Running…" : "Run due now"}
           </button>
         </div>
+        {events && events.length > 0 && (
+          <div className="relative w-[230px]">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-rex-text-muted" />
+            <input {...TECH_INPUT}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search hooks…"
+              className="h-[30px] w-full rounded-lg border border-rex-border bg-rex-surface-2 pl-8 pr-7 text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand"
+            />
+            {q && (
+              <button
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-rex-text-muted transition-colors hover:text-rex-text"
+                title="Clear search"
+                onClick={() => setQuery("")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
         <div className="overflow-hidden rounded-lg border border-rex-border-subtle">
           {isLoading ? (
             <PanelLoading what="cron events" />
@@ -1454,7 +1489,12 @@ function CronCard({ siteId }: { siteId: string }) {
                 <span className="w-[64px]" />
               </div>
               <div className="max-h-[300px] overflow-y-auto">
-                {events.map((e, i) => (
+                {shown.length === 0 && (
+                  <div className="p-4 text-center text-[0.78125rem] text-rex-text-muted">
+                    No hook matches “{query.trim()}”.
+                  </div>
+                )}
+                {shown.map((e, i) => (
                   <div
                     key={`${e.hook}-${i}`}
                     className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 last:border-b-0"
