@@ -153,6 +153,11 @@ function useWpInstall(
         if (j) {
           setJob(j);
           void tailLog(j.logKey, 300).then(setLines).catch(() => {});
+          // A job that settled while this panel was UNMOUNTED (sub-tab switch,
+          // or the user off in the browser) emitted its state event to nobody.
+          // Adoption is the second way we learn an outcome, so it announces
+          // too; `announcedInstalls` keeps that from doubling the event path.
+          if (j.status !== "running") announceInstall(j);
         }
       })
       .catch(() => {});

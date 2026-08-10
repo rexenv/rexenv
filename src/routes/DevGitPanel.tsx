@@ -147,6 +147,9 @@ const OP_JOB_FAILED = {
 const WP_PLUGIN_ROWS = [
   { name: "akismet", status: "active", version: "5.3", update: "none", updateVersion: "", title: "Akismet Anti-spam" },
   { name: "hello-dolly", status: "inactive", version: "1.7.2", update: "none", updateVersion: "", title: "Hello Dolly" },
+  // A row that really may claim an update: `verdict` renders the button only
+  // when the offered version is NEWER than the one on disk.
+  { name: "wordpress-seo", status: "active", version: "22.1", update: "available", updateVersion: "22.4", title: "Yoast SEO" },
 ];
 
 const ASSET_STATUS = {
@@ -553,6 +556,13 @@ export function DevGitPanel() {
         case "wp_plugin_activate":
         case "wp_plugin_deactivate":
         case "wp_plugin_delete":
+          return null;
+        // The streamed update resolves with no payload; wp-cli's non-zero exit
+        // is what a failure looks like, so `?update=fail` REJECTS.
+        case "wp_plugin_update":
+          if (params.get("update") === "fail") {
+            throw new Error("Error: Only updated 0 of 1 plugins.");
+          }
           return null;
         case "wp_org_plugin_icons":
           return {};
