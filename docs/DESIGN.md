@@ -35,6 +35,16 @@ the shipped UI toward one.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
+- **An action that finishes somewhere else says so.** Every button on the repo panel
+  (Fetch, Pull, Push, Build zip, Check deps, Run: <script>) starts a streamed job whose
+  only completion signal was a glyph inside the job card — so with the panel scrolled
+  away, or the user over in the browser they clicked Pull to refresh, a finished job
+  looked exactly like one that never ran. Each step now toasts its OUTCOME once, naming
+  the action and the asset ("Pull — my-plugin finished"); a failure quotes the first
+  line of the tool's own error and stops (the rest is the card's and the log's job);
+  steps that are still pending, or were skipped because an earlier one failed, stay
+  silent rather than reporting work that did not happen. The rule generalises: if the
+  visible state does not change on its own when the work lands, the work has to say so.
 - **A panel showing something rexenv does not own re-reads it when the user comes
   back — and offers a way to ask.** Plugin/theme state lives in WordPress and the
   git branch lives in the checkout; both change from wp-admin, a terminal, or the

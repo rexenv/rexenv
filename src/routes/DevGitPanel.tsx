@@ -124,6 +124,24 @@ const OP_JOB = {
   finishedOk: false,
 };
 
+/** `?op=fail`: the same pull, refused by git. Exists so `repotoast.js` can prove
+ *  the failure toast quotes the FIRST line of the error and stops there — the
+ *  rest is what the job card and the log pane are for. */
+const OP_JOB_FAILED = {
+  ...OP_JOB,
+  id: "dev-op",
+  steps: [
+    {
+      key: "pull",
+      label: "git pull --ff-only",
+      status: "failed",
+      error: "fatal: Not possible to fast-forward, aborting.\nhint: rebase or merge in a terminal",
+    },
+    { key: "composer", label: "composer install", status: "skipped", error: null },
+    { key: "install", label: "pnpm install", status: "skipped", error: null },
+  ],
+};
+
 const ASSET_STATUS = {
   branch: "feat/x",
   detached: false,
@@ -400,6 +418,7 @@ export function DevGitPanel() {
   const showLinkPanel = params.get("panel") === "link";
   const watchMode = params.get("watch"); // "1" running | "exited"
   const detached = params.get("detached") === "1";
+  const opFails = params.get("op") === "fail"; // `repotoast.js`: the failure path
   useEffect(() => {
     mockIPC(async (cmd, args) => {
       // Call tally for the focus-refresh probe (`wk-checks/focusrefresh.js`):
@@ -463,7 +482,7 @@ export function DevGitPanel() {
                 { number: 42, sha: "5c0ffee4d2b", ref: "refs/pull/42/head" },
               ];
         case "repo_git_op":
-          return OP_JOB;
+          return opFails ? OP_JOB_FAILED : OP_JOB;
         case "tail_log": {
           const key = String((args as { key?: string } | undefined)?.key ?? "");
           return key.includes("site-provision-")
@@ -569,7 +588,7 @@ export function DevGitPanel() {
           // and read it as a UI bug that was never in the UI.
           const id = String((args as { jobId?: string } | undefined)?.jobId ?? "");
           if (rehydrate) return RUNNING_JOB;
-          return id === OP_JOB.id ? OP_JOB : JOB;
+          return id === OP_JOB.id ? (opFails ? OP_JOB_FAILED : OP_JOB) : JOB;
         }
         case "repo_run_step":
         case "repo_cancel":

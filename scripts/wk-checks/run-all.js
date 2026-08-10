@@ -9,6 +9,7 @@ const CHECKS = [
   "watchpanel.js",
   "linkpanel.js",
   "focusrefresh.js",
+  "repotoast.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,
   // dbtab height probe, pill metrics) — it belongs in the bar.
   "uireview.js",

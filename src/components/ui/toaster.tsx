@@ -14,7 +14,13 @@ export function Toaster() {
   const toasts = useToastStore((s) => s.toasts);
   const dismiss = useToastStore((s) => s.dismiss);
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[360px] flex-col gap-2">
+    <div
+      // Announced to assistive tech (a toast is the only report some actions
+      // make), and the handle `wk-checks/repotoast.js` selects on.
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[360px] flex-col gap-2"
+    >
       {toasts.map((t) => {
         const { Icon, border, color } = KIND[t.kind];
         return (

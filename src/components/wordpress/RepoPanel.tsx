@@ -31,7 +31,7 @@ import {
   repoWatches,
   tailLog,
 } from "@/lib/ipc";
-import type { GitAsset, RepoJobState } from "@/types";
+import type { GitAsset, RepoJobState, RepoStepState } from "@/types";
 import { revealPath } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -57,6 +57,35 @@ const OFFERABLE_STEPS = ["composer", "install", "build"];
  *  `finishedOk` (backend requires ≥2 steps), so the finished archive job is
  *  re-adopted on each mount and its `archive` field arrives again. */
 const toastedArchives = new Set<string>();
+
+/** Step outcomes already announced, keyed `<jobId>:<stepKey>` — module scope for
+ *  the same reason as `toastedArchives`: collapsing and re-expanding the asset
+ *  row unmounts this panel, and a per-mount ref would re-announce a job the
+ *  user already saw settle. */
+const toastedSteps = new Set<string>();
+
+/** What to CALL the thing that just finished, in a toast the user reads with the
+ *  panel possibly scrolled out of view. The op's own step (its key equals the
+ *  job's op, by backend contract) gets the button's own word; a dependency step
+ *  gets its real command ("composer install"), because that is what the row it
+ *  came from says. */
+function actionLabel(job: RepoJobState, step: RepoStepState): string {
+  if (step.key !== job.op) return step.label;
+  switch (job.op) {
+    case "fetch":
+      return "Fetch";
+    case "pull":
+      return "Pull";
+    case "push":
+      return "Push";
+    case "checkout":
+      return job.gitRef ? `Checkout ${job.gitRef}` : "Checkout";
+    case "check":
+      return "Dependency check";
+    default:
+      return step.label; // scripts: "pnpm run build"; anything new: its own label
+  }
+}
 
 /** Inline job spinner for a button whose start call is still in flight. */
 function BtnSpinner() {
@@ -287,6 +316,40 @@ export function RepoPanel({
     const el = watchLogRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [watchLines, watchLogOpen]);
+
+  // Every button in this panel starts a job that finishes somewhere else: the
+  // card's step glyph flips, and that is all. With the panel scrolled away —
+  // or the user reading the site in a browser — a Pull, a Push or a Run: build
+  // completed in total silence, which is indistinguishable from nothing having
+  // happened. Announce each step's OUTCOME once, as it settles.
+  useEffect(() => {
+    if (!opJob) return;
+    for (const st of opJob.steps) {
+      // Not finished yet — and "skipped" (never ran, because an earlier
+      // Run-all step failed) is not an outcome worth a toast of its own; the
+      // failure that caused it already got one.
+      if (st.status === "pending" || st.status === "running" || st.status === "skipped") continue;
+      const seen = `${opJob.id}:${st.key}`;
+      if (toastedSteps.has(seen)) continue;
+      toastedSteps.add(seen);
+      // A successful zip is announced by the archive effect below, with the
+      // file name that really exists and a Show in Finder action — a second
+      // "finished" toast would say less, twice. A FAILED zip has no file, so
+      // it still belongs here.
+      if (opJob.op === "dist-archive" && st.status === "ok" && opJob.archive) continue;
+      const what = `${actionLabel(opJob, st)} — ${asset.dirName}`;
+      if (st.status === "failed") {
+        // First line only: the full text is in the job card and the log pane,
+        // and a toast that spans the window is a toast nobody finishes reading.
+        const why = st.error?.split("\n").find((l) => l.trim() !== "");
+        toast.error(why ? `${what} failed: ${why.trim()}` : `${what} failed`);
+      } else if (st.status === "cancelled") {
+        toast.info(`${what} cancelled`);
+      } else {
+        toast.success(`${what} finished`);
+      }
+    }
+  }, [opJob, asset.dirName]);
 
   // The archive result arrives on the job-state event, not from the mutation —
   // the mutation returns the moment the job STARTS. Keyed by job id in a
