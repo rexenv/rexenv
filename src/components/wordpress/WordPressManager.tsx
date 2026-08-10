@@ -241,6 +241,17 @@ function SourceTabs({
 // error instead of spinning through react-query's default 3 retries.
 const WP_QUERY = { staleTime: 30_000, refetchOnWindowFocus: false, retry: 1 } as const;
 
+// ...except for the lists that describe state WordPress itself can change while
+// rexenv is showing it. A plugin activated in wp-admin (or by wp-cli in the
+// Terminal tab) left this list saying the opposite, and the only way back was
+// to leave the tab and return — the app looked broken because it was showing a
+// 30-second-old fact with no way to say so. These refetch whenever the NATIVE
+// window regains focus (see `lib/window-focus.ts`), which is exactly the moment
+// the user comes back from changing something elsewhere. One wp-cli list call
+// per return, and only for the panel that is actually open (react-query
+// refetches ACTIVE queries only).
+const WP_LIVE = { staleTime: 0, refetchOnWindowFocus: true, retry: 1 } as const;
+
 /** Plugins in two passes: an instant list (no update check), then a background
  *  pass with the wordpress.org update check (slow; a hang when offline) that
  *  only refreshes the update badges when it lands. Mutations invalidate
@@ -249,7 +260,7 @@ function useWpPlugins(siteId: string) {
   const fast = useQuery({
     queryKey: ["wp-plugins", siteId],
     queryFn: () => wpPlugins(siteId),
-    ...WP_QUERY,
+    ...WP_LIVE,
   });
   const updates = useQuery({
     queryKey: ["wp-plugins", siteId, "updates"],
@@ -268,7 +279,19 @@ function useWpPlugins(siteId: string) {
     const upd = new Map((updates.data ?? []).map((p) => [p.name, p]));
     return base.map((p) => verdict(p, upd.get(p.name) ?? p));
   }, [fast.data, updates.data]);
-  return { plugins, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
+  return {
+    plugins,
+    isLoading: fast.isLoading,
+    isError: fast.isError,
+    error: fast.error,
+    // Refresh means BOTH passes: the update badges are the half a user is most
+    // likely to be re-checking, and they live in the slow query.
+    refetch: () => {
+      void fast.refetch();
+      void updates.refetch();
+    },
+    isFetching: fast.isFetching || updates.isFetching,
+  };
 }
 
 /** Themes, same two-pass shape as `useWpPlugins`. */
@@ -276,7 +299,7 @@ function useWpThemes(siteId: string) {
   const fast = useQuery({
     queryKey: ["wp-themes", siteId],
     queryFn: () => wpThemes(siteId),
-    ...WP_QUERY,
+    ...WP_LIVE,
   });
   const updates = useQuery({
     queryKey: ["wp-themes", siteId, "updates"],
@@ -290,11 +313,60 @@ function useWpThemes(siteId: string) {
     const upd = new Map((updates.data ?? []).map((t) => [t.name, t]));
     return base.map((t) => verdict(t, upd.get(t.name) ?? t));
   }, [fast.data, updates.data]);
-  return { themes, isLoading: fast.isLoading, isError: fast.isError, error: fast.error, refetch: fast.refetch };
+  return {
+    themes,
+    isLoading: fast.isLoading,
+    isError: fast.isError,
+    error: fast.error,
+    refetch: () => {
+      void fast.refetch();
+      void updates.refetch();
+    },
+    isFetching: fast.isFetching || updates.isFetching,
+  };
 }
 
 function useWpUsers(siteId: string) {
-  return useQuery({ queryKey: ["wp-users", siteId], queryFn: () => wpUsers(siteId), ...WP_QUERY });
+  // Users change in wp-admin too, but far less often and this list is mounted
+  // for the tab badge even when nobody is looking at it — so it refetches on
+  // focus only once it is actually stale, rather than on every alt-tab.
+  return useQuery({
+    queryKey: ["wp-users", siteId],
+    queryFn: () => wpUsers(siteId),
+    ...WP_QUERY,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Re-read a panel's data on demand. The auto-refresh on window focus covers
+ *  the common case (change something elsewhere, come back); this covers the
+ *  one it cannot — a change made while rexenv already has focus, e.g. wp-cli in
+ *  the Terminal tab, or a plugin that deactivates itself. */
+function RefreshButton({
+  onClick,
+  busy,
+  what,
+}: {
+  onClick: () => void;
+  busy: boolean;
+  what: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={`Refresh ${what}`}
+      aria-label={`Refresh ${what}`}
+      className={cn(
+        "flex h-[30px] w-[30px] flex-none items-center justify-center rounded-lg border border-rex-border",
+        "bg-rex-surface-2 text-rex-text-muted transition-colors",
+        "hover:border-brand/60 hover:text-rex-text-bright disabled:opacity-60 disabled:hover:border-rex-border",
+      )}
+    >
+      <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
+    </button>
+  );
 }
 
 function PanelLoading({ what }: { what: string }) {
@@ -2245,7 +2317,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
     ...(slug.trim() && !pending.some((t) => t.slug === slug.trim()) ? [slug.trim()] : []),
   ];
 
-  const { themes, isLoading, isError, error, refetch } = useWpThemes(siteId);
+  const { themes, isLoading, isError, error, refetch, isFetching } = useWpThemes(siteId);
 
   const run = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
@@ -2436,9 +2508,13 @@ function ThemesPanel({ siteId }: { siteId: string }) {
       </div>
 
       {!isLoading && themes.length > 0 && (
-        <div className="px-0.5 font-mono text-[0.6875rem] text-rex-text-dim">
-          {themes.length} {themes.length === 1 ? "theme" : "themes"} ·{" "}
-          {themes.filter((t) => t.status === "active").length} active
+        <div className="flex items-center gap-2 px-0.5">
+          <div className="font-mono text-[0.6875rem] text-rex-text-dim">
+            {themes.length} {themes.length === 1 ? "theme" : "themes"} ·{" "}
+            {themes.filter((t) => t.status === "active").length} active
+          </div>
+          <div className="flex-1" />
+          <RefreshButton onClick={refetch} busy={isFetching} what="the theme list" />
         </div>
       )}
       {isLoading ? (
@@ -2757,7 +2833,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
     ...(slug.trim() && !pending.some((t) => t.slug === slug.trim()) ? [slug.trim()] : []),
   ];
 
-  const { plugins, isLoading, isError, error, refetch } = useWpPlugins(siteId);
+  const { plugins, isLoading, isError, error, refetch, isFetching } = useWpPlugins(siteId);
 
   // wp.org icons for the installed list (same source as the live search).
   // Backend caches per app run; failures just mean letter tiles.
@@ -3028,6 +3104,8 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           />
         </div>
         <PluginFilterTabs value={filter} onChange={setFilter} counts={counts} />
+        <div className="flex-1" />
+        <RefreshButton onClick={refetch} busy={isFetching} what="the plugin list" />
       </div>
 
       {/* Run bar — a multi-plugin update outlives the selection (which clears

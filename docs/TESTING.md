@@ -71,7 +71,9 @@ it can:
 
 - **Proves:** layout and copy in the engine family that ships (WKWebView class bugs
   Chrome hides): overflow, collapse, control chrome, dialog flows — via dev-only
-  harness routes with mocked IPC, zero backend.
+  harness routes with mocked IPC, zero backend. Also data-FRESHNESS wiring, by counting
+  mocked IPC calls rather than reading pixels (`focusrefresh.js`: a focus event must
+  re-read git status and branches, and must NOT fire the lazy network read).
 - **Cannot prove:** backend truth (IPC is mocked BY DESIGN) — **it proves a card RENDERS,
   never that its command WORKS.** The MCP toggle rendered correctly across 10 harness
   scenarios while `mcp_set_enabled` *aborted the packaged app* on click (the mock returned

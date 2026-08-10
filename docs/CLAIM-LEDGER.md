@@ -344,6 +344,13 @@ L3 = scripted manual.
 | 252 | core/wp_dns.rs (`rexenv_dns_resolver_is_loopback`) | **Only zones served from THIS machine are redirected.** The plugin acts on a host only when `/etc/resolver/<tld>` exists AND names a loopback nameserver (`127.x` / `::1`); a company VPN's split-DNS (`nameserver 10.8.0.1`) and every public domain fall through untouched. Rerouting those to whatever the local resolver says would break a working setup in the name of fixing a local one — and the TLD is concatenated into a filesystem path, so it is `[a-z0-9-]{1,63}`-checked first | ✅ `wp_dns_check` — the predicate is a separate PHP function precisely so the NEGATIVE cases are provable without root: ours (v4 + v6) true; VPN, LAN and empty resolver files false; a public host resolves to `null` (no resolver file at all) |
 | 253 | core/wp_dns.rs (`ensure_for_site`, `ensure_all`) + commands/site_provision.rs (settle-ok) + commands/sites.rs (rename) + lib.rs (launch) | **Every WordPress site rexenv hosts has the file, and it never goes stale.** Nothing per-site is baked in (no domain, no TLD list), so a domain change or a new TLD needs no rewrite — but the mu-plugin SWEEP removes it at rename, so the rename path re-installs immediately; otherwise Change domain would silently un-fix cron until the next launch. Installed at the one path every create takes; the launch pass covers sites that predate the fix or lost the file | ◐ the writer is proven at L0 (idempotence, tamper-restore, every-layout removal, no placeholder) and the whole-fleet pass is plain code over `sites::list`; that each of the four call sites actually runs is 🔨 L1 (an example creating a site and asserting the file exists in its docroot) |
 
+## Frontend freshness (window focus — 10 Aug 2026)
+
+| # | Anchor | Claim | Verdict |
+|---|---|---|---|
+| 254 | src/lib/window-focus.ts + main.tsx | **"The user came back" is the NATIVE window's focus event, not the webview's.** TanStack's default source is DOM `visibilitychange`/`focus`, which in wry keeps claiming the page is visible and focused while the whole app sits behind a browser — so `refetchOnWindowFocus` read as enabled and did nothing. The Tauri window event is the fact that is actually true; the DOM events stay as the fallback for `vite dev`/wk-checks. `getCurrentWindow()` THROWS synchronously outside the app shell, so the call is try//caught — an unguarded version blanked every dev route on first run | ◐ the subscriber and the DOM path are ✅ `wk-checks/focusrefresh.js` (focus → a second read; red before the fix, 1 → 1); that the NATIVE event fires is 🚫 by layer — no browser has one — and routes to SMOKE-TEST §WordPress Manager |
+| 255 | components/wordpress/WordPressManager.tsx (`WP_LIVE`) + RepoPanel.tsx (status/branches) | **A panel showing state rexenv does not own re-reads it on focus, and stays cheap doing it.** Plugin/theme lists and git branch/dirtiness change in wp-admin and in terminals with no event to tell us; they were cached 30s with focus-refetch OFF, so the app showed the opposite of reality until the user left the tab and came back. Now live — but only the OPEN panel's queries refetch (react-query refetches ACTIVE queries only), the update-check pass keeps its 5-minute stale window, the users list refetches only once stale, and the PR-ref `ls-remote` stays lazy: no network read may ride an alt-tab | ◐ the git half is ✅ `wk-checks/focusrefresh.js` (status + branches re-read; `repo_pull_refs` asserted NOT fired); the WordPress half has no harness route yet — 🔨 L2 (a `/dev/ui-review?view=wp-plugins` harness would prove the same three counts) |
+
 ## commands/ (honesty layer)
 
 | # | Anchor | Claim | Verdict |
@@ -407,7 +414,7 @@ Adminer import cap #237 and its FastCGI timeout #238; the unreadable-table skip
 Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249):
-**✅ 168 · ◐ 40 · 🔨 40 · 🚫 5** of 253 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 168 · ◐ 42 · 🔨 40 · 🚫 5** of 255 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

@@ -402,6 +402,12 @@ export function DevGitPanel() {
   const detached = params.get("detached") === "1";
   useEffect(() => {
     mockIPC(async (cmd, args) => {
+      // Call tally for the focus-refresh probe (`wk-checks/focusrefresh.js`):
+      // "the panel re-reads git state when the user comes back" is only
+      // observable as a SECOND call, so the harness has to count them.
+      const tally = ((window as unknown as { __ipcCalls?: Record<string, number> }).__ipcCalls ??=
+        {});
+      tally[cmd] = (tally[cmd] ?? 0) + 1;
       switch (cmd) {
         case "repo_site_jobs":
           return rehydrate ? [RUNNING_JOB] : [];

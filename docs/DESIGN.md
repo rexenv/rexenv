@@ -35,6 +35,18 @@ the shipped UI toward one.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
+- **A panel showing something rexenv does not own re-reads it when the user comes
+  back — and offers a way to ask.** Plugin/theme state lives in WordPress and the
+  git branch lives in the checkout; both change from wp-admin, a terminal, or the
+  Terminal tab, with no event to tell us. Those lists were cached for 30s with
+  window-focus refetching OFF, so the app confidently showed the opposite of reality
+  until the user left the tab and returned — the fix that "worked" was the one thing
+  they had to discover. Now: the NATIVE window's focus event drives the refetch
+  (`lib/window-focus.ts` — the webview's own focus/visibility events are unreliable
+  inside wry, which is why the flag looked enabled and did nothing), plus a visible
+  Refresh control for the case focus cannot cover — a change made while rexenv
+  already HAS focus. Cost is bounded on purpose: only the open panel's queries
+  refetch, and only local reads join in (the PR-ref `ls-remote` stays lazy).
 - Unknowable state says so ("can't determine") instead of guessing.
 - **A batch reports the job it is actually running** — the step line is that job's own
   phase label verbatim, the count moves only on terminal rows (a FAILED row still

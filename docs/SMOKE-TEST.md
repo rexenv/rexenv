@@ -46,6 +46,12 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 ## WordPress Manager
 - [ ] Plugins tab lists plugins; install + activate a plugin works.
 - [ ] Themes tab lists themes; activate works.
+- [ ] **External change, no manual dance** (the only place the NATIVE focus event can
+  be tested — no browser has one, so `wk-checks/focusrefresh.js` proves the wiring and
+  this proves the event): with the Plugins tab OPEN, deactivate a plugin in wp-admin,
+  then click back into rexenv. The row flips on its own — no tab switch, no reload.
+  Repeat for a git asset: `git checkout -b smoke/x` in a terminal, click back, the
+  branch chip follows. The Refresh control does the same on demand.
 - [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change).
 - [ ] Tools → Maintenance: toggle **Maintenance mode** on → site shows "briefly unavailable" in a private window; off → normal again.
 - [ ] Tools → Backup & restore: **Export database** writes a `.sql` to Downloads; **Import database** round-trips it (make a post → export → delete the post → import → post is back).

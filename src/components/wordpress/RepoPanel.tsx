@@ -33,6 +33,7 @@ import {
 } from "@/lib/ipc";
 import type { GitAsset, RepoJobState } from "@/types";
 import { revealPath } from "@/lib/ipc";
+import { cn } from "@/lib/utils";
 import { toast, toastBackendError } from "@/lib/toast";
 import { LogPane, mergeTailAndStreamed, REPO_SCRIPTS_DISCLOSURE, StepDot } from "./repoJobUi";
 import { RefPicker } from "./RefPicker";
@@ -111,18 +112,24 @@ export function RepoPanel({
   const statusKey = ["repo-status", siteId, kind, asset.dirName] as const;
   const branchesKey = ["repo-branches", siteId, kind, asset.dirName] as const;
 
+  // Branch, dirtiness and ahead/behind are things a TERMINAL changes while this
+  // panel is open — `git checkout` outside rexenv left this showing the old
+  // branch until the user left the tab and came back. Both reads are local git
+  // (no network), so they re-run whenever the native window regains focus
+  // (`lib/window-focus.ts`) — the moment the user returns from that terminal.
+  // The network read below (ls-remote for PR refs) deliberately does NOT.
   const status = useQuery({
     queryKey: statusKey,
     queryFn: () => repoAssetStatus(siteId, kind, asset.dirName),
-    staleTime: 10_000,
-    refetchOnWindowFocus: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     retry: false,
   });
   const branches = useQuery({
     queryKey: branchesKey,
     queryFn: () => repoBranches(siteId, kind, asset.dirName),
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     retry: false,
   });
   // PR/MR refs are a NETWORK call (ls-remote) — fetched lazily, only after
@@ -464,7 +471,10 @@ export function RepoPanel({
               }}
               title="Re-read git status"
             >
-              <RefreshCw className="h-3 w-3" /> Refresh
+              <RefreshCw
+                className={cn("h-3 w-3", (status.isFetching || branches.isFetching) && "animate-spin")}
+              />{" "}
+              Refresh
             </button>
           </div>
           <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
