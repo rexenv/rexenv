@@ -559,8 +559,18 @@ export function DevGitPanel() {
           return PROBE;
         case "repo_add":
           return JOB;
-        case "repo_job_state":
-          return rehydrate ? RUNNING_JOB : JOB;
+        case "repo_job_state": {
+          // ANSWER BY ID. RepoPanel re-reads the authoritative snapshot right
+          // after attaching its listeners (a short job can finish inside that
+          // window), so a mock that returns one fixture for every id replaces
+          // the job the user just started with a different one — which is what
+          // made `repopanel.js` red for months: click Pull, watch the pull card
+          // turn into the ADD job's card ("Dependencies changed with this add"),
+          // and read it as a UI bug that was never in the UI.
+          const id = String((args as { jobId?: string } | undefined)?.jobId ?? "");
+          if (rehydrate) return RUNNING_JOB;
+          return id === OP_JOB.id ? OP_JOB : JOB;
+        }
         case "repo_run_step":
         case "repo_cancel":
           return null;

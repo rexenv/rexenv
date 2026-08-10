@@ -81,7 +81,11 @@ it can:
   construction — the same shape as "a lib test can't prove mysqldump accepts the flag"
   (§1's table): read ten green harness scenarios as render coverage, never as backend
   coverage. Also can't prove: real cookies/schemes (`rexdb://` doesn't exist in Playwright),
-  aesthetics.
+  aesthetics. **And the mock is a fixture that can be WRONG**: `repo_job_state` answered one
+  canned job for every id, so the panel's (correct) post-attach snapshot re-read swapped the
+  job the click had started for a different one, and `repopanel.js` sat red for months on a
+  UI bug that did not exist. A harness that ignores its arguments produces false RED as
+  readily as false green — mock by id (fixed 10 Aug 2026).
 - **Cost:** ~a minute + a vite dev server. **Runs:** after UI changes; part of the full
   gate (§6). **Bug class:** percentage-height collapse, WebKit metrics overflow,
   states that render wrong or not at all.

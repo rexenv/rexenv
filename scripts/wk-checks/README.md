@@ -32,7 +32,7 @@ npx vite --port 5199 --strictPort
 
 # terminal 2:
 cd scripts/wk-checks
-npm run check                   # all six, exits non-zero on any failure
+npm run check                   # all of them, exits non-zero on any failure
 node repopanel.js               # or any single scenario
 ```
 
@@ -51,6 +51,15 @@ Each script drops full-page `shot-*.png` screenshots beside itself
 | `watchpanel.js` | `?panel=repo&watch=…` | Scripts row (Watch:/Run: split by the watchy heuristic, disclosure); running watcher (dot, Stop, Watch button disabled, ring-seeded output); exited watcher (`exited (code 1)` + Restart) |
 | `linkpanel.js` | `?panel=link` | Link-folder flow: picker (mocked dialog) → path shown + name prefilled → Link → result line + git/header warnings; the unlink-only copy is visible before anything runs |
 | `uireview.js` | `/dev/ui-review` | 28 scenarios × 2 widths (Stage 2/3 surfaces + `pills`). ASSERTS since 28 Jul 2026: pageerror/console.error fatal, horizontal overflow fatal, the Adminer-iframe height probe (the §C2 h-full collapse class, <300px = collapsed), the `deleteGate` probe (every delete variant: each destructive button dead on an empty box and on a near-miss, live on the exact domain — it types, so it runs after the shot), and pill metrics (≥92px, one line — the WKWebView "Running"-wrap fix, previously verified once by hand and never committed as a check). Screenshots to `shots-uireview/` stay the human-review artifact; `ONLY=<regex>` narrows |
+
+| `focusrefresh.js` | `?panel=repo` | Freshness wiring, counted rather than seen: a window focus event must re-read `repo_asset_status` + `repo_branches` (a branch changed in a terminal used to sit stale until you left the tab), and must NOT fire the lazy network read `repo_pull_refs`. It reads the `window.__ipcCalls` tally the harness keeps |
+
+**A mock is a fixture, and a fixture can be wrong.** `repo_job_state` answered
+ONE canned job for every id, so RepoPanel's post-attach snapshot re-read (real,
+correct behaviour: a short job can finish before the listeners are up) replaced
+the pull job the click had just started with the ADD job — and `repopanel.js`
+went red for months on a UI bug that was never in the UI. A harness that answers
+without looking at its arguments is a red check waiting to happen; mock by id.
 
 What these deliberately do NOT cover (backend truth lives in
 `src-tauri/examples/repo_*_check.rs`, run those instead): real cloning,
