@@ -307,6 +307,26 @@ pub trait ShellRunner: Send + Sync {
         Err(crate::error::Error::Unsupported("open_in_editor"))
     }
 
+    /// Web browsers installed on this machine ("Open in browser", §1.3), in the
+    /// same detection-ordered shape as [`Self::detect_editors`]. Exactly one
+    /// entry may carry [`BrowserApp::system_default`].
+    /// Default: none — Windows/Linux fill this in Phase 4.
+    fn detect_browsers(&self) -> Vec<BrowserApp> {
+        Vec::new()
+    }
+
+    /// Open `url` in the browser with [`BrowserApp::id`] (macOS:
+    /// `open -a <app> <url>`). Errors if the browser is not installed.
+    ///
+    /// URLS ONLY: implementations MUST reject anything that is not `http://` or
+    /// `https://` — `open -a <browser> <path>` will happily hand a local FILE to
+    /// a browser, and every caller of this (the chevron menu, the preferred-
+    /// browser route in `open_external`) is a link affordance. Paths keep going
+    /// through [`Self::open`], which asks the OS handler.
+    fn open_in_browser(&self, _browser_id: &str, _url: &str) -> Result<()> {
+        Err(crate::error::Error::Unsupported("open_in_browser"))
+    }
+
     /// The user's REAL shell environment (PATH, SSH_AUTH_SOCK, …), resolved by
     /// running their login shell the way a terminal would. A Finder-launched
     /// app inherits the bare launchd environment — Homebrew's shellenv lives in
@@ -380,6 +400,64 @@ pub struct EditorApp {
     pub id: String,
     /// Display name (e.g. "Visual Studio Code").
     pub name: String,
+    /// The app's OWN icon as a `data:image/png;base64,…` URI, or `None` when it
+    /// couldn't be read (see [`BrowserApp::icon`] — same rule, same fallback).
+    pub icon: Option<String>,
+}
+
+/// A detected web browser (`ShellRunner::detect_browsers`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserApp {
+    /// Stable key stored as the `preferred_browser` setting (e.g. "chrome").
+    pub id: String,
+    /// Display name (e.g. "Google Chrome").
+    pub name: String,
+    /// The app's OWN icon as a `data:image/png;base64,…` URI, or `None` when it
+    /// couldn't be read (an app that ships its icon only in a compiled asset
+    /// catalog). `None` is honest — the UI draws its monochrome glyph instead
+    /// of a wrong or invented brand mark, which is why this is an Option and
+    /// not a hand-drawn SVG table.
+    pub icon: Option<String>,
+    /// This is the OS's current default handler for `https`. Display only: it
+    /// picks which icon the button wears when the user has chosen nothing. The
+    /// actual open still goes through the OS handler.
+    pub system_default: bool,
+}
+
+/// Pull the `https` handler's bundle id out of raw
+/// `defaults read com.apple.LaunchServices/com.apple.launchservices.secure LSHandlers`
+/// output. Pure so it is testable without a machine that has a given browser.
+///
+/// The old-style plist text is a list of `{ … }` dicts; the one we want holds
+/// `LSHandlerURLScheme = https;` and answers with `LSHandlerRoleAll = "<id>";`.
+/// Other dicts pair the same key with a content type (`public.html`) or a
+/// different scheme, so the block — not the file — is the unit of the search.
+/// Lives here (not in the macOS impl) only because it is pure text and the
+/// tests must run on every platform.
+pub fn parse_default_browser_bundle_id(raw: &str) -> Option<String> {
+    // A key can share a line with the opening brace, so strip that too — real
+    // `defaults` output puts each key on its own line, but nothing guarantees it.
+    fn key(l: &str) -> &str {
+        l.trim().trim_start_matches('{').trim()
+    }
+    raw.split('}')
+        .find(|block| {
+            block
+                .lines()
+                .any(|l| key(l).starts_with("LSHandlerURLScheme") && l.contains("https"))
+        })?
+        .lines()
+        // RoleAll is what LaunchServices writes for a URL scheme; RoleViewer is
+        // accepted as a second chance rather than reporting "no default" on a
+        // machine that spells it the other way.
+        .find(|l| {
+            let l = key(l);
+            l.starts_with("LSHandlerRoleAll") || l.starts_with("LSHandlerRoleViewer")
+        })
+        .and_then(|l| l.split_once('='))
+        .map(|(_, v)| v.trim().trim_end_matches(';').trim().trim_matches('"').to_string())
+        .filter(|id| !id.is_empty() && id != "-")
 }
 
 /// Target architecture, used by `BinaryProvider` to pick the right artifact.
@@ -567,5 +645,95 @@ mod tests {
     fn empty_and_multi_root_degrade_deterministically() {
         assert_eq!(select_master(&[]), None);
         assert_eq!(select_master(&[(20, 1), (10, 1)]), Some(10));
+    }
+}
+
+#[cfg(test)]
+mod default_browser_tests {
+    use super::parse_default_browser_bundle_id;
+
+    /// Verbatim shape of `defaults read … LSHandlers` on a real Mac: entries are
+    /// `{ … }` dicts, `LSHandlerPreferredVersions` is a NESTED dict (its `}`
+    /// used to be the whole reason a naive whole-file scan picked up the wrong
+    /// `LSHandlerRoleAll`), and content-type entries surround the scheme one.
+    const REAL: &str = r#"(
+        {
+        LSHandlerContentType = "public.html";
+        LSHandlerPreferredVersions =         {
+            LSHandlerRoleAll = "-";
+        };
+        LSHandlerRoleAll = "com.apple.safari";
+    },
+        {
+        LSHandlerPreferredVersions =         {
+            LSHandlerRoleAll = "-";
+        };
+        LSHandlerRoleAll = "com.google.chrome";
+        LSHandlerURLScheme = https;
+    },
+        {
+        LSHandlerRoleAll = "com.microsoft.vscode";
+        LSHandlerURLScheme = "vscode";
+    }
+)"#;
+
+    #[test]
+    fn picks_the_https_entrys_handler_not_a_neighbours() {
+        assert_eq!(parse_default_browser_bundle_id(REAL).as_deref(), Some("com.google.chrome"));
+    }
+
+    /// One entry, in the real one-key-per-line layout — a fixture that crams
+    /// the first key onto the `{` line passes for the WRONG reason (the key is
+    /// simply never found), which is how a "no https entry" assertion can go
+    /// green against a parser that reads nothing at all.
+    fn entry(body: &[&str]) -> String {
+        format!("(\n    {{\n        {}\n    }}\n)", body.join("\n        "))
+    }
+
+    #[test]
+    fn no_https_entry_is_none_not_a_guess() {
+        // A machine that never changed its default has no https row at all —
+        // reporting the `public.html` handler here would be an invention.
+        let only_html = entry(&[
+            r#"LSHandlerContentType = "public.html";"#,
+            r#"LSHandlerRoleAll = "com.brave.browser";"#,
+        ]);
+        assert_eq!(parse_default_browser_bundle_id(&only_html), None);
+    }
+
+    #[test]
+    fn placeholder_and_empty_handlers_are_none() {
+        let dash = entry(&[r#"LSHandlerRoleAll = "-";"#, "LSHandlerURLScheme = https;"]);
+        assert_eq!(parse_default_browser_bundle_id(&dash), None);
+        assert_eq!(parse_default_browser_bundle_id(""), None);
+        assert_eq!(parse_default_browser_bundle_id("nonsense without braces"), None);
+    }
+
+    #[test]
+    fn role_viewer_is_accepted_when_role_all_is_absent() {
+        let viewer =
+            entry(&[r#"LSHandlerRoleViewer = "org.mozilla.firefox";"#, "LSHandlerURLScheme = https;"]);
+        assert_eq!(
+            parse_default_browser_bundle_id(&viewer).as_deref(),
+            Some("org.mozilla.firefox")
+        );
+    }
+
+    #[test]
+    fn an_http_only_entry_does_not_answer_for_https() {
+        // `http` contains no "https" substring, so the block must not match —
+        // guards the naive `contains("http")` version of this parser.
+        let http =
+            entry(&[r#"LSHandlerRoleAll = "com.operasoftware.opera";"#, "LSHandlerURLScheme = http;"]);
+        assert_eq!(parse_default_browser_bundle_id(&http), None);
+    }
+
+    #[test]
+    fn a_key_sharing_the_brace_line_is_still_read() {
+        // Defensive: not the layout `defaults` emits, but a parser that only
+        // works on one whitespace convention is a fixture-shaped parser.
+        let inline = r#"{ LSHandlerRoleAll = "com.apple.safari";
+        LSHandlerURLScheme = https; }"#;
+        assert_eq!(parse_default_browser_bundle_id(inline).as_deref(), Some("com.apple.safari"));
     }
 }

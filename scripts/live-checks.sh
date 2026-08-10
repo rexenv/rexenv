@@ -76,6 +76,7 @@ adminer_serve_check service
 adopt_check demo
 apache_site_check sandbox
 blueprint_check network
+browser_detect_check sandbox
 ca_gen system
 caddy_443 system
 caddy_fetch network

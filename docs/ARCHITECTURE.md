@@ -470,6 +470,37 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 - Every service start is gated by `core/ports::ensure_free`; a conflict names the holding
   process + a copy-paste free command.
 
+### 8.2 Which app opens a link — one choke point
+
+Two settings pick the app rexenv hands things to: `preferred_editor` ("Open in
+editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) and
+`preferred_browser` (every `http(s)` link). Both are stored ids over
+`ShellRunner::detect_editors` / `detect_browsers`, whose macOS impls scan
+`/Applications` + `~/Applications` for a fixed table of bundles.
+
+- **The browser preference is applied in the BACKEND, inside `open_external`** —
+  not by the UI. Links are opened from about a dozen call sites (site header,
+  quick tiles, Sites rows, Tunnels, Mail, Adminer, magic login, WordPress
+  plugin/theme rows…); a UI-side rule would mean the next call site anyone adds
+  silently opens in the system default. Non-`http(s)` targets (docroots, log
+  files) keep going to the OS handler unchanged.
+- **Installed-ness is re-checked at every open, never once at save time** — a
+  browser can be dragged to the Trash any day. A preference that no longer
+  resolves logs and falls back to the OS handler: the link still opens, and the
+  Settings picker shows "System default" again.
+- **A chosen browser takes URLs only.** `open -a <browser> <path>` displays a
+  local FILE, so `open_in_browser` refuses anything that isn't `http(s)` before
+  it even looks the browser up (CLAIM-LEDGER #261).
+- **The chevron next to "Open in browser" is one-time.** It opens THIS url
+  elsewhere and changes no setting — the default moves in Settings only.
+- **Icons are the apps' real icons**, extracted from the installed bundle
+  (`CFBundleIconFile` → `.icns` → `sips` → PNG data URI, cached per process), not
+  a hand-drawn brand table that would hardcode vendor hex and rot on every
+  rebrand. An app that ships its icon only in a compiled asset catalog yields
+  `None`, and the UI draws its own monochrome glyph — honest, not invented.
+  `browser_detect_check` (L1) proves detection, the default-handler read, the
+  URL guard, and that the icons really decode as PNGs.
+
 ## 8.1 `rex` CLI (`cli/`, `src-tauri/src/cli_server.rs`)
 
 - **Remote control ONLY — the app stays the single brain.** The `cli/` crate (bin

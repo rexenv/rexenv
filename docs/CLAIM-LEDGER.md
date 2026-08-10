@@ -313,6 +313,7 @@ L3 = scripted manual.
 | 163 | traits.rs:3 | core/ depends only on traits, never OS-specific imports | 🔨 L0 (import-graph lint; today a review rule) |
 | 164 | traits.rs:153 | Recycled pid fails identification, never signalled | ✅ 4 lib tests |
 | 165 | traits.rs:346 | `env -0` parse survives rc noise | ✅ lib test |
+| 261 | macos/mod.rs (`open_in_browser`) + traits.rs (`ShellRunner::open_in_browser` doc) | **A chosen browser is handed URLs, never paths.** `open -a "Google Chrome" /etc/hosts` doesn't fail — it DISPLAYS the file, so the difference between "open my site in Firefox" and "read this file out of my home directory in Firefox" is one argument. The scheme is checked before the browser is looked up, so the refusal can't depend on what happens to be installed, and paths keep going through `open` (the OS handler), which is the only route that ever needed them | ✅ `browser_detect_check` (a bare path, a `file://` URL and a directory all refused against the machine's real first browser; the check fails loudly if any one OPENS) |
 | 166 | webview_dialogs.rs:8 | ⚠ class_addMethod additive-only; main-thread guaranteed; JS suspension = confirm contract | 🔨 L2 — module has ZERO tests |
 
 ## state/
@@ -376,6 +377,7 @@ L3 = scripted manual.
 | 185 | commands/repo.rs:674 | Check never runs repo code; delete partitions on fs truth | ✅ 2 lib tests + `repo_link_check` |
 | 186 | commands/valet_import.rs:181 | Cancel stops after the current site, never mid-site | ◐ link half ✅; cancel boundary 🔨 L0 |
 | 187 | commands/sites.rs:99 | A site is not a process; no fabricated per-site CPU/RAM | ✅ 2 lib tests + `site_resources_check` |
+| 262 | commands/system.rs (`open_external` doc) | **The preferred browser is applied at ONE choke point, and its installed-ness is re-checked at every open.** rexenv opens links from ~12 call sites; enforcing the preference in the UI would mean the next call site anyone adds silently opens in the system default — the "whole-surface claim that checks one place inside the surface" shape this ledger already records twice. The second half is the lifetime rule: a browser can be dragged to the Trash any day, so validity is decided per open (inside `open_in_browser`), never once at save time, and a preference that stops resolving logs and falls back to the OS handler rather than refusing to open the user's site | ◐ the per-open re-check ✅ via `browser_detect_check` (an unknown/uninstalled id errors, which is what the fallback hangs off); the CHOKE POINT itself 🔨 L0 — a source guard asserting no frontend calls `openInBrowser` for the default action, today a review rule |
 | 188 | commands/sites.rs:311 | Share guards hold for the tunnel's lifetime | 🔨 L0 |
 | 189 | commands/sites.rs:465 | Delete ordered so the row never points at a missing path | 🔨 L0 |
 | 190 | commands/sites.rs:853 | Deleted site's tunnel killed first; mirrored user dropped by record | ◐ record ✅; kill ordering 🔨 L1 |
@@ -423,7 +425,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 173 · ◐ 42 · 🔨 40 · 🚫 5** of 260 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 174 · ◐ 43 · 🔨 40 · 🚫 5** of 262 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

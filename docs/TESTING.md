@@ -47,7 +47,7 @@ it can:
 - **Cost:** seconds. **Runs:** every `verify.sh`. **Bug class:** logic regressions,
   drift in our own generation/parsing, unrepresentable-state violations.
 
-### L1 — Tool (`src-tauri/examples/*.rs`, 106 live checks)
+### L1 — Tool (`src-tauri/examples/*.rs`, 114 live checks)
 
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real

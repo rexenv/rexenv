@@ -134,11 +134,67 @@ fn summarize(flags: &[(bool, bool)]) -> (u32, u32, &'static str) {
     (running, total, summary)
 }
 
-/// Open a path or URL in the OS default handler — Finder for a docroot, the
-/// default browser for an `http(s)` link (Phase 3 §1.3 Overview quick links).
+/// The setting holding the browser every `http(s)` open goes to. Empty/absent
+/// = the OS default handler.
+pub const PREFERRED_BROWSER_KEY: &str = "preferred_browser";
+
+/// Open a path or URL — Finder for a docroot, the user's chosen browser for an
+/// `http(s)` link (Phase 3 §1.3 Overview quick links).
+///
+/// The preference is applied HERE, not in the UI, and that is deliberate:
+/// rexenv opens links from a dozen call sites (site header, quick tile, Sites
+/// row, Tunnels, Mail, Adminer, magic login, WordPress plugin/theme rows…). If
+/// each one had to remember to route through the preference, the next call site
+/// someone adds would silently open in the system default — the same
+/// "whole-surface claim that only checks one place" failure the ledger already
+/// records twice. One choke point instead.
+///
+/// Installed-ness is re-checked on EVERY open (inside `open_in_browser`), never
+/// once at save time: the user can drag a browser to the Trash any day. A
+/// preference that no longer resolves logs and falls back to the OS handler —
+/// the link still opens, and Settings shows the picker back on "System default".
 #[tauri::command]
 pub fn open_external(state: State<'_, AppState>, target: String) -> Result<()> {
+    if target.starts_with("http://") || target.starts_with("https://") {
+        if let Some(browser) = preferred_browser(&state) {
+            match state.platform.shell().open_in_browser(&browser, &target) {
+                Ok(()) => return Ok(()),
+                Err(e) => log::warn!(
+                    "preferred browser {browser:?} could not open {target}: {e} — \
+                     falling back to the system default handler"
+                ),
+            }
+        }
+    }
     state.platform.shell().open(&target)
+}
+
+/// The stored `preferred_browser`, or `None` for "OS default". Never propagates
+/// a DB error: a settings read that fails must not stop a link from opening.
+/// The guard is dropped before the caller opens anything — no lock is held
+/// across a process spawn.
+fn preferred_browser(state: &State<'_, AppState>) -> Option<String> {
+    let conn = state.db.lock().ok()?;
+    let value = crate::state::store::get_setting(&conn, PREFERRED_BROWSER_KEY).ok()??;
+    drop(conn);
+    let value = value.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// Web browsers installed on this machine, detection-ordered, one of them
+/// flagged as the OS default for `https`. Empty = none found.
+#[tauri::command]
+pub fn list_browsers(state: State<'_, AppState>) -> Vec<crate::platform::traits::BrowserApp> {
+    state.platform.shell().detect_browsers()
+}
+
+/// Open ONE url in a specific browser without touching the preference — the
+/// chevron menu next to "Open in browser". Changing the default is Settings'
+/// job; a menu that silently rewrote it would leave the user wondering why
+/// everything opens somewhere new.
+#[tauri::command]
+pub fn open_in_browser(state: State<'_, AppState>, browser_id: String, url: String) -> Result<()> {
+    state.platform.shell().open_in_browser(&browser_id, &url)
 }
 
 /// Reveal a file in the OS file manager with the file selected — e.g. the

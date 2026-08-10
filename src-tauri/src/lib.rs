@@ -591,6 +591,8 @@ pub fn run() {
             commands::system::reveal_path,
             commands::system::list_editors,
             commands::system::open_in_editor,
+            commands::system::list_browsers,
+            commands::system::open_in_browser,
             commands::system::dns_status,
             commands::system::cli_status,
             commands::system::cli_install,

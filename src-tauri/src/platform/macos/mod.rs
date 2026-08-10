@@ -1192,9 +1192,10 @@ impl ShellRunner for MacosShell {
         MacosShell::EDITORS
             .iter()
             .filter(|(_, _, app)| Self::app_installed(app))
-            .map(|(id, name, _)| crate::platform::traits::EditorApp {
+            .map(|(id, name, app)| crate::platform::traits::EditorApp {
                 id: (*id).to_string(),
                 name: (*name).to_string(),
+                icon: Self::app_icon_data_uri(app),
             })
             .collect()
     }
@@ -1210,6 +1211,47 @@ impl ShellRunner for MacosShell {
         // `open -a <App> <folder>` opens the folder as a project/workspace in
         // every editor on the list (VS Code window, PhpStorm project, …).
         let status = std::process::Command::new("open").args(["-a", app, path]).status()?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(Error::Other(format!("`open -a {app}` failed: {status}")))
+        }
+    }
+
+    fn detect_browsers(&self) -> Vec<crate::platform::traits::BrowserApp> {
+        let default_bundle = Self::default_browser_bundle_id();
+        MacosShell::BROWSERS
+            .iter()
+            .filter(|(_, _, app, _)| Self::app_installed(app))
+            .map(|(id, name, app, bundle)| crate::platform::traits::BrowserApp {
+                id: (*id).to_string(),
+                name: (*name).to_string(),
+                icon: Self::app_icon_data_uri(app),
+                system_default: default_bundle
+                    .as_deref()
+                    .is_some_and(|d| d.eq_ignore_ascii_case(bundle)),
+            })
+            .collect()
+    }
+
+    fn open_in_browser(&self, browser_id: &str, url: &str) -> Result<()> {
+        // URLs only — `open -a <browser> <path>` would hand a LOCAL FILE to the
+        // browser, and every caller here is a link affordance. Checked before we
+        // look the browser up, so the refusal never depends on what's installed.
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(Error::Other(format!(
+                "refusing to open {url} in a browser — only http:// and https:// URLs go to a \
+                 chosen browser (paths go to the system handler)"
+            )));
+        }
+        let (_, name, app, _) = MacosShell::BROWSERS
+            .iter()
+            .find(|(id, _, _, _)| *id == browser_id)
+            .ok_or_else(|| Error::Other(format!("unknown browser: {browser_id}")))?;
+        if !Self::app_installed(app) {
+            return Err(Error::Other(format!("{name} is not installed anymore")));
+        }
+        let status = std::process::Command::new("open").args(["-a", app, url]).status()?;
         if status.success() {
             Ok(())
         } else {
@@ -1330,15 +1372,146 @@ impl MacosShell {
         ("textmate", "TextMate", "TextMate"),
     ];
 
-    /// An app bundle exists in /Applications or ~/Applications.
-    fn app_installed(app: &str) -> bool {
+    /// Browsers we can detect: (stable id, display name, .app bundle name,
+    /// bundle identifier). The bundle id is what LaunchServices names as the
+    /// `https` handler, so it is what marks the system default. Ordered by
+    /// rough popularity — the first detected one is the fallback default.
+    const BROWSERS: &'static [(&'static str, &'static str, &'static str, &'static str)] = &[
+        ("safari", "Safari", "Safari", "com.apple.safari"),
+        ("chrome", "Google Chrome", "Google Chrome", "com.google.chrome"),
+        ("firefox", "Firefox", "Firefox", "org.mozilla.firefox"),
+        ("brave", "Brave", "Brave Browser", "com.brave.browser"),
+        ("edge", "Microsoft Edge", "Microsoft Edge", "com.microsoft.edgemac"),
+        ("arc", "Arc", "Arc", "company.thebrowser.browser"),
+        ("opera", "Opera", "Opera", "com.operasoftware.opera"),
+        ("vivaldi", "Vivaldi", "Vivaldi", "com.vivaldi.vivaldi"),
+        ("chromium", "Chromium", "Chromium", "org.chromium.chromium"),
+        ("atlas", "ChatGPT Atlas", "ChatGPT Atlas", "com.openai.atlas"),
+        ("zen", "Zen Browser", "Zen Browser", "app.zen-browser.zen"),
+        ("orion", "Orion", "Orion", "com.kagi.kagimacos"),
+        ("librewolf", "LibreWolf", "LibreWolf", "io.gitlab.librewolf-community"),
+        ("chrome-canary", "Chrome Canary", "Google Chrome Canary", "com.google.chrome.canary"),
+        (
+            "firefox-dev",
+            "Firefox Developer Edition",
+            "Firefox Developer Edition",
+            "org.mozilla.firefoxdeveloperedition",
+        ),
+        ("tor", "Tor Browser", "Tor Browser", "org.torproject.torbrowser"),
+    ];
+
+    /// The `.app` bundle directory for a bundle NAME, searched in the two places
+    /// [`Self::app_installed`] accepts.
+    fn app_bundle_path(app: &str) -> Option<PathBuf> {
         let bundle = format!("{app}.app");
-        if Path::new("/Applications").join(&bundle).exists() {
-            return true;
+        let system = Path::new("/Applications").join(&bundle);
+        if system.exists() {
+            return Some(system);
         }
         directories::BaseDirs::new()
-            .map(|b| b.home_dir().join("Applications").join(&bundle).exists())
-            .unwrap_or(false)
+            .map(|b| b.home_dir().join("Applications").join(&bundle))
+            .filter(|p| p.exists())
+    }
+
+    /// An app bundle exists in /Applications or ~/Applications.
+    fn app_installed(app: &str) -> bool {
+        Self::app_bundle_path(app).is_some()
+    }
+
+    /// The app's OWN icon as a `data:image/png;base64,…` URI (64px), read off
+    /// the installed bundle: `Info.plist` → `CFBundleIconFile` → `sips` to PNG.
+    ///
+    /// Real icons, not a hand-drawn brand table: a table of brand SVGs would
+    /// hardcode vendor hex (against DESIGN.md) and go stale on every rebrand.
+    /// `None` when the bundle keeps its icon only in a compiled asset catalog —
+    /// the UI then draws its own monochrome glyph, which is honest, rather than
+    /// a wrong mark. Measured ~24ms/app, so the result is cached for the life of
+    /// the process (an app's icon doesn't change under a running rexenv).
+    fn app_icon_data_uri(app: &str) -> Option<String> {
+        use std::collections::HashMap;
+        use std::sync::{Mutex, OnceLock};
+        static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+        let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Ok(c) = cache.lock() {
+            if let Some(hit) = c.get(app) {
+                return hit.clone();
+            }
+        }
+        let icon = Self::read_app_icon(app);
+        if let Ok(mut c) = cache.lock() {
+            c.insert(app.to_string(), icon.clone());
+        }
+        icon
+    }
+
+    /// The uncached half of [`Self::app_icon_data_uri`].
+    fn read_app_icon(app: &str) -> Option<String> {
+        use base64::Engine;
+        let bundle = Self::app_bundle_path(app)?;
+        let resources = bundle.join("Contents/Resources");
+
+        // `CFBundleIconFile` may omit the extension (Safari stores "AppIcon"),
+        // and some bundles don't declare it at all — hence the two conventional
+        // fallbacks. Every candidate is a path we build, never user input.
+        let declared = std::process::Command::new("defaults")
+            .arg("read")
+            .arg(bundle.join("Contents/Info"))
+            .arg("CFBundleIconFile")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(|s| if s.ends_with(".icns") { s } else { format!("{s}.icns") });
+
+        let icns = declared
+            .into_iter()
+            .chain(["AppIcon.icns".to_string(), "app.icns".to_string()])
+            .map(|name| resources.join(name))
+            .find(|p| p.is_file())?;
+
+        // sips writes to a file, so round-trip through a uniquely named temp
+        // (pid + bundle name) and delete it — a shared fixed name would race
+        // between two rexenv processes.
+        let tmp = std::env::temp_dir().join(format!(
+            "rexenv-appicon-{}-{}.png",
+            std::process::id(),
+            app.replace(' ', "-")
+        ));
+        let ok = std::process::Command::new("sips")
+            .args(["-s", "format", "png", "-Z", "64"])
+            .arg(&icns)
+            .arg("--out")
+            .arg(&tmp)
+            .output()
+            .is_ok_and(|o| o.status.success());
+        let png = ok.then(|| std::fs::read(&tmp).ok()).flatten();
+        let _ = std::fs::remove_file(&tmp);
+        let png = png?;
+        Some(format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(png)
+        ))
+    }
+
+    /// Bundle id of the OS's current default `https` handler, or `None` when
+    /// LaunchServices has no entry for the scheme (a machine that never changed
+    /// its browser) — the caller then treats macOS's factory default, Safari,
+    /// as the default when it's installed. Display only: `open` asks
+    /// LaunchServices itself, so a wrong answer here can only mis-draw an icon.
+    fn default_browser_bundle_id() -> Option<String> {
+        let out = std::process::Command::new("defaults")
+            .args([
+                "read",
+                "com.apple.LaunchServices/com.apple.launchservices.secure",
+                "LSHandlers",
+            ])
+            .output()
+            .ok()?;
+        let parsed = crate::platform::traits::parse_default_browser_bundle_id(
+            &String::from_utf8_lossy(&out.stdout),
+        );
+        parsed.or_else(|| Self::app_installed("Safari").then(|| "com.apple.safari".to_string()))
     }
 }
 
