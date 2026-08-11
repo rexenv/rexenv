@@ -9,6 +9,16 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [ ] **Create a site FROM a git repository — Laravel first** (planned 11 Aug 2026,
+  `docs/PLAN-git-site-clone.md`). Laravel developers keep their projects in git; the
+  Laravel card can only make a NEW app, so an existing repo means cloning by hand,
+  linking the folder, and wiring `.env` yourself. Stage 1 = `NewSite.git_url` + a
+  `clone`/`deps`/`finalize` phase trio on the existing provisioning card, reusing
+  `core::repo`'s reviewed clone (staging dir → `remove_dir` → `rename`, so a clone can
+  never delete a docroot's contents) and `core::laravel`'s `.env` writer. Stages 2–4
+  (node assets · a Git panel on the site · any-PHP + WordPress repos) are designed in
+  the same doc.
+
 - [x] **Every link opened in whatever browser the OS points at** (filed + fixed
   11 Aug 2026). rexenv could pick your code editor but not your browser, so a
   Chrome-default machine could not send its sites to the browser it develops in,

@@ -124,6 +124,7 @@ Two rules with teeth, learned the hard way:
 | Xdebug debug-PHP build (blocked item) | `docs/xdebug-debug-build.md` |
 | Valet/Herd migration — research + staged design (parked) | `docs/PLAN-valet-herd-migration.md` |
 | Link an existing folder / serve a docroot outside the sites dir | `docs/PLAN-linked-sites.md` |
+| Create a site FROM a git repo (Laravel first) — clone, `.env`, composer, migrate | `docs/PLAN-git-site-clone.md` |
 | Valet/Herd import — scan, resolver consent, import loop (Stage 1) | `docs/PLAN-valet-herd-import.md` |
 | Valet/Herd database import — dump/restore, provenance, credentials (Stage 2) | `docs/PLAN-valet-herd-db-import.md` |
 | Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
