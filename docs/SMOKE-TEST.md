@@ -36,6 +36,42 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
       empty tables here means the re-run after wiring regressed.
 - [ ] New Site → Laravel / Blank PHP show **no** "Start from blueprint" field
       (blueprints are WordPress-only); WordPress still shows it.
+
+## Core: a Laravel site FROM a git repository (`docs/PLAN-git-site-clone.md`)
+
+Only the packaged app can prove this end to end: real event streaming into the
+WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
+`git_site_clone_check` already proves the clone/move/cleanup mechanics locally.
+
+- [ ] **New site → Laravel → Files: From Git** → paste a real Laravel repo URL →
+      **Fetch**. Within a few seconds a branch picker appears with the default
+      marked, and the name field prefills from the repo. **Create stays disabled
+      until Fetch succeeds** — try clicking it before fetching.
+- [ ] Paste a URL with a typo → Fetch errors in seconds (never hangs), and the
+      Sites list gains **nothing**: no half-site, no certificate, no folder.
+- [ ] Create → the card runs `cloning the repository` (git output streams live —
+      not frozen then all at once), then `creating database + .env`,
+      `installing dependencies` (composer streams per package), `app key +
+      migrations`, and settles ok.
+- [ ] The log names where `.env` came from ("created from the repository's
+      .env.example"), and `Sites/<name>.rex/.env` has `DB_CONNECTION=mysql`,
+      this site's database, `APP_URL=https://<name>.rex`, and a real `APP_KEY`.
+- [ ] **`https://<name>.rex/.env` and `/.git/config` both 404.** The clone plants
+      a `.git/` directory in a site that a tunnel can publish — this is the check
+      that matters most on this list.
+- [ ] Databases screen lists the database **with the repo's migration tables**.
+- [ ] A **private** repo over `git@` clones using your own SSH agent. A private
+      repo over `https://` fails at **Fetch** with a message pointing at the
+      `git@` form — never a hang, never a hidden credential prompt.
+- [ ] Point it at a repo that is NOT Laravel (e.g. a plain PHP one): the clone
+      phase fails naming what it found ("looks like PHP project — not laravel"),
+      the site shows **setup incomplete**, and `Sites/<name>.rex/` is EMPTY with
+      no `.rexenv-clone-*` folder left beside it.
+- [ ] **Retry** that site after quitting and relaunching the app: it re-clones
+      (the row remembers the repository; the job registry did not survive).
+- [ ] New Site → **WordPress** offers no "From Git" choice at all.
+- [ ] Delete a cloned site → the folder AND its database go (it is a docroot
+      rexenv created, and provisioning made the database).
 - [ ] Delete the site → the confirm's **Delete site** button is disabled until the
   domain is typed; the copy button next to the domain fills it by paste. Then its
   database is gone from the Databases screen too.

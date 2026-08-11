@@ -9,15 +9,37 @@ evidence cited.
 
 ## Now — actionable code/test work
 
-- [ ] **Create a site FROM a git repository — Laravel first** (planned 11 Aug 2026,
-  `docs/PLAN-git-site-clone.md`). Laravel developers keep their projects in git; the
-  Laravel card can only make a NEW app, so an existing repo means cloning by hand,
-  linking the folder, and wiring `.env` yourself. Stage 1 = `NewSite.git_url` + a
-  `clone`/`deps`/`finalize` phase trio on the existing provisioning card, reusing
-  `core::repo`'s reviewed clone (staging dir → `remove_dir` → `rename`, so a clone can
-  never delete a docroot's contents) and `core::laravel`'s `.env` writer. Stages 2–4
-  (node assets · a Git panel on the site · any-PHP + WordPress repos) are designed in
-  the same doc.
+- [x] **Create a site FROM a git repository — Stage 1, Laravel + Blank PHP** (planned +
+  built 11 Aug 2026, `docs/PLAN-git-site-clone.md`). Laravel developers keep their
+  projects in git; the Laravel card could only make a NEW app, so an existing repo meant
+  cloning by hand, linking the folder, and wiring `.env` yourself. ✓ `NewSite.git_url`
+  + one validator refusing clone-beside-link, agents, and WordPress (a checkout without
+  its database is not a site); `clone_into_docroot` (staging sibling → `remove_dir` →
+  `rename`, so the kernel — not a check of ours — is what makes a clone unable to delete
+  a docroot's contents); `clone`/`deps`/`finalize` phases with `.env` written BEFORE
+  composer (post-autoload-dump boots the app); the New Site dialog's third source with
+  the ls-remote probe gating Create. v33 records the repo at INSERT because Retry is the
+  recovery path. ARCHITECTURE §9; ledger #263–277; `git_site_clone_check` (L1, sandbox);
+  SMOKE-TEST has the packaged-app half.
+- [ ] **Stage 2 — front-end assets for a cloned site** (`docs/PLAN-git-site-clone.md`
+  §4). A Laravel app with Vite throws *"Unable to locate file in Vite manifest"* until
+  `npm run build` has run, so Stage 1 is honest-but-incomplete for most real repos: the
+  create dialog says assets are not built and nothing offers to build them. Needs
+  `npm install` / `npm run build` as explicit steps on the site (reusing `repo_run_step`
+  + `repoJobUi`) and an opt-in checkbox in the dialog. Deliberately not in Stage 1: node
+  resolution is the developer's own nvm toolchain, and a node failure must not mark an
+  otherwise-serving site "setup incomplete".
+- [ ] **Stage 3 — a Git panel on the site itself** (`docs/PLAN-git-site-clone.md` §4).
+  `core::repo`'s git ops are all path-based (`read_git_status`, `git_fetch`,
+  `git_pull_ff`, `git_checkout`, `loss_warning`), so pointing the existing `RepoPanel` at
+  the project root is mostly plumbing — status line, branch switcher, fetch/pull, and the
+  exact changed/untracked/unpushed counts before anything destructive.
+- [ ] **Stage 4 — any PHP repo, and WordPress** (`docs/PLAN-git-site-clone.md` §4).
+  `detect_project` already classifies Symfony, Craft, Statamic, Magento and generic front
+  controllers, and Stage 1 already records its `docroot_rel` as `docroot_subdir`, so
+  widening is mostly relaxing the type check. WordPress stays last on purpose: a WP repo
+  without its database is not a site, so it belongs behind
+  `docs/PLAN-valet-herd-db-import.md`, not beside it.
 
 - [x] **Every link opened in whatever browser the OS points at** (filed + fixed
   11 Aug 2026). rexenv could pick your code editor but not your browser, so a

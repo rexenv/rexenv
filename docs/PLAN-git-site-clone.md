@@ -1,7 +1,12 @@
 # Create a site FROM a Git repository — Laravel first (Stage 1)
 
-**Status: PLANNED 11 Aug 2026** against `62a9f9e`. Stage 1 is being built now; Stages 2–4
-are designed here so Stage 1 doesn't paint them into a corner.
+**Status: Stage 1 SHIPPED 11 Aug 2026** (`de07ed0` → `fe98104`), planned the same day
+against `62a9f9e`. Stages 2–4 are designed here and open in `docs/TODO.md`.
+
+Stage 1 is machine-verified (726 lib tests + `git_site_clone_check` on the sandbox tier);
+the packaged-app half — real event streaming into WKWebView, a real remote, your own SSH
+agent — is `docs/SMOKE-TEST.md` § "a Laravel site FROM a git repository" and has **not**
+been run yet. Three questions in §5 are still open for the user.
 
 Goal, in the user's words: *"Laravel developers keep their projects in git — rexenv must
 let them paste a repo URL and get a working local site."* Today the Laravel card can only
