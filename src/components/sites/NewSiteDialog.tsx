@@ -5,10 +5,16 @@ import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOf
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, pickFolder, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
+import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
 import { useDownloads } from "@/lib/useDownloads";
-import type { LinkedFolderInfo, MultisiteMode, SiteDbEngine, SiteType, WebServer } from "@/types";
+import type { LinkedFolderInfo, MultisiteMode, RepoProbeResult, SiteDbEngine, SiteType, WebServer } from "@/types";
+
+/** Where a new site's files come from — the three sources a docroot has.
+ *  Mutually exclusive by construction, which is also the backend's rule:
+ *  `git_url` beside a linked `path` is refused, never ranked. */
+type DocrootSource = "new" | "git" | "existing";
 
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
@@ -101,13 +107,42 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const [wpTitle, setWpTitle] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  // Where the site's files come from — the three sources a docroot has:
+  // rexenv makes it empty, a repository fills it, or the user points at a
+  // folder they already have.
+  const [source, setSource] = useState<DocrootSource>("new");
+  const useExisting = source === "existing";
+  const fromGit = source === "git";
   // Link an existing folder: rexenv serves it in place and never writes to,
   // moves, or deletes it. `link` holds the inspected result; a rejected pick
   // shows its reason inline rather than as a toast, next to the button.
-  const [useExisting, setUseExisting] = useState(false);
   const [link, setLink] = useState<LinkedFolderInfo | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  // Clone from Git: the URL is probed (`git ls-remote`) BEFORE anything is
+  // created, so a typo, a private repo your keys can't reach, or a branch that
+  // doesn't exist fails here — with no site row, folder or certificate to
+  // clean up. `probed` doubles as "this URL is real": Create stays disabled
+  // until it lands.
+  const [gitUrl, setGitUrl] = useState("");
+  const [gitRef, setGitRef] = useState("");
+  const [probed, setProbed] = useState<RepoProbeResult | null>(null);
+  const probe = useMutation({
+    mutationFn: (raw: string) => repoProbe(raw),
+    onSuccess: (p) => {
+      setProbed(p);
+      // A pasted `/tree/<ref>` URL names a branch, but branch names contain
+      // slashes — trust it only when it matches a ref the remote really has.
+      const known = [...p.branches, ...p.tags];
+      const candidate = p.refCandidate && known.includes(p.refCandidate) ? p.refCandidate : null;
+      setGitRef(candidate ?? p.defaultBranch ?? "");
+      if (!name.trim()) setName(p.dirName);
+    },
+    onError: (e) => {
+      setProbed(null);
+      toastBackendError(e);
+    },
+  });
   // A linked folder that already holds an app is ADOPTED — we install nothing,
   // so the WordPress install fields would be collecting credentials we'd never
   // use. (The backend skips those phases regardless; this keeps the UI honest.)
@@ -196,6 +231,11 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           // for a framework is the docroot subfolder, not the project root.
           path: useExisting ? (link?.servePath ?? "") : "",
           dbEngine,
+          // The URL the PROBE returned, not the raw paste: it is the one the
+          // branch list above actually came from. (The backend re-parses it
+          // anyway — the UI's copy is display state, never a trust boundary.)
+          gitUrl: fromGit ? (probed?.url ?? gitUrl.trim()) : "",
+          gitRef: fromGit && gitRef ? gitRef : null,
         },
         installingWp
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
@@ -228,6 +268,11 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
     (!installingWp || (adminUser.trim() !== "" && adminPassword !== "")) &&
     // Linking is chosen but no usable folder picked yet.
     (!useExisting || !!link) &&
+    // Cloning is chosen but the repository hasn't been reached yet. Gating on
+    // the PROBE, not on the field being non-empty, is what keeps "created" from
+    // meaning "a site row, a folder and a certificate exist for a URL that
+    // turned out to be a typo".
+    (!fromGit || !!probed) &&
     !pending &&
     prov.job == null;
 
@@ -288,12 +333,33 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               dbEngine={dbEngine}
               setDbEngine={setDbEngine}
               needsDb={siteType !== "php" && !adopting}
-              useExisting={useExisting}
-              setUseExisting={(v) => {
-                setUseExisting(v);
+              source={source}
+              setSource={(v) => {
+                setSource(v);
+                // Switching source drops the other one's answer: a stale
+                // folder or probe would otherwise be submitted invisibly.
                 setLink(null);
                 setLinkError(null);
+                setProbed(null);
+                setGitRef("");
               }}
+              // WordPress is not offered from a repository: a checkout without
+              // its database is not a site, and the backend refuses it. Not
+              // rendering the choice is better than rendering a button whose
+              // only outcome is an error.
+              gitAllowed={siteType !== "wordpress"}
+              gitUrl={gitUrl}
+              setGitUrl={(v) => {
+                setGitUrl(v);
+                // Editing the URL invalidates the branch list it produced.
+                setProbed(null);
+                setGitRef("");
+              }}
+              gitRef={gitRef}
+              setGitRef={setGitRef}
+              probed={probed}
+              probing={probe.isPending}
+              onProbe={() => probe.mutate(gitUrl.trim())}
               link={link}
               linkError={linkError}
               linking={linking}
@@ -431,6 +497,93 @@ const FIELD_INPUT =
 const FIELD_SELECT =
   "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand";
 
+/** The "From Git" source: paste a URL → Fetch (`git ls-remote`, which validates
+ *  the URL AND your access before anything is created) → pick a branch or tag.
+ *  The disclosure sits above Create, not behind it: creating this site runs the
+ *  repository's own code, and that is stated where the decision is made. */
+function GitSourceFields({
+  p,
+}: {
+  p: {
+    gitUrl: string;
+    setGitUrl: (v: string) => void;
+    gitRef: string;
+    setGitRef: (v: string) => void;
+    probed: RepoProbeResult | null;
+    probing: boolean;
+    onProbe: () => void;
+  };
+}) {
+  const groups: RefGroup[] = p.probed
+    ? [
+        {
+          label: null,
+          items: p.probed.branches.map((b) => ({
+            value: b,
+            hint: b === p.probed?.defaultBranch ? "default" : undefined,
+          })),
+        },
+        ...(p.probed.tags.length > 0
+          ? [{ label: "Tags", items: p.probed.tags.map((t) => ({ value: t })) }]
+          : []),
+      ]
+    : [];
+  return (
+    <div className="mt-[9px] space-y-[7px]">
+      <div className="flex items-center gap-[7px]">
+        <input
+          value={p.gitUrl}
+          onChange={(e) => p.setGitUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && p.gitUrl.trim() && !p.probing) {
+              e.preventDefault();
+              p.onProbe();
+            }
+          }}
+          placeholder="https://github.com/you/your-app"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          className={cn(TECH_INPUT, "h-9 min-w-0 flex-1 rounded-[9px] border border-rex-border-strong bg-rex-well px-2.5 text-[0.78125rem] text-rex-text outline-none focus:border-brand")}
+        />
+        <Button variant="secondary" size="sm" onClick={p.onProbe} disabled={p.probing || p.gitUrl.trim() === ""}>
+          {p.probing ? "Fetching…" : p.probed ? "Re-fetch" : "Fetch"}
+        </Button>
+      </div>
+      {p.probed ? (
+        <>
+          <div className="flex items-center gap-[7px]">
+            <span className="text-[0.6875rem] text-rex-text-muted">Branch or tag</span>
+            <RefPicker
+              value={p.gitRef}
+              onChange={p.setGitRef}
+              groups={groups}
+              ariaLabel="Branch or tag to check out"
+            />
+          </div>
+          <div className="rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+            Creating this site runs the repository's own code:{" "}
+            <span className="font-mono text-rex-text-bright">composer install</span> (which runs
+            the project's Composer scripts), then{" "}
+            <span className="font-mono text-rex-text-bright">artisan key:generate</span> and{" "}
+            <span className="font-mono text-rex-text-bright">artisan migrate</span> against the
+            new, empty database. Front-end assets are not built — run{" "}
+            <span className="font-mono text-rex-text-bright">npm install</span> yourself if the
+            project needs it.
+          </div>
+        </>
+      ) : (
+        <div className="text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+          Paste an https or <span className="font-mono">git@</span> URL — or just{" "}
+          <span className="font-mono">owner/repo</span> for GitHub. Fetch checks the URL and your
+          access before anything is created; private repos use the SSH keys and agent you
+          already have.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Step2(p: {
   blueprints: import("@/types").Blueprint[];
   /** WordPress-only, and only when we're the ones installing it. */
@@ -453,8 +606,16 @@ function Step2(p: {
   dbEngine: SiteDbEngine;
   setDbEngine: (v: SiteDbEngine) => void;
   needsDb: boolean;
-  useExisting: boolean;
-  setUseExisting: (v: boolean) => void;
+  source: DocrootSource;
+  setSource: (v: DocrootSource) => void;
+  gitAllowed: boolean;
+  gitUrl: string;
+  setGitUrl: (v: string) => void;
+  gitRef: string;
+  setGitRef: (v: string) => void;
+  probed: RepoProbeResult | null;
+  probing: boolean;
+  onProbe: () => void;
   link: LinkedFolderInfo | null;
   linkError: string | null;
   linking: boolean;
@@ -498,22 +659,25 @@ function Step2(p: {
         </Field>
       )}
 
-      {/* Where the files live. Default: rexenv makes the folder and owns it.
-          Alternative: point at a project that already exists — served in place,
-          never written to, never deleted with the site. */}
+      {/* Where the files come from — the three sources a docroot has. Default:
+          rexenv makes the folder and owns it. From Git: rexenv makes the folder
+          and fills it from a remote. Existing folder: a project that already
+          exists, served in place, never written to, never deleted with the
+          site. */}
       <Field label="Files">
         <div className="flex gap-[7px]">
-          {[
-            { v: false, label: "New folder" },
-            { v: true, label: "Existing folder" },
-          ].map((o) => (
+          {([
+            { v: "new" as const, label: "New folder" },
+            ...(p.gitAllowed ? [{ v: "git" as const, label: "From Git" }] : []),
+            { v: "existing" as const, label: "Existing folder" },
+          ]).map((o) => (
             <button
-              key={String(o.v)}
+              key={o.v}
               type="button"
-              onClick={() => p.setUseExisting(o.v)}
+              onClick={() => p.setSource(o.v)}
               className={cn(
                 "h-9 flex-1 rounded-[9px] border text-[0.78125rem] font-medium transition-colors",
-                p.useExisting === o.v
+                p.source === o.v
                   ? "border-brand bg-brand/10 text-rex-text-bright"
                   : "border-rex-border-strong bg-rex-well text-rex-text-muted hover:text-rex-text",
               )}
@@ -522,7 +686,8 @@ function Step2(p: {
             </button>
           ))}
         </div>
-        {p.useExisting && (
+        {p.source === "git" && <GitSourceFields p={p} />}
+        {p.source === "existing" && (
           <div className="mt-[9px] space-y-[7px]">
             <div className="flex items-center gap-[7px]">
               <Button variant="secondary" size="sm" onClick={p.pickExisting} disabled={p.linking}>

@@ -71,6 +71,22 @@ the shipped UI toward one.
   BEHIND on missing lines, never ahead) carries the progress alone. Generalised:
   reusing a card for a second source means re-asking which of its numbers that source
   can still feed — nothing beats a stale something.
+- **Consent moves earlier when a flow gets shorter — it does not evaporate.** "Add
+  plugin/theme from Git" runs the repo's own code one explicit click at a time, with the
+  disclosure above the buttons. Creating a SITE from a repo can't be click-by-click
+  without being a worse product, so the same disclosure moved to sit above **Create**,
+  naming the three commands that will run (`composer install`, `key:generate`,
+  `migrate`) and what they run against. The test for whether a batched flow is still
+  honest is not "did we ask" but "was the sentence in front of the button that starts
+  it". `composer install` deliberately has no opt-out: `vendor/` is gitignored, so
+  offering to skip it would be offering to create a site that 500s — an option that can
+  only produce a broken site is not a choice, it is a trap.
+- **A control whose only outcome is an error is not rendered.** The New Site dialog
+  offers "From Git" for Laravel and Blank PHP and omits it for WordPress, because a
+  WordPress checkout without its database is not a site and the backend refuses it. The
+  refusal still exists (CLI and MCP reach the same code) — the UI simply does not draw a
+  button to walk into it. Same rule that removed the blueprint field from non-WordPress
+  types.
 - Unknowable state says so ("can't determine") instead of guessing.
 - **A batch reports the job it is actually running** — the step line is that job's own
   phase label verbatim, the count moves only on terminal rows (a FAILED row still
