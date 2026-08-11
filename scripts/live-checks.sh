@@ -107,6 +107,7 @@ frankenphp_edge_serve service
 frankenphp_fetch network
 frankenphp_serve service
 frankenphp_subdir_validate sandbox
+git_site_clone_check sandbox
 health_watchdog_check service
 linked_site_check sandbox
 log_tail_check service

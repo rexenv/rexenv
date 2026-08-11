@@ -47,7 +47,7 @@ it can:
 - **Cost:** seconds. **Runs:** every `verify.sh`. **Bug class:** logic regressions,
   drift in our own generation/parsing, unrepresentable-state violations.
 
-### L1 — Tool (`src-tauri/examples/*.rs`, 114 live checks)
+### L1 — Tool (`src-tauri/examples/*.rs`, 115 live checks)
 
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real
@@ -59,6 +59,13 @@ it can:
   a threaded-resolver rebuild makes the whole class obsolete). **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
+  A live check does not have to be networked to earn its layer: `git_site_clone_check`
+  (sandbox tier) builds its own fixture repositories with real `git init`/`commit` and
+  clones them locally, so it needs no remote, no credentials and no service — and it
+  still caught an ordering bug no unit test could have (provisioning overwrites
+  `NewSite.path` with the resolved docroot before the clone/link rule ran, so every
+  cloned site read as also-linked and was refused). **Building the fixture with the
+  real tool is what makes a hermetic example an L1 rather than an L0 in disguise.**
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

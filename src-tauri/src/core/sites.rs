@@ -360,26 +360,30 @@ fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
 /// ownership explicitly; the flag is never taken from IPC input, so no caller
 /// can claim ownership of a path it doesn't own and get it deleted later.
 pub fn create(conn: &Connection, new: NewSite) -> Result<Site> {
-    create_recording_ownership(conn, new, true, Ownership::User)
+    let git = validate_git_source(&new, &Ownership::User)?;
+    create_recording_ownership(conn, new, true, Ownership::User, git)
 }
 
 /// [`create`], with the docroot-ownership answer supplied by the caller that
-/// KNOWS it (see [`Site::docroot_managed`](crate::state::models::Site)).
+/// KNOWS it (see [`Site::docroot_managed`](crate::state::models::Site)), and
+/// the repository source already validated.
+///
+/// `git` is a PARAMETER rather than something re-derived here, and that is not
+/// a style choice: by the time provisioning reaches this function it has
+/// overwritten `new.path` with the docroot it resolved, so `path` no longer
+/// means "the caller asked to link a folder" — re-running the rule here read
+/// every cloned site as also-linked and refused it. The rule belongs where its
+/// inputs still mean what they say.
 fn create_recording_ownership(
     conn: &Connection,
     new: NewSite,
     docroot_managed: bool,
     ownership: Ownership,
+    git: Option<GitSource>,
 ) -> Result<Site> {
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
-    // The SAME rule `provision_with` already refused on, called again for its
-    // value. Not a second implementation: one function, asked twice — once
-    // early enough that a refusal leaves no docroot or certificate behind, once
-    // here where the row is built. Callers that reach this directly (`create`,
-    // tests) get the refusal too rather than a silently ignored `git_url`.
-    let git = validate_git_source(&new, &ownership)?;
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "domain already in use: {}",
@@ -1635,12 +1639,11 @@ pub fn provision_with(
             new.domain
         )));
     }
-    // The guard every caller passes through — app, `rex`, MCP. Refused BEFORE
-    // the docroot and the cert exist, so a bad repo URL or an agent asking for
-    // one leaves nothing to clean up. The value is discarded here: the clone
-    // belongs to the provision job, and the row records the repo only once a
-    // checkout has actually landed in it.
-    validate_git_source(&new, &ownership)?;
+    // Evaluated HERE, while `new.path` still means "the caller asked to link
+    // this folder" — below, it becomes the resolved docroot. Refused before the
+    // docroot and the certificate exist, so a bad repo URL, or an agent asking
+    // for one, leaves nothing to clean up.
+    let git = validate_git_source(&new, &ownership)?;
 
     // A caller-supplied path means LINK: adopt the folder as-is. Nothing is
     // created and nothing is written into it — not even the Blank-PHP probe
@@ -1673,7 +1676,7 @@ pub fn provision_with(
     }
 
     new.path = docroot.display().to_string();
-    create_recording_ownership(conn, new, !linked, ownership)
+    create_recording_ownership(conn, new, !linked, ownership, git)
 }
 
 // ---------------------------------------------------------------------------
@@ -3259,7 +3262,7 @@ mod tests {
         // Linked: refused outright. A cross-volume move COPIES then deletes the
         // source, so this would rewrite the user's own project layout.
         let (dir, new) = docroot_fixture("nomove");
-        let linked = create_recording_ownership(&conn, new, false, Ownership::User).unwrap();
+        let linked = create_recording_ownership(&conn, new, false, Ownership::User, None).unwrap();
         let err = check_docroot_move(&linked, &std::env::temp_dir()).unwrap_err().to_string();
         assert!(err.contains("your own folder"), "{err}");
         let _ = std::fs::remove_dir_all(&dir);
@@ -3289,7 +3292,7 @@ mod tests {
         let conn = db::open_in_memory().unwrap();
 
         let (dir, new) = docroot_fixture("relink");
-        let linked = create_recording_ownership(&conn, new, false, Ownership::User).unwrap();
+        let linked = create_recording_ownership(&conn, new, false, Ownership::User, None).unwrap();
 
         // The whole point of the re-point path: a folder rexenv refuses to MOVE
         // is still one it will follow after the user moved it themselves.
@@ -3416,7 +3419,7 @@ mod tests {
         // Some(false)` — this pins the predicate it relies on.
         let conn = db::open_in_memory().unwrap();
         let (dir, new) = docroot_fixture("noretrywrite");
-        let linked = create_recording_ownership(&conn, new, false, Ownership::User).unwrap();
+        let linked = create_recording_ownership(&conn, new, false, Ownership::User, None).unwrap();
         assert_eq!(linked.docroot_managed, Some(false), "linked rows must be recognisable");
 
         let (dir2, new2) = docroot_fixture("ourswrite");
@@ -3444,6 +3447,7 @@ mod tests {
             NewSite { path: dir.display().to_string(), ..new },
             false, // linked: we did not create this folder
             Ownership::User,
+            None,
         )
         .unwrap();
 
@@ -3665,6 +3669,7 @@ mod tests {
             NewSite { domain: "probe.scratch.rex".into(), ..new },
             true,
             Ownership::Agent { client: "Claude Code".into(), ttl_hours: 24 },
+            None,
         )
         .unwrap();
         assert_eq!(site.origin, SiteOrigin::Agent);
@@ -3678,7 +3683,7 @@ mod tests {
         assert!(read.is_scratch() && read.expires_at == site.expires_at);
         // Same fixture, user ownership: no client, no clock, never reapable.
         let (dir2, new2) = docroot_fixture("userborn");
-        let mine = create_recording_ownership(&conn, new2, true, Ownership::User).unwrap();
+        let mine = create_recording_ownership(&conn, new2, true, Ownership::User, None).unwrap();
         assert_eq!(mine.origin, SiteOrigin::User);
         assert_eq!(mine.agent_client, None);
         assert_eq!(mine.expires_at, None);
