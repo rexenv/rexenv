@@ -737,6 +737,26 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     wired, serving site behind a "setup incomplete" badge whose Retry re-runs the
     clone, the database and Composer to reach the one step that was never rexenv's to
     guarantee. (Same "succeeded, but" shape as `serving_blocked`.)
+  - **WordPress from a repository** (Stage 4) runs the SAME four phases a created
+    WordPress site does, because each was already skip-aware — `core_download` when
+    core is present, `configure` when `wp-config.php` is, `core_install` when
+    WordPress is. What the user gets is their CODE and a **fresh, empty database**,
+    said in the dialog before Create rather than discovered afterwards: "clone my
+    site" and "clone my site's code" are different promises, and only the second is
+    on offer (a dump import from the Database tab is the other half).
+    Roots' **Bedrock/Radicle** are the one real fork: Composer owns core and `.env`
+    owns the configuration, so `deps` runs FIRST and one answer
+    (`sites::wordpress_core_from_composer`) turns off both `core_download` (a
+    download would put a second WordPress beside `web/wp`, and the site would keep
+    working from the wrong copy) and `wp config create` (it would overwrite the
+    repository's own stub). `wordpress::wire_bedrock_env` writes the database, URLs
+    and any UNSET salts — never rotating one that exists, which would log every
+    session out silently. ⚠ **UNVERIFIED against a real Bedrock project** (ledger
+    #294): the key set is from Roots' documented example.
+    The served root and the CONTENT dir are both re-read from the checkout after the
+    clone — creation could only guess them from the site type, off a folder that was
+    still empty, so a Bedrock site would otherwise have had every mu-plugin written
+    into a `web/wp-content` it does not load.
   - **Any PHP repository works as a Blank-PHP site.** `detect_project` already
     classifies Symfony, Craft, Statamic, Magento and generic front controllers, and
     the clone phase records its `docroot_rel` as `docroot_subdir` — so the document

@@ -795,6 +795,28 @@ pub fn detect_content_dir_rel(docroot: &Path) -> &'static str {
     "wp-content"
 }
 
+/// Roots' Bedrock: WordPress core installed by Composer into `web/wp`, config in
+/// `.env` + `config/application.php`.
+pub const LABEL_BEDROCK: &str = "WordPress (Bedrock)";
+/// Roots' Radicle: the same shape one folder over.
+pub const LABEL_RADICLE: &str = "WordPress (Radicle)";
+
+/// Does this layout get its WordPress CORE from Composer rather than from a
+/// core download?
+///
+/// The one question the provisioning driver asks about a cloned WordPress
+/// checkout, and it decides two phases: `core_download` must not run (Composer
+/// puts core in `web/wp`, and a download would litter `web/` with a second
+/// copy), and `wp config create` must not run (the repository ships the
+/// `wp-config.php` stub, and its real configuration is `.env`).
+///
+/// Keyed on the LABEL, which is why those are constants: the markers that
+/// decide it live in `detect_project` and must not be re-sniffed here — a
+/// second copy of the sniff is a second answer waiting to drift.
+pub fn wordpress_core_from_composer(detected: &DetectedProject) -> bool {
+    detected.label == LABEL_BEDROCK || detected.label == LABEL_RADICLE
+}
+
 /// Classify an existing project folder by probing the filesystem — **never by
 /// executing anything in it**.
 ///
@@ -823,7 +845,7 @@ pub fn detect_project(root: &Path) -> DetectedProject {
         return DetectedProject {
             site_type: SiteType::Wordpress,
             docroot_rel: "web".into(),
-            label: "WordPress (Bedrock)",
+            label: LABEL_BEDROCK,
             existing_install: true,
         };
     }
@@ -831,7 +853,7 @@ pub fn detect_project(root: &Path) -> DetectedProject {
         return DetectedProject {
             site_type: SiteType::Wordpress,
             docroot_rel: "public".into(),
-            label: "WordPress (Radicle)",
+            label: LABEL_RADICLE,
             existing_install: true,
         };
     }
@@ -1290,21 +1312,6 @@ pub fn validate_git_source(new: &NewSite, ownership: &Ownership) -> Result<Optio
             "creating a site from a git repository is a user action: it downloads code and then \
              runs the project's own install scripts. Create the site empty and let the user \
              clone into it."
-                .into(),
-        ));
-    }
-    // WordPress is refused, and the reason is not that it is hard: a WordPress
-    // checkout without its DATABASE is not a site — no posts, no options, no
-    // users — so "cloned successfully" would hand back something that cannot
-    // serve a page. That belongs behind the database-import work
-    // (`docs/PLAN-valet-herd-db-import.md`), not beside it. Refused HERE rather
-    // than half-supported, so the phase list and the blueprint guard never have
-    // to describe a shape the product doesn't have.
-    if new.site_type == SiteType::Wordpress {
-        return Err(Error::Other(
-            "rexenv can't create a WordPress site from a repository yet — a checkout without its \
-             database isn't a working site. Clone it as a Blank PHP site, or link the folder \
-             after cloning it yourself."
                 .into(),
         ));
     }
@@ -2230,18 +2237,53 @@ mod tests {
             .is_err());
     }
 
+    /// Every site type can be cloned. WordPress was refused through Stages 1–3
+    /// (a checkout without its database is not a site) and is admitted in Stage
+    /// 4 with that fact STATED rather than designed around: the repository
+    /// supplies the code, provisioning supplies a fresh empty database, and the
+    /// dialog says so before Create.
     #[test]
-    fn a_wordpress_repo_is_refused_because_a_checkout_without_its_database_is_not_a_site() {
-        let wp = NewSite { site_type: SiteType::Wordpress, ..cloning("acme/site", None) };
-        let err = validate_git_source(&wp, &Ownership::User).unwrap_err().to_string();
-        assert!(err.contains("database isn't a working site"), "{err}");
-        assert!(err.contains("Blank PHP") && err.contains("link the folder"), "the way out: {err}");
+    fn every_site_type_can_be_cloned() {
+        for ty in [SiteType::Laravel, SiteType::Php, SiteType::Wordpress] {
+            let new = NewSite { site_type: ty, ..cloning("acme/site", None) };
+            assert!(validate_git_source(&new, &Ownership::User).is_ok(), "{ty:?}");
+        }
+    }
 
-        // The two types that DO work: Laravel (the ask) and Blank PHP (any repo
-        // served from whatever front controller detection finds).
-        assert!(validate_git_source(&cloning("acme/shop", None), &Ownership::User).is_ok());
-        let php = NewSite { site_type: SiteType::Php, ..cloning("acme/tools", None) };
-        assert!(validate_git_source(&php, &Ownership::User).is_ok());
+    /// The layouts whose CORE comes from Composer — the one question the
+    /// provisioning driver asks about a cloned WordPress checkout, because it
+    /// turns off both `core_download` and `wp config create`.
+    #[test]
+    fn only_the_roots_layouts_get_their_wordpress_core_from_composer() {
+        let of = |label, rel: &str| DetectedProject {
+            site_type: SiteType::Wordpress,
+            docroot_rel: rel.into(),
+            label,
+            existing_install: true,
+        };
+        assert!(wordpress_core_from_composer(&of(LABEL_BEDROCK, "web")));
+        assert!(wordpress_core_from_composer(&of(LABEL_RADICLE, "public")));
+        assert!(!wordpress_core_from_composer(&of("WordPress", "")));
+        assert!(!wordpress_core_from_composer(&DetectedProject {
+            site_type: SiteType::Laravel,
+            docroot_rel: "public".into(),
+            label: "Laravel",
+            existing_install: true,
+        }));
+
+        // The labels are the SAME strings detection produces — a constant that
+        // drifted from the detector would silently turn the two skips off.
+        let dir = std::env::temp_dir().join(format!("rexenv-bedrock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("web")).unwrap();
+        std::fs::create_dir_all(dir.join("config")).unwrap();
+        std::fs::write(dir.join("web/wp-config.php"), "<?php").unwrap();
+        std::fs::write(dir.join("config/application.php"), "<?php").unwrap();
+        let detected = detect_project(&dir);
+        assert_eq!(detected.label, LABEL_BEDROCK);
+        assert!(wordpress_core_from_composer(&detected));
+        assert_eq!(detected.docroot_rel, "web");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

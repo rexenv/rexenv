@@ -45,12 +45,20 @@ evidence cited.
   `<path>/.git` test, because the folder above a linked site can be a repo holding every
   project the user has. Ledger #284–288; `git_site_clone_check` §8; SMOKE-TEST covers
   the packaged half.
-- [ ] **Stage 4 — any PHP repo, and WordPress** (`docs/PLAN-git-site-clone.md` §4).
-  `detect_project` already classifies Symfony, Craft, Statamic, Magento and generic front
-  controllers, and Stage 1 already records its `docroot_rel` as `docroot_subdir`, so
-  widening is mostly relaxing the type check. WordPress stays last on purpose: a WP repo
-  without its database is not a site, so it belongs behind
-  `docs/PLAN-valet-herd-db-import.md`, not beside it.
+- [x] **Stage 4 — any PHP repo, and WordPress** (built 11 Aug 2026). ✓ A cloned
+  Blank-PHP site gets `composer install` (Symfony/Craft/Statamic are `vendor/`-less by
+  design), and WordPress runs the same four phases a created site does — each was
+  already skip-aware, so what it needed was a dependency step first and one fork for
+  Roots' layouts. What the user gets is their CODE and a fresh empty database, stated in
+  the dialog rather than discovered. `core/dotenv.rs` came out of `core/laravel.rs` for
+  the second caller and immediately caught a duplicate-key bug. Ledger #289–297;
+  `git_site_clone_check` §9–10.
+- [ ] ⚠ **Bedrock/Radicle from git is UNVERIFIED against a real project** (ledger #294,
+  filed 11 Aug 2026). The `.env` key set, the `${WP_HOME}/wp` convention and the
+  "Composer owns core" fork all come from Roots' documented example, not from a live
+  install — the same honest caveat `detect_content_dir_rel` has carried for Radicle
+  since v24. `docs/SMOKE-TEST.md` has the checklist; the first person to clone a real
+  Bedrock repo should work it and either tick this or file what broke.
 
 - [x] **Every link opened in whatever browser the OS points at** (filed + fixed
   11 Aug 2026). rexenv could pick your code editor but not your browser, so a

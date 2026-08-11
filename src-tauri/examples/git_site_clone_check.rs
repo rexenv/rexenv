@@ -24,6 +24,11 @@
 //!   7. The front-end asset phase's inputs are read correctly off a real
 //!      checkout: the repo's `packageManager` field beats its lockfile, the
 //!      build script is seen, and `node_modules` is NOT in the clone.
+//!  10. Both WordPress layouts are placed correctly: a stock repo serves its
+//!      root with `wp-content`, a Bedrock one serves `web/` with `app` — and
+//!      only the Bedrock one turns off core_download + `wp config create`. Its
+//!      `.env` is wired over the repository's own example with eight salts,
+//!      one line per key.
 //!   9. Any PHP repository works as a Blank-PHP site: a Symfony checkout is
 //!      named, served from its own `public/`, and arrives without `vendor/` —
 //!      which is what the deps phase exists for.
@@ -186,6 +191,31 @@ fn main() {
             ("public/index.php", "<?php echo 'invoices';\n"),
             ("composer.json", "{\"name\":\"acme/invoices\"}\n"),
             (".gitignore", "/vendor\n"),
+        ],
+    );
+
+    // Two WordPress shapes. A STOCK repo that gitignores core and wp-config
+    // (the common one — the code is a theme plus a few plugins), and a BEDROCK
+    // one, where Composer owns core and `.env` owns the configuration.
+    let stock_wp_remote = make_repo(
+        &remotes,
+        "blog",
+        &[
+            ("wp-config-sample.php", "<?php // fixture\n"),
+            ("wp-content/themes/acme/style.css", "/* Theme Name: Acme */\n"),
+            (".gitignore", "/wp-config.php\n/wp-admin\n/wp-includes\n"),
+        ],
+    );
+    let bedrock_remote = make_repo(
+        &remotes,
+        "roots",
+        &[
+            ("web/wp-config.php", "<?php require_once dirname(__DIR__).'/config/application.php';\n"),
+            ("config/application.php", "<?php // fixture\n"),
+            ("web/app/themes/acme/style.css", "/* Theme Name: Acme */\n"),
+            ("composer.json", "{\"name\":\"acme/roots\"}\n"),
+            (".env.example", "DB_NAME=\nDB_USER=\nDB_PASSWORD=\n# DB_HOST=localhost\nWP_HOME=http://example.com\nWP_SITEURL=${WP_HOME}/wp\nAUTH_KEY=\nSECURE_AUTH_KEY=\nLOGGED_IN_KEY=\nNONCE_KEY=\nAUTH_SALT=\nSECURE_AUTH_SALT=\nLOGGED_IN_SALT=\nNONCE_SALT=\n"),
+            (".gitignore", ".env\n/vendor\n/web/wp\n"),
         ],
     );
 
@@ -548,6 +578,93 @@ fn main() {
             }
         }
         Err(e) => ok = fail(&format!("clone failed: {e}")),
+    }
+
+    // ── 10. WordPress, both layouts ─────────────────────────────────────
+    println!("\n=== 10. WordPress repositories ===");
+    for (name, remote, want_label, want_rel, want_content, composer_core) in [
+        ("blog.rex", &stock_wp_remote, "WordPress", "", "wp-content", false),
+        ("roots.rex", &bedrock_remote, sites::LABEL_BEDROCK, "web", "app", true),
+    ] {
+        let dest = sites_dir.join(name);
+        std::fs::create_dir_all(&dest).expect("docroot");
+        let src = sites::GitSource {
+            url: remote.to_string_lossy().into_owned(),
+            git_ref: Some("main".into()),
+        };
+        match sites::clone_into_docroot(
+            plat.supervisor(),
+            &git,
+            &env,
+            &src,
+            &dest,
+            SiteType::Wordpress,
+            &cancel,
+            &mut sink,
+        ) {
+            Ok(detected) => {
+                println!("   {name}: {} · serving {:?}", detected.label, detected.docroot_rel);
+                if detected.label != want_label || detected.docroot_rel != want_rel {
+                    ok = fail(&format!("{name}: wrong layout — {detected:?}"));
+                }
+                // The two phases a composer-managed layout must stand down for.
+                if sites::wordpress_core_from_composer(&detected) != composer_core {
+                    ok = fail(&format!("{name}: core_download/wp-config decision is wrong"));
+                }
+                // The content dir, read from the SERVED root — recorded at
+                // create from an EMPTY folder, so it would have said
+                // `wp-content` for Bedrock and every mu-plugin writer would
+                // have landed in a directory the site does not load.
+                let served =
+                    if want_rel.is_empty() { dest.clone() } else { dest.join(want_rel) };
+                let content = sites::detect_content_dir_rel(&served);
+                if content != want_content {
+                    ok = fail(&format!("{name}: content dir is {content}, expected {want_content}"));
+                }
+                println!("   {name}: content dir {content}");
+            }
+            Err(e) => ok = fail(&format!("{name}: clone failed: {e}")),
+        }
+    }
+
+    // The Bedrock `.env` this site would actually get, written over the
+    // repository's own example.
+    {
+        let project = sites_dir.join("roots.rex");
+        match dotenv::ensure_file(&project, rexenv_lib::core::wordpress::BEDROCK_ENV_SEED) {
+            Ok(dotenv::EnvOrigin::Example) => {}
+            Ok(other) => ok = fail(&format!(".env came from {other:?}, expected the example")),
+            Err(e) => ok = fail(&format!("ensure_file: {e}")),
+        }
+        let original = std::fs::read_to_string(project.join(".env")).expect("read .env");
+        let wired = rexenv_lib::core::wordpress::wire_bedrock_env(
+            &original,
+            "https://roots.rex",
+            &rexenv_lib::core::wordpress::BedrockDb {
+                name: "wp_roots_rex".into(),
+                user: "root".into(),
+                password: String::new(),
+                host: "127.0.0.1:13306".into(),
+            },
+        );
+        for want in ["DB_NAME=wp_roots_rex", "DB_HOST=127.0.0.1:13306", "WP_HOME=https://roots.rex"] {
+            if !wired.contains(want) {
+                ok = fail(&format!("Bedrock .env is missing {want}"));
+            }
+        }
+        if wired.contains("# DB_HOST") || wired.contains("http://example.com") {
+            ok = fail("a commented twin or the example URL survived the wiring");
+        }
+        for key in rexenv_lib::core::wordpress::SALT_KEYS {
+            let lines = wired.lines().filter(|l| l.starts_with(&format!("{key}="))).count();
+            if lines != 1 {
+                ok = fail(&format!("{key} appears {lines} times — one answer per key"));
+            }
+            if dotenv::is_blank(&wired, key) {
+                ok = fail(&format!("{key} was left unset"));
+            }
+        }
+        println!("   roots.rex: .env wired, all eight salts generated exactly once");
     }
 
     println!("\n{}", if ok { "git_site_clone_check: PASS" } else { "git_site_clone_check: FAIL" });

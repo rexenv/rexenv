@@ -84,7 +84,27 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       incomplete" — this is the one non-fatal phase and the only way to check it.
 - [ ] A repo with no `package.json` and the box ticked: the phase reports **skipped**,
       not failed.
-- [ ] New Site → **WordPress** offers no "From Git" choice at all.
+- [ ] **WordPress from a repository.** New site → WordPress → From Git → a repo
+      holding a theme + `wp-content` (core gitignored). The dialog shows an amber
+      "your code comes from the repository; the database is new and empty" note
+      BEFORE Create, and still asks for the admin account. The card runs
+      `installing dependencies` (skipped without composer.json), `downloading
+      WordPress core`, `writing wp-config + creating database`, `installing
+      WordPress`. The site loads, wp-admin logs in, and the repo's theme is there.
+- [ ] ⚠ **Bedrock** (`docs/PLAN-git-site-clone.md` §4, ledger #294 — the one path
+      built from Roots' docs rather than a live project). Clone a real Bedrock repo
+      as WordPress:
+      - `downloading WordPress core` reports **skipped** ("installs core through
+        Composer"), and there is exactly ONE WordPress — `web/wp`, nothing in `web/`.
+      - `web/wp-config.php` is still the repository's stub (it `require`s
+        `config/application.php`), NOT a stock wp-config.
+      - `.env` at the project root has this site's DB_NAME/DB_HOST, `WP_HOME`, a
+        literal `WP_SITEURL=${WP_HOME}/wp`, and eight non-empty salts — each key on
+        exactly one line.
+      - The site loads and wp-admin logs in. Plugins install into `web/app/plugins`
+        (the Site's content dir must read `app`, not `wp-content`).
+      - Delete and re-create it: the salts differ (fresh site), and a **Retry** on a
+        half-built one does NOT change them.
 - [ ] **Repository tab** (Stage 3). It appears on the cloned site and NOT on an
       ordinary one. It shows the branch, a clean tree, and the remote.
       - Switch branch with the picker → Checkout: the branch chip updates, and the

@@ -253,16 +253,29 @@ fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
     if from_git {
         v.push(("clone", "cloning the repository"));
     }
-    // `from_git` joins `linked` here: a cloned docroot is code that ARRIVED,
-    // not code we install. (Unreachable today — `validate_git_source` refuses a
-    // cloned WordPress site outright, because a checkout without its database
-    // is not a site — but the two must not be able to disagree.)
-    if matches!(site_type, SiteType::Wordpress) && !linked && !from_git {
+    if matches!(site_type, SiteType::Wordpress) && !linked {
         v.push(("db", "starting database"));
+        // A CLONED WordPress site runs the same four phases as a created one,
+        // and each of them is already skip-aware — `core_download` when core is
+        // present, `configure` when `wp-config.php` is, `core_install` when
+        // WordPress is. That is why this needed a dependency step and almost
+        // nothing else: Bedrock's core arrives from Composer, so `deps` must
+        // come FIRST and the skips downstream then say the truth.
+        //
+        // What the user gets is their CODE from the repository and a fresh,
+        // empty database — the dialog says so, because "cloned my site" and
+        // "cloned my site's code" are different promises.
+        if from_git {
+            v.push(("deps", "installing dependencies"));
+        }
         v.push(("core_download", "downloading WordPress core"));
         v.push(("configure", "writing wp-config + creating database"));
         v.push(("core_install", "installing WordPress"));
-        if has_blueprint {
+        // Never for a CLONE: a blueprint's plugins and themes would land in
+        // somebody's working tree as files nobody committed. The guard
+        // (`ensure_blueprint_applies`) refuses that combination outright, and
+        // this keeps the two from being able to disagree.
+        if has_blueprint && !from_git {
             v.push(("blueprint", "applying blueprint"));
         }
     }
@@ -350,6 +363,12 @@ fn build_plan(
     if matches!(site.site_type, SiteType::Wordpress) && !linked {
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
         plan.extend(downloads::plan_for_wp_tooling(state.platform.as_ref(), minor));
+        // A cloned one may be Bedrock, whose CORE comes from Composer — and we
+        // cannot know which before the clone, so the phar rides along. It is a
+        // couple of megabytes beside wp-cli and the database engine.
+        if site.git_url.is_some() {
+            plan.extend(downloads::plan_for_composer_tooling(state.platform.as_ref(), minor));
+        }
     }
     // Laravel needs the same database engine, and Composer + the PHP CLI to run
     // it — the phar is executed by the SITE's PHP so `create-project`'s platform
@@ -989,10 +1008,27 @@ async fn drive<R: tauri::Runtime>(
             {
                 let (a2, sid, rel) =
                     (app.clone(), site.id.clone(), detected.docroot_rel.clone());
+                // A WordPress checkout's CONTENT dir has the same problem one
+                // level down: creation recorded `wp-content` from an EMPTY
+                // folder, and Bedrock's is `app`. Recorded here, from the
+                // served root the line above just settled, so the mu-plugin
+                // writers never land in a directory the site does not load.
+                let content = (detected.site_type == SiteType::Wordpress).then(|| {
+                    let served = if rel.is_empty() {
+                        PathBuf::from(&site.path)
+                    } else {
+                        PathBuf::from(&site.path).join(&rel)
+                    };
+                    sites::detect_content_dir_rel(&served).to_string()
+                });
                 let recorded = tauri::async_runtime::spawn_blocking(move || {
                     let st = a2.state::<AppState>();
                     let conn = lock_db(&st)?;
-                    crate::state::store::set_site_docroot_subdir(&conn, &sid, &rel)
+                    crate::state::store::set_site_docroot_subdir(&conn, &sid, &rel)?;
+                    if let Some(c) = content {
+                        crate::state::store::set_site_content_dir(&conn, &sid, &c)?;
+                    }
+                    Ok::<(), crate::error::Error>(())
                 })
                 .await;
                 match recorded {
@@ -1020,6 +1056,21 @@ async fn drive<R: tauri::Runtime>(
         }
         bail_if_cancelled!();
     }
+
+    // What the checkout turned out to be, and therefore what the web server
+    // will root at. RECOMPUTED here rather than carried out of the clone phase,
+    // because on a Retry that phase SKIPS and the answer is still needed — and
+    // because the `site` row in hand still carries the `docroot_subdir` that
+    // creation could only guess from the site TYPE, before the folder had any
+    // contents. Pure filesystem, no execution (`detect_project`).
+    let detected = from_git.then(|| sites::detect_project(Path::new(&site.path)));
+    let served = match detected.as_ref().map(|d| d.docroot_rel.as_str()) {
+        Some(rel) if !rel.is_empty() => PathBuf::from(&site.path).join(rel),
+        _ => site.served_root(),
+    };
+    // Bedrock/Radicle: Composer owns WordPress core and `.env` owns the
+    // configuration, so two of the four WordPress phases must stand down.
+    let composer_core = detected.as_ref().is_some_and(sites::wordpress_core_from_composer);
 
     if is_wp {
         // ── db ───────────────────────────────────────────────────────────
@@ -1057,7 +1108,10 @@ async fn drive<R: tauri::Runtime>(
                 Err(e) => return JobEnd::Failed(format!("env worker died: {e}")),
             }
         };
-        let docroot = PathBuf::from(&site.path);
+        // The SERVED root, not the project root. They are the same folder for
+        // a stock WordPress site and differ for Bedrock (`web/`), where
+        // wp-cli's config, core and install all live one level in.
+        let docroot = served.clone();
         let engine_version = match super::database::effective_db_version(&state, engine) {
             Ok(v) => v,
             Err(e) => return JobEnd::Failed(e.to_string()),
@@ -1071,10 +1125,42 @@ async fn drive<R: tauri::Runtime>(
         let resolved =
             wordpress::resolve_install_options(&site.domain, &site.name, &entry.wp_opts);
 
+        // ── deps (a CLONED WordPress site) ───────────────────────────────
+        // Bedrock's WordPress CORE arrives here, which is why this runs before
+        // `core_download` rather than after: the skip below then reads a tree
+        // Composer has already filled.
+        if from_git {
+            let (composer_php, composer_phar) = match composer_tools(&state, &minor).await {
+                Ok(t) => t,
+                Err(e) => return JobEnd::Failed(e.to_string()),
+            };
+            // The PROJECT root: `composer.json` sits beside `web/`, not in it.
+            let project = PathBuf::from(&site.path);
+            if let Some(end) =
+                deps_phase(app, entry, progress, &project, &composer_php, &composer_phar, &env)
+                    .await
+            {
+                return end;
+            }
+            bail_if_cancelled!();
+        }
+
         // ── core_download ────────────────────────────────────────────────
         let ix = phase_index(entry, "core_download");
         enter_phase(app, entry, ix);
-        if docroot.join("wp-load.php").exists() {
+        if composer_core {
+            // Downloading core into `web/` would put a SECOND WordPress beside
+            // the one Composer installed at `web/wp` — and the site would keep
+            // working, from the wrong copy.
+            finish_phase(
+                app,
+                entry,
+                progress,
+                ix,
+                "skipped",
+                Some("this layout installs WordPress core through Composer"),
+            );
+        } else if docroot.join("wp-load.php").exists() {
             finish_phase(app, entry, progress, ix, "skipped", Some("WordPress core already present"));
         } else {
             let mut args: Vec<String> = vec!["core".into(), "download".into()];
@@ -1092,7 +1178,54 @@ async fn drive<R: tauri::Runtime>(
         // ── configure ────────────────────────────────────────────────────
         let ix = phase_index(entry, "configure");
         enter_phase(app, entry, ix);
-        if !docroot.join("wp-config.php").exists() {
+        if composer_core {
+            // Bedrock/Radicle keep the WHOLE configuration in `.env`; the
+            // `wp-config.php` in `web/` is the repository's own stub and just
+            // requires `config/application.php`. `wp config create` here would
+            // overwrite that stub with a stock one and the site would stop
+            // reading its own config.
+            let project = PathBuf::from(&site.path);
+            match core::dotenv::ensure_file(&project, core::wordpress::BEDROCK_ENV_SEED) {
+                Ok(core::dotenv::EnvOrigin::Example) => {
+                    append_line(app, entry, ".env created from the repository's .env.example")
+                }
+                Ok(core::dotenv::EnvOrigin::Repo) => append_line(
+                    app,
+                    entry,
+                    "kept the .env this repository ships — only the database, URLs and any                      unset salts are written",
+                ),
+                Ok(core::dotenv::EnvOrigin::Seeded) => append_line(
+                    app,
+                    entry,
+                    "! this repository ships no .env.example — wrote a minimal one",
+                ),
+                Err(e) => return JobEnd::Failed(e.to_string()),
+            }
+            let env_file = project.join(".env");
+            let original = match std::fs::read_to_string(&env_file) {
+                Ok(t) => t,
+                Err(e) => {
+                    return JobEnd::Failed(format!(
+                        "this project has no .env to wire ({}): {e}",
+                        env_file.display()
+                    ))
+                }
+            };
+            let wired = core::wordpress::wire_bedrock_env(
+                &original,
+                &format!("https://{}", site.domain),
+                &core::wordpress::BedrockDb {
+                    name: site.db_name.clone(),
+                    user: "root".into(),
+                    password: String::new(),
+                    host: db_host.clone(),
+                },
+            );
+            if let Err(e) = std::fs::write(&env_file, wired) {
+                return JobEnd::Failed(format!("writing {} failed: {e}", env_file.display()));
+            }
+            append_line(app, entry, ".env wired to this site's database and URL");
+        } else if !docroot.join("wp-config.php").exists() {
             let args: Vec<String> = vec![
                 "config".into(),
                 "create".into(),

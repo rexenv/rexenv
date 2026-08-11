@@ -356,11 +356,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
                 setProbed(null);
                 setGitRef("");
               }}
-              // WordPress is not offered from a repository: a checkout without
-              // its database is not a site, and the backend refuses it. Not
-              // rendering the choice is better than rendering a button whose
-              // only outcome is an error.
-              gitAllowed={siteType !== "wordpress"}
+              gitAllowed
+              siteType={siteType}
               gitUrl={gitUrl}
               setGitUrl={(v) => {
                 setGitUrl(v);
@@ -522,6 +519,7 @@ function GitSourceFields({
   p,
 }: {
   p: {
+    siteType: SiteType;
     gitUrl: string;
     setGitUrl: (v: string) => void;
     gitRef: string;
@@ -582,20 +580,35 @@ function GitSourceFields({
               ariaLabel="Branch or tag to check out"
             />
           </div>
-          <label className="flex cursor-pointer items-start gap-2">
-            <input
-              type="checkbox"
-              checked={p.gitMigrate}
-              onChange={(e) => p.setGitMigrate(e.target.checked)}
-              className="mt-[2px] h-3.5 w-3.5 flex-none accent-brand"
-            />
-            <span className="text-[0.6875rem] leading-[1.5] text-rex-text-muted">
-              Run <span className="font-mono text-rex-text-bright">php artisan migrate</span> —
-              this site's database is created empty by the same job, so there is nothing to
-              lose. Turn it off for a project whose migrations need seed data or a service
-              that isn't running yet.
-            </span>
-          </label>
+          {p.siteType === "wordpress" && (
+            /* The promise this flow can and cannot keep, said BEFORE Create.
+               "Clone my site" and "clone my site's code" are different things,
+               and only the second one is on offer — the database that makes a
+               WordPress site a site lives nowhere in a repository. */
+            <div className="rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-status-warning-bright">
+              Your <span className="font-medium">code</span> comes from the repository; the{" "}
+              <span className="font-medium">database is new and empty</span>. WordPress is
+              installed into it with the admin account below — none of your posts, options or
+              users come along. Import a dump from the site's Database tab afterwards if you
+              want them.
+            </div>
+          )}
+          {p.siteType === "laravel" && (
+            <label className="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                checked={p.gitMigrate}
+                onChange={(e) => p.setGitMigrate(e.target.checked)}
+                className="mt-[2px] h-3.5 w-3.5 flex-none accent-brand"
+              />
+              <span className="text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+                Run <span className="font-mono text-rex-text-bright">php artisan migrate</span> —
+                this site's database is created empty by the same job, so there is nothing to
+                lose. Turn it off for a project whose migrations need seed data or a service
+                that isn't running yet.
+              </span>
+            </label>
+          )}
           <label className="flex cursor-pointer items-start gap-2">
             <input
               type="checkbox"
@@ -613,11 +626,16 @@ function GitSourceFields({
           <div className="rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
             Creating this site runs the repository's own code:{" "}
             <span className="font-mono text-rex-text-bright">composer install</span> (which runs
-            the project's Composer scripts), then{" "}
-            <span className="font-mono text-rex-text-bright">artisan key:generate</span>
-            {p.gitMigrate && (
+            the project's Composer scripts
+            {p.siteType !== "laravel" && ", and is skipped when there is no composer.json"})
+            {p.siteType === "laravel" && (
               <>
-                {" "}and <span className="font-mono text-rex-text-bright">artisan migrate</span>
+                , then <span className="font-mono text-rex-text-bright">artisan key:generate</span>
+                {p.gitMigrate && (
+                  <>
+                    {" "}and <span className="font-mono text-rex-text-bright">artisan migrate</span>
+                  </>
+                )}
               </>
             )}
             {p.gitBuildAssets && (
@@ -668,6 +686,7 @@ function Step2(p: {
   source: DocrootSource;
   setSource: (v: DocrootSource) => void;
   gitAllowed: boolean;
+  siteType: SiteType;
   gitUrl: string;
   setGitUrl: (v: string) => void;
   gitRef: string;
