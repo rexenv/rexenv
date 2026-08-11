@@ -1,12 +1,13 @@
-# Create a site FROM a Git repository — Laravel first
+# Create a site FROM a Git repository
 
-**Status: Stages 1–3 SHIPPED 11 Aug 2026** (`de07ed0` → HEAD), planned the same day
-against `62a9f9e`. Stage 4 is designed here and open in `docs/TODO.md`.
+**Status: SHIPPED 11 Aug 2026, Stages 1–4** (`de07ed0` → HEAD), planned the same day
+against `62a9f9e`. One open caveat: Bedrock/Radicle is unverified against a real project
+(`docs/TODO.md`, ledger #294).
 
-Machine-verified (734 lib tests + `git_site_clone_check` on the sandbox tier); the
+Machine-verified (745 lib tests + `git_site_clone_check` on the sandbox tier); the
 packaged-app half — real event streaming into WKWebView, a real remote, your own SSH
 agent, and the non-fatal asset build — is `docs/SMOKE-TEST.md` § "a Laravel site FROM a
-git repository" and has **not** been run yet. Questions 3–5 in §5 remain open.
+git repository" and has **not** been run yet. Questions 4–5 in §5 remain open.
 
 Goal, in the user's words: *"Laravel developers keep their projects in git — rexenv must
 let them paste a repo URL and get a working local site."* Today the Laravel card can only
@@ -336,11 +337,30 @@ Small commits, one task each, `scripts/verify.sh` green before every one.
     cannot have a traversal bug, and the asset kinds' M7 gate is untouched.
   - It also closes Stage 2's known gap: the repo's package.json scripts are listed here,
     so a Vite build can be re-run (or `dev` watched) long after create.
-- **Stage 4 — any PHP repo, and WordPress.** `detect_project` already classifies Symfony,
-  Craft, Statamic, Magento and generic front controllers; recording its `docroot_rel` as
-  `docroot_subdir` makes all of them work with no new detection code. WordPress from git
-  is deliberately last: a WP repo without its database is not a site, so it belongs behind
-  the database-import work (`docs/PLAN-valet-herd-db-import.md`), not beside it.
+- **Stage 4 — any PHP repo, and WordPress. SHIPPED 11 Aug 2026.** Two halves, and the
+  first was smaller than it looked while the second was larger.
+  - **Any PHP repo** was almost done by Stage 1 — `detect_project` classifies Symfony,
+    Craft, Statamic and Magento, and the clone already recorded their `docroot_rel`. What
+    was missing is that `vendor/` is gitignored in every one of them, so the clone
+    produced a document root pointing at a front controller that could not run. A cloned
+    Blank-PHP site now gets the `deps` phase (skipped, not failed, without a
+    `composer.json`) and no database engine.
+  - **WordPress** turned out to need almost no new phases: `core_download`, `configure`
+    and `core_install` were ALREADY skip-aware, so a cloned site runs the same four with
+    a dependency step in front. This plan said it belonged behind the database-import
+    work; what it actually needed was to stop pretending the database question does not
+    exist — the dialog says, before Create, that the code comes from the repository and
+    the database is new and empty, with the Database tab's dump import as the other half.
+  - **Roots' Bedrock/Radicle is the one real fork.** Composer owns core and `.env` owns
+    the configuration, so one answer (`sites::wordpress_core_from_composer`) turns off
+    both `core_download` and `wp config create`, and `wordpress::wire_bedrock_env` writes
+    the database, the URLs and any UNSET salts. ⚠ **Unverified against a real Bedrock
+    project** — the key set is from Roots' documented example, filed in `docs/TODO.md`
+    with a SMOKE-TEST checklist rather than left as a comfortable silence.
+  - **The bug this stage found**: the served root and the content dir were recorded at
+    CREATE, from a folder that was still empty — so a cloned Bedrock site would have had
+    every mu-plugin written into a `web/wp-content` it does not load. Both are now
+    re-read from the checkout.
 
 ---
 
@@ -350,9 +370,9 @@ Small commits, one task each, `scripts/verify.sh` green before every one.
    checkbox**, shipped 11 Aug (v34; the choice is recorded so Retry honours it).
 2. ~~**Node assets**~~ — **answered: Stage 2**, shipped 11 Aug (§4). Default ON and
    non-fatal; say if you'd rather it were opt-in.
-3. ~~**Which types may be cloned in v1**~~ — **settled in Stage 1** (§2.2): Laravel +
-   Blank PHP; WordPress refused with a message, because a checkout without its database
-   is not a site. Say if you want it narrower.
+3. ~~**Which types may be cloned**~~ — **settled**: Laravel + Blank PHP in Stage 1,
+   WordPress added in Stage 4 once the database promise could be STATED rather than
+   designed around (§2.2 records the earlier refusal and why it changed).
 4. **Placement** — the New Site dialog's source selector (recommended), or a row in the
    existing `/import` route? The Import route is about migrating a whole existing dev
    environment (Valet/Herd); one repo is a *new site*, not a migration.
