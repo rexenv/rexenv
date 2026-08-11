@@ -116,6 +116,55 @@ pub fn env_path(project: &Path) -> PathBuf {
     project.join(".env")
 }
 
+/// Where a CLONED project's `.env` came from. Returned rather than logged
+/// inside, so the caller can say it in the job log — "copied from
+/// `.env.example`" and "kept the one the repository committed" are different
+/// facts, and a developer debugging their config needs to know which happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnvOrigin {
+    /// The repository committed a `.env` (against Laravel's own advice, but it
+    /// happens). KEPT — [`wire_env`] rewrites only `APP_URL` and the `DB_*`
+    /// block on top of it. Replacing a file the repo shipped would silently
+    /// drop mail, queue and third-party keys the app needs.
+    Repo,
+    /// Copied from the repository's `.env.example` — the normal case, and the
+    /// step `composer install` will NOT do for us: the copy is
+    /// `create-project`'s `post-root-package-install` script, which never fires
+    /// on a plain install.
+    Example,
+    /// Neither existed. rexenv wrote a minimal local-development seed rather
+    /// than leaving the app on framework defaults, where `APP_ENV` reads
+    /// `production` and `APP_DEBUG` false — a local site that hides its own
+    /// errors is the least useful failure mode there is.
+    Seeded,
+}
+
+/// The `.env` a freshly cloned project needs, without ever overwriting one.
+///
+/// Idempotent by construction: an existing `.env` is reported, not rewritten,
+/// so a Retry after a later phase failed cannot discard credentials the first
+/// run (or the developer) already put there.
+pub fn ensure_env_file(project: &Path) -> Result<EnvOrigin> {
+    let env = env_path(project);
+    if env.exists() {
+        return Ok(EnvOrigin::Repo);
+    }
+    let example = project.join(".env.example");
+    if example.is_file() {
+        std::fs::copy(&example, &env).map_err(|e| {
+            Error::Other(format!("copying .env.example to .env failed: {e}"))
+        })?;
+        return Ok(EnvOrigin::Example);
+    }
+    // The keys [`wire_env`] does not set and Laravel would otherwise default to
+    // its production posture. Deliberately short: everything else is the
+    // project's business, and inventing config it never asked for is how a
+    // "helpful" default becomes a bug report about rexenv.
+    std::fs::write(&env, "APP_NAME=Laravel\nAPP_ENV=local\nAPP_DEBUG=true\n")
+        .map_err(|e| Error::Other(format!("writing {} failed: {e}", env.display())))?;
+    Ok(EnvOrigin::Seeded)
+}
+
 /// The database connection a site's `.env` must describe.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbSettings {
@@ -290,6 +339,65 @@ mod tests {
         assert_eq!(out.matches("DB_HOST=").count(), 1);
         assert!(out.contains("DB_HOST=127.0.0.1"));
         assert!(!out.contains("db.internal"));
+    }
+
+    /// Fresh throwaway project dir. Named per test so a failure leaves exactly
+    /// one identifiable directory behind, and removed only by path we built.
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("rexenv-laravel-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// The three shapes a cloned repo actually arrives in, and the one thing
+    /// that must never happen in any of them: an existing `.env` being lost.
+    #[test]
+    fn ensure_env_file_never_overwrites_and_names_where_the_file_came_from() {
+        // Normal: `.env` gitignored, `.env.example` committed.
+        let dir = scratch("env-example");
+        std::fs::write(dir.join(".env.example"), "APP_NAME=Shop\nMAIL_MAILER=log\n").unwrap();
+        assert_eq!(ensure_env_file(&dir).unwrap(), EnvOrigin::Example);
+        let written = std::fs::read_to_string(env_path(&dir)).unwrap();
+        assert!(written.contains("MAIL_MAILER=log"), "the example's own keys must survive");
+
+        // Second run (a Retry after a later phase failed): reported, NOT redone.
+        // Proven by content, not by the verdict alone — a copy that ran again
+        // would return `Example` too and quietly discard the edit below.
+        std::fs::write(env_path(&dir), "APP_NAME=Shop\nMAIL_MAILER=smtp\nAPP_KEY=base64:x\n")
+            .unwrap();
+        assert_eq!(ensure_env_file(&dir).unwrap(), EnvOrigin::Repo);
+        let kept = std::fs::read_to_string(env_path(&dir)).unwrap();
+        assert!(kept.contains("MAIL_MAILER=smtp"), "an existing .env is never re-copied over");
+        assert!(kept.contains("APP_KEY=base64:x"), "a generated key must survive a retry");
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        // Repo committed a `.env`: kept whole. `wire_env` rewrites APP_URL and
+        // the DB block on top; dropping the file would take the app's mail,
+        // queue and third-party keys with it.
+        let dir = scratch("env-committed");
+        std::fs::write(dir.join(".env"), "STRIPE_KEY=sk_live_xyz\n").unwrap();
+        std::fs::write(dir.join(".env.example"), "STRIPE_KEY=\n").unwrap();
+        assert_eq!(ensure_env_file(&dir).unwrap(), EnvOrigin::Repo);
+        assert!(std::fs::read_to_string(env_path(&dir)).unwrap().contains("sk_live_xyz"));
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        // Neither: a seed that keeps the site debuggable. Laravel's own
+        // fallbacks are the production posture (`APP_ENV=production`,
+        // `APP_DEBUG=false`) — a local site that hides its errors.
+        let dir = scratch("env-neither");
+        assert_eq!(ensure_env_file(&dir).unwrap(), EnvOrigin::Seeded);
+        let seeded = std::fs::read_to_string(env_path(&dir)).unwrap();
+        assert!(seeded.contains("APP_ENV=local"));
+        assert!(seeded.contains("APP_DEBUG=true"));
+        // The seed is the floor, not a config the user never asked for: the
+        // DB block is `wire_env`'s job and must not be guessed at here.
+        assert!(!seeded.contains("DB_"), "the seed invents no database settings: {seeded}");
+        // And it composes: wiring the seed yields a complete local .env.
+        let wired = wire_env(&seeded, "https://shop.rex", &db());
+        assert!(wired.contains("APP_ENV=local") && wired.contains("DB_DATABASE=lv_shop_rex"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
