@@ -91,9 +91,10 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       `installing dependencies` (skipped without composer.json), `downloading
       WordPress core`, `writing wp-config + creating database`, `installing
       WordPress`. The site loads, wp-admin logs in, and the repo's theme is there.
-- [ ] ⚠ **Bedrock** (`docs/PLAN-git-site-clone.md` §4, ledger #294 — the one path
-      built from Roots' docs rather than a live project). Clone a real Bedrock repo
-      as WordPress:
+- [ ] **Bedrock** — machine-verified end to end by `git_site_provision_check` case 4
+      (`ONLY=bedrock`), so this is a spot-check of the packaged app, not the proof.
+      ⚠ **Radicle is still the unverified one** (same code path, no live project).
+      Clone a real Bedrock repo as WordPress:
       - `downloading WordPress core` reports **skipped** ("installs core through
         Composer"), and there is exactly ONE WordPress — `web/wp`, nothing in `web/`.
       - `web/wp-config.php` is still the repository's stub (it `require`s

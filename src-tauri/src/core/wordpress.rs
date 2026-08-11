@@ -107,6 +107,35 @@ pub struct BedrockDb {
     pub host: String,
 }
 
+/// The directory wp-cli must treat as the WordPress root for `docroot`.
+///
+/// Roots' layouts are the whole reason this exists: Composer installs core into
+/// `<docroot>/wp`, so wp-cli started in `docroot` finds no `wp-load.php` and
+/// refuses with *"This does not seem to be a WordPress installation"* — which is
+/// exactly how a cloned Bedrock site failed its `wp core install` before this
+/// (found by `git_site_provision_check`, 11 Aug 2026).
+///
+/// Derived at USE time rather than recorded, which is the opposite of what this
+/// codebase does for `content_dir` — deliberately, and the difference is who
+/// owns the directory. The content dir is a place rexenv WRITES into, so a
+/// use-time probe could be poisoned by rexenv's own past mistakes (v24's
+/// reasoning). The core dir is a place Composer owns and rexenv only reads;
+/// there is nothing of ours in `<docroot>/wp` to mislead a later probe, and
+/// deriving it covers a LINKED Bedrock checkout too — which has no creation
+/// moment at which anything could have been recorded.
+pub fn core_root(docroot: &Path) -> PathBuf {
+    if !docroot.join("wp-load.php").is_file() && docroot.join("wp/wp-load.php").is_file() {
+        return docroot.join("wp");
+    }
+    docroot.to_path_buf()
+}
+
+/// [`core_root`] as a wp-cli flag, or `None` when the docroot IS the root.
+pub fn core_path_arg(docroot: &Path) -> Option<String> {
+    let root = core_root(docroot);
+    (root != docroot).then(|| format!("--path={}", root.display()))
+}
+
 pub fn wp_cli(
     php_bin: &Path,
     wp_phar: &Path,
@@ -121,6 +150,15 @@ pub fn wp_cli(
         .args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
+        // Added HERE, at the one place every wp-cli invocation is assembled, so
+        // a composer-managed layout works for EVERY caller rather than for the
+        // one that happened to be debugged. A caller that already said `--path`
+        // keeps its own answer.
+        if !args.iter().any(|a| a.starts_with("--path=")) {
+            if let Some(path) = core_path_arg(dir) {
+                cmd.arg(path);
+            }
+        }
     }
     Ok(cmd.output()?)
 }
@@ -2562,7 +2600,13 @@ pub fn wp_step_streamed(
     let mut full: Vec<String> =
         vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()];
     full.extend(args.iter().map(|s| s.to_string()));
-    full.push(format!("--path={}", docroot.display()));
+    // The WordPress ROOT, which is the docroot everywhere except Roots'
+    // layouts — there Composer installs core into `<docroot>/wp`, and this line
+    // pinned wp-cli to a directory with no `wp-load.php` in it. A cloned
+    // Bedrock site's `wp core install` failed with "This does not seem to be a
+    // WordPress installation" until this stopped assuming (found by
+    // `git_site_provision_check`, 11 Aug 2026).
+    full.push(format!("--path={}", core_root(docroot).display()));
     super::repo::run_step_streamed(
         stream.sup, php_bin, &full, docroot, stream.env, stream.cancel, on_line, None,
     )
@@ -3609,6 +3653,53 @@ Error: WordPress installation doesn't verify against checksums.";
         assert!(theme_screenshot(&docroot, "wp-content", "no-such-theme").is_none());
 
         std::fs::remove_dir_all(&docroot).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod core_root_tests {
+    use super::*;
+
+    fn scratch(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rexenv-coreroot-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// The bug this exists for: `wp_step_streamed` pinned `--path` to the
+    /// docroot, and a cloned Bedrock site's `wp core install` answered "This
+    /// does not seem to be a WordPress installation" — its core is one folder
+    /// in, at `web/wp`.
+    #[test]
+    fn the_wordpress_root_is_the_docroot_except_where_composer_put_core_one_level_in() {
+        // Stock: the docroot IS the root.
+        let d = scratch("stock");
+        std::fs::write(d.join("wp-load.php"), "<?php").unwrap();
+        assert_eq!(core_root(&d), d);
+        assert_eq!(core_path_arg(&d), None, "no flag when there is nothing to correct");
+
+        // Roots: core in `wp/`.
+        let d = scratch("bedrock");
+        std::fs::create_dir_all(d.join("wp")).unwrap();
+        std::fs::write(d.join("wp/wp-load.php"), "<?php").unwrap();
+        assert_eq!(core_root(&d), d.join("wp"));
+        assert_eq!(core_path_arg(&d), Some(format!("--path={}", d.join("wp").display())));
+
+        // BOTH present — a stock install that happens to have a `wp/` folder.
+        // The docroot wins: it is the one WordPress actually boots from, and
+        // guessing the other way would point wp-cli at somebody's plugin.
+        std::fs::write(d.join("wp-load.php"), "<?php").unwrap();
+        assert_eq!(core_root(&d), d);
+
+        // Neither: a docroot before `wp core download` has run. Unchanged, so
+        // the download lands where it always did.
+        let d = scratch("empty");
+        assert_eq!(core_root(&d), d);
+        assert_eq!(core_path_arg(&d), None);
+        for t in ["stock", "bedrock", "empty"] {
+            let _ = std::fs::remove_dir_all(scratch(t));
+        }
     }
 }
 

@@ -1960,15 +1960,41 @@ pub fn map_composer_error(tail: &[String]) -> Error {
             last_lines(tail, 3)
         ));
     }
+    // Never REACHED the network: DNS or connect failed, so nothing was
+    // downloaded and "check your connection" is the true advice.
     if joined.contains("Could not resolve host")
-        || joined.contains("curl error")
         || joined.contains("getaddrinfo")
+        || joined.contains("curl error 6 ")
+        || joined.contains("curl error 7 ")
+        || joined.contains("Connection refused")
+        || joined.contains("Network is unreachable")
     {
-        return Error::Other(
+        return Error::Other(format!(
             "Composer can't reach the package registry — you look offline. \
-             Check your connection and retry."
-                .into(),
-        );
+             Check your connection and retry.\n{}",
+            last_lines(tail, 3)
+        ));
+    }
+    // A transfer that STARTED and then died. Told apart from the case above
+    // because the advice is different and the old message was actively
+    // misleading: a real run resolved 72 packages and downloaded 24 of 25
+    // before ONE dist zip dropped its connection mid-stream (`curl error 56 …
+    // ngtcp2 … ERR_DRAINING`, HTTP/3 draining), and the user was told to check
+    // a connection that had just moved 20 MB. Retrying really does fix this
+    // one, and the tail says which package — both of which the old branch
+    // threw away.
+    if joined.contains("Failed to download")
+        || joined.contains("curl error 56")
+        || joined.contains("curl error 18")
+        || joined.contains("curl error 28")
+        || joined.contains("Content-Length mismatch")
+    {
+        return Error::Other(format!(
+            "A package download failed part-way through — the connection to \
+             that file dropped, not the registry. Retry; it usually \
+             succeeds.\n{}",
+            last_lines(tail, 3)
+        ));
     }
     Error::Other(format!("composer install failed:\n{}", last_lines(tail, 3)))
 }
@@ -2020,6 +2046,43 @@ fn last_lines(tail: &[String], n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// The REAL tail of a failed `composer install`, copied verbatim from a
+    /// live Bedrock run (11 Aug 2026): 72 packages resolved, 24 of 25 dist
+    /// zips downloaded, and ONE dropped its HTTP/3 connection mid-stream. The
+    /// old mapping answered "you look offline" — to a machine that had just
+    /// moved twenty megabytes. A tidier invented fixture would not have caught
+    /// it, because the invented one always says "Could not resolve host".
+    const REAL_MID_DOWNLOAD_TAIL: [&str; 3] = [
+        "  Failed to download roots/wordpress-no-content from dist: curl error 56 while downloading https://downloads.w.org/release/wordpress-7.0.3-no-content.zip: ngtcp2_conn_writev_stream returned error: ERR_DRAINING",
+        "In CurlDownloader.php line 407:",
+        "  curl error 56 while downloading https://downloads.w.org/release/wordpress-7.0.3-no-content.zip: ngtcp2_conn_writev_stream returned error: ERR_DRAINING",
+    ];
+
+    #[test]
+    fn a_download_that_died_mid_stream_is_not_reported_as_being_offline() {
+        let tail: Vec<String> = super::tests::REAL_MID_DOWNLOAD_TAIL.iter().map(|s| s.to_string()).collect();
+        let msg = super::map_composer_error(&tail).to_string();
+        assert!(!msg.contains("look offline"), "the wrong cause: {msg}");
+        assert!(msg.contains("Retry"), "retry really does fix this one: {msg}");
+        // And the tail survives — the old branch discarded it, which is why
+        // the log read like a mystery.
+        assert!(msg.contains("roots/wordpress-no-content"), "name the package: {msg}");
+
+        // A machine that genuinely never reached the network still says so.
+        let offline: Vec<String> = vec![
+            "  [Composer\\Downloader\\TransportException]".into(),
+            "  curl error 6 while downloading https://repo.packagist.org/packages.json: Could not resolve host: repo.packagist.org".into(),
+        ];
+        let msg = super::map_composer_error(&offline).to_string();
+        assert!(msg.contains("look offline"), "{msg}");
+        assert!(msg.contains("packagist"), "the tail survives here too: {msg}");
+
+        // The platform refusals still win over both — they are the ones with
+        // an action that is not "try again".
+        let php: Vec<String> = vec!["  - Root composer.json requires php ^9.0 but your php version (8.3.31) does not satisfy that requirement.".into()];
+        assert!(super::map_composer_error(&php).to_string().contains("PHP version"));
+    }
+
     use super::*;
 
     fn parse(s: &str) -> RepoSource {

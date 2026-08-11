@@ -53,12 +53,14 @@ evidence cited.
   the dialog rather than discovered. `core/dotenv.rs` came out of `core/laravel.rs` for
   the second caller and immediately caught a duplicate-key bug. Ledger #289–297;
   `git_site_clone_check` §9–10.
-- [ ] ⚠ **Bedrock/Radicle from git is UNVERIFIED against a real project** (ledger #294,
-  filed 11 Aug 2026). The `.env` key set, the `${WP_HOME}/wp` convention and the
-  "Composer owns core" fork all come from Roots' documented example, not from a live
-  install — the same honest caveat `detect_content_dir_rel` has carried for Radicle
-  since v24. `docs/SMOKE-TEST.md` has the checklist; the first person to clone a real
-  Bedrock repo should work it and either tick this or file what broke.
+- [x] ⚠ **Bedrock from git — VERIFIED, and it was broken** (filed + fixed 11 Aug 2026,
+  same day). Shipped marked unverified; running it against the real `roots/bedrock`
+  found that `wp core install` was pinned to the docroot while Composer puts core in
+  `web/wp`, so every wp-cli call on a Bedrock site answered "This does not seem to be a
+  WordPress installation". ✓ `wordpress::core_root` follows the layout at the one place
+  the invocation is built (so LINKED Bedrock checkouts get it too); ledger #294 + #299;
+  `git_site_provision_check` case 4 now installs WordPress and lands 12 tables.
+  **Radicle is still unverified** — same code path, no live project to hand.
 
 - [x] **Every link opened in whatever browser the OS points at** (filed + fixed
   11 Aug 2026). rexenv could pick your code editor but not your browser, so a

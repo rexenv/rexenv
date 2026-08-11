@@ -47,7 +47,7 @@ it can:
 - **Cost:** seconds. **Runs:** every `verify.sh`. **Bug class:** logic regressions,
   drift in our own generation/parsing, unrepresentable-state violations.
 
-### L1 — Tool (`src-tauri/examples/*.rs`, 115 live checks)
+### L1 — Tool (`src-tauri/examples/*.rs`, 116 live checks)
 
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real
@@ -66,6 +66,13 @@ it can:
   `NewSite.path` with the resolved docroot before the clone/link rule ran, so every
   cloned site read as also-linked and was refused). **Building the fixture with the
   real tool is what makes a hermetic example an L1 rather than an L0 in disguise.**
+  Its network-tier sibling `git_site_provision_check` is the other half, and the one
+  that pays: it drives the REAL `site_provision_job` on a `tauri::test::mock_app`
+  against real remotes, and on its first run found **two bugs no unit test could
+  reach** — a composer download that died mid-stream reported as "you look offline"
+  (24 of 25 packages had just arrived), and `wp core install` pinned to the docroot on
+  a Bedrock site whose core Composer puts one level in. `ONLY=bedrock` runs one case;
+  each is a real `composer install`.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

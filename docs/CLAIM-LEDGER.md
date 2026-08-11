@@ -243,10 +243,12 @@ L3 = scripted manual.
 | 291 | dotenv.rs:1 | ONE `.env` writer for every framework — a commented key counts as present and is replaced in place, so a file never holds two answers | ✅ `a_commented_key_is_replaced_in_place_never_appended_beside`, `duplicates_collapse_and_an_exported_key_is_replaced_not_shadowed` |
 | 292 | dotenv.rs:96 | Filling a blank key collapses its duplicates even when it KEEPS the old value (skipping the write left a second, blank line behind) | ✅ `filling_a_key_collapses_its_duplicates_even_when_it_keeps_the_old_value` |
 | 293 | wordpress.rs:40 | Bedrock salts already set are never rotated — rotating logs every session out and kills every nonce, silently | ✅ `salts_that_already_exist_are_never_rotated` (incl. idempotence over two runs) |
-| 294 | wordpress.rs:40 | ⚠ The Bedrock `.env` key set + the `${WP_HOME}/wp` convention are from Roots' documented example, not a live install | 🚫 needs a real Bedrock project → SMOKE-TEST (same honest caveat `detect_content_dir_rel` carries for Radicle) |
+| 294 | wordpress.rs:40 | The Bedrock `.env` key set + the `${WP_HOME}/wp` convention work against a REAL Roots project | ✅ `git_site_provision_check` case 4 — clones `roots/bedrock`, composer installs core to `web/wp`, wires `.env`, and `wp core install` lands 12 tables (was 🚫 until 11 Aug 2026; running it found the `--path` bug, #299) |
 | 295 | site_provision.rs:855 | A cloned site's served root + content dir are read from the CHECKOUT, not from what creation guessed off an empty folder | ✅ `git_site_clone_check` §10 (Bedrock serves `web/` with `app`, stock serves its root with `wp-content`) |
 | 296 | sites.rs:820 | Only the Roots layouts get core from Composer — and that one answer turns off BOTH `core_download` and `wp config create` | ✅ `only_the_roots_layouts_get_their_wordpress_core_from_composer` (incl. the label matching what the detector really emits) |
 | 297 | site_provision.rs:245 | The blueprint phase never appears for a cloned site — the guard and the phase list are asserted equal | ✅ `the_guard_admits_exactly_the_shapes_phase_defs_gives_a_blueprint_phase` |
+| 298 | repo.rs:1963 | Composer's "you look offline" is reserved for never REACHING the network — a transfer that started and died says so instead, and both keep the tail | ✅ `a_download_that_died_mid_stream_is_not_reported_as_being_offline` (the real tail of a failed Bedrock run) |
+| 299 | wordpress.rs:35 | wp-cli's `--path` follows the LAYOUT's WordPress root — Roots put core one level in, and the docroot pin made every wp-cli call on a Bedrock site fail | ✅ `the_wordpress_root_is_the_docroot_except_where_composer_put_core_one_level_in` + `git_site_provision_check` case 4 |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -460,7 +462,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 207 · ◐ 43 · 🔨 41 · 🚫 6** of 297 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 210 · ◐ 43 · 🔨 41 · 🚫 5** of 299 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
