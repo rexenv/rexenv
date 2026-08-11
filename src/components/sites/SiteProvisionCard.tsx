@@ -251,6 +251,17 @@ export function SiteProvisionCard({
           Quit it and rexenv takes the port back automatically — the site itself is ready.
         </div>
       )}
+      {!running && job.status === "ok" && job.assetsWarning && (
+        /* Everything rexenv is responsible for worked — the site is created,
+           wired and serving. What didn't is the repo's own build, run with the
+           developer's own toolchain, so the honest report names it here rather
+           than parking a working site behind a failure glyph. */
+        <div className="mt-1 rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[0.6875rem] text-status-warning-bright">
+          <span className="font-medium">Front-end assets weren't built.</span>{" "}
+          {job.assetsWarning} The site is created and serving — build them yourself in the
+          project folder when you're ready.
+        </div>
+      )}
       {!running && END_COPY[job.status] && (
         <div className="mt-1 whitespace-pre-line text-[0.6875rem] text-rex-text-muted">
           {END_COPY[job.status]}

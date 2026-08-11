@@ -71,6 +71,7 @@ async fn main() {
         git_url: String::new(),
         git_ref: None,
         git_migrate: true,
+        git_build_assets: false,
     };
     let collect = |id: &str| {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));

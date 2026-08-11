@@ -495,6 +495,20 @@ const MIGRATIONS: &[&str] = &[
     // and every non-Laravel site never reaches the step at all. Read through
     // `Site::runs_migrations()` so the default lives in one place.
     "ALTER TABLE sites ADD COLUMN git_migrate INTEGER;",
+    // v35 — did the user ask for the repo's front-end assets to be built?
+    //
+    // The sibling of v34 and for the same reason: Retry rebuilds the phase list
+    // from the row, so an answer that lives only in the job reverses itself the
+    // first time anything is retried.
+    //
+    // NULL means OFF here, where v34's means ON — and both are exact rather than
+    // conventions. Nothing before this column ever ran a package manager during
+    // provisioning, so "no record" provably means it did not happen; for
+    // migrations, every Laravel site provably ran them. The defaults differ
+    // because the histories differ, which is why each is read through a named
+    // method (`Site::builds_assets`, `Site::runs_migrations`) instead of an
+    // `unwrap_or` a reader has to guess at.
+    "ALTER TABLE sites ADD COLUMN git_build_assets INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

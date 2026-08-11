@@ -132,6 +132,12 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   // repo whose migrations need seeded data or an external service would
   // otherwise leave the site "setup incomplete" with no way to say "skip it".
   const [gitMigrate, setGitMigrate] = useState(true);
+  // Assets default ON: a Laravel app with Vite throws "Unable to locate file in
+  // Vite manifest" on page one until `npm run build` has run, so the default
+  // that produces a WORKING site is the one that builds them. Disclosed rather
+  // than hidden — the box below Create lists every command that will run — and
+  // a checkbox for the developer who'd rather drive their own toolchain.
+  const [gitBuildAssets, setGitBuildAssets] = useState(true);
   const probe = useMutation({
     mutationFn: (raw: string) => repoProbe(raw),
     onSuccess: (p) => {
@@ -242,6 +248,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           gitUrl: fromGit ? (probed?.url ?? gitUrl.trim()) : "",
           gitRef: fromGit && gitRef ? gitRef : null,
           gitMigrate,
+          gitBuildAssets,
         },
         installingWp
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
@@ -365,6 +372,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               setGitRef={setGitRef}
               gitMigrate={gitMigrate}
               setGitMigrate={setGitMigrate}
+              gitBuildAssets={gitBuildAssets}
+              setGitBuildAssets={setGitBuildAssets}
               probed={probed}
               probing={probe.isPending}
               onProbe={() => probe.mutate(gitUrl.trim())}
@@ -519,6 +528,8 @@ function GitSourceFields({
     setGitRef: (v: string) => void;
     gitMigrate: boolean;
     setGitMigrate: (v: boolean) => void;
+    gitBuildAssets: boolean;
+    setGitBuildAssets: (v: boolean) => void;
     probed: RepoProbeResult | null;
     probing: boolean;
     onProbe: () => void;
@@ -585,6 +596,20 @@ function GitSourceFields({
               that isn't running yet.
             </span>
           </label>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              checked={p.gitBuildAssets}
+              onChange={(e) => p.setGitBuildAssets(e.target.checked)}
+              className="mt-[2px] h-3.5 w-3.5 flex-none accent-brand"
+            />
+            <span className="text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+              Build front-end assets — a Vite app shows{" "}
+              <span className="font-mono">Unable to locate file in Vite manifest</span> on its
+              first page until it has been built. Uses the Node in your own shell (nvm
+              included); if that fails the site is still created and says so.
+            </span>
+          </label>
           <div className="rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
             Creating this site runs the repository's own code:{" "}
             <span className="font-mono text-rex-text-bright">composer install</span> (which runs
@@ -595,9 +620,15 @@ function GitSourceFields({
                 {" "}and <span className="font-mono text-rex-text-bright">artisan migrate</span>
               </>
             )}
-            . Front-end assets are not built — run{" "}
-            <span className="font-mono text-rex-text-bright">npm install</span> yourself if the
-            project needs it.
+            {p.gitBuildAssets && (
+              <>
+                , then the repository's package manager —{" "}
+                <span className="font-mono text-rex-text-bright">install</span> (postinstall
+                scripts included) and{" "}
+                <span className="font-mono text-rex-text-bright">run build</span>
+              </>
+            )}
+            .
           </div>
         </>
       ) : (
@@ -643,6 +674,8 @@ function Step2(p: {
   setGitRef: (v: string) => void;
   gitMigrate: boolean;
   setGitMigrate: (v: boolean) => void;
+  gitBuildAssets: boolean;
+  setGitBuildAssets: (v: boolean) => void;
   probed: RepoProbeResult | null;
   probing: boolean;
   onProbe: () => void;

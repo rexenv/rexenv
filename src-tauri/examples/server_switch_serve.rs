@@ -53,6 +53,7 @@ async fn main() {
             git_url: String::new(),
             git_ref: None,
             git_migrate: true,
+            git_build_assets: false,
     }).expect("provision");
 
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT });

@@ -1,12 +1,12 @@
-# Create a site FROM a Git repository — Laravel first (Stage 1)
+# Create a site FROM a Git repository — Laravel first
 
-**Status: Stage 1 SHIPPED 11 Aug 2026** (`de07ed0` → `fe98104`), planned the same day
-against `62a9f9e`. Stages 2–4 are designed here and open in `docs/TODO.md`.
+**Status: Stages 1–2 SHIPPED 11 Aug 2026** (`de07ed0` → HEAD), planned the same day
+against `62a9f9e`. Stages 3–4 are designed here and open in `docs/TODO.md`.
 
-Stage 1 is machine-verified (726 lib tests + `git_site_clone_check` on the sandbox tier);
-the packaged-app half — real event streaming into WKWebView, a real remote, your own SSH
-agent — is `docs/SMOKE-TEST.md` § "a Laravel site FROM a git repository" and has **not**
-been run yet. Three questions in §5 are still open for the user.
+Machine-verified (730 lib tests + `git_site_clone_check` on the sandbox tier); the
+packaged-app half — real event streaming into WKWebView, a real remote, your own SSH
+agent, and the non-fatal asset build — is `docs/SMOKE-TEST.md` § "a Laravel site FROM a
+git repository" and has **not** been run yet. Questions 3–5 in §5 remain open.
 
 Goal, in the user's words: *"Laravel developers keep their projects in git — rexenv must
 let them paste a repo URL and get a working local site."* Today the Laravel card can only
@@ -299,13 +299,24 @@ Small commits, one task each, `scripts/verify.sh` green before every one.
 
 ## 4. Stages 2–4 (designed, not built)
 
-- **Stage 2 — frontend assets.** A Laravel app with Vite throws *"Unable to locate file in
-  Vite manifest"* until `npm run build` has run, so Stage 1 is honest-but-incomplete for
-  most real repos: it logs the fact and names the panel to use. Stage 2 adds
-  `npm install` / `npm run build` as explicit steps on the site (reusing
-  `repo_run_step` + `repoJobUi`), and an opt-in checkbox in the create dialog. Kept out of
-  Stage 1 because node resolution is the developer's nvm toolchain, and a node failure
-  must not mark an otherwise-serving site "setup incomplete".
+- **Stage 2 — frontend assets. SHIPPED 11 Aug 2026** (`240566b` →). A Laravel app with
+  Vite throws *"Unable to locate file in Vite manifest"* until `npm run build` has run,
+  so Stage 1 was honest-but-incomplete for most real repos. Built as an `assets` phase
+  of the CLONE rather than of Laravel — any repository can carry a `package.json` — with
+  the package manager taken from the repo's own `packageManager` field (lockfile second)
+  and run from the developer's login-shell Node. Two things came out differently from
+  this plan, both deliberate:
+  - **Default ON, not opt-in.** The default that produces a working site is the one that
+    builds. It is disclosed rather than hidden: the box above Create lists every command
+    that will run, `install` (postinstall scripts included) and `run build` among them.
+  - **Non-fatal, which is what "must not mark an otherwise-serving site incomplete"
+    actually required.** The job settles `ok` with an `assets_warning` the card shows as
+    a warning banner — the same "succeeded, but" shape as `serving_blocked`. Failing the
+    job would park a created, wired, serving site behind a Retry that re-runs the clone,
+    the database and Composer to reach the one step that was never rexenv's to
+    guarantee.
+  - **Still open:** re-running the build LATER. It is offered only at create; a per-site
+    step runner belongs with Stage 3's RepoPanel.
 - **Stage 3 — a Git panel on the site itself.** `core::repo`'s git ops are all
   path-based (`read_git_status`, `git_fetch`, `git_pull_ff`, `git_checkout`,
   `loss_warning`), so pointing the existing `RepoPanel` at the project root is mostly
@@ -321,11 +332,10 @@ Small commits, one task each, `scripts/verify.sh` green before every one.
 
 ## 5. Open questions (asked; answer changes only the marked items)
 
-1. **`artisan migrate` in the create flow** — default ON with a checkbox (recommended:
-   the database is new and empty, so there is nothing to lose), or never automatic?
-   → affects §2.5 phase 7 only.
-2. **Node assets** — Stage 2 as planned, or pulled into Stage 1 as an opt-in phase?
-   → affects the Stage ordering, not the design.
+1. ~~**`artisan migrate` in the create flow**~~ — **answered: default ON with a
+   checkbox**, shipped 11 Aug (v34; the choice is recorded so Retry honours it).
+2. ~~**Node assets**~~ — **answered: Stage 2**, shipped 11 Aug (§4). Default ON and
+   non-fatal; say if you'd rather it were opt-in.
 3. ~~**Which types may be cloned in v1**~~ — **settled in Stage 1** (§2.2): Laravel +
    Blank PHP; WordPress refused with a message, because a checkout without its database
    is not a site. Say if you want it narrower.

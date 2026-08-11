@@ -603,6 +603,7 @@ mod tests {
             git_url: None,
             git_ref: None,
             git_migrate: None,
+            git_build_assets: None,
         };
         assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
         for ws in [WebServer::Apache, WebServer::Frankenphp] {

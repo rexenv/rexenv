@@ -21,6 +21,14 @@
 //!   5. A failed clone (a ref that does not exist) leaves the same clean state.
 //!   6. Creating a Blank-PHP site from a repo does NOT write the phpinfo probe
 //!      page — which would make prepare block its own clone phase.
+//!   7. The front-end asset phase's inputs are read correctly off a real
+//!      checkout: the repo's `packageManager` field beats its lockfile, the
+//!      build script is seen, and `node_modules` is NOT in the clone.
+//!
+//! What it does NOT prove: the asset build itself. `<manager> install` /
+//! `run build` are the developer's own toolchain and are covered against real
+//! binaries by `repo_run_all_check` (network tier); the non-fatal outcome the
+//! provisioning phase wraps them in is a `docs/SMOKE-TEST.md` item.
 //!
 //! Everything written lives under this example's own temp root or the sandbox
 //! app-data root; nothing is derived from the real `Paths` (examples/common).
@@ -133,6 +141,28 @@ fn main() {
     );
     let plain_remote =
         make_repo(&remotes, "tools", &[("index.php", "<?php echo 'tools';\n")]);
+    // A Laravel repo with a Vite front end, in the shape one really ships:
+    // `packageManager` pinned, a lockfile that disagrees with it (the field is
+    // authoritative — a fixture where both agree proves nothing), and a build
+    // script. `node_modules` is gitignored, which is the whole reason the
+    // assets phase exists.
+    let vite_remote = make_repo(
+        &remotes,
+        "storefront",
+        &[
+            ("artisan", "#!/usr/bin/env php\n<?php // fixture\n"),
+            ("public/index.php", "<?php echo 'storefront';\n"),
+            ("composer.json", "{\"name\":\"acme/storefront\"}\n"),
+            (".env.example", ENV_EXAMPLE),
+            (
+                "package.json",
+                "{\"packageManager\":\"pnpm@9.1.0\",\
+                  \"scripts\":{\"build\":\"vite build\",\"dev\":\"vite\"}}\n",
+            ),
+            ("package-lock.json", "{\"lockfileVersion\":3}\n"),
+            (".gitignore", ".env\n/vendor\n/node_modules\n/public/build\n"),
+        ],
+    );
 
     // The sites folder these fixture docroots live in — ours, not the app's.
     let sites_dir = scratch.join("Sites");
@@ -328,6 +358,7 @@ fn main() {
             git_url: "acme/tools".into(),
             git_ref: None,
             git_migrate: true,
+            git_build_assets: false,
         },
     )
     .expect("provision a cloning php site");
@@ -342,6 +373,55 @@ fn main() {
         ok = fail(&format!("the row must record the normalized repo, got {:?}", site.git_url));
     }
     println!("   docroot empty, repo recorded as {:?}", site.git_url);
+
+    // ── 7. What the assets phase reads off a real checkout ──────────────
+    println!("\n=== 7. front-end assets detected from the cloned tree ===");
+    let storefront = sites_dir.join("storefront.rex");
+    std::fs::create_dir_all(&storefront).expect("docroot");
+    let vite = sites::GitSource {
+        url: vite_remote.to_string_lossy().into_owned(),
+        git_ref: Some("main".into()),
+    };
+    match sites::clone_into_docroot(
+        plat.supervisor(),
+        &git,
+        &env,
+        &vite,
+        &storefront,
+        SiteType::Laravel,
+        &cancel,
+        &mut sink,
+    ) {
+        Ok(_) => {
+            // The phase runs THIS inspection against the real checkout — the
+            // manager is the repo's own answer, never a rexenv preference.
+            let inspection = repo::inspect_repo(&storefront);
+            match &inspection.node {
+                None => ok = fail("no package.json seen in a repo that ships one"),
+                Some(node) => {
+                    println!(
+                        "   {} (pinned by {}) · build script: {}",
+                        node.manager, node.pinned_by, node.has_build
+                    );
+                    if node.manager != "pnpm" || node.pinned_by != "packageManager" {
+                        ok = fail("the repo's `packageManager` field must beat its lockfile");
+                    }
+                    if !node.has_build {
+                        ok = fail("the build script was not detected");
+                    }
+                }
+            }
+            if !inspection.composer {
+                ok = fail("composer.json not seen — the deps phase would skip silently");
+            }
+            // node_modules is gitignored: the clone lands WITHOUT it, which is
+            // exactly why the phase is needed rather than optional polish.
+            if storefront.join("node_modules").exists() {
+                ok = fail("node_modules arrived in the clone?! the fixture is unrealistic");
+            }
+        }
+        Err(e) => ok = fail(&format!("clone failed: {e}")),
+    }
 
     println!("\n{}", if ok { "git_site_clone_check: PASS" } else { "git_site_clone_check: FAIL" });
     if !ok {

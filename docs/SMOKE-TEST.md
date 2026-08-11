@@ -69,6 +69,21 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       no `.rexenv-clone-*` folder left beside it.
 - [ ] **Retry** that site after quitting and relaunching the app: it re-clones
       (the row remembers the repository; the job registry did not survive).
+- [ ] The create dialog's two checkboxes both start ON. Untick **Run `php artisan
+      migrate`**: the `finalize` phase label reads "generating app key" (not "app key
+      + migrations"), the log says migrations were skipped, and the Databases screen
+      shows the database with **no** tables.
+- [ ] **Front-end assets.** With the box ticked, the card runs `building front-end
+      assets`, the log streams the repo's own package manager (pnpm/yarn/npm — its
+      choice, not ours), and `public/build/` exists afterwards. The site's first page
+      renders styled.
+- [ ] **A failing asset build must NOT break the site.** Point it at a repo whose
+      build fails (or temporarily rename your node), then create: the job still
+      settles **ok** with a green tick, an amber "Front-end assets weren't built"
+      banner naming the reason, and the site loads. It must NOT show "setup
+      incomplete" — this is the one non-fatal phase and the only way to check it.
+- [ ] A repo with no `package.json` and the box ticked: the phase reports **skipped**,
+      not failed.
 - [ ] New Site → **WordPress** offers no "From Git" choice at all.
 - [ ] Delete a cloned site → the folder AND its database go (it is a docroot
       rexenv created, and provisioning made the database).

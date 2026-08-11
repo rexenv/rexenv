@@ -19,7 +19,7 @@ use rusqlite::{params, Connection, Row};
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
      docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, \
-     docroot_subdir, git_url, git_ref, git_migrate";
+     docroot_subdir, git_url, git_ref, git_migrate, git_build_assets";
 
 /// Bound on the AGENT-controlled `agent_client` (v27). It arrives from MCP
 /// `initialize`'s `clientInfo.name`, bounded only by the session's 4 MB line
@@ -93,6 +93,9 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // v34: NULL = ON — exact, since every Laravel site made before this
         // column migrated unconditionally. Read via `Site::runs_migrations`.
         git_migrate: row.get::<_, Option<i64>>(26)?.map(|v| v != 0),
+        // v35: NULL = NO — exact, since nothing ran a package manager during
+        // provisioning before this column. Read via `Site::builds_assets`.
+        git_build_assets: row.get::<_, Option<i64>>(27)?.map(|v| v != 0),
     })
 }
 
@@ -106,8 +109,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref, git_migrate)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref, git_migrate, git_build_assets)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
         params![
             site.id,
             site.name,
@@ -138,6 +141,7 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             site.git_url,
             site.git_ref,
             site.git_migrate.map(|m| m as i64),
+            site.git_build_assets.map(|b| b as i64),
         ],
     )?;
     Ok(())
@@ -1433,6 +1437,7 @@ mod tests {
             git_url: None,
             git_ref: None,
             git_migrate: None,
+            git_build_assets: None,
         }
     }
 

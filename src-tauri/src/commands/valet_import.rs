@@ -794,6 +794,7 @@ async fn import_one<R: tauri::Runtime>(
         git_url: String::new(),
         git_ref: None,
         git_migrate: true,
+        git_build_assets: false,
     };
     let snap = match crate::commands::site_provision::start(
         app,

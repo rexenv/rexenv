@@ -72,6 +72,7 @@ async fn main() {
             git_url: String::new(),
             git_ref: None,
             git_migrate: true,
+            git_build_assets: false,
         },
     )
     .unwrap();

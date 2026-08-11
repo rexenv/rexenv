@@ -259,6 +259,13 @@ pub struct Site {
     /// Read through [`Site::runs_migrations`], never directly.
     #[serde(default)]
     pub git_migrate: Option<bool>,
+    /// Did the user ask for the repository's front-end assets to be built
+    /// (v35)? Recorded for the same reason as [`Site::git_migrate`] — Retry
+    /// rebuilds the phase list from the row. `None` = NO, which is exact:
+    /// nothing before this column ran a package manager during provisioning.
+    /// Read through [`Site::builds_assets`].
+    #[serde(default)]
+    pub git_build_assets: Option<bool>,
 }
 
 impl Site {
@@ -285,6 +292,16 @@ impl Site {
     /// never disagree about what "no record" meant.
     pub fn runs_migrations(&self) -> bool {
         self.git_migrate.unwrap_or(true)
+    }
+
+    /// Does provisioning build this site's front-end assets (v35)?
+    ///
+    /// NULL means NO, the opposite of [`Site::runs_migrations`]'s default —
+    /// and both are facts about what older rows actually did, not a house
+    /// style. Named methods rather than `unwrap_or` at each call site so
+    /// nobody has to remember which way each one falls.
+    pub fn builds_assets(&self) -> bool {
+        self.git_build_assets.unwrap_or(false)
     }
 
     /// The recorded content dir relative to the docroot, defaulting to WP's
@@ -364,6 +381,7 @@ pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
         git_url: None,
         git_ref: None,
         git_migrate: None,
+        git_build_assets: None,
     }
 }
 
@@ -501,6 +519,12 @@ pub struct NewSite {
     /// same job and is empty, so there is nothing a migration can lose.
     #[serde(default = "default_true")]
     pub git_migrate: bool,
+    /// Install and build the repo's front-end assets (`<manager> install` then
+    /// `<manager> run build`)? Only meaningful alongside [`NewSite::git_url`].
+    /// Defaults FALSE so a caller that never heard of this field cannot make
+    /// rexenv run a package manager's install scripts.
+    #[serde(default)]
+    pub git_build_assets: bool,
 }
 
 fn db_engine_mysql() -> SiteDbEngine {
@@ -543,6 +567,7 @@ mod tests {
             git_url: None,
             git_ref: None,
             git_migrate: None,
+            git_build_assets: None,
         }
     }
 

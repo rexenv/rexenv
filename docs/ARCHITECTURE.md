@@ -348,7 +348,8 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   cloned site's code came from; NULL is EXACT for pre-v33 rows because nothing
   could clone into a docroot before it — `docs/PLAN-git-site-clone.md`) ·
   v34 `sites.git_migrate` (NULL = ON; recorded because Retry rebuilds the phase
-  list from the row).
+  list from the row) · v35 `sites.git_build_assets` (NULL = OFF — the opposite
+  default, and equally exact: no provisioning ever ran a package manager before it).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it
@@ -723,6 +724,19 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     install), an existing one is kept and only `APP_URL`/`DB_*` rewritten, and a repo
     with neither gets a minimal local seed rather than the framework's production
     posture. `finalize` then runs `key:generate --force` + `migrate --force`.
+  - **Front-end assets are a phase of the CLONE, not of Laravel** (v35
+    `git_build_assets`, default ON in the dialog): any repository can carry a
+    `package.json`, and a Vite app throws *"Unable to locate file in Vite manifest"*
+    on page one until it is built, so the default that produces a WORKING site is the
+    one that builds. The package manager is the repo's own answer (`packageManager`
+    field beats lockfile — `repo::inspect_repo`), run from the developer's login-shell
+    Node. **It is the one NON-FATAL phase**, and that is the point: the build runs
+    somebody else's scripts with somebody else's toolchain, so its failure is not
+    evidence that provisioning failed. The job settles `ok` with an `assets_warning`
+    the card shows as a warning banner — failing it instead would park a created,
+    wired, serving site behind a "setup incomplete" badge whose Retry re-runs the
+    clone, the database and Composer to reach the one step that was never rexenv's to
+    guarantee. (Same "succeeded, but" shape as `serving_blocked`.)
   - **`git_url` is recorded at INSERT, not when the checkout lands** — Retry is the
     recovery path and has nowhere else to learn what to clone after an app restart. The
     row states the SOURCE; `provisioned` states whether the code arrived. Same argument

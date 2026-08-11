@@ -120,6 +120,20 @@ pub struct SiteProvisionState {
     /// failure glyph and freeze the bar on a job that genuinely succeeded.
     #[serde(default)]
     pub serving_blocked: bool,
+    /// The front-end asset build did not complete, and why — in the developer's
+    /// own words where the tool gave any (`node not found`, a failing build
+    /// script). `None` = it was not asked for, or it worked.
+    ///
+    /// A FIELD beside a job that still settles `ok`, exactly like
+    /// `serving_blocked`, and for the sharper version of the same reason: the
+    /// build runs the DEVELOPER'S toolchain (their nvm node, the repo's own
+    /// scripts), so its failure is not evidence that provisioning failed. The
+    /// site is created, wired and serving; it is the unbuilt assets that need
+    /// saying. Failing the whole job would park a working site behind a "setup
+    /// incomplete" badge whose Retry re-runs everything to reach the one step
+    /// that was never rexenv's to guarantee.
+    #[serde(default)]
+    pub assets_warning: Option<String>,
 }
 
 fn snapshot(entry: &ProvisionEntry) -> SiteProvisionState {
@@ -213,6 +227,8 @@ struct PhasePlan {
     from_git: bool,
     /// `artisan migrate` was asked for (`Site::runs_migrations`).
     migrate: bool,
+    /// The repo's front-end assets were asked for (`Site::builds_assets`).
+    build_assets: bool,
 }
 
 impl PhasePlan {
@@ -223,12 +239,13 @@ impl PhasePlan {
             linked: site.docroot_managed == Some(false),
             from_git: site.git_url.is_some(),
             migrate: site.runs_migrations(),
+            build_assets: site.builds_assets(),
         }
     }
 }
 
 fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
-    let PhasePlan { site_type, has_blueprint, linked, from_git, migrate } = plan;
+    let PhasePlan { site_type, has_blueprint, linked, from_git, migrate, build_assets } = plan;
     let mut v = vec![("prepare", "preparing site (domain, certificate)"), ("fetch", "downloading binaries")];
     // The code arrives before anything can be done to it. A cloned site's
     // remaining phases are the SAME ones a created one runs — a repo is a third
@@ -284,6 +301,14 @@ fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
             // readable) copied into both branches.
             v.push(("finalize", "running migrations"));
         }
+    }
+    // Any CLONED site can have a package.json, Laravel or not — so this sits
+    // outside the per-type blocks, after everything that could change the code
+    // an asset build reads. Present only when asked for; when the repo turns
+    // out to have no package.json the phase reports SKIPPED, because the list
+    // is fixed before the clone and can't know yet.
+    if from_git && build_assets {
+        v.push(("assets", "building front-end assets"));
     }
     v.push(("serve", "starting to serve"));
     v
@@ -404,6 +429,7 @@ fn spawn_job<R: tauri::Runtime>(
             log_key,
             download_ids,
             serving_blocked: false,
+            assets_warning: None,
         }),
     });
     {
@@ -1450,6 +1476,75 @@ async fn drive<R: tauri::Runtime>(
         bail_if_cancelled!();
     }
 
+    // ── assets (a CLONED site that asked for them) ───────────────────────
+    //
+    // NON-FATAL by design, and this is the one phase where that is right. It
+    // runs the DEVELOPER'S toolchain — their nvm node, the repo's own build
+    // script — against code rexenv did not write. A missing node is not a
+    // broken site: everything else is done, the site serves, and the honest
+    // outcome is a warning that names the problem, not a "setup incomplete"
+    // badge over a working install whose Retry re-runs the clone, the database
+    // and Composer to reach the one step that was never ours to guarantee.
+    if from_git && site.builds_assets() {
+        let ix = phase_index(entry, "assets");
+        enter_phase(app, entry, ix);
+        let project = PathBuf::from(&site.path);
+        // Read-only inspection, the same one the Git add panel uses: the
+        // package manager comes from the repo's own `packageManager` field or
+        // its lockfile, never from a rexenv preference.
+        match core::repo::inspect_repo(&project).node {
+            None => finish_phase(
+                app,
+                entry,
+                progress,
+                ix,
+                "skipped",
+                Some("no package.json in this repository — nothing to build"),
+            ),
+            Some(node) => {
+                let (a2, e2) = (app.clone(), entry.clone());
+                let (p2, manager, has_build) =
+                    (project.clone(), node.manager.clone(), node.has_build);
+                let built = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+                    let st = a2.state::<AppState>();
+                    let env = shell_env(&st, &a2.state::<RepoJobs>(), false)?;
+                    let pm = core::devtools::resolve_package_manager(&env, &manager)?;
+                    let sup = st.platform.supervisor();
+                    let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                    core::repo::node_install(sup, &pm.path, &p2, &env, &e2.cancel, &mut on_line)?;
+                    if has_build {
+                        core::repo::node_build(sup, &pm.path, &p2, &env, &e2.cancel, &mut on_line)?;
+                    } else {
+                        on_line("! this repository has no \"build\" script — dependencies installed only");
+                    }
+                    Ok(())
+                })
+                .await;
+                match built {
+                    Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
+                    // A cancel IS the user's decision to stop the whole job —
+                    // only a genuine failure is the non-fatal case.
+                    Ok(Err(_)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
+                    Ok(Err(e)) => {
+                        let msg = e.to_string();
+                        append_line(app, entry, &format!("✕ {msg}"));
+                        entry.state.lock().expect("provision state lock").assets_warning =
+                            Some(msg);
+                        finish_phase(app, entry, progress, ix, "failed", None);
+                    }
+                    Err(e) => {
+                        let msg = format!("the asset build worker died: {e}");
+                        append_line(app, entry, &format!("✕ {msg}"));
+                        entry.state.lock().expect("provision state lock").assets_warning =
+                            Some(msg);
+                        finish_phase(app, entry, progress, ix, "failed", None);
+                    }
+                }
+            }
+        }
+        bail_if_cancelled!();
+    }
+
     // ── serve ────────────────────────────────────────────────────────────
     let ix = phase_index(entry, "serve");
     enter_phase(app, entry, ix);
@@ -1648,6 +1743,7 @@ mod tests {
                         linked,
                         from_git,
                         migrate: true,
+                        build_assets: false,
                     })
                     .iter()
                     .any(|(k, _)| *k == "blueprint");
@@ -1665,7 +1761,67 @@ mod tests {
             linked: false,
             from_git,
             migrate,
+            build_assets: false,
         }
+    }
+
+    /// The asset phase belongs to the CLONE, not to Laravel: any repository can
+    /// carry a `package.json`, and its build reads whatever the earlier phases
+    /// wrote — so it sits last, after everything that could change the code.
+    #[test]
+    fn front_end_assets_are_a_cloned_site_phase_and_the_last_one_before_serving() {
+        let with_assets = PhasePlan { build_assets: true, ..laravel_plan(true, true) };
+        let keys: Vec<&str> = phase_defs(with_assets).iter().map(|(k, _)| *k).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "prepare", "fetch", "clone", "db", "configure", "deps", "finalize", "assets",
+                "serve"
+            ]
+        );
+
+        // Not asked for → not a phase. A phase that exists only to report
+        // "skipped" every time is noise the card has to explain.
+        assert!(!phase_defs(laravel_plan(true, true)).iter().any(|(k, _)| *k == "assets"));
+        // Not cloned → nothing to build from, whatever the flag says.
+        let flagged_but_not_cloned = PhasePlan { build_assets: true, ..laravel_plan(false, true) };
+        assert!(!phase_defs(flagged_but_not_cloned).iter().any(|(k, _)| *k == "assets"));
+
+        // A Blank-PHP repo gets the phase too — the build is the repository's,
+        // not Laravel's.
+        let php = PhasePlan {
+            site_type: SiteType::Php,
+            build_assets: true,
+            ..laravel_plan(true, true)
+        };
+        let keys: Vec<&str> = phase_defs(php).iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys, vec!["prepare", "fetch", "clone", "assets", "serve"]);
+
+        assert!(
+            sites::PROVISION_PHASE_WEIGHTS.iter().any(|(k, _)| *k == "assets"),
+            "assets has no weight — the bar would guess at a long network phase"
+        );
+    }
+
+    #[test]
+    fn the_two_recorded_choices_default_the_way_older_rows_actually_behaved() {
+        let mut site = crate::state::models::test_site(
+            "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30",
+            "shop.rex",
+            crate::state::models::SiteOrigin::User,
+        );
+        site.site_type = SiteType::Laravel;
+        site.git_url = Some("https://github.com/acme/shop.git".into());
+
+        // Both NULL — a row from before either column. Migrations DID run then;
+        // a package manager never did. Opposite defaults, both facts.
+        assert!(site.runs_migrations());
+        assert!(!site.builds_assets());
+        let plan = PhasePlan::of(&site, false);
+        assert!(plan.migrate && !plan.build_assets);
+
+        site.git_build_assets = Some(true);
+        assert!(PhasePlan::of(&site, false).build_assets, "a recorded yes survives a retry");
     }
 
     /// The cloned Laravel path's phase list, in order — the card renders these
@@ -1700,6 +1856,7 @@ mod tests {
                 linked: true,
                 from_git: false,
                 migrate: true,
+                build_assets: false,
             })
             .iter()
             .map(|(k, _)| *k)
@@ -1925,6 +2082,7 @@ mod tests {
             git_url: String::new(),
             git_ref: None,
             git_migrate: true,
+            git_build_assets: false,
         };
         let out = start(&app.handle().clone(), &state, &jobs, new, None, None, ownership);
         let calls = recorder.calls.lock().unwrap().clone();

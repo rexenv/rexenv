@@ -21,14 +21,19 @@ evidence cited.
   the ls-remote probe gating Create. v33 records the repo at INSERT because Retry is the
   recovery path. ARCHITECTURE §9; ledger #263–277; `git_site_clone_check` (L1, sandbox);
   SMOKE-TEST has the packaged-app half.
-- [ ] **Stage 2 — front-end assets for a cloned site** (`docs/PLAN-git-site-clone.md`
-  §4). A Laravel app with Vite throws *"Unable to locate file in Vite manifest"* until
-  `npm run build` has run, so Stage 1 is honest-but-incomplete for most real repos: the
-  create dialog says assets are not built and nothing offers to build them. Needs
-  `npm install` / `npm run build` as explicit steps on the site (reusing `repo_run_step`
-  + `repoJobUi`) and an opt-in checkbox in the dialog. Deliberately not in Stage 1: node
-  resolution is the developer's own nvm toolchain, and a node failure must not mark an
-  otherwise-serving site "setup incomplete".
+- [x] **Stage 2 — front-end assets for a cloned site** (built 11 Aug 2026). A Laravel
+  app with Vite throws *"Unable to locate file in Vite manifest"* until `npm run build`
+  has run, so Stage 1 was honest-but-incomplete for most real repos. ✓ v35
+  `git_build_assets` + an `assets` phase that belongs to the CLONE (any repo can carry a
+  `package.json`), running the repo's own package manager from the developer's
+  login-shell Node. **The one NON-FATAL phase**: a failed build settles the job `ok`
+  with an `assets_warning` banner, because failing it would park a created, wired,
+  serving site behind a "setup incomplete" badge over the one step that was never
+  rexenv's to guarantee. Ledger #280–283; `git_site_clone_check` §7 proves the phase's
+  inputs; the non-fatal outcome is a SMOKE-TEST item (needs a machine without node).
+  **Not done here, and deliberately:** the build is offered only at CREATE. Re-running
+  it later belongs with Stage 3's site-level RepoPanel, which is where a per-site step
+  runner already fits.
 - [ ] **Stage 3 — a Git panel on the site itself** (`docs/PLAN-git-site-clone.md` §4).
   `core::repo`'s git ops are all path-based (`read_git_status`, `git_fetch`,
   `git_pull_ff`, `git_checkout`, `loss_warning`), so pointing the existing `RepoPanel` at

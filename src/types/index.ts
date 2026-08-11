@@ -71,6 +71,10 @@ export interface Site {
    *  means yes — exact, since every Laravel site made before the column
    *  migrated unconditionally. */
   gitMigrate?: boolean | null;
+  /** Did the user ask for the repo's front-end assets to be built (v35)?
+   *  `null`/absent means no — exact, since nothing ran a package manager during
+   *  provisioning before the column existed. */
+  gitBuildAssets?: boolean | null;
 }
 
 /** A plugin or theme an agent cloned into a scratch site (v29), as the Sites
@@ -457,6 +461,10 @@ export interface NewSiteInput {
    *  the database is created by the same job and is empty, so there is nothing
    *  a migration can lose. Recorded on the row, so a Retry honours it. */
   gitMigrate?: boolean;
+  /** Install and build the repo's front-end assets (v35). Omitted → false, so a
+   *  caller that never heard of this field cannot make rexenv run a package
+   *  manager's install scripts. */
+  gitBuildAssets?: boolean;
 }
 
 /** WordPress one-click install fields (type=wordpress). Empty fields default
@@ -1117,6 +1125,12 @@ export interface SiteProvisionState {
    *  A FIELD rather than a `status` value: status is read as ok-or-failure, so a
    *  new variant would show the failure glyph on a job that actually succeeded. */
   servingBlocked?: boolean;
+  /** The front-end asset build didn't complete, and why (v35). Same "succeeded,
+   *  but" shape as `servingBlocked`: the build runs the DEVELOPER'S toolchain
+   *  against the repo's own scripts, so its failure is not evidence that
+   *  provisioning failed — the site is created, wired and serving. `null`/absent
+   *  = it wasn't asked for, or it worked. */
+  assetsWarning?: string | null;
 }
 
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */

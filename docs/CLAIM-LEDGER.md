@@ -229,6 +229,10 @@ L3 = scripted manual.
 | 277 | sites.rs:1290 | The staging directory never survives — success, verified-then-rejected, or failed clone alike | ✅ `git_site_clone_check` §1/§4/§5 |
 | 278 | site_provision.rs:196 | The phase plan is read off the ROW, so a Retry cannot disagree with the create about an optional step | ✅ `the_phase_plan_comes_from_the_row_so_a_retry_reads_the_same_answer` |
 | 279 | site_provision.rs:222 | A phase label never announces a step the user declined | ✅ `a_phase_never_announces_a_step_the_user_declined` |
+| 280 | site_provision.rs:1300 | The asset build is NON-FATAL: a failed developer-toolchain build never parks a created, wired, serving site behind "setup incomplete" | 🔨 L3 → SMOKE-TEST (needs a machine without node, or a repo whose build fails) |
+| 281 | site_provision.rs:1310 | The asset phase's package manager is the REPO's answer (`packageManager` beats lockfile), read off the real checkout | ✅ `git_site_clone_check` §7 |
+| 282 | models.rs:270 | `runs_migrations` and `builds_assets` default OPPOSITE ways, each matching what older rows actually did | ✅ `the_two_recorded_choices_default_the_way_older_rows_actually_behaved` |
+| 283 | site_provision.rs:236 | The asset phase belongs to the CLONE, not to Laravel, and runs last before serving | ✅ `front_end_assets_are_a_cloned_site_phase_and_the_last_one_before_serving` |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -442,7 +446,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 191 · ◐ 43 · 🔨 40 · 🚫 5** of 279 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 194 · ◐ 43 · 🔨 41 · 🚫 5** of 283 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

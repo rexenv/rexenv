@@ -802,6 +802,7 @@ fn create_site<'a>(
             git_url: String::new(),
             git_ref: None,
             git_migrate: true,
+            git_build_assets: false,
         };
         let site = ctx.create(new, Ownership::Agent { client, ttl_hours: crate::core::sites::SCRATCH_TTL_HOURS }, acted).await?;
         let status = ctx.status_of(&site).await;

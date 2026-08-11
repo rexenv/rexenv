@@ -483,6 +483,7 @@ fn create_recording_ownership(
         // honest "nobody was asked", which `Site::runs_migrations` reads as the
         // unconditional yes those paths have always had.
         git_migrate: git.as_ref().map(|_| new.git_migrate),
+        git_build_assets: git.as_ref().map(|_| new.git_build_assets),
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -1703,6 +1704,7 @@ pub const PROVISION_PHASE_WEIGHTS: &[(&str, u32)] = &[
     ("core_install", 10), // wp core install
     ("deps", 30),         // composer install — the long pole of a cloned site
     ("finalize", 5),      // artisan key:generate + migrate
+    ("assets", 25),       // <manager> install + run build — node_modules is not small
     ("blueprint", 5),     // blueprint plugins/themes (when requested)
     ("serve", 10),        // pool + edge reload + await_ready
 ];
@@ -2064,6 +2066,7 @@ mod tests {
             git_url: String::new(),
             git_ref: None,
             git_migrate: true,
+            git_build_assets: false,
         }
     }
 
@@ -2516,6 +2519,7 @@ mod tests {
             git_url: None,
             git_ref: None,
             git_migrate: None,
+            git_build_assets: None,
         }
     }
 
@@ -2770,6 +2774,7 @@ mod tests {
             git_url: None,
             git_ref: None,
             git_migrate: None,
+            git_build_assets: None,
         }
     }
 
@@ -2827,6 +2832,7 @@ mod tests {
                 git_url: String::new(),
                 git_ref: None,
                 git_migrate: true,
+                git_build_assets: false,
             },
         )
         .unwrap();
