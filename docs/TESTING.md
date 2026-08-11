@@ -74,6 +74,9 @@ it can:
   harness routes with mocked IPC, zero backend. Also data-FRESHNESS wiring, by counting
   mocked IPC calls rather than reading pixels (`focusrefresh.js`: a focus event must
   re-read git status and branches, and must NOT fire the lazy network read).
+  A rendered IMAGE is proved by decoding, not by presence: `openin.js` reads each app
+  icon's `naturalWidth`, because a broken `data:` URI still leaves an `<img>` in the DOM
+  that a count-the-elements assertion would happily pass.
 - **Cannot prove:** backend truth (IPC is mocked BY DESIGN) — **it proves a card RENDERS,
   never that its command WORKS.** The MCP toggle rendered correctly across 10 harness
   scenarios while `mcp_set_enabled` *aborted the packaged app* on click (the mock returned

@@ -1,7 +1,8 @@
 # PLAN — preferred browser (+ real app icons for browser & editor)
 
-Status: **in progress** (2026-08-11). Owner: this file is the design record; tick
-tasks here and in `docs/TODO.md` as they land.
+Status: **shipped** (2026-08-11) — kept as the design record for why the
+preference is enforced where it is; the shipped behaviour lives in
+`docs/ARCHITECTURE.md` §8.2.
 
 ## What the user asked for
 
@@ -124,12 +125,16 @@ Windows/Linux keep the `todo!()`/default-empty shape — adding an OS stays
 
 ## Tasks
 
-- [ ] 1. Backend: detection, icons, default read, `open_in_browser` guard,
+- [x] 1. Backend: detection, icons, default read, `open_in_browser` guard,
       `open_external` preference. Unit tests for the LSHandlers parser.
-- [ ] 2. Frontend plumbing: types, ipc, `useBrowser`, `AppIcon`.
-- [ ] 3. `SplitButton` + SiteDetail header/tiles + Sites row icon.
-- [ ] 4. Settings: "Web browser" row + icons on both pickers.
-- [ ] 5. Docs (ARCHITECTURE/MAP/DESIGN/CLAIM-LEDGER/TODO) — each in the commit
+- [x] 2. Frontend plumbing: types, ipc, `useBrowser`, `AppIcon`.
+- [x] 3. `SplitButton` + SiteDetail header/tiles + Sites row icon.
+- [x] 4. Settings: "Web browser" row + icons on both pickers.
+- [x] 5. Docs (ARCHITECTURE/MAP/DESIGN/CLAIM-LEDGER/TODO) — each in the commit
       that changes the behaviour, not after.
 
-Gate for every commit: `scripts/verify.sh` → `verify: all green`.
+Gate for every commit: `scripts/verify.sh` → `verify: all green`. Shipped in
+three commits (backend / UI / Settings), each with its docs. Proof: ledger
+#261–262, `browser_detect_check` (L1, real machine: 5 browsers + 3 editors, 8
+decoding PNG icons, one system default, the path refusal), `openin.js` (L2, plant-proven twice), full `run-all.js`
+green.

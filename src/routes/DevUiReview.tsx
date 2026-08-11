@@ -23,6 +23,10 @@
  *               must not look agent-flavoured (a Kept site, and a user's own
  *               site hand-named `*.scratch.*`)
  *    keep     — the Keep confirm dialog
+ *    openin   — the "which app opens this" surfaces: header split button +
+ *               the Browser/editor Quick-links tiles. `browsers=one|none`
+ *               (the no-chevron and nothing-detected states), `icons=none`
+ *               (the honest degrade to a monochrome glyph)
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -35,9 +39,16 @@ import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
+import { QuickTile } from "@/routes/SiteDetail";
+import { AppIcon } from "@/components/ui/app-icon";
+import { SplitButton } from "@/components/ui/split-button";
+import { useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
+import { usePreferredBrowser } from "@/lib/useBrowser";
+import { usePreferredEditor } from "@/lib/useEditor";
+import { Code, ExternalLink, Globe } from "lucide-react";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { toast } from "@/lib/toast";
-import type { ActivityStatus, AgentAction, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site, SiteProvisionState } from "@/types";
+import type { ActivityStatus, AgentAction, BrowserApp, EditorApp, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site, SiteProvisionState } from "@/types";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -653,6 +664,91 @@ function ToastView() {
   return <p className="text-xs text-rex-text-muted">toasts pushed — see overlay.</p>;
 }
 
+
+// Fixture icons are REAL 32×32 PNGs behind a real `data:image/png;base64,` URI,
+// not a placeholder string: `AppIcon` renders an <img>, so a fake-shaped
+// fixture would render a broken image the probe could still find in the DOM.
+// (Production URIs are ~5–9KB; only the length differs.)
+const ICON = {
+  chrome: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGN4EeZCU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULAEDbCFvpck8UAAAAAElFTkSuQmCC",
+  firefox: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKUlEQVR4nO3NQQkAAAgEsItiTNtrCh/CYP9luk5FIBAIBAKBQCAQfAkWir1cW/l31KMAAAAASUVORK5CYII=",
+  safari: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nO3NQQkAAAgEsItkWiOawxQ+hMH+S/WcikAgEAgEAoFAIPgSLJQ2sFvcz2b3AAAAAElFTkSuQmCC",
+  vscode: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nGNQrjhBU8QwasGoBaMWjFowasGoBaMWjFowasGoBaMWDBULADCAjEzTSQo3AAAAAElFTkSuQmCC",
+  phpstorm: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKklEQVR4nO3NQQkAAAgEsAtmWOMYyxQ+hMH+S9ecikAgEAgEAoFAIPgSLMD2kFvPw7tMAAAAAElFTkSuQmCC",
+} as const;
+
+/** `browsers=one` collapses the list to a single app — the state where the
+ *  chevron must NOT render at all. `icons=none` drops every icon, the honest
+ *  degrade to the monochrome glyph. */
+function mockBrowsers(): BrowserApp[] {
+  const noIcons = params.get("icons") === "none";
+  const all: BrowserApp[] = [
+    { id: "safari", name: "Safari", icon: noIcons ? null : ICON.safari, systemDefault: false },
+    { id: "chrome", name: "Google Chrome", icon: noIcons ? null : ICON.chrome, systemDefault: true },
+    { id: "firefox", name: "Firefox", icon: noIcons ? null : ICON.firefox, systemDefault: false },
+  ];
+  if (params.get("browsers") === "one") return [all[1]];
+  if (params.get("browsers") === "none") return [];
+  return all;
+}
+
+function mockEditors(): EditorApp[] {
+  const noIcons = params.get("icons") === "none";
+  return [
+    { id: "vscode", name: "VS Code", icon: noIcons ? null : ICON.vscode },
+    { id: "phpstorm", name: "PhpStorm", icon: noIcons ? null : ICON.phpstorm },
+  ];
+}
+
+/** The "which app opens this" surfaces: the header split button and the two
+ *  Quick-links tiles that grew a chevron. Rendered from the SHIPPING
+ *  components (`SplitButton`, `QuickTile`, `useBrowserMenu`) — a stand-in
+ *  would prove the harness, not the app. */
+function OpenInView() {
+  const site = fixtureSite();
+  const url = `https://${site.domain}`;
+  const browser = usePreferredBrowser();
+  const editor = usePreferredEditor();
+  const browserMenu = useBrowserMenu(url);
+  const editorMenu = useEditorMenu(site.path);
+  return (
+    <div className="space-y-4">
+      <div data-probe="header" className="flex items-center gap-[9px] rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+        <SplitButton
+          onClick={() => {}}
+          menu={browserMenu}
+          chevronLabel="Open this site in another browser"
+        >
+          <AppIcon
+            icon={browser?.icon}
+            fallback={<ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />}
+            className="h-[15px] w-[15px]"
+          />
+          Open in browser
+        </SplitButton>
+      </div>
+      <div data-probe="tiles" className="grid grid-cols-2 gap-[9px] rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+        <QuickTile
+          icon={<AppIcon icon={browser?.icon} fallback={<Globe className="h-4 w-4" />} />}
+          iconColor="text-rex-text-muted"
+          label={browser ? `Open in ${browser.name}` : "Browser"}
+          onClick={() => {}}
+          menu={browserMenu}
+          menuLabel="Open this site in another browser"
+        />
+        <QuickTile
+          icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
+          iconColor="text-rex-text-muted"
+          label={editor ? `Open in ${editor.name}` : "Open in editor"}
+          onClick={() => {}}
+          menu={editorMenu}
+          menuLabel="Open this project in another editor"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function DevUiReview() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -669,7 +765,9 @@ export function DevUiReview() {
         case "rewrite_revert":
           return reverted();
         case "list_editors":
-          return [];
+          return params.get("view") === "openin" ? mockEditors() : [];
+        case "list_browsers":
+          return mockBrowsers();
         case "get_setting":
           return null;
         case "mcp_status":
@@ -701,6 +799,7 @@ export function DevUiReview() {
         {view === "sites" && <SitesScaleView />}
         {view === "delete" && <DeleteView />}
         {view === "badges" && <BadgesView />}
+        {view === "openin" && <OpenInView />}
         {view === "provision" && <ProvisionCardView />}
         {view === "resolver" && (
           <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">

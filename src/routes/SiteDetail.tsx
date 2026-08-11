@@ -1320,7 +1320,7 @@ function CopyButton({ value }: { value: string }) {
  *  as a SIBLING button, not a nested one: a `<button>` inside a `<button>` is
  *  invalid HTML and WebKit drops the inner click, so the frame moved to the
  *  wrapper and the label became its own button. */
-function QuickTile({
+export function QuickTile({
   icon,
   iconColor,
   label,

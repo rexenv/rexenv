@@ -9,6 +9,21 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Every link opened in whatever browser the OS points at** (filed + fixed
+  11 Aug 2026). rexenv could pick your code editor but not your browser, so a
+  Chrome-default machine could not send its sites to the browser it develops in,
+  and no button ever said WHERE a click would land. ✓ `preferred_browser` +
+  `detect_browsers`/`open_in_browser`, applied at the ONE choke point
+  (`open_external`, so all ~12 call sites obey), URL-only guard, per-open
+  installed-ness re-check, real extracted app icons for browsers AND editors, a
+  one-time chevron beside "Open in browser", and a Settings "Web browser" row.
+  ARCHITECTURE §8.2; ledger #261–262; `browser_detect_check` (L1) +
+  `openin.js` (L2, plant-proven); design record `docs/PLAN-browser-preference.md`.
+- [ ] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
+  stubs** (Phase 4, same shape as `detect_editors`). Until they are filled, those
+  platforms open every link in the OS handler and show no chevron — honest, but
+  the Settings row will read "No browser detected".
+
 - [x] **MCP server M1 — read-only diagnosis + opt-in card** (branch `feat/mcp-m1`).
   ✓ Socket + `rex mcp` shim + registry (list_sites / site_status / tail_log) +
   ReadCtx read-only boundary (guard scans both surfaces) + secret-leak sweep +
