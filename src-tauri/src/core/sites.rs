@@ -7,7 +7,7 @@
 
 use crate::core::{adminer, binaries, frankenphp, php, proxy, repo, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
-use crate::platform::traits::Platform;
+use crate::platform::traits::{Platform, ProcessSupervisor};
 use crate::state::models::{
     MultisiteMode, NewSite, ServiceStatus, Site, SiteOrigin, SiteType, WebServer,
 };
@@ -1286,6 +1286,150 @@ pub fn validate_git_source(new: &NewSite, ownership: &Ownership) -> Result<Optio
     Ok(Some(GitSource { url: src.url, git_ref }))
 }
 
+/// Prefix of the temporary directory a clone lands in before it is moved into
+/// place. Dot-leading so it stays out of Finder and out of the sites-folder
+/// listing, and distinctive enough that a leftover one is obviously ours.
+const CLONE_STAGING_PREFIX: &str = ".rexenv-clone-";
+
+/// Where a clone is written before it becomes the docroot.
+///
+/// A SIBLING of the docroot, never app-data or `/tmp`: the Sites folder is
+/// user-configurable and may sit on another volume, where the `rename` below
+/// would fail with `EXDEV` after a multi-minute download. Same parent ⇒ same
+/// filesystem ⇒ the move is atomic and instant.
+fn staging_dir(docroot: &Path, token: &str) -> Result<PathBuf> {
+    let parent = docroot
+        .parent()
+        .ok_or_else(|| Error::Other(format!("{} has no parent directory", docroot.display())))?;
+    let name = docroot
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| Error::Other(format!("{} has no folder name", docroot.display())))?;
+    Ok(parent.join(format!("{CLONE_STAGING_PREFIX}{name}-{token}")))
+}
+
+/// Refuse a docroot that already holds anything.
+///
+/// The site's own folder, created empty during prepare — so "not empty" means
+/// either a checkout already landed (Retry's job to notice, not this one's) or
+/// the user put files there. Either way this is not the moment to decide whose
+/// files they are.
+fn ensure_empty_docroot(docroot: &Path) -> Result<()> {
+    let mut entries = std::fs::read_dir(docroot).map_err(|e| {
+        Error::Other(format!("can't read {} to clone into it: {e}", docroot.display()))
+    })?;
+    if entries.next().is_some() {
+        return Err(Error::Other(format!(
+            "{} is not empty — rexenv only clones into a folder it just created. Delete this \
+             site and create it again, or link the existing folder instead.",
+            docroot.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Does what landed match the kind of site the user asked to create?
+///
+/// The type is chosen BEFORE the clone (it fixes the phase list and the binary
+/// plan — including whether ~600 MB of database engine is downloaded), and
+/// `ls-remote` cannot see files, so the check has to happen afterwards. The
+/// honest failure names what was actually found: re-typing the site here would
+/// change the job's plan after the card had already described it.
+///
+/// `Php` accepts anything — a document root full of files IS a PHP site, and
+/// [`detect_project`] falls back to serving the root for shapes it can't place.
+fn verify_cloned_shape(detected: &DetectedProject, expect: SiteType) -> Result<()> {
+    if expect == SiteType::Php || detected.site_type == expect {
+        return Ok(());
+    }
+    Err(Error::Other(format!(
+        "this repository looks like {} — not {}. Create the site as {} instead (the code is \
+         cloned, nothing else has been set up).",
+        detected.label,
+        expect.as_db(),
+        detected.site_type.as_db()
+    )))
+}
+
+/// Fill a site's own (empty) docroot from a repository, and report what landed.
+///
+/// The move is the interesting part. `repo::clone_repo` refuses a `dest` that
+/// exists — deliberately, so it may remove a partial checkout on failure
+/// without ever deleting a directory it did not create, and that guard is not
+/// worth weakening for this. So the clone goes to a staging sibling and is
+/// moved in:
+///
+/// ```text
+/// clone → <sites>/.rexenv-clone-<domain>-<token>
+/// remove_dir(docroot)     ← the OS itself refuses a NON-EMPTY directory
+/// rename(staging, docroot)
+/// ```
+///
+/// `remove_dir`, never `remove_dir_all`: the guarantee that this cannot destroy
+/// a developer's files is the operating system's, not a check of ours that a
+/// later edit could get wrong. (`ensure_empty_docroot` above runs first so the
+/// refusal is a readable message rather than an `ENOTEMPTY`; it is the message,
+/// not the guarantee.)
+///
+/// Every exit path removes the staging directory — a path this function built
+/// and `clone_repo` created, so `remove_dir_all` there is scoped to our own
+/// work. On a failed rename the (empty) docroot is put back, since the rest of
+/// provisioning and a later Retry both expect it to exist.
+#[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs
+pub fn clone_into_docroot(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    src: &GitSource,
+    docroot: &Path,
+    expect: SiteType,
+    cancel: &repo::CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<DetectedProject> {
+    ensure_empty_docroot(docroot)?;
+    let token = Uuid::new_v4().to_string();
+    let staging = staging_dir(docroot, &token[..8])?;
+
+    repo::clone_repo(
+        supervisor,
+        git,
+        env,
+        &src.url,
+        src.git_ref.as_deref(),
+        &staging,
+        cancel,
+        on_line,
+    )?;
+
+    // From here on, anything that goes wrong must not leave the staging dir
+    // behind — a half-cloned project sitting beside the sites folder is both
+    // confusing and, for a private repo, a checkout nobody knows they have.
+    let finish = (|| -> Result<DetectedProject> {
+        let detected = detect_project(&staging);
+        verify_cloned_shape(&detected, expect)?;
+        std::fs::remove_dir(docroot).map_err(|e| {
+            Error::Other(format!(
+                "the clone finished but {} could not be replaced ({e}) — nothing was deleted.",
+                docroot.display()
+            ))
+        })?;
+        if let Err(e) = std::fs::rename(&staging, docroot) {
+            // The docroot was empty; put it back so the rest of provisioning
+            // (and Retry) still finds the folder it expects.
+            let _ = std::fs::create_dir_all(docroot);
+            return Err(Error::Other(format!(
+                "moving the clone into {} failed: {e}",
+                docroot.display()
+            )));
+        }
+        Ok(detected)
+    })();
+    if finish.is_err() && staging.exists() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    finish
+}
+
 /// The validated TLD of `domain` — its last label, returned only after the
 /// full domain validation (charset, labels, TLD policy) passes. Callers use it
 /// to key per-TLD side effects (the OS resolver file) off an already-vetted
@@ -1904,6 +2048,81 @@ mod tests {
 
         // No URL at all: this site simply isn't a clone.
         assert_eq!(validate_git_source(&sample("blog", "blog.rex"), &Ownership::User).unwrap(), None);
+    }
+
+    #[test]
+    fn staging_sits_beside_the_docroot_so_the_move_can_never_cross_a_filesystem() {
+        // The Sites folder is user-configurable and may be on another volume.
+        // Staging in app-data or /tmp would turn the final move into an EXDEV
+        // failure AFTER a multi-minute download — the worst possible moment.
+        let docroot = Path::new("/Volumes/Work/Sites/shop.rex");
+        let staging = staging_dir(docroot, "a1b2c3d4").unwrap();
+        assert_eq!(staging.parent(), docroot.parent(), "same parent ⇒ same filesystem");
+        assert_ne!(staging, docroot);
+        let name = staging.file_name().unwrap().to_str().unwrap();
+        assert!(name.starts_with(".rexenv-clone-"), "hidden and obviously ours: {name}");
+        assert!(name.contains("shop.rex") && name.contains("a1b2c3d4"));
+        // Two clones of the same site can't collide on the staging path.
+        assert_ne!(staging_dir(docroot, "aaaaaaaa").unwrap(), staging_dir(docroot, "bbbbbbbb").unwrap());
+    }
+
+    #[test]
+    fn a_docroot_with_anything_in_it_is_refused_before_a_byte_is_fetched() {
+        let dir = std::env::temp_dir()
+            .join(format!("rexenv-clone-guard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(ensure_empty_docroot(&dir).is_ok(), "prepare leaves the docroot empty");
+
+        // A dotfile counts: `read_dir` sees it, and so would a clone's collision.
+        std::fs::write(dir.join(".DS_Store"), "").unwrap();
+        let err = ensure_empty_docroot(&dir).unwrap_err().to_string();
+        assert!(err.contains("not empty"), "{err}");
+        assert!(std::fs::read_dir(&dir).unwrap().count() == 1, "a refusal deletes nothing");
+
+        // A path that isn't a directory at all fails readably rather than
+        // panicking somewhere downstream.
+        assert!(ensure_empty_docroot(&dir.join("nope")).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_clone_that_is_not_the_chosen_kind_of_site_is_named_not_re_typed() {
+        // Re-typing here would change the phase list and the binary plan AFTER
+        // the card described them — the card would be narrating a job it isn't
+        // running. Naming what was found is the honest half.
+        let wp = DetectedProject {
+            site_type: SiteType::Wordpress,
+            docroot_rel: "web".into(),
+            label: "WordPress (Bedrock)",
+            existing_install: true,
+        };
+        let err = verify_cloned_shape(&wp, SiteType::Laravel).unwrap_err().to_string();
+        assert!(err.contains("WordPress (Bedrock)"), "says what it found: {err}");
+        assert!(err.contains("wordpress"), "and what to create instead: {err}");
+        assert!(err.contains("nothing else has been set up"), "{err}");
+
+        let laravel = DetectedProject {
+            site_type: SiteType::Laravel,
+            docroot_rel: LARAVEL_DOCROOT_SUBDIR.into(),
+            label: "Laravel",
+            existing_install: true,
+        };
+        assert!(verify_cloned_shape(&laravel, SiteType::Laravel).is_ok());
+        // Blank PHP accepts whatever landed: a folder of files IS a PHP site,
+        // and detection already falls back to serving the root.
+        assert!(verify_cloned_shape(&wp, SiteType::Php).is_ok());
+        let unknown = DetectedProject {
+            site_type: SiteType::Php,
+            docroot_rel: String::new(),
+            label: "Unknown",
+            existing_install: false,
+        };
+        assert!(verify_cloned_shape(&unknown, SiteType::Php).is_ok());
+        assert!(
+            verify_cloned_shape(&unknown, SiteType::Laravel).is_err(),
+            "an empty or unrecognisable repo is not a Laravel app"
+        );
     }
 
     #[test]

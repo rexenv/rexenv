@@ -218,6 +218,9 @@ L3 = scripted manual.
 | 264 | sites.rs:1222 | An agent can never create a site from a repository (clone ⇒ downloads + executes model-chosen code, no click between) | ✅ `an_agent_can_never_create_a_site_from_a_repository` |
 | 265 | sites.rs:1222 | Every repo URL/ref reaching `git` argv is parsed + validated before a site row exists | ✅ `a_repo_reference_that_cannot_be_parsed_never_reaches_git` + `a_clone_normalizes_the_paste…` |
 | 266 | store.rs:493 | `docroot_subdir` can never escape the project (the field that decides what the web server reaches) | ✅ `a_docroot_subdir_that_escapes_the_project_is_refused_at_the_only_writer` |
+| 269 | sites.rs:1290 | A clone can never delete a docroot's existing contents (the guarantee is `remove_dir`'s, i.e. the OS', not a check of ours) | ✅ `a_docroot_with_anything_in_it_is_refused_before_a_byte_is_fetched` + L1 `git_site_clone_check` |
+| 270 | sites.rs:1240 | Staging is a docroot SIBLING, so the post-clone move can never cross a filesystem | ✅ `staging_sits_beside_the_docroot_so_the_move_can_never_cross_a_filesystem` |
+| 271 | sites.rs:1268 | A clone that is not the chosen site type is NAMED, never silently re-typed after the card fixed the plan | ✅ `a_clone_that_is_not_the_chosen_kind_of_site_is_named_not_re_typed` |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -431,7 +434,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 180 · ◐ 43 · 🔨 40 · 🚫 5** of 268 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 183 · ◐ 43 · 🔨 40 · 🚫 5** of 271 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
