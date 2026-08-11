@@ -23,6 +23,7 @@ pub mod dbsource;
 pub mod devtools;
 pub mod dist_archive;
 pub mod dns;
+pub mod dotenv;
 pub mod downloads;
 pub mod firefox;
 pub mod frankenphp;

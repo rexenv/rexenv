@@ -1324,15 +1324,15 @@ async fn drive<R: tauri::Runtime>(
         // install boots against this site's real configuration.
         if from_git {
             match core::laravel::ensure_env_file(&project) {
-                Ok(core::laravel::EnvOrigin::Example) => {
+                Ok(core::dotenv::EnvOrigin::Example) => {
                     append_line(app, entry, ".env created from the repository's .env.example")
                 }
-                Ok(core::laravel::EnvOrigin::Repo) => append_line(
+                Ok(core::dotenv::EnvOrigin::Repo) => append_line(
                     app,
                     entry,
                     "kept the .env this repository ships — only APP_URL and DB_* are rewritten",
                 ),
-                Ok(core::laravel::EnvOrigin::Seeded) => append_line(
+                Ok(core::dotenv::EnvOrigin::Seeded) => append_line(
                     app,
                     entry,
                     "! this repository ships no .env.example — wrote a minimal local .env",

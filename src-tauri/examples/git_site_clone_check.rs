@@ -39,7 +39,7 @@
 //! Everything written lives under this example's own temp root or the sandbox
 //! app-data root; nothing is derived from the real `Paths` (examples/common).
 
-use rexenv_lib::core::{devtools, laravel, repo, sites, ssl};
+use rexenv_lib::core::{devtools, dotenv, laravel, repo, sites, ssl};
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::{Path, PathBuf};
@@ -237,7 +237,7 @@ fn main() {
     // ── 2. .env from the repo's example, wired to this site ─────────────
     println!("\n=== 2. .env from .env.example, wired to the site's database ===");
     match laravel::ensure_env_file(&docroot) {
-        Ok(laravel::EnvOrigin::Example) => {}
+        Ok(dotenv::EnvOrigin::Example) => {}
         Ok(other) => ok = fail(&format!(".env came from {other:?}, expected the repo's example")),
         Err(e) => ok = fail(&format!("ensure_env_file: {e}")),
     }

@@ -116,53 +116,19 @@ pub fn env_path(project: &Path) -> PathBuf {
     project.join(".env")
 }
 
-/// Where a CLONED project's `.env` came from. Returned rather than logged
-/// inside, so the caller can say it in the job log — "copied from
-/// `.env.example`" and "kept the one the repository committed" are different
-/// facts, and a developer debugging their config needs to know which happened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EnvOrigin {
-    /// The repository committed a `.env` (against Laravel's own advice, but it
-    /// happens). KEPT — [`wire_env`] rewrites only `APP_URL` and the `DB_*`
-    /// block on top of it. Replacing a file the repo shipped would silently
-    /// drop mail, queue and third-party keys the app needs.
-    Repo,
-    /// Copied from the repository's `.env.example` — the normal case, and the
-    /// step `composer install` will NOT do for us: the copy is
-    /// `create-project`'s `post-root-package-install` script, which never fires
-    /// on a plain install.
-    Example,
-    /// Neither existed. rexenv wrote a minimal local-development seed rather
-    /// than leaving the app on framework defaults, where `APP_ENV` reads
-    /// `production` and `APP_DEBUG` false — a local site that hides its own
-    /// errors is the least useful failure mode there is.
-    Seeded,
-}
-
-/// The `.env` a freshly cloned project needs, without ever overwriting one.
+/// Laravel's `.env` seed, for a repository that ships no `.env.example`.
 ///
-/// Idempotent by construction: an existing `.env` is reported, not rewritten,
-/// so a Retry after a later phase failed cannot discard credentials the first
-/// run (or the developer) already put there.
-pub fn ensure_env_file(project: &Path) -> Result<EnvOrigin> {
-    let env = env_path(project);
-    if env.exists() {
-        return Ok(EnvOrigin::Repo);
-    }
-    let example = project.join(".env.example");
-    if example.is_file() {
-        std::fs::copy(&example, &env).map_err(|e| {
-            Error::Other(format!("copying .env.example to .env failed: {e}"))
-        })?;
-        return Ok(EnvOrigin::Example);
-    }
-    // The keys [`wire_env`] does not set and Laravel would otherwise default to
-    // its production posture. Deliberately short: everything else is the
-    // project's business, and inventing config it never asked for is how a
-    // "helpful" default becomes a bug report about rexenv.
-    std::fs::write(&env, "APP_NAME=Laravel\nAPP_ENV=local\nAPP_DEBUG=true\n")
-        .map_err(|e| Error::Other(format!("writing {} failed: {e}", env.display())))?;
-    Ok(EnvOrigin::Seeded)
+/// Deliberately short: it is the keys Laravel would otherwise default to its
+/// PRODUCTION posture (`APP_ENV=production`, `APP_DEBUG=false`) — a local site
+/// that hides its own errors is the least useful failure mode there is.
+/// Everything else is the project's business, and inventing config it never
+/// asked for is how a "helpful" default becomes a bug report about rexenv.
+const ENV_SEED: &str = "APP_NAME=Laravel\nAPP_ENV=local\nAPP_DEBUG=true\n";
+
+/// The `.env` a freshly cloned Laravel project needs — see
+/// [`crate::core::dotenv::ensure_file`], which never overwrites one.
+pub fn ensure_env_file(project: &Path) -> Result<crate::core::dotenv::EnvOrigin> {
+    crate::core::dotenv::ensure_file(project, ENV_SEED)
 }
 
 /// The database connection a site's `.env` must describe.
@@ -189,60 +155,18 @@ pub struct DbSettings {
 /// A commented-out line is replaced in place (not left beside a new one), so the
 /// file never ends up with two answers for one key.
 pub fn wire_env(original: &str, app_url: &str, db: &DbSettings) -> String {
-    let mut text = original.to_string();
-    for (key, value) in [
-        ("APP_URL", app_url.to_string()),
-        ("DB_CONNECTION", db.connection.clone()),
-        ("DB_HOST", db.host.clone()),
-        ("DB_PORT", db.port.to_string()),
-        ("DB_DATABASE", db.database.clone()),
-        ("DB_USERNAME", db.username.clone()),
-        ("DB_PASSWORD", db.password.clone()),
-    ] {
-        text = set_env_key(&text, key, &value);
-    }
-    text
-}
-
-/// Set one `KEY=value` in `.env` text: replaces the first live line for the key,
-/// un-comments and replaces a `# KEY=…` line, or appends the entry.
-///
-/// Deliberately simple — this file is one WE just generated, not a user's
-/// hand-edited config, which is why it does not carry
-/// [`crate::core::confedit`]'s refuse-rather-than-guess machinery. It writes
-/// values unquoted, so the caller's values must not need quoting: the only
-/// dynamic ones are our own `wp_`/`rex_` identifiers, a port, and an https URL
-/// built from an already-validated domain.
-fn set_env_key(text: &str, key: &str, value: &str) -> String {
-    let line = format!("{key}={value}");
-    let mut out: Vec<String> = Vec::new();
-    let mut written = false;
-    for raw in text.lines() {
-        let trimmed = raw.trim_start().trim_start_matches("export ").trim_start();
-        let is_live = trimmed.starts_with(&format!("{key}="));
-        let is_commented = trimmed
-            .strip_prefix('#')
-            .map(|rest| rest.trim_start().starts_with(&format!("{key}=")))
-            .unwrap_or(false);
-        if (is_live || is_commented) && !written {
-            out.push(line.clone());
-            written = true;
-        } else if is_live || is_commented {
-            // A duplicate for the same key: drop it rather than leave a second
-            // answer below the one we just wrote.
-            continue;
-        } else {
-            out.push(raw.to_string());
-        }
-    }
-    if !written {
-        out.push(line);
-    }
-    let mut joined = out.join("\n");
-    if text.ends_with('\n') {
-        joined.push('\n');
-    }
-    joined
+    crate::core::dotenv::set_keys(
+        original,
+        [
+            ("APP_URL", app_url.to_string()),
+            ("DB_CONNECTION", db.connection.clone()),
+            ("DB_HOST", db.host.clone()),
+            ("DB_PORT", db.port.to_string()),
+            ("DB_DATABASE", db.database.clone()),
+            ("DB_USERNAME", db.username.clone()),
+            ("DB_PASSWORD", db.password.clone()),
+        ],
+    )
 }
 
 fn verdict(result: StepResult, what: &str) -> Result<()> {
@@ -258,6 +182,7 @@ fn verdict(result: StepResult, what: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::dotenv::EnvOrigin;
 
     fn db() -> DbSettings {
         DbSettings {

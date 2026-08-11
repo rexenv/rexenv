@@ -240,6 +240,10 @@ L3 = scripted manual.
 | 288 | repo.rs:230 | The asset `kind` gate is unchanged — only "site" is new, and it is matched before `asset_dest` | ✅ `an_asset_target_still_validates_its_folder_name` |
 | 289 | site_provision.rs:305 | A cloned Blank-PHP site gets `composer install` — Symfony/Craft/Statamic are `vendor/`-less by design, and a checkout alone is a 500 | ✅ `front_end_assets_are_a_cloned_site_phase_and_the_last_one_before_serving` (phase order) + `git_site_clone_check` §9 |
 | 290 | site_provision.rs:360 | A cloned Php site never downloads a database engine — `needs_database` says it has none | ✅ same test (`db` absent from its phase list) |
+| 291 | dotenv.rs:1 | ONE `.env` writer for every framework — a commented key counts as present and is replaced in place, so a file never holds two answers | ✅ `a_commented_key_is_replaced_in_place_never_appended_beside`, `duplicates_collapse_and_an_exported_key_is_replaced_not_shadowed` |
+| 292 | dotenv.rs:96 | Filling a blank key collapses its duplicates even when it KEEPS the old value (skipping the write left a second, blank line behind) | ✅ `filling_a_key_collapses_its_duplicates_even_when_it_keeps_the_old_value` |
+| 293 | wordpress.rs:40 | Bedrock salts already set are never rotated — rotating logs every session out and kills every nonce, silently | ✅ `salts_that_already_exist_are_never_rotated` (incl. idempotence over two runs) |
+| 294 | wordpress.rs:40 | ⚠ The Bedrock `.env` key set + the `${WP_HOME}/wp` convention are from Roots' documented example, not a live install | 🚫 needs a real Bedrock project → SMOKE-TEST (same honest caveat `detect_content_dir_rel` carries for Radicle) |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -453,7 +457,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 201 · ◐ 43 · 🔨 41 · 🚫 5** of 290 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 204 · ◐ 43 · 🔨 41 · 🚫 6** of 294 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

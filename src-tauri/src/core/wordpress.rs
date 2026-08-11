@@ -32,6 +32,81 @@ use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
 /// Run `php <wp_phar> <args>` (optionally in `cwd`) and return the raw `Output`.
+/// The eight secrets WordPress derives its cookies and nonces from. Bedrock
+/// keeps them in `.env`; stock WordPress keeps them in `wp-config.php`, where
+/// `wp config create` already generates them for us.
+pub const SALT_KEYS: [&str; 8] = [
+    "AUTH_KEY",
+    "SECURE_AUTH_KEY",
+    "LOGGED_IN_KEY",
+    "NONCE_KEY",
+    "AUTH_SALT",
+    "SECURE_AUTH_SALT",
+    "LOGGED_IN_SALT",
+    "NONCE_SALT",
+];
+
+/// Bedrock's `.env` seed, for the (rare) repository that ships no
+/// `.env.example`. Only the keys `wire_bedrock_env` does not set itself.
+pub const BEDROCK_ENV_SEED: &str = "WP_ENV=development\n";
+
+/// Point a Bedrock/Radicle project's `.env` at this site.
+///
+/// The counterpart of `wp config create` for the composer-managed WordPress
+/// layouts, which have no `wp-config.php` of ours to write: `config/`
+/// application.php` reads every one of these through `env()`, so this file IS
+/// the configuration.
+///
+/// Two things it does NOT do, both deliberate:
+///
+/// - **Salts already set are left alone.** A repository that committed real
+///   salts — or a Retry after the first run generated them — must not have them
+///   rotated underneath it: every logged-in session and every nonce dies with
+///   the old value. Only a blank key (`AUTH_KEY=`, which is what `.env.example`
+///   ships) gets one.
+/// - **`WP_SITEURL` is written as the literal `${WP_HOME}/wp`**, not expanded.
+///   That is Bedrock's own convention and phpdotenv resolves it at load; baking
+///   the domain in twice means a rename fixes one of them.
+///
+/// Returns the rewritten text rather than writing it, so the whole edit is
+/// unit-testable against real `.env` shapes without a filesystem.
+///
+/// **UNVERIFIED against a real Bedrock project** — the key set and the
+/// `${WP_HOME}/wp` convention come from Bedrock's documented `.env.example`,
+/// not from a live install (the same honest caveat `detect_content_dir_rel`
+/// carries for Radicle). Whoever first clones one should confirm the site boots
+/// before trusting this.
+pub fn wire_bedrock_env(original: &str, home_url: &str, db: &BedrockDb) -> String {
+    let mut text = crate::core::dotenv::set_keys(
+        original,
+        [
+            ("DB_NAME", db.name.clone()),
+            ("DB_USER", db.user.clone()),
+            ("DB_PASSWORD", db.password.clone()),
+            // WordPress accepts `host:port` in DB_HOST, which is how a bundled
+            // engine on a non-default port is reachable at all.
+            ("DB_HOST", db.host.clone()),
+            ("WP_ENV", "development".to_string()),
+            ("WP_HOME", home_url.to_string()),
+            ("WP_SITEURL", "${WP_HOME}/wp".to_string()),
+        ],
+    );
+    for key in SALT_KEYS {
+        text = crate::core::dotenv::fill_if_blank(&text, key, crate::core::dotenv::generate_secret);
+    }
+    text
+}
+
+/// The database half of a Bedrock `.env`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BedrockDb {
+    pub name: String,
+    pub user: String,
+    pub password: String,
+    /// `host:port` — the bundled engines do not run on 3306.
+    pub host: String,
+}
+
 pub fn wp_cli(
     php_bin: &Path,
     wp_phar: &Path,
@@ -3534,5 +3609,120 @@ Error: WordPress installation doesn't verify against checksums.";
         assert!(theme_screenshot(&docroot, "wp-content", "no-such-theme").is_none());
 
         std::fs::remove_dir_all(&docroot).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod bedrock_env_tests {
+    use super::*;
+
+    fn db() -> BedrockDb {
+        BedrockDb {
+            name: "wp_shop_rex".into(),
+            user: "root".into(),
+            password: String::new(),
+            host: "127.0.0.1:13306".into(),
+        }
+    }
+
+    /// Bedrock's own `.env.example`, copied from the shape Roots documents:
+    /// blank salts, a commented database block, and `WP_SITEURL` written as a
+    /// reference rather than a URL.
+    const EXAMPLE: &str = "DB_NAME=\n\
+         DB_USER=\n\
+         DB_PASSWORD=\n\
+         \n\
+         # DB_HOST=localhost\n\
+         # DATABASE_URL=mysql://user:password@127.0.0.1:3306/db_name\n\
+         \n\
+         WP_ENV=development\n\
+         WP_HOME=http://example.com\n\
+         WP_SITEURL=${WP_HOME}/wp\n\
+         \n\
+         AUTH_KEY=\n\
+         SECURE_AUTH_KEY=\n\
+         LOGGED_IN_KEY=\n\
+         NONCE_KEY=\n\
+         AUTH_SALT=\n\
+         SECURE_AUTH_SALT=\n\
+         LOGGED_IN_SALT=\n\
+         NONCE_SALT=\n";
+
+    #[test]
+    fn wiring_bedrock_fills_the_blanks_and_leaves_the_convention_alone() {
+        let out = wire_bedrock_env(EXAMPLE, "https://shop.rex", &db());
+
+        assert!(out.contains("DB_NAME=wp_shop_rex"));
+        assert!(out.contains("DB_USER=root"));
+        assert!(out.contains("DB_PASSWORD="));
+        // The commented DB_HOST is REPLACED in place — a value appended beside
+        // it would leave the file with two answers.
+        assert!(out.contains("DB_HOST=127.0.0.1:13306"));
+        assert!(!out.contains("# DB_HOST"), "a commented twin is a second answer: {out}");
+        assert_eq!(out.matches("DB_HOST=").count(), 1);
+        assert!(out.contains("WP_HOME=https://shop.rex"));
+        assert!(!out.contains("http://example.com"));
+        // Bedrock's own convention, kept literal: phpdotenv expands it, and
+        // baking the domain in twice means a rename fixes only one of them.
+        assert!(out.contains("WP_SITEURL=${WP_HOME}/wp"));
+
+        // Every blank salt got a real value, and no two are the same.
+        let mut seen = std::collections::HashSet::new();
+        for key in SALT_KEYS {
+            let line = out
+                .lines()
+                .find(|l| l.starts_with(&format!("{key}=")))
+                .unwrap_or_else(|| panic!("{key} missing from {out}"));
+            let value = line.split_once('=').unwrap().1;
+            assert_eq!(value.len(), 64, "{key} is not a full-length secret");
+            assert!(seen.insert(value.to_string()), "{key} repeats another salt");
+        }
+        // DATABASE_URL is Bedrock's alternative to the DB_* block and we do not
+        // write it — but leaving a COMMENTED one is fine, and it must not have
+        // been un-commented by accident.
+        assert!(out.contains("# DATABASE_URL="), "an untouched comment must survive: {out}");
+    }
+
+    #[test]
+    fn salts_that_already_exist_are_never_rotated() {
+        // A Retry, or a repo that committed real salts. Rotating these logs
+        // every session out and invalidates every nonce — silently.
+        let existing = format!("AUTH_KEY=already-a-real-secret\n{EXAMPLE}");
+        let out = wire_bedrock_env(&existing, "https://shop.rex", &db());
+        assert!(out.contains("AUTH_KEY=already-a-real-secret"));
+        // Counted by LINE, not by substring: `SECURE_AUTH_KEY=` contains
+        // `AUTH_KEY=`, and the writer keys off the line prefix for exactly
+        // that reason — a substring check here would have "caught" a bug the
+        // code does not have.
+        let lines_for = |t: &str, key: &str| {
+            t.lines().filter(|l| l.starts_with(&format!("{key}="))).count()
+        };
+        assert_eq!(lines_for(&out, "AUTH_KEY"), 1, "and no second answer: {out}");
+        assert_eq!(lines_for(&out, "SECURE_AUTH_KEY"), 1, "the neighbour is its own key");
+        // Its blank neighbours still get filled.
+        assert!(!out.contains("NONCE_SALT=\n"));
+
+        // Idempotent: wiring twice changes nothing about the secrets.
+        let twice = wire_bedrock_env(&out, "https://shop.rex", &db());
+        for key in SALT_KEYS {
+            let take = |t: &str| {
+                t.lines()
+                    .find(|l| l.starts_with(&format!("{key}=")))
+                    .map(str::to_string)
+                    .unwrap()
+            };
+            assert_eq!(take(&out), take(&twice), "{key} changed on a second run");
+        }
+    }
+
+    #[test]
+    fn a_repo_with_no_example_still_gets_a_usable_env_from_the_seed() {
+        let out = wire_bedrock_env(BEDROCK_ENV_SEED, "https://shop.rex", &db());
+        assert!(out.contains("WP_ENV=development"));
+        assert!(out.contains("DB_NAME=wp_shop_rex"));
+        assert!(out.contains("WP_SITEURL=${WP_HOME}/wp"));
+        for key in SALT_KEYS {
+            assert!(!crate::core::dotenv::is_blank(&out, key), "{key} was left unset");
+        }
     }
 }
