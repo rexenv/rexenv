@@ -45,8 +45,30 @@ const url = (q) => `${BASE}/dev/ui-review?view=openin${q ?? ""}`;
   }
 
   const chevrons = () => page.getByRole("button", { name: /another browser|another editor/ });
-  if ((await chevrons().count()) !== 3)
-    fails.push(`expected 3 chevrons (header + 2 tiles), saw ${await chevrons().count()}`);
+  // 2 header (browser + Magic Login) + 3 tiles (browser, Magic Login, editor).
+  if ((await chevrons().count()) !== 5)
+    fails.push(`expected 5 chevrons, saw ${await chevrons().count()}`);
+
+  // EVERY chevron must carry a visible seam. Without it the arrow reads as
+  // decoration on one wide button and "click there for what?" has no answer —
+  // reported on the tiles, whose bordered neighbour made the header look fine.
+  // `primary` needs its own divider: that variant draws no border at all.
+  const seams = await page.evaluate(() =>
+    [...document.querySelectorAll("button")]
+      .filter((b) => /another browser|another editor/.test(b.getAttribute("aria-label") ?? ""))
+      .map((b) => {
+        const cs = getComputedStyle(b);
+        return {
+          label: b.getAttribute("aria-label"),
+          width: parseFloat(cs.borderLeftWidth),
+          transparent: cs.borderLeftColor === "rgba(0, 0, 0, 0)",
+        };
+      }),
+  );
+  for (const s of seams) {
+    if (!(s.width >= 1) || s.transparent)
+      fails.push(`chevron "${s.label}" has no separator (border-left ${s.width}px${s.transparent ? ", transparent" : ""})`);
+  }
 
   // The chevron opens the list, marks the default, and the pick is one-time —
   // there is no setting write to observe here, so what the probe CAN prove is

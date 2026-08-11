@@ -73,11 +73,20 @@ import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
  *  stopped, no admin user, tools missing — say so and fall back to the plain
  *  WordPress login page. */
 async function openWpAdmin(site: Pick<Site, "id" | "domain">) {
+  await openExternal(await magicLoginUrl(site));
+}
+
+/** The url "Magic Login" should open, minted per click (the token is one-time,
+ *  so it can't be computed ahead and parked in a menu). Shared with the chevron
+ *  beside the button so BOTH paths get the same fallback — the failure the
+ *  fallback covers (services stopped, no admin user, tools missing) doesn't
+ *  care which browser the user picked. */
+async function magicLoginUrl(site: Pick<Site, "id" | "domain">): Promise<string> {
   try {
-    await openExternal(await wpAdminLoginUrl(site.id));
+    return await wpAdminLoginUrl(site.id);
   } catch (e) {
     toast.error(`Auto-login unavailable — opening the WordPress login page instead.\n${String(e)}`);
-    await openExternal(`https://${site.domain}/wp-admin/`);
+    return `https://${site.domain}/wp-admin/`;
   }
 }
 
@@ -291,6 +300,7 @@ function SiteHeader({
   // preference, else the OS default (both resolved in `usePreferredBrowser`).
   const browser = usePreferredBrowser();
   const browserMenu = useBrowserMenu(url);
+  const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
   const [adminBusy, setAdminBusy] = useState(false);
   const onOpenAdmin = async () => {
     setAdminBusy(true);
@@ -347,10 +357,16 @@ function SiteHeader({
             Open in browser
           </SplitButton>
           {isWordpress && (
-            <Button variant="primary" disabled={adminBusy} onClick={onOpenAdmin}>
+            <SplitButton
+              variant="primary"
+              disabled={adminBusy}
+              onClick={onOpenAdmin}
+              menu={adminMenu}
+              chevronLabel="Sign in through another browser"
+            >
               <WordPressIcon className="h-[15px] w-[15px]" />
               {adminBusy ? "Signing in…" : "Magic Login"}
-            </Button>
+            </SplitButton>
           )}
         </div>
       </div>
@@ -387,6 +403,7 @@ function Overview({
   const editorMenu = useEditorMenu(site.path);
   const browser = usePreferredBrowser();
   const browserMenu = useBrowserMenu(url);
+  const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.label ?? site.webServer;
 
   return (
@@ -492,6 +509,8 @@ function Overview({
                 iconColor="text-rex-accent-blue"
                 label="Magic Login"
                 onClick={() => void openWpAdmin(site)}
+                menu={adminMenu}
+                menuLabel="Sign in through another browser"
               />
             )}
             <QuickTile
@@ -1356,7 +1375,10 @@ export function QuickTile({
           <button
             aria-label={menuLabel}
             title={menuLabel}
-            className="flex h-full flex-none items-center rounded-r-[10px] pl-1 pr-2 text-rex-text-dim transition-colors hover:text-rex-text"
+            // The SEAM is the affordance: without a divider the chevron reads
+            // as decoration on one wide button, and "what happens if I click
+            // there" has no answer. Same seam the header split button gets.
+            className="flex h-full flex-none items-center rounded-r-[10px] border-l border-rex-border-subtle px-[7px] text-rex-text-dim transition-colors hover:bg-rex-hover hover:text-rex-text"
           >
             <ChevronDown className="h-[13px] w-[13px]" strokeWidth={2} />
           </button>

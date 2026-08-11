@@ -19,7 +19,12 @@ import { openSiteInEditor, useEditors, usePreferredEditor } from "@/lib/useEdito
  * leaves the preference alone (that lives in Settings). A menu that silently
  * rewrote the default is how "why does everything open in Firefox now" starts.
  */
-export function useBrowserMenu(url: string): ReactNode | undefined {
+export function useBrowserMenu(
+  /** The link, or a resolver for one that has to be MINTED on click — a magic
+   *  login url is a one-time token, so it can't be computed up front and held
+   *  in a menu that may never be opened. */
+  url: string | (() => Promise<string>),
+): ReactNode | undefined {
   const browsers = useBrowsers();
   const current = usePreferredBrowser();
   if (browsers.length < 2) return undefined;
@@ -27,7 +32,10 @@ export function useBrowserMenu(url: string): ReactNode | undefined {
     <MenuItem
       key={b.id}
       icon={<AppIcon icon={b.icon} fallback={<Globe className="h-4 w-4" />} />}
-      onSelect={() => openUrlIn(b, url)}
+      onSelect={() => {
+        if (typeof url === "string") return openUrlIn(b, url);
+        void url().then((resolved) => openUrlIn(b, resolved));
+      }}
     >
       <span className="flex-1 truncate">{b.name}</span>
       {b.id === current?.id && (

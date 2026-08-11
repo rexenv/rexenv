@@ -130,9 +130,19 @@ the shipped UI toward one.
   (`useBrowserMenu`/`useEditorMenu` return undefined below two apps) — a control
   that opens a one-item menu can't change anything, and the seam it adds reads as
   a promise the machine can't keep. The two halves are SIBLING buttons: a nested
-  `<button>` is invalid HTML and WKWebView drops the inner click.
+  `<button>` is invalid HTML and WKWebView drops the inner click. **Every chevron
+  carries a visible SEAM** — the divider is the affordance, not decoration: the
+  quick-link tiles shipped without one and read as a single wide button with an
+  arrow glued to it, so "what happens if I click there" had no answer (reported
+  11 Aug). Bordered variants collapse their facing borders into the seam;
+  `primary` draws no border at all and needs its own divider. `openin.js` asserts
+  a non-transparent `border-left` on every chevron, whatever the variant.
 - **A one-off detour is not a preference change.** Picking a browser from the
-  chevron opens that one link there and leaves the default alone; the default
+  chevron opens that one link there and leaves the default alone. Magic Login
+  carries the same chevron, because it too ends in a browser — its url is minted
+  on click (a one-time token can't be parked in a menu that may never open) and
+  BOTH paths share one resolver, so the no-auto-login fallback can't differ
+  between them; the default
   moves in Settings, where the picker also shows what "System default" currently
   resolves to. A menu that quietly rewrote the setting is how "why does
   everything open in Firefox now" starts.

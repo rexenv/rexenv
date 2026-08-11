@@ -66,8 +66,14 @@ export function SplitButton({
             disabled={disabled}
             aria-label={chevronLabel}
             title={chevronLabel}
-            // -ml-px collapses the two facing 1px borders into one seam.
-            className="-ml-px rounded-l-none px-1.5"
+            className={cn(
+              "rounded-l-none px-1.5",
+              // The seam is what tells the user the chevron is its own target.
+              // Bordered variants already draw one — collapse the two facing
+              // 1px borders into it. `primary` has NO border, so it needs an
+              // explicit divider or the chevron reads as part of the label.
+              variant === "primary" ? "border-l border-white/25" : "-ml-px",
+            )}
           >
             <ChevronDown className="h-[13px] w-[13px]" strokeWidth={2} />
           </Button>

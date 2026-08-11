@@ -40,6 +40,7 @@ import { ResolverHandBackRow } from "@/routes/Import";
 import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import { QuickTile } from "@/routes/SiteDetail";
+import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplitButton } from "@/components/ui/split-button";
 import { useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
@@ -726,6 +727,15 @@ function OpenInView() {
           />
           Open in browser
         </SplitButton>
+        <SplitButton
+          variant="primary"
+          onClick={() => {}}
+          menu={browserMenu}
+          chevronLabel="Sign in through another browser"
+        >
+          <WordPressIcon className="h-[15px] w-[15px]" />
+          Magic Login
+        </SplitButton>
       </div>
       <div data-probe="tiles" className="grid grid-cols-2 gap-[9px] rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
         <QuickTile
@@ -735,6 +745,14 @@ function OpenInView() {
           onClick={() => {}}
           menu={browserMenu}
           menuLabel="Open this site in another browser"
+        />
+        <QuickTile
+          icon={<WordPressIcon className="h-4 w-4" />}
+          iconColor="text-rex-accent-blue"
+          label="Magic Login"
+          onClick={() => {}}
+          menu={browserMenu}
+          menuLabel="Sign in through another browser"
         />
         <QuickTile
           icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
