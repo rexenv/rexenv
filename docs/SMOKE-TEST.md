@@ -97,6 +97,12 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       - The repo's package.json scripts are listed; `dev` offers "Start watching"
         (that is how a Vite dev server runs), a one-shot like `build` offers Run.
       - **No "Build zip" button** — that is a plugin/theme thing.
+- [ ] **Any PHP repository.** New site → **Blank PHP** → From Git → a Symfony (or
+      Craft/Statamic) repo. The clone phase names what it found and the site serves
+      from that framework's own folder (`public/`, `web/`, `pub/`), not the project
+      root — check `https://<name>.rex` loads and `https://<name>.rex/composer.json`
+      404s. The card runs `installing dependencies`; a repo with no `composer.json`
+      reports that phase **skipped**, not failed. No database is downloaded for it.
 - [ ] The Repository tab also appears on a **linked** site whose folder is a git
       checkout (import one from Valet, or link `~/code/something`), and NOT on a
       linked Laravel site served from `…/public` — rexenv never searches upwards,

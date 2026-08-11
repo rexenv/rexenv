@@ -320,10 +320,14 @@ pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedB
     plan
 }
 
-/// Laravel install tooling for a site create: the minor's PHP CLI build (which
-/// runs the phar, so Composer's platform checks match the site's own PHP) and
-/// the pinned Composer phar itself.
-pub fn plan_for_laravel_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+/// Composer tooling for a site create: the minor's PHP CLI build (which runs the
+/// phar, so Composer's platform checks match the site's own PHP) and the pinned
+/// Composer phar itself.
+///
+/// Named for COMPOSER rather than for Laravel since a cloned Symfony, Craft or
+/// Statamic site needs exactly the same two binaries — a name that says
+/// "laravel" sends the next reader looking for a second, identical plan.
+pub fn plan_for_composer_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
     let mut plan = Vec::new();
     if let Some(patch) = php::patch_for_minor(minor) {
         plan.push(PlannedBinary::new(platform, "php", patch));

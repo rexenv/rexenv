@@ -238,6 +238,8 @@ L3 = scripted manual.
 | 286 | repo.rs:1120 | A site checkout never rewrites `sites.git_ref` — one question, one answer, and git owns the live one | ✅ `a_site_checkout_never_rewrites_the_row_that_records_what_was_picked` |
 | 287 | repo.rs:210 | The Repository panel operates at the PROJECT root, above the folder the web server serves | ✅ `git_site_clone_check` §8 (status/loss-warning/fetch/checkout at the project root; `public/.git` must not exist) |
 | 288 | repo.rs:230 | The asset `kind` gate is unchanged — only "site" is new, and it is matched before `asset_dest` | ✅ `an_asset_target_still_validates_its_folder_name` |
+| 289 | site_provision.rs:305 | A cloned Blank-PHP site gets `composer install` — Symfony/Craft/Statamic are `vendor/`-less by design, and a checkout alone is a 500 | ✅ `front_end_assets_are_a_cloned_site_phase_and_the_last_one_before_serving` (phase order) + `git_site_clone_check` §9 |
+| 290 | site_provision.rs:360 | A cloned Php site never downloads a database engine — `needs_database` says it has none | ✅ same test (`db` absent from its phase list) |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -451,7 +453,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 199 · ◐ 43 · 🔨 41 · 🚫 5** of 288 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 201 · ◐ 43 · 🔨 41 · 🚫 5** of 290 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

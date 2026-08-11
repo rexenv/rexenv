@@ -24,6 +24,9 @@
 //!   7. The front-end asset phase's inputs are read correctly off a real
 //!      checkout: the repo's `packageManager` field beats its lockfile, the
 //!      build script is seen, and `node_modules` is NOT in the clone.
+//!   9. Any PHP repository works as a Blank-PHP site: a Symfony checkout is
+//!      named, served from its own `public/`, and arrives without `vendor/` —
+//!      which is what the deps phase exists for.
 //!   8. The Repository panel's reads and writes work at the PROJECT root —
 //!      status/branch, the loss warning that gates a branch switch, fetch and
 //!      checkout — and `.git` is above the folder the web server serves.
@@ -168,6 +171,21 @@ fn main() {
             ),
             ("package-lock.json", "{\"lockfileVersion\":3}\n"),
             (".gitignore", ".env\n/vendor\n/node_modules\n/public/build\n"),
+        ],
+    );
+
+    // A Symfony repo — the "any PHP repository" case. Its front controller is
+    // `public/index.php` like Laravel's, but there is no `artisan`, so only
+    // `detect_project` can tell them apart. `vendor/` is gitignored, which is
+    // the whole reason a cloned Blank-PHP site needs a deps phase.
+    let symfony_remote = make_repo(
+        &remotes,
+        "invoices",
+        &[
+            ("bin/console", "#!/usr/bin/env php\n<?php // fixture\n"),
+            ("public/index.php", "<?php echo 'invoices';\n"),
+            ("composer.json", "{\"name\":\"acme/invoices\"}\n"),
+            (".gitignore", "/vendor\n"),
         ],
     );
 
@@ -487,6 +505,49 @@ fn main() {
         if !docroot.join(".git").is_dir() || docroot.join("public/.git").exists() {
             ok = fail("the checkout must live at the project root, above the served folder");
         }
+    }
+
+    // ── 9. Any PHP repository, served from its own front controller ─────
+    println!("\n=== 9. a Symfony repo cloned as a Blank-PHP site ===");
+    let invoices = sites_dir.join("invoices.rex");
+    std::fs::create_dir_all(&invoices).expect("docroot");
+    let symfony = sites::GitSource {
+        url: symfony_remote.to_string_lossy().into_owned(),
+        git_ref: Some("main".into()),
+    };
+    match sites::clone_into_docroot(
+        plat.supervisor(),
+        &git,
+        &env,
+        &symfony,
+        &invoices,
+        // Blank PHP accepts whatever landed — the document root is DETECTED,
+        // not assumed, which is what makes one site type cover every framework
+        // rexenv does not special-case.
+        SiteType::Php,
+        &cancel,
+        &mut sink,
+    ) {
+        Ok(detected) => {
+            println!("   detected {} · serving {:?}", detected.label, detected.docroot_rel);
+            if detected.label != "Symfony" || detected.docroot_rel != "public" {
+                ok = fail("a Symfony checkout must be served from public/, and named");
+            }
+            // The `deps` phase's own test: composer.json present, vendor/ not.
+            // Serving this without installing would be a 500, which is why the
+            // phase exists rather than being an offer.
+            if !invoices.join("composer.json").is_file() {
+                ok = fail("composer.json missing — the deps phase would skip and the site would 500");
+            }
+            if invoices.join("vendor").exists() {
+                ok = fail("vendor/ arrived in the clone?! the fixture is unrealistic");
+            }
+            // And it is NOT mistaken for the framework next door.
+            if detected.site_type != SiteType::Php {
+                ok = fail("a Symfony repo is not a Laravel site");
+            }
+        }
+        Err(e) => ok = fail(&format!("clone failed: {e}")),
     }
 
     println!("\n{}", if ok { "git_site_clone_check: PASS" } else { "git_site_clone_check: FAIL" });

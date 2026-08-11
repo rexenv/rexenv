@@ -737,6 +737,15 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     wired, serving site behind a "setup incomplete" badge whose Retry re-runs the
     clone, the database and Composer to reach the one step that was never rexenv's to
     guarantee. (Same "succeeded, but" shape as `serving_blocked`.)
+  - **Any PHP repository works as a Blank-PHP site.** `detect_project` already
+    classifies Symfony, Craft, Statamic, Magento and generic front controllers, and
+    the clone phase records its `docroot_rel` as `docroot_subdir` — so the document
+    root is DETECTED, not assumed, and one site type covers every framework rexenv
+    does not special-case. A cloned Php site therefore also gets the `deps` phase:
+    `vendor/` is gitignored in all of them, so the checkout on its own is a 500. It
+    does NOT get a database engine — `needs_database` says a Php site has none, and
+    ~600 MB of MySQL for a phase that never runs is the waste the linked-site
+    carve-out already avoids.
   - **The site's own checkout gets the SAME panel the assets use** (Stage 3):
     `commands/repo.rs::job_target` resolves `kind = "site"` to `site.path` — the
     project root, one level above what a Laravel site serves and exactly where the

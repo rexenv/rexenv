@@ -302,6 +302,15 @@ fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
             v.push(("finalize", "running migrations"));
         }
     }
+    // A cloned Blank-PHP site is ANY repository — Symfony, Craft, Statamic,
+    // Magento, or plain PHP. `vendor/` is gitignored in every one of them, so
+    // the checkout on its own is a 500 rather than a site. Present whenever a
+    // Php site was cloned and SKIPPED with a note when the repo turns out to
+    // have no composer.json, because the list is fixed before the clone and
+    // cannot know yet — the same shape `assets` uses.
+    if matches!(site_type, SiteType::Php) && from_git {
+        v.push(("deps", "installing dependencies"));
+    }
     // Any CLONED site can have a package.json, Laravel or not — so this sits
     // outside the per-type blocks, after everything that could change the code
     // an asset build reads. Present only when asked for; when the repo turns
@@ -347,7 +356,14 @@ fn build_plan(
     // checks are made against the PHP the app will actually run on.
     if matches!(site.site_type, SiteType::Laravel) && !linked {
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
-        plan.extend(downloads::plan_for_laravel_tooling(state.platform.as_ref(), minor));
+        plan.extend(downloads::plan_for_composer_tooling(state.platform.as_ref(), minor));
+    }
+    // A cloned Blank-PHP site needs Composer and the PHP CLI to run it — but
+    // NOT a database engine: `needs_database` says a Php site has none, and
+    // fetching ~600 MB of MySQL for a phase that will never run is the exact
+    // waste the linked-site carve-out above exists to avoid.
+    if matches!(site.site_type, SiteType::Php) && site.git_url.is_some() && !linked {
+        plan.extend(downloads::plan_for_composer_tooling(state.platform.as_ref(), minor));
     }
     plan
 }
@@ -1358,36 +1374,10 @@ async fn drive<R: tauri::Runtime>(
         bail_if_cancelled!();
 
         // ── deps (a CLONED project only) ─────────────────────────────────
-        // `vendor/` is gitignored, so a cloned Laravel app cannot boot at all
-        // until this runs — which is why it has no opt-out: offering to skip
-        // it would be offering to create a site that 500s. The pinned phar on
-        // the SITE's PHP (never a system `composer`, which can be a wrapper),
-        // so the project's `php`/`ext-*` platform checks are made against the
-        // interpreter the site will actually run on.
         if from_git {
-            let ix = phase_index(entry, "deps");
-            enter_phase(app, entry, ix);
-            let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
-            let (p2, c2, d2) = (php_bin.clone(), composer_phar.clone(), project.clone());
-            let installed = tauri::async_runtime::spawn_blocking(move || {
-                let st = a2.state::<AppState>();
-                let mut on_line = |line: &str| append_line(&a2, &e2, line);
-                core::repo::composer_install(
-                    st.platform.supervisor(),
-                    &p2,
-                    &c2,
-                    &d2,
-                    &env2,
-                    &e2.cancel,
-                    &mut on_line,
-                )
-            })
-            .await;
-            match installed {
-                Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
-                Ok(Err(_)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
-                Ok(Err(e)) => return JobEnd::Failed(format!("composer install failed: {e}")),
-                Err(e) => return JobEnd::Failed(format!("composer worker died: {e}")),
+            match deps_phase(app, entry, progress, &project, &php_bin, &composer_phar, &env).await {
+                None => {}
+                Some(end) => return end,
             }
             bail_if_cancelled!();
         }
@@ -1473,6 +1463,43 @@ async fn drive<R: tauri::Runtime>(
             );
         }
         finish_phase(app, entry, progress, ix, "ok", None);
+        bail_if_cancelled!();
+    }
+
+    // ── deps (a CLONED Blank-PHP site) ───────────────────────────────────
+    //
+    // The half of "any PHP repository" that the clone alone does not give you.
+    // A Symfony, Craft, Statamic or Magento checkout is `vendor/`-less by
+    // design; `detect_project` already found its front controller and recorded
+    // it as the document root, and this is the step that makes what it points
+    // at actually run.
+    if from_git && matches!(site.site_type, SiteType::Php) && !linked {
+        let (php_bin, composer_phar) = match composer_tools(&state, &minor).await {
+            Ok(t) => t,
+            Err(e) => return JobEnd::Failed(e.to_string()),
+        };
+        let env = {
+            let a = app.clone();
+            match tauri::async_runtime::spawn_blocking(move || {
+                let st = a.state::<AppState>();
+                shell_env(&st, &a.state::<RepoJobs>(), false)
+            })
+            .await
+            {
+                Ok(Ok(env)) => env,
+                Ok(Err(e)) => return JobEnd::Failed(e.to_string()),
+                Err(e) => return JobEnd::Failed(format!("env worker died: {e}")),
+            }
+        };
+        // The PROJECT root, not `served_root()`: `composer.json` sits beside
+        // the front controller's parent, which is exactly the distinction
+        // `docroot_subdir` records.
+        let project = PathBuf::from(&site.path);
+        if let Some(end) =
+            deps_phase(app, entry, progress, &project, &php_bin, &composer_phar, &env).await
+        {
+            return end;
+        }
         bail_if_cancelled!();
     }
 
@@ -1613,6 +1640,75 @@ async fn drive<R: tauri::Runtime>(
                 site.domain
             ))
         }
+    }
+}
+
+/// The `deps` phase: `composer install` in a cloned project.
+///
+/// `vendor/` is gitignored in every PHP project worth cloning, so this is what
+/// stands between a checkout and a site — which is why it has no opt-out:
+/// offering to skip it would be offering to create something that 500s. The
+/// pinned phar on the SITE's PHP (never a system `composer`, which can be a
+/// wrapper rather than a phar — Herd ships one), so the project's `php` and
+/// `ext-*` platform checks are made against the interpreter the site will
+/// actually run on.
+///
+/// Returns `None` when the phase settled (ok or skipped) and `Some(end)` when
+/// the JOB must end. Shared by the Laravel and the Blank-PHP paths: a cloned
+/// Symfony or Craft site needs the identical step, and a second copy of it
+/// would be a second place to fix the day Composer's invocation changes.
+///
+/// A repo with no `composer.json` is SKIPPED rather than failed. The phase list
+/// is fixed before the clone, so it cannot know — and "this repository has no
+/// Composer dependencies" is an answer, not a fault.
+#[allow(clippy::too_many_arguments)]
+async fn deps_phase<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    entry: &Arc<ProvisionEntry>,
+    progress: &mut sites::ProvisionProgress,
+    project: &Path,
+    php_bin: &Path,
+    composer_phar: &Path,
+    env: &EnvSnapshot,
+) -> Option<JobEnd> {
+    let ix = phase_index(entry, "deps");
+    enter_phase(app, entry, ix);
+    if !project.join("composer.json").is_file() {
+        finish_phase(
+            app,
+            entry,
+            progress,
+            ix,
+            "skipped",
+            Some("no composer.json in this repository — nothing to install"),
+        );
+        return None;
+    }
+    let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+    let (p2, c2, d2) =
+        (php_bin.to_path_buf(), composer_phar.to_path_buf(), project.to_path_buf());
+    let installed = tauri::async_runtime::spawn_blocking(move || {
+        let st = a2.state::<AppState>();
+        let mut on_line = |line: &str| append_line(&a2, &e2, line);
+        core::repo::composer_install(
+            st.platform.supervisor(),
+            &p2,
+            &c2,
+            &d2,
+            &env2,
+            &e2.cancel,
+            &mut on_line,
+        )
+    })
+    .await;
+    match installed {
+        Ok(Ok(())) => {
+            finish_phase(app, entry, progress, ix, "ok", None);
+            None
+        }
+        Ok(Err(_)) if entry.cancel.is_cancelled() => Some(JobEnd::Cancelled),
+        Ok(Err(e)) => Some(JobEnd::Failed(format!("composer install failed: {e}"))),
+        Err(e) => Some(JobEnd::Failed(format!("composer worker died: {e}"))),
     }
 }
 
@@ -1788,14 +1884,25 @@ mod tests {
         assert!(!phase_defs(flagged_but_not_cloned).iter().any(|(k, _)| *k == "assets"));
 
         // A Blank-PHP repo gets the phase too — the build is the repository's,
-        // not Laravel's.
+        // not Laravel's — and its own `deps`, because a Symfony or Craft
+        // checkout is `vendor/`-less by design.
         let php = PhasePlan {
             site_type: SiteType::Php,
             build_assets: true,
             ..laravel_plan(true, true)
         };
         let keys: Vec<&str> = phase_defs(php).iter().map(|(k, _)| *k).collect();
-        assert_eq!(keys, vec!["prepare", "fetch", "clone", "assets", "serve"]);
+        assert_eq!(keys, vec!["prepare", "fetch", "clone", "deps", "assets", "serve"]);
+        // No database phase: a Php site has none, so nothing downloads MySQL
+        // for a step that will never run.
+        assert!(!keys.contains(&"db"));
+        // And a Blank-PHP site rexenv merely CREATES has no deps phase — there
+        // is no repository to have dependencies.
+        let blank = PhasePlan { site_type: SiteType::Php, ..laravel_plan(false, true) };
+        assert_eq!(
+            phase_defs(blank).iter().map(|(k, _)| *k).collect::<Vec<_>>(),
+            vec!["prepare", "fetch", "serve"]
+        );
 
         assert!(
             sites::PROVISION_PHASE_WEIGHTS.iter().any(|(k, _)| *k == "assets"),
