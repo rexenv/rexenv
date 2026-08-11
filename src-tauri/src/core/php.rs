@@ -879,6 +879,8 @@ mod tests {
                 web_server: WebServer::Nginx,
                 path: "~/Sites/s".into(),
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
+                git_url: String::new(),
+                git_ref: None,
             },
         )
         .unwrap();

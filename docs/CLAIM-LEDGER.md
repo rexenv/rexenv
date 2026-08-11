@@ -214,6 +214,11 @@ L3 = scripted manual.
 | 99 | sites.rs:266 | Progress freezes on failure, never rolls back; bar never reverses | ✅ 3 lib tests |
 | 100 | sites.rs:631 | Ownership flags monotonic toward safety (1→0 only) | ✅ 3 lib tests |
 | 101 | sites.rs:2547 | Move dialog's "kept — not deleted" stays structurally true | ✅ 2 lib tests |
+| 263 | sites.rs:1222 | A site is CLONED or LINKED, never both — refused, never ranked | ✅ `cloning_into_a_folder_the_user_linked_is_refused_rather_than_ranked` |
+| 264 | sites.rs:1222 | An agent can never create a site from a repository (clone ⇒ downloads + executes model-chosen code, no click between) | ✅ `an_agent_can_never_create_a_site_from_a_repository` |
+| 265 | sites.rs:1222 | Every repo URL/ref reaching `git` argv is parsed + validated before a site row exists | ✅ `a_repo_reference_that_cannot_be_parsed_never_reaches_git` + `a_clone_normalizes_the_paste…` |
+| 266 | store.rs:493 | `docroot_subdir` can never escape the project (the field that decides what the web server reaches) | ✅ `a_docroot_subdir_that_escapes_the_project_is_refused_at_the_only_writer` |
+| 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
 ## core/logs.rs / services.rs / php.rs / site_env.rs
 
@@ -425,7 +430,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 174 · ◐ 43 · 🔨 40 · 🚫 5** of 262 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 179 · ◐ 43 · 🔨 40 · 🚫 5** of 267 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

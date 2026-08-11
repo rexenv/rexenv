@@ -68,6 +68,8 @@ async fn main() {
         web_server: WebServer::Nginx,
         path: String::new(),
         db_engine: SiteDbEngine::Mysql,
+        git_url: String::new(),
+        git_ref: None,
     };
     let collect = |id: &str| {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));

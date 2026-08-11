@@ -443,6 +443,12 @@ export interface NewSiteInput {
    *  created or written into, and never deleted with the site. */
   path: string;
   dbEngine?: SiteDbEngine; // omitted → mysql (serde default)
+  /** Non-empty → CLONE this repository into a docroot rexenv creates (v33).
+   *  Mutually exclusive with `path`: linking adopts a folder rexenv must never
+   *  write into, cloning fills one it just made. Sending both is refused. */
+  gitUrl?: string;
+  /** Branch or tag to check out; omitted → the remote's default. */
+  gitRef?: string | null;
 }
 
 /** WordPress one-click install fields (type=wordpress). Empty fields default

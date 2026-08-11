@@ -796,6 +796,11 @@ fn create_site<'a>(
             web_server: crate::state::models::WebServer::Nginx,
             path: String::new(), // never a caller path: an agent cannot link a folder
             db_engine: crate::state::models::SiteDbEngine::Mysql,
+            // Nor clone one: `validate_git_source` refuses `Ownership::Agent`
+            // outright, so this is the shape the refusal expects rather than
+            // the thing the refusal protects against.
+            git_url: String::new(),
+            git_ref: None,
         };
         let site = ctx.create(new, Ownership::Agent { client, ttl_hours: crate::core::sites::SCRATCH_TTL_HOURS }, acted).await?;
         let status = ctx.status_of(&site).await;

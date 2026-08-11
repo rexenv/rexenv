@@ -70,6 +70,8 @@ async fn main() {
             // The whole point: a non-empty path means "serve THIS folder".
             path: project.display().to_string(),
             db_engine: SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
         },
     )
     .expect("provision linked");

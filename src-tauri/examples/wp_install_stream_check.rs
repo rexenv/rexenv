@@ -70,6 +70,8 @@ async fn main() {
             web_server: WebServer::Nginx,
             path: String::new(),
             db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
         },
     )
     .unwrap();

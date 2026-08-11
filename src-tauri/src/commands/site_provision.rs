@@ -1513,6 +1513,8 @@ mod tests {
             web_server: crate::state::models::WebServer::Nginx,
             path: String::new(),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
         };
         let out = start(&app.handle().clone(), &state, &jobs, new, None, None, ownership);
         let calls = recorder.calls.lock().unwrap().clone();

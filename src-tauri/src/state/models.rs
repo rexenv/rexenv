@@ -459,11 +459,25 @@ pub struct NewSite {
     pub site_type: SiteType,
     pub php_version: String,
     pub web_server: WebServer,
+    /// Non-empty = LINK this existing folder: served in place, never created,
+    /// written into, or deleted with the site.
     pub path: String,
     /// SQL engine for the site's database. Defaults to MySQL so older
     /// callers/blueprints keep working unchanged.
     #[serde(default = "db_engine_mysql")]
     pub db_engine: SiteDbEngine,
+    /// Non-empty = CLONE this repository into a docroot rexenv creates (v33).
+    ///
+    /// The third way to fill a docroot, and mutually exclusive with
+    /// [`NewSite::path`]: linking adopts a folder rexenv must never write to,
+    /// while this one fills a folder rexenv just made. Cloning *into* someone
+    /// else's folder is a different and far more dangerous feature — refused
+    /// in [`crate::core::sites::validate_git_source`], not silently ranked.
+    #[serde(default)]
+    pub git_url: String,
+    /// Branch or tag to check out, or `None` for the remote's default.
+    #[serde(default)]
+    pub git_ref: Option<String>,
 }
 
 fn db_engine_mysql() -> SiteDbEngine {

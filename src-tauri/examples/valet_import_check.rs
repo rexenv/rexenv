@@ -125,6 +125,8 @@ async fn main() {
             web_server: WebServer::Nginx,
             path: serve.display().to_string(),
             db_engine: SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
         },
     )
     .expect("provision the linked site");

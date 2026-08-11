@@ -790,6 +790,9 @@ async fn import_one<R: tauri::Runtime>(
         // never deleted with the site.
         path: c.serve_path.clone().unwrap_or_default(),
         db_engine: crate::state::models::SiteDbEngine::Mysql,
+        // An import adopts what is already on disk — it never fetches code.
+        git_url: String::new(),
+        git_ref: None,
     };
     let snap = match crate::commands::site_provision::start(
         app,

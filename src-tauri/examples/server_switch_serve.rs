@@ -48,7 +48,10 @@ async fn main() {
 
     let site = sites::provision(&conn, &*plat, &ca, NewSite {
         name: "Switch".into(), domain: DOMAIN.into(), site_type: SiteType::Php,
-        php_version: "8.3".into(), web_server: WebServer::Nginx, path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+        php_version: "8.3".into(), web_server: WebServer::Nginx, path: String::new(),
+            db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
     }).expect("provision");
 
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT });

@@ -375,6 +375,11 @@ where
                 // dialog's default); a value = link that existing folder.
                 path: a.path.clone().unwrap_or_default(),
                 db_engine: a.db.unwrap_or(crate::state::models::SiteDbEngine::Mysql),
+                // `rex site create` has no repo flag yet — the app is the only
+                // caller that can clone (docs/PLAN-git-site-clone.md, CLI in a
+                // later stage).
+                git_url: String::new(),
+                git_ref: None,
             };
             let blueprint_id = match &a.blueprint {
                 None => None,

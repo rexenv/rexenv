@@ -58,11 +58,17 @@ async fn main() {
 
     let ng = sites::provision(&conn, &*plat, &ca, NewSite {
         name: "NG".into(), domain: "ng.test".into(), site_type: SiteType::Php,
-        php_version: "8.3".into(), web_server: WebServer::Nginx, path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+        php_version: "8.3".into(), web_server: WebServer::Nginx, path: String::new(),
+            db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
     }).expect("provision ng");
     let fp = sites::provision(&conn, &*plat, &ca, NewSite {
         name: "FP".into(), domain: "fp.test".into(), site_type: SiteType::Php,
-        php_version: "8.3".into(), web_server: WebServer::Frankenphp, path: String::new(), db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+        php_version: "8.3".into(), web_server: WebServer::Frankenphp, path: String::new(),
+            db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
     }).expect("provision fp");
     let _ = &ng;
 

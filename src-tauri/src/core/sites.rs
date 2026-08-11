@@ -5,7 +5,7 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, binaries, frankenphp, php, proxy, services, ssl, tld, tunnels};
+use crate::core::{adminer, binaries, frankenphp, php, proxy, repo, services, ssl, tld, tunnels};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{
@@ -1220,6 +1220,72 @@ pub fn needs_database(site_type: SiteType) -> bool {
 /// both detection (linked projects) and creation (`docroot_subdir`).
 pub const LARAVEL_DOCROOT_SUBDIR: &str = "public";
 
+/// A validated intent to fill a new site's docroot from a repository (v33).
+///
+/// `url` is the NORMALIZED form `repo::parse_source` produced — the same value
+/// that reaches `git` argv, never the raw paste.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitSource {
+    pub url: String,
+    /// The branch/tag picked, already through `repo::validate_ref`. `None` =
+    /// whatever the remote calls default.
+    pub git_ref: Option<String>,
+}
+
+/// Read a [`NewSite`]'s repository intent, or refuse it. `Ok(None)` = this site
+/// is not being cloned.
+///
+/// THE one implementation of the rule, called from both sides on purpose:
+/// [`provision_with`] calls it as the guard every caller passes through (app,
+/// `rex` CLI, MCP), and the provision job calls it to get the value it will
+/// clone. Two calls, one rule — the alternative was a guard in core and a
+/// second, drift-prone parse in the command layer.
+///
+/// Three refusals, each for a different reason:
+///
+/// - **`git_url` + `path` together.** Linking adopts a folder rexenv promises
+///   never to write into; cloning fills a folder rexenv just made. Ranking one
+///   over the other would mean picking, for the user, which of two promises to
+///   break. (Cloning INTO an existing folder is a real feature request and a
+///   genuinely dangerous one — it belongs behind its own consent, not behind a
+///   precedence rule nobody reads.)
+/// - **An agent asked.** `Ownership::Agent` is the MCP scratch-site tier, and
+///   a clone downloads code a MODEL chose and then executes it (`composer
+///   install` runs the project's own scripts). No click stands between the
+///   two. The tier grants disposable sites, not arbitrary code execution.
+/// - **The URL or ref doesn't parse.** Everything that reaches `git` argv is
+///   validated here, before a site row exists — the module invariant
+///   `core::repo` already holds for plugin/theme clones.
+pub fn validate_git_source(new: &NewSite, ownership: &Ownership) -> Result<Option<GitSource>> {
+    if new.git_url.trim().is_empty() {
+        return Ok(None);
+    }
+    if !new.path.trim().is_empty() {
+        return Err(Error::Other(
+            "a site is either CLONED into a folder rexenv creates or LINKED to a folder you \
+             already have — not both. Clear one of them."
+                .into(),
+        ));
+    }
+    if matches!(ownership, Ownership::Agent { .. }) {
+        return Err(Error::Other(
+            "creating a site from a git repository is a user action: it downloads code and then \
+             runs the project's own install scripts. Create the site empty and let the user \
+             clone into it."
+                .into(),
+        ));
+    }
+    let src = repo::parse_source(&new.git_url)?;
+    let git_ref = new
+        .git_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(repo::validate_ref)
+        .transpose()?;
+    Ok(Some(GitSource { url: src.url, git_ref }))
+}
+
 /// The validated TLD of `domain` — its last label, returned only after the
 /// full domain validation (charset, labels, TLD policy) passes. Callers use it
 /// to key per-TLD side effects (the OS resolver file) off an already-vetted
@@ -1379,6 +1445,12 @@ pub fn provision_with(
             new.domain
         )));
     }
+    // The guard every caller passes through — app, `rex`, MCP. Refused BEFORE
+    // the docroot and the cert exist, so a bad repo URL or an agent asking for
+    // one leaves nothing to clean up. The value is discarded here: the clone
+    // belongs to the provision job, and the row records the repo only once a
+    // checkout has actually landed in it.
+    validate_git_source(&new, &ownership)?;
 
     // A caller-supplied path means LINK: adopt the folder as-is. Nothing is
     // created and nothing is written into it — not even the Blank-PHP probe
@@ -1784,8 +1856,95 @@ mod tests {
             php_version: "8.3".into(),
             web_server: WebServer::Nginx,
             path: format!("~/Sites/{name}"),
-                db_engine: crate::state::models::SiteDbEngine::Mysql,
+            db_engine: crate::state::models::SiteDbEngine::Mysql,
+            git_url: String::new(),
+            git_ref: None,
         }
+    }
+
+    /// A site being CLONED: no `path` (rexenv makes the folder), a repo URL in
+    /// the shape a developer actually pastes.
+    fn cloning(url: &str, git_ref: Option<&str>) -> NewSite {
+        NewSite {
+            path: String::new(),
+            site_type: SiteType::Laravel,
+            git_url: url.into(),
+            git_ref: git_ref.map(str::to_string),
+            ..sample("shop", "shop.rex")
+        }
+    }
+
+    #[test]
+    fn a_clone_normalizes_the_paste_and_keeps_the_ref_the_user_picked() {
+        // The value that reaches git argv is the PARSED one, never the paste —
+        // `owner/repo` is the GitHub shorthand and expands to a clone URL.
+        let src = validate_git_source(&cloning("acme/shop", None), &Ownership::User)
+            .unwrap()
+            .expect("a repo url means a clone");
+        assert_eq!(src.url, "https://github.com/acme/shop.git");
+        assert_eq!(src.git_ref, None, "no ref = whatever the remote calls default");
+
+        let src = validate_git_source(
+            &cloning("https://github.com/acme/shop/tree/develop", Some("develop")),
+            &Ownership::User,
+        )
+        .unwrap()
+        .unwrap();
+        // A pasted web URL keeps its own spelling minus the `/tree/…` route —
+        // git clones it either way, and rewriting a URL the user can read is
+        // how a self-hosted forge gets a URL it never served.
+        assert_eq!(src.url, "https://github.com/acme/shop");
+        assert_eq!(src.git_ref.as_deref(), Some("develop"));
+
+        // An empty ref field is "they picked nothing", not a ref named "".
+        let src = validate_git_source(&cloning("acme/shop", Some("  ")), &Ownership::User)
+            .unwrap()
+            .unwrap();
+        assert_eq!(src.git_ref, None);
+
+        // No URL at all: this site simply isn't a clone.
+        assert_eq!(validate_git_source(&sample("blog", "blog.rex"), &Ownership::User).unwrap(), None);
+    }
+
+    #[test]
+    fn cloning_into_a_folder_the_user_linked_is_refused_rather_than_ranked() {
+        // Two promises that cannot both be kept: a linked folder is never
+        // written into, a cloned docroot is filled. Picking one silently would
+        // break the other on a site the user thought they were linking.
+        let both = NewSite { path: "/Users/x/code/shop".into(), ..cloning("acme/shop", None) };
+        let err = validate_git_source(&both, &Ownership::User).unwrap_err().to_string();
+        assert!(err.contains("CLONED") && err.contains("LINKED"), "{err}");
+    }
+
+    #[test]
+    fn an_agent_can_never_create_a_site_from_a_repository() {
+        // A clone downloads code a MODEL chose and `composer install` then runs
+        // that project's own scripts — with no click in between. The scratch
+        // tier grants disposable sites, not arbitrary code execution.
+        let agent = Ownership::Agent { client: "Claude Code".into(), ttl_hours: 24 };
+        let err = validate_git_source(&cloning("acme/shop", None), &agent).unwrap_err().to_string();
+        assert!(err.contains("user action"), "{err}");
+        // The refusal is about the CLONE, not about agents creating sites: an
+        // ordinary scratch site is still fine.
+        assert!(validate_git_source(&sample("scratch", "s.scratch.rex"), &agent).is_ok());
+    }
+
+    #[test]
+    fn a_repo_reference_that_cannot_be_parsed_never_reaches_git() {
+        for bad in [
+            "git://github.com/acme/shop.git",       // unencrypted, dropped by forges
+            "https://github.com/acme/shop/x.zip",   // an archive, not a repository
+            "not a url at all",                     // whitespace
+            "ftp://example.com/shop",               // unsupported scheme
+        ] {
+            assert!(
+                validate_git_source(&cloning(bad, None), &Ownership::User).is_err(),
+                "{bad} must be refused before a site row exists"
+            );
+        }
+        // A ref is argv too — same gate.
+        assert!(validate_git_source(&cloning("acme/shop", Some("--upload-pack=x")), &Ownership::User)
+            .is_err());
     }
 
     #[test]
@@ -2369,6 +2528,8 @@ mod tests {
                 web_server: WebServer::Nginx,
                 path: doc.display().to_string(),
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
+                git_url: String::new(),
+                git_ref: None,
             },
         )
         .unwrap();
