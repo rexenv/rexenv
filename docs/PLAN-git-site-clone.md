@@ -89,6 +89,17 @@ This is the honest option. Silently re-typing the site would change the database
 the phase list *after* they were fixed, and the card would then be describing a job it is
 not running.
 
+**Which types may be cloned (settled during Stage 1, was open question 3).** Laravel and
+Blank PHP. **WordPress is refused** — not because it is hard, but because a WordPress
+checkout without its *database* is not a site: no posts, no options, no users. "Cloned
+successfully" would hand back something that cannot serve a page. It belongs behind the
+database-import work (`docs/PLAN-valet-herd-db-import.md`), not beside it, so
+`validate_git_source` says so with the two ways out (clone it as Blank PHP; or clone it
+yourself and link the folder). Refusing outright rather than half-supporting it also
+keeps the phase list and the blueprint guard from having to describe a shape the product
+does not have — the two are asserted equal by
+`the_guard_admits_exactly_the_shapes_phase_defs_gives_a_blueprint_phase`.
+
 ### 2.3 Cloning into a docroot that already exists: staging + `rename`
 
 `clone_repo` refuses an existing `dest` — deliberately, so it can safely remove a partial
@@ -158,6 +169,13 @@ layout change.
 default to 5; naming them is what keeps the bar from racing through the two network
 phases and then parking).
 
+**`finalize` was added to the NEW-app Laravel path too**, which is a visible change to a
+shipped flow and deliberate: migrations used to be a silent tail of `configure`, and the
+cloned path needs them *after* its own dependency step. One phase key, two labels
+("running migrations" / "app key + migrations"), one implementation — the alternative was
+the same fifteen lines, and the paragraph of reasoning that makes them readable, copied
+into both branches. A card that names the step it is on is also the better half.
+
 **Migrations run.** Same argument as the new-app path already records: the database this
 site advertises must not be empty while the app's tables live somewhere else. A freshly
 created, empty database makes `migrate --force` a safe operation — there is nothing to
@@ -197,6 +215,14 @@ ALTER TABLE sites ADD COLUMN git_ref TEXT;
 ```
 
 Nullable; NULL = not from git, which is **exact** for every pre-v33 row.
+
+**Written at the INSERT, not when the checkout lands** (revised during Stage 1 — the
+first draft recorded it after the clone, on the reasoning that a site should never
+advertise a repo it does not hold). Retry is this design's recovery path: a job that dies
+mid-clone leaves `provisioned = 0`, and the Retry button — possibly after an app restart,
+with the in-memory job registry long gone — has nowhere else to learn which repository to
+fetch. So the row states the site's **source**, and `provisioned` states whether the code
+actually arrived. Two fields, two facts; the first alone was never the whole answer.
 
 Rejected: a `site_git_assets` row with `kind='site'`. That table is keyed
 `(site_id, kind, dir_name)` and its whole semantics are about a folder under wp-content —
@@ -295,8 +321,9 @@ Small commits, one task each, `scripts/verify.sh` green before every one.
    → affects §2.5 phase 7 only.
 2. **Node assets** — Stage 2 as planned, or pulled into Stage 1 as an opt-in phase?
    → affects the Stage ordering, not the design.
-3. **Which types may be cloned in v1** — Laravel only (recommended: ship the ask, then
-   Stage 4 widens it), or Laravel + Blank PHP immediately?
+3. ~~**Which types may be cloned in v1**~~ — **settled in Stage 1** (§2.2): Laravel +
+   Blank PHP; WordPress refused with a message, because a checkout without its database
+   is not a site. Say if you want it narrower.
 4. **Placement** — the New Site dialog's source selector (recommended), or a row in the
    existing `/import` route? The Import route is about migrating a whole existing dev
    environment (Valet/Herd); one repo is a *new site*, not a migration.

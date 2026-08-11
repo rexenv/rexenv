@@ -519,20 +519,6 @@ pub fn set_site_docroot_subdir(conn: &Connection, id: &str, rel: &str) -> Result
     Ok(conn.execute("UPDATE sites SET docroot_subdir = ?1 WHERE id = ?2", params![rel, id])? > 0)
 }
 
-/// Record the repository a site's code was cloned from (v33). Written once,
-/// when the clone lands — the badge, and the seam Stage 3's site-level git
-/// panel reads.
-pub fn set_site_git_origin(
-    conn: &Connection,
-    id: &str,
-    url: &str,
-    git_ref: Option<&str>,
-) -> Result<bool> {
-    Ok(conn.execute(
-        "UPDATE sites SET git_url = ?1, git_ref = ?2 WHERE id = ?3",
-        params![url, git_ref, id],
-    )? > 0)
-}
 
 /// Insert or update a setting.
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
@@ -1470,31 +1456,39 @@ mod tests {
     /// off-by-one reads past the end and fails loudly — but only if something
     /// actually reads them back.
     #[test]
-    fn v33_repo_origin_round_trips_and_is_written_only_when_the_clone_lands() {
+    fn v33_repo_origin_round_trips_through_the_row_mapping() {
         let conn = db::open_in_memory().unwrap();
-        let site = scratch(None);
-        insert_site(&conn, &site).unwrap();
-
-        // Insert records NO repo: the row exists while the docroot is still an
-        // empty folder, so a site can never advertise a checkout it lacks.
-        let back = get_site(&conn, &site.id).unwrap().unwrap();
+        // A site with no repo: both NULL, and NULL is the answer for every
+        // site that was not cloned.
+        let plain = scratch(None);
+        insert_site(&conn, &plain).unwrap();
+        let back = get_site(&conn, &plain.id).unwrap().unwrap();
         assert_eq!(back.git_url, None);
         assert_eq!(back.git_ref, None);
 
-        set_site_git_origin(&conn, &site.id, "https://github.com/acme/shop.git", Some("main"))
-            .unwrap();
-        let back = get_site(&conn, &site.id).unwrap().unwrap();
+        let cloned = Site {
+            id: "0b6e2a91-4c73-4f10-9d2e-5a1f8c3b7e42".into(),
+            domain: "shop.rex".into(),
+            git_url: Some("https://github.com/acme/shop.git".into()),
+            git_ref: Some("develop".into()),
+            ..scratch(None)
+        };
+        insert_site(&conn, &cloned).unwrap();
+        let back = get_site(&conn, &cloned.id).unwrap().unwrap();
         assert_eq!(back.git_url.as_deref(), Some("https://github.com/acme/shop.git"));
-        assert_eq!(back.git_ref.as_deref(), Some("main"));
-        // The neighbours are intact — an index slip here would land the URL in
+        assert_eq!(back.git_ref.as_deref(), Some("develop"));
+        // The neighbours are intact — these are the LAST two columns of three
+        // coupled lists, where an index slip would land the URL in
         // `docroot_subdir` and serve the project root.
         assert_eq!(back.docroot_subdir, "");
         assert_eq!(back.expires_at.as_deref(), Some("2026-08-02 09:00:00"));
 
         // No ref = the remote's default branch. NULL, not the empty string:
         // "they picked nothing" and "they picked ''" must not read alike.
-        set_site_git_origin(&conn, &site.id, "git@github.com:acme/shop.git", None).unwrap();
-        assert_eq!(get_site(&conn, &site.id).unwrap().unwrap().git_ref, None);
+        let default_branch =
+            Site { id: "c4d1".into(), domain: "b.rex".into(), git_ref: None, ..cloned };
+        insert_site(&conn, &default_branch).unwrap();
+        assert_eq!(get_site(&conn, "c4d1").unwrap().unwrap().git_ref, None);
     }
 
     /// The docroot subdir is the ONE field that decides what the web server can

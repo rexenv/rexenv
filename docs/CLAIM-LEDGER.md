@@ -221,6 +221,10 @@ L3 = scripted manual.
 | 269 | sites.rs:1290 | A clone can never delete a docroot's existing contents (the guarantee is `remove_dir`'s, i.e. the OS', not a check of ours) | ✅ `a_docroot_with_anything_in_it_is_refused_before_a_byte_is_fetched` + L1 `git_site_clone_check` |
 | 270 | sites.rs:1240 | Staging is a docroot SIBLING, so the post-clone move can never cross a filesystem | ✅ `staging_sits_beside_the_docroot_so_the_move_can_never_cross_a_filesystem` |
 | 271 | sites.rs:1268 | A clone that is not the chosen site type is NAMED, never silently re-typed after the card fixed the plan | ✅ `a_clone_that_is_not_the_chosen_kind_of_site_is_named_not_re_typed` |
+| 272 | site_provision.rs:196 | The blueprint guard and the phase list admit exactly the same shapes (a blueprint that "applies" with no phase to run in is the dishonest failure) | ✅ `the_guard_admits_exactly_the_shapes_phase_defs_gives_a_blueprint_phase` (now covers cloned sites) |
+| 273 | site_provision.rs:210 | A cloned Laravel site writes `.env` BEFORE `composer install` (post-autoload-dump boots the app) and installs before artisan runs | ✅ `a_cloned_laravel_site_configures_before_it_installs_and_installs_before_it_boots` |
+| 274 | sites.rs:1200 | A WordPress repo is refused, not half-supported — a checkout without its database is not a site | ✅ `a_wordpress_repo_is_refused_because_a_checkout_without_its_database_is_not_a_site` |
+| 275 | sites.rs:1616 | The Blank-PHP probe page is never written into a docroot a clone must find empty | 🔨 L1 (`git_site_clone_check`: create a php site from a repo, assert no `index.php` collision) |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -434,7 +438,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 183 · ◐ 43 · 🔨 40 · 🚫 5** of 271 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 186 · ◐ 43 · 🔨 41 · 🚫 5** of 275 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

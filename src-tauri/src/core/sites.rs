@@ -374,6 +374,12 @@ fn create_recording_ownership(
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
+    // The SAME rule `provision_with` already refused on, called again for its
+    // value. Not a second implementation: one function, asked twice — once
+    // early enough that a refusal leaves no docroot or certificate behind, once
+    // here where the row is built. Callers that reach this directly (`create`,
+    // tests) get the refusal too rather than a silently ignored `git_url`.
+    let git = validate_git_source(&new, &ownership)?;
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "domain already in use: {}",
@@ -460,12 +466,15 @@ fn create_recording_ownership(
             Ownership::Agent { ttl_hours, .. } => Some(store::db_time_from_now(conn, *ttl_hours)?),
         },
         docroot_subdir,
-        // The clone has not happened yet — the docroot exists and is empty at
-        // insert. Recorded by the clone phase once the checkout actually lands
-        // (`store::set_site_git_origin`), so a site can never advertise a repo
-        // it does not hold.
-        git_url: None,
-        git_ref: None,
+        // Recorded at the INSERT, before the clone has run, because RETRY is
+        // this design's recovery path: a job that dies mid-clone leaves
+        // `provisioned = 0`, and the Retry button — possibly after an app
+        // restart, with the job registry long gone — has nowhere else to learn
+        // which repository to fetch. So the row states the site's SOURCE, and
+        // `provisioned` states whether the code actually arrived; reading the
+        // first as "the code is here" is the second field's job to correct.
+        git_url: git.as_ref().map(|g| g.url.clone()),
+        git_ref: git.as_ref().and_then(|g| g.git_ref.clone()),
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -1275,8 +1284,45 @@ pub fn validate_git_source(new: &NewSite, ownership: &Ownership) -> Result<Optio
                 .into(),
         ));
     }
+    // WordPress is refused, and the reason is not that it is hard: a WordPress
+    // checkout without its DATABASE is not a site — no posts, no options, no
+    // users — so "cloned successfully" would hand back something that cannot
+    // serve a page. That belongs behind the database-import work
+    // (`docs/PLAN-valet-herd-db-import.md`), not beside it. Refused HERE rather
+    // than half-supported, so the phase list and the blueprint guard never have
+    // to describe a shape the product doesn't have.
+    if new.site_type == SiteType::Wordpress {
+        return Err(Error::Other(
+            "rexenv can't create a WordPress site from a repository yet — a checkout without its \
+             database isn't a working site. Clone it as a Blank PHP site, or link the folder \
+             after cloning it yourself."
+                .into(),
+        ));
+    }
     let src = repo::parse_source(&new.git_url)?;
     let git_ref = new
+        .git_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(repo::validate_ref)
+        .transpose()?;
+    Ok(Some(GitSource { url: src.url, git_ref }))
+}
+
+/// The repository a STORED site records as its source, re-validated.
+///
+/// The row is ours, so this is defence in depth rather than distrust — but the
+/// module invariant is that everything reaching `git` argv passes the parser,
+/// and "except when it came from our own database" is exactly the exemption
+/// that stops being true the day a column is written from somewhere new.
+/// The clone phase and Retry both read the source through here.
+pub fn git_source_of(site: &Site) -> Result<Option<GitSource>> {
+    let Some(url) = site.git_url.as_deref().filter(|u| !u.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let src = repo::parse_source(url)?;
+    let git_ref = site
         .git_ref
         .as_deref()
         .map(str::trim)
@@ -1605,7 +1651,11 @@ pub fn provision_with(
     } else {
         let docroot = sites_dir(conn, platform)?.join(&new.domain);
         std::fs::create_dir_all(&docroot)?;
-        if matches!(new.site_type, SiteType::Php) {
+        // The Blank-PHP probe page, but NOT when a clone is about to fill this
+        // folder: `clone_into_docroot` requires an empty docroot, so writing a
+        // placeholder here would make the site's own prepare phase the thing
+        // that blocks its clone phase.
+        if matches!(new.site_type, SiteType::Php) && new.git_url.trim().is_empty() {
             std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
         }
         docroot
@@ -1639,10 +1689,13 @@ pub fn provision_with(
 pub const PROVISION_PHASE_WEIGHTS: &[(&str, u32)] = &[
     ("prepare", 3),       // resolver + docroot + cert + row (ours, instant)
     ("fetch", 27),        // binary prefetch — REAL byte progress folds in
+    ("clone", 20),        // git clone — a whole history over the network
     ("db", 5),            // spawn engine + readiness probe
     ("core_download", 35), // wp core download ~25MB — no byte signal (B25)
     ("configure", 5),     // wp-config + CREATE DATABASE
     ("core_install", 10), // wp core install
+    ("deps", 30),         // composer install — the long pole of a cloned site
+    ("finalize", 5),      // artisan key:generate + migrate
     ("blueprint", 5),     // blueprint plugins/themes (when requested)
     ("serve", 10),        // pool + edge reload + await_ready
 ];
@@ -2164,6 +2217,20 @@ mod tests {
         // A ref is argv too — same gate.
         assert!(validate_git_source(&cloning("acme/shop", Some("--upload-pack=x")), &Ownership::User)
             .is_err());
+    }
+
+    #[test]
+    fn a_wordpress_repo_is_refused_because_a_checkout_without_its_database_is_not_a_site() {
+        let wp = NewSite { site_type: SiteType::Wordpress, ..cloning("acme/site", None) };
+        let err = validate_git_source(&wp, &Ownership::User).unwrap_err().to_string();
+        assert!(err.contains("database isn't a working site"), "{err}");
+        assert!(err.contains("Blank PHP") && err.contains("link the folder"), "the way out: {err}");
+
+        // The two types that DO work: Laravel (the ask) and Blank PHP (any repo
+        // served from whatever front controller detection finds).
+        assert!(validate_git_source(&cloning("acme/shop", None), &Ownership::User).is_ok());
+        let php = NewSite { site_type: SiteType::Php, ..cloning("acme/tools", None) };
+        assert!(validate_git_source(&php, &Ownership::User).is_ok());
     }
 
     #[test]

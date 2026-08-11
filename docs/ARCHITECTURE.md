@@ -688,6 +688,42 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   cursor instead of parking it at "item 1 of N", and the bar runs on the
   unpack/install/activate milestones alone (`InstallProgress` may run BEHIND
   the work, never ahead). The `rex` CLI keeps slugs only.
+- **A SITE from Git** (v33 · `core/sites.rs::{validate_git_source, clone_into_docroot}` +
+  the `clone`/`deps`/`finalize` phases in `commands/site_provision.rs` ·
+  `docs/PLAN-git-site-clone.md`): a repository is the **third source for a docroot**,
+  after "rexenv makes it empty" and "the user points at theirs" — not a new site type.
+  `NewSite.git_url`/`git_ref`; Laravel and Blank PHP only.
+  - **One validator, asked twice.** `validate_git_source` runs in `provision_with`
+    early enough that a refusal leaves no docroot or certificate behind, and again in
+    `create_recording_ownership` for its value. It refuses `git_url` beside `path`
+    (linking promises rexenv never writes into that folder; cloning fills one it just
+    made — ranking them picks which promise to break), refuses `Ownership::Agent` (a
+    clone downloads code a MODEL chose and `composer install` then runs that project's
+    own scripts, with no click between), and refuses WordPress (a checkout without its
+    database is not a site — that is the DB-import story).
+  - **The clone cannot eat a docroot.** `clone_repo` refuses an existing `dest`, so the
+    clone lands in a staging SIBLING (`.rexenv-clone-<domain>-<token>` — same
+    filesystem, because the Sites folder is user-configurable and may be on another
+    volume) and moves in via `remove_dir` + `rename`. `remove_dir`, never
+    `remove_dir_all`: the guarantee is the kernel's refusal to remove a non-empty
+    directory, not a check of ours. The Blank-PHP probe page is skipped at create and at
+    Retry for a cloning site, so prepare cannot block its own clone phase.
+  - **Type chosen, then verified.** The type fixes the phase list and the binary plan
+    (including whether ~600 MB of database engine is fetched) and `ls-remote` cannot see
+    files, so `detect_project` verifies afterwards and NAMES a mismatch instead of
+    re-typing the site under a card that already described the job. The detected
+    `docroot_rel` is recorded as `docroot_subdir` — a repo's real entry point, not the
+    type's usual one.
+  - **`.env` before dependencies.** Composer's `post-autoload-dump` runs `artisan
+    package:discover`, which BOOTS the app; installing first boots it against Laravel's
+    defaults, SQLite included. `.env` is copied from the repo's `.env.example`
+    (`create-project`'s post-root-package-install script never fires on a plain
+    install), an existing one is kept and only `APP_URL`/`DB_*` rewritten, and a repo
+    with neither gets a minimal local seed rather than the framework's production
+    posture. `finalize` then runs `key:generate --force` + `migrate --force`.
+  - **`git_url` is recorded at INSERT, not when the checkout lands** — Retry is the
+    recovery path and has nowhere else to learn what to clone after an app restart. The
+    row states the SOURCE; `provisioned` states whether the code arrived.
 - **Add plugin/theme from Git** (`core/repo.rs` + `core/devtools.rs` +
   `commands/repo.rs`): paste URL (https/ssh/scp/`owner/repo`; forge `/tree/`
   URLs preselect the branch) → `ls-remote` probe (URL+auth validated BEFORE

@@ -155,6 +155,7 @@ fn append_line<R: tauri::Runtime>(app: &AppHandle<R>, entry: &ProvisionEntry, li
 fn ensure_blueprint_applies(
     site_type: SiteType,
     path: &str,
+    git_url: &str,
     blueprint_id: Option<&str>,
 ) -> Result<()> {
     if !blueprint_id.is_some_and(|id| !id.is_empty()) {
@@ -170,6 +171,17 @@ fn ensure_blueprint_applies(
         return Err(Error::Other(
             "this site serves an existing folder, which rexenv adopts as-is — a blueprint would \
              install into someone else's project"
+                .into(),
+        ));
+    }
+    // Same rule, other source: a cloned docroot is somebody's repository. A
+    // blueprint's plugins and themes would be uncommitted files appearing in
+    // their working tree, which is worse than useless — it is a diff they did
+    // not write.
+    if !git_url.trim().is_empty() {
+        return Err(Error::Other(
+            "this site is cloned from a repository, which rexenv fills from the remote — a \
+             blueprint would add files nobody committed"
                 .into(),
         ));
     }
@@ -189,9 +201,20 @@ fn phase_defs(
     site_type: SiteType,
     has_blueprint: bool,
     linked: bool,
+    from_git: bool,
 ) -> Vec<(&'static str, &'static str)> {
     let mut v = vec![("prepare", "preparing site (domain, certificate)"), ("fetch", "downloading binaries")];
-    if matches!(site_type, SiteType::Wordpress) && !linked {
+    // The code arrives before anything can be done to it. A cloned site's
+    // remaining phases are the SAME ones a created one runs — a repo is a third
+    // source for the docroot, not a different kind of site.
+    if from_git {
+        v.push(("clone", "cloning the repository"));
+    }
+    // `from_git` joins `linked` here: a cloned docroot is code that ARRIVED,
+    // not code we install. (Unreachable today — `validate_git_source` refuses a
+    // cloned WordPress site outright, because a checkout without its database
+    // is not a site — but the two must not be able to disagree.)
+    if matches!(site_type, SiteType::Wordpress) && !linked && !from_git {
         v.push(("db", "starting database"));
         v.push(("core_download", "downloading WordPress core"));
         v.push(("configure", "writing wp-config + creating database"));
@@ -209,8 +232,24 @@ fn phase_defs(
         // Labels stay in the same size class as the WordPress ones: they render
         // on ONE row beside the domain and the buttons, so a long one is a
         // layout problem, not just wordy. The full commands stream to the log.
-        v.push(("app_install", "installing Laravel"));
-        v.push(("configure", "creating database + .env"));
+        if from_git {
+            // `.env` is written BEFORE the dependencies, not after: composer's
+            // `post-autoload-dump` runs `artisan package:discover`, which BOOTS
+            // the app. Installing first would boot it against Laravel's own
+            // defaults — including the SQLite one — every time.
+            v.push(("configure", "creating database + .env"));
+            v.push(("deps", "installing dependencies"));
+            v.push(("finalize", "app key + migrations"));
+        } else {
+            v.push(("app_install", "installing Laravel"));
+            v.push(("configure", "creating database + .env"));
+            // Migrations were a silent tail of `configure` until the cloned
+            // path needed them AFTER its own dependency step. One phase, two
+            // labels, one implementation — the alternative was the same
+            // fifteen lines (and the reasoning comment that makes them
+            // readable) copied into both branches.
+            v.push(("finalize", "running migrations"));
+        }
     }
     v.push(("serve", "starting to serve"));
     v
@@ -296,7 +335,12 @@ fn spawn_job<R: tauri::Runtime>(
     let log_path = log_dir.join(&log_key);
 
     let defs =
-        phase_defs(site.site_type, blueprint.is_some(), site.docroot_managed == Some(false));
+        phase_defs(
+            site.site_type,
+            blueprint.is_some(),
+            site.docroot_managed == Some(false),
+            site.git_url.is_some(),
+        );
     let mut phases: Vec<PhaseState> = defs
         .iter()
         .map(|(k, l)| PhaseState { key: (*k).into(), label: (*l).into(), status: "pending".into() })
@@ -423,7 +467,7 @@ pub(crate) fn start<R: tauri::Runtime>(
 
     // Refused HERE, before the row exists, so the caller gets a prepare-phase
     // error with nothing created rather than a half-site to clean up.
-    ensure_blueprint_applies(site.site_type, &site.path, blueprint_id.as_deref())?;
+    ensure_blueprint_applies(site.site_type, &site.path, &site.git_url, blueprint_id.as_deref())?;
 
     let (created, blueprint) = {
         let conn = lock_db(state)?;
@@ -535,7 +579,13 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
     // below is ours either way.
     if site.docroot_managed != Some(false) {
         std::fs::create_dir_all(&docroot)?;
-        if matches!(site.site_type, SiteType::Php) && !docroot.join("index.php").exists() {
+        // Same reason as at create: a clone needs the docroot EMPTY, so the
+        // probe page must not be the thing that blocks the retried clone.
+        let cloning = site.git_url.is_some();
+        if matches!(site.site_type, SiteType::Php)
+            && !cloning
+            && !docroot.join("index.php").exists()
+        {
             std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n")?;
         }
     } else if !docroot.is_dir() {
@@ -814,6 +864,92 @@ async fn drive<R: tauri::Runtime>(
     let is_wp = matches!(site.site_type, SiteType::Wordpress) && !linked;
     let is_laravel = matches!(site.site_type, SiteType::Laravel) && !linked;
     let minor = core::php::minor_of(&site.php_version);
+    // Read through the validator, not straight off the row — see
+    // `sites::git_source_of`.
+    let git = match sites::git_source_of(site) {
+        Ok(g) => g,
+        Err(e) => return JobEnd::Failed(e.to_string()),
+    };
+    let from_git = git.is_some();
+
+    // ── clone ────────────────────────────────────────────────────────────
+    // Before every type-specific phase: nothing can be installed into, wired
+    // to a database, or served until the code is actually on disk.
+    if let Some(src) = git {
+        let ix = phase_index(entry, "clone");
+        enter_phase(app, entry, ix);
+        let project = PathBuf::from(&site.path);
+        if project.join(".git").exists() {
+            // A Retry after a LATER phase failed. Re-cloning would be both a
+            // needless download and impossible — the docroot is no longer
+            // empty, which `clone_into_docroot` refuses by design.
+            finish_phase(app, entry, progress, ix, "skipped", Some("already cloned here"));
+        } else {
+            let (a2, e2) = (app.clone(), entry.clone());
+            let (p2, ty) = (project.clone(), site.site_type);
+            let cloned = tauri::async_runtime::spawn_blocking(move || -> Result<_> {
+                let st = a2.state::<AppState>();
+                let env = shell_env(&st, &a2.state::<RepoJobs>(), false)?;
+                // The developer's own git and ssh-agent (the deliberate
+                // bundled-client-rule departure, ARCHITECTURE §9): a private
+                // repo clones with the keys they already use.
+                let git = core::devtools::resolve_git(st.platform.as_ref(), &env)?;
+                let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                core::sites::clone_into_docroot(
+                    st.platform.supervisor(),
+                    &git.path,
+                    &env,
+                    &src,
+                    &p2,
+                    ty,
+                    &e2.cancel,
+                    &mut on_line,
+                )
+            })
+            .await;
+            let detected = match cloned {
+                Ok(Ok(d)) => d,
+                Ok(Err(e)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
+                Ok(Err(e)) => return JobEnd::Failed(e.to_string()),
+                Err(e) => return JobEnd::Failed(format!("clone worker died: {e}")),
+            };
+            // What the checkout actually serves, read from the checkout rather
+            // than assumed from the type. Creation could only guess from the
+            // site type, since the docroot was empty when the row was written.
+            {
+                let (a2, sid, rel) =
+                    (app.clone(), site.id.clone(), detected.docroot_rel.clone());
+                let recorded = tauri::async_runtime::spawn_blocking(move || {
+                    let st = a2.state::<AppState>();
+                    let conn = lock_db(&st)?;
+                    crate::state::store::set_site_docroot_subdir(&conn, &sid, &rel)
+                })
+                .await;
+                match recorded {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        return JobEnd::Failed(format!("recording the document root failed: {e}"))
+                    }
+                    Err(e) => return JobEnd::Failed(format!("docroot worker died: {e}")),
+                }
+            }
+            append_line(
+                app,
+                entry,
+                &format!(
+                    "✓ {} — serving {}",
+                    detected.label,
+                    if detected.docroot_rel.is_empty() {
+                        "the project root".to_string()
+                    } else {
+                        format!("{}/", detected.docroot_rel)
+                    }
+                ),
+            );
+            finish_phase(app, entry, progress, ix, "ok", None);
+        }
+        bail_if_cancelled!();
+    }
 
     if is_wp {
         // ── db ───────────────────────────────────────────────────────────
@@ -1039,38 +1175,43 @@ async fn drive<R: tauri::Runtime>(
                 Err(e) => return JobEnd::Failed(e.to_string()),
             };
 
-        // ── app_install ──────────────────────────────────────────────────
-        let ix = phase_index(entry, "app_install");
-        enter_phase(app, entry, ix);
-        if core::laravel::is_installed(&project) {
-            // A retry after a later phase failed: the app is already there and
-            // `create-project` would refuse the non-empty directory anyway.
-            finish_phase(app, entry, progress, ix, "skipped", Some("Laravel app already present"));
-        } else {
-            let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
-            let (p2, c2, d2) = (php_bin.clone(), composer_phar.clone(), project.clone());
-            let created = tauri::async_runtime::spawn_blocking(move || {
-                let st = a2.state::<AppState>();
-                let mut on_line = |line: &str| append_line(&a2, &e2, line);
-                core::laravel::create_project(
-                    st.platform.supervisor(),
-                    &p2,
-                    &c2,
-                    &d2,
-                    &env2,
-                    &e2.cancel,
-                    &mut on_line,
-                )
-            })
-            .await;
-            match created {
-                Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
-                Ok(Err(e)) if e.to_string().contains("cancelled") => return JobEnd::Cancelled,
-                Ok(Err(e)) => return JobEnd::Failed(format!("composer create-project failed: {e}")),
-                Err(e) => return JobEnd::Failed(format!("composer worker died: {e}")),
+        // ── app_install (a NEW app only) ─────────────────────────────────
+        // A cloned site's code is already on disk — the `clone` phase put it
+        // there — and `composer create-project` would refuse the non-empty
+        // directory anyway. Its dependencies come from `deps` below instead.
+        if !from_git {
+            let ix = phase_index(entry, "app_install");
+            enter_phase(app, entry, ix);
+            if core::laravel::is_installed(&project) {
+                // A retry after a later phase failed: the app is already there and
+                // `create-project` would refuse the non-empty directory anyway.
+                finish_phase(app, entry, progress, ix, "skipped", Some("Laravel app already present"));
+            } else {
+                let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+                let (p2, c2, d2) = (php_bin.clone(), composer_phar.clone(), project.clone());
+                let created = tauri::async_runtime::spawn_blocking(move || {
+                    let st = a2.state::<AppState>();
+                    let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                    core::laravel::create_project(
+                        st.platform.supervisor(),
+                        &p2,
+                        &c2,
+                        &d2,
+                        &env2,
+                        &e2.cancel,
+                        &mut on_line,
+                    )
+                })
+                .await;
+                match created {
+                    Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
+                    Ok(Err(e)) if e.to_string().contains("cancelled") => return JobEnd::Cancelled,
+                    Ok(Err(e)) => return JobEnd::Failed(format!("composer create-project failed: {e}")),
+                    Err(e) => return JobEnd::Failed(format!("composer worker died: {e}")),
+                }
             }
+            bail_if_cancelled!();
         }
-        bail_if_cancelled!();
 
         // ── configure ────────────────────────────────────────────────────
         let ix = phase_index(entry, "configure");
@@ -1105,6 +1246,30 @@ async fn drive<R: tauri::Runtime>(
             }
         }
 
+        // A cloned project has no `.env`: it is gitignored in every real
+        // Laravel repo, and the copy from `.env.example` is
+        // `create-project`'s post-root-package-install script, which a plain
+        // `composer install` never fires. Written HERE, before `deps`, so the
+        // `artisan package:discover` that composer runs at the end of the
+        // install boots against this site's real configuration.
+        if from_git {
+            match core::laravel::ensure_env_file(&project) {
+                Ok(core::laravel::EnvOrigin::Example) => {
+                    append_line(app, entry, ".env created from the repository's .env.example")
+                }
+                Ok(core::laravel::EnvOrigin::Repo) => append_line(
+                    app,
+                    entry,
+                    "kept the .env this repository ships — only APP_URL and DB_* are rewritten",
+                ),
+                Ok(core::laravel::EnvOrigin::Seeded) => append_line(
+                    app,
+                    entry,
+                    "! this repository ships no .env.example — wrote a minimal local .env",
+                ),
+                Err(e) => return JobEnd::Failed(e.to_string()),
+            }
+        }
         let env_file = core::laravel::env_path(&project);
         let db_settings = core::laravel::DbSettings {
             connection: "mysql".into(),
@@ -1123,30 +1288,102 @@ async fn drive<R: tauri::Runtime>(
                 }
                 append_line(app, entry, ".env wired to this site's database and URL");
             }
-            // Composer proved the app is installed, so a missing `.env` is a
-            // real anomaly (the skeleton's post-create script writes it) — the
-            // site would run on Laravel's SQLite default and nothing would say
-            // so. Fail loudly rather than serve a site whose database is a
-            // fiction.
+            // Both paths guarantee a `.env` by now — Composer's post-create
+            // script on a new app, `ensure_env_file` on a clone — so a missing
+            // one is a real anomaly. The site would run on Laravel's SQLite
+            // default and nothing would say so, which is exactly the failure
+            // worth being loud about.
             Err(e) => {
                 return JobEnd::Failed(format!(
-                    "the Laravel app installed but has no .env to wire ({}): {e}",
+                    "the Laravel project has no .env to wire ({}): {e}",
                     env_file.display()
                 ))
             }
         }
+        finish_phase(app, entry, progress, ix, "ok", None);
+        bail_if_cancelled!();
 
-        // Re-run the migrations against the database we just wired.
+        // ── deps (a CLONED project only) ─────────────────────────────────
+        // `vendor/` is gitignored, so a cloned Laravel app cannot boot at all
+        // until this runs — which is why it has no opt-out: offering to skip
+        // it would be offering to create a site that 500s. The pinned phar on
+        // the SITE's PHP (never a system `composer`, which can be a wrapper),
+        // so the project's `php`/`ext-*` platform checks are made against the
+        // interpreter the site will actually run on.
+        if from_git {
+            let ix = phase_index(entry, "deps");
+            enter_phase(app, entry, ix);
+            let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+            let (p2, c2, d2) = (php_bin.clone(), composer_phar.clone(), project.clone());
+            let installed = tauri::async_runtime::spawn_blocking(move || {
+                let st = a2.state::<AppState>();
+                let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                core::repo::composer_install(
+                    st.platform.supervisor(),
+                    &p2,
+                    &c2,
+                    &d2,
+                    &env2,
+                    &e2.cancel,
+                    &mut on_line,
+                )
+            })
+            .await;
+            match installed {
+                Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
+                Ok(Err(_)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
+                Ok(Err(e)) => return JobEnd::Failed(format!("composer install failed: {e}")),
+                Err(e) => return JobEnd::Failed(format!("composer worker died: {e}")),
+            }
+            bail_if_cancelled!();
+        }
+
+        // ── finalize ─────────────────────────────────────────────────────
+        let ix = phase_index(entry, "finalize");
+        enter_phase(app, entry, ix);
+        // A cloned repo has no APP_KEY (it lives in the gitignored `.env`), and
+        // Laravel throws on the first request that touches the encrypter —
+        // sessions, on page one. `--force` because the site is brand new: the
+        // interactive confirmation exists to protect data encrypted with the
+        // old key, and there is none.
+        if from_git {
+            let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+            let (p2, d2) = (php_bin.clone(), project.clone());
+            let keyed = tauri::async_runtime::spawn_blocking(move || {
+                let st = a2.state::<AppState>();
+                let mut on_line = |line: &str| append_line(&a2, &e2, line);
+                core::laravel::artisan(
+                    st.platform.supervisor(),
+                    &p2,
+                    &d2,
+                    &["key:generate", "--force"],
+                    &env2,
+                    &e2.cancel,
+                    &mut on_line,
+                )
+            })
+            .await;
+            match keyed {
+                Ok(Ok(())) => append_line(app, entry, "application key generated"),
+                Ok(Err(_)) if entry.cancel.is_cancelled() => return JobEnd::Cancelled,
+                Ok(Err(e)) => return JobEnd::Failed(format!("php artisan key:generate failed: {e}")),
+                Err(e) => return JobEnd::Failed(format!("artisan worker died: {e}")),
+            }
+            bail_if_cancelled!();
+        }
+
+        // Migrations against the database `.env` now names.
         //
-        // Not optional, and not belt-and-braces: `composer create-project` runs
-        // `artisan migrate --graceful` in its post-create script, and at that
-        // moment the skeleton's `.env` still says SQLite — so the users/cache/
-        // jobs tables were created inside `database/database.sqlite`, and the
-        // MySQL database this site advertises is EMPTY. Skipping this would ship
-        // a site whose Databases screen shows a database the app never filled.
-        // The stray SQLite file is left alone (it is the project's own file, and
-        // deleting what Composer wrote would be a surprise) — it is simply no
-        // longer the connection `.env` names.
+        // Not belt-and-braces on either path. For a NEW app, `composer
+        // create-project` already ran `artisan migrate --graceful` in its
+        // post-create script — and at that moment the skeleton's `.env` still
+        // said SQLite, so the users/cache/jobs tables went into
+        // `database/database.sqlite` and the MySQL database this site
+        // advertises is EMPTY. For a CLONE, nothing has migrated at all. Either
+        // way, skipping this ships a site whose Databases screen shows a
+        // database the app never filled. The stray SQLite file is left alone —
+        // it is the project's own file, and deleting what Composer wrote would
+        // be a surprise; it is simply no longer the connection `.env` names.
         {
             let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
             let (p2, d2) = (php_bin.clone(), project.clone());
@@ -1313,10 +1550,10 @@ mod tests {
     #[test]
     fn a_blueprint_is_refused_wherever_no_blueprint_phase_would_run() {
         // The one case that works: a WordPress site whose folder we create.
-        assert!(ensure_blueprint_applies(SiteType::Wordpress, "", Some("bp-1")).is_ok());
+        assert!(ensure_blueprint_applies(SiteType::Wordpress, "", "", Some("bp-1")).is_ok());
 
         for ty in [SiteType::Laravel, SiteType::Php] {
-            let err = ensure_blueprint_applies(ty, "", Some("bp-1")).unwrap_err().to_string();
+            let err = ensure_blueprint_applies(ty, "", "", Some("bp-1")).unwrap_err().to_string();
             assert!(err.contains("WordPress sites only"), "{ty:?}: {err}");
             assert!(err.contains(ty.as_db()), "the message must name the type: {err}");
         }
@@ -1324,16 +1561,30 @@ mod tests {
         // A LINKED WordPress folder is adopted as-is — `phase_defs` gives it no
         // blueprint phase either, and installing into someone's own project is
         // the worse half of the bug.
-        let err = ensure_blueprint_applies(SiteType::Wordpress, "/Users/x/Sites/theirs", Some("bp-1"))
-            .unwrap_err()
-            .to_string();
+        let err =
+            ensure_blueprint_applies(SiteType::Wordpress, "/Users/x/Sites/theirs", "", Some("bp-1"))
+                .unwrap_err()
+                .to_string();
         assert!(err.contains("adopts as-is"), "{err}");
+
+        // A CLONED WordPress docroot is somebody's working tree: blueprint
+        // plugins would land there as files nobody committed.
+        let err = ensure_blueprint_applies(
+            SiteType::Wordpress,
+            "",
+            "https://github.com/acme/site.git",
+            Some("bp-1"),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("nobody committed"), "{err}");
 
         // No blueprint asked for: every type passes, including the ones above.
         for ty in [SiteType::Wordpress, SiteType::Laravel, SiteType::Php] {
-            assert!(ensure_blueprint_applies(ty, "", None).is_ok());
-            assert!(ensure_blueprint_applies(ty, "", Some("")).is_ok(), "empty id means none");
-            assert!(ensure_blueprint_applies(ty, "/Users/x/theirs", None).is_ok());
+            assert!(ensure_blueprint_applies(ty, "", "", None).is_ok());
+            assert!(ensure_blueprint_applies(ty, "", "", Some("")).is_ok(), "empty id means none");
+            assert!(ensure_blueprint_applies(ty, "/Users/x/theirs", "", None).is_ok());
+            assert!(ensure_blueprint_applies(ty, "", "acme/site", None).is_ok());
         }
     }
 
@@ -1343,12 +1594,62 @@ mod tests {
     fn the_guard_admits_exactly_the_shapes_phase_defs_gives_a_blueprint_phase() {
         for ty in [SiteType::Wordpress, SiteType::Laravel, SiteType::Php] {
             for linked in [false, true] {
-                let path = if linked { "/Users/x/Sites/theirs" } else { "" };
-                let admitted = ensure_blueprint_applies(ty, path, Some("bp-1")).is_ok();
-                let has_phase =
-                    phase_defs(ty, true, linked).iter().any(|(k, _)| *k == "blueprint");
-                assert_eq!(admitted, has_phase, "{ty:?} linked={linked}");
+                for from_git in [false, true] {
+                    // The three docroot sources are mutually exclusive by
+                    // construction; only the two reachable combinations are
+                    // enumerated here.
+                    if linked && from_git {
+                        continue;
+                    }
+                    let path = if linked { "/Users/x/Sites/theirs" } else { "" };
+                    let url = if from_git { "acme/site" } else { "" };
+                    let admitted = ensure_blueprint_applies(ty, path, url, Some("bp-1")).is_ok();
+                    let has_phase = phase_defs(ty, true, linked, from_git)
+                        .iter()
+                        .any(|(k, _)| *k == "blueprint");
+                    assert_eq!(admitted, has_phase, "{ty:?} linked={linked} git={from_git}");
+                }
             }
+        }
+    }
+
+    /// The cloned Laravel path's phase list, in order — the card renders these
+    /// verbatim, and the ORDER is the design: `.env` before dependencies
+    /// (composer's post-autoload-dump boots the app), dependencies before
+    /// `key:generate`/`migrate` (artisan needs `vendor/`).
+    #[test]
+    fn a_cloned_laravel_site_configures_before_it_installs_and_installs_before_it_boots() {
+        let keys: Vec<&str> =
+            phase_defs(SiteType::Laravel, false, false, true).iter().map(|(k, _)| *k).collect();
+        assert_eq!(
+            keys,
+            vec!["prepare", "fetch", "clone", "db", "configure", "deps", "finalize", "serve"]
+        );
+        // A cloned site never runs `composer create-project`: its code arrived
+        // from the remote, and create-project refuses a non-empty directory.
+        assert!(!keys.contains(&"app_install"));
+
+        // The NEW-app path keeps its shape, one phase longer: migrations were a
+        // silent tail of `configure` and are now the same `finalize` phase the
+        // cloned path uses.
+        let keys: Vec<&str> =
+            phase_defs(SiteType::Laravel, false, false, false).iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys, vec!["prepare", "fetch", "db", "app_install", "configure", "finalize", "serve"]);
+
+        // A LINKED site is adopted whatever else was asked: no clone phase can
+        // appear beside a folder rexenv promised not to write into.
+        let keys: Vec<&str> =
+            phase_defs(SiteType::Laravel, false, true, false).iter().map(|(k, _)| *k).collect();
+        assert_eq!(keys, vec!["prepare", "fetch", "serve"]);
+
+        // Every phase the cloned path emits has a real weight — an unweighted
+        // key silently falls back to 5 and the bar's budget stops matching
+        // where the wall-clock actually goes.
+        for key in ["clone", "deps", "finalize"] {
+            assert!(
+                sites::PROVISION_PHASE_WEIGHTS.iter().any(|(k, _)| *k == key),
+                "{key} has no weight — the bar would guess"
+            );
         }
     }
 
