@@ -783,6 +783,20 @@ export interface WpOrgTheme {
 export interface EditorApp {
   id: string; // stable key stored as the preferred_editor setting
   name: string; // display name, e.g. "Visual Studio Code"
+  icon: string | null; // the app's own icon as a data: URI, null when unreadable
+}
+
+/** A detected web browser (mirrors the Rust BrowserApp DTO). */
+export interface BrowserApp {
+  id: string; // stable key stored as the preferred_browser setting
+  name: string; // display name, e.g. "Google Chrome"
+  /** The app's OWN icon as a `data:image/png;base64,…` URI. `null` is honest and
+   *  expected for apps that ship their icon only in a compiled asset catalog —
+   *  render the monochrome glyph, never an invented brand mark. */
+  icon: string | null;
+  /** This is the OS's current default handler for https. Display only: it picks
+   *  which icon the button wears when the user has chosen nothing. */
+  systemDefault: boolean;
 }
 
 /** Firefox trust state (mirrors the Rust FirefoxTrustStatus DTO). Firefox keeps

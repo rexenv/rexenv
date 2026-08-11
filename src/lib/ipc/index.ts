@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, AgentAction, Blueprint, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
+import type { AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -493,8 +493,30 @@ export async function openInEditor(editorId: string, path: string): Promise<void
   await invoke("open_in_editor", { editorId, path });
 }
 
-/** Open a path or URL in the OS default handler (Finder / browser). Falls back
- *  to `window.open` for URLs outside Tauri. */
+/** Web browsers installed on this machine, detection-ordered, with one flagged
+ *  `systemDefault` (the OS's https handler). Empty outside Tauri. */
+export async function listBrowsers(): Promise<BrowserApp[]> {
+  if (!isTauri()) return [];
+  return invoke<BrowserApp[]>("list_browsers");
+}
+
+/** Open ONE url in a specific browser WITHOUT changing the preference — the
+ *  chevron beside "Open in browser". The default moves in Settings only, so a
+ *  one-off detour can't silently redirect everything afterwards. Rejects
+ *  anything that isn't an http(s) URL (a browser will happily display a local
+ *  file). Falls back to a new tab outside Tauri. */
+export async function openInBrowser(browserId: string, url: string): Promise<void> {
+  if (!isTauri()) {
+    window.open(url, "_blank");
+    return;
+  }
+  await invoke("open_in_browser", { browserId, url });
+}
+
+/** Open a path or URL. Paths go to the OS handler (Finder); `http(s)` links go
+ *  to the user's `preferred_browser` when one is set and still installed — that
+ *  routing lives in the BACKEND so every call site gets it, including the next
+ *  one someone adds. Falls back to `window.open` for URLs outside Tauri. */
 export async function openExternal(target: string): Promise<void> {
   if (!isTauri()) {
     if (/^https?:\/\//.test(target)) window.open(target, "_blank");

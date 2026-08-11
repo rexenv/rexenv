@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Code,
@@ -24,6 +25,11 @@ import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { Placeholder } from "@/components/common/Placeholder";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
+import { usePreferredBrowser } from "@/lib/useBrowser";
+import { AppIcon } from "@/components/ui/app-icon";
+import { Menu } from "@/components/ui/menu";
+import { SplitButton } from "@/components/ui/split-button";
+import { useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
@@ -281,6 +287,10 @@ function SiteHeader({
 }) {
   const t = siteTypeMeta(site.type);
   const url = `https://${site.domain}`;
+  // The button wears the icon of the browser the click will ACTUALLY use —
+  // preference, else the OS default (both resolved in `usePreferredBrowser`).
+  const browser = usePreferredBrowser();
+  const browserMenu = useBrowserMenu(url);
   const [adminBusy, setAdminBusy] = useState(false);
   const onOpenAdmin = async () => {
     setAdminBusy(true);
@@ -324,10 +334,18 @@ function SiteHeader({
           </div>
         </div>
         <div className="flex flex-none items-center gap-[9px]">
-          <Button variant="secondary" onClick={() => void openExternal(url).catch(toastBackendError)}>
-            <ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />
+          <SplitButton
+            onClick={() => void openExternal(url).catch(toastBackendError)}
+            menu={browserMenu}
+            chevronLabel="Open this site in another browser"
+          >
+            <AppIcon
+              icon={browser?.icon}
+              fallback={<ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />}
+              className="h-[15px] w-[15px]"
+            />
             Open in browser
-          </Button>
+          </SplitButton>
           {isWordpress && (
             <Button variant="primary" disabled={adminBusy} onClick={onOpenAdmin}>
               <WordPressIcon className="h-[15px] w-[15px]" />
@@ -366,6 +384,9 @@ function Overview({
   const url = `https://${site.domain}`;
   const wpConfig = `${site.path}/wp-config.php`;
   const editor = usePreferredEditor();
+  const editorMenu = useEditorMenu(site.path);
+  const browser = usePreferredBrowser();
+  const browserMenu = useBrowserMenu(url);
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.label ?? site.webServer;
 
   return (
@@ -456,10 +477,14 @@ function Overview({
           </div>
           <div className="grid grid-cols-2 gap-[9px]">
             <QuickTile
-              icon={<Globe className="h-4 w-4" />}
+              icon={
+                <AppIcon icon={browser?.icon} fallback={<Globe className="h-4 w-4" />} />
+              }
               iconColor="text-rex-text-muted"
-              label="Browser"
+              label={browser ? `Open in ${browser.name}` : "Browser"}
               onClick={() => void openExternal(url).catch(toastBackendError)}
+              menu={browserMenu}
+              menuLabel="Open this site in another browser"
             />
             {isWordpress && (
               <QuickTile
@@ -470,10 +495,12 @@ function Overview({
               />
             )}
             <QuickTile
-              icon={<Code className="h-4 w-4" />}
+              icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
               iconColor="text-rex-text-muted"
               label={editor ? `Open in ${editor.name}` : "Open in editor"}
               onClick={() => openSiteInEditor(editor, site.path)}
+              menu={editorMenu}
+              menuLabel="Open this project in another editor"
             />
             <QuickTile
               icon={<Database className="h-4 w-4" />}
@@ -1289,30 +1316,55 @@ function CopyButton({ value }: { value: string }) {
 }
 
 /** A tile in the Quick-links grid: colored icon + label. */
+/** A quick-link tile. With `menu`, the tile grows a chevron that opens it —
+ *  as a SIBLING button, not a nested one: a `<button>` inside a `<button>` is
+ *  invalid HTML and WebKit drops the inner click, so the frame moved to the
+ *  wrapper and the label became its own button. */
 function QuickTile({
   icon,
   iconColor,
   label,
   onClick,
   span2,
+  menu,
+  menuLabel,
 }: {
   icon: React.ReactNode;
   iconColor: string;
   label: string;
   onClick?: () => void;
   span2?: boolean;
+  menu?: React.ReactNode;
+  menuLabel?: string;
 }) {
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
-        "flex items-center gap-[9px] rounded-[10px] border border-rex-border-subtle bg-rex-well px-[11px] py-[10px] text-[0.78125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
+        "flex min-w-0 items-stretch rounded-[10px] border border-rex-border-subtle bg-rex-well text-[0.78125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
         span2 && "col-span-2",
       )}
     >
-      <span className={cn("flex", iconColor)}>{icon}</span>
-      {label}
-    </button>
+      <button
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-center gap-[9px] rounded-[10px] px-[11px] py-[10px] text-left"
+      >
+        <span className={cn("flex flex-none", iconColor)}>{icon}</span>
+        <span className="truncate">{label}</span>
+      </button>
+      {menu && (
+        <Menu align="right" width={210} trigger={
+          <button
+            aria-label={menuLabel}
+            title={menuLabel}
+            className="flex h-full flex-none items-center rounded-r-[10px] pl-1 pr-2 text-rex-text-dim transition-colors hover:text-rex-text"
+          >
+            <ChevronDown className="h-[13px] w-[13px]" strokeWidth={2} />
+          </button>
+        }>
+          {menu}
+        </Menu>
+      )}
+    </div>
   );
 }
 

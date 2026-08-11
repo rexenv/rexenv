@@ -3,14 +3,21 @@ import { getSetting, listEditors, openExternal, openInEditor } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import type { EditorApp } from "@/types";
 
-/** The editor "Open in editor" targets: the preferred_editor setting when it is
- *  still installed, else the first detected editor, else null (no editor). */
-export function usePreferredEditor(): EditorApp | null {
-  const { data: editors = [] } = useQuery({
+/** Code editors installed on this machine. Cached: detection reads app bundles
+ *  and shells out per icon, and nothing installs an IDE mid-session. */
+export function useEditors(): EditorApp[] {
+  const { data = [] } = useQuery({
     queryKey: ["editors"],
     queryFn: listEditors,
     staleTime: 60_000,
   });
+  return data;
+}
+
+/** The editor "Open in editor" targets: the preferred_editor setting when it is
+ *  still installed, else the first detected editor, else null (no editor). */
+export function usePreferredEditor(): EditorApp | null {
+  const editors = useEditors();
   const { data: preferred } = useQuery({
     queryKey: ["setting", "preferred_editor"],
     queryFn: () => getSetting("preferred_editor"),

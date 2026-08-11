@@ -61,6 +61,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | IPC bridge (the ONLY invoke path; 217 exports) | — | `src/lib/ipc/index.ts` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
 | Shared UI hooks (editor pick + open, downloads) | — | `src/lib/useEditor.ts`, `src/lib/useDownloads.ts` |
+| "Which app opens this" (browser/editor pick, icons, chevron) | `commands/system.rs` (`list_browsers`, `open_in_browser`, `open_external`'s preference route), `platform/macos/mod.rs` (bundle table, icon extraction, LaunchServices default) | `src/lib/useBrowser.ts`, `src/components/ui/{app-icon,app-picker,split-button,open-in}.tsx`; consumers `routes/{SiteDetail,Sites,Settings}.tsx` · example `browser_detect_check` · ARCHITECTURE §8.2 |
 | Freshness: "the user came back" (native window focus → query refetch) | — | `src/lib/window-focus.ts` (wired in `src/main.tsx`); consumers: `components/wordpress/{WordPressManager,RepoPanel}.tsx`; probe `wk-checks/focusrefresh.js` |
 | Shell / theme / state | — | `src/components/shell/*`, `src/lib/theme.ts`, Zustand UI state, TanStack Query server state |
 

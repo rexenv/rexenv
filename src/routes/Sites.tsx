@@ -17,6 +17,8 @@ import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
 import { defaultTld, listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
+import { usePreferredBrowser } from "@/lib/useBrowser";
+import { AppIcon } from "@/components/ui/app-icon";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, ScratchPackage, Site, SiteResources } from "@/types";
@@ -239,6 +241,7 @@ export function SiteRow({
   const pkg = scratch ? packages?.[0] : undefined;
   const [copied, setCopied] = useState(false);
   const editor = usePreferredEditor();
+  const browser = usePreferredBrowser();
   return (
     <div
       role="button"
@@ -282,10 +285,14 @@ export function SiteRow({
           variant="ghost"
           size="icon"
           aria-label="Open in browser"
-          title={`Open https://${site.domain}`}
+          title={browser ? `Open https://${site.domain} in ${browser.name}` : `Open https://${site.domain}`}
           onClick={() => void openExternal(`https://${site.domain}`).catch(toastBackendError)}
         >
-          <Globe className="h-4 w-4" />
+          {/* Icon of the browser the click really uses — no chevron here: the
+              row already reserves a fixed width for its quick actions, and a
+              per-row menu next to a per-row menu is noise (§C1.2). Choosing a
+              different browser for one link lives on the site page. */}
+          <AppIcon icon={browser?.icon} fallback={<Globe className="h-4 w-4" />} />
         </Button>
         <Button
           variant="ghost"
@@ -491,7 +498,13 @@ export function SiteRow({
           Duplicate
         </MenuItem>
         <MenuItem
-          icon={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+          icon={
+            <AppIcon
+              icon={editor?.icon}
+              fallback={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              className="h-[15px] w-[15px]"
+            />
+          }
           onSelect={() => openSiteInEditor(editor, site.path)}
         >
           {editor ? `Open in ${editor.name}` : "Open in editor"}

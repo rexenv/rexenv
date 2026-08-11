@@ -116,6 +116,26 @@ the shipped UI toward one.
   decides what to render (`wp-info` boots WP-CLI three times), render from what we
   already recorded (`site.type`) and let the live answer correct it — the fix for
   pop-in is an earlier true source, not a placeholder.
+- **A button that hands work to another app wears THAT app's icon, extracted, or
+  its own glyph — never an invented one.** "Open in browser" and "Open in editor"
+  show the real icon of the app the click will use, read off the installed bundle
+  (`AppIcon`, `components/ui/app-icon.tsx`). A hand-drawn brand table was rejected
+  twice over: it would hardcode vendor hex against the token rule, and it would go
+  stale on every rebrand. When the icon can't be read (artwork only in a compiled
+  asset catalog) the component renders the caller's monochrome lucide glyph —
+  `null` is a fine answer, a wrong logo is not. The label follows the same rule:
+  the tile says "Open in Chrome" only when a browser is actually resolved.
+- **A chevron appears only when there is something to choose between.**
+  `SplitButton`/`QuickTile` drop the chevron entirely when the menu is empty
+  (`useBrowserMenu`/`useEditorMenu` return undefined below two apps) — a control
+  that opens a one-item menu can't change anything, and the seam it adds reads as
+  a promise the machine can't keep. The two halves are SIBLING buttons: a nested
+  `<button>` is invalid HTML and WKWebView drops the inner click.
+- **A one-off detour is not a preference change.** Picking a browser from the
+  chevron opens that one link there and leaves the default alone; the default
+  moves in Settings, where the picker also shows what "System default" currently
+  resolves to. A menu that quietly rewrote the setting is how "why does
+  everything open in Firefox now" starts.
 - WKWebView is the shipping engine: verify layout/metrics in the WebKit harness
   (`scripts/wk-checks/`), not Chrome — pill widths, %-height chains and dialog
   behaviour all differ there.
