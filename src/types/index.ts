@@ -59,6 +59,14 @@ export interface Site {
    *  path itself; a Laravel site rexenv created stores `"public"`, keeping its
    *  `.env` above anything served. Display only — the backend decides it. */
   docrootSubdir?: string;
+  /** The repository this site's code was CLONED from (v33), normalized by the
+   *  backend. `null`/absent = the code did not come from a repo — true of every
+   *  site made before the feature existed. Drives the "git" badge. */
+  gitUrl?: string | null;
+  /** The branch or tag PICKED when the site was created (v33), or `null` for
+   *  the remote's default. A record of that choice — NOT what is checked out
+   *  now, which only git can answer. */
+  gitRef?: string | null;
 }
 
 /** A plugin or theme an agent cloned into a scratch site (v29), as the Sites

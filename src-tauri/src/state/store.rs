@@ -19,7 +19,7 @@ use rusqlite::{params, Connection, Row};
 const SITE_COLUMNS: &str = "id, name, domain, type, status, php_version, web_server, ssl, path, \
      created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, \
      docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, \
-     docroot_subdir";
+     docroot_subdir, git_url, git_ref";
 
 /// Bound on the AGENT-controlled `agent_client` (v27). It arrives from MCP
 /// `initialize`'s `clientInfo.name`, bounded only by the session's 4 MB line
@@ -86,6 +86,10 @@ fn row_to_site(row: &Row) -> rusqlite::Result<Site> {
         // v32: "" = serve `path` itself, which is every pre-v32 row and every
         // site whose entry point IS its root. Read via `Site::served_root()`.
         docroot_subdir: row.get(23)?,
+        // v33: NULL = the code did not come from a repo. Exact for pre-v33
+        // rows — cloning into a docroot did not exist before the column did.
+        git_url: row.get(24)?,
+        git_ref: row.get(25)?,
     })
 }
 
@@ -99,8 +103,8 @@ fn to_sqlite_err(e: crate::error::Error) -> rusqlite::Error {
 pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
     conn.execute(
         "INSERT INTO sites
-            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+            (id, name, domain, type, status, php_version, web_server, ssl, path, created_at, multisite, db_name, db_engine, xdebug, override_port, provisioned, docroot_managed, db_created, content_dir, mu_dir_created, origin, agent_client, expires_at, docroot_subdir, git_url, git_ref)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
         params![
             site.id,
             site.name,
@@ -128,6 +132,8 @@ pub fn insert_site(conn: &Connection, site: &Site) -> Result<()> {
             cap_agent_client(site.agent_client.as_deref()),
             site.expires_at,
             site.docroot_subdir,
+            site.git_url,
+            site.git_ref,
         ],
     )?;
     Ok(())
@@ -486,6 +492,46 @@ pub fn set_site_mu_dir_created(conn: &Connection, id: &str) -> Result<bool> {
 /// Record a site's content dir (v24 backfill; creation writes it inline).
 pub fn set_site_content_dir(conn: &Connection, id: &str, rel: &str) -> Result<bool> {
     Ok(conn.execute("UPDATE sites SET content_dir = ?1 WHERE id = ?2", params![rel, id])? > 0)
+}
+
+/// Record the folder inside the site path the web server roots at (v32).
+///
+/// Creation writes this inline from the site TYPE, which is all it can know
+/// before a docroot has any contents. A cloned site learns it later, from
+/// [`crate::core::sites::detect_project`] reading the checkout that just
+/// landed — so a repo whose entry point is not the type's usual subfolder is
+/// served correctly instead of being assumed.
+///
+/// Writing `""` is meaningful (serve the path itself) and therefore allowed;
+/// what is NOT allowed is an absolute path or one that climbs out of the
+/// project, which would make `Site::served_root` point somewhere the site
+/// does not own. Refused here — the one place the value can be changed after
+/// creation — rather than at every read.
+pub fn set_site_docroot_subdir(conn: &Connection, id: &str, rel: &str) -> Result<bool> {
+    let bad = rel.starts_with('/')
+        || rel.starts_with('\\')
+        || rel.split(['/', '\\']).any(|seg| seg == "..");
+    if bad {
+        return Err(Error::Other(format!(
+            "refusing to serve \"{rel}\" — a site's document root must stay inside its own folder"
+        )));
+    }
+    Ok(conn.execute("UPDATE sites SET docroot_subdir = ?1 WHERE id = ?2", params![rel, id])? > 0)
+}
+
+/// Record the repository a site's code was cloned from (v33). Written once,
+/// when the clone lands — the badge, and the seam Stage 3's site-level git
+/// panel reads.
+pub fn set_site_git_origin(
+    conn: &Connection,
+    id: &str,
+    url: &str,
+    git_ref: Option<&str>,
+) -> Result<bool> {
+    Ok(conn.execute(
+        "UPDATE sites SET git_url = ?1, git_ref = ?2 WHERE id = ?3",
+        params![url, git_ref, id],
+    )? > 0)
 }
 
 /// Insert or update a setting.
@@ -1394,6 +1440,8 @@ mod tests {
             agent_client: agent_client.map(str::to_string),
             expires_at: Some("2026-08-02 09:00:00".into()),
             docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
         }
     }
 
@@ -1414,6 +1462,68 @@ mod tests {
         assert_eq!(back.domain, "probe.scratch.rex");
         assert_eq!(back.docroot_managed, Some(true));
         assert_eq!(back.mu_dir_created, None);
+    }
+
+    /// v33 is the SECOND pair appended to the three coupled lists (SITE_COLUMNS,
+    /// row_to_site's indices, insert_site's params). v27 caught the coupling for
+    /// the middle of the row; these are the LAST two columns, where an
+    /// off-by-one reads past the end and fails loudly — but only if something
+    /// actually reads them back.
+    #[test]
+    fn v33_repo_origin_round_trips_and_is_written_only_when_the_clone_lands() {
+        let conn = db::open_in_memory().unwrap();
+        let site = scratch(None);
+        insert_site(&conn, &site).unwrap();
+
+        // Insert records NO repo: the row exists while the docroot is still an
+        // empty folder, so a site can never advertise a checkout it lacks.
+        let back = get_site(&conn, &site.id).unwrap().unwrap();
+        assert_eq!(back.git_url, None);
+        assert_eq!(back.git_ref, None);
+
+        set_site_git_origin(&conn, &site.id, "https://github.com/acme/shop.git", Some("main"))
+            .unwrap();
+        let back = get_site(&conn, &site.id).unwrap().unwrap();
+        assert_eq!(back.git_url.as_deref(), Some("https://github.com/acme/shop.git"));
+        assert_eq!(back.git_ref.as_deref(), Some("main"));
+        // The neighbours are intact — an index slip here would land the URL in
+        // `docroot_subdir` and serve the project root.
+        assert_eq!(back.docroot_subdir, "");
+        assert_eq!(back.expires_at.as_deref(), Some("2026-08-02 09:00:00"));
+
+        // No ref = the remote's default branch. NULL, not the empty string:
+        // "they picked nothing" and "they picked ''" must not read alike.
+        set_site_git_origin(&conn, &site.id, "git@github.com:acme/shop.git", None).unwrap();
+        assert_eq!(get_site(&conn, &site.id).unwrap().unwrap().git_ref, None);
+    }
+
+    /// The docroot subdir is the ONE field that decides what the web server can
+    /// reach, and v33 makes it writable after creation (a clone learns its
+    /// layout from the checkout). Refusing the escapes HERE — the single place
+    /// it can change — is what keeps `Site::served_root` inside the project.
+    #[test]
+    fn a_docroot_subdir_that_escapes_the_project_is_refused_at_the_only_writer() {
+        let conn = db::open_in_memory().unwrap();
+        let site = scratch(None);
+        insert_site(&conn, &site).unwrap();
+
+        for bad in ["/etc", "../../../Users/x/.ssh", "public/../..", "/", "\\Windows"] {
+            assert!(
+                set_site_docroot_subdir(&conn, &site.id, bad).is_err(),
+                "{bad} must not become a document root"
+            );
+        }
+        // Still the value the row was inserted with — a refusal writes nothing.
+        assert_eq!(get_site(&conn, &site.id).unwrap().unwrap().docroot_subdir, "");
+
+        set_site_docroot_subdir(&conn, &site.id, "public").unwrap();
+        assert_eq!(get_site(&conn, &site.id).unwrap().unwrap().docroot_subdir, "public");
+        // A nested entry point is legitimate (Radicle's `public/content` sits
+        // under one), and so is clearing back to "serve the path itself".
+        set_site_docroot_subdir(&conn, &site.id, "web/public").unwrap();
+        assert_eq!(get_site(&conn, &site.id).unwrap().unwrap().docroot_subdir, "web/public");
+        set_site_docroot_subdir(&conn, &site.id, "").unwrap();
+        assert_eq!(get_site(&conn, &site.id).unwrap().unwrap().docroot_subdir, "");
     }
 
     #[test]

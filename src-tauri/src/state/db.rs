@@ -457,6 +457,29 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE sites ADD COLUMN docroot_subdir TEXT NOT NULL DEFAULT '';
      UPDATE sites SET docroot_subdir = 'public'
       WHERE type = 'laravel' AND docroot_managed = 1;",
+    // v33 — the repository this site's code CAME FROM, when it came from one.
+    //
+    // Both NULLABLE, and the NULL is exact rather than a guess: nothing before
+    // this migration could clone into a docroot, so every pre-v33 site provably
+    // has no origin repo. (Contrast v32's backfill, which had to reason about
+    // what old rows meant — here the feature did not exist.)
+    //
+    // On `sites` and NOT as a `site_git_assets` row with `kind='site'`. That
+    // table is keyed `(site_id, kind, dir_name)` and every one of its
+    // mechanisms is about a folder under wp-content: `repo::asset_dest`
+    // refuses an unknown kind, `derive_dir_name` refuses the empty name, the
+    // badge renders in the plugin/theme list, and the unlink-delete guard
+    // stats the resolved asset path. Bending four mechanisms to carry a fact
+    // about the site itself buys nothing the site row doesn't already give —
+    // and the site row is what teardown reads.
+    //
+    // `git_ref` is what the user PICKED at create (a branch or tag), recorded
+    // once. It is deliberately NOT kept in step with the checkout afterwards:
+    // the working tree's current branch is a fact only git knows, read live by
+    // `repo::read_git_status`, and a stale mirror of it here would be a second
+    // answer to a question that already has one.
+    "ALTER TABLE sites ADD COLUMN git_url TEXT;
+     ALTER TABLE sites ADD COLUMN git_ref TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -985,6 +1008,33 @@ mod tests {
         assert_eq!(subdir("linked"), "", "a linked path already points at what it serves");
         assert_eq!(subdir("prev17"), "", "unknown ownership is left alone, not guessed");
         assert_eq!(subdir("wp"), "", "WordPress serves its docroot itself");
+    }
+
+    /// v33 adds no backfill on purpose, and that is the claim worth pinning:
+    /// nothing before it could clone into a docroot, so NULL is a FACT about
+    /// every existing row rather than an unknown. A future reader tempted to
+    /// "fill these in" should fail this test first.
+    #[test]
+    fn v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one() {
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..32].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path, docroot_managed)
+             VALUES ('7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30', 'Shop', 'shop.rex', 'laravel',
+                     '8.3', '/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/shop.rex', 1)",
+            [],
+        )
+        .unwrap();
+        migrate(&conn).unwrap();
+
+        let (url, git_ref): (Option<String>, Option<String>) = conn
+            .query_row("SELECT git_url, git_ref FROM sites", [], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap();
+        assert_eq!(url, None, "a pre-v33 site provably came from no repository");
+        assert_eq!(git_ref, None);
     }
 
     #[test]

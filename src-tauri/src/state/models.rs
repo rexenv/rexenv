@@ -237,6 +237,19 @@ pub struct Site {
     /// [`Site::served_root`]. `path` stays the thing teardown removes.
     #[serde(default)]
     pub docroot_subdir: String,
+    /// The repository this site's code was CLONED from (v33), normalized as
+    /// `core::repo::parse_source` produced it. `None` = the code did not come
+    /// from a repo — exact for every pre-v33 row, since nothing could clone
+    /// into a docroot before that migration.
+    #[serde(default)]
+    pub git_url: Option<String>,
+    /// The branch or tag the user PICKED at create (v33), or `None` for the
+    /// remote's default. A record of the choice, not a mirror of the working
+    /// tree: what is checked out NOW is git's answer to give
+    /// (`core::repo::read_git_status`), and a second copy here would go stale
+    /// the first time anyone switches branch.
+    #[serde(default)]
+    pub git_ref: Option<String>,
 }
 
 impl Site {
@@ -331,6 +344,8 @@ pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
         agent_client: None,
         expires_at: None,
         docroot_subdir: String::new(),
+        git_url: None,
+        git_ref: None,
     }
 }
 
@@ -488,6 +503,8 @@ mod tests {
             agent_client: None,
             expires_at: expires_at.map(str::to_string),
             docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
         }
     }
 

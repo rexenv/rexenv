@@ -103,6 +103,8 @@ async fn main() {
             agent_client: None,
             expires_at: None,
             docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
         },
     )
     .expect("insert site row");

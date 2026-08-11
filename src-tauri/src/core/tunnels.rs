@@ -600,6 +600,8 @@ mod tests {
             agent_client: None,
             expires_at: None,
             docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
         };
         assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
         for ws in [WebServer::Apache, WebServer::Frankenphp] {

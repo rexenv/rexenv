@@ -321,7 +321,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
 
 ## 8. Data & app state
 
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 25:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 33:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -337,8 +337,20 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   v22 `config_rewrites.written_digest` · v23 `tunnels` (spawn-time share rows —
   see the tunnels entry in §9) · v24 `sites.content_dir` (the recorded content-dir
   rel, below) · v25 `sites.mu_dir_created` (set-once when a writer creates
-  `mu-plugins/`; delete removes the dir only when recorded ours + empty).
+  `mu-plugins/`; delete removes the dir only when recorded ours + empty) ·
+  v26 `agent_actions` (the MCP accountability feed) · v27 `sites.origin` +
+  `agent_client` + `expires_at` (the scratch-site tier boundary) ·
+  v28 `agent_actions.actor` · v29 `scratch_packages` · v30
+  `agent_actions.args_summary` · v31 `db_imports.skipped_tables` (an incomplete
+  copy must not read as a complete one) · v32 `sites.docroot_subdir` (what the
+  vhost roots at, so Laravel's `.env` is never a public URL — read ONLY through
+  `Site::served_root()`) · v33 `sites.git_url` + `git_ref` (the repository a
+  cloned site's code came from; NULL is EXACT for pre-v33 rows because nothing
+  could clone into a docroot before it — `docs/PLAN-git-site-clone.md`).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
+  *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
+  A count is the one part of a list that goes wrong silently, so check it
+  against `MIGRATIONS.len()` rather than trusting the prose.)*
 - **The content dir is RECORDED, never re-derived at write time** (v24
   `sites.content_dir`, decided once at create/backfill from filesystem markers,
   poison-resistant): every writer that builds a `wp-content`-relative path itself —

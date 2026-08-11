@@ -460,6 +460,12 @@ fn create_recording_ownership(
             Ownership::Agent { ttl_hours, .. } => Some(store::db_time_from_now(conn, *ttl_hours)?),
         },
         docroot_subdir,
+        // The clone has not happened yet — the docroot exists and is empty at
+        // insert. Recorded by the clone phase once the checkout actually lands
+        // (`store::set_site_git_origin`), so a site can never advertise a repo
+        // it does not hold.
+        git_url: None,
+        git_ref: None,
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -2054,6 +2060,8 @@ mod tests {
             agent_client: None,
             expires_at: None,
             docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
         }
     }
 
@@ -2305,6 +2313,8 @@ mod tests {
             agent_client: None,
             expires_at: None,
             docroot_subdir: String::new(),
+            git_url: None,
+            git_ref: None,
         }
     }
 
