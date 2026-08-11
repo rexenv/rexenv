@@ -26,6 +26,7 @@ fn new_site(name: &str, domain: &str) -> NewSite {
             db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
     }
 }
 

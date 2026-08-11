@@ -801,6 +801,7 @@ fn create_site<'a>(
             // the thing the refusal protects against.
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
         };
         let site = ctx.create(new, Ownership::Agent { client, ttl_hours: crate::core::sites::SCRATCH_TTL_HOURS }, acted).await?;
         let status = ctx.status_of(&site).await;

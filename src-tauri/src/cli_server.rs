@@ -380,6 +380,7 @@ where
                 // later stage).
                 git_url: String::new(),
                 git_ref: None,
+                git_migrate: true,
             };
             let blueprint_id = match &a.blueprint {
                 None => None,

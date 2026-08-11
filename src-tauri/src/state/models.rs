@@ -250,6 +250,15 @@ pub struct Site {
     /// the first time anyone switches branch.
     #[serde(default)]
     pub git_ref: Option<String>,
+    /// Did the user ask for `artisan migrate` when this site was created (v33)?
+    ///
+    /// Recorded because RETRY re-enters every phase, possibly after an app
+    /// restart — without the record, unchecking migrations would hold for
+    /// exactly one run and then reverse itself. `None` = ON, which is exact:
+    /// every Laravel site made before this column migrated unconditionally.
+    /// Read through [`Site::runs_migrations`], never directly.
+    #[serde(default)]
+    pub git_migrate: Option<bool>,
 }
 
 impl Site {
@@ -268,6 +277,14 @@ impl Site {
         } else {
             root.join(&self.docroot_subdir)
         }
+    }
+
+    /// Does provisioning run `artisan migrate` for this site (v34)?
+    ///
+    /// The ONE place the NULL default is decided, so a create and a retry can
+    /// never disagree about what "no record" meant.
+    pub fn runs_migrations(&self) -> bool {
+        self.git_migrate.unwrap_or(true)
     }
 
     /// The recorded content dir relative to the docroot, defaulting to WP's
@@ -346,6 +363,7 @@ pub(crate) fn test_site(id: &str, domain: &str, origin: SiteOrigin) -> Site {
         docroot_subdir: String::new(),
         git_url: None,
         git_ref: None,
+        git_migrate: None,
     }
 }
 
@@ -478,6 +496,11 @@ pub struct NewSite {
     /// Branch or tag to check out, or `None` for the remote's default.
     #[serde(default)]
     pub git_ref: Option<String>,
+    /// Run `artisan migrate` once the app is wired? Only meaningful alongside
+    /// [`NewSite::git_url`]. Defaults to TRUE — the database is created by this
+    /// same job and is empty, so there is nothing a migration can lose.
+    #[serde(default = "default_true")]
+    pub git_migrate: bool,
 }
 
 fn db_engine_mysql() -> SiteDbEngine {
@@ -519,6 +542,7 @@ mod tests {
             docroot_subdir: String::new(),
             git_url: None,
             git_ref: None,
+            git_migrate: None,
         }
     }
 

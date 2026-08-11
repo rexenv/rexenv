@@ -881,6 +881,7 @@ mod tests {
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
                 git_url: String::new(),
                 git_ref: None,
+                git_migrate: true,
             },
         )
         .unwrap();

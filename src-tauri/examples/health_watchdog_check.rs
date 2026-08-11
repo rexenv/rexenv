@@ -46,6 +46,7 @@ async fn main() {
             db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
         },
     )
     .unwrap();

@@ -480,6 +480,21 @@ const MIGRATIONS: &[&str] = &[
     // answer to a question that already has one.
     "ALTER TABLE sites ADD COLUMN git_url TEXT;
      ALTER TABLE sites ADD COLUMN git_ref TEXT;",
+    // v34 — did the user ask for `artisan migrate` when this site was created?
+    //
+    // A run OPTION on a row looks like the wrong place for it until you ask
+    // what Retry does. Retry is this design's recovery path: it rebuilds a
+    // `provisioned = 0` site by re-entering every phase, possibly after an app
+    // restart with the in-memory job registry long gone. Without this column a
+    // user who deliberately UNCHECKED migrations would get them on the retry —
+    // the setting would exist for exactly one run and then quietly reverse
+    // itself. The same argument that put `git_url` on the row (v33).
+    //
+    // NULLABLE, and NULL means ON. That is exact rather than a guess: every
+    // Laravel site created before this column ran migrations unconditionally,
+    // and every non-Laravel site never reaches the step at all. Read through
+    // `Site::runs_migrations()` so the default lives in one place.
+    "ALTER TABLE sites ADD COLUMN git_migrate INTEGER;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

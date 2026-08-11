@@ -602,6 +602,7 @@ mod tests {
             docroot_subdir: String::new(),
             git_url: None,
             git_ref: None,
+            git_migrate: None,
         };
         assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
         for ws in [WebServer::Apache, WebServer::Frankenphp] {

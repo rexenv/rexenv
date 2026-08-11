@@ -70,6 +70,7 @@ async fn main() {
         db_engine: SiteDbEngine::Mysql,
         git_url: String::new(),
         git_ref: None,
+        git_migrate: true,
     };
     let collect = |id: &str| {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));

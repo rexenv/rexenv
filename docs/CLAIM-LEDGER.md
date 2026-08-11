@@ -227,6 +227,8 @@ L3 = scripted manual.
 | 275 | sites.rs:1616 | The Blank-PHP probe page is never written into a docroot a clone must find empty | ✅ `git_site_clone_check` §6 (provisions a cloning php site, asserts the docroot is empty) |
 | 276 | sites.rs:373 | The clone/link rule is evaluated where `path` still means "the caller asked to link" — provisioning overwrites it with the resolved docroot | ✅ `git_site_clone_check` §6 (caught this exact ordering bug: every cloned site read as also-linked and was refused) |
 | 277 | sites.rs:1290 | The staging directory never survives — success, verified-then-rejected, or failed clone alike | ✅ `git_site_clone_check` §1/§4/§5 |
+| 278 | site_provision.rs:196 | The phase plan is read off the ROW, so a Retry cannot disagree with the create about an optional step | ✅ `the_phase_plan_comes_from_the_row_so_a_retry_reads_the_same_answer` |
+| 279 | site_provision.rs:222 | A phase label never announces a step the user declined | ✅ `a_phase_never_announces_a_step_the_user_declined` |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -440,7 +442,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 189 · ◐ 43 · 🔨 40 · 🚫 5** of 277 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 191 · ◐ 43 · 🔨 40 · 🚫 5** of 279 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

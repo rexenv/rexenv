@@ -2760,6 +2760,7 @@ mod tests {
             docroot_subdir: String::new(),
             git_url: None,
             git_ref: None,
+            git_migrate: None,
         };
 
         let sites = vec![

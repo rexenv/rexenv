@@ -346,7 +346,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   vhost roots at, so Laravel's `.env` is never a public URL — read ONLY through
   `Site::served_root()`) · v33 `sites.git_url` + `git_ref` (the repository a
   cloned site's code came from; NULL is EXACT for pre-v33 rows because nothing
-  could clone into a docroot before it — `docs/PLAN-git-site-clone.md`).
+  could clone into a docroot before it — `docs/PLAN-git-site-clone.md`) ·
+  v34 `sites.git_migrate` (NULL = ON; recorded because Retry rebuilds the phase
+  list from the row).
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it
@@ -723,7 +725,14 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     posture. `finalize` then runs `key:generate --force` + `migrate --force`.
   - **`git_url` is recorded at INSERT, not when the checkout lands** — Retry is the
     recovery path and has nowhere else to learn what to clone after an app restart. The
-    row states the SOURCE; `provisioned` states whether the code arrived.
+    row states the SOURCE; `provisioned` states whether the code arrived. Same argument
+    puts the migrate choice on the row (v34 `git_migrate`, read through
+    `Site::runs_migrations` — NULL = ON, exact for every pre-v34 Laravel site): without
+    it, unchecking migrations would hold for one run and then reverse itself on Retry.
+    The whole phase plan is derived from the row in one place (`PhasePlan::of`), and the
+    `finalize` label changes with the choice — a phase that announces "app key +
+    migrations" and then only generates a key is the small lie that makes the rest of
+    the card unreadable.
 - **Add plugin/theme from Git** (`core/repo.rs` + `core/devtools.rs` +
   `commands/repo.rs`): paste URL (https/ssh/scp/`owner/repo`; forge `/tree/`
   URLs preselect the branch) → `ls-remote` probe (URL+auth validated BEFORE

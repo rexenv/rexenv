@@ -793,6 +793,7 @@ async fn import_one<R: tauri::Runtime>(
         // An import adopts what is already on disk — it never fetches code.
         git_url: String::new(),
         git_ref: None,
+        git_migrate: true,
     };
     let snap = match crate::commands::site_provision::start(
         app,

@@ -197,12 +197,38 @@ fn ensure_blueprint_applies(
 /// when wp-config.php exists, but creates the database unconditionally), so
 /// running the WordPress phases over someone's existing install would leave a
 /// stray empty database beside their real one.
-fn phase_defs(
+/// Everything the phase list depends on, read off the row in ONE place.
+///
+/// A struct rather than a fifth positional `bool`: the list already turned on
+/// type + blueprint + linked + from-git, and a call like
+/// `phase_defs(ty, true, false, true, false)` is a bug waiting for a reader who
+/// miscounts. Every field is named at both the call site and the test.
+#[derive(Debug, Clone, Copy)]
+struct PhasePlan {
     site_type: SiteType,
     has_blueprint: bool,
+    /// The docroot is the user's own folder — adopted, never installed into.
     linked: bool,
+    /// The docroot is filled from a repository.
     from_git: bool,
-) -> Vec<(&'static str, &'static str)> {
+    /// `artisan migrate` was asked for (`Site::runs_migrations`).
+    migrate: bool,
+}
+
+impl PhasePlan {
+    fn of(site: &Site, has_blueprint: bool) -> Self {
+        Self {
+            site_type: site.site_type,
+            has_blueprint,
+            linked: site.docroot_managed == Some(false),
+            from_git: site.git_url.is_some(),
+            migrate: site.runs_migrations(),
+        }
+    }
+}
+
+fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
+    let PhasePlan { site_type, has_blueprint, linked, from_git, migrate } = plan;
     let mut v = vec![("prepare", "preparing site (domain, certificate)"), ("fetch", "downloading binaries")];
     // The code arrives before anything can be done to it. A cloned site's
     // remaining phases are the SAME ones a created one runs — a repo is a third
@@ -239,7 +265,15 @@ fn phase_defs(
             // defaults — including the SQLite one — every time.
             v.push(("configure", "creating database + .env"));
             v.push(("deps", "installing dependencies"));
-            v.push(("finalize", "app key + migrations"));
+            // The label names what this phase will ACTUALLY do. With migrations
+            // turned off it still generates the app key — announcing migrations
+            // that were declined is the small lie that makes a user distrust
+            // the rest of the card.
+            v.push(if migrate {
+                ("finalize", "app key + migrations")
+            } else {
+                ("finalize", "generating app key")
+            });
         } else {
             v.push(("app_install", "installing Laravel"));
             v.push(("configure", "creating database + .env"));
@@ -334,13 +368,7 @@ fn spawn_job<R: tauri::Runtime>(
     let log_key = format!("site-provision-{}-{}.log", site.domain, &id[..8]);
     let log_path = log_dir.join(&log_key);
 
-    let defs =
-        phase_defs(
-            site.site_type,
-            blueprint.is_some(),
-            site.docroot_managed == Some(false),
-            site.git_url.is_some(),
-        );
+    let defs = phase_defs(PhasePlan::of(&site, blueprint.is_some()));
     let mut phases: Vec<PhaseState> = defs
         .iter()
         .map(|(k, l)| PhaseState { key: (*k).into(), label: (*l).into(), status: "pending".into() })
@@ -1372,7 +1400,11 @@ async fn drive<R: tauri::Runtime>(
             bail_if_cancelled!();
         }
 
-        // Migrations against the database `.env` now names.
+        // Migrations against the database `.env` now names — unless the user
+        // declined them for this cloned site (`Site::runs_migrations`, v34).
+        // Read from the ROW, not from the job, so a Retry honours the same
+        // answer the create did; the log says so, because a step that silently
+        // does not happen is indistinguishable from one that failed quietly.
         //
         // Not belt-and-braces on either path. For a NEW app, `composer
         // create-project` already ran `artisan migrate --graceful` in its
@@ -1384,7 +1416,7 @@ async fn drive<R: tauri::Runtime>(
         // database the app never filled. The stray SQLite file is left alone —
         // it is the project's own file, and deleting what Composer wrote would
         // be a surprise; it is simply no longer the connection `.env` names.
-        {
+        if site.runs_migrations() {
             let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
             let (p2, d2) = (php_bin.clone(), project.clone());
             let migrated = tauri::async_runtime::spawn_blocking(move || {
@@ -1407,6 +1439,12 @@ async fn drive<R: tauri::Runtime>(
                 Ok(Err(e)) => return JobEnd::Failed(format!("php artisan migrate failed: {e}")),
                 Err(e) => return JobEnd::Failed(format!("artisan worker died: {e}")),
             }
+        } else {
+            append_line(
+                app,
+                entry,
+                "migrations skipped — the database is empty until you run `php artisan migrate`",
+            );
         }
         finish_phase(app, entry, progress, ix, "ok", None);
         bail_if_cancelled!();
@@ -1604,12 +1642,29 @@ mod tests {
                     let path = if linked { "/Users/x/Sites/theirs" } else { "" };
                     let url = if from_git { "acme/site" } else { "" };
                     let admitted = ensure_blueprint_applies(ty, path, url, Some("bp-1")).is_ok();
-                    let has_phase = phase_defs(ty, true, linked, from_git)
-                        .iter()
-                        .any(|(k, _)| *k == "blueprint");
+                    let has_phase = phase_defs(PhasePlan {
+                        site_type: ty,
+                        has_blueprint: true,
+                        linked,
+                        from_git,
+                        migrate: true,
+                    })
+                    .iter()
+                    .any(|(k, _)| *k == "blueprint");
                     assert_eq!(admitted, has_phase, "{ty:?} linked={linked} git={from_git}");
                 }
             }
+        }
+    }
+
+    /// A managed Laravel site, from a repo or not, with or without migrations.
+    fn laravel_plan(from_git: bool, migrate: bool) -> PhasePlan {
+        PhasePlan {
+            site_type: SiteType::Laravel,
+            has_blueprint: false,
+            linked: false,
+            from_git,
+            migrate,
         }
     }
 
@@ -1620,7 +1675,7 @@ mod tests {
     #[test]
     fn a_cloned_laravel_site_configures_before_it_installs_and_installs_before_it_boots() {
         let keys: Vec<&str> =
-            phase_defs(SiteType::Laravel, false, false, true).iter().map(|(k, _)| *k).collect();
+            phase_defs(laravel_plan(true, true)).iter().map(|(k, _)| *k).collect();
         assert_eq!(
             keys,
             vec!["prepare", "fetch", "clone", "db", "configure", "deps", "finalize", "serve"]
@@ -1633,13 +1688,22 @@ mod tests {
         // silent tail of `configure` and are now the same `finalize` phase the
         // cloned path uses.
         let keys: Vec<&str> =
-            phase_defs(SiteType::Laravel, false, false, false).iter().map(|(k, _)| *k).collect();
+            phase_defs(laravel_plan(false, true)).iter().map(|(k, _)| *k).collect();
         assert_eq!(keys, vec!["prepare", "fetch", "db", "app_install", "configure", "finalize", "serve"]);
 
         // A LINKED site is adopted whatever else was asked: no clone phase can
         // appear beside a folder rexenv promised not to write into.
         let keys: Vec<&str> =
-            phase_defs(SiteType::Laravel, false, true, false).iter().map(|(k, _)| *k).collect();
+            phase_defs(PhasePlan {
+                site_type: SiteType::Laravel,
+                has_blueprint: false,
+                linked: true,
+                from_git: false,
+                migrate: true,
+            })
+            .iter()
+            .map(|(k, _)| *k)
+            .collect();
         assert_eq!(keys, vec!["prepare", "fetch", "serve"]);
 
         // Every phase the cloned path emits has a real weight — an unweighted
@@ -1651,6 +1715,50 @@ mod tests {
                 "{key} has no weight — the bar would guess"
             );
         }
+    }
+
+    /// Declining migrations must change the LABEL, not just the behaviour: a
+    /// phase that announces "app key + migrations" and then only generates a
+    /// key is the small lie that makes the rest of the card unreadable.
+    #[test]
+    fn a_phase_never_announces_a_step_the_user_declined() {
+        let label = |plan| {
+            phase_defs(plan)
+                .into_iter()
+                .find(|(k, _)| *k == "finalize")
+                .map(|(_, l)| l)
+                .expect("every Laravel path finalizes")
+        };
+        assert_eq!(label(laravel_plan(true, true)), "app key + migrations");
+        assert_eq!(label(laravel_plan(true, false)), "generating app key");
+        // The phase itself stays either way — the app key is not optional.
+        assert!(phase_defs(laravel_plan(true, false)).iter().any(|(k, _)| *k == "finalize"));
+        // The NEW-app path never offers the choice (nothing asks), so it keeps
+        // the unconditional label its NULL column means.
+        assert_eq!(label(laravel_plan(false, true)), "running migrations");
+    }
+
+    /// The plan is read off the ROW, so a Retry — which rebuilds it from
+    /// scratch, possibly in a later process — cannot disagree with the create.
+    #[test]
+    fn the_phase_plan_comes_from_the_row_so_a_retry_reads_the_same_answer() {
+        let mut site = crate::state::models::test_site(
+            "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30",
+            "shop.rex",
+            crate::state::models::SiteOrigin::User,
+        );
+        site.site_type = SiteType::Laravel;
+        site.git_url = Some("https://github.com/acme/shop.git".into());
+        site.git_migrate = Some(false);
+
+        let plan = PhasePlan::of(&site, false);
+        assert!(plan.from_git);
+        assert!(!plan.migrate, "the declined answer survives into a fresh job");
+        assert!(phase_defs(plan).iter().any(|(_, l)| *l == "generating app key"));
+
+        // NULL is the unconditional yes every pre-v34 row provably had.
+        site.git_migrate = None;
+        assert!(PhasePlan::of(&site, false).migrate);
     }
 
     use crate::platform::traits::{DnsManager, Paths, PrivilegeManager};
@@ -1816,6 +1924,7 @@ mod tests {
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
         };
         let out = start(&app.handle().clone(), &state, &jobs, new, None, None, ownership);
         let calls = recorder.calls.lock().unwrap().clone();

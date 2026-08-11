@@ -52,6 +52,7 @@ async fn main() {
             db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
     }).expect("provision");
 
     let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT });

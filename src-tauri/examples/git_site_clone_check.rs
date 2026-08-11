@@ -327,6 +327,7 @@ fn main() {
             // folder; it never clones, which is the clone phase's job.
             git_url: "acme/tools".into(),
             git_ref: None,
+            git_migrate: true,
         },
     )
     .expect("provision a cloning php site");

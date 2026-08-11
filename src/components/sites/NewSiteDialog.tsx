@@ -127,6 +127,11 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
   const [gitUrl, setGitUrl] = useState("");
   const [gitRef, setGitRef] = useState("");
   const [probed, setProbed] = useState<RepoProbeResult | null>(null);
+  // Migrations default ON: this job creates the database and it is empty, so
+  // there is nothing a migration can lose. Offered as a choice anyway — a
+  // repo whose migrations need seeded data or an external service would
+  // otherwise leave the site "setup incomplete" with no way to say "skip it".
+  const [gitMigrate, setGitMigrate] = useState(true);
   const probe = useMutation({
     mutationFn: (raw: string) => repoProbe(raw),
     onSuccess: (p) => {
@@ -236,6 +241,7 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
           // anyway — the UI's copy is display state, never a trust boundary.)
           gitUrl: fromGit ? (probed?.url ?? gitUrl.trim()) : "",
           gitRef: fromGit && gitRef ? gitRef : null,
+          gitMigrate,
         },
         installingWp
           ? { title: wpTitle.trim() || name.trim(), adminUser: adminUser.trim(), adminEmail: adminEmail.trim(), adminPassword, language }
@@ -357,6 +363,8 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
               }}
               gitRef={gitRef}
               setGitRef={setGitRef}
+              gitMigrate={gitMigrate}
+              setGitMigrate={setGitMigrate}
               probed={probed}
               probing={probe.isPending}
               onProbe={() => probe.mutate(gitUrl.trim())}
@@ -509,6 +517,8 @@ function GitSourceFields({
     setGitUrl: (v: string) => void;
     gitRef: string;
     setGitRef: (v: string) => void;
+    gitMigrate: boolean;
+    setGitMigrate: (v: boolean) => void;
     probed: RepoProbeResult | null;
     probing: boolean;
     onProbe: () => void;
@@ -561,13 +571,31 @@ function GitSourceFields({
               ariaLabel="Branch or tag to check out"
             />
           </div>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              checked={p.gitMigrate}
+              onChange={(e) => p.setGitMigrate(e.target.checked)}
+              className="mt-[2px] h-3.5 w-3.5 flex-none accent-brand"
+            />
+            <span className="text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+              Run <span className="font-mono text-rex-text-bright">php artisan migrate</span> —
+              this site's database is created empty by the same job, so there is nothing to
+              lose. Turn it off for a project whose migrations need seed data or a service
+              that isn't running yet.
+            </span>
+          </label>
           <div className="rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
             Creating this site runs the repository's own code:{" "}
             <span className="font-mono text-rex-text-bright">composer install</span> (which runs
             the project's Composer scripts), then{" "}
-            <span className="font-mono text-rex-text-bright">artisan key:generate</span> and{" "}
-            <span className="font-mono text-rex-text-bright">artisan migrate</span> against the
-            new, empty database. Front-end assets are not built — run{" "}
+            <span className="font-mono text-rex-text-bright">artisan key:generate</span>
+            {p.gitMigrate && (
+              <>
+                {" "}and <span className="font-mono text-rex-text-bright">artisan migrate</span>
+              </>
+            )}
+            . Front-end assets are not built — run{" "}
             <span className="font-mono text-rex-text-bright">npm install</span> yourself if the
             project needs it.
           </div>
@@ -613,6 +641,8 @@ function Step2(p: {
   setGitUrl: (v: string) => void;
   gitRef: string;
   setGitRef: (v: string) => void;
+  gitMigrate: boolean;
+  setGitMigrate: (v: boolean) => void;
   probed: RepoProbeResult | null;
   probing: boolean;
   onProbe: () => void;

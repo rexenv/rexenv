@@ -67,6 +67,10 @@ export interface Site {
    *  the remote's default. A record of that choice — NOT what is checked out
    *  now, which only git can answer. */
   gitRef?: string | null;
+  /** Did the user ask for `artisan migrate` at create (v34)? `null`/absent
+   *  means yes — exact, since every Laravel site made before the column
+   *  migrated unconditionally. */
+  gitMigrate?: boolean | null;
 }
 
 /** A plugin or theme an agent cloned into a scratch site (v29), as the Sites
@@ -449,6 +453,10 @@ export interface NewSiteInput {
   gitUrl?: string;
   /** Branch or tag to check out; omitted → the remote's default. */
   gitRef?: string | null;
+  /** Run `php artisan migrate` once the app is wired (v34). Omitted → true:
+   *  the database is created by the same job and is empty, so there is nothing
+   *  a migration can lose. Recorded on the row, so a Retry honours it. */
+  gitMigrate?: boolean;
 }
 
 /** WordPress one-click install fields (type=wordpress). Empty fields default

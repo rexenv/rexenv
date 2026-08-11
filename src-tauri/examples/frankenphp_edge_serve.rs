@@ -62,6 +62,7 @@ async fn main() {
             db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
     }).expect("provision ng");
     let fp = sites::provision(&conn, &*plat, &ca, NewSite {
         name: "FP".into(), domain: "fp.test".into(), site_type: SiteType::Php,
@@ -69,6 +70,7 @@ async fn main() {
             db_engine: rexenv_lib::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
     }).expect("provision fp");
     let _ = &ng;
 

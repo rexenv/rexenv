@@ -72,6 +72,7 @@ async fn main() {
             db_engine: SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
         },
     )
     .expect("provision linked");

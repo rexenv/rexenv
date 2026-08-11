@@ -479,6 +479,10 @@ fn create_recording_ownership(
         // first as "the code is here" is the second field's job to correct.
         git_url: git.as_ref().map(|g| g.url.clone()),
         git_ref: git.as_ref().and_then(|g| g.git_ref.clone()),
+        // Recorded only for a CLONED site: on every other row NULL is the
+        // honest "nobody was asked", which `Site::runs_migrations` reads as the
+        // unconditional yes those paths have always had.
+        git_migrate: git.as_ref().map(|_| new.git_migrate),
     };
     store::insert_site(conn, &site)?;
     Ok(site)
@@ -2059,6 +2063,7 @@ mod tests {
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             git_url: String::new(),
             git_ref: None,
+            git_migrate: true,
         }
     }
 
@@ -2510,6 +2515,7 @@ mod tests {
             docroot_subdir: String::new(),
             git_url: None,
             git_ref: None,
+            git_migrate: None,
         }
     }
 
@@ -2763,6 +2769,7 @@ mod tests {
             docroot_subdir: String::new(),
             git_url: None,
             git_ref: None,
+            git_migrate: None,
         }
     }
 
@@ -2819,6 +2826,7 @@ mod tests {
                 db_engine: crate::state::models::SiteDbEngine::Mysql,
                 git_url: String::new(),
                 git_ref: None,
+                git_migrate: true,
             },
         )
         .unwrap();
