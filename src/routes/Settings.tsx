@@ -9,13 +9,15 @@ import licenseText from "../../LICENSE?raw";
 import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, FileText, FolderOpen, Github, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { RexLogo } from "@/components/common/RexLogo";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
+import { AppPicker, type AppChoice } from "@/components/ui/app-picker";
+import { useBrowsers } from "@/lib/useBrowser";
 import {
   applyPhpSettings,
   autostartStatus,
@@ -169,6 +171,35 @@ function GeneralPrefsCard() {
     onError: (e) => toastBackendError(e),
   });
 
+  // Where every http(s) link opens. "" = the OS default handler, which is also
+  // what an uninstalled preference falls back to — so the empty choice is a
+  // real, first-class entry rather than the absence of one.
+  const browsers = useBrowsers();
+  const { data: preferredBrowser } = useQuery({
+    queryKey: ["setting", "preferred_browser"],
+    queryFn: () => getSetting("preferred_browser"),
+  });
+  const systemDefaultBrowser = browsers.find((b) => b.systemDefault);
+  const browserChoices: AppChoice[] = [
+    {
+      id: "",
+      name: "System default",
+      icon: systemDefaultBrowser?.icon,
+      hint: systemDefaultBrowser ? `· ${systemDefaultBrowser.name}` : undefined,
+    },
+    ...browsers.map((b) => ({ id: b.id, name: b.name, icon: b.icon })),
+  ];
+  // A stored browser that has since been uninstalled reads as "System default"
+  // — which is exactly what it now DOES (open_external falls back per open).
+  const currentBrowser = browsers.some((b) => b.id === preferredBrowser)
+    ? preferredBrowser!
+    : "";
+  const saveBrowser = useMutation({
+    mutationFn: (id: string) => setSetting("preferred_browser", id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["setting", "preferred_browser"] }),
+    onError: (e) => toastBackendError(e),
+  });
+
   const { data: resolved } = useQuery({ queryKey: ["sites-folder"], queryFn: sitesFolder });
   // The RAW setting (null/blank = using the computed default) — drives the
   // "Reset to default" affordance, which is only shown for a custom folder.
@@ -221,17 +252,37 @@ function GeneralPrefsCard() {
             No code editor detected
           </span>
         ) : (
-          <select
+          <AppPicker
+            ariaLabel="Code editor"
             value={currentEditor}
-            onChange={(e) => saveEditor.mutate(e.target.value)}
-            className="h-[34px] max-w-[220px] rounded-[9px] border border-rex-border-strong bg-rex-well px-3 text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand"
+            choices={editors.map((e) => ({ id: e.id, name: e.name, icon: e.icon }))}
+            onChange={(id) => saveEditor.mutate(id)}
+            fallbackIcon={<Code className="h-4 w-4 text-rex-text-muted" />}
+          />
+        )}
+      </div>
+      <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">
+        <div className="flex-1">
+          <div className="text-[0.84375rem] font-medium text-rex-text">Web browser</div>
+          <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">
+            Every link rexenv opens — sites, wp-admin, Mailpit, tunnels — goes here.
+          </div>
+        </div>
+        {browsers.length === 0 ? (
+          <span
+            className="font-mono text-[0.71875rem] text-rex-text-muted"
+            title="Looked in /Applications and ~/Applications for Safari, Chrome, Firefox, Brave, Edge, Arc, Opera, Vivaldi, Chromium and friends."
           >
-            {editors.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
+            No browser detected
+          </span>
+        ) : (
+          <AppPicker
+            ariaLabel="Web browser"
+            value={currentBrowser}
+            choices={browserChoices}
+            onChange={(id) => saveBrowser.mutate(id)}
+            fallbackIcon={<Globe className="h-4 w-4 text-rex-text-muted" />}
+          />
         )}
       </div>
       <div className="flex items-center gap-[14px] py-[15px]">
