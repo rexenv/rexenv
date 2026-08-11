@@ -1,9 +1,9 @@
 # Create a site FROM a Git repository — Laravel first
 
-**Status: Stages 1–2 SHIPPED 11 Aug 2026** (`de07ed0` → HEAD), planned the same day
-against `62a9f9e`. Stages 3–4 are designed here and open in `docs/TODO.md`.
+**Status: Stages 1–3 SHIPPED 11 Aug 2026** (`de07ed0` → HEAD), planned the same day
+against `62a9f9e`. Stage 4 is designed here and open in `docs/TODO.md`.
 
-Machine-verified (730 lib tests + `git_site_clone_check` on the sandbox tier); the
+Machine-verified (734 lib tests + `git_site_clone_check` on the sandbox tier); the
 packaged-app half — real event streaming into WKWebView, a real remote, your own SSH
 agent, and the non-fatal asset build — is `docs/SMOKE-TEST.md` § "a Laravel site FROM a
 git repository" and has **not** been run yet. Questions 3–5 in §5 remain open.
@@ -317,11 +317,25 @@ Small commits, one task each, `scripts/verify.sh` green before every one.
     guarantee.
   - **Still open:** re-running the build LATER. It is offered only at create; a per-site
     step runner belongs with Stage 3's RepoPanel.
-- **Stage 3 — a Git panel on the site itself.** `core::repo`'s git ops are all
-  path-based (`read_git_status`, `git_fetch`, `git_pull_ff`, `git_checkout`,
-  `loss_warning`), so pointing the existing `RepoPanel` at the project root is mostly
-  plumbing: status line, branch switcher, fetch/pull, and the exact
-  changed/untracked/unpushed counts before anything destructive.
+- **Stage 3 — a Git panel on the site itself. SHIPPED 11 Aug 2026.** It was mostly
+  plumbing, as expected — one `job_target` seam in `commands/repo.rs` maps a new
+  `kind: "site"` to the project root, and nine commands plus the whole `RepoPanel`
+  followed. Three things worth keeping:
+  - **One panel, not two.** A second implementation would have meant a second answer to
+    "is this checkout dirty" — the question every destructive confirmation is built on.
+    `wp dist-archive` is the only piece hidden for a site (a project root is not a
+    distributable), and it is *absent* rather than disabled: the disabled-with-a-reason
+    treatment teaches someone who could fix it, and here there is nothing to fix.
+  - **Never an upward walk.** `repo_site_info` is a single `<site.path>/.git` test. A
+    linked Laravel site stores `…/app/public`, so a parent search would find the
+    project's repo one level up — and one level further, a `~/code` repo holding forty
+    projects, where the panel's Checkout button is a catastrophe nobody asked for. The
+    tab is absent, and the empty state names the folder that was looked at.
+  - **A site target has no path segment at all.** `dir_name` is the domain, used for
+    display and the log key, never joined into a path — so this is the one kind that
+    cannot have a traversal bug, and the asset kinds' M7 gate is untouched.
+  - It also closes Stage 2's known gap: the repo's package.json scripts are listed here,
+    so a Vite build can be re-run (or `dev` watched) long after create.
 - **Stage 4 — any PHP repo, and WordPress.** `detect_project` already classifies Symfony,
   Craft, Statamic, Magento and generic front controllers; recording its `docroot_rel` as
   `docroot_subdir` makes all of them work with no new detection code. WordPress from git

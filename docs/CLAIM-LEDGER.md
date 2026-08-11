@@ -233,6 +233,11 @@ L3 = scripted manual.
 | 281 | site_provision.rs:1310 | The asset phase's package manager is the REPO's answer (`packageManager` beats lockfile), read off the real checkout | ✅ `git_site_clone_check` §7 |
 | 282 | models.rs:270 | `runs_migrations` and `builds_assets` default OPPOSITE ways, each matching what older rows actually did | ✅ `the_two_recorded_choices_default_the_way_older_rows_actually_behaved` |
 | 283 | site_provision.rs:236 | The asset phase belongs to the CLONE, not to Laravel, and runs last before serving | ✅ `front_end_assets_are_a_cloned_site_phase_and_the_last_one_before_serving` |
+| 284 | repo.rs:210 | The `site` job kind carries NO user-supplied path segment — `dir_name` is display text and can never move the target | ✅ `a_site_target_is_the_project_root_and_carries_no_path_segment` |
+| 285 | repo.rs:225 | rexenv never walks UPWARD from a docroot looking for `.git` (the folder above can be a repo holding every project the user has) | ✅ same test (the target is the recorded path or nothing) + `repo_site_info` is a single `join(".git").exists()` |
+| 286 | repo.rs:1120 | A site checkout never rewrites `sites.git_ref` — one question, one answer, and git owns the live one | ✅ `a_site_checkout_never_rewrites_the_row_that_records_what_was_picked` |
+| 287 | repo.rs:210 | The Repository panel operates at the PROJECT root, above the folder the web server serves | ✅ `git_site_clone_check` §8 (status/loss-warning/fetch/checkout at the project root; `public/.git` must not exist) |
+| 288 | repo.rs:230 | The asset `kind` gate is unchanged — only "site" is new, and it is matched before `asset_dest` | ✅ `an_asset_target_still_validates_its_folder_name` |
 | 268 | laravel.rs:130 | A cloned project's existing `.env` is never overwritten (a Retry must not discard a generated APP_KEY or a committed secret) | ✅ `ensure_env_file_never_overwrites_and_names_where_the_file_came_from` |
 | 267 | db.rs (v33) | `git_url` NULL is a FACT for pre-v33 rows, not an unknown to backfill | ✅ `v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one` |
 
@@ -446,7 +451,7 @@ Laravel create flow — the served-root record #244, the `.env` writer #245, the
 migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260):
-**✅ 194 · ◐ 43 · 🔨 41 · 🚫 5** of 283 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 199 · ◐ 43 · 🔨 41 · 🚫 5** of 288 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

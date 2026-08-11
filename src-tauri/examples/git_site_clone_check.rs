@@ -24,6 +24,9 @@
 //!   7. The front-end asset phase's inputs are read correctly off a real
 //!      checkout: the repo's `packageManager` field beats its lockfile, the
 //!      build script is seen, and `node_modules` is NOT in the clone.
+//!   8. The Repository panel's reads and writes work at the PROJECT root —
+//!      status/branch, the loss warning that gates a branch switch, fetch and
+//!      checkout — and `.git` is above the folder the web server serves.
 //!
 //! What it does NOT prove: the asset build itself. `<manager> install` /
 //! `run build` are the developer's own toolchain and are covered against real
@@ -41,6 +44,21 @@ use std::process::Command;
 
 mod common;
 
+/// Run one git command in `dir`, pinning the identity a commit needs so this
+/// works whatever the developer's global config says.
+fn git_in(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_AUTHOR_NAME", "rexenv checks")
+        .env("GIT_AUTHOR_EMAIL", "checks@rexenv.invalid")
+        .env("GIT_COMMITTER_NAME", "rexenv checks")
+        .env("GIT_COMMITTER_EMAIL", "checks@rexenv.invalid")
+        .output()
+        .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+    assert!(out.status.success(), "git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
+}
+
 /// One fixture "remote": a real repository with a real commit.
 fn make_repo(root: &Path, name: &str, files: &[(&str, &str)]) -> PathBuf {
     let dir = root.join(name);
@@ -52,23 +70,9 @@ fn make_repo(root: &Path, name: &str, files: &[(&str, &str)]) -> PathBuf {
         }
         std::fs::write(&path, body).expect("fixture file");
     }
-    let git = |args: &[&str]| {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(&dir)
-            // A developer's global git config may set anything; pin the bits
-            // the commit needs so this works on any machine.
-            .env("GIT_AUTHOR_NAME", "rexenv checks")
-            .env("GIT_AUTHOR_EMAIL", "checks@rexenv.invalid")
-            .env("GIT_COMMITTER_NAME", "rexenv checks")
-            .env("GIT_COMMITTER_EMAIL", "checks@rexenv.invalid")
-            .output()
-            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
-        assert!(out.status.success(), "git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
-    };
-    git(&["init", "--quiet", "--initial-branch=main"]);
-    git(&["add", "-A"]);
-    git(&["commit", "--quiet", "-m", "fixture"]);
+    git_in(&dir, &["init", "--quiet", "--initial-branch=main"]);
+    git_in(&dir, &["add", "-A"]);
+    git_in(&dir, &["commit", "--quiet", "-m", "fixture"]);
     dir
 }
 
@@ -139,6 +143,9 @@ fn main() {
             (".gitignore", ".env\n/vendor\n"),
         ],
     );
+    // A second branch on the shop remote — the Repository panel's checkout is
+    // only meaningful against a remote that has somewhere to go.
+    git_in(&laravel_remote, &["branch", "develop"]);
     let plain_remote =
         make_repo(&remotes, "tools", &[("index.php", "<?php echo 'tools';\n")]);
     // A Laravel repo with a Vite front end, in the shape one really ships:
@@ -421,6 +428,65 @@ fn main() {
             }
         }
         Err(e) => ok = fail(&format!("clone failed: {e}")),
+    }
+
+    // ── 8. The Repository panel's reads and writes, at the PROJECT root ──
+    println!("\n=== 8. git ops against the site's own checkout ===");
+    {
+        let sup = plat.supervisor();
+        let status = repo::read_git_status(sup, &git, &env, &docroot);
+        match &status {
+            Ok(st) => {
+                println!("   branch={:?} dirty={} untracked={}", st.branch, st.changed, st.untracked);
+                if st.branch.as_deref() != Some("main") {
+                    ok = fail("the panel would show the wrong branch");
+                }
+                // §2 wrote `.env` into this checkout and the fixture gitignores
+                // it — a clean tree here is what makes the panel's "safe to
+                // switch branch" answer true.
+                if repo::loss_warning(st).is_some() {
+                    ok = fail("a gitignored .env must not read as uncommitted work");
+                }
+            }
+            Err(e) => ok = fail(&format!("read_git_status at the project root: {e}")),
+        }
+
+        // The status the CHECKOUT/delete confirmations are built on: real
+        // uncommitted work must be counted, by name, before anything moves.
+        std::fs::write(docroot.join("artisan"), "#!/usr/bin/env php\n<?php // edited\n")
+            .expect("dirty the tree");
+        match repo::read_git_status(sup, &git, &env, &docroot) {
+            Ok(st) => match repo::loss_warning(&st) {
+                Some(w) => println!("   dirty tree warns: {w}"),
+                None => ok = fail("an edited tracked file must produce a loss warning"),
+            },
+            Err(e) => ok = fail(&format!("status on a dirty tree: {e}")),
+        }
+        git_in(&docroot, &["checkout", "--quiet", "--", "artisan"]);
+
+        // Fetch + checkout, the two panel buttons that touch the remote and the
+        // working tree. Both run at the PROJECT root — one level above what the
+        // web server serves, which is where the clone put `.git`.
+        if let Err(e) = repo::git_fetch(sup, &git, &env, &docroot, &cancel, &mut sink) {
+            ok = fail(&format!("git fetch at the project root: {e}"));
+        }
+        if let Err(e) = repo::git_checkout(sup, &git, &env, &docroot, "develop", &cancel, &mut sink)
+        {
+            ok = fail(&format!("git checkout develop: {e}"));
+        }
+        match repo::read_git_status(sup, &git, &env, &docroot) {
+            Ok(st) if st.branch.as_deref() == Some("develop") => {
+                println!("   switched to develop, and the panel reads it live")
+            }
+            Ok(st) => ok = fail(&format!("still on {:?} after checkout", st.branch)),
+            Err(e) => ok = fail(&format!("status after checkout: {e}")),
+        }
+        // `.git` is at the project root, NOT under what nginx serves — the
+        // dotfile guard is the other half of that, and this is the half that
+        // says the panel is pointed at the right directory.
+        if !docroot.join(".git").is_dir() || docroot.join("public/.git").exists() {
+            ok = fail("the checkout must live at the project root, above the served folder");
+        }
     }
 
     println!("\n{}", if ok { "git_site_clone_check: PASS" } else { "git_site_clone_check: FAIL" });

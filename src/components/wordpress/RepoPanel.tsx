@@ -31,7 +31,7 @@ import {
   repoWatches,
   tailLog,
 } from "@/lib/ipc";
-import type { GitAsset, RepoJobState, RepoStepState } from "@/types";
+import type { RepoJobState, RepoKind, RepoStepState } from "@/types";
 import { revealPath } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -120,15 +120,31 @@ function Chip({ children, tone }: { children: React.ReactNode; tone?: "warn" | "
   );
 }
 
+/** What the panel points at. `GitAsset` satisfies this structurally; a SITE's
+ *  own checkout supplies the same four display fields with `dirName` set to the
+ *  domain — display text the backend never turns into a path. */
+export type RepoPanelTarget = {
+  dirName: string;
+  url: string;
+  gitRef: string | null;
+  /** Provenance chip: "cloned" | "adopted" | "linked". */
+  source: string;
+};
+
 export function RepoPanel({
   siteId,
   kind,
   asset,
 }: {
   siteId: string;
-  kind: "plugin" | "theme";
-  asset: GitAsset;
+  kind: RepoKind;
+  asset: RepoPanelTarget;
 }) {
+  // `wp dist-archive` packages a PLUGIN or THEME. A site's project root is not
+  // a distributable, so the button is absent rather than disabled — the
+  // disabled-with-a-reason treatment below teaches someone who could fix it,
+  // and here there is nothing to fix.
+  const canArchive = kind !== "site";
   const qc = useQueryClient();
   const [logOpen, setLogOpen] = useState(false);
   const [opJob, setOpJob] = useState<RepoJobState | null>(null);
@@ -420,7 +436,9 @@ export function RepoPanel({
     onError: (e) => toastBackendError(e),
   });
   const buildZip = useMutation({
-    mutationFn: () => repoDistArchive(siteId, kind, asset.dirName),
+    // Only reachable for an asset — the button is not rendered for a site.
+    mutationFn: () =>
+      repoDistArchive(siteId, kind === "site" ? "plugin" : kind, asset.dirName),
     onSuccess: (snap) => {
       adoptedRef.current = true;
       setOpJob(snap);
@@ -586,20 +604,22 @@ export function RepoPanel({
                 DISABLED rather than hidden when there is no .distignore:
                 hiding it teaches nothing, and the person who needs this is the
                 one who has never heard of the file. */}
-            <button
-              className={BTN}
-              disabled={opsDisabled || buildZip.isPending || !s.hasDistignore}
-              onClick={() => buildZip.mutate()}
-              title={
-                !s.hasDistignore
-                  ? ARCHIVE_BLOCKED_TITLE
-                  : opsDisabled || buildZip.isPending
-                    ? ARCHIVE_BUSY_TITLE
-                    : ARCHIVE_TITLE
-              }
-            >
-              {buildZip.isPending && <BtnSpinner />} Build zip
-            </button>
+            {canArchive && (
+              <button
+                className={BTN}
+                disabled={opsDisabled || buildZip.isPending || !s.hasDistignore}
+                onClick={() => buildZip.mutate()}
+                title={
+                  !s.hasDistignore
+                    ? ARCHIVE_BLOCKED_TITLE
+                    : opsDisabled || buildZip.isPending
+                      ? ARCHIVE_BUSY_TITLE
+                      : ARCHIVE_TITLE
+                }
+              >
+                {buildZip.isPending && <BtnSpinner />} Build zip
+              </button>
+            )}
             <RefPicker
               value={checkoutRef}
               onChange={setCheckoutRef}

@@ -200,6 +200,72 @@ fn site_of(state: &AppState, site_id: &str) -> Result<crate::state::models::Site
     sites::get(&conn, site_id)?.ok_or_else(|| Error::Other(format!("no site {site_id}")))
 }
 
+/// The `kind` that means "the SITE's own checkout" rather than a folder under
+/// wp-content (Stage 3 of `docs/PLAN-git-site-clone.md`).
+pub(crate) const SITE_KIND: &str = "site";
+
+/// What a repo job operates on: the directory, the name to SHOW, and the slug
+/// to put in a log filename.
+struct JobTarget {
+    dest: PathBuf,
+    /// Display name — the asset's folder, or the site's domain.
+    name: String,
+    /// Log-filename component. For a site it is the literal `site`, so the key
+    /// reads `repo-shop.rex-site.log` rather than repeating the domain twice.
+    slug: String,
+}
+
+impl JobTarget {
+    fn log_key(&self, site: &crate::state::models::Site, suffix: &str) -> String {
+        format!("repo-{}-{}{suffix}.log", site.domain, self.slug)
+    }
+
+    /// The honest "there is no repository here" error for this target.
+    fn not_a_checkout(&self, kind: &str) -> Error {
+        if kind == SITE_KIND {
+            Error::Other(format!(
+                "{} has no git checkout at {} — rexenv only manages a repository it can see \
+                 at the site's own folder.",
+                self.name,
+                self.dest.display()
+            ))
+        } else {
+            Error::Other(format!("wp-content/{kind}s/{} is not a git checkout (no .git).", self.name))
+        }
+    }
+}
+
+/// Resolve a job's target directory from `(kind, dir_name)`.
+///
+/// `kind == "site"` is the site's own project root — `site.path`, which for a
+/// Laravel site is the folder ABOVE what the web server serves, and is exactly
+/// where a clone put `.git`. It carries **no** `dir_name`, so it is the one kind
+/// with no user-supplied path segment at all; `dir_name` is display text here
+/// and never reaches a path.
+///
+/// Deliberately NOT an upward walk from the docroot looking for `.git`. A
+/// linked site whose stored path is `~/code/app/public` would find the repo one
+/// level up — but so would one under `~/code`, where the repo is the whole
+/// projects folder, and `git checkout` on THAT is a catastrophe the user never
+/// asked for. The target is the recorded path or nothing.
+fn job_target(
+    site: &crate::state::models::Site,
+    kind: &str,
+    dir_name: &str,
+) -> Result<JobTarget> {
+    if kind == SITE_KIND {
+        return Ok(JobTarget {
+            dest: PathBuf::from(&site.path),
+            name: site.domain.clone(),
+            slug: SITE_KIND.to_string(),
+        });
+    }
+    let name = repo::validate_dir_name(dir_name)?;
+    let dest =
+        repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), kind, &name)?;
+    Ok(JobTarget { dest, slug: name.clone(), name })
+}
+
 // ---------------------------------------------------------------------------
 // Probe
 // ---------------------------------------------------------------------------
@@ -724,14 +790,12 @@ pub async fn repo_check<R: tauri::Runtime>(
     dir_name: String,
 ) -> Result<RepoJobState> {
     let site = site_of(&state, &site_id)?;
-    let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+    let target = job_target(&site, &kind, &dir_name)?;
+    let (dest, dir_name) = (target.dest.clone(), target.name.clone());
     if !dest.join(".git").exists() {
-        return Err(Error::Other(format!(
-            "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
-        )));
+        return Err(target.not_a_checkout(&kind));
     }
-    let log_key = format!("repo-{}-{}-check.log", site.domain, dir_name);
+    let log_key = target.log_key(&site, "-check");
     let log_path = state.platform.paths().log_dir()?.join(&log_key);
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -906,6 +970,44 @@ pub async fn repo_job_state(jobs: State<'_, RepoJobs>, job_id: String) -> Result
     Ok(snapshot(&entry))
 }
 
+/// What the site's OWN folder is, repository-wise (Stage 3).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteRepoInfo {
+    /// `<site.path>/.git` exists — the Repository tab has something to show.
+    pub present: bool,
+    /// The folder that was looked at, so a "no repository here" answer names
+    /// the place rather than leaving the user to guess.
+    pub project_root: String,
+    /// The repository rexenv cloned it from (v33), when it did. Display only —
+    /// what is checked out NOW comes from git, live.
+    pub cloned_from: Option<String>,
+}
+
+/// Is the site's own folder a git checkout?
+///
+/// Pure filesystem, no git spawn: the site screen asks this on every render for
+/// every site, and a `git` process per render is not a probe, it is a cost.
+///
+/// `present` is the ONLY gate on the Repository tab, and it is deliberately
+/// narrower than "this site has something to do with git": a site rexenv cloned
+/// always passes, and so does a LINKED folder that happens to be a checkout —
+/// which is the common Valet-import shape. What it never does is look upward
+/// from the docroot. A linked Laravel site stores `…/app/public`, so a parent
+/// walk would find the project's repo one level up — and, one level further,
+/// somebody's `~/code` repo containing forty projects, where the panel's
+/// `git checkout` button is a catastrophe nobody asked for.
+#[tauri::command]
+pub async fn repo_site_info(state: State<'_, AppState>, site_id: String) -> Result<SiteRepoInfo> {
+    let site = site_of(&state, &site_id)?;
+    let root = PathBuf::from(&site.path);
+    Ok(SiteRepoInfo {
+        present: root.join(".git").exists(),
+        project_root: site.path.clone(),
+        cloned_from: site.git_url.clone(),
+    })
+}
+
 /// A site's git-sourced dirs (list badges).
 #[tauri::command]
 pub async fn repo_assets(
@@ -947,14 +1049,12 @@ pub async fn repo_git_op<R: tauri::Runtime>(
         (_, r) => r,
     };
     let site = site_of(&state, &site_id)?;
-    let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+    let target = job_target(&site, &kind, &dir_name)?;
+    let (dest, dir_name) = (target.dest.clone(), target.name.clone());
     if !dest.join(".git").exists() {
-        return Err(Error::Other(format!(
-            "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
-        )));
+        return Err(target.not_a_checkout(&kind));
     }
-    let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+    let log_key = target.log_key(&site, "");
     let log_path = state.platform.paths().log_dir()?.join(&log_key);
 
     let label = match op.as_str() {
@@ -1021,6 +1121,17 @@ pub async fn repo_git_op<R: tauri::Runtime>(
     Ok(snapshot(&entry))
 }
 
+/// Does this finished op update the ASSET's recorded ref (v12 `site_git_assets`)?
+///
+/// Only a checkout, and never for a SITE. `sites.git_ref` (v33) records the
+/// branch the user picked when the site was CREATED; what is checked out NOW is
+/// a fact only git has, read live by `repo::read_git_status` — which is exactly
+/// what the Repository panel shows. Writing here would give one question two
+/// answers, and the stale one would be the one on the row.
+fn records_asset_ref(op: &str, kind: &str) -> bool {
+    op == "checkout" && kind != SITE_KIND
+}
+
 fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, op: &str) {
     let state = app.state::<AppState>();
     let jobs = app.state::<RepoJobs>();
@@ -1065,8 +1176,7 @@ fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, 
         Ok(()) => {}
     }
 
-    // Checkout: the provenance row keeps saying the truth.
-    if op == "checkout" {
+    if records_asset_ref(op, &entry.kind) {
         if let Some(r) = entry.git_ref.as_deref() {
             let conn = state.db.lock().ok();
             if let Some(conn) = conn.as_deref() {
@@ -1117,7 +1227,7 @@ pub async fn repo_branches<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+        let dir = job_target(&site, &kind, &dir_name)?.dest;
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
         let status = repo::read_git_status(state.platform.supervisor(), &git.path, &env, &dir)?;
@@ -1150,7 +1260,7 @@ pub async fn repo_pull_refs<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+        let dir = job_target(&site, &kind, &dir_name)?.dest;
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
         repo::list_pull_refs(state.platform.supervisor(), &git.path, &env, &dir)
@@ -1179,7 +1289,7 @@ pub async fn repo_scripts(
     dir_name: String,
 ) -> Result<RepoScriptsInfo> {
     let site = site_of(&state, &site_id)?;
-    let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+    let dir = job_target(&site, &kind, &dir_name)?.dest;
     let inspection = repo::inspect_repo(&dir);
     Ok(RepoScriptsInfo {
         manager: inspection.node.map(|n| n.manager),
@@ -1200,8 +1310,8 @@ pub async fn repo_script_job<R: tauri::Runtime>(
     script: String,
 ) -> Result<RepoJobState> {
     let site = site_of(&state, &site_id)?;
-    let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+    let target = job_target(&site, &kind, &dir_name)?;
+    let (dest, dir_name) = (target.dest.clone(), target.name.clone());
     let inspection = repo::inspect_repo(&dest);
     let manager = inspection
         .node
@@ -1553,8 +1663,8 @@ pub async fn repo_watch_start<R: tauri::Runtime>(
     script: String,
 ) -> Result<WatchState> {
     let site = site_of(&state, &site_id)?;
-    let dir_name = repo::validate_dir_name(&dir_name)?;
-    let dest = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+    let target = job_target(&site, &kind, &dir_name)?;
+    let (dest, dir_name) = (target.dest.clone(), target.name.clone());
     let inspection = repo::inspect_repo(&dest);
     let manager = inspection
         .node
@@ -1644,7 +1754,7 @@ fn run_watch<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<WatchEntry>, man
         let dest = {
             let st = snapshot_watch(entry);
             let site = site_of(&state, &st.site_id)?;
-            repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &st.kind, &st.dir_name)?
+            job_target(&site, &st.kind, &st.dir_name)?.dest
         };
         repo::node_run_script(
             state.platform.supervisor(),
@@ -1773,11 +1883,10 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
         let state = app.state::<AppState>();
         let jobs = app.state::<RepoJobs>();
         let site = site_of(&state, &site_id)?;
-        let dir = repo::asset_dest(std::path::Path::new(&site.path), site.content_dir_rel(), &kind, &dir_name)?;
+        let target = job_target(&site, &kind, &dir_name)?;
+        let dir = target.dest.clone();
         if !dir.join(".git").exists() {
-            return Err(Error::Other(format!(
-                "wp-content/{kind}s/{dir_name} is not a git checkout (no .git)."
-            )));
+            return Err(target.not_a_checkout(&kind));
         }
         let env = shell_env(&state, &jobs, false)?;
         let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
@@ -1788,7 +1897,7 @@ pub async fn repo_asset_status<R: tauri::Runtime>(
             .flatten();
         let remote = repo::read_remote_url(state.platform.supervisor(), &git.path, &env, &dir);
         let loss_warning = repo::loss_warning(&status);
-        let log_key = format!("repo-{}-{}.log", site.domain, dir_name);
+        let log_key = target.log_key(&site, "");
         let log_key = state
             .platform
             .paths()
@@ -2042,6 +2151,87 @@ mod tests {
             src.contains("step(\"archive\", \"wp dist-archive\")"),
             "the archive job's single step changed"
         );
+    }
+
+    /// A site fixture in PRODUCTION shape — Laravel, so the project root and the
+    /// served root differ, which is the whole point of the site target.
+    fn laravel_site() -> crate::state::models::Site {
+        let mut s = crate::state::models::test_site(
+            "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30",
+            "shop.rex",
+            crate::state::models::SiteOrigin::User,
+        );
+        s.site_type = crate::state::models::SiteType::Laravel;
+        s.docroot_subdir = "public".into();
+        s.git_url = Some("https://github.com/acme/shop.git".into());
+        s
+    }
+
+    #[test]
+    fn a_site_target_is_the_project_root_and_carries_no_path_segment() {
+        let site = laravel_site();
+        // `dir_name` is display text for a site job and must never reach a path
+        // — so even a hostile one resolves to exactly the recorded project root.
+        for name in ["", "shop.rex", "../../etc", "..", "/etc/passwd"] {
+            let t = job_target(&site, SITE_KIND, name).expect("a site target needs no dir name");
+            assert_eq!(t.dest, PathBuf::from(&site.path), "{name:?} moved the target");
+            assert_eq!(t.name, "shop.rex", "the display name is the domain");
+            assert_eq!(t.slug, "site");
+        }
+        // The project root, NOT what the web server serves: `.git` lives one
+        // level above `public/` on a Laravel site.
+        let t = job_target(&site, SITE_KIND, "").unwrap();
+        assert_ne!(t.dest, site.served_root());
+        assert_eq!(site.served_root(), t.dest.join("public"));
+        // Log keys stay readable rather than repeating the domain twice.
+        assert_eq!(t.log_key(&site, ""), "repo-shop.rex-site.log");
+        assert_eq!(t.log_key(&site, "-check"), "repo-shop.rex-site-check.log");
+    }
+
+    #[test]
+    fn an_asset_target_still_validates_its_folder_name() {
+        let site = laravel_site();
+        // The M7 gate is untouched for the kinds that DO take a path segment.
+        for bad in ["../evil", ".hidden", "", "a/b"] {
+            assert!(job_target(&site, "plugin", bad).is_err(), "{bad} must be refused");
+        }
+        let t = job_target(&site, "plugin", "theme-check").unwrap();
+        assert!(t.dest.ends_with("wp-content/plugins/theme-check"));
+        assert_eq!(t.name, "theme-check");
+        assert_eq!(t.slug, "theme-check");
+        // An unknown kind is still refused by `asset_dest` — "site" is the only
+        // new one, and it is matched before this point.
+        assert!(job_target(&site, "mu-plugin", "x").is_err());
+    }
+
+    /// The refusal a site with no checkout gets. It must NOT read like a
+    /// wp-content path, and it must name the folder that was looked at — the
+    /// deliberate no-upward-walk rule is invisible otherwise.
+    #[test]
+    fn a_site_without_a_checkout_is_told_which_folder_was_looked_at() {
+        let site = laravel_site();
+        let t = job_target(&site, SITE_KIND, "").unwrap();
+        let msg = t.not_a_checkout(SITE_KIND).to_string();
+        assert!(msg.contains("shop.rex"), "{msg}");
+        assert!(msg.contains(&site.path), "the folder it looked at: {msg}");
+        assert!(!msg.contains("wp-content"), "a site is not an asset: {msg}");
+
+        let asset = job_target(&site, "plugin", "theme-check").unwrap();
+        assert!(asset.not_a_checkout("plugin").to_string().contains("wp-content/plugins/theme-check"));
+    }
+
+    #[test]
+    fn a_site_checkout_never_rewrites_the_row_that_records_what_was_picked() {
+        // The asset table is kept in step; the site row is not — `sites.git_ref`
+        // is a record of the CHOICE at create, and git owns the live answer.
+        assert!(records_asset_ref("checkout", "plugin"));
+        assert!(records_asset_ref("checkout", "theme"));
+        assert!(!records_asset_ref("checkout", SITE_KIND));
+        // Nothing else writes a ref at all.
+        for op in ["fetch", "pull", "push", "check", "script"] {
+            assert!(!records_asset_ref(op, "plugin"), "{op} must not record a ref");
+            assert!(!records_asset_ref(op, SITE_KIND));
+        }
     }
 
     #[test]

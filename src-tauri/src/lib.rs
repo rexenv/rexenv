@@ -764,6 +764,7 @@ pub fn run() {
             commands::repo::repo_job_state,
             commands::repo::repo_site_jobs,
             commands::repo::repo_assets,
+            commands::repo::repo_site_info,
             commands::repo::repo_asset_status,
             commands::repo::repo_unmanaged,
             commands::repo::repo_adopt,

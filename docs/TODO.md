@@ -34,11 +34,17 @@ evidence cited.
   **Not done here, and deliberately:** the build is offered only at CREATE. Re-running
   it later belongs with Stage 3's site-level RepoPanel, which is where a per-site step
   runner already fits.
-- [ ] **Stage 3 — a Git panel on the site itself** (`docs/PLAN-git-site-clone.md` §4).
-  `core::repo`'s git ops are all path-based (`read_git_status`, `git_fetch`,
-  `git_pull_ff`, `git_checkout`, `loss_warning`), so pointing the existing `RepoPanel` at
-  the project root is mostly plumbing — status line, branch switcher, fetch/pull, and the
-  exact changed/untracked/unpushed counts before anything destructive.
+- [x] **Stage 3 — a Git panel on the site itself** (built 11 Aug 2026). ✓ A `site` job
+  kind: `commands/repo.rs::job_target` resolves it to the project root, so nine existing
+  commands work unchanged and the SAME `RepoPanel` renders a Repository tab — status,
+  branch switcher, fetch/pull/push, the dependency steps a pull offers, and the repo's
+  own package.json scripts (which is also how a Vite build gets re-run after create,
+  closing Stage 2's known gap). A site target carries **no `dir_name`** — the one sent
+  is the domain, display-only — making it the one kind with no user-supplied path
+  segment. **Never an upward walk** from the docroot: `repo_site_info` is a single
+  `<path>/.git` test, because the folder above a linked site can be a repo holding every
+  project the user has. Ledger #284–288; `git_site_clone_check` §8; SMOKE-TEST covers
+  the packaged half.
 - [ ] **Stage 4 — any PHP repo, and WordPress** (`docs/PLAN-git-site-clone.md` §4).
   `detect_project` already classifies Symfony, Craft, Statamic, Magento and generic front
   controllers, and Stage 1 already records its `docroot_rel` as `docroot_subdir`, so

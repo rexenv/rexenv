@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
+import type { AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoKind, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1528,7 +1528,7 @@ export async function repoJobState(jobId: string): Promise<RepoJobState> {
  *  the backend job survives the UI; a blank panel invited a second run. */
 export async function repoSiteJobs(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
 ): Promise<RepoJobState[]> {
   if (!isTauri()) return [];
   return invoke<RepoJobState[]>("repo_site_jobs", { siteId, kind });
@@ -1616,7 +1616,7 @@ export async function onWpInstallOutput(
 /** Live git status for one managed asset dir (local, fast, runs no repo code). */
 export async function repoAssetStatus(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
 ): Promise<RepoAssetStatus> {
   return invoke<RepoAssetStatus>("repo_asset_status", { siteId, kind, dirName });
@@ -1647,7 +1647,7 @@ export async function repoAdopt(
  *  flow; a pull/checkout that changes lockfiles OFFERS install steps. */
 export async function repoGitOp(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
   op: "fetch" | "pull" | "checkout" | "push",
   targetRef: string | null,
@@ -1658,7 +1658,7 @@ export async function repoGitOp(
 /** Branch names for the checkout dropdown (local + remote-tracking). */
 export async function repoBranches(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
 ): Promise<RepoBranches> {
   return invoke<RepoBranches>("repo_branches", { siteId, kind, dirName });
@@ -1676,7 +1676,7 @@ export async function repoRunOfferedSteps(jobId: string): Promise<RepoJobState> 
  *  the job's own -check.log slot. */
 export async function repoCheck(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
 ): Promise<RepoJobState> {
   return invoke<RepoJobState>("repo_check", { siteId, kind, dirName });
@@ -1685,7 +1685,7 @@ export async function repoCheck(
 /** PR/MR head refs advertised by origin (network — call lazily). */
 export async function repoPullRefs(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
 ): Promise<RepoPullRef[]> {
   return invoke<RepoPullRef[]>("repo_pull_refs", { siteId, kind, dirName });
@@ -1694,7 +1694,7 @@ export async function repoPullRefs(
 /** package.json scripts for one asset + the manager that would run them. */
 export async function repoScripts(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
 ): Promise<RepoScriptsInfo> {
   return invoke<RepoScriptsInfo>("repo_scripts", { siteId, kind, dirName });
@@ -1703,7 +1703,7 @@ export async function repoScripts(
 /** Run one script ONCE as a streamed job (explicit click — repo code runs). */
 export async function repoScriptJob(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
   script: string,
 ): Promise<RepoJobState> {
@@ -1724,7 +1724,7 @@ export async function repoDistArchive(
  *  app, never auto-restarts. One watcher per asset dir. */
 export async function repoWatchStart(
   siteId: string,
-  kind: "plugin" | "theme",
+  kind: RepoKind,
   dirName: string,
   script: string,
 ): Promise<RepoWatchState> {
@@ -1736,10 +1736,16 @@ export async function repoWatchStop(id: string): Promise<void> {
   await invoke("repo_watch_stop", { id });
 }
 
+/** Is the SITE's own folder a git checkout? Pure filesystem — no git spawn. */
+export async function repoSiteInfo(siteId: string): Promise<SiteRepoInfo> {
+  if (!isTauri()) return { present: false, projectRoot: "", clonedFrom: null };
+  return invoke<SiteRepoInfo>("repo_site_info", { siteId });
+}
+
 /** Watchers — all (footer chip) or one site+kind's (panel). */
 export async function repoWatches(
   siteId: string | null,
-  kind: "plugin" | "theme" | null,
+  kind: RepoKind | null,
 ): Promise<RepoWatchState[]> {
   if (!isTauri()) return [];
   return invoke<RepoWatchState[]>("repo_watches", { siteId, kind });

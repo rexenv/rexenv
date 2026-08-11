@@ -85,6 +85,22 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
 - [ ] A repo with no `package.json` and the box ticked: the phase reports **skipped**,
       not failed.
 - [ ] New Site → **WordPress** offers no "From Git" choice at all.
+- [ ] **Repository tab** (Stage 3). It appears on the cloned site and NOT on an
+      ordinary one. It shows the branch, a clean tree, and the remote.
+      - Switch branch with the picker → Checkout: the branch chip updates, and the
+        Sites list still works. `git status` in a terminal agrees.
+      - Edit a tracked file in the editor, come back to the window: the panel
+        re-reads on focus and counts the change (no Refresh click needed).
+      - Fetch, then Pull. Then Push on a branch with an upstream.
+      - A pull that changes `composer.lock`/`package-lock.json` offers install/build
+        steps in the panel — click them; they stream.
+      - The repo's package.json scripts are listed; `dev` offers "Start watching"
+        (that is how a Vite dev server runs), a one-shot like `build` offers Run.
+      - **No "Build zip" button** — that is a plugin/theme thing.
+- [ ] The Repository tab also appears on a **linked** site whose folder is a git
+      checkout (import one from Valet, or link `~/code/something`), and NOT on a
+      linked Laravel site served from `…/public` — rexenv never searches upwards,
+      and the tab is absent rather than pointed at the parent repo.
 - [ ] Delete a cloned site → the folder AND its database go (it is a docroot
       rexenv created, and provisioning made the database).
 - [ ] Delete the site → the confirm's **Delete site** button is disabled until the

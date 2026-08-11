@@ -39,6 +39,7 @@ import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
+import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import {
@@ -54,6 +55,7 @@ import {
   regenerateSiteCert,
   relinkSiteDocroot,
   renameSite,
+  repoSiteInfo,
   setSiteEnv,
   revealPath,
   setSitePhpVersion,
@@ -100,7 +102,7 @@ const SERVERS: { value: WebServer; label: string }[] = [
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
-type TabKey = "overview" | "wordpress" | "database" | "logs" | "terminal" | "settings";
+type TabKey = "overview" | "wordpress" | "repository" | "database" | "logs" | "terminal" | "settings";
 
 export function SiteDetail() {
   const { id, tab } = useParams<{ id: string; tab?: TabKey }>();
@@ -165,10 +167,24 @@ export function SiteDetail() {
   // install never finished" case, where the tab goes away again.
   const isWordpress = wpResolved ? !!wp?.isWordpress : site.type === "wordpress";
   const isServing = !!serving?.find((s) => s.domain === site.domain)?.serving;
+  // Pure filesystem on the backend (no git spawn), so it is cheap enough to ask
+  // for every site and honest enough to re-ask on focus: a `git init` or an
+  // `rm -rf .git` in a terminal shows up the moment the user comes back.
+  const { data: repoInfo } = useQuery({
+    queryKey: ["repo-site-info", site.id],
+    queryFn: () => repoSiteInfo(site.id),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
   const active: TabKey = tab ?? "overview";
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
     { key: "overview", label: "Overview", show: true },
     { key: "wordpress", label: "WordPress", show: isWordpress },
+    // Shown only when the site's OWN folder is a checkout — a cloned site
+    // always, a linked one that happens to be a repository too. Gated on the
+    // filesystem rather than on `gitUrl` so an adopted checkout is not
+    // second-class, and never on a parent walk (see `repo_site_info`).
+    { key: "repository", label: "Repository", show: !!repoInfo?.present },
     { key: "database", label: "Database", show: true },
     { key: "logs", label: "Logs", show: true },
     { key: "terminal", label: "Terminal", show: true },
@@ -231,6 +247,7 @@ export function SiteDetail() {
             active === "terminal" ? "h-full" : active === "database" ? "min-h-full" : ""
           }`}
         >
+          {active === "repository" && <SiteRepoTab site={site} />}
           {active === "overview" && (
             <Overview
               site={site}

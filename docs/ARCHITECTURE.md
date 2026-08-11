@@ -737,6 +737,26 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     wired, serving site behind a "setup incomplete" badge whose Retry re-runs the
     clone, the database and Composer to reach the one step that was never rexenv's to
     guarantee. (Same "succeeded, but" shape as `serving_blocked`.)
+  - **The site's own checkout gets the SAME panel the assets use** (Stage 3):
+    `commands/repo.rs::job_target` resolves `kind = "site"` to `site.path` — the
+    project root, one level above what a Laravel site serves and exactly where the
+    clone put `.git` — so `repo_git_op`, `repo_branches`, `repo_pull_refs`,
+    `repo_check`, `repo_scripts`, `repo_script_job`, `repo_watch_start` and
+    `repo_asset_status` all work unchanged. A site target carries **no `dir_name`**:
+    the one sent alongside is the domain, used for display and the log key, never
+    turned into a path — making it the one kind with no user-supplied path segment at
+    all. Writing a second panel would have meant a second answer to "is this checkout
+    dirty", the question every destructive confirmation is built on.
+    **Never an upward walk.** `repo_site_info` is a single `<path>/.git` existence
+    test. A linked Laravel site stores `…/app/public`, so a parent search would find
+    the project's repo one level up — and one level further, a `~/code` repo holding
+    forty projects, where the panel's Checkout button is a catastrophe nobody asked
+    for. The Repository tab appears when that exact folder is a checkout (a cloned
+    site always; a linked one that happens to be a repository too) and says which
+    folder it looked at when it is not.
+    `wp dist-archive` stays asset-only — a project root is not a distributable — and
+    a site checkout never writes `sites.git_ref`: that column records the branch
+    PICKED at create, and git owns what is checked out now.
   - **`git_url` is recorded at INSERT, not when the checkout lands** — Retry is the
     recovery path and has nowhere else to learn what to clone after an app restart. The
     row states the SOURCE; `provisioned` states whether the code arrived. Same argument

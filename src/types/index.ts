@@ -1134,6 +1134,22 @@ export interface SiteProvisionState {
 }
 
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */
+/** What a repo panel/IPC call targets. `"site"` is the SITE's own checkout —
+ *  a cloned site's project root — which carries no folder name of its own: the
+ *  `dirName` sent alongside it is display text and never reaches a path. */
+export type RepoKind = "plugin" | "theme" | "site";
+
+/** What a site's OWN folder is, repository-wise (Stage 3). */
+export interface SiteRepoInfo {
+  /** `<path>/.git` exists — the Repository tab has something to show. */
+  present: boolean;
+  /** The folder that was looked at, so "no repository here" names the place. */
+  projectRoot: string;
+  /** The repo rexenv cloned it from (v33). Display only — what is checked out
+   *  NOW comes from git, live. */
+  clonedFrom: string | null;
+}
+
 export interface GitAsset {
   kind: "plugin" | "theme";
   dirName: string;
