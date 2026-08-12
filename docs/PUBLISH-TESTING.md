@@ -62,9 +62,19 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ✅ PASSED (2026-08-12) on the SHIPPED dmg — Apple-Silicon ad-hoc launch test
+## A) 🚧 OPEN for 0.1.1 · ✅ PASSED for 0.1.0 — Apple-Silicon ad-hoc launch test
 
-**STATUS: PASSED** on `rexenv_0.1.0_universal.dmg` sha256
+**0.1.1 (2026-08-13): §A0 ✅, §A OPEN.** `rexenv_0.1.1_universal.dmg` sha256
+`14b64dae1ce633f31c46c5f033cdc2f5528c93ad14465f6db08db051bbd40241`, built from
+commit `4ad5007`, drafted at `homebrew-tap/releases/tag/v0.1.1`. §A0 passed by hand
+(single dmg; both binaries `x86_64 arm64`; `Dist_Archive_Command` ×5 per slice;
+`codesign --verify --deep --strict` clean) and the release gate `verify-full: all
+green` ran first. Also checked on the *bundled* `rex`: `--version` against a deaf
+listener returns in 2s where 0.1.0 hung — the fix is really in the artefact, not only
+in `master`. **§A itself is human-only and still to run on this dmg**; the draft stays
+a draft until it passes, because publishing IS the sign-off.
+
+**STATUS for 0.1.0: PASSED** on `rexenv_0.1.0_universal.dmg` sha256
 `b29f21f7ef5c88e0d8c367c329e546a54708d5ed51623913cdb1f27377ab31ef` — built locally
 2026-08-12 from commit `e3b6018`, and **this exact artefact is the one published** at
 `github.com/rexenv/homebrew-tap/releases/tag/v0.1.0` (the app repo is private; see
