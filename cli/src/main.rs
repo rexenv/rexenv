@@ -10,8 +10,18 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::exit;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+/// How long `soft_request` waits for an app that has accepted the connection.
+/// Best-effort by contract, so a wedged app costs a pause, never the command.
+const SOFT_DEADLINE: Duration = Duration::from_secs(2);
+
+/// How long `request` stays silent before telling the user it is still waiting.
+const STALL_NOTICE_AFTER: Duration = Duration::from_secs(10);
 
 const NOT_RUNNING: &str =
     "rexenv isn't running — open the app first (the CLI controls the running app).";
@@ -231,8 +241,19 @@ fn request(cmd: &str, args: Value) -> Value {
     }
     let mut reply = String::new();
     // No read timeout on purpose: mutating commands (site create) legitimately
-    // run for minutes; the app closes the connection when it's done.
-    if BufReader::new(stream).read_line(&mut reply).is_err() || reply.trim().is_empty() {
+    // run for minutes; the app closes the connection when it's done. But an app
+    // that has gone deaf looks exactly like one that is working, so say so
+    // rather than leaving a terminal with no output at all.
+    let waiting = stall_notice(STALL_NOTICE_AFTER, || {
+        eprintln!(
+            "rex: no reply yet after {}s — the app is either still working or wedged. \
+             Ctrl-C is safe; nothing is sent twice.",
+            STALL_NOTICE_AFTER.as_secs()
+        );
+    });
+    let read = BufReader::new(stream).read_line(&mut reply);
+    waiting.store(true, Ordering::Relaxed);
+    if read.is_err() || reply.trim().is_empty() {
         eprintln!("rex: the app closed the connection without replying");
         exit(1);
     }
@@ -255,7 +276,24 @@ fn request(cmd: &str, args: Value) -> Value {
 /// Best-effort request: `None` on any transport/command failure — for output
 /// that must not require a running app (`--version`).
 fn soft_request(cmd: &str) -> Option<Value> {
-    let mut stream = UnixStream::connect(socket_path()).ok()?;
+    soft_request_at(&socket_path(), cmd, SOFT_DEADLINE)
+}
+
+/// The half of `soft_request` that a test can point somewhere else.
+///
+/// The deadline is the whole point. "The app isn't running" is not only ENOENT
+/// and ECONNREFUSED: an app can hold the socket, ACCEPT the connection, and
+/// then never answer — which is exactly what a stale App-Translocated instance
+/// did on 2026-08-12, hanging `rex --version` in `recvfrom` with no output
+/// until that pid was killed (`docs/PUBLISH-TESTING.md` §D). A connect that
+/// succeeds proves a listener exists, never that anything is behind it, so
+/// "best effort" has to be bounded in time and not just in error kind.
+fn soft_request_at(path: &Path, cmd: &str, deadline: Duration) -> Option<Value> {
+    let mut stream = UnixStream::connect(path).ok()?;
+    // Both directions: a peer that never reads can block the write just as a
+    // peer that never writes blocks the read.
+    stream.set_read_timeout(Some(deadline)).ok()?;
+    stream.set_write_timeout(Some(deadline)).ok()?;
     let line = json!({ "cmd": cmd, "args": Value::Null }).to_string();
     stream.write_all(format!("{line}\n").as_bytes()).ok()?;
     stream.flush().ok()?;
@@ -263,6 +301,29 @@ fn soft_request(cmd: &str) -> Option<Value> {
     BufReader::new(stream).read_line(&mut reply).ok()?;
     let envelope: Value = serde_json::from_str(reply.trim()).ok()?;
     (envelope["ok"] == json!(true)).then(|| envelope["data"].clone())
+}
+
+/// Say, once, that we are still waiting — then keep waiting.
+///
+/// `request` deliberately has no read timeout, and that cannot change: the app
+/// writes a finished command's reply in ONE write at the end, so "no bytes yet"
+/// looks identical for a `site create` three minutes into real work and for an
+/// app that will never answer. Killing the wait would break the first to fix
+/// the second. What is fixable is the terminal looking dead: this prints a
+/// single line to stderr after `after`, unless the caller has already flipped
+/// the returned flag by then.
+fn stall_notice(after: Duration, notify: impl Fn() + Send + 'static) -> Arc<AtomicBool> {
+    let done = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&done);
+    // Detached on purpose: the process exits when the command does, and a
+    // thread parked in `sleep` must never hold that up.
+    std::thread::spawn(move || {
+        std::thread::sleep(after);
+        if !flag.load(Ordering::Relaxed) {
+            notify();
+        }
+    });
+    done
 }
 
 fn main() {
@@ -2302,6 +2363,108 @@ fn cmd_status(json_output: bool) {
             s["port"].as_u64().unwrap_or(0),
             s["cpuPercent"].as_f64().unwrap_or(0.0),
             s["ramMb"].as_u64().unwrap_or(0),
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::os::unix::net::UnixListener;
+    use std::sync::mpsc;
+    use std::time::Instant;
+
+    /// A socket path this test owns, in the OS temp dir. No app data is touched:
+    /// this crate cannot reach it (see the dependency note in Cargo.toml).
+    fn fixture_socket(name: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!("rexenv-cli-test-{name}-{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&p);
+        p
+    }
+
+    /// THE 2026-08-12 failure, pinned: a listener that accepts and then says
+    /// nothing. Before the deadline this hung in `recvfrom` forever, which is
+    /// how `rex --version` — documented as working WITHOUT the app — printed
+    /// nothing at all until the wedged app was killed.
+    #[test]
+    fn soft_request_gives_up_on_a_listener_that_accepts_and_never_answers() {
+        let path = fixture_socket("deaf");
+        let listener = UnixListener::bind(&path).expect("bind");
+        let deaf = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            // Read the request, then deliberately never reply. Hold the
+            // connection open — a closed one would end the read by itself and
+            // prove nothing about the deadline.
+            let mut buf = [0u8; 64];
+            let _ = stream.read(&mut buf);
+            std::thread::sleep(Duration::from_secs(3));
+        });
+
+        let started = Instant::now();
+        let got = soft_request_at(&path, "version", Duration::from_millis(200));
+        let waited = started.elapsed();
+
+        assert!(got.is_none(), "a silent app must degrade to None, not data");
+        assert!(
+            waited < Duration::from_secs(2),
+            "soft_request must be bounded by its deadline; waited {waited:?}"
+        );
+        let _ = std::fs::remove_file(&path);
+        let _ = deaf.join();
+    }
+
+    #[test]
+    fn soft_request_returns_the_data_when_the_app_answers() {
+        let path = fixture_socket("answers");
+        let listener = UnixListener::bind(&path).expect("bind");
+        let app = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 64];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(b"{\"ok\":true,\"data\":{\"version\":\"9.9.9\"}}\n")
+                .expect("reply");
+        });
+
+        let got = soft_request_at(&path, "version", Duration::from_secs(2));
+
+        assert_eq!(got.expect("data")["version"], json!("9.9.9"));
+        let _ = std::fs::remove_file(&path);
+        let _ = app.join();
+    }
+
+    /// A missing socket is the ordinary "app isn't running" case and must stay
+    /// instant — the deadline is for a listener that exists, not for ENOENT.
+    #[test]
+    fn soft_request_is_immediate_when_nothing_is_listening() {
+        let path = fixture_socket("absent");
+        let started = Instant::now();
+        assert!(soft_request_at(&path, "version", Duration::from_secs(30)).is_none());
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn stall_notice_speaks_when_the_reply_is_late() {
+        let (tx, rx) = mpsc::channel();
+        let _flag = stall_notice(Duration::from_millis(50), move || {
+            let _ = tx.send(());
+        });
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok(), "the notice must fire");
+    }
+
+    /// The common case: the reply lands first, so the user never sees a scary
+    /// line about a wedged app for a command that worked.
+    #[test]
+    fn stall_notice_stays_quiet_when_the_reply_lands_first() {
+        let (tx, rx) = mpsc::channel();
+        let flag = stall_notice(Duration::from_millis(100), move || {
+            let _ = tx.send(());
+        });
+        flag.store(true, Ordering::Relaxed);
+        assert!(
+            rx.recv_timeout(Duration::from_millis(400)).is_err(),
+            "a finished command must not print a stall notice"
         );
     }
 }

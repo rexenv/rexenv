@@ -324,8 +324,14 @@ written procedure; "manual" means scripted-for-a-human, never remembered.
 load-bearing, green only from its own line). It grows tiers by composition, not by
 bloating the fast path:
 
-- **`scripts/verify.sh`** (fast, pre-commit, minutes): lib tests + examples build +
-  clippy -D warnings + tsc. Unchanged.
+- **`scripts/verify.sh`** (fast, pre-commit, minutes): lib tests + **`cli` crate tests**
+  + examples build + clippy -D warnings + tsc.
+  **Grew the `cli` step 12 Aug 2026, and the gap is worth remembering:** the bar ran
+  `cargo test --lib` in `src-tauri` only, so the `cli` crate — a SHIPPED binary, linked
+  onto every user's PATH by the cask — was never entered. It also had no tests to run.
+  §D then found `rex --version` hanging forever on an app that accepts and never
+  answers (ledger #300). A crate that ships and a crate the gate visits are now the
+  same set; keep them that way when a third crate appears.
 - **`scripts/verify-full.sh`** (before release / after touching a layer's subject,
   ~10–20 min): runs verify.sh, then the L1 `sandbox` tier, then wk-checks `run-all`
   (spawns its own vite on 5199, kills it after). Own `verify-full: all green` line.

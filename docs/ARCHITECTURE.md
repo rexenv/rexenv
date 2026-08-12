@@ -526,6 +526,15 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   trust boundary (same-user processes already own our SQLite/processes; other users
   are locked out). Never TCP. Stale files are unlinked at bind; the CLI *connects*
   to detect liveness (a stat would lie — same lesson as `admin_alive`).
+- **A connect proves a listener, not an answer** (learned 12 Aug 2026, ledger #300).
+  A stale App-Translocated instance owned the socket, accepted connections and
+  replied to nothing, so "is the app running?" said yes and `rex` blocked in
+  `recvfrom` with no output and no bound. The two waits are now deliberately
+  different: `soft_request` (`--version`, which must work without the app) is capped
+  at 2s and degrades to CLI-version-only, while `request` stays UNBOUNDED — the app
+  writes a finished reply in one write at the end, so "no bytes yet" cannot tell a
+  three-minute `site create` from a dead app — and instead prints one stall notice
+  after 10s. Bounding that one would break long commands to fix a rare wedge.
 - **One code path:** each request dispatches to the SAME `commands::*` fn the UI
   invokes — never a parallel implementation. The surface (42 commands as of 16 Jul
   2026) covers lifecycle, sites (create incl. `--blueprint`/`--multisite`, delete,

@@ -281,7 +281,15 @@ first:
   Verify before gating: `lipo -archs <app>/Contents/MacOS/rexenv` and the same
   for `MacOS/rex` must both report `x86_64 arm64`.
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
-- [ ] **`rex` hangs forever on a half-alive app** — found running §D, 12 Aug 2026. An
+- [x] **`rex` hangs forever on a half-alive app** — ✓ **FIXED 12 Aug 2026** (ledger
+  #300): `soft_request` is bounded at 2s (it promised "works WITHOUT the app" and
+  delivered it only for ENOENT/ECONNREFUSED), and `request` — which must stay
+  unbounded, since a finished reply arrives in one write at the end — now prints one
+  stall notice after 10s instead of leaving a dead terminal. Five tests, the deaf-peer
+  one proven to fail on the pre-fix code, and `verify.sh` now runs the `cli` crate at
+  all. **Still open, deliberately:** why that instance went deaf was never diagnosed —
+  the evidence died with the pid. Reproduce before blaming App Translocation.
+  Original report: found running §D, 12 Aug 2026. An
   App-Translocated instance from §A owned `config/rexenv-cli.sock`, accepted the
   connection and never replied; `rex --version` and `rex status` sat in `recvfrom`
   with no output and no timeout, and only completed when that pid was killed. The

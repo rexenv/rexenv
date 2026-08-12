@@ -47,6 +47,11 @@ fi
 cd "$(dirname "$0")/.."
 
 (cd src-tauri && cargo test --lib)
+# The `cli` crate ships its own binary and had NO tests until 12 Aug 2026, so
+# the bar never entered this directory — and the first bug it grew (`rex
+# --version` hanging forever against an app that accepts and never answers,
+# §D) lives entirely here. A gate that skips a shipped crate is not a gate.
+(cd cli && cargo test)
 (cd src-tauri && cargo build --examples)
 # Zero-warning baseline established 28 Jul 2026 — a bar that ships with known
 # warnings trains people to ignore it. Pre-existing 8-arg fns carry explicit,
