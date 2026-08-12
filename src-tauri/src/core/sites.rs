@@ -327,7 +327,8 @@ fn remove_if_effectively_empty(dir: &Path) {
     let _ = std::fs::remove_dir(dir);
 }
 
-/// A UNIQUE, ≤64-char database name for a NEW site. Prefers the clean
+/// A UNIQUE, ≤64-char database name for a NEW site of THIS type (the prefix is
+/// per type: `wp_`/`lv_`/`php_` — `wordpress::db_name_prefix`). Prefers the clean
 /// [`wordpress::db_name_for`] base (what existing sites already store); falls
 /// back to a hash-suffixed form when that base would COLLIDE with an existing
 /// site or exceed MySQL's 64-char identifier limit. Without this, `db_name_for`
@@ -335,8 +336,8 @@ fn remove_if_effectively_empty(dir: &Path) {
 /// would let two distinct domains silently share ONE database (data bleed, and
 /// deleting either drops both — finding B21). The check-then-use is atomic under
 /// the app-wide db lock that already serializes create (same as `domain_exists`).
-fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
-    let base = super::wordpress::db_name_for(domain);
+fn unique_db_name(conn: &Connection, site_type: SiteType, domain: &str) -> Result<String> {
+    let base = super::wordpress::db_name_for(site_type, domain);
     if base.len() <= super::wordpress::DB_NAME_MAX && !store::db_name_exists(conn, &base)? {
         return Ok(base);
     }
@@ -344,7 +345,7 @@ fn unique_db_name(conn: &Connection, domain: &str) -> Result<String> {
     // domain. A remaining collision here needs two distinct domains to share
     // both the truncated slug AND the 32-bit hash (~1 in 4 billion): refuse
     // rather than risk a silent shared database.
-    let disambiguated = super::wordpress::db_name_disambiguated(domain);
+    let disambiguated = super::wordpress::db_name_disambiguated(site_type, domain);
     if store::db_name_exists(conn, &disambiguated)? {
         return Err(Error::Other(format!(
             "could not derive a unique database name for '{domain}' — rename the site slightly"
@@ -406,7 +407,7 @@ fn create_recording_ownership(
     // stored value, so a domain change never re-points the database. Unique per
     // site: a slug collision or >64-char overflow falls back to a hash suffix
     // (finding B21) so two domains can never share one database.
-    let db_name = unique_db_name(conn, &new.domain)?;
+    let db_name = unique_db_name(conn, new.site_type, &new.domain)?;
     // Recorded ONCE from the stored path's own markers (v24) — Bedrock/
     // Radicle linked docroots keep mu-plugins out of a dead `wp-content/`.
     // Non-WP sites never consult it.
@@ -2497,6 +2498,24 @@ mod tests {
         // stored value, not a fresh derivation from the current domain.
         assert_eq!(created.db_name, "wp_my_shop_test");
         assert_eq!(get(&conn, &created.id).unwrap().unwrap().db_name, "wp_my_shop_test");
+    }
+
+    #[test]
+    fn create_stores_the_prefix_of_the_sites_own_type_not_wordpresss() {
+        // The bug: create derived the name from the domain ALONE, so a Laravel
+        // app was stored as `wp_myapp_test` — the name a developer then reads in
+        // Adminer, on a database WordPress never touches. Two same-slug sites of
+        // different types are also DISTINCT databases now, with no hash suffix.
+        let conn = db::open_in_memory().unwrap();
+        let mut lara = sample("App", "myapp.test");
+        lara.site_type = SiteType::Laravel;
+        let lara = create(&conn, lara).unwrap();
+        assert_eq!(lara.db_name, "lv_myapp_test");
+        assert_eq!(get(&conn, &lara.id).unwrap().unwrap().db_name, "lv_myapp_test");
+
+        let mut plain = sample("Plain", "plain.test");
+        plain.site_type = SiteType::Php;
+        assert_eq!(create(&conn, plain).unwrap().db_name, "php_plain_test");
     }
 
     #[test]

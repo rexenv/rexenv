@@ -66,7 +66,7 @@ async fn main() {
     {
         let _ = Command::new(mysql_base.join("bin/mysql"))
             .args(["-h127.0.0.1", "-P13306", "-uroot", "-e",
-                &format!("DROP DATABASE IF EXISTS {}", wordpress::db_name_for(domain))])
+                &format!("DROP DATABASE IF EXISTS {}", wordpress::db_name_for(SiteType::Wordpress, domain))])
             .status();
         let _ = std::fs::remove_dir_all(&docroot);
         std::fs::create_dir_all(&docroot).unwrap();
@@ -74,7 +74,7 @@ async fn main() {
 
     wordpress::install_for_site(
         &php, &wp, &docroot, domain, "Network",
-        &wordpress::db_name_for(domain),
+        &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
         &mysql_base,
         &Default::default(),

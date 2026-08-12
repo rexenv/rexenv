@@ -26,6 +26,7 @@
 //! trusting resolution it does not control.
 
 use crate::error::{Error, Result};
+use crate::state::models::SiteType;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -2392,17 +2393,39 @@ pub fn core_switch_version(
     Ok(WpCoreSwitch { version: version.into(), db_update_required: db.code != db.db })
 }
 
-/// A valid MySQL database name derived from a site domain
-/// (`blog.test` → `wp_blog_test`). CREATION-TIME ONLY: the result is stored on
-/// the site row (`Site::db_name`, backfilled by migration v6 with identical
-/// logic) and every runtime operation reads the stored value — deriving from
-/// the domain at runtime would break sites whose domain has changed.
-pub fn db_name_for(domain: &str) -> String {
+/// The database-name prefix for a site type: `wp_` WordPress, `lv_` Laravel,
+/// `php_` plain PHP.
+///
+/// Until 13 Aug 2026 EVERY site type got `wp_`, because the rule lived here and
+/// took only a domain — a Laravel app landed in `wp_myapp_test`, a WordPress
+/// label on a database WordPress never touches, and the one string a developer
+/// reads in Adminer/TablePlus. Kept SHORT on purpose: the prefix spends the
+/// 64-char identifier budget ([`DB_NAME_MAX`]) that the domain slug also needs.
+pub fn db_name_prefix(site_type: SiteType) -> &'static str {
+    match site_type {
+        SiteType::Wordpress => "wp_",
+        SiteType::Laravel => "lv_",
+        SiteType::Php => "php_",
+    }
+}
+
+/// A valid MySQL database name derived from a site's TYPE and domain
+/// (WordPress `blog.test` → `wp_blog_test`; Laravel → `lv_blog_test`).
+/// CREATION-TIME ONLY: the result is stored on the site row (`Site::db_name`,
+/// backfilled by migration v6 with the then-universal `wp_` prefix) and every
+/// runtime operation reads the stored value — deriving from the domain at
+/// runtime would break sites whose domain has changed, and re-deriving with
+/// today's prefix would point every pre-existing Laravel/PHP site at a database
+/// that does not exist. Nothing renames a database under a live site.
+///
+/// The type is a PARAMETER rather than defaulted, so a new call site cannot
+/// silently inherit `wp_` for a non-WordPress site — the bug this shape fixes.
+pub fn db_name_for(site_type: SiteType, domain: &str) -> String {
     let safe: String = domain
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    format!("wp_{safe}")
+    format!("{}{safe}", db_name_prefix(site_type))
 }
 
 /// MySQL/MariaDB identifier limit — a database name may not exceed this.
@@ -2415,8 +2438,8 @@ pub const DB_NAME_MAX: usize = 64;
 /// is NOT injective — it maps every non-alphanumeric char to `_`, so
 /// `a-b.test` and `a.b.test` both reduce to `wp_a_b_test`; the domain hash makes
 /// two such sites land in DISTINCT databases instead of silently sharing one.
-pub fn db_name_disambiguated(domain: &str) -> String {
-    let base = db_name_for(domain);
+pub fn db_name_disambiguated(site_type: SiteType, domain: &str) -> String {
+    let base = db_name_for(site_type, domain);
     let suffix = format!("{:08x}", fnv1a(domain.as_bytes()));
     let keep = DB_NAME_MAX - 1 - suffix.len(); // reserve "_" + the 8-hex suffix
     let head: String = base.chars().take(keep).collect();
@@ -2950,25 +2973,46 @@ mod tests {
 
     #[test]
     fn db_name_sanitizes_domain() {
-        assert_eq!(db_name_for("blog.test"), "wp_blog_test");
-        assert_eq!(db_name_for("my-site.test"), "wp_my_site_test");
-        assert_eq!(db_name_for("a.b.c.test"), "wp_a_b_c_test");
+        assert_eq!(db_name_for(SiteType::Wordpress, "blog.test"), "wp_blog_test");
+        assert_eq!(db_name_for(SiteType::Wordpress, "my-site.test"), "wp_my_site_test");
+        assert_eq!(db_name_for(SiteType::Wordpress, "a.b.c.test"), "wp_a_b_c_test");
+    }
+
+    #[test]
+    fn db_name_prefix_is_per_site_type_and_never_wp_for_a_non_wp_site() {
+        // The bug: every type derived `wp_`, so a Laravel app owned a database
+        // labelled WordPress. The prefix is the type's, and no other type may
+        // reuse WordPress's — checked over the WHOLE enum, so a type added
+        // later cannot quietly inherit `wp_` (the shape of the original bug).
+        assert_eq!(db_name_for(SiteType::Laravel, "myapp.test"), "lv_myapp_test");
+        assert_eq!(db_name_for(SiteType::Php, "myapp.test"), "php_myapp_test");
+        for t in [SiteType::Wordpress, SiteType::Laravel, SiteType::Php] {
+            let p = db_name_prefix(t);
+            assert!(p.ends_with('_') && p.len() <= 4, "prefix stays short: {p}");
+            assert_eq!(t == SiteType::Wordpress, p == "wp_", "only WP owns wp_: {p}");
+        }
+        // Distinct prefixes are what keep a same-domain pair apart, so the
+        // names must actually differ (not merely the prefixes).
+        assert_ne!(
+            db_name_for(SiteType::Laravel, "x.test"),
+            db_name_for(SiteType::Wordpress, "x.test")
+        );
     }
 
     #[test]
     fn db_name_disambiguated_is_injective_and_bounded() {
         // The whole point: two domains that `db_name_for` reduces to the SAME
         // slug get DISTINCT disambiguated names (the domain hash differs).
-        let a = db_name_disambiguated("my-shop.test");
-        let b = db_name_disambiguated("my.shop.test");
+        let a = db_name_disambiguated(SiteType::Wordpress, "my-shop.test");
+        let b = db_name_disambiguated(SiteType::Wordpress, "my.shop.test");
         assert_ne!(a, b, "slug-colliding domains must not share a database");
         assert!(a.starts_with("wp_my_shop_test_"), "{a}");
         assert!(b.starts_with("wp_my_shop_test_"), "{b}");
         // Deterministic (stored once at create; must be stable within a build).
-        assert_eq!(a, db_name_disambiguated("my-shop.test"));
+        assert_eq!(a, db_name_disambiguated(SiteType::Wordpress, "my-shop.test"));
         // Always within MySQL's 64-char identifier limit, even for a long domain.
         let long = format!("{}.test", "a".repeat(250));
-        let d = db_name_disambiguated(&long);
+        let d = db_name_disambiguated(SiteType::Wordpress, &long);
         assert!(d.len() <= DB_NAME_MAX, "must fit the 64-char limit, got {}", d.len());
         // Only valid identifier characters ([a-z0-9_]).
         assert!(

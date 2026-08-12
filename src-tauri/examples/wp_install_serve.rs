@@ -83,7 +83,7 @@ async fn main() {
     // One-click WordPress install.
     println!("installing WordPress…");
     let docroot = std::path::PathBuf::from(&site.path);
-    let db_name = wordpress::db_name_for(domain);
+    let db_name = wordpress::db_name_for(SiteType::Wordpress, domain);
     wordpress::install_wordpress(
         &php,
         &wp,

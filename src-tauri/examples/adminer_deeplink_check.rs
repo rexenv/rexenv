@@ -28,7 +28,7 @@ const HTTPS: u16 = 8443;
 async fn main() {
     let plat = platform::current();
     let domain = "dbsite.test";
-    let db_name = wordpress::db_name_for(domain);
+    let db_name = wordpress::db_name_for(SiteType::Wordpress, domain);
 
     let conn = {
         let p = std::env::temp_dir().join("rexenv-11_4.db");

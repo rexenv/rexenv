@@ -75,7 +75,7 @@ async fn main() {
         &docroot,
         &domain,
         "CLI WP Install",
-        &wordpress::db_name_for(&domain),
+        &wordpress::db_name_for(SiteType::Wordpress, &domain),
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
         &mysql_base.join("bin/mysql"),
         &Default::default(),
@@ -156,7 +156,7 @@ async fn main() {
     let _ = database::drop_database(
         &mysql_base.join("bin/mysql"),
         database::MYSQL_PORT,
-        &wordpress::db_name_for(&domain),
+        &wordpress::db_name_for(SiteType::Wordpress, &domain),
     );
     if let Some(mut m) = own_mysqld {
         let _ = database::stop(&*rexenv_lib::platform::current(), m.id());

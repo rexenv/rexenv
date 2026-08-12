@@ -4,6 +4,7 @@
 //! `cargo run --example db_drop_check`.
 
 use rexenv_lib::core::{binaries, database, wordpress};
+use rexenv_lib::state::models::SiteType;
 use rexenv_lib::platform;
 use std::process::Command;
 use std::thread;
@@ -56,7 +57,7 @@ async fn main() {
     assert!(database::mysql_running(port), "MySQL did not come up on {port}");
 
     // The exact name a site delete would derive.
-    let name = wordpress::db_name_for("dropcheck.test");
+    let name = wordpress::db_name_for(SiteType::Wordpress, "dropcheck.test");
     assert_eq!(name, "wp_dropcheck_test");
 
     database::create_database(&basedir, port, &name).expect("create");

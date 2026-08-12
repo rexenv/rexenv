@@ -63,7 +63,7 @@ async fn main() {
         &docroot,
         domain,
         "WP Plugins",
-        &wordpress::db_name_for(domain),
+        &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
         &mysql_base,
         &Default::default(),

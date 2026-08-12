@@ -2745,7 +2745,7 @@ mod tests {
             path: format!("/tmp/{domain}"),
             created_at: "now".into(),
             multisite: MultisiteMode::None,
-            db_name: crate::core::wordpress::db_name_for(domain),
+            db_name: crate::core::wordpress::db_name_for(SiteType::Wordpress, domain),
             db_engine: crate::state::models::SiteDbEngine::Mysql,
             xdebug: false,
             override_port: None,

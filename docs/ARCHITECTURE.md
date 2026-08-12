@@ -354,6 +354,19 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it
   against `MIGRATIONS.len()` rather than trusting the prose.)*
+- **The database name is derived ONCE from the site's TYPE and domain**
+  (`wordpress::db_name_for` + `db_name_prefix`, `sites::unique_db_name`): `wp_` for
+  WordPress, `lv_` for Laravel, `php_` for a plain PHP site — `blog.rex` → `wp_blog_rex`,
+  a Laravel `myapp.rex` → `lv_myapp_rex`. Until 13 Aug 2026 the rule took only a domain,
+  so EVERY type got `wp_`: a Laravel app owned `wp_myapp_rex`, a WordPress label on a
+  database WordPress never touches — and that string is what a developer reads in
+  Adminer/TablePlus and in `.env`. The type is a required parameter now, so a new call
+  site cannot silently inherit `wp_`. Prefixes stay short because they spend the same
+  64-char identifier budget as the domain slug (`DB_NAME_MAX`; a colliding or
+  overflowing base falls back to the FNV hash suffix, B21). **Existing sites keep the
+  name they stored** — the rule is creation-time only and every runtime op reads
+  `sites.db_name`, so nothing renames a database under a live site (and the v6 backfill
+  stays `wp_` for exactly that reason).
 - **The content dir is RECORDED, never re-derived at write time** (v24
   `sites.content_dir`, decided once at create/backfill from filesystem markers,
   poison-resistant): every writer that builds a `wp-content`-relative path itself —

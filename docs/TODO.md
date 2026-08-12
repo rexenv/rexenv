@@ -143,9 +143,14 @@ evidence cited.
   kept OUT of the served tree by v32 `docroot_subdir` + `Site::served_root()`,
   with a backfill for pre-existing Laravel rows; `db_created` is recorded so
   delete drops the database instead of orphaning it. Live-verified against
-  laravel/framework ^13.8. Remaining nit, deliberately not changed: the derived
-  database name keeps the `wp_` prefix for every type (renaming touches the v6
-  backfill mirror; cosmetic only).
+  laravel/framework ^13.8. The nit parked here — every type deriving a `wp_`
+  database name — was FIXED 13 Aug 2026: `wordpress::db_name_prefix` makes the
+  prefix per type (`wp_`/`lv_`/`php_`) and `db_name_for` takes the type as a
+  required parameter, so no call site can inherit `wp_` by omission. Creation-time
+  only: pre-existing rows keep their stored name and the v6 backfill stays `wp_`,
+  because renaming a live site's database is not cosmetic. ✓ Evidence: ledger #97,
+  `db_name_prefix_is_per_site_type_and_never_wp_for_a_non_wp_site` +
+  `create_stores_the_prefix_of_the_sites_own_type_not_wordpresss`.
 - [ ] **Onboarding does no :443 probe** (migration plan §3a, gap 2 of 2): a
   shadow-binding Herd/other proxy at onboarding time is only discovered later by
   the watchdog. `proxy::edge_answers_as_ours` exists and is called from Start-all,

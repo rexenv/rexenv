@@ -741,7 +741,7 @@ mod tests {
                 .query_row("SELECT db_name, domain FROM sites WHERE id = ?1", [id], |r| {
                     Ok((r.get(0)?, r.get(1)?))
                 })
-                .map(|(n, d): (String, String)| (n, crate::core::wordpress::db_name_for(&d)))
+                .map(|(n, d): (String, String)| (n, crate::core::wordpress::db_name_for(crate::state::models::SiteType::Wordpress, &d)))
                 .unwrap();
             assert_eq!(name, expect);
             assert_eq!(name, derived, "SQL backfill must mirror db_name_for");

@@ -79,7 +79,7 @@ async fn main() {
         &wp,
         &wordpress::WpInstall {
             docroot: &docroot,
-            db_name: &wordpress::db_name_for(domain),
+            db_name: &wordpress::db_name_for(SiteType::Wordpress, domain),
             db_host: &format!("127.0.0.1:{}", database::MYSQL_PORT),
             db_client: &mysql_base.join("bin/mysql"),
             url: &url,

@@ -32,7 +32,7 @@ async fn main() {
         println!("{name:<30} {:>8.1} MB", *bytes as f64 / 1e6);
     }
     for s in all.iter().filter(|s| s.site_type == rexenv_lib::state::models::SiteType::Wordpress) {
-        let dbn = wordpress::db_name_for(&s.domain);
+        let dbn = wordpress::db_name_for(s.site_type, &s.domain);
         assert!(
             sizes.iter().any(|(n, b)| *n == dbn && *b > 0),
             "expected a non-empty database {dbn} for {}",

@@ -84,7 +84,7 @@ async fn main() {
         &docroot,
         &domain,
         "WP Install Stream",
-        &wordpress::db_name_for(&domain),
+        &wordpress::db_name_for(SiteType::Wordpress, &domain),
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
         // db_client = the CLIENT BINARY (how core/db.rs derives it), not the
         // base dir — wp_plugins_check passes the base and is latently stale.
@@ -362,7 +362,7 @@ async fn main() {
     let _ = database::drop_database(
         &mysql_base.join("bin/mysql"),
         database::MYSQL_PORT,
-        &wordpress::db_name_for(&domain),
+        &wordpress::db_name_for(SiteType::Wordpress, &domain),
     );
     if let Some(mut m) = own_mysqld {
         let _ = database::stop(&*rexenv_lib::platform::current(), m.id());
