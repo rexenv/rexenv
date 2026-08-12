@@ -1,7 +1,12 @@
 # RELEASING.md — the automated release pipeline
 
 Releases are driven **from GitHub**: a tag builds everything, a human click publishes
-it, and the Homebrew tap updates itself. Two workflows implement this:
+it, and the Homebrew tap updates itself. Two workflows implement this.
+
+> **Read the interim section below first if you are cutting a release today.** This
+> pipeline needs `rexenv/rexenv` to be public; while it is private the dmg is built
+> locally and released from the tap.
+
 
 ```
 git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
@@ -39,7 +44,55 @@ latency (≤15 min, or instant via Run workflow), which a release does not care 
 Verified 2026-08-08: the tap workflow's explicit `permissions: contents: write` is
 granted (`Contents: write` in the run log) even though the org default is read.
 
-## Cutting a release
+## ⚠️ Today's flow: the repo is PRIVATE, so the dmg ships from the tap
+
+Everything below the next heading describes the pipeline **as it will run once
+`rexenv/rexenv` is public**. It is not the flow in effect right now.
+
+**Why it can't be.** `brew` fetches a cask's `url` with **no authentication**. A private
+repo's release asset answers **404** to an unauthenticated GET — so a cask pointing at a
+release here installs for nobody, and the tap's poller cannot read this repo's releases
+either. Publishing the *source* and publishing the *artefact* are separate decisions:
+the source stays private, the dmg goes somewhere public.
+
+**Where it goes.** Into a GitHub Release on **`rexenv/homebrew-tap`** — already public,
+already the home of the cask, and same-repo so `update-cask.yml` still needs no secret
+of any kind (`SOURCE_REPO` there points at itself; the cask's `url` +`verified:` match).
+
+**And it is built locally, not in CI.** Uploading from this repo to the tap would need a
+cross-repo credential — exactly the PAT this pipeline was designed to avoid (see the note
+above). A local build also dodges the 10× macOS-minute multiplier on a private repo.
+
+1. Bump the version in all four manifests as in step 1 below, and commit.
+2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
+   `verify: all green` line.
+3. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
+4. Run `docs/PUBLISH-TESTING.md` **§A0 by hand** — CI normally does it (the per-slice
+   `lipo`/`strings`/`codesign` checks in `release.yml`'s "§A0 artefact integrity" step
+   are the script; copy them). Then **§A**, which was always human-only.
+5. Release it, draft-first — publishing IS the §A sign-off, that rule does not relax:
+   ```sh
+   V=<X.Y.Z>
+   DMG=src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg
+   shasum -a 256 "$DMG" | awk '{print $1 "  rexenv_'"$V"'_universal.dmg"}' > "rexenv_${V}_universal.dmg.sha256"
+   gh release create "v$V" --repo rexenv/homebrew-tap --draft \
+     --title "rexenv $V" "$DMG" "rexenv_${V}_universal.dmg.sha256"
+   ```
+   Tag the same `v<X.Y.Z>` **here** too, so a shipped dmg maps to a commit. Careful:
+   **pushing a `v*` tag triggers `release.yml`**, which would spend tens of 10×-billed
+   macOS minutes building a second dmg nobody can download. Either keep the tag local
+   (`git tag v<X.Y.Z>`) until the repo is public, or disable the **Release** workflow
+   in the Actions tab first.
+6. Publish the tap release → **Update cask** picks it up (≤15 min, or Run workflow).
+
+### Going public later — three things flip in one commit
+
+The cask's `url`, the cask's `verified:`, and `SOURCE_REPO` in `update-cask.yml` must
+all name the same repo; the workflow greps for that and fails loudly if they drift.
+Move all three back to `rexenv/rexenv`, delete the interim releases from the tap (or
+leave them — the cask only names the current version), and this section goes away.
+
+## Cutting a release (the automated pipeline — for when the repo is public)
 
 1. Bump the version in **all four** manifests (the workflow refuses a mismatch):
    `src-tauri/tauri.conf.json`, `package.json`, `src-tauri/Cargo.toml`,
@@ -58,11 +111,14 @@ granted (`Contents: write` in the run log) even though the org default is read.
 
 ## One-time setup (required before the first automated release)
 
-- **`rexenv/rexenv` must be public** (or the dmg hosted somewhere public). Two things
+- **`rexenv/rexenv` must be public** for the pipeline above to run at all. Two things
   depend on it: the cask's `url` is fetched by users' machines with no auth, and the
   tap's poller reads this repo's releases cross-repo. While it is private the poller
-  logs "no published release … (or it is not public) — nothing to do" and exits green.
-- **No secrets to create.** That is the design — see the note above.
+  finds nothing here and the dmg ships from the tap instead — see the interim section
+  at the top, which is the flow in effect today (2026-08-12).
+- **No secrets to create.** That is the design — see the note above. It holds in the
+  interim flow too, which is why the dmg goes to the tap rather than to a third repo
+  the tap's own `GITHUB_TOKEN` could not read.
 
 ## Rules the pipeline encodes (don't undo them by hand)
 

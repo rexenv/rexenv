@@ -281,6 +281,14 @@ first:
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
 - [ ] **PUBLISH-TESTING §D** — full tap install dry-run (after Release + tap push;
   recompute the cask sha256 — the committed one is a marked stale placeholder).
+  Unblocked 12 Aug 2026: the dmg no longer waits on this repo going public — it is
+  released on `rexenv/homebrew-tap` itself (private repos 404 `brew`'s anonymous
+  fetch), built locally per `docs/RELEASING.md`'s interim section.
+- [ ] **Flip the release host back when `rexenv/rexenv` goes public** — three things
+  in ONE commit, or the tap's guard fails the bump: the cask's `url`, its `verified:`,
+  and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's
+  `release.yml` resumes owning the build, and `docs/RELEASING.md`'s interim section
+  is deleted rather than left as a second, wrong set of instructions.
 - [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
 - [ ] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only.
 - [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass (only ever
