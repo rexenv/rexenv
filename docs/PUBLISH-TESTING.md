@@ -208,7 +208,10 @@ connections and never answered, so `rex --version` and `rex status` blocked in
 `recvfrom` with no output and no timeout — until that pid was killed, at which point the
 already-typed command completed. `request()` documents having no read timeout on purpose
 (site create legitimately runs for minutes), but `soft_request()` inherits it while its
-own doc comment says `--version` "must work WITHOUT the app". Tracked in `docs/TODO.md`.
+own doc comment says `--version` "must work WITHOUT the app". **Fixed the same day**
+(ledger #300) — and **deliberately not re-cut into v0.1.0**: the published dmg carries
+the hang, the fix ships in 0.1.1. Re-running §A0 + §A costs more than a wedge this rare,
+and the cask can now rehash a same-version re-upload if that judgement ever changes.
 
 ```sh
 # One-time online cask audit:
