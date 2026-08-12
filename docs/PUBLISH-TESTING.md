@@ -188,8 +188,27 @@ first real run taught, both now fixed in the tap:
 - Current Homebrew refuses a third-party tap until it is trusted — **`brew trust rexenv/tap`**
   (or `brew trust --cask rexenv/tap/rexenv`) is a real user-facing install step.
 
-**Still to run:** the install half below, on a machine where `/Applications/rexenv.app`
-is NOT already present (§A's manual copy has to go first, or `brew install` collides).
+**Install half: ✅ RAN 2026-08-12** on the dev Mac, after deleting §A's hand-copied
+`/Applications/rexenv.app` (leave it and `brew install` collides). Results:
+`brew install --cask rexenv` → moved the app, linked `rex` to `/opt/homebrew/bin/rex`;
+`xattr -p com.apple.quarantine` → **No such xattr** (the postflight really did it);
+`lipo -archs` on the *installed* binary → `x86_64 arm64`; `codesign --verify --deep
+--strict` → clean; `open -a rexenv` → launched; `rex --version` → `rex 0.1.0 · rexenv
+0.1.0`; `rex status --json` → full service snapshot. The DNS LaunchAgent was rewritten
+to the `/Applications` path (checked: it does NOT keep an AppTranslocation path).
+
+**`--zap` was NOT run and must not be, on any machine with real sites.** It trashes
+`~/Library/Application Support/dev.rexenv.rexenv` — on the dev Mac that is **17 GB** of
+live app data behind the developer's own `.rex` sites. The zap step belongs to a clean
+Mac (`docs/SMOKE-TEST.md`), not to a machine that does daily work.
+
+**Found while running it: `rex` hangs FOREVER against a half-alive app.** §A's launch
+left an App-Translocated instance owning `config/rexenv-cli.sock`; it accepted
+connections and never answered, so `rex --version` and `rex status` blocked in
+`recvfrom` with no output and no timeout — until that pid was killed, at which point the
+already-typed command completed. `request()` documents having no read timeout on purpose
+(site create legitimately runs for minutes), but `soft_request()` inherits it while its
+own doc comment says `--version` "must work WITHOUT the app". Tracked in `docs/TODO.md`.
 
 ```sh
 # One-time online cask audit:

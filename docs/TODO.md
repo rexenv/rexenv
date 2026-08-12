@@ -281,13 +281,27 @@ first:
   Verify before gating: `lipo -archs <app>/Contents/MacOS/rexenv` and the same
   for `MacOS/rex` must both report `x86_64 arm64`.
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
+- [ ] **`rex` hangs forever on a half-alive app** — found running §D, 12 Aug 2026. An
+  App-Translocated instance from §A owned `config/rexenv-cli.sock`, accepted the
+  connection and never replied; `rex --version` and `rex status` sat in `recvfrom`
+  with no output and no timeout, and only completed when that pid was killed. The
+  no-read-timeout is deliberate in `request()` (a `site create` runs for minutes) but
+  `soft_request()` inherits it while promising the opposite — `cli/src/main.rs:255-266`,
+  "must work WITHOUT the app". Fix is a read timeout on `soft_request` at least;
+  whether `request()` deserves a *connect-and-first-byte* deadline (distinct from the
+  long-running body) is the real design question. Not yet diagnosed: WHY that instance
+  stopped answering — the evidence died with the pid, so reproduce it before assuming
+  translocation was the cause rather than a wedged app.
 - [ ] **PUBLISH-TESTING §D** — full tap install dry-run. **Half done 12 Aug 2026**:
   v0.1.0 is published on `rexenv/homebrew-tap` (private repos 404 `brew`'s anonymous
   fetch, so the artefact ships from the tap — `docs/RELEASING.md`, interim section),
   the cask is bumped to the shipped `b29f21f7…`, the asset fetches anonymously (200),
-  and `brew fetch --cask rexenv` verifies ✔︎. **Left:** `brew install --cask` →
-  `open` → `rex --version` → `--zap`, which needs `/Applications/rexenv.app` gone
-  first (§A copied it there by hand) — i.e. a clean Mac, or an explicit removal.
+  and `brew fetch --cask rexenv` verifies ✔︎. **Install half ✅ ran the same day**:
+  installs, postflight de-quarantines (`No such xattr`), `rex` links to
+  `/opt/homebrew/bin/rex`, app launches, `rex --version`/`status` answer, DNS agent
+  plist repointed at `/Applications`. **Left: `--zap` only**, and NOT on this Mac —
+  it trashes 17 GB of live app data behind real `.rex` sites. Clean Mac only
+  (`docs/SMOKE-TEST.md`).
   Two teeth grown from the first real run: the cask hash bump now compares sha256
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
