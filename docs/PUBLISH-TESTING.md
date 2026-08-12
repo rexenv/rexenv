@@ -62,15 +62,21 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) 🚧 RE-RUN NEEDED on the fresh dmg — Apple-Silicon ad-hoc launch test — THE gate for the tap being real
+## A) ✅ PASSED (2026-08-12) on the SHIPPED dmg — Apple-Silicon ad-hoc launch test
 
-**STATUS:** §A passed on three earlier artefacts (2026-07-20 `d48bc8ba…`, 2026-07-21
-`8d201724…`, 2026-07-22 `0e57f11c…`); the 2026-08-05 `f6252374…` rebuild superseded those
-and was itself never §A-tested. **All are now superseded** by the release candidate —
-`rexenv_0.1.0_universal.dmg` sha256 `aed8ad6a…`, built **2026-08-08** from commit `3ae658d`
-on a clean tree. **§A0 PASSED on it** (both binaries `x86_64 arm64`; `Dist_Archive_Command`
-present in each slice separately; `codesign --verify --deep --strict` OK; single dmg).
-§A itself is still OPEN — run it on `aed8ad6a…` and record the sha next to the result.
+**STATUS: PASSED** on `rexenv_0.1.0_universal.dmg` sha256
+`b29f21f7ef5c88e0d8c367c329e546a54708d5ed51623913cdb1f27377ab31ef` — built locally
+2026-08-12 from commit `e3b6018`, and **this exact artefact is the one published** at
+`github.com/rexenv/homebrew-tap/releases/tag/v0.1.0` (the app repo is private; see
+`docs/RELEASING.md`). Quarantined dmg → Gatekeeper blocked the launch → `xattr -rd`
+→ launched. **§A0 PASSED on it too**, run by hand from `release.yml`'s step: both
+binaries `x86_64 arm64`; `Dist_Archive_Command` ×5 in *each* slice separately;
+`codesign --verify --deep --strict` OK; exactly one dmg.
+
+_(Superseded artefacts, all §A-passed in their day except the last: 2026-07-20
+`d48bc8ba…`, 2026-07-21 `8d201724…`, 2026-07-22 `0e57f11c…`, and the never-§A-tested
+2026-08-08 `aed8ad6a…` — whose hash sat in the cask as a placeholder and is the reason
+`update-cask.yml` now compares the sha256 as well as the version.)_
 
 Ad-hoc signing has not changed across any of these rebuilds, so the launch behaviour
 should hold — but each rebuild carries work the previous pass never saw, which is why
@@ -168,11 +174,22 @@ combined into a single privileged shell by the fix).
 (`docs/RELEASING.md`): publishing a Release pushes the version + sha256 bump to the tap
 from the PUBLISHED asset.
 
-**The private-repo blocker is gone** (2026-08-12): a private repo's release asset 404s to
-`brew`'s unauthenticated fetch, so the dmg is now released **on the tap itself** while the
-source stays private, and the cask points there. What is still missing before this section
-can run: **no Release has been published yet**. Publish one (`docs/RELEASING.md`, interim
-section — build locally, run §A0 + §A, release to `rexenv/homebrew-tap`) and §D unblocks.
+**Both blockers are gone** (2026-08-12). The private-repo one: a private repo's release
+asset 404s to `brew`'s unauthenticated fetch, so the dmg is released **on the tap itself**
+while the source stays private, and the cask points there. And v0.1.0 **is published** —
+the §A-passed `b29f21f7…` dmg, with the cask bumped to its hash by `update-cask.yml`.
+
+**Verified so far:** the asset is fetchable with no auth (`curl -I` → 200), and
+`brew fetch --cask rexenv` → **✔︎** (i.e. what users download matches the cask's pinned
+sha256 — this is the check the old placeholder hash would have failed). Two things this
+first real run taught, both now fixed in the tap:
+- `update-cask.yml` compared only the **version**, so a placeholder sha256 under an
+  unchanged version number skipped the bump and reported success. It compares both now.
+- Current Homebrew refuses a third-party tap until it is trusted — **`brew trust rexenv/tap`**
+  (or `brew trust --cask rexenv/tap/rexenv`) is a real user-facing install step.
+
+**Still to run:** the install half below, on a machine where `/Applications/rexenv.app`
+is NOT already present (§A's manual copy has to go first, or `brew install` collides).
 
 ```sh
 # One-time online cask audit:
@@ -180,6 +197,7 @@ brew audit --cask --new --online rexenv/tap/rexenv   # after the Release exists
 
 # The user path:
 brew tap rexenv/tap
+brew trust rexenv/tap                              # current brew refuses an untrusted tap
 brew install --cask rexenv                         # EXPECT: downloads, installs, postflight de-quarantines
 open -a rexenv                                     # EXPECT: launches (no Gatekeeper block)
 which rex && rex --version                         # EXPECT: rex on PATH, prints version

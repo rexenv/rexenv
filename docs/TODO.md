@@ -268,8 +268,10 @@ first:
 
 ## Release gates (human, scripted — see the docs named)
 
-- [ ] **PUBLISH-TESTING §A** — Apple-Silicon ad-hoc launch test. Open, and the dmg
-  it names is itself superseded: run it on the release-candidate dmg at publish time.
+- [x] **PUBLISH-TESTING §A** — Apple-Silicon ad-hoc launch test. ✓ **PASSED 12 Aug 2026**
+  on `b29f21f7…`, the dmg actually published as v0.1.0 (quarantined → Gatekeeper
+  blocked → `xattr -rd` → launched); §A0 passed on the same artefact. Re-run it on
+  every future release candidate — the pass belongs to the artefact, not the app.
   ⚠ **Build it with `npm run release:mac`** (= `tauri build --target
   universal-apple-darwin`) — NOT a bare `tauri build`, which produces a thin
   arm64 `rexenv_<v>_aarch64.dmg` that an Intel user cannot run, while INSTALL.md,
@@ -279,11 +281,16 @@ first:
   Verify before gating: `lipo -archs <app>/Contents/MacOS/rexenv` and the same
   for `MacOS/rex` must both report `x86_64 arm64`.
 - [ ] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd).
-- [ ] **PUBLISH-TESTING §D** — full tap install dry-run (after Release + tap push;
-  recompute the cask sha256 — the committed one is a marked stale placeholder).
-  Unblocked 12 Aug 2026: the dmg no longer waits on this repo going public — it is
-  released on `rexenv/homebrew-tap` itself (private repos 404 `brew`'s anonymous
-  fetch), built locally per `docs/RELEASING.md`'s interim section.
+- [ ] **PUBLISH-TESTING §D** — full tap install dry-run. **Half done 12 Aug 2026**:
+  v0.1.0 is published on `rexenv/homebrew-tap` (private repos 404 `brew`'s anonymous
+  fetch, so the artefact ships from the tap — `docs/RELEASING.md`, interim section),
+  the cask is bumped to the shipped `b29f21f7…`, the asset fetches anonymously (200),
+  and `brew fetch --cask rexenv` verifies ✔︎. **Left:** `brew install --cask` →
+  `open` → `rex --version` → `--zap`, which needs `/Applications/rexenv.app` gone
+  first (§A copied it there by hand) — i.e. a clean Mac, or an explicit removal.
+  Two teeth grown from the first real run: the cask hash bump now compares sha256
+  as well as version (a placeholder hash under an unchanged version silently
+  skipped), and `brew trust rexenv/tap` is a required user-facing install step.
 - [ ] **Flip the release host back when `rexenv/rexenv` goes public** — three things
   in ONE commit, or the tap's guard fails the bump: the cask's `url`, its `verified:`,
   and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's
