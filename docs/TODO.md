@@ -294,10 +294,10 @@ first:
   one proven to fail on the pre-fix code, and `verify.sh` now runs the `cli` crate at
   all. **Still open, deliberately:** why that instance went deaf was never diagnosed —
   the evidence died with the pid. Reproduce before blaming App Translocation.
-  **The fix is NOT in the shipped v0.1.0** — DECIDED 12 Aug 2026: no re-cut, it
-  rides 0.1.1. The trigger needs a half-alive app, and a re-cut costs §A0 + §A
-  again. So a user on v0.1.0 whose app goes deaf still sees `rex` hang with no
-  output; if that turns up in a report, it is this, already fixed in `master`.
+  **Shipped in v0.1.1** (13 Aug 2026, `14b64dae…`) — v0.1.0 was deliberately not
+  re-cut (the trigger needs a half-alive app; a re-cut costs §A0 + §A again). A user
+  still on v0.1.0 whose app goes deaf sees `rex` hang with no output; the answer is
+  `brew upgrade --cask rexenv`.
   Original report: found running §D, 12 Aug 2026. An
   App-Translocated instance from §A owned `config/rexenv-cli.sock`, accepted the
   connection and never replied; `rex --version` and `rex status` sat in `recvfrom`

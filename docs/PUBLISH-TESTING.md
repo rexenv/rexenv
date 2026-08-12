@@ -62,17 +62,28 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) 🚧 OPEN for 0.1.1 · ✅ PASSED for 0.1.0 — Apple-Silicon ad-hoc launch test
+## A) ✅ PASSED for 0.1.1 (and 0.1.0) — Apple-Silicon ad-hoc launch test
 
-**0.1.1 (2026-08-13): §A0 ✅, §A OPEN.** `rexenv_0.1.1_universal.dmg` sha256
+**0.1.1 (2026-08-13): §A0 ✅, §A ✅ — PUBLISHED.** `rexenv_0.1.1_universal.dmg` sha256
 `14b64dae1ce633f31c46c5f033cdc2f5528c93ad14465f6db08db051bbd40241`, built from
-commit `4ad5007`, drafted at `homebrew-tap/releases/tag/v0.1.1`. §A0 passed by hand
+commit `4ad5007`, released at `homebrew-tap/releases/tag/v0.1.1` and the cask bumped
+to that hash by `update-cask.yml`. Verified independent of any local Homebrew: the
+published asset downloads anonymously (200) and hashes to exactly what the cask pins.
+§A0 passed by hand
 (single dmg; both binaries `x86_64 arm64`; `Dist_Archive_Command` ×5 per slice;
 `codesign --verify --deep --strict` clean) and the release gate `verify-full: all
 green` ran first. Also checked on the *bundled* `rex`: `--version` against a deaf
 listener returns in 2s where 0.1.0 hung — the fix is really in the artefact, not only
-in `master`. **§A itself is human-only and still to run on this dmg**; the draft stays
-a draft until it passes, because publishing IS the sign-off.
+in `master`.
+
+⚠️ **`brew upgrade` must be run from the account that owns Homebrew.** As of
+2026-08-13 `/opt/homebrew` and the brew-installed `/Applications/rexenv.app` belong to
+the **`rexenv-tester-1`** clean-account fixture, so from the developer's own login
+`brew update` fails with *"/opt/homebrew is not writable"*, the tap clone stays at the
+old commit, and `brew upgrade --cask rexenv` then reports "the latest version is
+already installed" — about a cask it has not re-read. That is a stale local checkout,
+NOT a failed release: hash the downloaded asset against the cask (as above) when the
+two disagree, and run the upgrade path in the owning account.
 
 **STATUS for 0.1.0: PASSED** on `rexenv_0.1.0_universal.dmg` sha256
 `b29f21f7ef5c88e0d8c367c329e546a54708d5ed51623913cdb1f27377ab31ef` — built locally
