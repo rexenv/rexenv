@@ -57,6 +57,19 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **A probe needs a known-good case, for the reason an example needs a control leg.**
+  Same principle, one level up: without a case whose answer you already know, a check
+  cannot tell ITS OWN defect from the subject's, and it reports the app as broken.
+  Twice in one session, both caught the same way. `wpverdict.js` matched the Update
+  control by button TEXT, but the control is icon-only with its version in the
+  `title` — it found nothing and read every row as "no update offered", failing the
+  working rows; the known-good `wordpress-seo` row is what exposed it. The onboarding
+  probe read `edge=` from the URL hash when the harness puts params in the search, so
+  it failed both rendering cases; `onboarding-clear` passing while the others failed
+  is what pointed at the probe. In both, the check that would have "found a bug" had
+  the bug. So: every probe carries at least one case it should pass, and a probe that
+  only ever asserts absence is the shape to distrust — absence is also what a broken
+  selector returns.
 - **A third party's error taxonomy is measured, never read.** `edge_wire_check`
   exists because `reqwest::Error::is_connect()` looked like the way to tell "nothing
   is listening" from "something answered wrongly", and is not: a TLS handshake against
