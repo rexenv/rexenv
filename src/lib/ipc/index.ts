@@ -672,6 +672,22 @@ export async function wpCliPackages(): Promise<WpCliPackages | null> {
   return invoke<WpCliPackages | null>("wp_cli_packages");
 }
 
+/** A foreign proxy already answering :443, for the ONBOARDING warning — `null`
+ *  for almost everyone. NOT `edgeAnswersAsOurs`: onboarding runs before any
+ *  service starts, so "is ours what answers" is false for every clean first
+ *  run. Nothing listening is the ORDINARY case here and returns null — saying
+ *  anything about it would invent a problem out of the normal state. */
+export interface SetupEdgeConflict {
+  holder: string | null;
+  app: string | null;
+  fix: string | null;
+}
+
+export async function setupEdgeConflict(): Promise<SetupEdgeConflict | null> {
+  if (!isTauri()) return null;
+  return invoke<SetupEdgeConflict | null>("setup_edge_conflict");
+}
+
 /** Mailpit mail-catcher status + endpoints. Mock fallback outside Tauri. */
 export async function mailpitStatus(): Promise<MailpitStatus> {
   if (!isTauri()) {

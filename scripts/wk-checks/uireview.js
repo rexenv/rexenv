@@ -86,6 +86,11 @@ const SCENARIOS = [
   // The #301 tell, both variants. The unnamed one renders on no machine any
   // reviewer owns — a composer.json that could not be read — so a screenshot is
   // the only way anyone looks at the copy that claims no count.
+  // The :443 notice. `onboarding-clear` is the one that matters: nothing on the
+  // port is the ORDINARY state at onboarding, and it must render NOTHING.
+  ["onboarding-clear", "view=onboarding", []],
+  ["onboarding-herd", "view=onboarding&edge=herd", []],
+  ["onboarding-anon", "view=onboarding&edge=anon", []],
   ["wppackages-named", "view=wppackages", []],
   ["wppackages-unnamed", "view=wppackages&names=none", []],
   ["agents-mail-off", "view=agents&astate=working", []],
@@ -107,6 +112,33 @@ const SCENARIOS = [
 /** Per-scenario layout assertions (beyond the universal overflow probe).
  *  Return a list of problem strings; empty = pass. */
 const PROBES = {
+  // Onboarding's :443 notice. The clear case is the load-bearing one: reporting
+  // "nothing is answering" as a problem at onboarding — where the stack has not
+  // started — is the same fault the import path shipped, in a new place.
+  onboardingEdge: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const body = document.body.innerText.replace(/\s+/g, " ");
+      // The harness navigates to `/dev/ui-review?<query>` — the params are in
+      // the SEARCH, not the hash. Reading the wrong one made this report the
+      // rendering cases as failures while the render was correct.
+      const expectNotice = new URLSearchParams(location.search).has("edge");
+      const has = /answering HTTPS on this Mac/.test(body);
+      if (expectNotice && !has) problems.push("the notice did not render for a foreign holder");
+      if (!expectNotice && has) {
+        problems.push(
+          `nothing is on :443 and onboarding reported it anyway: "${body.slice(0, 260)}"`,
+        );
+      }
+      if (has && !/you can finish setting up/.test(body)) {
+        problems.push("the notice dropped the clause that says continuing is fine");
+      }
+      // It must never look like a wall: the step's own Finish control stays.
+      if (expectNotice && !/kingdom is ready/i.test(body)) {
+        problems.push("the notice replaced the step instead of sitting under it");
+      }
+      return problems;
+    }),
   // The #301 tell, checked where it RENDERS. The L0 guard reads the source and
   // can prove the branch exists; only this can prove what the branch produces —
   // and the failure that matters is silent: an unnameable packages dir rendering
@@ -320,6 +352,7 @@ const PROBES = {
 const KNOWN_ACTIONS = new Set(["consent", "apply", "revert", "confirmRevert", "scrollBottom", "lastMenu"]);
 
 function probeFor(name) {
+  if (name.startsWith("onboarding")) return PROBES.onboardingEdge;
   if (name.startsWith("wppackages")) return PROBES.wpPackages;
   if (name.startsWith("dbtab")) return PROBES.dbtab;
   if (name === "pills") return PROBES.pills;

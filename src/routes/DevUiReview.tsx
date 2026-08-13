@@ -23,6 +23,11 @@
  *               must not look agent-flavoured (a Kept site, and a user's own
  *               site hand-named `*.scratch.*`)
  *    keep     — the Keep confirm dialog
+ *    onboarding — the last onboarding step. `edge=herd` puts a named foreign
+ *               proxy on :443; `edge=anon` an unattributable one; NO param is
+ *               the ordinary case (nothing listening) and must render NOTHING —
+ *               reporting the normal state as a problem is the bug the import
+ *               path shipped
  *    wppackages — the WP-CLI packages tell (#301). `names=none` is the variant
  *               nobody will ever see by accident: the one that renders when
  *               composer.json could not be read, so the copy must claim NO
@@ -43,6 +48,7 @@ import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { WpCliPackagesCard } from "@/routes/Settings";
+import { OnboardingDone } from "@/routes/Onboarding";
 import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import { QuickTile } from "@/routes/SiteDetail";
@@ -788,6 +794,16 @@ export function DevUiReview() {
           return applied();
         case "rewrite_revert":
           return reverted();
+        case "setup_edge_conflict":
+          // No param = nothing on :443. The backend returns null there and the
+          // notice must not render: at onboarding the stack is not running yet.
+          if (params.get("edge") === "herd") {
+            return { holder: "Herd (nginx, pid 554)", app: "Herd", fix: "osascript -e 'quit app \"Herd\"'" };
+          }
+          if (params.get("edge") === "anon") {
+            return { holder: null, app: null, fix: null };
+          }
+          return null;
         case "wp_cli_packages":
           // `names=none` = a packages dir that exists and could not be named.
           return params.get("names") === "none"
@@ -842,6 +858,7 @@ export function DevUiReview() {
           </div>
         )}
         {view === "wppackages" && <WpCliPackagesCard />}
+        {view === "onboarding" && <OnboardingDone />}
         {view === "toast" && <ToastView />}
         {view === "pills" && <PillsView />}
         {view === "agents" && <AgentsView />}

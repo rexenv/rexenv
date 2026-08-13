@@ -247,8 +247,9 @@ export function SiteProvisionCard({
            the site will not load until whatever owns :443 lets go, and saying
            "serving at …" would be a lie the user finds by clicking it. */
         <div className="mt-1 rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[0.6875rem] text-status-warning-bright">
-          Another app (most likely Herd) is answering port 443, so this site won't load yet.
-          Quit it and rexenv takes the port back automatically — the site itself is ready.
+          {job.servingHolder ?? "Another app"} is answering port 443, so this site won't load yet.
+          Quit {job.servingApp ?? "it"} and rexenv takes the port back automatically — the site
+          itself is ready.
         </div>
       )}
       {!running && job.status === "ok" && job.assetsWarning && (

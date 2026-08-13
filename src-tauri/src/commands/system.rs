@@ -44,6 +44,50 @@ fn platform_label() -> String {
 }
 
 /// Round-trip smoke test for the typed IPC bridge (Phase 1 task 0.5).
+/// A foreign proxy already answering `:443`, for the ONBOARDING warning — or
+/// `None`, which is the answer for almost everyone.
+///
+/// # Why this is not `edge_answers_as_ours`
+///
+/// Onboarding runs BEFORE any service starts, so "is OURS what answers :443"
+/// is false for every user on a clean first run. Wiring the boolean in here —
+/// which is what the open item asked for, and what looked like a fifth caller —
+/// would have shown a foreign-proxy warning to everybody.
+///
+/// **`NoAnswer` is silence.** Nothing listening at onboarding is the ORDINARY
+/// case: the stack is not running yet, and reporting it would be inventing a
+/// problem out of the normal state — the same fault the import path shipped,
+/// in a new place. Only `Foreign` is worth a word.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupEdgeConflict {
+    /// The listener, attributed where possible — never a guess.
+    pub holder: Option<String>,
+    /// The app to quit, when identifiable: "quit Herd" beats "quit that app".
+    pub app: Option<String>,
+    /// A copy-paste line that frees the port.
+    pub fix: Option<String>,
+}
+
+#[tauri::command]
+pub async fn setup_edge_conflict(
+    state: State<'_, AppState>,
+) -> Result<Option<SetupEdgeConflict>> {
+    let wire = core::proxy::edge_wire(
+        core::adminer::ADMINER_HOST,
+        core::proxy::DEFAULT_HTTPS_PORT,
+    )
+    .await;
+    if wire != core::proxy::EdgeWire::Foreign {
+        return Ok(None);
+    }
+    let help = state
+        .platform
+        .supervisor()
+        .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false);
+    Ok(Some(SetupEdgeConflict { holder: help.holder, app: help.app, fix: help.free_command }))
+}
+
 #[tauri::command]
 pub fn app_info() -> AppInfo {
     AppInfo {

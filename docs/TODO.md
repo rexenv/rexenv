@@ -167,7 +167,7 @@ evidence cited.
   because renaming a live site's database is not cosmetic. ✓ Evidence: ledger #97,
   `db_name_prefix_is_per_site_type_and_never_wp_for_a_non_wp_site` +
   `create_stores_the_prefix_of_the_sites_own_type_not_wordpresss`.
-- [ ] **Onboarding does no :443 probe** (migration plan §3a, gap 2 of 2) — RULED
+- [x] **Onboarding's :443 probe — DONE 13 Aug 2026** (migration plan §3a, gap 2 of 2) — RULED
   13 Aug 2026: **warn and continue, never block** (onboarding needs nothing on :443,
   and Herd running while someone tries rexenv is a deliberate state; the follow-on
   surfaces already exist — the provision card's servingBlocked note, the watchdog's
@@ -186,9 +186,13 @@ evidence cited.
     just ran didn't take. `commands/site_provision.rs` needed no change — it reads
     `mgr.edge_blocked()`, which only the watchdog sets and only when our edge is
     alive.
-  - [ ] **Then onboarding itself** — the approved copy, reusing `port_conflict_help`
-    for the holder/app/fix but NOT `verify_edge_wire`'s sentence, which assumes
-    services are running, a Start-all to repeat, and sites that exist.
+  ✓ **Onboarding itself — landed 13 Aug 2026** (ledger #306). Warns, never blocks;
+    `NoAnswer` renders NOTHING, because nothing on :443 at onboarding is the ordinary
+    state and reporting it would be the import bug in a new place. Copy approved
+    13 Aug, guarded, with `you can finish setting up` as the load-bearing clause.
+    One voice across all five :443 messages: the holder is named from the supervisor,
+    never guessed (the provision card's "most likely Herd" is gone), and "unreachable"
+    became "won't load".
 - [ ] **Resolver-drift surfacing — RULED 13 Aug 2026: wire the surfaces, keep the
   binding.** A user whose TLD was taken back has genuinely lost resolution; today
   they learn it from a log line nobody reads or by happening to visit `/import`.

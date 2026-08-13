@@ -630,6 +630,80 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 mod tests {
     use super::*;
 
+    /// The onboarding notice's must-say list, and the ONE VOICE check across
+    /// every place this app explains a `:443` conflict.
+    ///
+    /// Guard lives here because `proxy` owns the fact all five sentences are
+    /// about (#197). Five surfaces say it — onboarding, the provision card, the
+    /// import toast, the watchdog event and `verify_edge_wire` — deliberately
+    /// in different words, because they are different situations. What they must
+    /// NOT do is sound like five authors: one verb for the fix (quit), one
+    /// consequence (won't load), and the real holder NAMED rather than guessed.
+    /// The provision card said "most likely Herd" while every other surface
+    /// named the actual process.
+    #[test]
+    fn the_onboarding_edge_notice_says_what_it_costs_and_that_continuing_is_fine() {
+        let onboarding = crate::core::copy_scan::strip_ts_comments(include_str!(
+            "../../../src/routes/Onboarding.tsx"
+        ));
+        assert!(
+            onboarding.contains("function EdgeConflictNotice"),
+            "the stripper ate the source — every check below would pass on an empty string"
+        );
+        assert!(
+            !onboarding.contains("LOAD-BEARING"),
+            "comment text survived the strip; prose can satisfy this guard again"
+        );
+
+        for (phrase, why) in [
+            (
+                "is answering HTTPS on this Mac",
+                "WHAT is wrong, in the reader's terms. At onboarding they have no sites and no \
+                 mental model of an edge, so the Start-all sentence (\"services are running, \
+                 but…\") is meaningless here",
+            ),
+            (
+                "rexenv needs port 443 to serve sites",
+                "WHY it matters — and it names the port, which is the vocabulary every other \
+                 :443 message in the app uses",
+            ),
+            (
+                "you can finish setting up",
+                "LOAD-BEARING, and the clause a trim removes as reassurance. It is the \
+                 warn-not-block decision MADE VISIBLE: onboarding needs nothing on :443, and \
+                 someone trying rexenv with Herd running is in a deliberate state. Without it \
+                 this reads as a wall in the first two minutes of the product",
+            ),
+            (
+                "whenever you like",
+                "the fix is not urgent and saying so is the point — the surfaces that DO need \
+                 the port say it again when they need it",
+            ),
+        ] {
+            assert!(
+                onboarding.contains(phrase),
+                "the onboarding edge notice no longer says {phrase:?} — {why}"
+            );
+        }
+
+        // ONE VOICE. Every surface names the holder it was GIVEN; none invents
+        // one, and none guesses.
+        for (file, src) in [
+            ("Onboarding.tsx", onboarding.as_str()),
+            (
+                "SiteProvisionCard.tsx",
+                include_str!("../../../src/components/sites/SiteProvisionCard.tsx"),
+            ),
+        ] {
+            assert!(
+                !src.contains("most likely Herd"),
+                "{file} guesses at the holder. Every other :443 message names the process the \
+                 supervisor actually found; a guess in one of five is how a product starts \
+                 sounding like five people."
+            );
+        }
+    }
+
     /// Every caller of the TRI-STATE must say something about `NoAnswer`.
     ///
     /// The whole point of the enum is that "not ours" was two situations with

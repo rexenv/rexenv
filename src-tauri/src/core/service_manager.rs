@@ -1979,7 +1979,7 @@ impl ServiceManager {
                     let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
                     format!(
                         "the edge is running, but {holder} answers port {} in front \
-                         of it — every site is unreachable until you quit {quit}{fix}",
+                         of it — no site will load until you quit {quit}{fix}",
                         self.ports.https
                     )
                 };

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronRight, Globe, Lock, RotateCw, Shield } from "lucide-react";
-import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, systemSetup } from "@/lib/ipc";
+import { coreBinariesPlan, dnsStatus, prefetchCoreBinaries, retryDownload, setupEdgeConflict, systemSetup } from "@/lib/ipc";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { useDownloads } from "@/lib/useDownloads";
 import { Track, pctOf } from "@/components/shell/DownloadPanel";
@@ -84,7 +84,7 @@ export function Onboarding() {
           {step === 0 && <Welcome />}
           {step === 1 && <Install />}
           {step === 2 && <Domains />}
-          {step === 3 && <Done />}
+          {step === 3 && <OnboardingDone />}
         </div>
       </div>
 
@@ -390,7 +390,52 @@ function DoneChip({ label }: { label: string }) {
   );
 }
 
-function Done() {
+/** The :443 warning, shown ONLY when something else already answers it.
+ *
+ *  Placed on the last step because that is where onboarding promises "create
+ *  your first site and rexenv will serve it instantly" — the one sentence a
+ *  foreign proxy makes false. It WARNS and never blocks: nothing in onboarding
+ *  needs :443, and someone evaluating rexenv with Herd running is in a
+ *  deliberate state, not a broken one. The thing that actually needs the port
+ *  tells them again when they reach it (the provision card, the watchdog,
+ *  `rex doctor`).
+ *
+ *  Nothing listening returns null from the backend and renders NOTHING — at
+ *  onboarding that is the ordinary case, not a problem.
+ *
+ *  Every clause is LOAD-BEARING and guarded (`the_onboarding_edge_notice_says
+ *  _what_it_costs_and_that_continuing_is_fine`, core/proxy.rs). "You can finish
+ *  setting up" is the one a trim reads as reassurance: it is the warn-not-block
+ *  decision made visible, and without it this is a wall. */
+function EdgeConflictNotice() {
+  const { data } = useQuery({ queryKey: ["setup-edge-conflict"], queryFn: setupEdgeConflict });
+  if (!data) return null;
+  const holder = data.app ?? data.holder ?? "Another app";
+  const quit = data.app ?? "it";
+  return (
+    <div className="mt-6 w-full max-w-[440px] rounded-[11px] border border-status-warning-border bg-status-warning-bg px-3.5 py-3 text-left">
+      <div className="text-[0.78125rem] font-medium text-rex-text">
+        {holder} is answering HTTPS on this Mac.
+      </div>
+      <div className="mt-1 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
+        rexenv needs port 443 to serve sites, so they won't load while {quit === "it" ? "it" : quit} has
+        it. Nothing here depends on it — you can finish setting up and quit {quit} whenever you like.
+      </div>
+      {data.fix && <CommandLine command={data.fix} />}
+    </div>
+  );
+}
+
+/** The copyable fix, same shape as the toast's command block. */
+function CommandLine({ command }: { command: string }) {
+  return (
+    <code className="mt-2 block truncate rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-1.5 font-mono text-[0.6875rem] text-rex-text">
+      $ {command}
+    </code>
+  );
+}
+
+export function OnboardingDone() {
   return (
     <div className="flex flex-col items-center">
       <div className="relative mb-6 flex h-[78px] w-[78px] items-center justify-center rounded-full border border-status-running-border bg-gradient-to-br from-rex-success-chip-from to-rex-success-chip-to shadow-[0_14px_38px_rgba(63,185,80,0.26)]">
@@ -407,6 +452,7 @@ function Done() {
         Everything's installed and your local domains work over HTTPS. Create your first site and
         rexenv will serve it instantly.
       </div>
+      <EdgeConflictNotice />
       <div className="mt-[18px] flex items-center gap-[14px]">
         <DoneChip label="Core components" />
         <DoneChip label="Domains & SSL" />

@@ -120,6 +120,15 @@ pub struct SiteProvisionState {
     /// failure glyph and freeze the bar on a job that genuinely succeeded.
     #[serde(default)]
     pub serving_blocked: bool,
+    /// WHO is answering :443, when it could be attributed. The card used to
+    /// guess ("most likely Herd") while every other :443 message in the app
+    /// named the real holder — one product, one voice, and a guess is not a
+    /// name.
+    #[serde(default)]
+    pub serving_holder: Option<String>,
+    /// The app to quit, when identifiable — "quit Herd" beats "quit it".
+    #[serde(default)]
+    pub serving_app: Option<String>,
     /// The front-end asset build did not complete, and why — in the developer's
     /// own words where the tool gave any (`node not found`, a failing build
     /// script). `None` = it was not asked for, or it worked.
@@ -464,6 +473,8 @@ fn spawn_job<R: tauri::Runtime>(
             log_key,
             download_ids,
             serving_blocked: false,
+            serving_holder: None,
+            serving_app: None,
             assets_warning: None,
         }),
     });
@@ -1758,9 +1769,20 @@ async fn drive<R: tauri::Runtime>(
                 // The site really was created and the stack really did reload —
                 // but something else owns :443, so claiming it is serving would
                 // be a lie the user discovers by clicking the link.
-                entry.state.lock().expect("provision state lock").serving_blocked = true;
+                let help = state
+                    .platform
+                    .supervisor()
+                    .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false);
+                let quit = help.app.clone().unwrap_or_else(|| "it".into());
+                {
+                    let mut st = entry.state.lock().expect("provision state lock");
+                    st.serving_blocked = true;
+                    st.serving_holder = help.holder.clone();
+                    st.serving_app = help.app.clone();
+                }
                 return JobEnd::Ok(format!(
-                    "created — but another app is answering port 443, so {} won't load until you quit it",
+                    "created — but {} is answering port 443, so {} won't load until you quit {quit}",
+                    help.holder.as_deref().unwrap_or("another app"),
                     site.domain
                 ));
             }

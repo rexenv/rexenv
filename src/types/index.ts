@@ -1133,6 +1133,10 @@ export interface SiteProvisionState {
    *  A FIELD rather than a `status` value: status is read as ok-or-failure, so a
    *  new variant would show the failure glyph on a job that actually succeeded. */
   servingBlocked?: boolean;
+  /** Who is answering :443, attributed where possible — never a guess. */
+  servingHolder?: string | null;
+  /** The app to quit, when identifiable. */
+  servingApp?: string | null;
   /** The front-end asset build didn't complete, and why (v35). Same "succeeded,
    *  but" shape as `servingBlocked`: the build runs the DEVELOPER'S toolchain
    *  against the repo's own scripts, so its failure is not evidence that

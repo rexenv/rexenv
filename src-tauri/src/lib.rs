@@ -647,6 +647,7 @@ pub fn run() {
             commands::php::set_default_php_version,
             commands::php::get_php_settings,
             commands::php::apply_php_settings,
+            commands::system::setup_edge_conflict,
             commands::wordpress::wp_info,
             commands::wordpress::wp_cli_packages,
             commands::wordpress::wp_plugins,
