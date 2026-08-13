@@ -171,13 +171,22 @@ evidence cited.
   shadow-binding Herd/other proxy at onboarding time is only discovered later by
   the watchdog. `proxy::edge_answers_as_ours` exists and is called from Start-all,
   the watchdog, doctor, and import — but not from onboarding/`core/setup.rs`.
-- [ ] **Resolver-drift surfacing is backend-only** (Stage 1 §4.10 shipped the cheap
-  check, the user surface is unwired): startup only `log::warn!`s
-  (`lib.rs:260-269`), the `resolverDrift()` IPC binding has zero frontend callers,
-  and `rex doctor`'s JSON carries `resolverDrift` that `cli/src/main.rs` never
-  renders. Decide: wire the three surfaces, or drop the binding. The
-  "continuous watcher" deferral from Stage 1 D3 was never picked up by Stage 2 —
-  re-decide or close it explicitly.
+- [ ] **Resolver-drift surfacing — RULED 13 Aug 2026: wire the surfaces, keep the
+  binding.** A user whose TLD was taken back has genuinely lost resolution; today
+  they learn it from a log line nobody reads or by happening to visit `/import`.
+  ✓ **`rex doctor` renders it** (13 Aug): a `Resolvers` line that COUNTS toward
+  findings and the exit code, names the TLDs, and points at rexenv → Import (the
+  only place a takeover can be redone — there is no `rex` command for it). An
+  absent field reads ⚠ unknown, never ✓, so an older app cannot report a clean
+  check it never ran. `doctor`'s one-line description gained resolvers.
+  - [ ] **remaining: the frontend binding needs a caller.** `resolverDrift()` in
+    `src/lib/ipc/index.ts` still has zero. The Import screen already renders the
+    fact well when scanned ("Valet or Herd took .rex back"); what is missing is
+    anything that says so without the user going there.
+  ✓ **The continuous watcher is CLOSED, not deferred again** (Stage 1 D3): a fact
+  surfaced in doctor, Import and startup is enough without polling. If that is
+  wrong it shows up as someone confused about why their sites stopped resolving,
+  and that report is the evidence to reopen it — not a guess now.
 - [ ] **`teardown` never removes the Apache per-site config/log; neither does
   `change_site_domain`** (pre-existing, found in Stage 0 mapping): sweep covers
   FrankenPHP conf+log + tunnel log but not `apache::config_path`/`log_path`

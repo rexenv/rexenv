@@ -61,7 +61,7 @@ COMMANDS:
                 Tail a site's log sources (no --source lists them)
   logs [key] [--lines N] [--follow]
                 Tail any service log (no key lists all log files)
-  doctor        Diagnose: DNS mode, edge wire identity, port conflicts, CLI link
+  doctor        Diagnose: DNS + resolver takeovers, edge wire identity, ports, CLI link
   db export <domain>
                 Dump the site's database to ~/Downloads (prints the path)
   db import <domain> <file.sql> [--yes]
@@ -2093,6 +2093,43 @@ fn cmd_db_versions(words: &[String], json_output: bool) {
 // ── doctor ───────────────────────────────────────────────────────────────────
 
 /// Exit 0 = healthy; exit 1 = at least one finding (scriptable gate).
+/// The `Resolvers` line's verdict — `(ok, warn, message)` for `line`.
+///
+/// THREE states, not two. A field that is ABSENT is not the same fact as an
+/// empty list, and collapsing them would make an older app — one whose doctor
+/// payload predates this field — report a confident ✓ for a check it never ran.
+/// That is the shape this codebase keeps finding: a guard reading as passed
+/// because nothing answered. The CLI already knows it can outrun the app it
+/// talks to ("this rex may be newer than the running app"), so it says so here
+/// too.
+fn resolver_verdict(field: Option<&Value>) -> (bool, bool, String) {
+    let Some(value) = field.filter(|v| !v.is_null()) else {
+        return (
+            false,
+            true, // a warning: unknown, not broken
+            "not reported by this rexenv (an older app) — check rexenv → Import".into(),
+        );
+    };
+    let drifted: Vec<&str> =
+        value.as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    if drifted.is_empty() {
+        return (true, false, "no TLD taken back by another tool".into());
+    }
+    // Named, and with the move that fixes it — the Import screen is the only
+    // place a takeover can be redone; there is no `rex` command for it.
+    let names = drifted.iter().map(|t| format!(".{t}")).collect::<Vec<_>>().join(", ");
+    (
+        false,
+        false,
+        format!(
+            "{names} taken back by Valet or Herd — rexenv sites on {} no longer resolve\n            \
+             take {} over again in rexenv → Import, or move those sites to .rex",
+            if drifted.len() == 1 { "it" } else { "them" },
+            if drifted.len() == 1 { "it" } else { "them" },
+        ),
+    )
+}
+
 fn cmd_doctor(json_output: bool) {
     let data = request("doctor", Value::Null);
     if json_output {
@@ -2135,6 +2172,15 @@ fn cmd_doctor(json_output: bool) {
             )
         },
     );
+
+    // A borrowed resolver file another tool reclaimed is INVISIBLE to every
+    // other probe on this screen: ours keeps answering on :15353, so the DNS
+    // line above stays ✓ while the sites simply stop resolving. It was
+    // backend-only until 13 Aug 2026 — a startup `log::warn!` nobody reads, an
+    // IPC binding with no callers, and this field, emitted since the doctor
+    // payload existed and rendered by nothing.
+    let (ok, warn, msg) = resolver_verdict(data.get("resolverDrift"));
+    line(ok, warn, "Resolvers", msg);
 
     let edge = &data["edge"];
     if edge["running"] == json!(true) {
@@ -2374,6 +2420,37 @@ mod tests {
     use std::os::unix::net::UnixListener;
     use std::sync::mpsc;
     use std::time::Instant;
+
+    /// The three states of the resolver line, which exists because a TLD taken
+    /// back by Valet or Herd is invisible to every other probe on the screen:
+    /// our resolver keeps answering, DNS reads ✓, and the sites stop resolving.
+    #[test]
+    fn a_reclaimed_resolver_is_a_finding_and_a_missing_field_is_not_a_pass() {
+        // Checked, none: the only ✓.
+        let (ok, warn, msg) = resolver_verdict(Some(&json!([])));
+        assert!(ok && !warn, "an empty list means the check RAN and found nothing");
+        assert!(msg.contains("no TLD taken back"));
+
+        // Checked, found: a FINDING (not a warning) — the sites are dark, and
+        // `cmd_doctor` counts anything not-ok toward the exit code.
+        let (ok, warn, msg) = resolver_verdict(Some(&json!(["rex", "test"])));
+        assert!(!ok && !warn, "a reclaimed TLD is a failure, not a warning — sites stop resolving");
+        assert!(msg.contains(".rex") && msg.contains(".test"), "the TLDs are named: {msg}");
+        assert!(
+            msg.contains("rexenv → Import"),
+            "the fix must name WHERE to redo the takeover — there is no `rex` command for it: {msg}"
+        );
+        assert!(msg.contains("no longer resolve"), "say the consequence, not just the state: {msg}");
+
+        // NOT checked: an older app whose payload predates the field. Reporting
+        // ✓ here would be a confident answer to a question nobody asked — the
+        // shape this project keeps catching, one layer up.
+        for absent in [None, Some(&Value::Null)] {
+            let (ok, warn, msg) = resolver_verdict(absent);
+            assert!(!ok && warn, "an absent field must not read as a clean check");
+            assert!(msg.contains("older app"), "say WHY it is unknown: {msg}");
+        }
+    }
 
     /// A socket path this test owns, in the OS temp dir. No app data is touched:
     /// this crate cannot reach it (see the dependency note in Cargo.toml).

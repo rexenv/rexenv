@@ -123,7 +123,7 @@ convention) — see "Infrastructure" for progress streaming.
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
 | `rex version` | `app_info` + CLI's own version | ✓ | shipped 16 Jul |
-| `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix |
+| `rex doctor` | composite: `dns_status` + `services_status` + `edge_answers_as_ours` + `default_ports` scan + `cli_status` + `resolver_drift` | ✓ | shipped 16 Jul — exit 0/1 (CI-gateable); synthetic foreign listener flagged with attributed holder + copyable fix. **13 Aug 2026: the `Resolvers` line.** `resolverDrift` had been in the payload since the beginning and was rendered by nothing, so a TLD reclaimed by Valet or Herd — sites dark while every other line reads ✓ — was invisible here. Now a FINDING (counts toward the exit code), naming the TLDs and pointing at rexenv → Import, which is the only place a takeover can be redone. An ABSENT field (an older app) reads as ⚠ unknown, never ✓ |
 | `rex completions zsh\|bash` | — | ✓ | shipped 16 Jul — static tree, both syntax-checked |
 
 ## Repo group (git/asset feature-set — waves 1+2 SHIPPED 18 Jul 2026; only `watch --tail` live streaming remains, with the 🔴 infra item)
