@@ -34,6 +34,33 @@ Green comes ONLY from a script's own final line (`verify: all green`). An ad-hoc
 exit code once let a broken commit through. The scripts set their own cwd; their exit
 code is the verdict.
 
+### The pre-commit receipt
+
+Install once per clone:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+`verify.sh` records a receipt on green (`.git/rexenv-verify-receipt`), and the
+`pre-commit` hook refuses a commit that touches code without a matching one. It
+exists because the rule above ("never a piped check") was walked into by the person
+who wrote it, in the session it was written in — a rule that relies on memory is not
+a control.
+
+- **Doc-only commits are never gated**, and rebase, merge, cherry-pick and revert are
+  skipped — none of them should make `--no-verify` routine, because an override you
+  need daily stops being an override.
+- **`git add` does not invalidate the receipt.** It fingerprints file CONTENT, so
+  staging, unstaging and `git commit --amend` with no code change all pass, while any
+  edit at all fails. (The first version mixed in `git status --porcelain` and blocked
+  every commit, since staging flips the status letters.)
+- **Override explicitly** when you mean it: `git commit --no-verify`. The refusal
+  message says so, and says what to run instead.
+- **What it does not catch** is written in the hook itself — chiefly a PARTIAL commit
+  (the receipt covers the whole tree, so a staged subset was never put through the bar
+  on its own) and the quality of the bar itself.
+
 The project's test metric is `docs/CLAIM-LEDGER.md` (claims proven / claims provable),
 never line coverage. The layer model — what each test level can and cannot prove — is
 `docs/TESTING.md`. If you write an invariant comment ("never", "always", "safe

@@ -46,6 +46,13 @@ fi
 
 cd "$(dirname "$0")/.."
 
+# The tree as it is NOW, before a single check runs. Compared again at the end:
+# a file edited while the bar was running means the thing that passed is not the
+# thing on disk, and certifying it would be exactly the false green this whole
+# mechanism exists to stop. (`|| true` — a clone without git still verifies, it
+# just gets no receipt.)
+TREE_BEFORE="$(./scripts/verify-receipt.sh fingerprint 2>/dev/null || true)"
+
 (cd src-tauri && cargo test --lib)
 # The `cli` crate ships its own binary and had NO tests until 12 Aug 2026, so
 # the bar never entered this directory — and the first bug it grew (`rex
@@ -64,5 +71,16 @@ npx tsc --noEmit
 # and guarded prose doesn't, so the number is generated and enforced rather than
 # remembered.
 ./scripts/ledger-tally.sh --check
+
+# The receipt (see scripts/verify-receipt.sh). Written LAST, and only when the
+# tree is still the one that was checked.
+if [ -n "$TREE_BEFORE" ]; then
+  if [ "$TREE_BEFORE" = "$(./scripts/verify-receipt.sh fingerprint)" ]; then
+    ./scripts/verify-receipt.sh write "$TREE_BEFORE"
+  else
+    echo "verify: NO RECEIPT — the code changed while this run was in flight, so this"
+    echo "        green belongs to a tree that is no longer on disk. Re-run before committing."
+  fi
+fi
 
 echo "verify: all green"

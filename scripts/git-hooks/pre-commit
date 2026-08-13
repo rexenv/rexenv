@@ -1,0 +1,91 @@
+#!/bin/bash
+# Refuse a code commit that no green `verify.sh` covers.
+#
+# Installed via `core.hooksPath` (see CONTRIBUTING.md), so it is versioned with
+# the repo rather than living unshared in `.git/hooks`.
+#
+# ── WHAT IT CATCHES ─────────────────────────────────────────────────────────
+#
+# A commit landing on a RED or STALE bar. That is not hypothetical: on 3 Aug
+# 2026 `live-checks.sh ... | tail -3 && git commit` committed on a red tier,
+# because a pipe replaces the script's exit code. The scripts now refuse to be
+# piped; this closes the other half, where the `&&` chain still reaches
+# `git commit`.
+#
+# ── WHAT IT DOES NOT CATCH — read this before trusting it ───────────────────
+#
+#   1. A PARTIAL commit. The receipt covers the whole working tree; if you stage
+#      a subset and commit that, the subset was part of a green tree but was
+#      never itself put through the bar. `git add -p` and commit is the case.
+#   2. Anything about the bar's own quality. It proves a green verdict was
+#      RECORDED for this exact code, not that the checks are good enough.
+#   3. Rebase, merge, cherry-pick and revert are SKIPPED (below) — those replay
+#      or combine work that was verified when it was written, and gating them
+#      would make `--no-verify` a daily habit, which kills the guard.
+#   4. It is an honesty aid on your own machine, not a security control. The
+#      receipt is a plain file in `.git/`.
+#
+# What it DOES cover, because the question comes up: verify → edit → commit
+# inside the window. The receipt fingerprints file CONTENT, so the edit changes
+# it and this refuses. `verify.sh` also declines to write a receipt at all if
+# the tree moved while it was running.
+
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+GIT_DIR="$(git rev-parse --git-dir)"
+RECEIPT_TOOL="$ROOT/scripts/verify-receipt.sh"
+
+[ -x "$RECEIPT_TOOL" ] || exit 0 # a branch without the tool predates the hook
+
+# ── Skip: git is mid-operation ──────────────────────────────────────────────
+# A rebase does not run this hook at all, but `rebase -i` with `edit`/`reword`
+# reaches `git commit --amend`, and a conflicted merge reaches `git commit`.
+# Both are replaying or combining work that was verified when it was written.
+for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply; do
+  if [ -e "$GIT_DIR/$marker" ]; then
+    exit 0
+  fi
+done
+
+# ── Skip: nothing this bar covers ───────────────────────────────────────────
+# Doc-only work is not gated. `scripts/` IS gated: it decides what green means.
+if ! git diff --cached --name-only \
+  | grep -qE '^(src/|src-tauri/src/|src-tauri/examples/|cli/src/|scripts/)'; then
+  exit 0
+fi
+
+if reason="$("$RECEIPT_TOOL" check 2>&1)"; then
+  exit 0
+fi
+
+# `git commit --amend` with no code change passes above, because the receipt
+# hashes content rather than diffing HEAD. If it did NOT pass, the code really
+# did change, and this message is the right one.
+cat >&2 <<MSG
+
+  ✗ pre-commit: this commit is not covered by a green verify.sh
+
+    $reason
+
+  Run the bar, then commit again:
+
+      ./scripts/verify.sh > /tmp/verify.log 2>&1; echo "exit=\$?"
+      tail -5 /tmp/verify.log
+
+  (Redirect, don't pipe — a pipe replaces the exit code, which is the bug this
+  whole mechanism exists for.)
+
+  If you MEAN to commit without it — a WIP branch, a known-red spike, a commit
+  you are about to amend — say so explicitly:
+
+      git commit --no-verify
+
+  This gate covers code paths only (src/, src-tauri/src/, src-tauri/examples/,
+  cli/src/, scripts/); doc-only commits are never blocked, and rebase, merge,
+  cherry-pick and revert are skipped. It does not check a PARTIAL commit: the
+  receipt covers the whole tree, so a staged subset was never put through the
+  bar on its own. See scripts/git-hooks/pre-commit.
+
+MSG
+exit 1

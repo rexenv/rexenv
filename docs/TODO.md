@@ -298,6 +298,19 @@ first:
   commits that touch code (`src/`, `src-tauri/src/`, `examples/`) so doc-only
   work isn't gated. NOT done mid-release deliberately: a hook that misfires
   during the v0.1.0 gates would cost more than it saves.
+  ✓ **DONE 13 Aug 2026** — the release shipped, so the reason for waiting expired.
+  `scripts/verify-receipt.sh` (the one definition, shared by verify.sh and the
+  hook) + `scripts/git-hooks/pre-commit`, installed with
+  `git config core.hooksPath scripts/git-hooks`. Verified on every path: fresh
+  receipt passes, an edit after verify blocks, a docs-only commit passes with a
+  deliberately stale receipt (control: adding one code file to the same commit
+  blocks), and mid-merge / mid-rebase / mid-cherry-pick all skip. **Two design
+  faults found by testing rather than by review**: the fingerprint first mixed in
+  `git status --porcelain`, so `git add` invalidated it and EVERY commit was
+  blocked; and hashing tracked and untracked files as two streams meant staging
+  reordered the input. Both are why it hashes a SORTED SET of file contents now.
+  `verify.sh` also refuses to write a receipt when the tree changed while it was
+  running, which is what closes the verify→edit→commit window.
 
 ## Release gates (human, scripted — see the docs named)
 
@@ -795,3 +808,5 @@ first:
 - On networks that negative-cache DNS, a fresh tunnel URL can be dead on THIS
   machine while live from a second device — the router race, not a bug
   (`docs/SMOKE-TEST.md` tunnels section).
+
+
