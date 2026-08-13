@@ -167,10 +167,26 @@ evidence cited.
   because renaming a live site's database is not cosmetic. ✓ Evidence: ledger #97,
   `db_name_prefix_is_per_site_type_and_never_wp_for_a_non_wp_site` +
   `create_stores_the_prefix_of_the_sites_own_type_not_wordpresss`.
-- [ ] **Onboarding does no :443 probe** (migration plan §3a, gap 2 of 2): a
-  shadow-binding Herd/other proxy at onboarding time is only discovered later by
-  the watchdog. `proxy::edge_answers_as_ours` exists and is called from Start-all,
-  the watchdog, doctor, and import — but not from onboarding/`core/setup.rs`.
+- [ ] **Onboarding does no :443 probe** (migration plan §3a, gap 2 of 2) — RULED
+  13 Aug 2026: **warn and continue, never block** (onboarding needs nothing on :443,
+  and Herd running while someone tries rexenv is a deliberate state; the follow-on
+  surfaces already exist — the provision card's servingBlocked note, the watchdog's
+  edge-blocked event, doctor's Edge line). **It was never a fifth caller**:
+  onboarding runs BEFORE services, so `edge_answers_as_ours` — "is OURS what
+  answers" — is false for every user on a clean first run, and adding it would have
+  shipped a foreign-proxy warning to everyone.
+  ✓ **Phase A landed** — `proxy::EdgeWire{Ours,Foreign,NoAnswer}` + `edge_wire`,
+  with the boolean kept as `== Ours` so the four existing callers are untouched
+  (ledger #304, `edge_wire_check`).
+  - [ ] **Phase B — the four callers stop asserting a holder when nothing answered.**
+    `valet_import` is a LIVE wrong answer today: it probes without checking whether
+    rexenv's stack is running, so importing before Start-all renders "another app is
+    answering port 443 — quit it" (`Import.tsx:190`) when nothing is answering.
+    Then watchdog, doctor and `verify_edge_wire`, which say the same thing in rarer
+    conditions. Approved: all four.
+  - [ ] **Then onboarding itself** — the approved copy, reusing `port_conflict_help`
+    for the holder/app/fix but NOT `verify_edge_wire`'s sentence, which assumes
+    services are running, a Start-all to repeat, and sites that exist.
 - [ ] **Resolver-drift surfacing — RULED 13 Aug 2026: wire the surfaces, keep the
   binding.** A user whose TLD was taken back has genuinely lost resolution; today
   they learn it from a log line nobody reads or by happening to visit `/import`.

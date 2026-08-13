@@ -40,6 +40,39 @@ pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE))
 }
 
+/// What is on the other end of loopback `:443`.
+///
+/// Three states, because "not ours" is two different problems with two
+/// different fixes, and every caller of the boolean below has been telling the
+/// user the wrong one. `commands/valet_import.rs` is the case that forced this:
+/// it probes without checking whether rexenv's own stack is running, so
+/// importing before Start-all told people *"another app is answering port 443 —
+/// quit it"* when nothing was answering at all. Advice to quit a program that
+/// does not exist is worse than no message.
+///
+/// # The ambiguous shape resolves toward `Foreign`, deliberately
+///
+/// The two failure directions are not equal. A false `NoAnswer` HIDES a real
+/// blocker — the user is told the port is free while someone else serves every
+/// site. A false `Foreign` merely sends them looking for a program that is not
+/// there, which the holder lookup then fails to name. So anything that is not
+/// provably "nothing is listening" is reported as `Foreign`.
+///
+/// What that means concretely is settled by measurement, not by reading
+/// reqwest's docs — see `examples/edge_wire_check.rs`, which puts a real
+/// refused port, a real bare TCP listener and a real foreign HTTPS responder in
+/// front of this and asserts the mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EdgeWire {
+    /// The marker header — our edge, positively identified.
+    Ours,
+    /// Something answered, or something is listening and did not complete an
+    /// exchange we could read. Includes every ambiguous case.
+    Foreign,
+    /// Nothing is listening. The connection was refused.
+    NoAnswer,
+}
+
 /// Whether OUR edge is what actually ANSWERS loopback `:443` — the DNS
 /// `answers_as_ours` pattern applied to HTTPS. `admin_alive()` proves our caddy
 /// PROCESS runs; it cannot prove the wire is ours: on macOS a foreign proxy that
@@ -68,22 +101,63 @@ pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
 ///   shipped user (the marker predates the first release), and adoption is keyed
 ///   on the private admin socket — not this probe — and reloads the marker-
 ///   bearing config, so nothing here gates an edge start on the result.
-pub async fn edge_answers_as_ours(host: &str, https_port: u16) -> bool {
+///
+/// Probe loopback `:443` and say which of the three it is.
+///
+/// TWO probes, in this order, and the order is the finding. "Is anything
+/// listening" is answered by a raw TCP connect, NOT by reqwest's error
+/// taxonomy — measured 13 Aug 2026 (`edge_wire_check` leg C): a plaintext HTTP
+/// server on the port makes reqwest report `is_connect() == true`, because the
+/// TLS handshake is part of establishing the connection. Keying `NoAnswer` on
+/// that filed a REAL BLOCKER as an empty port — the user would be told :443 is
+/// free while another server answered every site. That is the failure direction
+/// that hides something, which is why the mapping was measured before it was
+/// trusted and why the check that measured it is permanent.
+pub async fn edge_wire(host: &str, https_port: u16) -> EdgeWire {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], https_port));
+    // A REFUSED connect is the only proof that nothing is listening. A timeout
+    // proves nothing, so it resolves toward `Foreign` with every other
+    // ambiguous case. Half a second is enormous on loopback.
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        tokio::net::TcpStream::connect(addr),
+    )
+    .await
+    {
+        Ok(Err(_)) => return EdgeWire::NoAnswer,
+        Ok(Ok(_)) => {}
+        Err(_elapsed) => return EdgeWire::Foreign,
+    }
+
+    // Something is listening. The only question left is whether it is ours, and
+    // the marker header is the sole positive authority.
     let url = format!("https://{host}:{https_port}{EDGE_PROBE_PATH}");
     let Ok(client) = reqwest::Client::builder()
         // Our local-CA leaf won't chain for reqwest's store; identity comes from
         // the marker header, not the chain.
         .danger_accept_invalid_certs(true)
-        .resolve(host, std::net::SocketAddr::from(([127, 0, 0, 1], https_port)))
+        .resolve(host, addr)
         .timeout(std::time::Duration::from_secs(3))
         .build()
     else {
-        return false;
+        return EdgeWire::Foreign;
     };
     match client.get(&url).send().await {
-        Ok(resp) => probe_response_is_ours(resp.headers()),
-        Err(_) => false,
+        Ok(resp) if probe_response_is_ours(resp.headers()) => EdgeWire::Ours,
+        // Answered without the marker, or would not complete an exchange at all
+        // — either way something holds the port and it is not us.
+        _ => EdgeWire::Foreign,
     }
+}
+
+/// Is OUR edge what answers loopback `:443`?
+///
+/// The original question, kept because four callers ask exactly it. Both
+/// not-ours states collapse to `false` here, which is EXACTLY what they did
+/// before [`EdgeWire`] existed — `the_boolean_still_means_what_it_meant` pins
+/// that, so introducing the richer state could not quietly change any of them.
+pub async fn edge_answers_as_ours(host: &str, https_port: u16) -> bool {
+    edge_wire(host, https_port).await == EdgeWire::Ours
 }
 
 /// A probe response is OUR edge iff it carries the marker header — the sole,
@@ -555,6 +629,36 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The four callers that gate Start-all, login autostart, the watchdog and
+    /// doctor ask the BOOLEAN. It has to stay one expression over the tri-state,
+    /// not a second probe that agrees today and drifts later — the exact shape
+    /// that put four different wrong messages in front of users in the first
+    /// place. Structural, because no unit test can reach a socket: this asserts
+    /// there is ONE probe.
+    #[test]
+    fn the_boolean_still_means_what_it_meant() {
+        let src = crate::core::copy_scan::production_source(include_str!("proxy.rs"));
+        let body = src
+            .split("pub async fn edge_answers_as_ours(")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("edge_answers_as_ours");
+        let dense: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            dense.contains("edge_wire(host,https_port).await==EdgeWire::Ours"),
+            "`edge_answers_as_ours` is no longer `edge_wire(…) == Ours`. Four callers depend on \
+             it meaning exactly what it meant before the tri-state existed, and a second \
+             implementation is how they start disagreeing: {body}"
+        );
+        // …and only one place actually probes.
+        assert_eq!(
+            src.matches("reqwest::Client::builder()").count(),
+            1,
+            "a second probe client appeared in proxy.rs — `edge_wire` is the one place the \
+             wire is identified"
+        );
+    }
 
     #[test]
     fn probe_identity_is_marker_only_not_server_caddy() {

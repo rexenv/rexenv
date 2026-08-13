@@ -57,6 +57,14 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **A third party's error taxonomy is measured, never read.** `edge_wire_check`
+  exists because `reqwest::Error::is_connect()` looked like the way to tell "nothing
+  is listening" from "something answered wrongly", and is not: a TLS handshake against
+  a plaintext server reports as a connect error, so the first mapping filed a real
+  blocker as an empty port. Three real sockets settled it in one run. The rule this
+  generalises: when a decision rests on how someone else's library classifies a
+  failure, the classification is a FACT ABOUT THEIR CODE and belongs at L1 — reading
+  the docs and believing them is how a posture ends up resting on a third party.
 - **A pure function with no test runner is held where it RENDERS.** The repo has no
   JS test runner, and adding one for two assertions costs more than it buys — so
   #250's update-claim rule (`a row may claim an update only when the offer is newer`)
