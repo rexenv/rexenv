@@ -11,6 +11,7 @@ const CHECKS = [
   "focusrefresh.js",
   "repotoast.js",
   "wptoast.js",
+  "wpverdict.js",
   "zipinstall.js",
   "openin.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,

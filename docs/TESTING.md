@@ -57,6 +57,15 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **A pure function with no test runner is held where it RENDERS.** The repo has no
+  JS test runner, and adding one for two assertions costs more than it buys — so
+  #250's update-claim rule (`a row may claim an update only when the offer is newer`)
+  is proven by `wk-checks/wpverdict.js` over fixture rows in the real component. The
+  discipline that makes it a proof and not a screenshot: assert BOTH directions (the
+  claim that must not render AND the real update a naive string compare would hide),
+  prove the fixture rows are PRESENT first (absence looks identical to a working
+  filter), and keep an ordinary row in the list so the two cannot pass on a panel
+  where nothing ever offers anything.
 - **A copy guard is an L0 that expires at the boundary of what it can see.** A
   must-say list proves the sentence is still in the source; it cannot prove what the
   source PRODUCES. #301 is the worked example: L0 asserts the card branches on whether

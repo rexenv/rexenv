@@ -150,6 +150,19 @@ const WP_PLUGIN_ROWS = [
   // A row that really may claim an update: `verdict` renders the button only
   // when the offered version is NEWER than the one on disk.
   { name: "wordpress-seo", status: "active", version: "22.1", update: "available", updateVersion: "22.4", title: "Yoast SEO" },
+  // The two rows `wpverdict.js` exists for — `verdict`/`isNewerVersion` is a
+  // pure function and this repo has no JS test runner, so the rendered list is
+  // where the rule is held (ledger #250).
+  //
+  // 1. Claims an update to the version it is ALREADY ON. wp-cli reports this
+  //    whenever its source is stale — an in-flight pre-update check, or a
+  //    premium plugin's own updater caching its answer for hours — and it is
+  //    what made a finished update's badge come back. Must render NO offer.
+  { name: "stale-claim", status: "active", version: "3.4.1", update: "available", updateVersion: "3.4.1", title: "Stale Claim" },
+  // 2. A REAL update that a string compare gets backwards: "1.1.11" sorts
+  //    BELOW "1.1.3.8" as text and is above it as versions. Must render an
+  //    offer — the direction a naive fix breaks first.
+  { name: "numeric-order", status: "inactive", version: "1.1.3.8", update: "available", updateVersion: "1.1.11", title: "Numeric Order" },
 ];
 
 const ASSET_STATUS = {
