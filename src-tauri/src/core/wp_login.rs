@@ -6,13 +6,43 @@
 //! the mu-plugin:
 //!   - **single-use** — the option is deleted on the first attempt (success or not);
 //!   - **short-TTL** — rejected once `exp` passes (seconds–minutes);
-//!   - **loopback/local-only** — rejected if the request carries Cloudflare tunnel
-//!     headers (`CF-Connecting-IP`/`CF-Ray`/…), if the originating client (leftmost
-//!     `X-Forwarded-For`, else `REMOTE_ADDR`) isn't loopback, or if the `Host` isn't
-//!     local: `localhost`/`.localhost`/`.test`, or the site's OWN domain (injected
-//!     per-site so custom TLDs like `.rex` work) including its subdomains
-//!     (multisite). So a token captured while a site is shared over a public
-//!     Cloudflare tunnel (§9) can't be replayed through it.
+//!   - **local-only** — three checks, in this order. Their true relationship is
+//!     spelled out here because a confident wrong account of it shipped twice;
+//!     what follows is what was MEASURED against a real quick tunnel on
+//!     14 Aug 2026 (CLAIM-LEDGER #307, #33), hedged where it is still inference.
+//!       1. **Cloudflare header set** (`CF-Connecting-IP`/`CF-Ray`/`CF-IPCountry`/
+//!          `CF-Visitor`/`True-Client-IP`) — this is what actually denies a tunnel
+//!          replay. It fires first, so the request never reaches the other two.
+//!       2. **Client IP** must be loopback — the LAST `X-Forwarded-For` hop, else
+//!          `REMOTE_ADDR`. Never the first: Cloudflare APPENDS rather than
+//!          replaces, so the leftmost entry is whatever the caller sent (#307).
+//!          The last entry is written by the last proxy — our own edge locally
+//!          (Caddy appends its peer), Cloudflare on the tunnel path (cloudflared
+//!          goes straight to nginx, so Caddy is not in that chain at all).
+//!       3. **Host** must be local: `localhost`/`.localhost`/`.test`, or the site's
+//!          OWN domain (injected per-site so custom TLDs like `.rex` work) plus its
+//!          subdomains for multisite. Through a tunnel this denies ONLY because the
+//!          tunnel mu-plugin restored the public host, and it does that gated on the
+//!          SAME Cloudflare headers as (1) — so it is a second expression of the
+//!          same fact, not an independent layer, and with the tunnel plugin absent
+//!          it does not fire at all. The ordering that makes it work is guaranteed
+//!          by WordPress's boot, not by filename sort — see the note above the
+//!          `init` handler and CLAIM-LEDGER #308.
+//!
+//!     Stated as narrowly as it is known: a token captured while a site is shared
+//!     (§9) is not replayable through the tunnel — observed — and that protection
+//!     rests on TWO Cloudflare behaviours, that CF sends its header set and that CF
+//!     appends the connecting IP to `X-Forwarded-For`. Both would have to change
+//!     before a captured link became replayable. **That is not the same as two
+//!     independent layers, and this file should not be read as claiming it is:**
+//!     check (3) is downstream of (1), and nothing here is independent of
+//!     Cloudflare. A mark that WOULD be independent — cloudflared pointed at its
+//!     own loopback port, stamped unforgeably by nginx — is recorded with the
+//!     objection to it in CLAIM-LEDGER #307.
+//!
+//!     Check (2) is not only about tunnels. The edge binds every interface, so
+//!     before 14 Aug 2026 a LAN caller sending `X-Forwarded-For: 127.0.0.1`
+//!     passed it with no tunnel and no Cloudflare anywhere in the request.
 
 use crate::core::wordpress::wp_run;
 use crate::error::{Error, Result};
@@ -28,7 +58,12 @@ pub const LOGIN_TTL_SECS: u64 = 120;
 /// validated, `[a-z0-9.-]`-only) domain by [`mu_plugin_source`], so the host
 /// allow-list covers custom TLDs like `.rex` without opening up to arbitrary
 /// hosts.
-const MU_PLUGIN: &str = r#"<?php
+///
+/// `pub` so `examples/wp_login_client_ip_check` can extract the client-IP gate
+/// (between the `rexenv-client-ip-gate` markers) and prove it through real PHP —
+/// the same arrangement `core::adminer::WRAPPER_INDEX_PHP` uses, so the check can
+/// never drift from what ships.
+pub const MU_PLUGIN: &str = r#"<?php
 /* Plugin Name: rexenv one-time login
  * Description: Auto-managed by rexenv for the "Log in as" feature. Safe to delete.
  */
@@ -64,10 +99,24 @@ add_action('init', function () {
     foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_CF_RAY', 'HTTP_CF_IPCOUNTRY', 'HTTP_CF_VISITOR', 'HTTP_TRUE_CLIENT_IP'] as $h) {
         if (!empty($_SERVER[$h])) { $deny(); }
     }
-    $xff    = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
-    $client = trim(explode(',', $xff)[0]);
-    if ($client === '') { $client = $_SERVER['REMOTE_ADDR'] ?? ''; }
+    // rexenv-client-ip-gate:start
+    // The LAST X-Forwarded-For hop, never the first. Everything to its left is
+    // caller-supplied: Cloudflare APPENDS the connecting IP instead of replacing
+    // the header, so a request that sets "X-Forwarded-For: 127.0.0.1" arrives as
+    // "127.0.0.1,<real IP>" and the leftmost read that shipped until 14 Aug 2026
+    // took the attacker's value (measured through a real quick tunnel —
+    // CLAIM-LEDGER #307). The last entry is written by the last proxy in the
+    // chain: our own edge locally (Caddy appends its peer), Cloudflare through a
+    // tunnel (cloudflared goes straight to nginx; Caddy is not in that chain).
+    //
+    // NOT a tunnel-only bug. The edge binds every interface, so before this a LAN
+    // caller sending "X-Forwarded-For: 127.0.0.1" passed the gate with no tunnel
+    // and no Cloudflare anywhere in the request.
+    $xff      = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+    $hops     = array_values(array_filter(array_map('trim', explode(',', $xff)), 'strlen'));
+    $client   = $hops ? end($hops) : (string) ($_SERVER['REMOTE_ADDR'] ?? '');
     $loopback = in_array($client, ['127.0.0.1', '::1'], true) || strpos($client, '127.') === 0;
+    // rexenv-client-ip-gate:end
     if (!$loopback) { $deny(); }
 
     $host = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? '')[0]);

@@ -298,23 +298,28 @@ first:
   agent can reach, scope stated), #37 (a tunnel target can only be a site row).
   #54 and #59 fail with the DESIGN rather than a mismatch: both go false through one
   line added by someone reading a diff.
-- [ ] **Is ONE gate load-bearing for tunnel replay?** (ledger #307, opened 14 Aug 2026 —
-  a POSTURE question, not a test gap, and the reason the two magic-link legs were cut
-  from `tunnel_exposure_check` rather than fixed.) `wp_login`'s doc reads as three
-  independent gates. Measured through a real tunnel: the **Host** gate cannot deny
-  (cloudflared rewrites Host to the site's own domain), and the **client-IP** gate is
-  satisfiable by the caller (Cloudflare APPENDS to `X-Forwarded-For`, so a supplied
-  `127.0.0.1` is the leftmost value `explode(',')[0]` reads). That leaves the
-  CF-header gate — and deleting it from the mu-plugin left the replay STILL denied by
-  something unidentified. So the work is, in order: (1) find what actually denies
-  (mu-plugin load order vs `rexenv-tunnel.php` is the first suspect — it rewrites
-  `HTTP_HOST` to the public host, and `rexenv-login.php` sorts before it); (2) decide
-  whether the answer is an acceptable posture; (3) only then write the leg. Do NOT
-  reinstate a leg that passes with the gate removed — that is what was removed.
-  ⚠ Correct `wp_login.rs`'s module doc as part of this, once (1) is known — it is
-  currently wrong about WHY the protection holds, and a wrong account of a security
-  property is worse than a thin one. It was NOT corrected on 14 Aug precisely because
-  the right sentence is not yet known.
+- [ ] **Tunnel-replay posture — RULED 14 Aug 2026; one leg still owed.** (ledger #307/#33/#308.)
+  ✓ (1) What denies is identified: the **CF-header** gate fires first. The Host gate is
+  reached only with that gate removed, and only while `rexenv-tunnel.php` is present —
+  it is a second expression of the same Cloudflare fact, not an independent layer, and
+  the include-time→`init` ordering that makes it work is WordPress's boot order, not
+  filename sort (#308, guarded).
+  ✓ (2) Posture ruled: two Cloudflare behaviours must BOTH change (CF sends its header
+  set; CF appends the connecting IP to `X-Forwarded-For`) where one used to. Higher cost
+  of failure, same shape. Not independence — the independent mark (cloudflared on its own
+  loopback port, stamped by nginx) is recorded in #307 **with the objection attached**:
+  a tunnel adopted from an older running version arrives unmarked, so it fails open
+  across exactly one upgrade.
+  ✓ The client-IP gate now reads the LAST hop, not the first (#307) — proven by
+  `wp_login_client_ip_check` (sandbox tier, 13 shapes, self-defending matrix,
+  plant-proved 3×). This also closed a **non-tunnel** exposure: a LAN caller spoofing
+  `X-Forwarded-For: 127.0.0.1` passed the gate on the ordinary path.
+  ✓ `wp_login.rs`'s module doc rewritten to what is known, hedged where it is inference.
+  ☐ (3) The leg. Two pieces: a **network-tier** leg in `wp_login_check` asserting our own
+  edge appends its peer LAST (NOT yet written; needs the stack to run), and the
+  end-to-end "replay denied through a real tunnel" observation on the next live
+  `tunnel_exposure_check` run. Do NOT reinstate a leg that passes with the CF gate
+  removed — that is what was cut, twice.
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled

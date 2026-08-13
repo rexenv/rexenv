@@ -108,7 +108,7 @@ it can:
   drift in our own generation/parsing, unrepresentable-state violations,
   whole-surface claims going stale as the surface grows.
 
-### L1 — Tool (`src-tauri/examples/*.rs`, 116 live checks)
+### L1 — Tool (`src-tauri/examples/*.rs`, 121 live checks)
 
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real
@@ -137,6 +137,19 @@ it can:
   way" — the vacuous-pass shape, one layer up from where this project usually catches
   it. Its verdict is also scoped in the ledger to what the run showed (one hook style,
   one machine), not to the claim's ambition.
+  **`wp_login_client_ip_check` (sandbox tier, 14 Aug 2026) adds the third variant: a
+  matrix that defends ITSELF, so the check does not depend on anyone re-running the
+  plants.** It extracts the shipped client-IP gate from `wp_login::MU_PLUGIN` between
+  markers (the `adminer_login_gate_check` arrangement, so it cannot drift from what
+  ships) and runs it through real PHP over 13 header shapes — the tunnel ones verbatim
+  from the live measurement in CLAIM-LEDGER #307, not invented. The problem with a
+  table of cases is that a WRONG implementation can satisfy it: reading the first hop,
+  reading nothing, or hard-coding a verdict. Plants catch those on the day you run them
+  and never again. So the properties are asserted about the MATRIX, before PHP starts —
+  an allow-case and a deny-case must share a leftmost entry (a first-hop read then
+  cannot produce the table) and must share a `REMOTE_ADDR` (an XFF-ignoring read
+  cannot either), with a floor on both verdict counts. **The plants were still run
+  — three of them — but the table no longer rests on that having happened.**
   **`mcp_mail_check` (service tier) adds the other half of that discipline: refusing to
   run when the environment could answer for you.** It brings its own Mailpit, because
   borrowing the user's would mean planting test mail in their real store to prove rexenv

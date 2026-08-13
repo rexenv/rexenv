@@ -631,8 +631,17 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
-- **"Log in as"** (`core/wp_login.rs`): one-time, single-use, loopback-only magic link
-  via a mu-plugin.
+- **"Log in as"** (`core/wp_login.rs`): one-time, single-use, local-only magic link via
+  a mu-plugin. Three checks, and their relationship is NOT three independent layers —
+  the module doc states what each one actually rests on, because a confident wrong
+  account of it shipped twice. In short: the Cloudflare header set is what denies a
+  tunnel replay; the Host check is a second expression of that same fact (it denies only
+  because the tunnel mu-plugin restored the public host, gated on the same headers); the
+  client-IP check reads the **last** `X-Forwarded-For` hop — never the first, which is
+  whatever the caller sent, since Cloudflare appends rather than replaces (CLAIM-LEDGER
+  #307, fixed 14 Aug 2026 — before which a LAN caller spoofing a loopback entry passed
+  it with no tunnel involved). The include-time/`init` ordering that makes the Host check
+  work is WordPress's boot order, not filename sort (#308).
 - **A site can reach ITSELF** (`core/wp_dns.rs`, 10 Aug 2026): the bundled static-php
   builds link libcurl against **c-ares**, which resolves from `/etc/resolv.conf` ALONE
   and never reads macOS split-DNS (`/etc/resolver/<tld>`) — where rexenv publishes every
