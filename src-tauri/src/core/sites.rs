@@ -1623,7 +1623,12 @@ pub fn set_sites_dir(conn: &Connection, value: &str) -> Result<String> {
 /// DEFAULT: an explicitly configured `sites_dir` setting always wins, and
 /// existing site rows hold absolute paths, so changing the default never
 /// orphans previously created sites.
-fn default_sites_dir() -> Result<PathBuf> {
+///
+/// `pub` so the live-check harness can name the exact directory production
+/// would use, rather than recomputing `~/rexenv/Sites` beside it and drifting.
+/// It is the path an example that forgets to pin `sites_dir` writes into — the
+/// USER'S real Sites folder — which happened on 13 Aug 2026.
+pub fn default_sites_dir() -> Result<PathBuf> {
     let base = directories::BaseDirs::new()
         .ok_or_else(|| Error::Other("could not resolve the home directory".into()))?;
     Ok(base.home_dir().join("rexenv").join("Sites"))

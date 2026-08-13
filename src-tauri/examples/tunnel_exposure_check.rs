@@ -1,0 +1,509 @@
+//! Live check: what a PUBLIC quick tunnel does and does not expose — the
+//! Tier-1 cluster's cross-site and replay claims, through a real tunnel.
+//!
+//!   cargo run --example tunnel_exposure_check       (NETWORK + stack stopped)
+//!
+//! Carries FIVE ledger claims on one fixture, because standing up a real
+//! cloudflared is the expensive part and each claim needs the same thing in
+//! front of it.
+//!
+//! It was written to carry seven. Two — a magic-link token replayed through the
+//! tunnel, with and without a spoofed `X-Forwarded-For` — PASSED with the
+//! `wp_login` Cloudflare-header denial deleted from the mu-plugin, so they were
+//! not tests and they are gone. Leg 7 passed with `tunnels::stop` neutered until
+//! it was changed to leave the ORIGIN running; before that it could not tell a
+//! stopped tunnel from a stopped nginx. Both are recorded here because the
+//! lesson outlived them: on a fixture this expensive, "we saw it work" is the
+//! default failure mode, and only planting tells a leg from a demonstration.
+//!
+//! # The premise everything else has been assuming
+//!
+//! `tunnel_muplugin_check` proves the rewriter's behaviour by SIMULATING
+//! `HTTP_CF_RAY` in PHP, and `wp_login_check` leg C proves the login denial the
+//! same way. Both stand on a premise neither can test: that a real quick tunnel
+//! actually supplies those headers. That is a fact about **Cloudflare's edge**,
+//! not about our code — legs 1–3 are the only place it is ever checked.
+//!
+//! # What it does to the machine
+//!
+//! Creates a sandbox app-data root under the OS temp dir, two fixture sites
+//! (`share.test`, `other.test`) with their own docroots, and publishes ONE of
+//! them at a random `*.trycloudflare.com` URL for the duration of the legs
+//! (~30–60s). The published docroot holds two files: a hello page and an
+//! endpoint that echoes the request headers it saw. No site of the user's is
+//! reachable through it — leg 6 is what proves that rather than asserting it.
+//!
+//! # If this dies midway
+//!
+//! A leaked public tunnel is the one outcome this must not produce, and
+//! `process::exit` runs no destructors — which is how a guard in this repo
+//! nearly leaked a Mailpit earlier. So the reap is idempotent and runs from
+//! THREE places: a Drop guard, every `fail()` before it exits, and a panic hook
+//! installed before the tunnel starts. The public URL and the cloudflared pid
+//! are printed the moment they exist, so if all of that somehow fails there is
+//! something to kill by hand.
+//!
+//! NOT covered, stated rather than implied: `kill -9` on this example, or the
+//! machine losing power. A cloudflared child would survive with a live public
+//! URL to a temp docroot. That is the same residual `tunnel_check` already
+//! carries — this is not a new exposure.
+
+mod common;
+
+use rexenv_lib::core::service_manager::{Ports, ServiceManager};
+use rexenv_lib::core::{binaries, db as coredb, php as corephp, ports as coreports, services, sites, ssl, tunnels, wp_tunnel};
+use rexenv_lib::platform;
+use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
+
+const HTTPS: u16 = 8443;
+const SHARED: &str = "share.test";
+const OTHER: &str = "other.test";
+/// Echoes the headers PHP actually saw. Legs 1–3 are this file, fetched twice.
+const ECHO_PHP: &str = r#"<?php
+header('Content-Type: text/plain');
+foreach (['HTTP_CF_RAY','HTTP_CF_CONNECTING_IP','HTTP_HOST','HTTP_X_FORWARDED_FOR','REMOTE_ADDR'] as $k) {
+    echo $k, '=', ($_SERVER[$k] ?? ''), "\n";
+}
+"#;
+const HELLO: &str = "<!doctype html><title>shared</title><p>REXENV-SHARED-SITE</p>";
+const HELLO_OTHER: &str = "<!doctype html><title>other</title><p>REXENV-OTHER-SITE</p>";
+
+/// The cloudflared pid, reachable from every teardown path.
+static TUNNEL_PID: AtomicU32 = AtomicU32::new(0);
+/// The STACK this example started. Reaching it from `fail` is what the first
+/// version got wrong: the tunnel was reaped from every path and the services
+/// were not, so a failed run left nginx, php-fpm and MySQL holding the shared
+/// ports — sandbox CONFIG, real PORTS, and the next run refused because of it.
+/// Services outliving the app is production's rule; here it is litter.
+static STACK: std::sync::Mutex<Option<ServiceManager>> = std::sync::Mutex::new(None);
+
+/// Idempotent. Called from Drop, from `fail`, from the panic hook, and after
+/// the last leg. Tunnel FIRST — it is the one thing that is public.
+/// The tunnel only — leg 7 needs the ORIGIN still up, or it cannot tell "the
+/// tunnel stopped" from "nginx went away", which is how its first version
+/// passed with `tunnels::stop` neutered.
+fn reap_tunnel() {
+    let plat = platform::current();
+    let pid = TUNNEL_PID.swap(0, Ordering::SeqCst);
+    if pid != 0 {
+        let _ = tunnels::stop(&*plat, pid);
+        eprintln!("tunnel_exposure_check: tunnel pid {pid} stopped");
+    }
+}
+
+fn reap_all() {
+    let plat = platform::current();
+    reap_tunnel();
+    if let Some(mut mgr) = STACK.lock().ok().and_then(|mut m| m.take()) {
+        let _ = mgr.stop_all(&*plat);
+        eprintln!("tunnel_exposure_check: stack stopped");
+    }
+}
+
+struct RunGuard;
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        reap_all();
+    }
+}
+
+fn fail(step: &str, why: &str) -> ! {
+    reap_all();
+    eprintln!("\n✗ {step}\n  {why}\n");
+    std::process::exit(1);
+}
+
+/// `key=value` out of the echo endpoint's body.
+fn field<'a>(body: &'a str, key: &str) -> &'a str {
+    body.lines()
+        .find_map(|l| l.strip_prefix(&format!("{key}=")))
+        .unwrap_or("")
+        .trim()
+}
+
+#[tokio::main]
+async fn main() {
+    // FIRST STATEMENT, before the sandbox exists and before anything is
+    // created. The first version of this ran AFTER provisioning two sites, then
+    // reported that it had protected the machine — a precondition that runs
+    // after the side effect is not a precondition, and it was believed because
+    // of the message it printed rather than what it did (13 Aug 2026).
+    common::require_ports_free(&[
+        (services::NGINX_HTTP_PORT, "the shared nginx"),
+        (coredb::DbEngine::Mysql.port(), "MySQL — a fixture database would land in the USER'S server"),
+        (HTTPS, "the edge"),
+    ]);
+
+    let (plat, _sandbox) = common::sandbox("tunnel-exposure");
+    // Reap before the default hook, so an `.expect()` anywhere still tears the
+    // tunnel down — Drop alone does not survive `process::exit`.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        reap_all();
+        default_hook(info);
+    }));
+    let _guard = RunGuard;
+
+    // `sandbox_db`, not `db::open_for_platform`: it pins `sites_dir` into the
+    // sandbox. Without that pin `sites::provision` writes the docroot to
+    // `~/rexenv/Sites` — the user's own folder — because the docroot comes from
+    // a SETTING, not from `Paths`.
+    let conn = common::sandbox_db(&*plat);
+    let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("sandbox CA");
+
+    // Checked BEFORE anything is provisioned, because after the fact it is a
+    // report rather than a guard.
+    let sandbox_root = plat.paths().app_data_dir().expect("sandbox root");
+    let resolved = sites::sites_dir(&conn, &*plat).expect("resolve the sites dir");
+    if !resolved.starts_with(&sandbox_root) {
+        fail(
+            "REFUSING TO PROVISION — the sites dir is not inside the sandbox",
+            &format!(
+                "docroots would be created in {}\n  sandbox root is {}\n  \
+                 That is the user's own Sites folder. Open the database with \
+                 `common::sandbox_db`, which pins the setting.",
+                resolved.display(),
+                sandbox_root.display()
+            ),
+        );
+    }
+    println!("sites dir pinned to {}", resolved.display());
+
+    let mk = |domain: &str, name: &str| {
+        sites::provision(
+            &conn,
+            &*plat,
+            &ca,
+            NewSite {
+                name: name.into(),
+                domain: domain.into(),
+                site_type: SiteType::Wordpress,
+                php_version: "8.3".into(),
+                web_server: WebServer::Nginx,
+                path: String::new(),
+                db_engine: SiteDbEngine::Mysql,
+                git_url: String::new(),
+                git_ref: None,
+                git_migrate: true,
+                git_build_assets: false,
+            },
+        )
+        .expect("provision")
+    };
+    mk(SHARED, "Shared");
+    mk(OTHER, "Other");
+    let all = sites::list(&conn).expect("sites");
+    let shared = all.iter().find(|s| s.domain == SHARED).expect("shared site").clone();
+    let other = all.iter().find(|s| s.domain == OTHER).expect("other site").clone();
+    let docroot = PathBuf::from(&shared.path);
+    std::fs::write(docroot.join("echo.php"), ECHO_PHP).expect("echo endpoint");
+    std::fs::write(docroot.join("hello.html"), HELLO).expect("hello page");
+    std::fs::write(Path::new(&other.path).join("hello.html"), HELLO_OTHER).expect("other hello");
+
+    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT };
+    let mut mgr = ServiceManager::with_ports(ports);
+    let minors = corephp::installed_minors(&conn).expect("php minors");
+    let start = mgr.start_all(&*plat, &ca, &all, &minors).await;
+    // Handed over BEFORE the result is inspected: a partial start leaves
+    // children running, and `fail` must be able to stop them.
+    *STACK.lock().expect("stack slot") = Some(mgr);
+    if let Err(e) = start {
+        fail("FIXTURE — the stack did not start", &format!("{e}\n  This is a `network`-tier check and needs the stack STOPPED first."));
+    }
+    for _ in 0..40 {
+        if coreports::is_listening(HTTPS) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+
+    // No WordPress install: nothing left here needs it. `hello.html` and
+    // `echo.php` are served by nginx + php-fpm directly, and the two legs that
+    // needed a WP site are the ones that could not fail (see below). Dropping
+    // it takes ~40s and a database off every run.
+
+    // ── The tunnel, started as late as possible ─────────────────────────────
+    let bin = binaries::resolve(&*plat, "cloudflared", binaries::CLOUDFLARED_VERSION)
+        .await
+        .expect("cloudflared");
+    let child = tunnels::start(&*plat, &bin, SHARED, services::NGINX_HTTP_PORT).expect("start tunnel");
+    let pid = child.id();
+    TUNNEL_PID.store(pid, Ordering::SeqCst);
+    let mut public = None;
+    let deadline = std::time::Instant::now() + Duration::from_secs(45);
+    while std::time::Instant::now() < deadline {
+        if let Some(u) = tunnels::read_url(&*plat, SHARED) {
+            public = Some(u);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    let Some(public) = public else {
+        fail(
+            "FIXTURE — no public URL",
+            &format!("cloudflared started (pid {pid}) but never printed a trycloudflare URL"),
+        )
+    };
+    println!("PUBLIC URL {public}  (cloudflared pid {pid} — kill it by hand if this run dies)");
+    wp_tunnel::enable(&docroot, "wp-content", &public).expect("tunnel mu-plugin");
+
+    // ── Wait for the name at 1.1.1.1, and PIN it — never the system resolver
+    //
+    // This is not an optimisation, it is the trap this codebase already paid
+    // for. `tunnels::gate_opens`' doc records it: a system query for a quick
+    // tunnel's hostname before it propagates lands inside Cloudflare's own
+    // window, and `trycloudflare.com`'s SOA MINIMUM of 1800s means that ONE
+    // query negative-caches the name on the LAN for up to THIRTY MINUTES
+    // (measured 28 Jul 2026 — "a phone worked only on cellular"). Production
+    // has a whole phase gate to avoid it; the first version of this example
+    // walked straight into it and then could not reach its own tunnel.
+    //
+    // So: ask 1.1.1.1 directly (the same helper the prober uses — one truth),
+    // then hand reqwest the address so no system lookup ever happens.
+    let host = public.trim_start_matches("https://").trim_end_matches('/').to_string();
+    let mut edge_ip = None;
+    for _ in 0..30 {
+        if let Some(ips) = tunnels::resolve_at_1111(&host).await {
+            if let Some(ip) = ips.first().copied() {
+                edge_ip = Some(ip);
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    let Some(edge_ip) = edge_ip else {
+        fail(
+            "FIXTURE — the tunnel hostname never appeared at 1.1.1.1",
+            &format!("{host} did not resolve within 60s, so the tunnel never registered. \
+                      Nothing downstream can be concluded."),
+        )
+    };
+    println!("tunnel hostname resolves at 1.1.1.1 → {edge_ip} (system resolver never asked)");
+
+    let net = reqwest::Client::builder()
+        .resolve(&host, std::net::SocketAddr::from((edge_ip, 443)))
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(20))
+        .build()
+        .expect("client");
+    // Leg 2 goes to the ORIGIN, not the edge. The claim is "a local request
+    // carries no CF headers" — nginx with the site's Host is exactly that, and
+    // it does not depend on the edge (Caddy :443) being up, which in a sandbox
+    // it need not be.
+    let origin = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(20))
+        .build()
+        .expect("origin client");
+    let origin_url = format!("http://127.0.0.1:{}/echo.php", services::NGINX_HTTP_PORT);
+
+    // The local origin FIRST: if nginx does not serve the endpoint, nothing
+    // about the tunnel can be concluded, and the two failures look identical
+    // from the public side.
+    let origin_probe = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{}/echo.php", services::NGINX_HTTP_PORT))
+        .header("Host", SHARED)
+        .send()
+        .await;
+    match origin_probe {
+        Ok(r) if r.status().is_success() => {}
+        other => fail(
+            "FIXTURE — the LOCAL origin does not serve the echo endpoint",
+            &format!(
+                "nginx on :{} with Host {SHARED} said {:?}. The tunnel is not the problem; \
+                 nothing downstream of here can be concluded.",
+                services::NGINX_HTTP_PORT,
+                other.map(|r| r.status().as_u16())
+            ),
+        ),
+    }
+
+    let mut public_echo = String::new();
+    let mut last = String::from("(never answered)");
+    for _ in 0..12 {
+        match net.get(format!("{public}/echo.php")).send().await {
+            Ok(r) => {
+                let status = r.status();
+                let body = r.text().await.unwrap_or_default();
+                if status.is_success() && !body.is_empty() {
+                    public_echo = body;
+                    break;
+                }
+                last = format!("status={} body={:.160}", status.as_u16(), body);
+            }
+            Err(e) => last = format!("request failed: {e}"),
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+    if public_echo.is_empty() {
+        fail(
+            "FIXTURE — the public URL never served the echo endpoint",
+            &format!("{public}/echo.php over 36s. Last answer: {last}"),
+        );
+    }
+
+    // ── 1 · a tunnelled request CARRIES the Cloudflare header set ───────────
+    //
+    // #2's "sound" half and #33's premise. Observed, not assumed: every other
+    // check in this repo simulates these headers in PHP.
+    let ray = field(&public_echo, "HTTP_CF_RAY");
+    let cip = field(&public_echo, "HTTP_CF_CONNECTING_IP");
+    if ray.is_empty() || cip.is_empty() {
+        fail(
+            "1 — a real tunnel did NOT supply the Cloudflare headers",
+            &format!(
+                "CF-Ray={ray:?} CF-Connecting-IP={cip:?}. Every tunnel-aware guard in rexenv \
+                 keys on these: the URL rewriter activates on them, and the magic-link login \
+                 DENIES on them. If Cloudflare stopped sending them, the login denial silently \
+                 stops firing for tunnelled requests — this leg is the only thing watching.\n  \
+                 echo said:\n{public_echo}"
+            ),
+        );
+    }
+    println!("1 ok — through the tunnel: CF-Ray={ray} CF-Connecting-IP={cip}");
+    println!(
+        "     …and what the login gates see: X-Forwarded-For={:?} REMOTE_ADDR={:?}",
+        field(&public_echo, "HTTP_X_FORWARDED_FOR"),
+        field(&public_echo, "REMOTE_ADDR")
+    );
+
+    // ── 2 · the SAME endpoint locally carries NEITHER ───────────────────────
+    let local_echo = match origin.get(&origin_url).header("Host", SHARED).send().await {
+        Ok(r) => r.text().await.unwrap_or_default(),
+        Err(e) => fail("2 — the local origin stopped answering", &format!("{e}")),
+    };
+    if !field(&local_echo, "HTTP_CF_RAY").is_empty()
+        || !field(&local_echo, "HTTP_CF_CONNECTING_IP").is_empty()
+    {
+        fail(
+            "2 — a LOCAL request carried Cloudflare headers",
+            &format!(
+                "the discriminator is not complete: local traffic would be rewritten as though \
+                 it were public, and a local magic-link login would be DENIED.\n{local_echo}"
+            ),
+        );
+    }
+    println!("2 ok — the same endpoint locally: no CF headers");
+
+    // ── 3 · Host arrives LOCAL through the tunnel ───────────────────────────
+    //
+    // Why the Host check cannot be what protects a tunnel replay: cloudflared
+    // rewrites Host back to the site's own domain, which is in wp_login's
+    // allow-list by construction. The tunnel case rests on the CF-header gate
+    // and the client-IP gate, and this is the leg that shows it.
+    let host = field(&public_echo, "HTTP_HOST");
+    if !host.starts_with(SHARED) {
+        fail(
+            "3 — Host did not arrive as the local domain",
+            &format!("Host={host:?}; the tunnel's --http-host-header pin is what keeps WordPress generating local URLs"),
+        );
+    }
+    println!("3 ok — Host through the tunnel is {host} (so the Host gate cannot be the tunnel protection)");
+
+    // ── The magic-link legs are NOT here, deliberately ──────────────────────
+    //
+    // A leg asserting "a token cannot be replayed through the tunnel" lived
+    // here and PASSED with `wp_login`'s Cloudflare-header denial deleted from
+    // the mu-plugin — twice, once because the plant itself silently failed to
+    // apply. It could not fail, so it was not a test, and it is gone rather
+    // than left looking like coverage. What denies the replay is now an open
+    // question (ledger #33, and the finding below), and answering it is its own
+    // piece of work: it decides whether ONE gate is load-bearing.
+    //
+    // What IS kept is the measurement that produced the finding — no pass/fail
+    // claim attached, because it is an observation about Cloudflare, not about
+    // rexenv.
+    let spoof_echo = net
+        .get(format!("{public}/echo.php"))
+        .header("X-Forwarded-For", "127.0.0.1")
+        .send()
+        .await
+        .expect("spoofed echo")
+        .text()
+        .await
+        .unwrap_or_default();
+    println!(
+        "· measured — a caller-supplied XFF arrives LEFTMOST: X-Forwarded-For={:?}",
+        field(&spoof_echo, "HTTP_X_FORWARDED_FOR")
+    );
+    println!(
+        "  wp_login reads explode(',')[0], so that gate is satisfiable by the caller (ledger #307)"
+    );
+
+    // ── 6 · the tunnel serves ONE site ──────────────────────────────────────
+    //
+    // The cross-site negative (#10, #13). The tunnel is pinned to SHARED's
+    // Host; asking it for OTHER's content must not produce OTHER's page.
+    let shared_page = net
+        .get(format!("{public}/hello.html"))
+        .send()
+        .await
+        .expect("shared hello")
+        .text()
+        .await
+        .unwrap_or_default();
+    if !shared_page.contains("REXENV-SHARED-SITE") {
+        fail("6 — the tunnel did not serve the site it was started for", &format!("got: {shared_page:.200}"));
+    }
+    let cross = net
+        .get(format!("{public}/hello.html"))
+        .header("Host", OTHER)
+        .send()
+        .await
+        .expect("cross-site attempt");
+    let cross_body = cross.text().await.unwrap_or_default();
+    if cross_body.contains("REXENV-OTHER-SITE") {
+        fail(
+            "6 — a SECOND site was served through a tunnel started for the first",
+            &format!(
+                "sharing one site published another. cloudflared's --http-host-header pin is \
+                 what makes a tunnel single-site; if a caller's Host can override it, every \
+                 site on the machine is reachable from the public URL.\n  got: {cross_body:.200}"
+            ),
+        );
+    }
+    println!("6 ok — the other site is not reachable through this tunnel");
+
+    // ── 7 · stopping the share really unpublishes it ────────────────────────
+    // The control that makes this leg mean anything: the ORIGIN must still be
+    // serving after the tunnel dies, or "the URL stopped answering" is just
+    // "nginx went away". The first version reaped the stack here too and passed
+    // with `tunnels::stop` neutered.
+    reap_tunnel();
+    let _ = wp_tunnel::disable(&docroot);
+    match origin.get(&origin_url).header("Host", SHARED).send().await {
+        Ok(r) if r.status().is_success() => {}
+        other => fail(
+            "7 — the origin died with the tunnel, so this leg proves nothing",
+            &format!("nginx said {:?} after the tunnel was stopped", other.map(|r| r.status().as_u16())),
+        ),
+    }
+    let mut still_up = true;
+    for _ in 0..10 {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        match net.get(format!("{public}/hello.html")).send().await {
+            Ok(r) if r.status().is_success() => continue,
+            _ => {
+                still_up = false;
+                break;
+            }
+        }
+    }
+    if still_up {
+        fail(
+            "7 — the public URL still served the site after the tunnel was stopped",
+            &format!("{public} answered for 20s after the stop. A share that outlives its stop is \
+                      a site the user believes is private (#25, #190)"),
+        );
+    }
+    println!("7 ok — the public URL stops answering once the share is stopped");
+
+    println!(
+        "\n✓ tunnel_exposure_check: a real tunnel carries the CF headers a local request does \
+         not, Host arrives local, only the shared site is published, and stopping the tunnel \
+         unpublishes it while the origin keeps serving"
+    );
+}

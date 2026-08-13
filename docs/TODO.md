@@ -298,6 +298,23 @@ first:
   agent can reach, scope stated), #37 (a tunnel target can only be a site row).
   #54 and #59 fail with the DESIGN rather than a mismatch: both go false through one
   line added by someone reading a diff.
+- [ ] **Is ONE gate load-bearing for tunnel replay?** (ledger #307, opened 14 Aug 2026 —
+  a POSTURE question, not a test gap, and the reason the two magic-link legs were cut
+  from `tunnel_exposure_check` rather than fixed.) `wp_login`'s doc reads as three
+  independent gates. Measured through a real tunnel: the **Host** gate cannot deny
+  (cloudflared rewrites Host to the site's own domain), and the **client-IP** gate is
+  satisfiable by the caller (Cloudflare APPENDS to `X-Forwarded-For`, so a supplied
+  `127.0.0.1` is the leftmost value `explode(',')[0]` reads). That leaves the
+  CF-header gate — and deleting it from the mu-plugin left the replay STILL denied by
+  something unidentified. So the work is, in order: (1) find what actually denies
+  (mu-plugin load order vs `rexenv-tunnel.php` is the first suspect — it rewrites
+  `HTTP_HOST` to the public host, and `rexenv-login.php` sorts before it); (2) decide
+  whether the answer is an acceptable posture; (3) only then write the leg. Do NOT
+  reinstate a leg that passes with the gate removed — that is what was removed.
+  ⚠ Correct `wp_login.rs`'s module doc as part of this, once (1) is known — it is
+  currently wrong about WHY the protection holds, and a wrong account of a security
+  property is worse than a thin one. It was NOT corrected on 14 Aug precisely because
+  the right sentence is not yet known.
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled

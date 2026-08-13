@@ -215,34 +215,16 @@ async fn main() {
     )
     .expect("record the agent's site");
 
-    // ── Refuse to run beside somebody else's Mailpit ────────────────────────
-    //
-    // THE hazard of this example, and it fails in the worst direction: if the
-    // user's stack is up, our `mail::start` cannot bind and exits, `mail::running()`
-    // then sees THEIR Mailpit answering on the fixed port, and every leg below
-    // proceeds — planting two messages in the user's real store and reading their
-    // real inbox to prove rexenv can tell their mail from a scratch site's. The
-    // exact test-contradicts-itself outcome this example was written to avoid.
-    //
-    // So the port is proven FREE before anything starts. Same shape as
-    // `wp_packages_check`'s leg E: never let the environment already holding an
-    // answer stand in for having produced one.
-    for port in [mail::MAILPIT_HTTP_PORT, mail::MAILPIT_SMTP_PORT] {
-        let addr = std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, port));
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok() {
-            fail(
-                "REFUSING TO RUN — something is already on Mailpit's port",
-                &format!(
-                    "127.0.0.1:{port} is answering, which normally means the stack is running.\n  \
-                     This is a `service`-tier check: it brings its OWN Mailpit and will NOT \
-                     borrow a running one — the legs below send two messages and read the inbox \
-                     back, so borrowing would plant test mail in a real store and prove the \
-                     filter against someone's own mail.\n  Stop the stack (in rexenv, or \
-                     `rex stop`), then run this again."
-                ),
-            );
-        }
-    }
+    // Ports are the gap `common::sandbox` does not close (see its module doc).
+    // THE hazard of this example, and it fails in the direction that looks like
+    // success: if the user's stack is up, our `mail::start` cannot bind and
+    // exits, `mail::running()` then sees THEIR Mailpit on the fixed port, and
+    // every leg below proceeds — planting two messages in a real store and
+    // proving the filter against the user's own mail.
+    common::require_ports_free(&[
+        (mail::MAILPIT_HTTP_PORT, "Mailpit's HTTP API — the legs below would read a real inbox"),
+        (mail::MAILPIT_SMTP_PORT, "Mailpit's SMTP port — the legs below would plant test mail in it"),
+    ]);
 
     // ── Mailpit, ours, reaped however this ends ─────────────────────────────
     let bin = binaries::resolve(&*plat, "mailpit", binaries::MAILPIT_VERSION)

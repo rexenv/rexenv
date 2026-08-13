@@ -45,6 +45,43 @@
 //! that generates configs or spawns services. The deliberate exceptions are
 //! documented on [`sandbox`] itself.
 //!
+//! ## …and the gap `sandbox` does NOT close: PORTS
+//!
+//! **`sandbox` covers paths and says nothing about ports**, and every
+//! service-or-network-tier example inherits that gap. It bites in the direction
+//! that looks like success: with the user's stack up, an example that brings up
+//! its own services binds — or worse, TALKS TO — theirs. `mcp_mail_check` found
+//! it with Mailpit (its legs would have planted test mail in a real inbox and
+//! proven the filter against the user's own mail). `tunnel_exposure_check` found
+//! it again with MySQL on the shared port, where `install_for_site` would have
+//! created its fixture database inside the user's RUNNING engine — same accident,
+//! bigger blast radius, and both would have read as the example working.
+//!
+//! So the refusal lives HERE, in [`require_ports_free`], rather than in each
+//! example: a correct implementation with a warning beside it did not stop the
+//! same mistake being made twice in this repo (see `core::copy_scan`), and the
+//! next network-tier example should not have to rediscover it.
+//!
+//! ## …and the SECOND gap: the sites dir
+//!
+//! `sites::provision` puts a docroot under the `sites_dir` SETTING, which falls
+//! back to `~/rexenv/Sites` — a path computed from the home directory, **not
+//! from `Paths`**. A sandboxed `Platform` cannot redirect it. So an example that
+//! sandboxes its paths and provisions a site writes into the USER'S real Sites
+//! folder, and nothing says so.
+//!
+//! That is not hypothetical either: it happened on 13 Aug 2026, hours after the
+//! ports gap above was written down. Documenting a gap did not prevent the next
+//! instance of it — so this one is closed by SHAPE, twice over:
+//!
+//! - [`sandbox_db`] is the one-liner that opens an example's database, and it
+//!   pins `sites_dir` into the sandbox as it does. The easy path is the safe
+//!   one; reaching the unsafe path now means deliberately calling
+//!   `db::open_for_platform` yourself.
+//! - [`SandboxGuard`] snapshots the real Sites folder when the sandbox is
+//!   created and SHOUTS on drop if anything new appeared there — including on a
+//!   panic. Prevention for the ordinary path, a loud backstop for the rest.
+//!
 //! ## Cleanup discipline
 //!
 //! An example that spawns a service must reap it from a DROP GUARD, never from
@@ -82,6 +119,61 @@
 // (php_fpm_serve), 18132/9793 (dotfile_guard_check), 18134-18136
 // (edge_wire_check: a squatting listener, a deliberately EMPTY port, and a
 // plaintext responder — the three shapes `proxy::edge_wire` must tell apart).
+
+/// Open an example's database inside the sandbox, with `sites_dir` PINNED.
+///
+/// Use this instead of `db::open_for_platform` in anything that provisions a
+/// site. It exists because the pin is invisible when it is missing: the site is
+/// created, the example works, and the folders turn up in the user's own Sites
+/// directory. See the module doc for what that cost.
+pub fn sandbox_db(platform: &dyn Platform) -> rusqlite::Connection {
+    let conn = rexenv_lib::state::db::open_for_platform(platform.paths())
+        .expect("open the sandbox database");
+    let sites = platform
+        .paths()
+        .app_data_dir()
+        .expect("sandbox app data")
+        .join("Sites");
+    std::fs::create_dir_all(&sites).expect("sandbox sites dir");
+    rexenv_lib::state::store::set_setting(&conn, "sites_dir", &sites.to_string_lossy())
+        .expect("pin the sandbox sites dir");
+    conn
+}
+
+/// Every entry in the REAL sites folder, for the guard's before/after.
+fn real_sites_snapshot() -> Vec<String> {
+    let Ok(dir) = rexenv_lib::core::sites::default_sites_dir() else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut out: Vec<String> =
+        entries.flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
+    out.sort();
+    out
+}
+
+/// Refuse to run while anything is listening on a port this example needs.
+///
+/// Call it BEFORE creating or starting anything. Each entry is
+/// `(port, what it is and what borrowing it would do)` — the second half is the
+/// message a reader gets, so say what would happen, not just which port.
+///
+/// Exits the process rather than returning an error: there is nothing sensible
+/// to do with the failure, and a caller that could ignore it is the shape this
+/// exists to prevent.
+pub fn require_ports_free(ports: &[(u16, &str)]) {
+    for (port, what) in ports {
+        if rexenv_lib::core::ports::is_listening(*port) {
+            eprintln!(
+                "\n✗ REFUSING TO RUN — something is already on a port this needs\n  \
+                 127.0.0.1:{port} is answering ({what}).\n  \
+                 This example brings up its OWN services: `common::sandbox` makes the PATHS \
+                 temporary and does nothing about PORTS, so running beside a live stack means \
+                 using the user's.\n  Stop the stack (in rexenv, or `rex stop`), then run this \
+                 again.\n"
+            );
+            std::process::exit(1);
+        }
+    }
+}
 
 use rexenv_lib::error::Result as RexResult;
 use rexenv_lib::platform::traits::{
@@ -191,6 +283,9 @@ impl Platform for SandboxPlatform {
 /// Removes the sandbox tree when the example ends, however it ends.
 pub struct SandboxGuard {
     root: PathBuf,
+    /// The real Sites folder as it was when the sandbox opened. Compared on
+    /// drop — see the module doc's second gap.
+    real_sites_before: Vec<String>,
 }
 
 impl SandboxGuard {
@@ -203,6 +298,28 @@ impl SandboxGuard {
 impl Drop for SandboxGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.root);
+        // The backstop for the sites-dir gap. Runs on a panic too, which is
+        // exactly when it is needed: on 13 Aug 2026 an example provisioned two
+        // sites into the user's REAL Sites folder, then died, and nothing said
+        // so — the folders were found by hand afterwards. This does NOT delete
+        // anything: a cleanup that guessed at what was a fixture is a worse
+        // failure than the litter, and one this project has already had.
+        let after = real_sites_snapshot();
+        let new: Vec<&String> =
+            after.iter().filter(|d| !self.real_sites_before.contains(d)).collect();
+        if !new.is_empty() {
+            let dir = rexenv_lib::core::sites::default_sites_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            eprintln!(
+                "\n!! THIS EXAMPLE WROTE INTO THE USER'S REAL SITES FOLDER !!\n   \
+                 {dir}\n   new: {new:?}\n   \
+                 `common::sandbox` sandboxes PATHS; the docroot comes from the `sites_dir` \
+                 SETTING, which falls back to the home directory. Open the example's database \
+                 with `common::sandbox_db`, which pins it.\n   \
+                 Nothing has been deleted — check these are yours before removing them.\n"
+            );
+        }
     }
 }
 
@@ -233,6 +350,22 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
     let root = std::env::temp_dir()
         .join(format!("rexenv-sandbox-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
+    // Sweep this tag's LEFTOVERS from earlier runs. `SandboxGuard`'s Drop
+    // removes the root, but an example that ends with `process::exit` — which
+    // every `fail()` in this tree does — runs no destructors, so a failing
+    // run leaves its root behind. Two failed `tunnel_exposure_check` runs left
+    // 280 MB each (13 Aug 2026). Self-healing beats remembering: the next run
+    // of the SAME example clears them, and nothing outside this tag is touched.
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        let prefix = format!("rexenv-sandbox-{tag}-");
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue };
+            if name.starts_with(&prefix) && entry.path() != root {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
     std::fs::create_dir_all(&root).expect("create the sandbox root");
     let platform = SandboxPlatform {
         inner: real,
@@ -253,7 +386,7 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
         sandboxed.display(),
         real_data.display()
     );
-    (Box::new(platform), SandboxGuard { root })
+    (Box::new(platform), SandboxGuard { root, real_sites_before: real_sites_snapshot() })
 }
 
 // ---------------------------------------------------------------------------

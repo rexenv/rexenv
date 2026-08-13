@@ -57,6 +57,17 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **`common::sandbox` covers PATHS and says nothing about PORTS.** Every service- and
+  network-tier example inherits that gap, and it fails in the direction that looks like
+  success: with the user's stack up, an example that brings up its own services binds —
+  or worse, TALKS TO — theirs. Found twice. `mcp_mail_check` would have planted test
+  mail in a real inbox and proven the mail filter against the user's own messages;
+  `tunnel_exposure_check` would have created its fixture database inside the user's
+  RUNNING MySQL, because `install_for_site` just uses the port. Same accident, bigger
+  blast radius, and both would have read as the example working. The refusal therefore
+  lives in the harness (`common::require_ports_free`), not in each example — a correct
+  implementation with a warning beside it has already failed to stop a repeat in this
+  repo, so the next example inherits the guard rather than the lesson.
 - **A probe needs a known-good case, for the reason an example needs a control leg.**
   Same principle, one level up: without a case whose answer you already know, a check
   cannot tell ITS OWN defect from the subject's, and it reports the app as broken.
