@@ -1262,12 +1262,20 @@ where
             // Edge WIRE identity — the Herd class: every process check can be
             // green while a foreign 127.0.0.1:443 listener answers all sites.
             let caddy_running = services.iter().any(|s| s.name == "Caddy" && s.running);
-            let wire_ours = crate::core::proxy::edge_answers_as_ours(
+            let wire = crate::core::proxy::edge_wire(
                 crate::core::adminer::ADMINER_HOST,
                 crate::core::proxy::DEFAULT_HTTPS_PORT,
             )
             .await;
-            let edge_conflict = (caddy_running && !wire_ours).then(|| {
+            let wire_ours = wire == crate::core::proxy::EdgeWire::Ours;
+            // NOTHING listening while our Caddy is running is not a conflict —
+            // it is our edge failing to serve, which has a different fix. The
+            // old code reported both as a conflict and named a holder from a
+            // lookup that finds nobody.
+            let edge_silent = caddy_running && wire == crate::core::proxy::EdgeWire::NoAnswer;
+            let edge_conflict = (caddy_running
+                && wire == crate::core::proxy::EdgeWire::Foreign)
+                .then(|| {
                 let help = state
                     .platform
                     .supervisor()
@@ -1320,7 +1328,14 @@ where
                 "app": to_value(&commands::system::app_info())?,
                 "dns": to_value(&dns)?,
                 "services": to_value(&services)?,
-                "edge": { "running": caddy_running, "wireOurs": wire_ours, "conflict": edge_conflict },
+                "edge": {
+                    "running": caddy_running,
+                    "wireOurs": wire_ours,
+                    "conflict": edge_conflict,
+                    // Distinct from `conflict`: our edge is up and answering
+                    // nothing, so there is no third party to name.
+                    "silent": edge_silent,
+                },
                 "portConflicts": port_conflicts,
                 "cli": to_value(&cli)?,
                 // Borrowed resolver files another tool reclaimed — invisible to

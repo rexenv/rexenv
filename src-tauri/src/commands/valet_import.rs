@@ -334,9 +334,32 @@ pub struct ImportResult {
     /// Databases that came over / didn't, when `import_databases` was on.
     pub db_imported: usize,
     pub db_failed: usize,
-    /// Checked ONCE at the end: something else answers :443, so nothing
-    /// imported will load until it lets go.
-    pub serving_blocked: bool,
+    /// Checked ONCE at the end: why the imported sites will not load yet, or
+    /// `None` when they will. See [`ServingCaveat`].
+    pub serving: Option<ServingCaveat>,
+}
+
+/// Why freshly imported sites are not being served, and what the user can do
+/// about it — TWO different situations that used to be one boolean.
+///
+/// The boolean said "another app is answering port 443 — quit it" for BOTH, and
+/// this path never checked whether rexenv's own stack was running. Importing
+/// before Start-all is an ordinary order, so people were routinely told to quit
+/// a program that did not exist. Advice about a nonexistent holder is worse than
+/// no message: it sends someone hunting through Activity Monitor for nothing.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServingCaveat {
+    /// `"foreign"` — something else holds :443. `"stopped"` — nothing is
+    /// listening, which HERE means rexenv's own stack is not running, because
+    /// the import itself never starts it.
+    pub kind: &'static str,
+    /// The process holding the port, when it could be named (`foreign` only).
+    pub holder: Option<String>,
+    /// The app to quit, when identifiable — "quit Herd" beats "quit that app".
+    pub app: Option<String>,
+    /// A copy-paste command that frees the port (`foreign` only).
+    pub fix: Option<String>,
 }
 
 fn import_event() -> &'static str {
@@ -641,7 +664,12 @@ pub async fn valet_import_run<R: tauri::Runtime>(
 
     batch.tick("checking", 0, None, Some("checking your sites will load".into()), 0);
     // ONE probe for the whole batch: per-site would add seconds each.
-    let serving_blocked = !core::proxy::edge_answers_as_ours(
+    //
+    // The TRI-STATE, not the boolean, because this path is the reason the
+    // tri-state exists: it does not start the stack and does not check whether
+    // the stack is running, so "not ours" here is USUALLY "rexenv is not
+    // running yet" rather than "something else took the port".
+    let wire = core::proxy::edge_wire(
         core::adminer::ADMINER_HOST,
         core::proxy::DEFAULT_HTTPS_PORT,
     )
@@ -667,8 +695,54 @@ pub async fn valet_import_run<R: tauri::Runtime>(
         skipped: skipped_n,
         db_imported,
         db_failed,
-        serving_blocked: serving_blocked && imported > 0,
+        // Only a caveat when something actually came over — "your sites won't
+        // load" about zero sites is noise.
+        serving: (imported > 0).then(|| serving_caveat(&state, wire)).flatten(),
     })
+}
+
+/// Turn the wire state into the caveat the UI renders, or `None` when the sites
+/// really will load. Looks up who holds the port only when something does.
+fn serving_caveat(state: &State<'_, AppState>, wire: core::proxy::EdgeWire) -> Option<ServingCaveat> {
+    let help = matches!(wire, core::proxy::EdgeWire::Foreign).then(|| {
+        state
+            .platform
+            .supervisor()
+            .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false)
+    });
+    caveat_for(wire, help)
+}
+
+/// The mapping itself — pure, so the three states are testable without a
+/// `State` or a socket. This is where the old boolean's fault lived: it had one
+/// answer for two situations.
+fn caveat_for(
+    wire: core::proxy::EdgeWire,
+    help: Option<crate::platform::traits::PortConflictHelp>,
+) -> Option<ServingCaveat> {
+    match wire {
+        // Our edge answers: the sites really will load.
+        core::proxy::EdgeWire::Ours => None,
+        // Nothing is listening. On THIS path that means rexenv's own stack is
+        // not running — importing never starts it — so there is nobody to quit
+        // and nothing to name.
+        core::proxy::EdgeWire::NoAnswer => {
+            Some(ServingCaveat { kind: "stopped", holder: None, app: None, fix: None })
+        }
+        core::proxy::EdgeWire::Foreign => {
+            let help = help.unwrap_or(crate::platform::traits::PortConflictHelp {
+                holder: None,
+                app: None,
+                free_command: None,
+            });
+            Some(ServingCaveat {
+                kind: "foreign",
+                holder: help.holder,
+                app: help.app,
+                fix: help.free_command,
+            })
+        }
+    }
 }
 
 /// Run the ONE database-import job for a freshly imported site and wait for it
@@ -883,6 +957,49 @@ fn scopeguard<F: FnOnce()>(f: F) -> impl Drop {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The fault this replaced: ONE boolean answered two situations, and the
+    /// answer it gave was the wrong one on the ordinary path. Importing before
+    /// Start-all leaves nothing on :443, and the user was told another app held
+    /// it and to go quit that app.
+    #[test]
+    fn a_stopped_stack_is_not_reported_as_another_app_holding_the_port() {
+        use crate::core::proxy::EdgeWire;
+        use crate::platform::traits::PortConflictHelp;
+
+        // Our edge answers: no caveat at all.
+        assert!(caveat_for(EdgeWire::Ours, None).is_none());
+
+        // Nothing listening — the stack is not running. NOTHING may be named:
+        // a holder, an app to quit or a command here would all be inventions.
+        let stopped = caveat_for(EdgeWire::NoAnswer, None).expect("a caveat");
+        assert_eq!(stopped.kind, "stopped");
+        assert!(
+            stopped.holder.is_none() && stopped.app.is_none() && stopped.fix.is_none(),
+            "a stopped stack has nobody to quit — naming one is the old bug"
+        );
+
+        // Something else holds it: everything we know gets carried, so the UI
+        // can say "quit Herd" and offer the command rather than "quit it".
+        let foreign = caveat_for(
+            EdgeWire::Foreign,
+            Some(PortConflictHelp {
+                holder: Some("Herd (nginx, pid 554)".into()),
+                app: Some("Herd".into()),
+                free_command: Some("osascript -e 'quit app \"Herd\"'".into()),
+            }),
+        )
+        .expect("a caveat");
+        assert_eq!(foreign.kind, "foreign");
+        assert_eq!(foreign.app.as_deref(), Some("Herd"));
+        assert!(foreign.fix.is_some());
+
+        // A foreign holder we could not attribute still reports foreign — the
+        // port IS taken, and the UI falls back to "another app".
+        let anonymous = caveat_for(EdgeWire::Foreign, None).expect("a caveat");
+        assert_eq!(anonymous.kind, "foreign");
+        assert!(anonymous.holder.is_none());
+    }
 
     /// The bar advances only on real completions, and one running site can
     /// never fill it — a 3-site batch with site 1 mid-flight stays inside its

@@ -46,8 +46,11 @@ export const useToastStore = create<ToastState>((set) => ({
  * `window.alert`, which WKWebView (Tauri) doesn't reliably show.
  */
 export const toast = {
-  error: (message: string, command?: string) =>
-    useToastStore.getState().push(message, "error", command),
+  /** `action` for a fix that is a BUTTON in this app (Start all), `command` for
+   *  one that is a shell line to paste. A caveat whose fix is a button must not
+   *  be phrased as advice to go and find it. */
+  error: (message: string, command?: string, action?: ToastAction) =>
+    useToastStore.getState().push(message, "error", command, action),
   success: (message: string, action?: ToastAction) =>
     useToastStore.getState().push(message, "success", undefined, action),
   info: (message: string) => useToastStore.getState().push(message, "info"),

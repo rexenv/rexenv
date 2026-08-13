@@ -97,6 +97,14 @@ the shipped UI toward one.
   also names what is EXCLUDED (the packages) and what still works (rexenv's terminal):
   a scoped change reads as a capability removal without that second half, and it is
   always the half a trim removes as reassurance.
+- **One condition with two causes gets two messages, and the fix that is a BUTTON is
+  the button.** "Nothing is on :443" and "something else is on :443" are one probe
+  result and two different problems. Telling someone to quit an app when nothing is
+  listening is worse than saying nothing: it sends them hunting for a program that
+  isn't running. So the import caveat says which it is, and when the answer is "rexenv
+  isn't serving yet" it carries **Start all** as an action rather than advice to go and
+  find it — a fix that lives in this app should never be rendered as a description of
+  where to look for it.
 - **A count is never rendered from a read that failed.** The same card names packages
   from a `composer.json` it may not be able to parse. Every failure yields a variant
   that claims no count, because "the 0 packages in ~/.wp-cli/packages" is not a

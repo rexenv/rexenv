@@ -13,6 +13,7 @@ import {
   resolverHandBack,
   resolverTakeOver,
   scanValetImport,
+  startServices,
   valetImportCancel,
   valetImportRun,
 } from "@/lib/ipc";
@@ -185,9 +186,23 @@ export function Import() {
       }
       if (r.failed) toast.error(bits.join(", "));
       else toast.success(bits.join(", "));
-      if (r.servingBlocked) {
+      // TWO situations, not one. Until 13 Aug 2026 both read "another app is
+      // answering port 443 — quit it", and importing before Start-all — an
+      // ordinary order — sent people looking for a program that wasn't there.
+      if (r.serving?.kind === "stopped") {
+        // Nothing holds the port; rexenv just isn't serving yet. The fix is a
+        // button in this app, so it IS the button — not advice to find one.
         toast.error(
-          "Imported, but another app is answering port 443 — quit it and your sites load automatically.",
+          `Imported. Your sites won't load until rexenv's services are running.`,
+          undefined,
+          { label: "Start all", onClick: () => void startServices().catch(toastBackendError) },
+        );
+      } else if (r.serving?.kind === "foreign") {
+        const holder = r.serving.holder ?? "another app";
+        const quit = r.serving.app ?? "it";
+        toast.error(
+          `Imported, but ${holder} is answering port 443 — quit ${quit} and your sites load automatically.`,
+          r.serving.fix ?? undefined,
         );
       }
     },

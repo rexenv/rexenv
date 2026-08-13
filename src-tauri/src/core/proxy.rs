@@ -630,6 +630,65 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 mod tests {
     use super::*;
 
+    /// Every caller of the TRI-STATE must say something about `NoAnswer`.
+    ///
+    /// The whole point of the enum is that "not ours" was two situations with
+    /// two fixes, told to the user as one. A caller that takes `edge_wire` and
+    /// then folds `NoAnswer` back into the foreign branch has re-created the
+    /// bug while looking like it uses the richer state — so the tree is scanned
+    /// rather than trusted. Each of the four says something DIFFERENT, because
+    /// the same variant means a different thing in each: the stack isn't
+    /// running (import), our edge is alive but silent (watchdog, doctor), our
+    /// own start didn't take (verify_edge_wire).
+    #[test]
+    fn every_caller_of_the_tristate_handles_no_answer() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut callers: Vec<String> = Vec::new();
+        fn walk(dir: &std::path::Path, callers: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, callers);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else { continue };
+                let body = crate::core::copy_scan::production_source(&text);
+                // `proxy.rs` DEFINES it; everyone else calls it.
+                if path.file_name().and_then(|f| f.to_str()) == Some("proxy.rs") {
+                    continue;
+                }
+                if body.contains("edge_wire(") {
+                    let named = path
+                        .strip_prefix(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string();
+                    assert!(
+                        body.contains("NoAnswer"),
+                        "{named} asks `edge_wire` for the three states and then never mentions \
+                         `NoAnswer`, so it is telling the user the foreign-proxy story when \
+                         nothing is listening. That is the bug the enum exists to end — and on \
+                         the import path it shipped, telling people to quit a program that was \
+                         not running."
+                    );
+                    callers.push(named);
+                }
+            }
+        }
+        walk(&root, &mut callers);
+        callers.sort();
+        assert!(
+            callers.len() >= 3,
+            "the detection found {} tri-state callers — it has stopped working. Expected the \
+             import path, the watchdog and doctor at least: {callers:?}",
+            callers.len()
+        );
+    }
+
     /// The four callers that gate Start-all, login autostart, the watchdog and
     /// doctor ask the BOOLEAN. It has to stay one expression over the tri-state,
     /// not a second probe that agrees today and drifts later — the exact shape

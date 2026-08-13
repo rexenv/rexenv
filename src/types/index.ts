@@ -284,9 +284,17 @@ export interface ImportResult {
   /** Databases that came over / didn't, when importDatabases was on. */
   dbImported: number;
   dbFailed: number;
-  /** Checked once at the end: something else answers :443, so nothing imported
-   *  will load until it lets go. */
-  servingBlocked: boolean;
+  /** Checked once at the end: why the imported sites won't load yet, or null
+   *  when they will. `kind: "stopped"` means nothing is listening on :443 —
+   *  which HERE means rexenv's own stack isn't running, because importing never
+   *  starts it. `kind: "foreign"` means something else holds the port. The two
+   *  used to be one boolean that said "quit it" for both. */
+  serving: {
+    kind: "foreign" | "stopped";
+    holder: string | null;
+    app: string | null;
+    fix: string | null;
+  } | null;
 }
 
 /** How a `connected` state was proven (Stage 3 §6). `signin` = the rewritten

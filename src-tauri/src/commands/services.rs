@@ -149,13 +149,26 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
 /// the intercepting process. The watchdog keeps re-checking afterwards and flips
 /// the status truthfully (`edge-blocked` / `edge-unblocked` events).
 async fn verify_edge_wire(state: &State<'_, AppState>) -> Result<()> {
-    if core::proxy::edge_answers_as_ours(
+    let wire = core::proxy::edge_wire(
         core::adminer::ADMINER_HOST,
         core::proxy::DEFAULT_HTTPS_PORT,
     )
-    .await
-    {
+    .await;
+    if wire == core::proxy::EdgeWire::Ours {
         return Ok(());
+    }
+    // NOTHING is listening, and we just started the stack — so this is not a
+    // foreign proxy, it is OUR OWN start not taking. Naming a holder here (the
+    // old message did, from a lookup that finds nobody) sends someone hunting
+    // for a program that is not running, in the one situation where the thing
+    // that failed is ours. Different problem, different fix.
+    if wire == core::proxy::EdgeWire::NoAnswer {
+        return Err(Error::Other(
+            "services started, but nothing is answering port 443 — rexenv's edge did not come \
+             up. Nothing else is holding the port, so this is ours to fix: check the edge log \
+             (Services → Caddy → Logs), then Start all again."
+                .into(),
+        ));
     }
     let help = state
         .platform

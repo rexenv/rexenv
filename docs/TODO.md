@@ -178,12 +178,14 @@ evidence cited.
   ✓ **Phase A landed** — `proxy::EdgeWire{Ours,Foreign,NoAnswer}` + `edge_wire`,
   with the boolean kept as `== Ours` so the four existing callers are untouched
   (ledger #304, `edge_wire_check`).
-  - [ ] **Phase B — the four callers stop asserting a holder when nothing answered.**
-    `valet_import` is a LIVE wrong answer today: it probes without checking whether
-    rexenv's stack is running, so importing before Start-all renders "another app is
-    answering port 443 — quit it" (`Import.tsx:190`) when nothing is answering.
-    Then watchdog, doctor and `verify_edge_wire`, which say the same thing in rarer
-    conditions. Approved: all four.
+  ✓ **Phase B — all four callers landed 13 Aug 2026** (ledger #305). Each says
+    something DIFFERENT about `NoAnswer`, because the variant means a different
+    thing in each: import → the stack isn't running (and offers **Start all as a
+    button in the toast**, since the fix is in this app); watchdog and doctor →
+    our edge process is alive and not serving; `verify_edge_wire` → the start we
+    just ran didn't take. `commands/site_provision.rs` needed no change — it reads
+    `mgr.edge_blocked()`, which only the watchdog sets and only when our edge is
+    alive.
   - [ ] **Then onboarding itself** — the approved copy, reusing `port_conflict_help`
     for the holder/app/fix but NOT `verify_edge_wire`'s sentence, which assumes
     services are running, a Start-all to repeat, and sites that exist.

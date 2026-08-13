@@ -2186,6 +2186,17 @@ fn cmd_doctor(json_output: bool) {
     if edge["running"] == json!(true) {
         if edge["wireOurs"] == json!(true) {
             line(true, false, "Edge", "answering as rexenv on :443".into());
+        } else if edge["silent"] == json!(true) {
+            // Our edge is up and NOTHING is on the port. Not a conflict — there
+            // is no one to quit, and saying there is sends the reader hunting
+            // for a program that is not running.
+            line(
+                false,
+                false,
+                "Edge",
+                "running, but nothing answers :443 — rexenv's own edge isn't serving \n                             (its log has the reason; Stop all then Start all rebuilds it)"
+                    .into(),
+            );
         } else {
             let holder = edge["conflict"]["holder"].as_str().unwrap_or("another proxy");
             let fix = edge["conflict"]["fix"].as_str().map(|f| format!("\n            $ {f}")).unwrap_or_default();
