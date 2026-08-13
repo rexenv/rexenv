@@ -282,6 +282,16 @@ in one place drifts, and a stale one reads as progress that did not happen. Run
 row + the noted half of every ◐ row, worked by the ledger's blast-radius tiers, top
 first:
 
+- [x] **Tier-1 group B — the four tunnel-lifecycle L0s** ✓ 13 Aug 2026: #26 (claim
+  revoked by the stop, against real SQLite), #29 (the reaper skips a shared site and
+  can never reach `stop_for_domain` — guarded where the invariant became load-bearing,
+  not where it was written), #30 (`should_signal_row`: never re-signal a reaped or
+  sentinel pid), #31 (both readers settle dead children before reading). All
+  plant-proven; live legs ride group A's one tunnel example.
+  **Also fixed here: the stale cluster summary** that said #103 had never been proven
+  live. It had — `dotfile_guard_check` covers nginx over the wire; Apache and
+  FrankenPHP are what remain. A stale index over accurate rows reads as a decision
+  rather than a gap, and it sent the next piece of work at something already built.
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled

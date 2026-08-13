@@ -444,11 +444,7 @@ pub fn kill_all_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         .map(|conn| crate::state::store::list_tunnels(&conn).unwrap_or_default())
         .unwrap_or_default();
     for row in rows {
-        if row.pid != tunnels::PID_PENDING && !reaped.contains(&row.pid) {
-            // Our own child from THIS session (launch already swept older
-            // rows), unreaped, so the pid can't have been recycled. A
-            // sentinel row (claim taken, child not yet spawned) has no
-            // process to signal — its file/row still get cleaned below.
+        if should_signal_row(row.pid, &reaped) {
             let _ = tunnels::stop(state.platform.as_ref(), row.pid);
         }
         if let Err(e) = wp_tunnel::disable(Path::new(&row.docroot)) {
@@ -458,6 +454,25 @@ pub fn kill_all_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Ok(conn) = state.db.lock() {
         let _ = crate::state::store::clear_tunnels(&conn);
     };
+}
+
+/// May the exit hook signal this recorded pid? (ledger #30)
+///
+/// Extracted so the rule is a value rather than a condition buried in a loop
+/// that needs a Tauri app to reach. TWO reasons to say no, and both are the
+/// never-kill-on-a-bare-pid rule:
+///
+/// - **Already reaped.** The registry pass did `stop` + `wait` on it. After a
+///   `wait()` the pid is free for the OS to reuse, so signalling it again is a
+///   signal to whatever now owns that number.
+/// - **A sentinel.** `PID_PENDING` means the claim was taken and no child
+///   spawned yet; there is no process behind it. Its row and mu-plugin are still
+///   cleaned by the caller — only the SIGNAL is skipped.
+///
+/// Anything else is our own child from THIS session (launch already swept older
+/// rows), unreaped, so the number cannot have been recycled.
+fn should_signal_row(row_pid: u32, reaped: &std::collections::HashSet<u32>) -> bool {
+    row_pid != tunnels::PID_PENDING && !reaped.contains(&row_pid)
 }
 
 /// A tunnel's public status for the UI. `running` = a live process exists;
@@ -786,5 +801,122 @@ mod tests {
         let mut e = reg.0.lock().unwrap().remove("live.rex").expect("live entry");
         let _ = e.child.kill();
         let _ = e.child.wait();
+    }
+}
+
+/// The Tier-1 lifecycle guards (#26, #29, #30, #31).
+///
+/// All four are "a share never outlives / never blocks / never gets stopped for
+/// you" claims, and all four were 🔨 because the obvious proof needs a real
+/// cloudflared and a Tauri app. What is provable here is the part that actually
+/// regresses: the DECISION each one turns on. The live legs stay in the ledger,
+/// pointed at the one tunnel example that will carry them together.
+#[cfg(test)]
+mod lifecycle_guards {
+    use super::*;
+    use crate::state::{db, store};
+
+    /// #26 — a start's CLAIM never outlives the stop that revoked it.
+    ///
+    /// The claim is a row, so this is testable for real against SQLite rather
+    /// than asserted about code. Two starts race, one wins; the loser must not
+    /// get a second claim, and the stop must revoke it whether or not a
+    /// registry entry ever existed — an in-flight start has a row and no entry,
+    /// which is the case the claim exists for.
+    #[test]
+    fn a_starts_claim_never_outlives_the_stop_that_revoked_it() {
+        let conn = db::open_in_memory().unwrap();
+
+        // Exactly one of two concurrent starts proceeds.
+        assert!(store::try_claim_tunnel(&conn, "a.rex", tunnels::PID_PENDING, "/d").unwrap());
+        assert!(
+            !store::try_claim_tunnel(&conn, "a.rex", tunnels::PID_PENDING, "/d").unwrap(),
+            "a second start claimed the same domain — two cloudflareds would share one log"
+        );
+
+        // The stop path revokes by DELETING the row, which is what a start
+        // still polling for its URL reads to learn it was cancelled.
+        assert!(store::delete_tunnel(&conn, "a.rex").unwrap());
+        assert!(
+            store::get_tunnel(&conn, "a.rex").unwrap().is_none(),
+            "the claim outlived the stop — the domain reads as shared with nothing running"
+        );
+        // …and the domain is claimable again, or a stop would strand it.
+        assert!(store::try_claim_tunnel(&conn, "a.rex", tunnels::PID_PENDING, "/d").unwrap());
+
+        // `set_tunnel_pid` returning false is how an in-flight start learns its
+        // claim was revoked mid-spawn and cancels itself.
+        store::delete_tunnel(&conn, "a.rex").unwrap();
+        assert!(
+            !store::set_tunnel_pid(&conn, "a.rex", 4242).unwrap(),
+            "a revoked start could still record its pid, and the child would outlive the stop"
+        );
+    }
+
+    /// #30 — a pid the registry pass already reaped is never signalled again.
+    #[test]
+    fn the_exit_hook_never_signals_a_reaped_or_sentinel_pid() {
+        let mut reaped = std::collections::HashSet::new();
+        reaped.insert(4242u32);
+
+        assert!(
+            !should_signal_row(4242, &reaped),
+            "a reaped pid was signalled again — after wait() the number is free for reuse, so \
+             this is a signal to whatever now owns it (the never-kill-on-a-bare-pid rule)"
+        );
+        assert!(
+            !should_signal_row(tunnels::PID_PENDING, &reaped),
+            "a sentinel row has no process behind it; signalling PID_PENDING is signalling a \
+             number that never was a pid"
+        );
+        assert!(
+            should_signal_row(777, &reaped),
+            "an unreaped child from this session must still be killed — tunnels die with the app"
+        );
+    }
+
+    /// #31 and #29 — ordering and call-site facts, which no value can carry.
+    ///
+    /// #31: a crashed cloudflared must never answer "already sharing". Both
+    /// readers settle dead children BEFORE reading, so the answer can't come
+    /// from a corpse.
+    ///
+    /// #29: rexenv never stops a share on the USER'S behalf. The reaper is
+    /// where that now bites — it deletes sites unattended, and
+    /// `delete_site_owned`'s first act is to stop the site's tunnel. It must
+    /// SKIP a shared site instead, and `commands/scratch.rs` must therefore
+    /// never reach `stop_for_domain`.
+    #[test]
+    fn a_dead_child_never_reads_as_sharing_and_the_reaper_never_stops_a_share() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+
+        // #31 — every reader settles the dead first.
+        for (what, head) in [
+            ("sharing_domain", "pub(crate) fn sharing_domain("),
+            ("start_tunnel", "pub async fn start_tunnel<R: tauri::Runtime>("),
+        ] {
+            let body = src.split(head).nth(1).unwrap_or_else(|| panic!("{what} moved"));
+            let before_read = body.split("self.0.lock()").next().unwrap_or(body);
+            let before_read = before_read.split("tunnels.0.lock()").next().unwrap_or(before_read);
+            assert!(
+                before_read.contains("take_dead()"),
+                "{what} reads the registry (or the row) before settling dead children, so a \
+                 crashed cloudflared answers \"already sharing\" and the user cannot re-share \
+                 or run a job on that site (#31)"
+            );
+        }
+
+        // #29 — the reaper skips, and cannot stop.
+        let reaper = crate::core::copy_scan::production_source(include_str!("scratch.rs"));
+        assert!(
+            reaper.contains("sharing_domain("),
+            "the reaper no longer checks whether a scratch site is publicly shared before \
+             deleting it (#29/#215)"
+        );
+        assert!(
+            !reaper.contains("stop_for_domain("),
+            "the reaper stops a share on the user's behalf. rexenv never does that — the ruling \
+             is SKIP, not stop-then-delete, and unattended is the worst place to break it (#29)"
+        );
     }
 }

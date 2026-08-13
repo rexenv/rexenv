@@ -66,12 +66,12 @@ L3 = scripted manual.
 | 23 | tunnels.rs:457 | We never spawn cloudflared without the identity pair | 🔨 L0 (drift guard on `start()`'s argv) |
 | 24 | commands/tunnels.rs:3 | Tooling vhosts aren't sites so can never be shared | 🔨 L0 (negative test on the entry path) |
 | 25 | commands/tunnels.rs:56 | Deleted/renamed site never stays publicly reachable | 🔨 L1 (re-fetch public URL after delete) |
-| 26 | commands/tunnels.rs:102 | Start's claim never outlives stop/delete/rename | 🔨 L0 (claim/revoke race test) |
+| 26 | commands/tunnels.rs:102 | Start's claim never outlives stop/delete/rename | ◐ L0 ✅ `a_starts_claim_never_outlives_the_stop_that_revoked_it` — against real SQLite, not asserted about code: two concurrent starts and exactly one claim; the stop REVOKES by deleting the row (the fact an in-flight start with no registry entry reads); the domain is claimable again afterwards, or a stop would strand it; and `set_tunnel_pid` returns false on a revoked claim, which is how a start mid-spawn learns to cancel itself. **Plant-proven** by making `delete_tunnel` a no-op. Live leg — a real start racing a real stop — rides the one tunnel example (group A) |
 | 27 | commands/tunnels.rs:117 | `Err` from try_wait reads alive; death needs positive evidence | ✅ `take_dead_removes_only_exited_children` |
 | 28 | commands/tunnels.rs:140 | Dead tunnel never sits in registry showing Live | ◐ registry ✅; UI half 🔨 L2 |
-| 29 | commands/tunnels.rs:156 | rexenv never stops a share on the user's behalf | 🔨 L0 (call-site guard) |
-| 30 | commands/tunnels.rs:420 | Reaped pids never re-signalled in the exit hook | 🔨 L0 (exit-hook reaped-set test; `tunnel_sweep` covers launch only) |
-| 31 | commands/tunnels.rs:498 | A dead child never reads "already sharing" | 🔨 L0 |
+| 29 | commands/tunnels.rs:156 | rexenv never stops a share on the user's behalf | ◐ L0 ✅ the call-site half of `a_dead_child_never_reads_as_sharing_and_the_reaper_never_stops_a_share`. **The guard is aimed where the invariant became load-bearing, not where it was written**: the SCRATCH REAPER deletes sites unattended, and `delete_site_owned`'s first act is to stop the site's tunnel — so a reaper that took the normal path would break this rule with nobody watching. `commands/scratch.rs` must gate on `sharing_domain` and must never reach `stop_for_domain`; **plant-proven** by swapping the gate for a stop. (The reaper was written respecting this and cites #29 by number — the guard keeps that true rather than discovering it.) Live leg = #215's skip-don't-stop, same fixture, group A |
+| 30 | commands/tunnels.rs:420 | Reaped pids never re-signalled in the exit hook | ◐ L0 ✅ `the_exit_hook_never_signals_a_reaped_or_sentinel_pid` — the decision is now a value (`should_signal_row`) rather than a condition inside a loop that needs a Tauri app to reach. Both refusals are the never-kill-on-a-bare-pid rule: a pid the registry pass already `wait()`ed is free for the OS to reuse, and `PID_PENDING` is a claim with no process behind it. An unreaped child from this session must still die, because tunnels die with the app. **Plant-proven** by dropping the reaped-set check. `tunnel_sweep` still covers launch only |
+| 31 | commands/tunnels.rs:498 | A dead child never reads "already sharing" | ◐ L0 ✅ the ordering half of `a_dead_child_never_reads_as_sharing_and_the_reaper_never_stops_a_share`: BOTH readers (`sharing_domain`, `start_tunnel`) settle dead children before they read, so a crashed cloudflared can never answer "already sharing" — which would leave the user unable to re-share the site OR to run a job on it, since the step-7 guard reads the same fact. Source-ordering, because no value can carry it; **plant-proven** by moving the registry read above `take_dead()` |
 | 32 | commands/tunnels.rs:723 | A just-discovered tunnel never renders Live on its discovery poll | 🔨 L2 |
 
 ## core/wp_login.rs
@@ -470,9 +470,19 @@ migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260; the
 WP-CLI packages tell #301; the per-site artifact sweep #302 and the sites-folder rule #303 and the edge-wire tri-state #304 its four callers #305 and the onboarding notice #306):
-**✅ 218 · ◐ 43 · 🔨 40 · 🚫 5** of 306 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 218 · ◐ 47 · 🔨 36 · 🚫 5** of 306 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
+
+**A STALE INDEX OVER ACCURATE ENTRIES is the dangerous shape** — worse than an
+incomplete one, because it reads as a decision rather than a gap. 13 Aug 2026: the
+highest-risk cluster below still said #103 was "proven only as a substring… never a
+live 404" long after `dotfile_guard_check` proved the nginx leg over the wire. The row
+was right and current; the summary was old; the summary is what got read, and the next
+piece of work was aimed at building something that already existed. Same fix as the
+tally: **anything that restates the ledger is generated from it or points at it, never
+paraphrases it.** Until the cluster list below is generated, it is corrected in the
+same commit as any row it names.
 
 **The tally was STALE when this was written, and it is now GENERATED rather than
 typed.** It read "✅ 139 · ◐ 39 · 🔨 37 · 🚫 5 of 220" — the 3 Aug figures —
@@ -751,8 +761,10 @@ Security postures resting on unproven third-party assumptions — the shape that
    wp_login both stand on it; wp_login adds leftmost-XFF trust).
 2. **#10/#13/#37** — "a tunnel can only expose its one site": three modules assert it,
    none tests the negative.
-3. **#103** — the dotfile guard (`~/.ssh` one bug from the internet, per #98) is proven
-   only as a substring in generated config text. Never a live 404.
+3. **#103** — the dotfile guard (`~/.ssh` one bug from the internet, per #98). **nginx
+   is PROVEN LIVE** — `dotfile_guard_check` 404s `.env`/`.git`/`.hidden-php` over the
+   wire, with the secret never crossing and `.well-known` still exempt. Apache and
+   FrankenPHP are the open legs: same probes, their backends.
 4. **#175** — login-autostart "never download / never prompt": untested at any level.
 5. **#36** — wp_login's PHP-injection safety inherited, not re-checked at the injection
    point (its sibling has a dedicated test).
