@@ -96,6 +96,15 @@ it can:
   way" — the vacuous-pass shape, one layer up from where this project usually catches
   it. Its verdict is also scoped in the ledger to what the run showed (one hook style,
   one machine), not to the claim's ambition.
+  **`mcp_mail_check` (service tier) adds the other half of that discipline: refusing to
+  run when the environment could answer for you.** It brings its own Mailpit, because
+  borrowing the user's would mean planting test mail in their real store to prove rexenv
+  can tell their mail from a scratch site's. The hazard is that borrowing happens by
+  ACCIDENT: with the stack up, `mail::start` cannot bind and exits, `mail::running()`
+  then sees the user's catcher on the fixed port, and every leg proceeds against a real
+  inbox. So it proves the ports are free, its child is alive, and the store is empty
+  before it writes anything — and it never infers from absence, since an empty list is
+  also what a correctly filtered empty inbox looks like.
   Its network-tier sibling `git_site_provision_check` is the other half, and the one
   that pays: it drives the REAL `site_provision_job` on a `tauri::test::mock_app`
   against real remotes, and on its first run found **two bugs no unit test could

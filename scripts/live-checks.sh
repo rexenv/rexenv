@@ -119,6 +119,7 @@ mailpit_check service
 mariadb_bundle_check network
 mariadb_site_check network
 mcp_control_check sandbox
+mcp_mail_check service
 mcp_scratch_check sandbox
 mcp_secret_sweep sandbox
 mcp_socket_check stack

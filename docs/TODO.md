@@ -700,12 +700,17 @@ first:
       generally, false of this path. Accepted rather than reordered: the write
       was authorised when it happened, and moving the prefetch on a shipped path
       shared by the UI and CLI buys a window with no real consequence.
-    - The mail MATCH over real messages: `mcp_mail_check`, **`service` tier, not
-      `stack`** as this note said. The example brings its OWN Mailpit under
-      sandboxed paths, because borrowing the user's running one means planting
-      messages in their real store to prove we can tell their mail from a scratch
-      site's — a test that contradicts the thing it tests. Own Mailpit means own
-      ports, and the ports are fixed constants, which is what `service` means.
+    - The mail MATCH over real messages: **PROVEN** — `mcp_mail_check`,
+      **`service` tier, not `stack`** as this note said. It brings its OWN
+      Mailpit under sandboxed paths, because borrowing the user's running one
+      means planting messages in their real store to prove we can tell their mail
+      from a scratch site's — a test that contradicts the thing it tests. Own
+      Mailpit means the fixed ports, which is what `service` means. Five plants,
+      including the two that matter: `ends_with(domain)` returns the near-miss,
+      and NOT sending the near-miss fails as FIXTURE BROKEN rather than as a
+      passing filter. It also refuses to run beside a live Mailpit — found by
+      running it with the stack up, where `mail::start` cannot bind, exits, and
+      `mail::running()` sees the USER'S catcher on the fixed port.
     **M3** — DB, its own session (T1 consent dialog).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
