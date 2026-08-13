@@ -292,6 +292,12 @@ first:
   live. It had — `dotfile_guard_check` covers nginx over the wire; Apache and
   FrankenPHP are what remain. A stale index over accurate rows reads as a decision
   rather than a gap, and it sent the next piece of work at something already built.
+- [x] **Tier-1 group C — four independent L0s** ✓ 13 Aug 2026: #49 (the cancelled
+  takeover DRIVEN, not asserted — plus a second test for the ordering the first one
+  provably could not see), #54 (the cli crate's one dependency), #59 (what the DNS
+  agent can reach, scope stated), #37 (a tunnel target can only be a site row).
+  #54 and #59 fail with the DESIGN rather than a mismatch: both go false through one
+  line added by someone reading a diff.
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled

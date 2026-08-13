@@ -1376,6 +1376,54 @@ pub fn spawn(app: tauri::AppHandle) {
     });
 }
 
+
+/// #54 — the `rex` crate never links the app library.
+///
+/// The claim is a whole BUG CLASS made impossible rather than avoided: if `cli/`
+/// could link `rexenv_lib`, a `rex` command could open the same SQLite the app
+/// has open, and two writers on one database is the corruption class. The CLI is
+/// therefore a thin socket client with ONE dependency, and every command it has
+/// is dispatched by the app.
+///
+/// A "what can this reach" claim, and the way it goes false is a single line in
+/// a manifest, added by someone who wanted a type. So the failure explains the
+/// design rather than showing a mismatch — the person adding the dependency is
+/// looking at a diff, not at this file.
+#[cfg(test)]
+mod cli_isolation {
+    #[test]
+    fn the_rex_crate_never_links_the_app_library() {
+        let manifest = include_str!("../../cli/Cargo.toml");
+        let deps = manifest
+            .split("[dependencies]")
+            .nth(1)
+            .and_then(|d| d.split("\n[").next())
+            .expect("cli/Cargo.toml has a [dependencies] section");
+
+        for banned in ["rexenv", "rusqlite", "tauri", "path ="] {
+            assert!(
+                !deps.contains(banned),
+                "`cli/Cargo.toml` now depends on `{banned}`.\n\n\
+                 The rex CLI is deliberately a thin socket client with ONE dependency \
+                 (serde_json). Linking the app library — or SQLite directly — would let a `rex` \
+                 command open the same database the running app has open, and two writers on one \
+                 SQLite file is the corruption class this separation exists to make IMPOSSIBLE \
+                 rather than merely avoided (ledger #54).\n\n\
+                 If you need something the app knows, add a command to `cli_server.rs` and ask \
+                 for it over the socket — that is the whole design, and it is also what keeps \
+                 the CLI and the UI on the same code path (#57).\n\n\
+                 [dependencies] is currently:{deps}"
+            );
+        }
+        // The canary: a manifest we failed to read would pass every check above.
+        assert!(
+            deps.contains("serde_json"),
+            "the [dependencies] section did not parse as expected — this guard would pass on an \
+             empty string. Fix the parse before trusting the result.{deps}"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

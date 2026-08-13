@@ -679,6 +679,366 @@ pub fn port_bound(port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #59 — the `--dns-agent` process opens no window, touches no SQLite and
+    /// starts no services.
+    ///
+    /// A "what can this reach" claim, and those are the ones true today and
+    /// quietly false later: someone adds a call inside `run_agent`'s loop and
+    /// the second process starts writing the app's database. The failure names
+    /// WHY the agent is deliberately this small, because the person who adds
+    /// the call will be looking at a diff, not at this comment.
+    ///
+    /// Scope, stated rather than implied: this reads `main.rs`'s dispatch and
+    /// the functions `run_agent` reaches IN THIS MODULE. It is not a transitive
+    /// reachability proof — the honest bound is that the agent's entry point and
+    /// its serving loop are one screen of code, and this keeps them that way.
+    #[test]
+    fn the_dns_agent_can_reach_nothing_that_belongs_to_the_app() {
+        let main = crate::core::copy_scan::production_source(include_str!("../main.rs"));
+        // The dispatch is the whole surface: one branch, one call, then exit.
+        assert!(
+            main.contains("dns::run_agent()"),
+            "main.rs no longer routes --dns-agent straight to run_agent — if the agent now goes \
+             through the app's setup, it is no longer a separate small process (#59)"
+        );
+        assert!(
+            !main.contains("run()") || main.matches("run()").count() <= 2,
+            "main.rs grew past its two entry points"
+        );
+
+        let dns = crate::core::copy_scan::production_source(include_str!("dns.rs"));
+        let agent = dns
+            .split("pub fn run_agent()")
+            .nth(1)
+            .and_then(|b| b.split("\npub fn ").next())
+            .expect("run_agent");
+        for (needle, why) in [
+            (
+                "rusqlite",
+                "the DNS agent would open the app's SQLite. It is a SECOND PROCESS — two writers \
+                 on one database is the corruption class #54 and #59 exist to make impossible, \
+                 and the agent outlives the app so nobody would be watching",
+            ),
+            (
+                "store::",
+                "the DNS agent would read or write app state. It answers `*.rex → 127.0.0.1` \
+                 from a constant; anything it needed from the database would make it depend on \
+                 the app it deliberately outlives",
+            ),
+            (
+                "ServiceManager",
+                "the DNS agent would start or inspect services. It is a per-user LaunchAgent \
+                 with no privileges and no supervision — a service it started would outlive \
+                 everything and be owned by nobody",
+            ),
+            (
+                "WebviewWindow",
+                "the DNS agent would open a window. It runs headless under launchd at login; a \
+                 window there is a UI nobody asked for, from a process the user cannot see",
+            ),
+        ] {
+            assert!(
+                !agent.contains(needle),
+                "`run_agent` now mentions `{needle}` — {why}"
+            );
+        }
+    }
+
+    /// #49 — a CANCELLED takeover leaves the user's resolver file exactly as it
+    /// was, and leaves nothing of ours behind.
+    ///
+    /// This drives the real rollback rather than asserting that two lines are in
+    /// the right order. The failure being simulated is the one that happens: the
+    /// macOS auth prompt is dismissed, so `run_privileged` returns Err after the
+    /// backup and the record have already landed. What must be true afterwards
+    /// is about DISK, not about sequence — their file untouched, our backup
+    /// gone, our record gone — because a rollback that removed the row and left
+    /// the backup (or vice versa) would satisfy an ordering assertion and still
+    /// leave an orphan pointing at a file that is not theirs.
+    #[test]
+    fn a_cancelled_takeover_gives_their_resolver_file_back_untouched() {
+        use crate::platform::traits::{
+            AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,
+            EdgeSupervisor, Paths, PermissionManager, Platform, PrivilegeManager,
+            ProcessSupervisor, ShellRunner,
+        };
+
+        let root = std::env::temp_dir().join(format!("rexenv-dns49-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let their_file = root.join("resolver-test");
+        // Somebody else's resolver — Valet's, in shape and in spirit.
+        const THEIRS: &str = "nameserver 127.0.0.1\nport 53\n";
+        std::fs::write(&their_file, THEIRS).unwrap();
+
+        struct TmpPaths(std::path::PathBuf);
+        impl Paths for TmpPaths {
+            fn app_data_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.clone())
+            }
+            fn config_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("config"))
+            }
+            fn log_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("logs"))
+            }
+            fn bin_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("bin"))
+            }
+            fn hosts_file(&self) -> std::path::PathBuf {
+                self.0.join("hosts")
+            }
+        }
+        struct TmpDns(std::path::PathBuf);
+        impl DnsManager for TmpDns {
+            fn resolver_path(&self, _tld: &str) -> std::path::PathBuf {
+                self.0.clone()
+            }
+            fn resolver_contents(&self, port: u16) -> String {
+                format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn install_command(&self, _tld: &str, _port: u16) -> String {
+                "true".into()
+            }
+            fn uninstall_command(&self, _tlds: &[String]) -> String {
+                "true".into()
+            }
+            fn restore_command(&self, _restores: &[(String, std::path::PathBuf)]) -> String {
+                "true".into()
+            }
+        }
+        /// The cancelled prompt.
+        struct Cancelled;
+        impl PrivilegeManager for Cancelled {
+            fn run_privileged(&self, _script: &str) -> Result<String> {
+                Err(Error::Other("the administrator prompt was cancelled".into()))
+            }
+        }
+        struct RealPerms;
+        impl PermissionManager for RealPerms {
+            fn set_executable(&self, _p: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn set_private(&self, _p: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn write_private(&self, path: &std::path::Path, contents: &[u8]) -> Result<()> {
+                std::fs::write(path, contents)?;
+                Ok(())
+            }
+        }
+        struct P(TmpPaths, TmpDns, Cancelled, RealPerms);
+        impl Platform for P {
+            fn paths(&self) -> &dyn Paths {
+                &self.0
+            }
+            fn dns(&self) -> &dyn DnsManager {
+                &self.1
+            }
+            fn privileges(&self) -> &dyn PrivilegeManager {
+                &self.2
+            }
+            fn permissions(&self) -> &dyn PermissionManager {
+                &self.3
+            }
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                unimplemented!()
+            }
+            fn cert_trust(&self) -> &dyn CertTrustManager {
+                unimplemented!()
+            }
+            fn autostart(&self) -> &dyn AutostartManager {
+                unimplemented!()
+            }
+            fn shell(&self) -> &dyn ShellRunner {
+                unimplemented!()
+            }
+            fn binaries(&self) -> &dyn BinaryProvider {
+                unimplemented!()
+            }
+            fn edge(&self) -> &dyn EdgeSupervisor {
+                unimplemented!()
+            }
+            fn dns_agent(&self) -> &dyn DnsAgentManager {
+                unimplemented!()
+            }
+        }
+
+        let platform = P(
+            TmpPaths(root.clone()),
+            TmpDns(their_file.clone()),
+            Cancelled,
+            RealPerms,
+        );
+        let conn = crate::state::db::open_in_memory().unwrap();
+
+        let err = take_over_resolver(&conn, &platform, "test", 15353)
+            .expect_err("a cancelled prompt must fail the takeover");
+        assert!(err.to_string().contains("cancelled"), "{err}");
+
+        // THEIR file, byte for byte. This is the whole claim.
+        assert_eq!(
+            std::fs::read_to_string(&their_file).unwrap(),
+            THEIRS,
+            "a cancelled takeover overwrote the user's own resolver file — the exact loss #49 \
+             exists to prevent, and one they cannot undo because our backup is rolled back too"
+        );
+        // Nothing of ours left behind: an orphaned backup or a row pointing at a
+        // file that is not theirs is how the next teardown restores the wrong
+        // thing.
+        assert!(
+            !backup_path(&platform, "test").unwrap().exists(),
+            "the rollback left our backup behind"
+        );
+        assert!(
+            crate::state::store::get_resolver_takeover(&conn, "test").unwrap().is_none(),
+            "the rollback left the record behind — teardown would later 'restore' from a backup \
+             that no longer exists"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #49's OTHER half — the ORDERING, which the cancelled-prompt test above
+    /// cannot reach.
+    ///
+    /// A cancelled prompt writes nothing, so moving the privileged write above
+    /// the backup still leaves their file intact and that test still passes
+    /// (found by planting exactly that). The ordering only bites when the
+    /// privileged write SUCCEEDS and the backup fails: with the correct order
+    /// the backup failure returns before root touches anything, and with the
+    /// order swapped we have replaced a file we never managed to copy — the
+    /// unrecoverable case, and the reason the rule is "backup and record land
+    /// BEFORE the privileged write" rather than "roll back afterwards".
+    #[test]
+    fn a_backup_that_fails_stops_the_privileged_write_from_happening_at_all() {
+        use crate::platform::traits::{
+            AutostartManager, BinaryProvider, CertTrustManager, DnsAgentManager, DnsManager,
+            EdgeSupervisor, Paths, PermissionManager, Platform, PrivilegeManager,
+            ProcessSupervisor, ShellRunner,
+        };
+
+        let root = std::env::temp_dir().join(format!("rexenv-dns49b-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let their_file = root.join("resolver-test");
+        const THEIRS: &str = "nameserver 127.0.0.1\nport 53\n";
+        std::fs::write(&their_file, THEIRS).unwrap();
+
+        struct TmpPaths(std::path::PathBuf);
+        impl Paths for TmpPaths {
+            fn app_data_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.clone())
+            }
+            fn config_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("config"))
+            }
+            fn log_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("logs"))
+            }
+            fn bin_dir(&self) -> Result<std::path::PathBuf> {
+                Ok(self.0.join("bin"))
+            }
+            fn hosts_file(&self) -> std::path::PathBuf {
+                self.0.join("hosts")
+            }
+        }
+        struct TmpDns(std::path::PathBuf);
+        impl DnsManager for TmpDns {
+            fn resolver_path(&self, _tld: &str) -> std::path::PathBuf {
+                self.0.clone()
+            }
+            fn resolver_contents(&self, port: u16) -> String {
+                format!("nameserver 127.0.0.1\nport {port}\n")
+            }
+            fn install_command(&self, _tld: &str, _port: u16) -> String {
+                "install".into()
+            }
+            fn uninstall_command(&self, _tlds: &[String]) -> String {
+                "true".into()
+            }
+            fn restore_command(&self, _restores: &[(String, std::path::PathBuf)]) -> String {
+                "true".into()
+            }
+        }
+        /// Root, and it really writes — this is what makes the ordering
+        /// observable at all.
+        struct RootWrites(std::path::PathBuf);
+        impl PrivilegeManager for RootWrites {
+            fn run_privileged(&self, _script: &str) -> Result<String> {
+                std::fs::write(&self.0, "nameserver 127.0.0.1\nport 15353\n")?;
+                Ok(String::new())
+            }
+        }
+        /// The backup cannot be written (a full disk, a permissions fault).
+        struct NoBackup;
+        impl PermissionManager for NoBackup {
+            fn set_executable(&self, _p: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn set_private(&self, _p: &std::path::Path) -> Result<()> {
+                Ok(())
+            }
+            fn write_private(&self, _path: &std::path::Path, _contents: &[u8]) -> Result<()> {
+                Err(Error::Other("no space left on device".into()))
+            }
+        }
+        struct P(TmpPaths, TmpDns, RootWrites, NoBackup);
+        impl Platform for P {
+            fn paths(&self) -> &dyn Paths {
+                &self.0
+            }
+            fn dns(&self) -> &dyn DnsManager {
+                &self.1
+            }
+            fn privileges(&self) -> &dyn PrivilegeManager {
+                &self.2
+            }
+            fn permissions(&self) -> &dyn PermissionManager {
+                &self.3
+            }
+            fn supervisor(&self) -> &dyn ProcessSupervisor {
+                unimplemented!()
+            }
+            fn cert_trust(&self) -> &dyn CertTrustManager {
+                unimplemented!()
+            }
+            fn autostart(&self) -> &dyn AutostartManager {
+                unimplemented!()
+            }
+            fn shell(&self) -> &dyn ShellRunner {
+                unimplemented!()
+            }
+            fn binaries(&self) -> &dyn BinaryProvider {
+                unimplemented!()
+            }
+            fn edge(&self) -> &dyn EdgeSupervisor {
+                unimplemented!()
+            }
+            fn dns_agent(&self) -> &dyn DnsAgentManager {
+                unimplemented!()
+            }
+        }
+
+        let platform = P(
+            TmpPaths(root.clone()),
+            TmpDns(their_file.clone()),
+            RootWrites(their_file.clone()),
+            NoBackup,
+        );
+        let conn = crate::state::db::open_in_memory().unwrap();
+
+        take_over_resolver(&conn, &platform, "test", 15353)
+            .expect_err("a backup that cannot be written must fail the takeover");
+        assert_eq!(
+            std::fs::read_to_string(&their_file).unwrap(),
+            THEIRS,
+            "root replaced the user's resolver file even though the backup failed. There is now \
+             no copy of what was there, so nothing can give it back — which is why the backup \
+             lands FIRST rather than being rolled back afterwards"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
     use hickory_proto::op::{Message, Query};
     use hickory_proto::serialize::binary::{BinDecodable, BinEncodable};
     use std::time::Duration;

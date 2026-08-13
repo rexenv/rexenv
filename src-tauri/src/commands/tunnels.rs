@@ -804,6 +804,51 @@ mod tests {
     }
 }
 
+/// #37 — internal tooling can never become a tunnel origin.
+///
+/// Adminer is a passwordless database browser served on an internal vhost. It
+/// has no `Site` row, and the ONLY way to start a tunnel is a site id resolved
+/// through `tunnel_site` — so "Adminer can never be shared publicly" is a
+/// consequence of the lookup, not a check anyone has to remember. This pins
+/// that shape: a second target source (a domain parameter, a host string) would
+/// make the claim depend on a validator instead of on there being nothing to
+/// validate.
+#[cfg(test)]
+mod adminer_can_never_be_shared {
+    #[test]
+    fn a_tunnel_target_can_only_ever_be_a_site_row() {
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        let start = src
+            .split("pub async fn start_tunnel<R: tauri::Runtime>(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[tauri::command]").next())
+            .expect("start_tunnel");
+
+        assert!(
+            start.contains("tunnel_site(&state, &id)"),
+            "`start_tunnel` no longer resolves its target through a Sites lookup. The reason \
+             Adminer — a PASSWORDLESS database browser — can never be published is that it has \
+             no site row and there is no other way in (#37). A target that came from anywhere \
+             else would make that a validation someone has to get right."
+        );
+        assert!(
+            !start.contains("ADMINER_HOST"),
+            "`start_tunnel` mentions the Adminer host, which it has no business naming"
+        );
+        // The lookup itself: a row, or an error. Never a fallback.
+        let lookup = src
+            .split("fn tunnel_site(")
+            .nth(1)
+            .and_then(|b| b.split("\n}").next())
+            .expect("tunnel_site");
+        assert!(
+            lookup.contains("ok_or_else"),
+            "`tunnel_site` no longer ERRORS on a missing site — a fallback here is how a \
+             non-site becomes a tunnel origin (#37)"
+        );
+    }
+}
+
 /// The Tier-1 lifecycle guards (#26, #29, #30, #31).
 ///
 /// All four are "a share never outlives / never blocks / never gets stopped for
