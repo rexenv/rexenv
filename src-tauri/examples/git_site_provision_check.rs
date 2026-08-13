@@ -238,6 +238,11 @@ async fn main() {
         if site.git_url.as_deref() != Some("https://github.com/laravel/laravel") {
             failures.push(format!("Laravel: git_url = {:?}", site.git_url));
         }
+        // The name a developer reads in Adminer/TablePlus and in `.env` — a
+        // Laravel app is `lv_`, never WordPress's `wp_` (13 Aug 2026).
+        if !site.db_name.starts_with("lv_") {
+            failures.push(format!("Laravel: db_name = {} (want lv_…)", site.db_name));
+        }
         if !project.join("vendor/autoload.php").is_file() {
             failures.push("Laravel: composer install did not produce vendor/autoload.php".into());
         }
