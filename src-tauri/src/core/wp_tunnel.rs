@@ -42,10 +42,22 @@ const ORIGIN_PLACEHOLDER: &str = "__REXENV_TUNNEL_ORIGIN__";
 /// The auto-managed mu-plugin. `preg_replace_callback` is used over
 /// `preg_replace` so replacement text is emitted verbatim (no `\`/`$n`
 /// escape processing on origins containing `\/`).
-const MU_PLUGIN_TEMPLATE: &str = r#"<?php
+///
+/// `pub(crate)` so `wp_login`'s ordering guard can see BOTH halves of the
+/// include-time/`init` pairing (CLAIM-LEDGER #308) — a guard that could only see
+/// one half would pass while the other side was refactored out from under it.
+pub(crate) const MU_PLUGIN_TEMPLATE: &str = r#"<?php
 /* Plugin Name: rexenv tunnel URLs
  * Description: Auto-managed by rexenv while this site is shared over a public tunnel. Safe to delete.
  */
+// This body runs at INCLUDE time rather than on a hook, and that is load-bearing
+// rather than style. WordPress includes every mu-plugin (wp-settings.php:498)
+// before it fires muplugins_loaded (540) or init (771), so the HTTP_HOST rewrite
+// below is already in place when rexenv-login.php's init callback reads the Host.
+// The pairing does NOT rest on filename sort. Two tidying refactors break it:
+// moving this body onto a hook, or moving the login check to include time.
+// Observed 14 Aug 2026 — with the CF-header gate removed, the login gate denied
+// on Host, and only while this file was present. See CLAIM-LEDGER #308.
 call_user_func(static function () {
     $origin = '__REXENV_TUNNEL_ORIGIN__';
     if ($origin === '' || defined('WP_CLI')) {

@@ -42,6 +42,12 @@ add_filter('login_message', function ($message) {
     return $message;
 });
 
+// The gate below runs on `init` — AFTER every mu-plugin has been included
+// (wp-settings.php:498 vs 771), which is what lets rexenv-tunnel.php's
+// include-time body rewrite HTTP_HOST before the Host check here reads it.
+// Ordered by WordPress's boot, not by filename sort. Moving this to include time,
+// or moving the tunnel plugin's body onto a hook, breaks the pairing.
+// See CLAIM-LEDGER #308.
 add_action('init', function () {
     if (empty($_GET['rexenv_login'])) {
         return;
@@ -272,6 +278,56 @@ mod tests {
         // and no unexpanded placeholder survives.
         assert!(src.contains("$site   = 'acme.rex';"), "site domain injected");
         assert!(!src.contains("{{SITE_DOMAIN}}"));
+    }
+
+    /// PHP line comments stripped, so a guard can never be satisfied by the
+    /// prose that explains it — the failure this codebase has now made four
+    /// times (`copy_scan`'s doc records the Rust-side version).
+    fn php_code_only(src: &str) -> String {
+        src.lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_two_mu_plugins_keep_their_include_time_then_init_ordering() {
+        // The tunnel plugin rewrites HTTP_HOST at INCLUDE time; the login gate
+        // reads the Host on `init`. WordPress includes every mu-plugin
+        // (wp-settings.php:498) before firing init (771), so the rewrite always
+        // lands first — by boot order, NOT by filename sort. Observed 14 Aug 2026:
+        // with the CF-header gate removed the login gate denied on Host, and only
+        // while the tunnel plugin was present (CLAIM-LEDGER #308).
+        //
+        // This guard exists because the finding's other half is a comment, and a
+        // comment does not fail. Either refactor that breaks the pairing — hooking
+        // the tunnel body, or moving the login check to include time — trips here.
+        let tunnel = php_code_only(crate::core::wp_tunnel::MU_PLUGIN_TEMPLATE);
+        let login = php_code_only(MU_PLUGIN);
+        assert!(
+            tunnel.contains("call_user_func(static function () {"),
+            "the tunnel mu-plugin no longer runs at include time — the login gate's \
+             Host check now reads the LOCAL host through a tunnel (#308)"
+        );
+        assert!(
+            login.contains("add_action('init', function () {"),
+            "the login gate no longer runs on init — it may now read HTTP_HOST \
+             BEFORE the tunnel plugin rewrites it (#308)"
+        );
+        // Both files must still be talking about the same fact, in the same words,
+        // where the refactorer will be standing.
+        assert!(crate::core::wp_tunnel::MU_PLUGIN_TEMPLATE.contains("CLAIM-LEDGER #308"));
+        assert!(MU_PLUGIN.contains("CLAIM-LEDGER #308"));
+        // Canary: the stripper actually stripped. Both needles above appear ONLY
+        // as code; this phrase appears only in the comments around them, so a
+        // no-op stripper leaves it behind and says so here rather than silently
+        // letting the comments satisfy the assertions.
+        let only_in_prose = ["tidying", " refactors break it"].concat();
+        assert!(
+            !tunnel.contains(&only_in_prose),
+            "php_code_only stripped nothing — the assertions above may be reading \
+             the comment that explains them"
+        );
     }
 
     #[test]
