@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { create } from "zustand";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { TECH_INPUT } from "@/lib/utils";
 import { confirmPhraseMatches, TypeToConfirm } from "@/components/ui/type-to-confirm";
 
@@ -123,9 +124,16 @@ export function PromptDialog({
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
         }}
-        className={`mt-${label ? "0" : "3"} h-[34px] w-full rounded border border-rex-border bg-rex-surface-2 px-3 text-[0.8125rem] text-rex-text outline-none focus:border-brand ${
-          mono ? "font-mono text-[0.78125rem]" : ""
-        }`}
+        // Whole class names, never `mt-${…}`: Tailwind scans the SOURCE for
+        // literals, so an interpolated name is never generated and silently
+        // does nothing. `mt-3` here worked only because another file happens to
+        // use it, and `mt-0` was never generated at all — invisible, because
+        // no margin and `mt-0` look identical.
+        className={cn(
+          label ? "mt-0" : "mt-3",
+          "h-[34px] w-full rounded border border-rex-border bg-rex-surface-2 px-3 text-[0.8125rem] text-rex-text outline-none focus:border-brand",
+          mono && "font-mono text-[0.78125rem]",
+        )}
       />
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>

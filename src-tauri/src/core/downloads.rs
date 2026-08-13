@@ -9,6 +9,12 @@
 //! every call site would churn ~10 signatures for no gain. Platform-agnostic and
 //! tauri-free — the app layer (lib.rs) subscribes via [`Hub::subscribe`] and
 //! forwards snapshots to the frontend as Tauri events.
+//!
+//! It also owns [`user_downloads_dir`] — the USER'S `~/Downloads`, which is a
+//! different thing from everything above (this module is otherwise about
+//! downloads rexenv is performing). It lives here because three modules had
+//! grown their own identical copy: one `UserDirs` call has nothing to drift,
+//! but three is where "nothing to drift" stops being the argument.
 
 use crate::core::db::DbEngine;
 use crate::core::{binaries, php};
@@ -17,9 +23,19 @@ use crate::platform::traits::Platform;
 use crate::state::models::{Site, WebServer};
 use serde::Serialize;
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
+
+/// The user's `~/Downloads` — where a database export, a log download and a
+/// built plugin zip are delivered. ONE definition; `logs`, `database` and
+/// `dist_archive` each had their own until 13 Aug 2026.
+pub fn user_downloads_dir() -> Result<PathBuf> {
+    directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
+        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))
+}
 
 /// Where a download item is in its life. `Preparing` covers everything after
 /// the verified download (extract, relink, codesign) — it can take seconds for

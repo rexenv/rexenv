@@ -233,14 +233,22 @@ evidence cited.
 - [ ] **WP Manager cron list: arguments display** — placeholder for QA's exact
   complaint (likely the event-args column in the SiteDetail cron tab). Get the
   repro or drop after the next QA round.
-- [ ] Nits (batch into any nearby commit): `src/components/ui/dialog.tsx:101`
-  interpolated Tailwind class (`mt-${…}` defeats JIT scanning);
-  `core/wp_login.rs:185` comment says "256-bit" for a ~244-bit token; the
-  THIRD copy of the four-line `downloads_dir()` helper (`core/logs.rs:145`,
-  `core/database.rs:145`, `core/dist_archive.rs` — one `UserDirs` call with
-  nothing to drift, but three is where that stops being the argument); the
-  `validate_linked_docroot` per-call `list(conn)` cost note
-  (`core/sites.rs:875` — fine at current scale, hoist if imports grow).
+- [x] **Nits batch** ✓ 13 Aug 2026. The interpolated Tailwind class in
+  `ui/dialog.tsx` (harmless by LUCK — `mt-3` existed because another file used
+  it, `mt-0` never existed and its absence looks identical to a margin of zero)
+  is now whole class names through `cn()`, **and the shape is linted**
+  (`no_tailwind_class_name_is_built_by_interpolation`): every `className={…}`
+  expression is brace-matched, and `${` must follow whitespace or a delimiter.
+  The lint took three plants to become true — a line window both MISSED a `cn()`
+  continuation line and FLAGGED an unrelated `example={…}` prop, and keying on
+  `-${` alone missed `text-[${n}]` and `hover:${c}`. `wp_login.rs`'s "256-bit" is
+  now ~244 (a v4 UUID carries 122 random bits, not 128; corrected because a
+  security comment that rounds in the FLATTERING direction is one a later reader
+  trusts instead of re-deriving). `downloads_dir()` is one definition
+  (`core::downloads::user_downloads_dir`) — there turned out to be FOUR copies,
+  not three: `core/wordpress.rs` had one the note never mentioned.
+  - [ ] Still open: the `validate_linked_docroot` per-call `list(conn)` cost note
+    (`core/sites.rs` — fine at current scale, hoist if imports grow).
 
 ## Ledger-driven proof backlog
 

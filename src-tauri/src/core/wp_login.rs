@@ -182,7 +182,11 @@ pub fn issue(
 ) -> Result<(String, bool)> {
     let created_dir = ensure_muplugin(docroot, content_rel, domain)?;
 
-    // 256-bit token (two v4 UUIDs of randomness); store only its hash.
+    // ~244-bit token (two v4 UUIDs); store only its hash. NOT 256: a v4 UUID
+    // carries 122 random bits, not 128 — 4 are the version nibble and 2 the
+    // variant. The margin is enormous either way; the number is corrected
+    // because a security comment that rounds in the FLATTERING direction is the
+    // kind a later reader trusts instead of re-deriving.
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let hash = sha256_hex(token.as_bytes());
     let exp = SystemTime::now()

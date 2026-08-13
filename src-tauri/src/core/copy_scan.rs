@@ -138,6 +138,143 @@ const LINK = "https://example.test/a//b";
         assert!(out.contains("https://example.test/a//b"));
     }
 
+    /// A Tailwind class name built by interpolation is never generated, because
+    /// the scanner reads SOURCE LITERALS — so `mt-${x ? "0" : "3"}` produces no
+    /// margin at all and looks exactly like a margin of zero. That is the worst
+    /// kind of frontend bug: it cannot be seen, only reasoned about.
+    ///
+    /// Found once, in `dialog.tsx`, where it had been harmless by luck — `mt-3`
+    /// existed because another file used it, and `mt-0` never existed but its
+    /// absence happens to look right. The next one will not be lucky.
+    ///
+    /// This lives in `copy_scan` because this module already owns "reading the
+    /// frontend source from a Rust test"; it is a build-mechanism lint rather
+    /// than a copy guard, and there is no other module that owns the fact.
+    #[test]
+    fn no_tailwind_class_name_is_built_by_interpolation() {
+        /// Every `className={…}` expression in `src`, brace-matched.
+        ///
+        /// A line WINDOW was tried first and is wrong in both directions: it
+        /// missed an interpolation a `cn(` call put on the next line, and it
+        /// flagged `example={`site1.${domain}`}` several lines below an
+        /// unrelated className. Scoping to the actual expression is the only
+        /// version that means what the test's name says.
+        fn class_spans(text: &str) -> Vec<(usize, String)> {
+            let chars: Vec<char> = text.chars().collect();
+            let mut out = Vec::new();
+            let mut i = 0usize;
+            let needle: Vec<char> = "className=".chars().collect();
+            while i + needle.len() < chars.len() {
+                if chars[i..i + needle.len()] != needle[..] {
+                    i += 1;
+                    continue;
+                }
+                let mut j = i + needle.len();
+                while j < chars.len() && chars[j].is_whitespace() {
+                    j += 1;
+                }
+                if j >= chars.len() || chars[j] != '{' {
+                    // `className="…"` — a plain literal, nothing to interpolate.
+                    i = j.max(i + 1);
+                    continue;
+                }
+                let span_start = j;
+                let mut depth = 0i32;
+                while j < chars.len() {
+                    match chars[j] {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    j += 1;
+                }
+                let line = text[..text
+                    .char_indices()
+                    .nth(span_start)
+                    .map(|(b, _)| b)
+                    .unwrap_or(0)]
+                    .matches('\n')
+                    .count()
+                    + 1;
+                out.push((line, chars[span_start..=j.min(chars.len() - 1)].iter().collect()));
+                i = j.max(i + 1);
+            }
+            out
+        }
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "tsx" && ext != "ts" {
+                    continue;
+                }
+                // Comments stripped with this module's own function, because the
+                // FIRST run flagged the comment above the fix that explains the
+                // pattern. A guard reading its own explanation is now the fourth
+                // instance here, and the whole argument for one stripper.
+                let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+                let text = strip_ts_comments(&raw);
+                for (line, span) in class_spans(&text) {
+                    let chars: Vec<char> = span.chars().collect();
+                    for w in 0..chars.len().saturating_sub(1) {
+                        if chars[w] != '$' || chars[w + 1] != '{' {
+                            continue;
+                        }
+                        // THE RULE: the character before `${` must be
+                        // whitespace or a delimiter. A whole class interpolated
+                        // in (`… ${color}`) is fine — the variable holds a
+                        // complete literal the scanner finds where it is
+                        // defined. A PARTIAL name is not, and it has more shapes
+                        // than a `-${` check knows: `mt-${x}`, `text-[${n}]` and
+                        // `hover:${c}` are all invisible the same way, which a
+                        // plant found. The rule is the boundary, not the hyphen.
+                        let before = if w == 0 { ' ' } else { chars[w - 1] };
+                        if !before.is_whitespace()
+                            && !matches!(before, '`' | '{' | '(' | ',')
+                        {
+                            out.push(format!(
+                                "  {}:{line}  …{}…",
+                                path.display(),
+                                span.chars()
+                                    .skip(w.saturating_sub(24))
+                                    .take(40)
+                                    .collect::<String>()
+                                    .replace('\n', " ")
+                            ));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("src");
+        assert!(root.is_dir(), "the frontend source is not where this expects it");
+        let mut hits = Vec::new();
+        walk(&root, &mut hits);
+        assert!(
+            hits.is_empty(),
+            "a Tailwind class name is built by interpolation, so it is never generated and \
+             silently does nothing — the class is simply absent, which looks identical to a \
+             value of zero:\n{}",
+            hits.join("\n")
+        );
+    }
+
     #[test]
     fn production_lines_survive_a_test_module_in_the_middle_of_a_file() {
         // The bug this exists for: cutting at the first `#[cfg(test)]` keeps the

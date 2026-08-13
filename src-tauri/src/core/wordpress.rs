@@ -1734,9 +1734,7 @@ pub fn content_export_to_downloads(
     wp_phar: &Path,
     docroot: &Path,
 ) -> Result<Vec<String>> {
-    let downloads = directories::UserDirs::new()
-        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
-        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))?;
+    let downloads = super::downloads::user_downloads_dir()?;
     let dir_arg = format!("--dir={}", downloads.display());
     let out = wp_run(php_bin, wp_phar, docroot, &["export", &dir_arg])?;
     let files: Vec<String> = out

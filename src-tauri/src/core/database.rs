@@ -142,9 +142,7 @@ fn mysql_exec(client: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
 /// be running. `dump` is the dump BINARY.
 pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
     validate_db_name(name)?;
-    let downloads = directories::UserDirs::new()
-        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
-        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))?;
+    let downloads = crate::core::downloads::user_downloads_dir()?;
     let mut dest = downloads.join(format!("{domain}-db.sql"));
     let mut n = 1;
     while dest.exists() {

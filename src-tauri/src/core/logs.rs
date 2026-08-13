@@ -144,9 +144,7 @@ pub fn download(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
 
 /// The user's Downloads folder (shared by every log download).
 fn downloads_dir() -> Result<PathBuf> {
-    directories::UserDirs::new()
-        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
-        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))
+    crate::core::downloads::user_downloads_dir()
 }
 
 /// First non-existing `<stem>.log` / `<stem>-<n>.log` under `dir`.

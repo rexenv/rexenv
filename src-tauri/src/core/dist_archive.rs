@@ -475,9 +475,7 @@ pub fn build_and_deliver(
 /// drift — but three is the number at which that stops being true, so it is
 /// filed as a nit in `docs/TODO.md`.
 fn downloads_dir() -> Result<PathBuf> {
-    directories::UserDirs::new()
-        .and_then(|u| u.download_dir().map(|p| p.to_path_buf()))
-        .ok_or_else(|| Error::Other("could not resolve the Downloads folder".into()))
+    crate::core::downloads::user_downloads_dir()
 }
 
 /// Move the finished archive into Downloads, **never overwriting** — the same
