@@ -228,8 +228,11 @@ evidence cited.
 
 ## Ledger-driven proof backlog
 
-The test metric is `docs/CLAIM-LEDGER.md` (mechanical tally 29 Jul 2026, after the
-fix/docs/M1 merges: **123 ✅ · 38 ◐ · 37 🔨 · 5 🚫** of 203). The backlog = every 🔨
+The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
+carried 29 Jul's numbers (123/38/37/5 of 203) until 13 Aug, when the ledger's own
+generated line read 213/43/40/5 of 301: a second copy of a number that is generated
+in one place drifts, and a stale one reads as progress that did not happen. Run
+`scripts/ledger-tally.sh`. The backlog = every 🔨
 row + the noted half of every ◐ row, worked by the ledger's blast-radius tiers, top
 first:
 
