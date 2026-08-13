@@ -6,9 +6,12 @@
 //! separate composer package, and the bundled phar does not contain it — which
 //! is easy to disbelieve, because on a machine that has ever run
 //! `wp package install` the command answers perfectly well. It answers from
-//! `~/.wp-cli/packages/`, a directory rexenv does not own, does not pin, and
-//! (ledger #228) does not currently neutralise. That is how this feature was
-//! nearly built on a package installed on one laptop in December 2021.
+//! `~/.wp-cli/packages/`, a directory rexenv does not own and does not pin.
+//! That is how this feature was nearly built on a package installed on one
+//! laptop in December 2021. Since 13 Aug 2026 no `wp` rexenv runs for a user
+//! reads that directory at all ([`neutral_packages_path`], ledger #228) — but
+//! the rule below is what made the capability real, and it is what makes the
+//! pin affordable: nothing rexenv needs went away when the inheritance did.
 //!
 //! So the rule this module implements: **a command rexenv depends on is one
 //! rexenv carries.** The tree is vendored (`resources/wp-dist-archive`, built by
@@ -62,10 +65,78 @@ fn tree_dir(paths: &dyn Paths) -> Result<PathBuf> {
 /// installed packages irrelevant to a command rexenv chose the version of. It
 /// stays empty by never being written to — nothing here creates anything
 /// inside it.
+///
+/// Predates [`neutral_packages_path`] and is kept because `dist-archive`
+/// already threads it (#230, shipped and proven). Both satisfy the same rule —
+/// no `vendor/autoload.php` can appear inside — by different means; the newer
+/// one is the stronger of the two and is what a new spawn site should use.
 pub fn empty_packages_dir(paths: &dyn Paths) -> Result<PathBuf> {
     let dir = paths.app_data_dir()?.join("wp-packages").join("none");
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+/// The name of the file beside the phar that every rexenv-run `wp` has its
+/// packages dir pointed at. Named for what it is, so the environment of a
+/// spawned child reads as deliberate rather than as a bug (#228).
+pub const NEUTRAL_PACKAGES_FILE: &str = ".rexenv-no-wp-packages";
+
+/// The `WP_CLI_PACKAGES_DIR` value that pins the command set: a **file**, beside
+/// the phar it pins.
+///
+/// # Why a file and not an empty directory
+///
+/// WP-CLI loads `<packages dir>/vendor/autoload.php` when it is readable, so an
+/// empty directory is neutral *today*. It is not neutral permanently: a
+/// `wp package install` — which the MCP raw runner can be handed by an agent —
+/// populates whatever directory it is pointed at, and the pin would then be
+/// quietly gone, with every test still passing. A regular file cannot contain
+/// `vendor/autoload.php` and cannot be turned into a directory that does, so
+/// the pin holds by the shape of the path rather than by nobody writing there.
+/// Measured against the pinned phar (2.12.0, 13 Aug 2026): ordinary commands are
+/// unaffected and silent (`--version`, `help plugin install`, `cli info`); a
+/// package-provided command answers `not a registered wp command`;
+/// `wp package list` refuses with `couldn't be created: mkdir(): File exists`,
+/// which is the erosion path failing loudly instead of succeeding quietly.
+///
+/// # Why beside the phar
+///
+/// It is the one path every spawn site already holds. The alternative — passing
+/// an app-data dir down — is ~145 call sites of signature churn to reach four
+/// spawns, and a variable threaded through 145 places is a variable that can be
+/// dropped at one of them.
+///
+/// Creating the file is best-effort: if the write fails the path still does not
+/// resolve to a packages dir, so the pin degrades to "neutral but erodable"
+/// rather than to "inherits the user's packages".
+pub fn neutral_packages_path(wp_phar: &Path) -> PathBuf {
+    let path = wp_phar.with_file_name(NEUTRAL_PACKAGES_FILE);
+    // `create_new` — never truncate, and no extra stat on the common path.
+    let _ = std::fs::OpenOptions::new().write(true).create_new(true).open(&path);
+    path
+}
+
+/// The one environment pair that pins the command set of a rexenv-run `wp`.
+pub fn pin_packages_env(wp_phar: &Path) -> (String, String) {
+    (
+        "WP_CLI_PACKAGES_DIR".to_string(),
+        neutral_packages_path(wp_phar).display().to_string(),
+    )
+}
+
+/// A streamed spawn's environment with the command set pinned.
+///
+/// Any inbound `WP_CLI_PACKAGES_DIR` is **removed**, then ours is appended —
+/// so the pin does not depend on the child applying a later entry over an
+/// earlier one. A spawn env built in a different order by a future refactor
+/// would otherwise undo the pin silently, with every other test still green.
+/// The login-shell snapshot these are layered onto is the user's real
+/// environment, so an exported value is the ordinary case, not a corner.
+pub fn with_pinned_packages(env: &[(String, String)], wp_phar: &Path) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> =
+        env.iter().filter(|(k, _)| k != "WP_CLI_PACKAGES_DIR").cloned().collect();
+    out.push(pin_packages_env(wp_phar));
+    out
 }
 
 /// Materialise the vendored tree (idempotent) and return the path to hand to
@@ -245,5 +316,75 @@ mod tests {
             "the missing file was not restored — a partial tree was trusted"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn phar_scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rexenv-pin-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // Production-shaped: the phar always arrives from `binaries::resolve_file`
+        // as `<app-data>/bin/wp-cli-<version>/wp-cli.phar`.
+        let phar_dir = dir.join("bin").join("wp-cli-2.12.0");
+        std::fs::create_dir_all(&phar_dir).unwrap();
+        let phar = phar_dir.join("wp-cli.phar");
+        std::fs::write(&phar, b"#!/usr/bin/env php\n").unwrap();
+        phar
+    }
+
+    fn sandbox_root(phar: &Path) -> PathBuf {
+        phar.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf()
+    }
+
+    #[test]
+    fn the_pinned_packages_path_can_never_become_a_packages_dir() {
+        // The whole reason it is a FILE. An empty directory is neutral today
+        // and populated by the first `wp package install` an agent runs through
+        // the raw runner — after which the pin is gone and every test here
+        // still passes.
+        let phar = phar_scratch("file");
+        let path = neutral_packages_path(&phar);
+        assert_eq!(path.parent(), phar.parent(), "the pin must sit beside the phar it pins");
+        assert!(path.is_file(), "the pinned path is not a file — an empty dir can be filled");
+        assert!(
+            std::fs::create_dir_all(path.join("vendor")).is_err(),
+            "a packages tree could be created inside the pinned path — WP-CLI would then load \
+             `vendor/autoload.php` from it and the command set would be unpinned again"
+        );
+        // Idempotent, and never truncating: a second call must not clobber.
+        std::fs::write(&path, b"keep").unwrap();
+        assert_eq!(neutral_packages_path(&phar), path);
+        assert_eq!(std::fs::read(&path).unwrap(), b"keep", "the pin file was rewritten");
+        let _ = std::fs::remove_dir_all(sandbox_root(&phar));
+    }
+
+    #[test]
+    fn a_user_who_exports_the_variable_cannot_reintroduce_their_packages() {
+        // The login-shell snapshot IS the user's environment, so this is the
+        // ordinary case. Asserted as UNIQUENESS, not as ordering: the pin must
+        // not depend on a later entry beating an earlier one, or a future
+        // refactor that builds the env in a different order undoes it silently
+        // while every other test stays green.
+        let phar = phar_scratch("env");
+        let user_env = vec![
+            ("HOME".to_string(), "/Users/dev".to_string()),
+            ("WP_CLI_PACKAGES_DIR".to_string(), "/Users/dev/.wp-cli/packages".to_string()),
+            ("PATH".to_string(), "/usr/bin".to_string()),
+        ];
+        let pinned = with_pinned_packages(&user_env, &phar);
+        let ours = neutral_packages_path(&phar).display().to_string();
+        let mine: Vec<&(String, String)> =
+            pinned.iter().filter(|(k, _)| k == "WP_CLI_PACKAGES_DIR").collect();
+        assert_eq!(mine.len(), 1, "the user's value survived alongside ours");
+        assert_eq!(mine[0].1, ours);
+        assert_eq!(
+            pinned.last().map(|(k, _)| k.as_str()),
+            Some("WP_CLI_PACKAGES_DIR"),
+            "ours must also be last, so a consumer that applies in order agrees with one that \
+             takes the first match"
+        );
+        // Everything else the child needs is carried through untouched — HOME
+        // especially, or wp-cli's own cache stops working (B25's neighbour).
+        assert!(pinned.iter().any(|(k, v)| k == "HOME" && v == "/Users/dev"));
+        assert!(pinned.iter().any(|(k, v)| k == "PATH" && v == "/usr/bin"));
+        let _ = std::fs::remove_dir_all(sandbox_root(&phar));
     }
 }

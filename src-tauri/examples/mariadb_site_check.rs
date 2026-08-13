@@ -18,19 +18,21 @@ use rexenv_lib::core::db::DbEngine;
 use rexenv_lib::core::{binaries, database, ports, wordpress};
 use rexenv_lib::platform;
 use std::path::Path;
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
 const DOMAIN: &str = "mdbcheck.rex";
 const DB: &str = "wp_mdbcheck_rex";
 
+/// Through `wordpress::wp_cli`, not a hand-rolled argv: an example that spawns
+/// its own `wp` is checking something rexenv no longer does (ledger #228 — the
+/// packages dir is pinned at the spawn, so an unpinned copy here would run a
+/// different command set from the app it is standing in for).
 fn wp(php_bin: &Path, phar: &Path, docroot: &Path, args: &[&str]) -> (bool, String) {
-    let mut cmd = Command::new(php_bin);
-    cmd.arg("-d").arg("memory_limit=512M").arg(phar);
-    cmd.args(args);
-    cmd.arg(format!("--path={}", docroot.display()));
-    let out = cmd.output().expect("run wp-cli");
+    let path = format!("--path={}", docroot.display());
+    let mut full: Vec<&str> = args.to_vec();
+    full.push(&path);
+    let out = wordpress::wp_cli(php_bin, phar, &full, None).expect("run wp-cli");
     (
         out.status.success(),
         String::from_utf8_lossy(if out.status.success() { &out.stdout } else { &out.stderr })

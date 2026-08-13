@@ -99,17 +99,16 @@ pub fn argv(spec: &ArchiveSpec<'_>) -> Result<Vec<String>> {
     let link_parent = spec.source.parent().map(resolve_for_compare);
     refuse_bad_target(&source, link_parent.as_deref(), &out)?;
 
-    Ok(vec![
-        "-d".into(),
-        "memory_limit=512M".into(),
-        spec.wp_phar.display().to_string(),
+    let mut argv = crate::core::wordpress::wp_argv_prefix(spec.wp_phar);
+    argv.extend([
         // Before the subcommand: this is what makes `dist-archive` exist at all.
         format!("--require={}", spec.autoload.display()),
         "dist-archive".into(),
         source.display().to_string(),
         out.display().to_string(),
         "--force".into(),
-    ])
+    ]);
+    Ok(argv)
 }
 
 /// Does this checkout have the file that decides what ships?

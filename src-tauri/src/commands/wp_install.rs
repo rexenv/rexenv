@@ -35,7 +35,7 @@
 
 use crate::commands::repo::{shell_env, RepoJobs};
 use crate::commands::wordpress::wp_tools;
-use crate::core::{repo, sites, wordpress};
+use crate::core::{repo, sites, wordpress, wp_packages};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use serde::Serialize;
@@ -272,8 +272,11 @@ fn run_install_job<R: tauri::Runtime>(
         }
     };
 
-    let mut args: Vec<String> =
-        vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()];
+    // Through the shared builder + pin, like every other wp-cli spawn — this
+    // job assembling its own argv is how it sat outside ledger #228's list of
+    // four spawn sites without anyone noticing it was a fifth.
+    let env = wp_packages::with_pinned_packages(&env, wp_phar);
+    let mut args: Vec<String> = wordpress::wp_argv_prefix(wp_phar);
     args.push(kind.to_string());
     args.push("install".into());
     args.extend(snapshot(entry).slugs.iter().cloned());

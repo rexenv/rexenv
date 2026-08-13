@@ -108,25 +108,32 @@ evidence cited.
   (`core/dns.rs` module doc; loopback bind keeps it safe, ledger #44). Harmless
   while only our `/etc/resolver/<tld>` files route to it, but "answers anything"
   is unintended. Scope answers to configured TLDs; NXDOMAIN the rest.
-- [ ] **rexenv's WP-CLI inherits `~/.wp-cli/packages` — the pinned/offline posture
-  does not cover the command set** (found 4 Aug 2026 while costing dist-archive;
-  ledger #228). Every wp-cli spawn (`core/wordpress.rs:15/83/149`) uses the ambient
-  environment and never sets `WP_CLI_PACKAGES_DIR`, so WP-CLI loads whatever a user
-  composer-installed there, whenever, at whatever version. Proven live: `dist-archive`
-  answered from a package installed on this laptop in **Dec 2021**; the same phar with
-  an empty packages dir says `not a registered wp command`. Consequence that matters
-  more than the posture: a bug in any wp-dependent feature can be **unreproducible
-  with nobody able to guess why**, because the difference is a directory neither side
-  mentions. **RECORDED, NOT FIXED — by owner instruction**: neutralising it globally
-  could break someone's existing workflow, so it is a deliberate decision, below.
-  ✓ (a) **DECIDED 5 Aug 2026 — neutralise WITH A TELL** (see Decisions pending for
-  the reasoning and the scope). Queued as the first thing after v0.1.0: it is a
-  behaviour change and wants its own verification rather than riding an artefact
-  that was gated before it existed. (b) the spawn sites and (c) the L0 scan that
-  must cover ALL FOUR or repeat the coverage/surface family remain open.
-  ✓ (d) **done 4 Aug** — `core/wordpress.rs`'s module doc now states it plainly
-  ("What is pinned here is the BINARY, not the COMMAND SET"), so the code and
-  ledger #228 no longer disagree while the decision waits.
+- [x] **rexenv's WP-CLI no longer inherits `~/.wp-cli/packages`** (found 4 Aug 2026
+  while costing dist-archive; ledger #228). Every `wp` rexenv runs FOR A USER is
+  pinned to the bundled command set; `core::terminal`'s `wp` wrapper stays ambient
+  by decision — that is the user's own command line, and pinning it would break
+  `wp package install` from inside rexenv in a way that looks like our bug.
+  ✓ (a) **DECIDED 5 Aug 2026 — neutralise WITH A TELL**; ✓ **LANDED 13 Aug 2026**,
+  first thing after v0.1.0 as queued.
+  ✓ (b)+(c) **the spawn sites and the L0 scan — done by refusing to count them.**
+  This is the part worth remembering: the ledger row named FOUR sites and there
+  were SEVEN, two added after the row was written. A guard asserting the four
+  would have shipped narrower than its own claim. So there is ONE argv builder
+  (`wordpress::wp_argv_prefix`) and ONE `Command::new(php_bin)`
+  (`wordpress::wp_command`), and the scan asserts the marker literal appears in
+  exactly two files in `src/` + `examples/` — the builder, and the terminal
+  wrapper with its reason. 6 lib guards, all five failure modes plant-proven;
+  the scan itself first failed by reading its own prose (#235's defect, caught by
+  its own canary) and now strips comments.
+  ✓ (d) **done 4 Aug, rewritten 13 Aug** — `core/wordpress.rs`'s module doc stated
+  the unfixed state; it now states the pin, its scope and why the terminal is out.
+  - [ ] **remaining: the tell** (ledger #261) — Settings card + the failure-moment
+    explanation on `not a registered wp command`. Copy approved 13 Aug; task 1b.
+  - [ ] **remaining: the L1 leg** — L0 can only assert an argv and an env pair;
+    the resolution difference under the real phar needs the example (task 1c),
+    with a control leg that plants its own canary package rather than relying on
+    a package the laptop happened to have (#236's lesson). Ledger #228 stays ◐
+    until it lands.
 - [ ] **B29b — fpm pool reap is still one-miss** (`core/php.rs:534-535`): a single
   failed port probe with a dead-looking master reaps the pool, with no
   `ADOPTED_MISS_LIMIT`-style counter and no positive php-fpm title identification
@@ -392,10 +399,13 @@ first:
 - [ ] **`rex config get|set`** — parked on which settings keys to allow-list
   (never the whole KV table).
 - [x] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
-  — **DECIDED 5 Aug 2026: (b) NEUTRALISE WITH A TELL.** Queued as the FIRST thing
-  after v0.1.0 ships; deliberately not on the release artefact, because it is a
-  behaviour change and wants its own verification rather than riding a build that
-  was gated before it existed. Ledger #228 stays 🔨 until it lands.
+  — **DECIDED 5 Aug 2026: (b) NEUTRALISE WITH A TELL. LANDED 13 Aug 2026** (the pin
+  + its L0 scan; the tell is ledger #261, the L1 leg still open). Queued as the
+  FIRST thing after v0.1.0 shipped; deliberately not on the release artefact,
+  because it is a behaviour change and wanted its own verification rather than
+  riding a build that was gated before it existed. **What the work actually turned
+  on**: the scope of (a) below was wrong — it named three spawn sites and there
+  were seven, so the fix was to stop enumerating them (see the item above).
   **The reasoning, recorded so it is not re-derived**: neutralising alone would hand
   someone who genuinely relies on a global package a bare `not a registered wp
   command` with no explanation — the same unreproducibility pointed the other way.

@@ -48,7 +48,7 @@
 //! numbering is L0 (`downloads_are_numbered_on_collision_and_never_overwrite`)
 //! and the real folder is SMOKE's job. Stated rather than left as a gap.
 
-use rexenv_lib::core::{binaries, dist_archive, php, repo, wp_packages};
+use rexenv_lib::core::{binaries, dist_archive, php, repo, wordpress, wp_packages};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -155,10 +155,11 @@ async fn main() {
     // command must NOT EXIST. If this ever succeeds, `dist-archive` is coming
     // from somewhere rexenv does not ship, and every other assertion in this
     // file has stopped meaning what it says.
+    // The same argv prefix production runs (#228) — the control differs from a
+    // real run in the two things it is controlling for, our `--require` and the
+    // packages dir, and in nothing else.
     let control = Command::new(&php_bin)
-        .arg("-d")
-        .arg("memory_limit=512M")
-        .arg(&wp_phar)
+        .args(wordpress::wp_argv_prefix(&wp_phar))
         .arg("dist-archive")
         .arg(&f.real)
         .arg(f.root.join("control-out"))

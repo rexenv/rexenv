@@ -5,26 +5,40 @@
 //! resolved via `BinaryProvider`), so this runs the command directly and
 //! captures output (unlike `ProcessSupervisor`, which is for long-lived services).
 //!
-//! # What is pinned here is the BINARY, not the COMMAND SET (ledger #228)
+//! # The COMMAND SET is pinned too, not just the binary (ledger #228)
 //!
-//! Read the line above as "so what runs is what we pinned" and you would be
-//! wrong, which is why this paragraph exists. Every spawn below inherits the
-//! ambient environment and none of them sets `WP_CLI_PACKAGES_DIR`, so WP-CLI
-//! also loads `~/.wp-cli/packages/` — whatever that user composer-installed
-//! there, at whatever version, whenever. Verified 4 Aug 2026: `wp dist-archive`
-//! answered from a package installed on a dev machine in **December 2021**,
-//! while the same phar with an empty packages dir replies `'dist-archive' is
-//! not a registered wp command`.
+//! Until 13 Aug 2026 every spawn here inherited the ambient environment and
+//! none set `WP_CLI_PACKAGES_DIR`, so WP-CLI also loaded `~/.wp-cli/packages/`
+//! — whatever that user composer-installed there, at whatever version,
+//! whenever. Verified 4 Aug 2026: `wp dist-archive` answered from a package
+//! installed on a dev machine in **December 2021**, while the same phar with an
+//! empty packages dir replies `'dist-archive' is not a registered wp command`.
+//! The cost was never the posture, it was REPRODUCIBILITY: a bug in anything
+//! below could depend on a directory appearing in no log, no diff and no bug
+//! report, so "works here" and "fails there" had no visible cause.
 //!
-//! The cost that matters is not the posture, it is REPRODUCIBILITY: a bug in
-//! anything below can depend on a directory that appears in no log, no diff and
-//! no bug report, so "works here" and "fails there" have no visible cause. Left
-//! as-is deliberately — neutralising it globally can break a workflow a user
-//! already relies on, so it is an owner decision (`docs/TODO.md`, Decisions
-//! pending), not a fix to slip in. **Anything that must run a command we chose
-//! bundles it and passes `--require`** (`core::wp_packages`), rather than
-//! trusting resolution it does not control.
+//! Now every `wp` **rexenv runs for a user** is pinned to the bundled phar and
+//! nothing else ([`wp_packages::neutral_packages_path`]). Two things about that
+//! sentence are load-bearing:
+//!
+//! - **"runs for a user"** is the whole scope. `core::terminal`'s `wp` wrapper
+//!   is deliberately NOT pinned: that is the user's command line, and pinning it
+//!   would break `wp package install` from inside rexenv in a way that looks
+//!   like our bug. The tell says so (Settings, `WP-CLI packages`), and that
+//!   sentence is only true because of this exemption.
+//! - **Coverage is a property of this tree, not a list.** The ledger row named
+//!   four spawn sites; by the time it was worked there were seven, two added
+//!   after it was written. So there is ONE argv builder ([`wp_argv_prefix`]) and
+//!   ONE `Command::new(php_bin)` ([`wp_command`]), and
+//!   `every_wp_cli_argv_in_the_tree_is_pinned` fails the build when a second of
+//!   either appears. Counting the sites is what would have shipped a guard
+//!   narrower than its own claim.
+//!
+//! **Anything that must run a command we chose bundles it and passes
+//! `--require`** (`core::wp_packages`), rather than trusting resolution it does
+//! not control — that rule is what makes the pin cost nothing.
 
+use super::wp_packages;
 use crate::error::{Error, Result};
 use crate::state::models::SiteType;
 use serde::{Deserialize, Serialize};
@@ -137,18 +151,41 @@ pub fn core_path_arg(docroot: &Path) -> Option<String> {
     (root != docroot).then(|| format!("--path={}", root.display()))
 }
 
+/// The argv prefix EVERY rexenv-run wp-cli command starts with.
+///
+/// One builder rather than one line repeated at each spawn, because the marker
+/// literal below is what `every_wp_cli_argv_in_the_tree_is_pinned` scans for: a
+/// second copy anywhere in `src/` or `examples/` is a wp-cli invocation the pin
+/// (ledger #228) has not been shown to cover, and the build says so. The
+/// deliberate exception is `core::terminal`'s `wp` wrapper — the user's own
+/// command line, exempt by decision, and named in the guard.
+///
+/// The limit: WP-CLI (esp. core extraction) needs more than the default 128M.
+pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {
+    vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()]
+}
+
+/// The bundled PHP running the pinned phar with the command set pinned — the
+/// ONE `Command::new(php_bin)` in the tree, so a captured spawn cannot be
+/// assembled without the pin. Streamed spawns cannot use a `Command` (they go
+/// through `ProcessSupervisor`) and pair [`wp_argv_prefix`] with
+/// [`wp_packages::with_pinned_packages`] instead.
+fn wp_command(php_bin: &Path, wp_phar: &Path) -> Command {
+    let mut cmd = Command::new(php_bin);
+    cmd.args(wp_argv_prefix(wp_phar));
+    let (key, value) = wp_packages::pin_packages_env(wp_phar);
+    cmd.env(key, value);
+    cmd
+}
+
 pub fn wp_cli(
     php_bin: &Path,
     wp_phar: &Path,
     args: &[&str],
     cwd: Option<&Path>,
 ) -> Result<Output> {
-    let mut cmd = Command::new(php_bin);
-    // WP-CLI (esp. core extraction) needs more than the default 128M.
-    cmd.arg("-d")
-        .arg("memory_limit=512M")
-        .arg(wp_phar)
-        .args(args);
+    let mut cmd = wp_command(php_bin, wp_phar);
+    cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
         // Added HERE, at the one place every wp-cli invocation is assembled, so
@@ -220,8 +257,8 @@ fn wp_cli_timed(
     args: &[&str],
     timeout: Duration,
 ) -> Result<Output> {
-    let mut cmd = Command::new(php_bin);
-    cmd.arg("-d").arg("memory_limit=512M").arg(wp_phar).args(args);
+    let mut cmd = wp_command(php_bin, wp_phar);
+    cmd.args(args);
     let what = format!("wp {}", args.first().copied().unwrap_or(""));
     run_with_timeout(cmd, timeout, &what)
 }
@@ -288,8 +325,8 @@ pub fn wp_run_raw(
     timeout: Duration,
 ) -> Result<Output> {
     let path = format!("--path={}", docroot.display());
-    let mut cmd = Command::new(php_bin);
-    cmd.arg("-d").arg("memory_limit=512M").arg(wp_phar).args(args).arg(&path);
+    let mut cmd = wp_command(php_bin, wp_phar);
+    cmd.args(args).arg(&path);
     let what = format!("wp {}", args.first().map(String::as_str).unwrap_or(""));
     run_with_timeout(cmd, timeout, &what)
 }
@@ -2620,8 +2657,7 @@ pub fn wp_step_streamed(
     args: &[&str],
     on_line: &mut dyn FnMut(&str),
 ) -> Result<super::repo::StepResult> {
-    let mut full: Vec<String> =
-        vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()];
+    let mut full: Vec<String> = wp_argv_prefix(wp_phar);
     full.extend(args.iter().map(|s| s.to_string()));
     // The WordPress ROOT, which is the docroot everywhere except Roots'
     // layouts — there Composer installs core into `<docroot>/wp`, and this line
@@ -2630,8 +2666,12 @@ pub fn wp_step_streamed(
     // WordPress installation" until this stopped assuming (found by
     // `git_site_provision_check`, 11 Aug 2026).
     full.push(format!("--path={}", core_root(docroot).display()));
+    // A streamed spawn REPLACES the child's environment with this list (macOS
+    // `spawn_streamed` env_clears), and the list is the user's login shell — so
+    // an exported `WP_CLI_PACKAGES_DIR` arrives here as the ordinary case.
+    let env = wp_packages::with_pinned_packages(stream.env, wp_phar);
     super::repo::run_step_streamed(
-        stream.sup, php_bin, &full, docroot, stream.env, stream.cancel, on_line, None,
+        stream.sup, php_bin, &full, docroot, &env, stream.cancel, on_line, None,
     )
 }
 
@@ -3859,5 +3899,235 @@ mod bedrock_env_tests {
         for key in SALT_KEYS {
             assert!(!crate::core::dotenv::is_blank(&out, key), "{key} was left unset");
         }
+    }
+}
+
+/// The guards behind "every `wp` rexenv runs for a user is pinned" (#228).
+///
+/// They exist in this shape because the ledger row named FOUR spawn sites and
+/// there were seven by the time it was worked — two of them added after the row
+/// was written, by people who had no reason to know a list existed. A guard
+/// that asserted the four would have passed while the two it never heard of ran
+/// a user's `~/.wp-cli/packages`: a guard narrower than its own claim, which is
+/// the family this project keeps paying for.
+///
+/// So none of them counts spawn sites — the tree itself is the coverage. They
+/// assert there is ONE place a wp-cli argv can be built and ONE place a
+/// captured wp-cli process can be started, which a seventh site cannot be added
+/// around without turning the build red.
+#[cfg(test)]
+mod packages_pin_guards {
+    use super::*;
+
+    /// Source with comments removed, because a guard that scans prose reads its
+    /// OWN explanation and passes: these very tests quote both the marker and
+    /// `Command::new(php_bin)` while explaining why there may be only one of
+    /// each. That is not hypothetical — the #235 copy guard shipped defective
+    /// for exactly this reason and only planting found it. Canary in
+    /// [`the_scan_reads_code_and_not_its_own_comments`].
+    fn strip_comments(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        for line in text.lines() {
+            if line.trim_start().starts_with("//") {
+                out.push('\n');
+                continue;
+            }
+            // Line-based and deliberately simple. The one case that needs care
+            // is a `//` inside a string literal, which in this tree is always a
+            // URL — so a `//` preceded by `:` is not a comment. Cutting a real
+            // trailing comment short of a `://` would only ever leave MORE text
+            // for the scans to find, never less, so the failure direction is a
+            // noisy guard rather than a blind one.
+            let cut = line
+                .match_indices("//")
+                .find(|(i, _)| *i == 0 || !line[..*i].ends_with(':'))
+                .map(|(i, _)| i);
+            out.push_str(cut.map_or(line, |i| &line[..i]));
+            out.push('\n');
+        }
+        out
+    }
+
+    /// Every `.rs` under `src/` and `examples/`, so a new spawn site cannot
+    /// hide by being in a file nobody thought to list. Comments stripped.
+    fn rust_sources() -> Vec<(String, String)> {
+        fn walk(dir: &Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+                        let rel = path.strip_prefix(root).unwrap_or(&path);
+                        out.push((rel.display().to_string(), strip_comments(&text)));
+                    }
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut out = Vec::new();
+        walk(&root.join("src"), &mut out);
+        walk(&root.join("examples"), &mut out);
+        out
+    }
+
+    /// The marker every wp-cli argv carries. Split so this file's own guard
+    /// text is not a hit — the RepoPanel copy guard shipped defective for
+    /// exactly that reason: it read its own explanation and passed.
+    fn marker() -> String {
+        format!("memory_limit={}", "512M")
+    }
+
+    /// Without this, every assertion below can pass on an empty string, and
+    /// prose can satisfy the ones that check for presence. Both directions.
+    #[test]
+    fn the_scan_reads_code_and_not_its_own_comments() {
+        let this = strip_comments(include_str!("wordpress.rs"));
+        assert!(
+            this.contains("pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {"),
+            "the stripper ate code — every scan here would now pass vacuously"
+        );
+        // A phrase that exists ONLY in a doc comment in this file — the
+        // assertion messages below quote the marker and the spawn expression
+        // themselves, so a canary taken from one of those would prove nothing.
+        // Assembled, not written: a literal here would itself survive the
+        // stripper as code and the canary would be testing its own presence.
+        let prose = format!("the tree itself {} the coverage", "is");
+        assert!(include_str!("wordpress.rs").contains(&prose), "the canary phrase was edited away");
+        assert!(
+            !this.contains(&prose),
+            "comment text survived the stripper — a guard that reads prose reads its own \
+             explanation (#235)"
+        );
+        // The tests below take the tree from `rust_sources`, so it must strip too.
+        let scanned = rust_sources();
+        let me = scanned.iter().find(|(p, _)| p == "src/core/wordpress.rs").expect("this file");
+        assert!(!me.1.contains(&prose));
+    }
+
+    #[test]
+    fn every_wp_cli_argv_in_the_tree_is_pinned() {
+        let sources = rust_sources();
+        assert!(sources.len() > 50, "the source walk found {} files — it has stopped working", sources.len());
+        let marker = marker();
+        let mut carriers: Vec<&str> =
+            sources.iter().filter(|(_, t)| t.contains(&marker)).map(|(p, _)| p.as_str()).collect();
+        carriers.sort();
+        assert_eq!(
+            carriers,
+            vec!["src/core/terminal.rs", "src/core/wordpress.rs"],
+            "a wp-cli argv is built somewhere that is not `wp_argv_prefix`. Every rexenv-run \
+             `wp` must be pinned to the bundled command set (#228), and a second argv is a \
+             spawn this pin has not been shown to cover. The ONE exemption is \
+             `core::terminal`'s `wp` wrapper — the user's own command line, left ambient by \
+             decision (D1, 13 Aug 2026), which is what makes the tell's \"they still work in \
+             rexenv's terminal\" true. Build yours from `wordpress::wp_argv_prefix`."
+        );
+    }
+
+    #[test]
+    fn every_captured_wp_cli_spawn_goes_through_the_pinned_command() {
+        let sources = rust_sources();
+        let spawns: Vec<&str> = sources
+            .iter()
+            .filter(|(_, t)| t.contains("Command::new(php_bin)"))
+            .map(|(p, _)| p.as_str())
+            .collect();
+        assert_eq!(
+            spawns,
+            vec!["src/core/wordpress.rs"],
+            "a captured wp-cli process is started outside `wp_command`, which is the only \
+             place the packages-dir pin is applied to a `Command` (#228)."
+        );
+        let this = strip_comments(include_str!("wordpress.rs"));
+        let production = this.split("#[cfg(test)]").next().expect("a production half");
+        assert_eq!(
+            production.matches("Command::new(php_bin)").count(),
+            1,
+            "`wp_command` is no longer the only `Command::new(php_bin)` in this module — the \
+             others are wp-cli spawns running whatever the user installed globally."
+        );
+    }
+
+    /// The structural guards above say there is one door; this says the door
+    /// is locked. Without it, deleting the `.env` line from `wp_command` leaves
+    /// every other test in this module green while three spawn sites go back to
+    /// loading the user's packages.
+    #[test]
+    fn the_one_captured_spawn_actually_carries_the_pin() {
+        let phar = std::env::temp_dir()
+            .join(format!("rexenv-cmdpin-{}", std::process::id()))
+            .join("bin/wp-cli-2.12.0/wp-cli.phar");
+        std::fs::create_dir_all(phar.parent().unwrap()).unwrap();
+        std::fs::write(&phar, b"phar").unwrap();
+        let cmd = wp_command(Path::new("/usr/bin/php"), &phar);
+
+        let args: Vec<String> =
+            cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(args, wp_argv_prefix(&phar), "the shared prefix is not what gets spawned");
+
+        let (key, value) = wp_packages::pin_packages_env(&phar);
+        let pinned = cmd
+            .get_envs()
+            .find(|(k, _)| k.to_string_lossy() == key)
+            .and_then(|(_, v)| v.map(|v| v.to_string_lossy().into_owned()));
+        assert_eq!(
+            pinned.as_deref(),
+            Some(value.as_str()),
+            "the captured spawn does not pin `WP_CLI_PACKAGES_DIR` — it runs whatever the \
+             machine has in `~/.wp-cli/packages` (#228)"
+        );
+        let _ = std::fs::remove_dir_all(phar.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    /// The streamed spawn cannot use a `Command`, so it is the one site where
+    /// the pin is a line that could be dropped without the door disappearing.
+    #[test]
+    fn the_streamed_spawn_pins_the_env_it_was_handed() {
+        let this = strip_comments(include_str!("wordpress.rs"));
+        let body = this
+            .split("pub fn wp_step_streamed(")
+            .nth(1)
+            .and_then(|b| b.split("\npub fn ").next())
+            .expect("wp_step_streamed");
+        assert!(
+            body.contains("with_pinned_packages(stream.env"),
+            "the streamed step passes its caller's environment through unpinned — that env is \
+             the user's login shell, so an exported `WP_CLI_PACKAGES_DIR` reaches wp-cli (#228)"
+        );
+        // …and that the pinned value is what the spawn is actually handed, not
+        // computed into a variable the call then ignores. Whitespace-normalised
+        // so a rustfmt reflow cannot turn this into a false alarm.
+        let dense: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(
+            dense.contains("docroot,&env,"),
+            "the pinned environment is built but `run_step_streamed` is handed something else"
+        );
+    }
+
+    /// Every file that builds a wp-cli argv must also pin the packages dir.
+    /// The pin can arrive three ways — `wp_command` (captured),
+    /// `with_pinned_packages` (streamed), or a module's own override
+    /// (`dist_archive`, #230, which pins to its own empty dir for its own
+    /// reason) — and the point is that there is no fourth way: none.
+    #[test]
+    fn nothing_builds_a_wp_cli_argv_without_pinning_the_packages_dir() {
+        let pins = ["wp_command(", "with_pinned_packages(", "pin_packages_env(", "WP_CLI_PACKAGES_DIR"];
+        let mut checked = 0;
+        for (path, text) in rust_sources() {
+            let body = text.split("#[cfg(test)]").next().unwrap_or_default().to_string();
+            if !body.contains("wp_argv_prefix(") || path == "src/core/wordpress.rs" {
+                continue;
+            }
+            checked += 1;
+            assert!(
+                pins.iter().any(|p| body.contains(p)),
+                "{path} builds a wp-cli argv but never pins the packages dir — the command set \
+                 it runs is whatever that machine has in `~/.wp-cli/packages` (#228)."
+            );
+        }
+        assert!(checked > 0, "the detection found no callers — it has stopped working");
     }
 }

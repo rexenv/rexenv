@@ -34,7 +34,7 @@ was itself wrong (§1.2 below).
 Four layers exist de facto. Named, with what each CANNOT prove stated as loudly as what
 it can:
 
-### L0 — Logic (`cargo test --lib`, 535 tests)
+### L0 — Logic (`cargo test --lib`, 757 tests)
 
 - **Proves:** our pure functions, state machines, validators/refusals, config
   *generation* (regression-pinning bytes WE emit), SQLite migrations (rusqlite is real
@@ -44,8 +44,22 @@ it can:
   list can't prove mysqldump accepts the flags. A plist string can't prove launchd loads
   it. A config substring can't prove nginx 404s a dotfile. An output fixture can't prove
   the tool still prints that line.
+- **A special case worth naming: the source scan.** A handful of L0 tests read the
+  TREE rather than a value — `every_wp_cli_argv_in_the_tree_is_pinned` (#228),
+  `every_owned_mu_plugin_is_swept_by_the_cleanup_that_claims_them_all`,
+  `only_one_place_in_this_module_builds_a_dist_archive_argv` (#230). They exist for
+  claims about a WHOLE SURFACE ("every wp-cli spawn is pinned"), where the honest
+  guard is not a list of the sites known today: #228's ledger row named four spawn
+  sites and there were seven by the time it was worked, two added after the row was
+  written. A scan turns "someone remembers to add it to the list" into a build
+  failure. Two rules learned by breaking both: **strip comments before scanning** —
+  a guard that reads prose reads its own explanation and passes (#235 shipped that
+  way; #228's scan did it too and failed at 3 by counting its own doc comments) —
+  and **carry a canary** that the detection still finds something, or the whole
+  scan passes vacuously the day a path changes.
 - **Cost:** seconds. **Runs:** every `verify.sh`. **Bug class:** logic regressions,
-  drift in our own generation/parsing, unrepresentable-state violations.
+  drift in our own generation/parsing, unrepresentable-state violations,
+  whole-surface claims going stale as the surface grows.
 
 ### L1 — Tool (`src-tauri/examples/*.rs`, 116 live checks)
 

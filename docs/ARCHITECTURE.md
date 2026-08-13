@@ -578,6 +578,22 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   128M). Switching PHP version or web server = config regen + reload, never a
   docroot/cert/DB rebuild. Domains are validated in core before becoming a
   path/config/cert/DB name (M7).
+- **The COMMAND SET is pinned, not just the phar (#228):** every `wp` rexenv runs FOR
+  A USER has `WP_CLI_PACKAGES_DIR` pointed at a rexenv-owned path, so a user's
+  `~/.wp-cli/packages` never extends it. Without that, a bug in any wp-dependent
+  feature could depend on a directory appearing in no log, diff or bug report —
+  measured: `wp dist-archive` answering from a package installed on a laptop in
+  Dec 2021. Three things make it hold: (1) there is ONE argv builder
+  (`wordpress::wp_argv_prefix`) and ONE `Command::new(php_bin)`
+  (`wordpress::wp_command`), because the coverage claim must be a property of the
+  tree — the ledger row listed four spawn sites when there were seven; (2) the
+  pinned value is a FILE beside the phar, so `wp package install` cannot quietly
+  turn it back into a real packages dir; (3) `core/terminal.rs`'s `wp` wrapper is
+  DELIBERATELY exempt — that is the user's own command line, pinning it would break
+  `wp package install` from inside rexenv, and the exemption is what makes the tell
+  ("they still work in rexenv's terminal") true. Streamed spawns take the pin
+  through `wp_packages::with_pinned_packages`, which REMOVES any inbound value
+  rather than relying on last-wins ordering.
 - **wp-cli argument hygiene (extends M7):** anything that lands in wp-cli argv from IPC
   is whitelisted in core (`DEBUG_FLAGS`, `PERMALINK_STRUCTURES`, `USER_ROLES`); names
   that can't be whitelisted because they're site-defined (cron hooks) pass as a single
