@@ -83,6 +83,11 @@ const SCENARIOS = [
   // The MAIL sub-toggle (M2b) — three paragraphs above a toggle, so the width
   // it has to survive is the narrow one. Both states, since "off by default"
   // is the shipped one and the one a first-time reader meets.
+  // The #301 tell, both variants. The unnamed one renders on no machine any
+  // reviewer owns — a composer.json that could not be read — so a screenshot is
+  // the only way anyone looks at the copy that claims no count.
+  ["wppackages-named", "view=wppackages", []],
+  ["wppackages-unnamed", "view=wppackages&names=none", []],
   ["agents-mail-off", "view=agents&astate=working", []],
   ["agents-mail-on", "view=agents&astate=working&mail=1", []],
   // The Agent-scratch group: client badge + TTL + last-synced, a moved source,
@@ -102,6 +107,28 @@ const SCENARIOS = [
 /** Per-scenario layout assertions (beyond the universal overflow probe).
  *  Return a list of problem strings; empty = pass. */
 const PROBES = {
+  // The #301 tell, checked where it RENDERS. The L0 guard reads the source and
+  // can prove the branch exists; only this can prove what the branch produces —
+  // and the failure that matters is silent: an unnameable packages dir rendering
+  // "the 0 packages", which invites the reader to conclude something false about
+  // their own machine.
+  wpPackages: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const card = document.querySelector('[data-probe="wp-cli-packages"]');
+      if (!card) return ["no WP-CLI packages card in the DOM"];
+      const text = card.innerText.replace(/\s+/g, " ");
+      if (!/still work in rexenv's terminal/i.test(text)) {
+        problems.push("the relief valve sentence is not rendering — see the must-say list");
+      }
+      if (/\b0 packages?\b/.test(text)) {
+        problems.push(`a count it cannot support reached the card: "${text}"`);
+      }
+      // An unnamed variant must not render the em-dash list frame with nothing
+      // between the dashes.
+      if (/—\s*—/.test(text)) problems.push(`an empty package list rendered: "${text}"`);
+      return problems;
+    }),
   // The §C2 h-full class: the Adminer iframe participates in the region's
   // height chain. A severed percentage chain collapses it to its ~150px
   // intrinsic default (the shipped bug), or to 0. DatabaseTab's min-h-[420px]
@@ -293,6 +320,7 @@ const PROBES = {
 const KNOWN_ACTIONS = new Set(["consent", "apply", "revert", "confirmRevert", "scrollBottom", "lastMenu"]);
 
 function probeFor(name) {
+  if (name.startsWith("wppackages")) return PROBES.wpPackages;
   if (name.startsWith("dbtab")) return PROBES.dbtab;
   if (name === "pills") return PROBES.pills;
   if (name.startsWith("agents")) return PROBES.agents;

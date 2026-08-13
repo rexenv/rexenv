@@ -1157,27 +1157,8 @@ mod tests {
         }
     }
 
-    /// A file's PRODUCTION lines (1-indexed), with any `#[cfg(test)]` module
-    /// removed by brace depth rather than by cutting to end-of-file — the test
-    /// module is not always last, and a guard that assumed it was would quietly
-    /// stop covering everything after it.
-    fn production_lines(src: &str) -> Vec<(usize, &str)> {
-        let mut out = Vec::new();
-        let mut depth: Option<i32> = None;
-        for (i, line) in src.lines().enumerate() {
-            match depth.as_mut() {
-                None if line.trim_start().starts_with("#[cfg(test)]") => depth = Some(0),
-                None => out.push((i + 1, line)),
-                Some(d) => {
-                    *d += line.matches('{').count() as i32 - line.matches('}').count() as i32;
-                    if *d <= 0 && line.contains('}') {
-                        depth = None;
-                    }
-                }
-            }
-        }
-        out
-    }
+    use crate::core::copy_scan::production_lines;
+
 
     #[test]
     fn wp_run_takes_its_target_from_the_witness_and_refuses_the_agents() {
@@ -1702,6 +1683,17 @@ fn wp_run<'a>(
                  you need the rest.",
                 WP_OUTPUT_CAP / 1024
             ));
+        }
+        // An agent asking for a command the machine has globally and rexenv does
+        // not bundle gets the phar's own `not a registered wp command` in
+        // `stderr` — untouched, because that is the string worth searching — and
+        // the reason APPENDED here (#301). Without it the agent's next move is to
+        // retry or to tell the user their site is broken. Through the same
+        // scrubber as everything else on this surface: an EXPORTED packages dir
+        // can carry the OS username, which nothing on the agent surface may.
+        if let Some(tell) = crate::core::wp_packages::explain_missing_command_here(&stderr) {
+            detail.push(' ');
+            detail.push_str(&super::view::scrub_log_line(&tell, &known));
         }
         let view = AgentWpRun {
             succeeded,

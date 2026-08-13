@@ -23,6 +23,11 @@
  *               must not look agent-flavoured (a Kept site, and a user's own
  *               site hand-named `*.scratch.*`)
  *    keep     — the Keep confirm dialog
+ *    wppackages — the WP-CLI packages tell (#301). `names=none` is the variant
+ *               nobody will ever see by accident: the one that renders when
+ *               composer.json could not be read, so the copy must claim NO
+ *               count. It exists on no developer's machine, which is exactly
+ *               why it needs a render somebody can look at
  *    openin   — the "which app opens this" surfaces: header split button +
  *               the Browser/editor Quick-links tiles. `browsers=one|none`
  *               (the no-chevron and nothing-detected states), `icons=none`
@@ -37,6 +42,7 @@ import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
+import { WpCliPackagesCard } from "@/routes/Settings";
 import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import { QuickTile } from "@/routes/SiteDetail";
@@ -782,6 +788,14 @@ export function DevUiReview() {
           return applied();
         case "rewrite_revert":
           return reverted();
+        case "wp_cli_packages":
+          // `names=none` = a packages dir that exists and could not be named.
+          return params.get("names") === "none"
+            ? { dir: "~/.wp-cli/packages", names: [] }
+            : {
+                dir: "~/.wp-cli/packages",
+                names: ["danielbachhuber/php-compat-command", "wp-cli/dist-archive-command"],
+              };
         case "list_editors":
           return params.get("view") === "openin" ? mockEditors() : [];
         case "list_browsers":
@@ -827,6 +841,7 @@ export function DevUiReview() {
             </div>
           </div>
         )}
+        {view === "wppackages" && <WpCliPackagesCard />}
         {view === "toast" && <ToastView />}
         {view === "pills" && <PillsView />}
         {view === "agents" && <AgentsView />}

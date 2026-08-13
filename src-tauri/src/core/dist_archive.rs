@@ -25,8 +25,10 @@
 //!
 //! # Why `WP_CLI_PACKAGES_DIR` is neutralised for this spawn
 //!
-//! Not for the reason in ledger #228 — that is a global posture question and an
-//! owner decision. This is narrower and settles here: a user may have their own
+//! Not for the reason in ledger #228 — every rexenv-run `wp` has been pinned
+//! since 13 Aug 2026, and this predates it. This is narrower and settles here
+//! independently, which is why it did not wait for that decision: a user may
+//! have their own
 //! `dist-archive-command` installed globally at a different version, and the
 //! behaviour this feature is built around is **version-specific** (`.distignore`
 //! semantics, the missing `.gitignore` fallback, the filename format). Measured
@@ -35,8 +37,9 @@
 //! autoloading, exactly the "posture resting on a third party's behaviour" shape
 //! this project has been burned by. Pointing the packages dir at an empty
 //! rexenv-owned directory costs one environment variable and makes precedence
-//! irrelevant. It affects only this spawn: a user's global packages still work
-//! everywhere else rexenv runs `wp`.
+//! irrelevant. Since #228 landed, the same is true of every other rexenv-run
+//! `wp` — the one place a user's global packages still apply is rexenv's
+//! terminal, which is deliberately theirs.
 //!
 //! # Silence is legitimate here, so there is no idle watchdog
 //!
@@ -1262,49 +1265,7 @@ mod tests {
         assert!(!version_missing_from_name(Path::new("/out/my-plugin.0.zip"), src));
     }
 
-    /// Drop `/* … */` blocks and whole-line `//` / ` * ` comments, leaving code
-    /// and string literals. Deliberately conservative: it never touches a `//`
-    /// that appears mid-line, so a URL inside a string survives.
-    fn strip_comments(src: &str) -> String {
-        let mut out = String::with_capacity(src.len());
-        let mut depth = 0usize;
-        for line in src.lines() {
-            let t = line.trim_start();
-            if depth == 0 && (t.starts_with("//") || t.starts_with('*')) {
-                continue;
-            }
-            let mut rest = line;
-            let mut kept = String::new();
-            while !rest.is_empty() {
-                if depth > 0 {
-                    match rest.find("*/") {
-                        Some(i) => {
-                            depth -= 1;
-                            rest = &rest[i + 2..];
-                        }
-                        None => {
-                            rest = "";
-                        }
-                    }
-                } else {
-                    match rest.find("/*") {
-                        Some(i) => {
-                            kept.push_str(&rest[..i]);
-                            depth += 1;
-                            rest = &rest[i + 2..];
-                        }
-                        None => {
-                            kept.push_str(rest);
-                            rest = "";
-                        }
-                    }
-                }
-            }
-            out.push_str(&kept);
-            out.push('\n');
-        }
-        out
-    }
+    use crate::core::copy_scan::strip_ts_comments as strip_comments;
 
     #[test]
     fn the_archive_button_copy_says_what_the_feature_actually_does() {

@@ -46,6 +46,7 @@ import {
   tldPolicy,
   trustCaInFirefox,
   trustLocalCa,
+  wpCliPackages,
   scanValetImport,
   dbImportLeftovers,
   dbImportDeleteLeftover,
@@ -769,6 +770,65 @@ function CliCard() {
   );
 }
 
+/** The tell for #228: rexenv pins the command set of every `wp` it runs, so a
+ *  user's global WP-CLI packages no longer extend it. Rendered ONLY when a
+ *  packages dir exists that would have contributed — on almost every machine
+ *  this is nothing at all.
+ *
+ *  Every clause below is LOAD-BEARING and guarded (`the_settings_tell_says_what
+ *  _changed_and_what_still_works`, core/wp_packages.rs). Read the guard's
+ *  reasons before shortening anything here — in particular the last sentence,
+ *  which reads as reassurance and is the entire relief valve: without it this is
+ *  a capability removal rather than a scoped change.
+ *
+ *  `names` EMPTY means "could not be named", NEVER "none" — so the copy drops to
+ *  a variant that claims no count. "The 0 packages" would be worse than not
+ *  rendering: it invites the reader to conclude something false about their own
+ *  machine. */
+const PACKAGES_SCOPE = "rexenv runs `wp` with only the commands it bundles.";
+const PACKAGES_REASON =
+  "are not loaded into the commands rexenv runs for you, so a command does the same thing here as on a machine that never installed one.";
+const PACKAGES_TERMINAL =
+  "They still work in rexenv's terminal: `wp` there is your command line, not ours.";
+
+export function WpCliPackagesCard() {
+  const { data } = useQuery({ queryKey: ["wp-cli-packages"], queryFn: wpCliPackages });
+  if (!data) return null;
+  const named = data.names.length > 0;
+  return (
+    <div
+      data-probe="wp-cli-packages"
+      className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 px-5 py-[15px]"
+    >
+      <div className="text-[0.8125rem] font-medium text-rex-text">WP-CLI packages</div>
+      <div className="mt-1 text-[0.71875rem] leading-relaxed text-rex-text-muted">
+        {PACKAGES_SCOPE.replace("`wp`", "wp")}{" "}
+        {named ? (
+          <>
+            The {data.names.length} package{data.names.length === 1 ? "" : "s"} in{" "}
+            <span className="font-mono text-rex-text">{data.dir}</span> —{" "}
+            {data.names.map((n, i) => (
+              <span key={n}>
+                {i > 0 && ", "}
+                <span className="font-mono text-rex-text">{n}</span>
+              </span>
+            ))}{" "}
+            — {PACKAGES_REASON}
+          </>
+        ) : (
+          <>
+            The packages in <span className="font-mono text-rex-text">{data.dir}</span>{" "}
+            {PACKAGES_REASON}
+          </>
+        )}
+      </div>
+      <div className="mt-1.5 text-[0.71875rem] leading-relaxed text-rex-text-muted">
+        {PACKAGES_TERMINAL.replace("`wp`", "wp")}
+      </div>
+    </div>
+  );
+}
+
 /** Default-TLD picker (configurable TLD v1): new sites are created under this
  *  TLD. Existing sites keep their domain (re-point one via Change domain).
  *  Blocked TLDs are refused by the BACKEND — the inline feedback here mirrors
@@ -1314,6 +1374,7 @@ export function Settings() {
                 </Card>
                 <GeneralPrefsCard />
                 <CliCard />
+                <WpCliPackagesCard />
                 <Card title="Blueprints">
                   <BlueprintsSetting />
                 </Card>

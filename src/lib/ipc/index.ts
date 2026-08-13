@@ -652,6 +652,26 @@ export async function wpInfo(id: string): Promise<WpInfo> {
   return invoke<WpInfo>("wp_info", { id });
 }
 
+/** A packages dir on this machine that WP-CLI would have loaded into rexenv's
+ *  `wp` before the command set was pinned (#228). `null` on almost every
+ *  machine — the card renders nothing then. `names` EMPTY means "could not be
+ *  named", never "none": the card must not turn that into a count. */
+export interface WpCliPackages {
+  dir: string;
+  names: string[];
+}
+
+export async function wpCliPackages(): Promise<WpCliPackages | null> {
+  if (!isTauri()) {
+    // The dev machine that found #228, so the card is reviewable in the browser.
+    return {
+      dir: "~/.wp-cli/packages",
+      names: ["danielbachhuber/php-compat-command", "wp-cli/dist-archive-command"],
+    };
+  }
+  return invoke<WpCliPackages | null>("wp_cli_packages");
+}
+
 /** Mailpit mail-catcher status + endpoints. Mock fallback outside Tauri. */
 export async function mailpitStatus(): Promise<MailpitStatus> {
   if (!isTauri()) {

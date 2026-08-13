@@ -88,6 +88,20 @@ the shipped UI toward one.
   button to walk into it. Same rule that removed the blueprint field from non-WordPress
   types.
 - Unknowable state says so ("can't determine") instead of guessing.
+- **A capability that goes away is explained where it goes away, and the explanation
+  never replaces the tool's own words.** Pinning the wp-cli command set (#228) means a
+  user's global packages stop extending rexenv's `wp`. The tell (#301) is a standing
+  Settings card AND an explanation APPENDED to `not a registered wp command` at the
+  moment it bites — appended, because WP-CLI's own line is the string that finds an
+  answer in a search box, and a friendlier message replacing it is a net loss. The card
+  also names what is EXCLUDED (the packages) and what still works (rexenv's terminal):
+  a scoped change reads as a capability removal without that second half, and it is
+  always the half a trim removes as reassurance.
+- **A count is never rendered from a read that failed.** The same card names packages
+  from a `composer.json` it may not be able to parse. Every failure yields a variant
+  that claims no count, because "the 0 packages in ~/.wp-cli/packages" is not a
+  degraded answer — it is a confident wrong one about the reader's own machine. Guessing
+  low is still guessing.
 - **A batch reports the job it is actually running** — the step line is that job's own
   phase label verbatim, the count moves only on terminal rows (a FAILED row still
   counts), and a long child job (a multi-GB dump) keeps the bar alive on its own

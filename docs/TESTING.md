@@ -57,6 +57,12 @@ it can:
   way; #228's scan did it too and failed at 3 by counting its own doc comments) —
   and **carry a canary** that the detection still finds something, or the whole
   scan passes vacuously the day a path changes.
+- **A copy guard is an L0 that expires at the boundary of what it can see.** A
+  must-say list proves the sentence is still in the source; it cannot prove what the
+  source PRODUCES. #301 is the worked example: L0 asserts the card branches on whether
+  the packages could be named, and only the L2 render (`wppackages-unnamed`) catches
+  the branch producing `The 0 packages in ~/.wp-cli/packages — —`. Pair them whenever
+  a copy variant exists that no developer's machine will ever render by accident.
 - **Cost:** seconds. **Runs:** every `verify.sh`. **Bug class:** logic regressions,
   drift in our own generation/parsing, unrepresentable-state violations,
   whole-surface claims going stale as the surface grows.

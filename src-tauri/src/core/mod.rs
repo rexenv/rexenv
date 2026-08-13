@@ -10,6 +10,10 @@ pub mod binaries;
 pub mod blueprints;
 pub mod cli;
 pub mod confedit;
+/// Test-only: the must-say copy guards' shared scanner (see its module doc —
+/// two guards independently shipped the same defect before it was extracted).
+#[cfg(test)]
+pub(crate) mod copy_scan;
 pub mod confrewrite;
 pub mod confverify;
 pub mod database;

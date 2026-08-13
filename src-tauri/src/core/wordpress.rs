@@ -274,11 +274,18 @@ pub fn wp_cli_checked(
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
+        // The phar's own words first, ALWAYS — that is the string the user will
+        // paste into a search box. The tell (#301) is appended to it, never in
+        // place of it: a friendlier message that replaced this would cost them
+        // the one line that finds an answer.
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let tell = wp_packages::explain_missing_command_here(&stderr)
+            .map(|t| format!("\n\n{t}"))
+            .unwrap_or_default();
         Err(Error::Other(format!(
-            "wp {} failed (exit {:?}): {}",
+            "wp {} failed (exit {:?}): {stderr}{tell}",
             args.first().copied().unwrap_or(""),
             out.status.code(),
-            String::from_utf8_lossy(&out.stderr).trim()
         )))
     }
 }
@@ -4041,10 +4048,14 @@ mod packages_pin_guards {
             "a captured wp-cli process is started outside `wp_command`, which is the only \
              place the packages-dir pin is applied to a `Command` (#228)."
         );
-        let this = strip_comments(include_str!("wordpress.rs"));
-        let production = this.split("#[cfg(test)]").next().expect("a production half");
+        // Brace-depth, not a cut at the first occurrence — a test module can sit
+        // anywhere in a file, and the naive split drops everything after it.
+        let this = strip_comments(&crate::core::copy_scan::production_source(include_str!(
+            "wordpress.rs"
+        )));
+        assert!(this.contains("fn wp_command("), "the scan lost the function it is about");
         assert_eq!(
-            production.matches("Command::new(php_bin)").count(),
+            this.matches("Command::new(php_bin)").count(),
             1,
             "`wp_command` is no longer the only `Command::new(php_bin)` in this module — the \
              others are wp-cli spawns running whatever the user installed globally."
@@ -4086,7 +4097,9 @@ mod packages_pin_guards {
     /// the pin is a line that could be dropped without the door disappearing.
     #[test]
     fn the_streamed_spawn_pins_the_env_it_was_handed() {
-        let this = strip_comments(include_str!("wordpress.rs"));
+        let this = strip_comments(&crate::core::copy_scan::production_source(include_str!(
+            "wordpress.rs"
+        )));
         let body = this
             .split("pub fn wp_step_streamed(")
             .nth(1)
@@ -4117,7 +4130,7 @@ mod packages_pin_guards {
         let pins = ["wp_command(", "with_pinned_packages(", "pin_packages_env(", "WP_CLI_PACKAGES_DIR"];
         let mut checked = 0;
         for (path, text) in rust_sources() {
-            let body = text.split("#[cfg(test)]").next().unwrap_or_default().to_string();
+            let body = crate::core::copy_scan::production_source(&text);
             if !body.contains("wp_argv_prefix(") || path == "src/core/wordpress.rs" {
                 continue;
             }

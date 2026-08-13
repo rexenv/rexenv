@@ -648,6 +648,7 @@ pub fn run() {
             commands::php::get_php_settings,
             commands::php::apply_php_settings,
             commands::wordpress::wp_info,
+            commands::wordpress::wp_cli_packages,
             commands::wordpress::wp_plugins,
             commands::wordpress::wp_org_search_plugins,
             commands::wordpress::wp_org_search_themes,

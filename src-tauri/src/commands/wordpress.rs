@@ -73,6 +73,40 @@ pub async fn wp_info(state: State<'_, AppState>, id: String) -> Result<WpInfo> {
     wp_blocking(move || core::wordpress::wp_info(&php_bin, &wp_phar, &docroot)).await
 }
 
+/// What the Settings tell needs: a packages dir on this machine that WP-CLI
+/// would have loaded into rexenv's `wp` before the command set was pinned
+/// (#228/#301). `None` — the overwhelmingly common answer — renders nothing.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpCliPackagesView {
+    pub dir: String,
+    /// EMPTY means "could not be named", never "none" — the card must then say
+    /// the directory exists without claiming a count.
+    pub names: Vec<String>,
+}
+
+/// The LOGIN-SHELL `WP_CLI_PACKAGES_DIR` is what matters here, not this
+/// process's: rexenv is Finder-launched, so a user's `export` is invisible to
+/// the app and visible to every streamed spawn. Reading the cached shell
+/// snapshot is what makes the card name the directory that would actually have
+/// contributed rather than the default one.
+#[tauri::command]
+pub async fn wp_cli_packages(
+    state: State<'_, AppState>,
+    jobs: State<'_, crate::commands::repo::RepoJobs>,
+) -> Result<Option<WpCliPackagesView>> {
+    let env = crate::commands::repo::shell_env(&state, &jobs, false).ok();
+    let exported = env.as_ref().and_then(|e| {
+        e.iter().find(|(k, _)| k == "WP_CLI_PACKAGES_DIR").map(|(_, v)| v.clone())
+    });
+    let home = env
+        .as_ref()
+        .and_then(|e| e.iter().find(|(k, _)| k == "HOME").map(|(_, v)| v.clone()))
+        .or_else(|| std::env::var("HOME").ok());
+    Ok(core::wp_packages::global_packages(exported.as_deref(), home.as_deref())
+        .map(|g| WpCliPackagesView { dir: g.dir, names: g.names }))
+}
+
 /// Resolve a site's docroot + its bundled PHP/WP-CLI tools (for the WP manager).
 async fn site_tools(
     state: &State<'_, AppState>,

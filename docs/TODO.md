@@ -70,7 +70,7 @@ evidence cited.
   (`open_external`, so all ~12 call sites obey), URL-only guard, per-open
   installed-ness re-check, real extracted app icons for browsers AND editors, a
   one-time chevron beside "Open in browser", and a Settings "Web browser" row.
-  ARCHITECTURE §8.2; ledger #261–262; `browser_detect_check` (L1) +
+  ARCHITECTURE §8.2; ledger #301–262; `browser_detect_check` (L1) +
   `openin.js` (L2, plant-proven); design record `docs/PLAN-browser-preference.md`.
 - [ ] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
   stubs** (Phase 4, same shape as `detect_editors`). Until they are filled, those
@@ -127,8 +127,12 @@ evidence cited.
   its own canary) and now strips comments.
   ✓ (d) **done 4 Aug, rewritten 13 Aug** — `core/wordpress.rs`'s module doc stated
   the unfixed state; it now states the pin, its scope and why the terminal is out.
-  - [ ] **remaining: the tell** (ledger #261) — Settings card + the failure-moment
-    explanation on `not a registered wp command`. Copy approved 13 Aug; task 1b.
+  ✓ **the tell — LANDED 13 Aug 2026** (ledger #301): the Settings card + the
+    explanation APPENDED to `not a registered wp command` at the captured path and
+    the MCP raw runner. Copy approved with one redline ("not loaded into the commands
+    rexenv runs for you" — "into them" referred back across a sentence boundary).
+    Both must-say lists plant-proven; the don't-guess rule proven at BOTH layers
+    (L0 asserts the branch, L2 `wppackages-unnamed` asserts what it renders).
   - [ ] **remaining: the L1 leg** — L0 can only assert an argv and an env pair;
     the resolution difference under the real phar needs the example (task 1c),
     with a control leg that plants its own canary package rather than relying on
@@ -400,7 +404,7 @@ first:
   (never the whole KV table).
 - [x] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
   — **DECIDED 5 Aug 2026: (b) NEUTRALISE WITH A TELL. LANDED 13 Aug 2026** (the pin
-  + its L0 scan; the tell is ledger #261, the L1 leg still open). Queued as the
+  + its L0 scan; the tell is ledger #301, the L1 leg still open). Queued as the
   FIRST thing after v0.1.0 shipped; deliberately not on the release artefact,
   because it is a behaviour change and wanted its own verification rather than
   riding a build that was gated before it existed. **What the work actually turned

@@ -32,6 +32,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Site FROM a git repo (validate → clone into the docroot → composer/.env/key/migrate) | `core/sites.rs` (`validate_git_source`, `git_source_of`, `clone_into_docroot`), `core/laravel.rs` (`ensure_env_file`), `core/repo.rs` (clone, `composer_install`) | `commands/site_provision.rs` (`clone`/`deps`/`finalize` phases), `commands/repo.rs` (`repo_probe`, reused by the dialog) | ShellRunner, ProcessSupervisor | #263–299; `git_site_clone_check` (L1 sandbox), `git_site_provision_check` (L1 network, the real driver); `docs/PLAN-git-site-clone.md` |
 | The site's own checkout — Repository tab: status, branch, fetch/pull/push, scripts (UI: `sites/SiteRepoTab.tsx` → the shared `wordpress/RepoPanel.tsx`) | `core/repo.rs` (path-based git ops) | `commands/repo.rs` (`repo_site_info`; `job_target` maps `kind: "site"` to the project root) | ShellRunner, ProcessSupervisor | #284–288; `git_site_clone_check` §8 |
 | WordPress ops (wp-cli, manager, streamed installs from wp.org OR a local zip, wp.org search) | `core/wordpress.rs` (`ensure_slugs` / `ensure_zip_paths` — one gate per source), `core/wporg.rs`, `core/blueprints.rs` | `commands/wordpress.rs` (60 cmds), `commands/wp_install.rs` (`source: wporg\|zip`), `commands/blueprints.rs` | ShellRunner | #141–147, #259–260; `wp_install_serve`, `wp_install_stream_check` (job 4 = the zip leg) |
+| The wp-cli command SET (packages-dir pin + the tell) | `core/wp_packages.rs` (the pin, the detection, both copy guards), `core/wordpress.rs` (`wp_argv_prefix`/`wp_command` — the ONE argv builder and the ONE spawn), `core/copy_scan.rs` (test-only: the shared must-say scanner) | `commands/wordpress.rs` (`wp_cli_packages`) | Paths | #228 (pin, ◐), #229–230 (the carried command), #301 (the tell); L2 `uireview` `wppackages-*`; L1 at task 1c |
 | "Log in as" magic link | `core/wp_login.rs` | `commands/wordpress.rs` | — | #33–36; `wp_login_check` |
 | Loopback DNS for PHP (WP-Cron/self-calls under c-ares) | `core/wp_dns.rs` | installed by `commands/site_provision.rs` (settle-ok), re-installed by `commands/sites.rs` (rename), swept for all sites by `lib.rs` (launch) | — | #251–253; `wp_dns_check` |
 | Tunnels (cloudflared, health probe, mu-plugin rewrite) | `core/tunnels.rs`, `core/wp_tunnel.rs` | `commands/tunnels.rs` | ProcessSupervisor | #1–32; `tunnel_check`, `tunnel_sweep`, `tunnel_muplugin_check` |
@@ -79,5 +80,13 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   would guess — see v17 reasoning), store fns in `state/store.rs` only.
 - **Change a port / bump a binary** → `docs/PORTS.md` in the SAME commit as the constant.
 - **Write an invariant comment** → its `CLAIM-LEDGER.md` row + verdict in the SAME commit.
+- **Write a copy guard (a must-say list)** → put it in the module that owns the FACTS
+  the copy states (#197), scan with `core::copy_scan` — never `split("#[cfg(test)]")`,
+  which cuts at the first occurrence and silently stops covering a file whose test
+  module sits in the middle — and carry BOTH canaries: a code landmark survives, and a
+  comment-only phrase does not. Three guards have now shipped or nearly shipped
+  reading their own explanation.
+- **Spawn wp-cli** → `wordpress::wp_argv_prefix` + the pin, never a hand-rolled argv;
+  the build fails otherwise (#228). `core/terminal.rs`'s wrapper is the one exemption.
 - **Write an example** → read `src-tauri/examples/common/mod.rs` FIRST (the invariant),
   claim a fixture port there, declare a tier in `scripts/live-checks.sh`.

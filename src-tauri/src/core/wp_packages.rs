@@ -139,6 +139,135 @@ pub fn with_pinned_packages(env: &[(String, String)], wp_phar: &Path) -> Vec<(St
     out
 }
 
+// ── The tell ────────────────────────────────────────────────────────────────
+//
+// Pinning alone hands someone who genuinely relies on a global package a bare
+// `not a registered wp command` with no explanation — the same unreproducibility
+// pointed the other way. So when a packages dir exists that WOULD have
+// contributed, rexenv says so.
+
+/// A packages dir on this machine that WP-CLI would have loaded.
+pub struct GlobalPackages {
+    /// The directory itself, `~`-abbreviated for display.
+    pub dir: String,
+    /// What the user installed there, from `composer.json`'s `require`.
+    ///
+    /// **Empty means "could not be named confidently", never "none".** The
+    /// caller must then say the directory exists WITHOUT claiming a count: a
+    /// card reading "the 0 packages" or listing nothing would be worse than not
+    /// rendering, because it invites the reader to conclude something false
+    /// about their own machine. Guessing is the one thing this must not do.
+    pub names: Vec<String>,
+}
+
+/// Detect a packages dir that would have extended a rexenv-run `wp`.
+///
+/// `packages_dir_env` is the caller's `WP_CLI_PACKAGES_DIR` — the LOGIN-SHELL
+/// one where the caller has it, since that is the environment the streamed
+/// spawns inherit and the only place a user's export is visible to a
+/// Finder-launched app. `home` mirrors WP-CLI's own `get_home_dir()`.
+///
+/// The test for "would have contributed" is `vendor/autoload.php` being a
+/// readable file, because that is exactly what WP-CLI requires — not the
+/// directory existing, which it does on plenty of machines that never installed
+/// anything.
+pub fn global_packages(packages_dir_env: Option<&str>, home: Option<&str>) -> Option<GlobalPackages> {
+    let dir = match packages_dir_env.map(str::trim).filter(|v| !v.is_empty()) {
+        Some(v) => PathBuf::from(v),
+        None => PathBuf::from(home?).join(".wp-cli").join("packages"),
+    };
+    if !dir.join("vendor").join("autoload.php").is_file() {
+        return None;
+    }
+    Some(GlobalPackages { dir: abbreviate_home(&dir, home), names: installed_names(&dir) })
+}
+
+/// `require` keys from the packages dir's own `composer.json` — what
+/// `wp package install` writes, so it is the list the user recognises.
+///
+/// Every failure returns EMPTY rather than a guess: unreadable, not JSON, no
+/// `require`, not an object. `php` and the `wp-cli/wp-cli` self-reference are
+/// dropped — they are not packages anyone installed.
+fn installed_names(dir: &Path) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(dir.join("composer.json")) else {
+        return Vec::new();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(require) = json.get("require").and_then(|r| r.as_object()) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = require
+        .keys()
+        .filter(|k| *k != "php" && *k != "wp-cli/wp-cli")
+        .cloned()
+        .collect();
+    names.sort();
+    names
+}
+
+fn abbreviate_home(dir: &Path, home: Option<&str>) -> String {
+    let shown = dir.display().to_string();
+    match home.filter(|h| !h.is_empty()) {
+        Some(h) if shown.starts_with(h) => format!("~{}", &shown[h.len()..]),
+        _ => shown,
+    }
+}
+
+/// The phrase WP-CLI prints when a command does not exist. Its own words, so
+/// the match is against what the phar really says.
+const NO_SUCH_COMMAND: &str = "is not a registered wp command";
+
+/// [`global_packages`] resolved from this process's own environment.
+///
+/// The app is Finder-launched, so `WP_CLI_PACKAGES_DIR` is usually absent here
+/// and the answer is `~/.wp-cli/packages` — right on the overwhelming majority
+/// of machines. A caller holding the login-shell snapshot (the environment the
+/// streamed spawns actually inherit) should pass its value to
+/// [`global_packages`] instead, and the Settings card does.
+pub fn global_packages_here() -> Option<GlobalPackages> {
+    global_packages(
+        std::env::var("WP_CLI_PACKAGES_DIR").ok().as_deref(),
+        std::env::var("HOME").ok().as_deref(),
+    )
+}
+
+/// [`explain_missing_command`] against this machine, with the lookup skipped
+/// unless the failure is the one it explains — every other wp-cli failure must
+/// cost nothing.
+pub fn explain_missing_command_here(stderr: &str) -> Option<String> {
+    if !stderr.contains(NO_SUCH_COMMAND) {
+        return None;
+    }
+    explain_missing_command(stderr, global_packages_here().as_ref())
+}
+
+/// The explanation appended to a wp-cli failure that says the command does not
+/// exist, when this machine has a packages dir that would have supplied it.
+///
+/// APPENDED, never substituted: WP-CLI's own line is what the user will paste
+/// into a search box, and replacing it with something friendlier would cost them
+/// the one string that finds an answer. `None` when the failure is anything else
+/// or nothing would have contributed — this must be silent on the machines it
+/// has nothing to explain.
+pub fn explain_missing_command(stderr: &str, global: Option<&GlobalPackages>) -> Option<String> {
+    if !stderr.contains(NO_SUCH_COMMAND) {
+        return None;
+    }
+    let global = global?;
+    let named = match global.names.is_empty() {
+        true => String::new(),
+        false => format!(" ({})", global.names.join(", ")),
+    };
+    Some(format!(
+        "This is not one of the commands rexenv bundles, and rexenv runs `wp` without your {}{}. \
+         That is why it resolves in your own shell and in rexenv's terminal, but not in what \
+         rexenv runs for you.",
+        global.dir, named
+    ))
+}
+
 /// Materialise the vendored tree (idempotent) and return the path to hand to
 /// `wp --require=…`.
 ///
@@ -386,5 +515,261 @@ mod tests {
         assert!(pinned.iter().any(|(k, v)| k == "HOME" && v == "/Users/dev"));
         assert!(pinned.iter().any(|(k, v)| k == "PATH" && v == "/usr/bin"));
         let _ = std::fs::remove_dir_all(sandbox_root(&phar));
+    }
+
+    /// A packages dir shaped like a real one: the composer project WP-CLI
+    /// writes, with a `vendor/autoload.php` — the file that decides whether it
+    /// would have contributed at all.
+    fn packages_fixture(tag: &str, composer_json: Option<&str>, autoload: bool) -> PathBuf {
+        let home = std::env::temp_dir().join(format!("rexenv-glob-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let dir = home.join(".wp-cli").join("packages");
+        std::fs::create_dir_all(dir.join("vendor")).unwrap();
+        if autoload {
+            std::fs::write(dir.join("vendor").join("autoload.php"), b"<?php").unwrap();
+        }
+        if let Some(json) = composer_json {
+            std::fs::write(dir.join("composer.json"), json).unwrap();
+        }
+        home
+    }
+
+    /// The real file from the dev machine that found #228, trimmed to the shape
+    /// that matters. Production-shaped on purpose: a friendly `{"require":{}}`
+    /// fixture would not have caught a reader that expected an array.
+    const REAL_COMPOSER_JSON: &str = r#"{
+        "name": "wp-cli/wp-cli",
+        "description": "Installed community packages used by WP-CLI",
+        "require": {
+            "danielbachhuber/php-compat-command": "dev-master",
+            "wp-cli/dist-archive-command": "3.1.0"
+        },
+        "require-dev": {},
+        "minimum-stability": "dev"
+    }"#;
+
+    #[test]
+    fn a_packages_dir_that_would_have_contributed_is_named_from_its_own_composer_json() {
+        let home = packages_fixture("named", Some(REAL_COMPOSER_JSON), true);
+        let found = global_packages(None, home.to_str()).expect("the dir would have contributed");
+        assert_eq!(
+            found.names,
+            vec![
+                "danielbachhuber/php-compat-command".to_string(),
+                "wp-cli/dist-archive-command".to_string()
+            ]
+        );
+        assert_eq!(found.dir, "~/.wp-cli/packages", "the path is shown as the user knows it");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_dir_with_no_autoloader_would_not_have_contributed_and_says_nothing() {
+        // The common shape on a machine that once ran `wp package` and no
+        // longer has anything installed: the directory exists, the autoloader
+        // does not. Telling that user their packages were excluded would be
+        // inventing a loss.
+        let home = packages_fixture("empty", Some(REAL_COMPOSER_JSON), false);
+        assert!(global_packages(None, home.to_str()).is_none());
+        assert!(global_packages(None, None).is_none(), "no home to resolve — nothing to claim");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn an_unreadable_or_unexpected_composer_json_names_nothing_rather_than_guessing() {
+        // Four ways the read can go wrong. Every one must yield NO names, so the
+        // caller says the directory exists without claiming a count — "the 0
+        // packages" would be worse than not rendering, because it invites the
+        // reader to conclude something false about their own machine.
+        for (tag, json) in [
+            ("missing", None),
+            ("garbage", Some("not json at all")),
+            ("no-require", Some(r#"{"name":"wp-cli/wp-cli"}"#)),
+            ("require-is-an-array", Some(r#"{"require":["a/b"]}"#)),
+        ] {
+            let home = packages_fixture(tag, json, true);
+            let found = global_packages(None, home.to_str())
+                .unwrap_or_else(|| panic!("{tag}: the dir still would have contributed"));
+            assert!(found.names.is_empty(), "{tag}: named packages it could not read");
+            let _ = std::fs::remove_dir_all(&home);
+        }
+        // …and a require that lists only things nobody installed is the same
+        // case: present, unnameable, never "0 packages".
+        let home = packages_fixture("self-only", Some(r#"{"require":{"php":">=7.2"}}"#), true);
+        assert!(global_packages(None, home.to_str()).unwrap().names.is_empty());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn an_exported_packages_dir_is_the_one_reported() {
+        // The user's login shell is what the streamed spawns inherit, so an
+        // export is the dir that WOULD have contributed — reporting `~/.wp-cli`
+        // instead would name the wrong directory in the one sentence whose job
+        // is to name it.
+        let home = packages_fixture("export", Some(REAL_COMPOSER_JSON), true);
+        let exported = home.join(".wp-cli").join("packages");
+        let found = global_packages(exported.to_str(), Some("/Users/someone-else"))
+            .expect("the exported dir would have contributed");
+        assert_eq!(found.dir, exported.display().to_string());
+        assert_eq!(found.names.len(), 2);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// The must-say list for the failure-moment tell (#301), with the reason per
+    /// phrase — the reason is the durable half, because it is what tells the
+    /// next person whether their shorter wording still does the job.
+    #[test]
+    fn the_failure_moment_tell_says_what_the_user_needs_to_know() {
+        let global = GlobalPackages {
+            dir: "~/.wp-cli/packages".into(),
+            names: vec!["wp-cli/dist-archive-command".into()],
+        };
+        let phar_said = "Error: 'dist-archive' is not a registered wp command. \
+                         See 'wp help' for available commands.";
+        let tell = explain_missing_command(phar_said, Some(&global)).expect("the tell");
+
+        for (phrase, why) in [
+            (
+                "wp-cli/dist-archive-command",
+                "LOAD-BEARING: names WHAT was excluded. Without it the user knows only that \
+                 something is missing, which is the unexplained loss this tell exists to prevent",
+            ),
+            (
+                "rexenv's terminal",
+                "LOAD-BEARING: the relief valve, and the clause a trim reads as reassurance. \
+                 Cut it and the tell is a bare capability removal instead of a scoped change",
+            ),
+            (
+                "in what rexenv runs for you",
+                "the SCOPE claim — the whole reason the terminal sentence above is true",
+            ),
+            (
+                "resolves in your own shell",
+                "why it works there and not here, which is the question being asked at the \
+                 moment this fires",
+            ),
+        ] {
+            assert!(tell.contains(phrase), "the tell no longer says {phrase:?} — {why}");
+        }
+
+        // APPENDED, never substituted: the caller keeps wp-cli's own line, which
+        // is the string the user will paste into a search box.
+        assert!(
+            !tell.contains("Error: 'dist-archive'"),
+            "the tell must not restate the phar's error — it is appended to it, not instead of it"
+        );
+
+        // Silent where it has nothing to explain.
+        assert!(explain_missing_command(phar_said, None).is_none());
+        assert!(explain_missing_command("Error: could not connect to the database", Some(&global))
+            .is_none());
+
+        // Unnameable packages: the sentence still lands, without a parenthetical
+        // that would be empty or invented.
+        let unnamed = GlobalPackages { dir: "~/.wp-cli/packages".into(), names: Vec::new() };
+        let tell = explain_missing_command(phar_said, Some(&unnamed)).expect("the tell");
+        assert!(tell.contains("without your ~/.wp-cli/packages."), "{tell}");
+        assert!(!tell.contains("()"), "an empty parenthetical reached the user: {tell}");
+    }
+
+    /// D2's rule at both sites: the tell is APPENDED to a failure the user is
+    /// already reading, never substituted for it. WP-CLI's own line is the
+    /// string they will paste into a search box, and a friendlier message that
+    /// replaced it would be a net loss — the explanation is worth having only in
+    /// addition to the thing it explains.
+    #[test]
+    fn both_tell_sites_append_to_what_wp_cli_said_rather_than_replacing_it() {
+        let captured = crate::core::copy_scan::production_source(include_str!("wordpress.rs"));
+        assert!(
+            captured.contains("pub fn wp_cli_checked("),
+            "the scan lost the function it is about — every check here would pass vacuously"
+        );
+        assert!(
+            captured.contains("{stderr}{tell}"),
+            "the captured path no longer carries wp-cli's own stderr through to the caller with \
+             the tell after it (core::wordpress::wp_cli_checked)"
+        );
+
+        // NOT `split("#[cfg(test)]")`: scratch.rs's test module sits in the
+        // MIDDLE of the file, so that cut drops the wp_run tool entirely and
+        // this guard passes while covering nothing. It did, on the first run.
+        let agent =
+            crate::core::copy_scan::production_source(include_str!("../mcp_server/scratch.rs"));
+        assert!(
+            agent.contains("fn agent_stream"),
+            "the scan lost the production half of scratch.rs — the same defect this guard's              own comment describes"
+        );
+        assert!(
+            agent.contains("detail.push_str(&super::view::scrub_log_line(&tell, &known))"),
+            "the agent path no longer appends the tell to `detail` through the path scrubber — \
+             either the explanation is gone, or an exported packages dir can carry the OS \
+             username onto the agent surface"
+        );
+    }
+
+    /// The must-say list for the STANDING tell — the Settings card (#301).
+    ///
+    /// Guard lives here, in the module owning the facts the copy states, so a
+    /// rule change sits next to the sentence promising it (#197's lesson). It
+    /// scans what RENDERS, with both canaries — the #235 defect, which this
+    /// project has now committed twice.
+    #[test]
+    fn the_settings_tell_says_what_changed_and_what_still_works() {
+        const SETTINGS_SRC: &str = include_str!("../../../src/routes/Settings.tsx");
+        let src = crate::core::copy_scan::strip_ts_comments(SETTINGS_SRC);
+        assert!(
+            src.contains("const PACKAGES_SCOPE"),
+            "the stripper ate the source — every check below would pass on an empty string"
+        );
+        assert!(
+            !src.contains("LOAD-BEARING"),
+            "comment text survived the strip; prose can satisfy this guard again"
+        );
+
+        for (phrase, why) in [
+            (
+                "only the commands it bundles",
+                "the SCOPE claim. This is what the user is being told changed; without it the \
+                 card is a list of packages with no statement about them",
+            ),
+            (
+                "are not loaded into the commands rexenv runs for you",
+                "WHAT changed, and the redline: 'not loaded into them' referred back across a \
+                 sentence boundary and read as ambiguous — into the commands, or into rexenv?",
+            ),
+            (
+                "the same thing here as on a machine that never installed one",
+                "LOAD-BEARING: the REASON. Cut it and this is a trade the user is told about, \
+                 not a fix — reproducibility is the entire argument for taking something away",
+            ),
+            (
+                "They still work in rexenv's terminal",
+                "LOAD-BEARING and the first thing a trim removes as reassurance. It is the \
+                 relief valve: without it the card is a capability removal rather than a scoped \
+                 change, and the scope narrowing that makes it TRUE is a deliberate exemption \
+                 (core/terminal.rs is never pinned), not a nicety",
+            ),
+            (
+                "your command line, not ours",
+                "WHY the terminal is exempt, in the user's terms — otherwise the exemption \
+                 reads as an inconsistency someone will later 'fix'",
+            ),
+        ] {
+            assert!(src.contains(phrase), "the Settings tell no longer says {phrase:?} — {why}");
+        }
+
+        // The don't-guess rule, asserted where it renders: an empty `names` must
+        // reach a variant that claims NO count. A card reading "the 0 packages"
+        // would invite the reader to conclude something false about their own
+        // machine, which is worse than not rendering at all.
+        assert!(
+            src.contains("data.names.length > 0"),
+            "the card no longer branches on whether the packages could be NAMED — an \
+             unreadable composer.json would render a count it cannot support"
+        );
+        assert!(
+            src.contains("The packages in"),
+            "the unnamed variant is gone; there is now only a copy that claims a count"
+        );
     }
 }

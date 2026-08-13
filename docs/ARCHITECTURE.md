@@ -518,7 +518,7 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   Settings picker shows "System default" again.
 - **A chosen browser takes URLs only.** `open -a <browser> <path>` displays a
   local FILE, so `open_in_browser` refuses anything that isn't `http(s)` before
-  it even looks the browser up (CLAIM-LEDGER #261).
+  it even looks the browser up (CLAIM-LEDGER #301).
 - **The chevron next to "Open in browser" is one-time.** It opens THIS url
   elsewhere and changes no setting — the default moves in Settings only.
 - **Icons are the apps' real icons**, extracted from the installed bundle
@@ -594,6 +594,17 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   ("they still work in rexenv's terminal") true. Streamed spawns take the pin
   through `wp_packages::with_pinned_packages`, which REMOVES any inbound value
   rather than relying on last-wins ordering.
+- **…and the TELL that makes the pin a fix rather than a trade (#301):** taking a
+  capability away silently is the same unreproducibility pointed the other way, so
+  when a packages dir exists that WOULD have contributed, rexenv says so — a standing
+  Settings card (the fact) and an explanation APPENDED to `not a registered wp command`
+  at the two sites a user or agent meets it (the answer). Appended, never substituted:
+  WP-CLI's own line is what gets pasted into a search box. Names come from that dir's
+  `composer.json`; every way that read can fail yields NO names and a variant claiming
+  no count, because "the 0 packages" invites a false conclusion about the reader's own
+  machine. The card reads the LOGIN-SHELL `WP_CLI_PACKAGES_DIR`, not the app's — rexenv
+  is Finder-launched, so a user's export is invisible here and visible to every
+  streamed spawn.
 - **wp-cli argument hygiene (extends M7):** anything that lands in wp-cli argv from IPC
   is whitelisted in core (`DEBUG_FLAGS`, `PERMALINK_STRUCTURES`, `USER_ROLES`); names
   that can't be whitelisted because they're site-defined (cron hooks) pass as a single
