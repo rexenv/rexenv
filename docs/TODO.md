@@ -108,7 +108,8 @@ evidence cited.
   (`core/dns.rs` module doc; loopback bind keeps it safe, ledger #44). Harmless
   while only our `/etc/resolver/<tld>` files route to it, but "answers anything"
   is unintended. Scope answers to configured TLDs; NXDOMAIN the rest.
-- [x] **rexenv's WP-CLI no longer inherits `~/.wp-cli/packages`** (found 4 Aug 2026
+- [x] **rexenv's WP-CLI no longer inherits `~/.wp-cli/packages`** — DONE, all four
+  parts (found 4 Aug 2026
   while costing dist-archive; ledger #228). Every `wp` rexenv runs FOR A USER is
   pinned to the bundled command set; `core::terminal`'s `wp` wrapper stays ambient
   by decision — that is the user's own command line, and pinning it would break
@@ -133,11 +134,15 @@ evidence cited.
     rexenv runs for you" — "into them" referred back across a sentence boundary).
     Both must-say lists plant-proven; the don't-guess rule proven at BOTH layers
     (L0 asserts the branch, L2 `wppackages-unnamed` asserts what it renders).
-  - [ ] **remaining: the L1 leg** — L0 can only assert an argv and an env pair;
-    the resolution difference under the real phar needs the example (task 1c),
-    with a control leg that plants its own canary package rather than relying on
-    a package the laptop happened to have (#236's lesson). Ledger #228 stays ◐
-    until it lands.
+  ✓ **the L1 leg — LANDED 13 Aug 2026**: `wp_packages_check` (sandbox tier).
+    Plants its own canary package and REQUIRES it to resolve unpinned first —
+    a control that silently failed would make the whole check "nothing resolved
+    either way", green and vacuous. Five legs, plant-proven five ways. Ledger
+    #228 is ✅, **scoped to what the run showed**: a package registering via
+    `WP_CLI::add_command`, on this machine, through both production spawns. Not
+    a package that hooks WP-CLI another way, and by design not the terminal
+    wrapper — leg D pins that the OPPOSITE way, because the tell's last sentence
+    depends on it staying ambient.
 - [ ] **B29b — fpm pool reap is still one-miss** (`core/php.rs:534-535`): a single
   failed port probe with a dead-looking master reaps the pool, with no
   `ADOPTED_MISS_LIMIT`-style counter and no positive php-fpm title identification

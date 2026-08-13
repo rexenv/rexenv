@@ -13,6 +13,17 @@
 //! one place with the lesson attached, rather than being re-derived by whoever
 //! writes the third one.
 //!
+//! [`production_lines`] makes the argument sharper, and it is the reason this
+//! module exists rather than a note in a doc: **a correct implementation with a
+//! warning written beside it did not stop the same mistake three times.**
+//! `mcp_server/scratch.rs` already had the brace-depth version AND a comment
+//! naming precisely the bug — that a test module can sit mid-file, so cutting at
+//! the first `#[cfg(test)]` silently stops covering the rest — and the next two
+//! scanners went naive anyway, one of them written while citing the other
+//! defect. Extraction is what documentation could not do here: the right code
+//! and its explanation were both already in the repo, in the file the third
+//! guard was written to scan.
+//!
 //! # The two rules a caller still owns
 //!
 //! Stripping is only half. Every guard using this must also assert, in both

@@ -86,6 +86,16 @@ it can:
   `NewSite.path` with the resolved docroot before the clone/link rule ran, so every
   cloned site read as also-linked and was refused). **Building the fixture with the
   real tool is what makes a hermetic example an L1 rather than an L0 in disguise.**
+  **`wp_packages_check` (sandbox tier) is the pattern taken one step further: it plants
+  the thing the check is about.** The obvious version — ask for a package command,
+  expect it missing — is green on every machine that never installed one, which is most
+  of them. So it writes its own canary package, REQUIRES that WP-CLI resolves it
+  unpinned, and reports **CONTROL LEG BROKEN, this run proves NOTHING** if it does not,
+  rather than letting a command that was absent for its own reasons read as the pin
+  working. A control that fails silently converts a check into "nothing happened either
+  way" — the vacuous-pass shape, one layer up from where this project usually catches
+  it. Its verdict is also scoped in the ledger to what the run showed (one hook style,
+  one machine), not to the claim's ambition.
   Its network-tier sibling `git_site_provision_check` is the other half, and the one
   that pays: it drives the REAL `site_provision_job` on a `tauri::test::mock_app`
   against real remotes, and on its first run found **two bugs no unit test could
