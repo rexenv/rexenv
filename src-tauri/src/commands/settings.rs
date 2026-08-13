@@ -22,13 +22,20 @@ pub fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<Str
     store::get_setting(&conn, &key)
 }
 
-/// Insert or update a setting. `default_tld` is routed through its policy-gated
-/// setter so the generic KV command can't smuggle a blocked TLD past the backend.
+/// Insert or update a setting. Keys with a validating setter are routed to it,
+/// so the generic KV command can't smuggle a value past the backend — a blocked
+/// TLD, or a sites folder that would end a quoted path in a generated config.
+/// `every_gated_setting_key_is_routed_here` fails the build when a third one
+/// appears and this match does not learn about it.
 #[tauri::command]
 pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<()> {
     let conn = lock(&state)?;
     if key == core::sites::DEFAULT_TLD_KEY {
         core::sites::set_default_tld(&conn, &value)?;
+        return Ok(());
+    }
+    if key == core::sites::SITES_DIR_KEY {
+        core::sites::set_sites_dir(&conn, &value)?;
         return Ok(());
     }
     store::set_setting(&conn, &key, &value)

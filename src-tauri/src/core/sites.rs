@@ -1556,6 +1556,68 @@ pub fn set_default_tld(conn: &Connection, new_tld: &str) -> Result<String> {
     Ok(new_tld.to_string())
 }
 
+/// Validate + store the sites folder. The gated setter for [`SITES_DIR_KEY`],
+/// the same shape as [`set_default_tld`] — the generic KV command routes here so
+/// no IPC path can smuggle a value past this.
+///
+/// # Why this refuses rather than sanitises
+///
+/// The value becomes a provision docroot (`<sites_dir>/<domain>`) and is written
+/// into generated Caddy and nginx configs. Those are QUOTED (app-data paths
+/// contain spaces), so a quote or a backslash in the value ends the quoted
+/// string early and the rest of the path becomes config — the B26 concern.
+/// Silently stripping the character would hand back a folder the user did not
+/// pick and did not agree to, and their sites would be created somewhere they
+/// never chose. A refusal is the only answer that cannot be wrong.
+///
+/// Relative paths are refused for the same reason: a docroot resolved against
+/// whatever the app's working directory happens to be is not a location anyone
+/// chose. Everything else a real folder can contain — spaces, unicode, `'` —
+/// is accepted, because the configs quote and nothing here goes near a shell.
+///
+/// # An existing value that would not pass
+///
+/// Is left alone, deliberately. Validation is on the WRITE path only: the read
+/// ([`sites_dir`]) is unchanged, so a value stored before this existed keeps
+/// resolving exactly as it did. Refusing at read time would silently relocate a
+/// user's sites folder to the default and make every site they own look missing
+/// — a far worse outcome than the litter it would prevent, and on a released
+/// product it would arrive as "rexenv lost my sites". The next time they change
+/// the folder, the new value is validated.
+pub fn set_sites_dir(conn: &Connection, value: &str) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(Error::Other(
+            "The sites folder can't be empty. Pick a folder, or leave the setting alone to keep \
+             using the default."
+                .into(),
+        ));
+    }
+    if !Path::new(trimmed).is_absolute() {
+        return Err(Error::Other(format!(
+            "The sites folder has to be a full path starting at `/` — `{trimmed}` is relative, so \
+             where your sites landed would depend on where rexenv was started from."
+        )));
+    }
+    // The characters that cannot survive a quoted path in a generated config,
+    // plus NUL which cannot survive a filesystem call. `"` and `\` end or escape
+    // the quoted string; a newline ends the directive.
+    if let Some(bad) = trimmed.chars().find(|c| matches!(c, '"' | '\\' | '\n' | '\r' | '\0')) {
+        let shown = match bad {
+            '\n' => "a line break".to_string(),
+            '\r' => "a carriage return".to_string(),
+            '\0' => "a null byte".to_string(),
+            c => format!("`{c}`"),
+        };
+        return Err(Error::Other(format!(
+            "The sites folder can't contain {shown}: the path is written into rexenv's web-server \
+             configs, and that character would end the line early. Pick a folder without it."
+        )));
+    }
+    store::set_setting(conn, SITES_DIR_KEY, trimmed)?;
+    Ok(trimmed.to_string())
+}
+
 /// Default site docroot root: `~/rexenv/Sites` — user-visible and Finder
 /// friendly (`directories` resolves the home dir correctly per OS). Only a
 /// DEFAULT: an explicitly configured `sites_dir` setting always wins, and
@@ -3097,6 +3159,97 @@ mod tests {
     ///
     /// A per-site artifact is a core module exposing `config_path`/`log_path`
     /// taking a `domain` — that signature IS "I own a file named after a site".
+    #[test]
+    fn the_sites_folder_refuses_what_a_generated_config_cannot_carry() {
+        let conn = db::open_in_memory().unwrap();
+
+        // The B26 shape: the path is written into QUOTED Caddy/nginx directives,
+        // so a quote or a backslash ends the string early and the tail becomes
+        // config. Refused, never stripped — silently changing the folder would
+        // create the user's sites somewhere they did not pick.
+        for bad in [
+            "/Users/dev/My \"Sites\"",
+            "/Users/dev/Sites\\evil",
+            "/Users/dev/Sites\nlisten 1.2.3.4:80",
+            "/Users/dev/Sites\rlisten 1.2.3.4:80",
+        ] {
+            let err = set_sites_dir(&conn, bad).expect_err("must refuse").to_string();
+            assert!(
+                err.contains("web-server configs"),
+                "the refusal must say WHY, not just no: {err}"
+            );
+        }
+        // Relative: where the sites landed would depend on the app's cwd.
+        let err = set_sites_dir(&conn, "Sites").expect_err("must refuse").to_string();
+        assert!(err.contains("full path"), "{err}");
+        // Empty is its own message — "leave it alone to keep the default" is a
+        // different instruction from "that path is malformed".
+        let err = set_sites_dir(&conn, "   ").expect_err("must refuse").to_string();
+        assert!(err.contains("can't be empty"), "{err}");
+        // Nothing was written by any refusal.
+        assert_eq!(store::get_setting(&conn, SITES_DIR_KEY).unwrap(), None);
+
+        // What a REAL folder can contain is accepted: spaces, unicode and an
+        // apostrophe all survive a quoted path, and nothing here goes near a
+        // shell. Refusing them would be sanitising by another name.
+        for good in ["/Users/dev/Sites", "/Users/dev/My Sites", "/Users/dev/Sites/café", "/Users/o'brien/Sites"] {
+            assert_eq!(set_sites_dir(&conn, good).unwrap(), good, "{good} must be allowed");
+        }
+        // Trimmed, not rejected, for the one case where whitespace is a paste
+        // artefact rather than part of the name — including a TRAILING newline,
+        // which a copied path routinely carries. The check runs on the trimmed
+        // value, so what is stored has no line break in it and the refusal above
+        // is about a break in the MIDDLE, which no trim can make safe.
+        assert_eq!(set_sites_dir(&conn, "  /Users/dev/Sites  ").unwrap(), "/Users/dev/Sites");
+        assert_eq!(set_sites_dir(&conn, "/Users/dev/Sites\n").unwrap(), "/Users/dev/Sites");
+        assert_eq!(
+            store::get_setting(&conn, SITES_DIR_KEY).unwrap().as_deref(),
+            Some("/Users/dev/Sites")
+        );
+    }
+
+    /// An existing value that would fail today's rule keeps working: validation
+    /// is on the WRITE path only. Refusing at READ time would relocate a user's
+    /// sites folder to the default and make every site they own look missing,
+    /// which is a far worse failure than the litter it prevents.
+    #[test]
+    fn a_sites_folder_stored_before_the_rule_still_resolves() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        // Straight past the setter, the way a pre-13-Aug-2026 value got there.
+        store::set_setting(&conn, SITES_DIR_KEY, "/Users/dev/My \"Sites\"").unwrap();
+        assert_eq!(
+            sites_dir(&conn, &*platform).unwrap(),
+            std::path::PathBuf::from("/Users/dev/My \"Sites\""),
+            "the read path must not have learned to refuse — that would move their sites"
+        );
+    }
+
+    /// The generic KV setter is a door around every validating setter, so the
+    /// routing is asserted rather than trusted: a third gated key that nobody
+    /// wires into `set_setting` would be settable straight past its rule.
+    #[test]
+    fn every_gated_setting_key_is_routed_through_its_validating_setter() {
+        let body = crate::core::copy_scan::production_source(include_str!(
+            "../commands/settings.rs"
+        ));
+        let body = body
+            .split("pub fn set_setting(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[tauri::command]").next())
+            .expect("set_setting");
+        for (key_const, setter) in
+            [("DEFAULT_TLD_KEY", "set_default_tld("), ("SITES_DIR_KEY", "set_sites_dir(")]
+        {
+            assert!(
+                body.contains(key_const) && body.contains(setter),
+                "`set_setting` does not route {key_const} to `{setter}` — the generic KV command \
+                 is then a way around that key's validation, which is the whole reason the \
+                 routing exists"
+            );
+        }
+    }
+
     #[test]
     fn every_per_site_artifact_is_swept_by_both_sweeps() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core");

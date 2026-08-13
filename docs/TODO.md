@@ -195,9 +195,13 @@ evidence cited.
   `config_path`/`log_path` taking a `domain` owns a per-site file and must appear
   in both). Plant-proven; removing Apache from `change_site_domain` fails ONLY the
   guard, because no lib test reaches the rename path.
-- [ ] **`sites_dir` setting written unvalidated** (`commands/settings.rs` special-
-  cases only `default_tld`): the value flows into provision docroots and generated
-  configs (B26 charset concern). Validate at the setter.
+- [x] **`sites_dir` is validated at the setter** ✓ 13 Aug 2026, ledger #303.
+  Refused, never sanitised — a stripped character hands back a folder the user did
+  not pick. Relative paths refused; spaces, unicode and `'` accepted (the configs
+  quote, nothing goes near a shell). **An existing value that would fail the rule is
+  left alone**: validation is write-path only, because refusing at read time would
+  relocate someone's sites folder to the default and make every site they own look
+  missing. Plant-proven, including the read-path over-fix.
 - [ ] **Debug-log truth on Bedrock** (deferred with the wp-config-reader work):
   parse `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
   truthfully on non-stock layouts; today's honest state is `indeterminate`
