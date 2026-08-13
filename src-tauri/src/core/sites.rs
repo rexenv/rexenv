@@ -5,7 +5,9 @@
 //! edge-router route (§7); this module stays the single entry point for site
 //! operations so commands/ remain thin.
 
-use crate::core::{adminer, binaries, frankenphp, php, proxy, repo, services, ssl, tld, tunnels};
+use crate::core::{
+    adminer, apache, binaries, frankenphp, php, proxy, repo, services, ssl, tld, tunnels,
+};
 use crate::error::{Error, Result};
 use crate::platform::traits::{Platform, ProcessSupervisor};
 use crate::state::models::{
@@ -1212,14 +1214,26 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
     let cert_dir = ssl::site_cert_dir(platform.paths(), &site.domain)?;
     let _ = std::fs::remove_dir_all(&cert_dir);
 
-    // Remove per-site config/log artifacts (best-effort): the FrankenPHP
-    // override config + log (if the site ever ran the override server) and the
-    // tunnel log (if it was ever shared). Paths come from the owning modules so
-    // the names can't drift.
+    // Remove per-site config/log artifacts (best-effort): the FrankenPHP and
+    // Apache override configs + logs (if the site ever ran an override server)
+    // and the tunnel log (if it was ever shared). Paths come from the owning
+    // modules so the names can't drift.
+    //
+    // Apache was MISSING here until 13 Aug 2026 — this list is hand-maintained
+    // while the function's name promises every per-site artifact, which is the
+    // narrower-than-its-claim family. `every_per_site_artifact_is_swept_by_both
+    // _sweeps` now fails the build when a module grows one of these paths and
+    // this list does not learn about it.
     if let Ok(conf) = frankenphp::config_path(platform, &site.domain) {
         let _ = std::fs::remove_file(conf);
     }
     if let Ok(log) = frankenphp::log_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    if let Ok(conf) = apache::config_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(conf);
+    }
+    if let Ok(log) = apache::log_path(platform, &site.domain) {
         let _ = std::fs::remove_file(log);
     }
     if let Ok(log) = tunnels::log_path(platform, &site.domain) {
@@ -3074,6 +3088,70 @@ mod tests {
         }
     }
 
+    /// Both sweeps are hand-maintained lists standing behind names that promise
+    /// ALL of a site's per-site artifacts — and Apache's config and log were
+    /// missing from both for as long as Apache has existed. That is the same
+    /// family as `every_owned_mu_plugin_is_swept_by_the_cleanup_that_claims_them
+    /// _all` above, so it gets the same treatment: detection by the WRITE side,
+    /// not by a second list someone has to remember.
+    ///
+    /// A per-site artifact is a core module exposing `config_path`/`log_path`
+    /// taking a `domain` — that signature IS "I own a file named after a site".
+    #[test]
+    fn every_per_site_artifact_is_swept_by_both_sweeps() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/core");
+        let mut owners: Vec<(String, String)> = Vec::new();
+        for entry in std::fs::read_dir(&dir).expect("core/").flatten() {
+            let path = entry.path();
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let body = crate::core::copy_scan::production_source(&text);
+            for kind in ["config_path", "log_path"] {
+                if body.contains(&format!("pub fn {kind}(platform: &dyn Platform, domain: &str)")) {
+                    owners.push((stem.to_string(), kind.to_string()));
+                }
+            }
+        }
+        owners.sort();
+        assert!(
+            owners.len() >= 5,
+            "the detection found {} per-site path owners — it has stopped working (expected at \
+             least frankenphp's pair, apache's pair and tunnels' log)",
+            owners.len()
+        );
+
+        // The two places a site's name stops being used: deleted, and renamed.
+        let teardown = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let teardown = teardown
+            .split("pub fn teardown(")
+            .nth(1)
+            .and_then(|b| b.split("\npub fn ").next())
+            .expect("teardown");
+        let rename = crate::core::copy_scan::production_source(include_str!(
+            "../commands/sites.rs"
+        ));
+        let rename = rename
+            .split("pub async fn change_site_domain(")
+            .nth(1)
+            .and_then(|b| b.split("\n/// ").next())
+            .expect("change_site_domain");
+
+        for (module, kind) in &owners {
+            for (what, body) in [("teardown", teardown), ("change_site_domain", rename)] {
+                assert!(
+                    body.contains(&format!("{module}::{kind}(")),
+                    "`core::{module}::{kind}` names a file after a site, and {what} never removes \
+                     it. The function's name already promises every per-site artifact — a list \
+                     that has to be remembered is how Apache's config and log survived every \
+                     delete and every rename until 13 Aug 2026."
+                );
+            }
+        }
+    }
+
     #[test]
     fn teardown_removes_row_and_per_site_artifacts() {
         let conn = db::open_in_memory().unwrap();
@@ -3087,6 +3165,9 @@ mod tests {
         let artifacts = [
             frankenphp::config_path(&*platform, &site.domain).unwrap(),
             frankenphp::log_path(&*platform, &site.domain).unwrap(),
+            // Apache's pair, missing from the sweep until 13 Aug 2026.
+            apache::config_path(&*platform, &site.domain).unwrap(),
+            apache::log_path(&*platform, &site.domain).unwrap(),
             tunnels::log_path(&*platform, &site.domain).unwrap(),
         ];
         for p in &artifacts {

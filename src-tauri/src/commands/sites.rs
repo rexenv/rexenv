@@ -1077,6 +1077,14 @@ pub async fn change_site_domain(
     if let Ok(log) = core::frankenphp::log_path(state.platform.as_ref(), &old_domain) {
         let _ = std::fs::remove_file(log);
     }
+    // Apache's pair was missing here for the same reason it was missing from
+    // teardown: a hand-maintained list beside a name that promises all of them.
+    if let Ok(conf) = core::apache::config_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(conf);
+    }
+    if let Ok(log) = core::apache::log_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(log);
+    }
     if let Ok(log) = core::tunnels::log_path(state.platform.as_ref(), &old_domain) {
         let _ = std::fs::remove_file(log);
     }

@@ -187,11 +187,14 @@ evidence cited.
   surfaced in doctor, Import and startup is enough without polling. If that is
   wrong it shows up as someone confused about why their sites stopped resolving,
   and that report is the evidence to reopen it — not a guess now.
-- [ ] **`teardown` never removes the Apache per-site config/log; neither does
-  `change_site_domain`** (pre-existing, found in Stage 0 mapping): sweep covers
-  FrankenPHP conf+log + tunnel log but not `apache::config_path`/`log_path`
-  (`core/apache.rs:168,177`). App-data files only — additive fix + a test in the
-  `teardown_removes_row_and_per_site_artifacts` shape.
+- [x] **`teardown` and `change_site_domain` now remove the Apache per-site
+  config/log** ✓ 13 Aug 2026, ledger #302. Additive fix in both sweeps + the test
+  in the `teardown_removes_row_and_per_site_artifacts` shape — plus the guard that
+  makes the fix hold: both sweeps are hand-maintained lists behind names promising
+  ALL per-site artifacts, so detection moved to the WRITE side (a core module with
+  `config_path`/`log_path` taking a `domain` owns a per-site file and must appear
+  in both). Plant-proven; removing Apache from `change_site_domain` fails ONLY the
+  guard, because no lib test reaches the rename path.
 - [ ] **`sites_dir` setting written unvalidated** (`commands/settings.rs` special-
   cases only `default_tld`): the value flows into provision docroots and generated
   configs (B26 charset concern). Validate at the setter.
