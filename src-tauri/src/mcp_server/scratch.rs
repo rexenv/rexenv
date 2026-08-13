@@ -1792,11 +1792,20 @@ fn set_php_version<'a>(
             )));
         }
 
-        // Switching may DOWNLOAD the pinned build on first use — tens of
-        // megabytes, minutes on a slow link. That is a real window, and the
-        // witness is a snapshot, so the recorded fact is re-read immediately
-        // before the switch: the user may have pressed Keep while the build was
-        // coming down, and this site would then be theirs.
+        // The witness is a SNAPSHOT taken at `ctx.claim` above, so the recorded
+        // fact is re-read immediately before the mutation: the user may have
+        // pressed Keep in between, and this site would then be theirs.
+        //
+        // What this does NOT cover, stated because the comment here claimed it
+        // until 13 Aug 2026 and was false: the DOWNLOAD. `switch_php_version`
+        // writes the row FIRST and prefetches the pinned build after
+        // (`commands/sites.rs`), so a Keep pressed while tens of megabytes come
+        // down lands after the switch is already committed — on the far side of
+        // this check, which has long since run. That is accepted rather than
+        // fixed: the write was authorised when it happened, and reordering a
+        // shipped path shared by the UI and the CLI to harden a window with no
+        // real consequence costs more than it buys. The gap this DOES close is
+        // the one above it, which is short but real.
         {
             let conn = ctx.db()?;
             if !crate::core::scratch::still_the_agents(&conn, scratch.id())? {

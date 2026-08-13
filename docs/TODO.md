@@ -689,10 +689,23 @@ first:
     discrimination, with "the user's site is never stamped" made non-vacuous
     (its fixture has a real docroot, so origin is the only thing skipping it)
     and plant-proven. **M2b is code-complete.**
-    ⚠ Two legs stay open BY TIER, not by omission: the PHP DOWNLOAD window
-    (every minor is warm on a dev machine — needs a cold cache, `network`), and
-    the mail MATCH over real messages (needs Mailpit running, `stack`). Both
-    are one small example each if wanted; neither blocks v0.1.0.
+    ✓ **Both "open by tier" legs resolved 13 Aug 2026 — and one of them was not
+    a tier problem at all.**
+    - The PHP DOWNLOAD window: **NOT APPLICABLE, record corrected** (ledger #224).
+      Writing the example first would have proved the download happens and read
+      as proving the guard. `switch_php_version` writes the row BEFORE it
+      prefetches, so a Keep during the download lands on the far side of a check
+      that already ran and a write that already committed. The comment and the
+      row both claimed otherwise — #228's old module doc again: true of downloads
+      generally, false of this path. Accepted rather than reordered: the write
+      was authorised when it happened, and moving the prefetch on a shipped path
+      shared by the UI and CLI buys a window with no real consequence.
+    - The mail MATCH over real messages: `mcp_mail_check`, **`service` tier, not
+      `stack`** as this note said. The example brings its OWN Mailpit under
+      sandboxed paths, because borrowing the user's running one means planting
+      messages in their real store to prove we can tell their mail from a scratch
+      site's — a test that contradicts the thing it tests. Own Mailpit means own
+      ports, and the ports are fixed constants, which is what `service` means.
     **M3** — DB, its own session (T1 consent dialog).
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
