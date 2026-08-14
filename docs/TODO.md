@@ -354,16 +354,30 @@ first:
   taken yet — a `SqlClient` newtype constructible only by `sql_client_bins`, which makes
   the wrong call unrepresentable but touches core signatures plus 13 examples.
 
-- [ ] **`wordpress::plugin_deactivate` reports success and the plugin stays active.**
-  Found 14 Aug 2026 the moment `wp_plugins_check` could run past the month-old argument
-  bug: `plugin_deactivate(...).expect("deactivate")` returns Ok, and the very next
-  `plugin_list` still reports `hello-dolly` as `active`. **This is production code** —
-  `commands::wordpress::wp_plugin_deactivate` (the app's Plugins screen) and
-  `cli_server.rs:745` (`rex`) both route to it. Could be the helper (a `wp plugin
-  deactivate` invocation whose failure isn't surfaced — `plugin_verb` returns its output
-  as a String, so a non-fatal WP-CLI complaint would pass) or the example (slug vs plugin
-  file). Do NOT assume it is the test: a deactivate that silently no-ops is a user-facing
-  bug, and it has been unobservable for a month.
+- [ ] **`wp_plugins_check` failed its deactivate assertion once and has not reproduced —
+  the product-bug flag raised 14 Aug 2026 is RETRACTED, mechanism refuted.** The suspicion
+  was that `plugin_verb` returns WP-CLI's stdout as a String and so reports success from
+  output rather than status. Measured instead of assumed, and it is wrong twice over:
+  `wp_run`/`wp_run_timed` both test `status.success()` and turn a non-zero exit into an
+  `Error`, and the instrumented run showed deactivate doing exactly what it claims —
+  stdout `"Plugin 'hello-dolly' deactivated. Success: Deactivated 1 of 1 plugins."`, with
+  the very next raw `wp plugin list` reporting `hello-dolly,inactive`.
+  Nor is the shape elsewhere: `item_verb` is shared by plugin activate/deactivate/update
+  and theme update/delete and every one goes through the checked path; the unchecked
+  `wp_cli` is used only for boolean probes (`core is-installed`, `plugin is-active`,
+  `config get MULTISITE`, `maintenance-mode is-active`, `language core is-installed`,
+  `verify-checksums`) where a non-zero exit IS the answer. **There is no "we ignore exit
+  status across the wp surface" problem to scope.**
+  What remains is one unexplained failure. It happened in the isolated re-run immediately
+  after the corpse-mysqld bulk run; it has passed 3× since the leftover docroots were
+  removed. The tempting story — leftover plugin state — does NOT fit: in the bulk run this
+  example died at `install_for_site` with errno 2, before any plugin work. **So the cause
+  is unknown, and this is recorded as an unexplained assertion failure rather than a
+  flake, because calling it a flake is a story too.** Worth catching if it recurs.
+  One genuine measurement kept: `wp plugin deactivate` on an ALREADY-inactive plugin exits
+  0 with `Success: Plugin already deactivated.` on stdout and `Warning: Plugin 'x' isn't
+  active.` on stderr — so exit-zero-with-a-warning is real on this surface, it just isn't
+  what bit here.
 - [ ] **`wp_create_serve` requests the edge before it is listening.** `proxy::start`
   returns and the next statement issues an HTTPS request; there is no readiness wait, so
   it panics with ConnectionRefused on :8443. Every sibling that works has a
