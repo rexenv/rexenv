@@ -128,6 +128,7 @@ Two rules with teeth, learned the hard way:
 | Valet/Herd import — scan, resolver consent, import loop (Stage 1) | `docs/PLAN-valet-herd-import.md` |
 | Valet/Herd database import — dump/restore, provenance, credentials (Stage 2) | `docs/PLAN-valet-herd-db-import.md` |
 | Valet/Herd connection rewrite — diff/consent, backup, connected fact (Stage 3) | `docs/PLAN-valet-herd-rewrite.md` |
+| PHP 7.4 — where the binary comes from, self-build + hosting, EOL honesty (planned) | `docs/PLAN-php-74-support.md` |
 | MCP server — agents drive rexenv, scratch sites, capability tiers (proposed) | `docs/PLAN-mcp-server.md` |
 | `wp dist-archive` — distributable zip from a repo asset (ruled, not started) | `docs/PLAN-dist-archive.md` |
 | In-app PHP/engine patch updates — signed manifest, trust model (proposed) | `docs/PLAN-binary-updates.md` |
