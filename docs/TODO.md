@@ -323,6 +323,22 @@ evidence cited.
   - [ ] Still open: the `validate_linked_docroot` per-call `list(conn)` cost note
     (`core/sites.rs` — fine at current scale, hoist if imports grow).
 
+- [ ] ⚠ **The macOS floor we CLAIM and the one our binaries have are different
+  numbers.** `tauri.conf.json` sets `minimumSystemVersion: "11.0"` and
+  `docs/INSTALL.md:12` says "macOS 11 (Big Sur) or later" — but the pinned
+  binaries, measured 14 Aug 2026 on the real cache, are: **php 8.1.34 / 8.3.31 /
+  8.5.8 → `minos 12.0`** (static-php-cli's macOS default), **caddy → 12.0**,
+  **mailpit → 12.0**, and **nginx 1.30.3 → `minos 15.0`**. So on macOS 11 or 12
+  the app installs and then cannot run its own web server, and the install page
+  promised it would. Found while setting the deployment target for the 7.4 build,
+  which is why the number is measured rather than assumed.
+  **Two ways out, and it is a product decision, not a bug fix:** raise the claim
+  to what we actually ship (12.0, and re-pin nginx to something ≤ that), or keep
+  11.0 and re-pin every binary to match. Either way `docs/PORTS.md` should carry
+  the per-binary `minos` beside the version, because this drifted silently and a
+  number nobody records drifts again. Do NOT fold this into the 7.4 work: 7.4
+  matches the 12.0 the other PHP rows already have, so it neither causes nor
+  worsens this.
 - [ ] **PHP 7.4 support** (planned 14 Aug 2026, `docs/PLAN-php-74-support.md`). The
   standing claim that 7.4 "has no build and never will" was true about static-php.dev
   and **false about PHP**: static-php-cli has no version floor (7.4 download+extract
