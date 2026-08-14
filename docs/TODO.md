@@ -290,6 +290,42 @@ evidence cited.
   - [ ] Still open: the `validate_linked_docroot` per-call `list(conn)` cost note
     (`core/sites.rs` — fine at current scale, hoist if imports grow).
 
+- [ ] **PHP 7.4 support** (planned 14 Aug 2026, `docs/PLAN-php-74-support.md`). The
+  standing claim that 7.4 "has no build and never will" was true about static-php.dev
+  and **false about PHP**: static-php-cli has no version floor (7.4 download+extract
+  run live), Herd already ships 7.4 built by spc 2.8.6, and a full WP extension set
+  compiled clean against curl 8.21 / ICU 78.3 / OpenSSL 3.6.3 in 74s. Chosen source:
+  self-build with spc in a public `rexenv/runtimes` repo, from
+  `shivammathur/php-src-backports` (vanilla 7.4.33 fails on OpenSSL 3.6), hosted as
+  immutable GitHub Release assets — one manifest arm + four checksums, versus ~76
+  pinned digests for the ghcr-bottle alternative.
+  - [ ] **S0.1 — derive the "unshipped version" fixture.** 7.4 is the codebase's own
+    negative fixture in 8 asserts + 1 example + 2 manual steps. `binaries.rs:2448`
+    keeps PASSING after 7.4 ships, for the opposite reason. Derive it from
+    `PHP_VERSIONS`; another literal re-arms the trap for whoever ships 7.3.
+  - [ ] **S0.2 — `needs_tree_relink` waves through an ESCAPING `@loader_path`.**
+    `platform/macos/mod.rs:1660-1665`. Reproduced: `prepare_binary_tree` reports
+    success over 49 Mach-Os and the binary dies in dyld; the dead tree then caches
+    forever because the marker file exists (`binaries.rs:893-905`). Latent today
+    (homebrew-core bottles use `@@HOMEBREW_PREFIX@@`); fatal to the bottle fallback.
+    `mod.rs:2378` currently enshrines the blanket allowance.
+  - [ ] **S0.4 — per-minor Xdebug version.** 7.4's last is 3.1.6; one global
+    `XDEBUG_VERSION` (`binaries.rs:115,414,871`) makes `xdebug-7.4` unresolvable.
+  - [ ] **S0.5 — Xdebug support in the DTO.** `SiteDetail.tsx:909` hand-copies the
+    core rule as `minor === "8.0"`; `lib/ipc/index.ts:406` copies another.
+  - [ ] **S0.6 — the EOL tell.** `grep -ri 'eol' src/` → 0 hits, and 8.0 has been
+    EOL since Nov 2023. Must cover 8.0 too: a 7.4-only badge implies 8.0 is fine.
+  - [ ] **S2.0 — branch `manifest()` on source BEFORE any checksum is pinned.**
+    `binaries.rs:562-578` hardcodes the static-php.dev URL and gates only on
+    `php_sha256().is_some()`, so pinning first yields a permanent 404 that
+    `manifest_pins_every_pinned_php_version` cannot catch (URL *shape* only).
+  - [ ] **S1.1 — `rexenv/runtimes` + the build workflow.** OWNER DECISION: public
+    repo (needed for free attestations) and the licence read (PLAN §6.5) — the one
+    item that cannot be fixed by a later commit.
+  - [ ] **S2.1 / S2.2 / S3** — pin + `PHP_VERSIONS`, doc sweep, live proof.
+    Note `verify.sh` cannot gate any of this: `php_versions_check` is NETWORK tier
+    and `php_pools_serve` is SERVICE tier.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
