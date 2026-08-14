@@ -606,6 +606,43 @@ downloading, signing, or serving.** That gap closes by hand, or it does not clos
 
 ---
 
+## 10b. What the first builds actually cost — measured, 14 Aug 2026
+
+§11 said "the dep chain is the unmeasured cost" and "first CI run is the
+measurement". Here is the measurement, including the parts the plan got wrong.
+None of the four failures was PHP 7.4 refusing to compile, which was the risk
+everyone expected.
+
+| Run | Died at | Real cause | Fix |
+|---|---|---|---|
+| 1 | `./configure` | **Unknowable** — spc runs configure itself and does not echo its output, so the failure was a bare `Command exited with non-zero code: 1` and `config.log` went to the bit bucket with the workspace | `--debug`, then a `config.log` artifact |
+| 2 | `spc download` | **`api.github.com` 403.** `--prefer-pre-built` asks which pre-built dep archives exist; unauthenticated that is 60 req/hr **per IP**, shared across GitHub's whole macOS runner fleet. spc even says `no github token found, skip` and carries on into the failure | `GITHUB_TOKEN: ${{ github.token }}` |
+| 2 (Intel) | building PostgreSQL | `explicit_bzero.c:22: call to undeclared function 'memset_s'` — clang 16+ makes that an error. **A knock-on of the 403**, not a standing problem: with the token, libpq comes pre-built and this never runs | (none needed) |
+| 3 | PHP `configure` | **`GD build test failed`.** spc builds an extension's *suggested* libs only when asked, so `gd.php` emitted a bare `--enable-gd` — no freetype, no jpeg, no webp — and 7.4's bundled GD fails its own link test | `--with-suggested-libs` + explicit `--for-libs` |
+
+Three things worth keeping:
+
+- **`--prefer-pre-built` has no `postgresql` asset** — the hosted release carries
+  `icu` and not libpq (checked directly). So `pgsql` always builds PostgreSQL from
+  source, and that build is one clang release away from breaking again. If it does,
+  the choice is a `-Wno-implicit-function-declaration` in `SPC_DEFAULT_C_FLAGS`
+  (spc's `GlobalEnvManager` only fills vars that are UNSET, so an exported one
+  wins) or dropping `pgsql` and taking the divergence from the 8.x rows.
+- **The deployment target in §6.4 was wrong.** It said `MACOSX_DEPLOYMENT_TARGET=11.0`,
+  from `INSTALL.md`'s macOS 11 claim. Measured instead: every PHP binary rexenv
+  already ships is `minos 12.0` — spc's own macOS default. 11.0 would have made 7.4
+  the only row with a lower floor, bought nothing, and failed our own gate on an
+  otherwise-good build. It is 12.0. **And the measuring turned up a real defect that
+  is not this feature's**: `INSTALL.md` promises macOS 11 while the pinned nginx is
+  `minos 15.0`, so on macOS 11–12 the app installs and cannot run its own web
+  server. Filed in `docs/TODO.md`.
+- **Debuggability was the expensive gap, not the toolchain.** Two rounds were spent
+  learning *what* failed rather than fixing it, because a 120-line tail of
+  `config.log` showed configure's later probes instead of the failure both times.
+  The log is now uploaded whole, and the inline excerpt anchors to the last
+  `configure: error` with the context ABOVE it. At ~40 minutes a round trip, a build
+  that cannot explain itself is the costliest thing in this plan.
+
 ## 11. Risks that survive the plan
 
 - **The dep chain is the unmeasured cost.** PHP builds in 74 s; ICU/OpenSSL/curl/gd from
