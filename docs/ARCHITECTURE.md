@@ -318,6 +318,22 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   datadir so the `mysql/`-dir marker can't lie.
 - The `php-debug` (Xdebug) variant is fully wired but returns `None` from `manifest()`
   until its checksums are pinned — see `docs/xdebug-debug-build.md`.
+- **A PHP version resolves to the source that PUBLISHES it.** Most come from
+  static-php.dev's bulk builds; the ones nobody publishes portably are built by
+  `rexenv/runtimes` CI and hosted as GitHub Release assets (`php_url` /
+  `php_self_hosted_tag`). The self-hosted URL carries the **full immutable release
+  tag**, not a stable base + version const: static-php.dev and FrankenPHP both
+  rebuild assets in place, so our own host is the one place a pin can be made
+  permanent — a rebuild is a NEW tag, never a re-upload, so a pin may 404 but can
+  never resolve to different bytes. An EMPTY checksum const reads as unpinned, which
+  is what keeps a version wired-but-unresolvable until its artifact exists
+  (`docs/PLAN-php-74-support.md`).
+- **"In-tree" for a bundle means the load command RESOLVES under the bundle root**,
+  not that it starts with `@loader_path/`. Treating the prefix as proof let deps
+  spelled `@loader_path/../../../../opt/<formula>/lib/…` through both the rewrite and
+  the verify loop, so `prepare_binary_tree` reported success over a tree dyld then
+  refused — and `resolve_bundle` caches on the member file EXISTING, so the dead tree
+  never re-downloaded (that half is still open, `docs/TODO.md` S0.3). Ledger #319.
 
 ## 8. Data & app state
 
@@ -584,6 +600,15 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
 
 ## 9. WordPress layer
 
+- **An offered PHP that gets no security fixes says so, where it is chosen.**
+  `core::php::security_end` holds php.net's published END DATES and `eol_since`
+  compares against today, so the status is computed rather than remembered — rexenv
+  offered 8.0 from Nov 2023 and 8.1 from Dec 2025 with no tell of any kind. It rides
+  the registry row (`PhpVersionView`, derived per read) into the Settings badge, the
+  create-dialog note and the site's own Environment card; the client formats and
+  decides nothing. For WordPress the note names WP's own outdated-PHP notice in
+  advance, because the same sentence met first from us is information and met first
+  from WordPress is a bug report. A new minor without a date fails the build.
 - Provision (`core/sites.rs`): docroot + cert + DB + config gen + WP core install via
   WP-CLI. WP-CLI always runs PHP with `-d memory_limit=512M` (core extraction OOMs at
   128M). Switching PHP version or web server = config regen + reload, never a
