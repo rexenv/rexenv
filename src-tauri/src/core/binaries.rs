@@ -21,13 +21,13 @@ pub const PHP_VERSION: &str = "8.3.31";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
-/// 7.4 is absent **because this list is static-php.dev's bulk set and that source
-/// has none** — not because no 7.4 build can exist. That second reading was the
-/// standing belief here and it is wrong: static-php-cli has no version floor, and
-/// `docs/PLAN-php-74-support.md` carries the self-build + hosting design that
-/// closes it. 8.0 is upstream-EOL, frozen at 8.0.30 (its only bulk build).
+/// **Not all from one source.** 8.x are static-php.dev's bulk builds; **7.4.33 is
+/// OURS** — static-php.dev publishes no 7.4 and never did, so rexenv builds it
+/// (`rexenv/runtimes`) and hosts it as an immutable release asset. `php_url`
+/// picks the source; this list only says which versions exist.
+/// 7.4 and 8.0 are both upstream-EOL and say so in the UI (`php::eol_since`).
 pub const PHP_VERSIONS: &[&str] =
-    &["8.0.30", "8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"];
+    &["7.4.33", "8.0.30", "8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"];
 /// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
 /// per-site Xdebug debug pool. The stock static-php "bulk" builds ship NO Xdebug
 /// and a static PHP can't `dlopen` an external `xdebug.so` (§8.1), so this is a
@@ -571,13 +571,21 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
     }
 }
 
-// Self-built 7.4 artifacts (rexenv/runtimes) — EMPTY until the release exists and
-// its hashes are pinned, which keeps the version UNRESOLVABLE rather than
-// resolving to a 404 (same shape as the php-debug consts below).
-const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "";
-const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "";
-const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "";
-const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "";
+// Self-built 7.4 artifacts — OURS (rexenv/runtimes, release `php-7.4.33-1`).
+// Pinned 14 Aug 2026 from the published release: each file downloaded over the
+// real `releases/download` URL rexenv itself uses, hashed here, and
+// cross-checked against the release's own SHA256SUMS. The arm64 cli was then
+// EXTRACTED AND RUN — `PHP 7.4.33 (cli)`, `mysqli=1 gd=1 intl=1`, and an
+// `otool -L` closure of /usr/lib + /System only, which is what
+// `relink_to_system_libs` will accept on a user's machine.
+//
+// Unlike static-php.dev and FrankenPHP, these bytes CANNOT change under the
+// URL: the release is immutable and the tag is never reused (a rebuild is
+// `php-7.4.33-2`). A pin here can 404; it can never drift.
+const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "11264980dabae562ed778cf8c5db2190f67b9461fcf48b13698734a0dc3fcfe9";
+const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "77a240b2d8738854ce0dda7786498d1c1232d184af250ff826ebea6ba350c018";
+const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "b4590389e28796ca2f19d1d08ea71db8ca48af742df8cc686b5a1a0e347ac4dc";
+const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "ae9f0097630671b83fc27171771bd9d9e8c606af2e266bb3be64058a70eb6300";
 
 /// Pinned SHA-256 for a PHP artifact, or `None` if the version isn't pinned.
 /// `kind` is `"cli"` or `"fpm"`. Both arches are pinned together, so a `Some` for
@@ -2593,18 +2601,26 @@ mod tests {
                 assert!(php_url(kind, PHP_VERSION, arch).contains("dl.static-php.dev"));
             }
         }
-        // And it is wired but UNRESOLVABLE until the artifact exists — an empty
-        // checksum const reads as unpinned, so nothing tries to fetch a file
-        // that has not been built (the php-debug rule, applied to a real version).
+        // It RESOLVES now — the artifact exists (release `php-7.4.33-1`, pinned
+        // 14 Aug 2026). This assertion was the inverse until then: "wired but
+        // unresolvable", which is what an empty checksum const buys. Flipping it
+        // in the same commit as the pin is the point — the two facts must never
+        // disagree, because a version that resolves without a real artifact is
+        // a permanent 404 on a user's machine.
         for name in ["php", "php-fpm"] {
             for arch in [Arch::Arm64, Arch::X86_64] {
-                assert!(
-                    manifest(name, "7.4.33", "macos", arch).is_none(),
-                    "{name} 7.4.33 resolved before its artifact was hosted"
-                );
+                let spec = manifest(name, "7.4.33", "macos", arch)
+                    .unwrap_or_else(|| panic!("{name} 7.4.33 must resolve now that it is pinned"));
+                assert_eq!(checksum_hex(&spec.checksum).len(), 64, "{name}: real digest, not a stub");
             }
         }
-        assert!(!PHP_VERSIONS.contains(&"7.4.33"), "7.4 is offered before it can be downloaded");
+        assert!(PHP_VERSIONS.contains(&"7.4.33"), "7.4 is pinned but not offered");
+        // cli and fpm are distinct artifacts; so are the two arches.
+        let a = manifest("php", "7.4.33", "macos", Arch::Arm64).unwrap();
+        let b = manifest("php-fpm", "7.4.33", "macos", Arch::Arm64).unwrap();
+        let c = manifest("php", "7.4.33", "macos", Arch::X86_64).unwrap();
+        assert_ne!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
+        assert_ne!(checksum_hex(&a.checksum), checksum_hex(&c.checksum));
     }
 
     #[test]
