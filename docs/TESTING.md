@@ -31,10 +31,19 @@ was itself wrong (§1.2 below).
 
 ## 1. The layer model
 
+**No test counts are written down here.** Three of them drifted in a single day
+(14 Aug 2026: L0 757 vs 784 actual, L1 116 vs 121, §4's 105) and each still read as
+current. A number nobody can verify at a glance is worse than no number, so the counts
+now come from the things that produce them: `cargo test --lib` prints L0's, and
+`scripts/live-checks.sh list` prints L1's per tier. The fact that actually matters —
+**every example is classified** — is enforced in both directions by that script (an
+unlisted example and a tier entry with no example each fail the run), which is why it
+can be stated here without a guard of its own.
+
 Four layers exist de facto. Named, with what each CANNOT prove stated as loudly as what
 it can:
 
-### L0 — Logic (`cargo test --lib`, 757 tests)
+### L0 — Logic (`cargo test --lib`)
 
 - **Proves:** our pure functions, state machines, validators/refusals, config
   *generation* (regression-pinning bytes WE emit), SQLite migrations (rusqlite is real
@@ -108,7 +117,7 @@ it can:
   drift in our own generation/parsing, unrepresentable-state violations,
   whole-surface claims going stale as the surface grows.
 
-### L1 — Tool (`src-tauri/examples/*.rs`, 121 live checks)
+### L1 — Tool (`src-tauri/examples/*.rs`, every one tiered in `scripts/live-checks.sh`)
 
 - **Proves:** what real binaries accept and do — real mysqld/mariadbd handshakes, real
   nginx reloads, real php parsing our generated files, real wp-cli installs, real
@@ -353,7 +362,10 @@ Covered by 3.1 (same family — poison tests + the recorded-fact ledger rows).
 
 ## 4. The real-dependency layer (L1) — making the best layer cheaper
 
-Current state (full audit in session evidence): 105 examples; only 15 use
+Audit that MOTIVATED this section, taken before 28 Jul 2026 — a dated snapshot, not
+the current state. Since then the runner exists (`scripts/live-checks.sh`, with the
+tier table and its two-way completeness check). The rest is kept because it is the
+inventory the work was aimed at: 105 examples; only 15 use
 `common::sandbox`, 9 use `Reaped`; three still have the exact incident-3 shape
 (`nginx_php_serve`, `php_fpm_serve`, `php_pools_serve` — real prefix/config, production
 ports); 8 sandboxed examples still bind production ports (18088/9783); the WP-install
