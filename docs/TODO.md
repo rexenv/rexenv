@@ -322,8 +322,13 @@ first:
   end-to-end "replay denied through a real tunnel" observation on the next live
   `tunnel_exposure_check` run. Do NOT reinstate a leg that passes with the CF gate
   removed — that is what was cut, twice.
-- [ ] **Nine examples pass the MySQL basedir where `install_for_site` wants the client
-  binary — red since 15 Jul 2026, invisible because of their tier.** `b5861c4` renamed
+- [x] **Nine examples passed the MySQL basedir where `install_for_site` wants the client
+  binary — FIXED 14 Aug 2026, all nine now use `database::mysql_client_bin`. Red since
+  15 Jul 2026, invisible because of their tier.** ✓ 7 of 9 now pass end-to-end
+  (`adminer_deeplink_check`, `blueprint_check`, `multisite_check`,
+  `multisite_wildcard_check`, `network_check`, `wp_themes_check`, `wp_tools_check`); the
+  two that still fail do so for their OWN reasons, listed as separate items below —
+  **the second failure behind the first was real**. `b5861c4` renamed
   `mysql_basedir` → `db_client` and changed its MEANING (extracted tree → client binary).
   Both are `&Path`, so nothing failed to compile. That commit did touch these files, but
   only to add the unrelated `db_engine` field, so the wrong argument rode along.
@@ -348,6 +353,38 @@ first:
   guards any future hand-rolled caller including production; (c) considered and not
   taken yet — a `SqlClient` newtype constructible only by `sql_client_bins`, which makes
   the wrong call unrepresentable but touches core signatures plus 13 examples.
+
+- [ ] **`wordpress::plugin_deactivate` reports success and the plugin stays active.**
+  Found 14 Aug 2026 the moment `wp_plugins_check` could run past the month-old argument
+  bug: `plugin_deactivate(...).expect("deactivate")` returns Ok, and the very next
+  `plugin_list` still reports `hello-dolly` as `active`. **This is production code** —
+  `commands::wordpress::wp_plugin_deactivate` (the app's Plugins screen) and
+  `cli_server.rs:745` (`rex`) both route to it. Could be the helper (a `wp plugin
+  deactivate` invocation whose failure isn't surfaced — `plugin_verb` returns its output
+  as a String, so a non-fatal WP-CLI complaint would pass) or the example (slug vs plugin
+  file). Do NOT assume it is the test: a deactivate that silently no-ops is a user-facing
+  bug, and it has been unobservable for a month.
+- [ ] **`wp_create_serve` requests the edge before it is listening.** `proxy::start`
+  returns and the next statement issues an HTTPS request; there is no readiness wait, so
+  it panics with ConnectionRefused on :8443. Every sibling that works has a
+  `for _ in 0..40 { if ports::is_listening(..) { break } sleep(250ms) }` gate. Reproduced
+  in isolation with the ports verified free, so it is not contention.
+- [ ] **`wp_create_serve` leaks its whole stack on the panic path.** After the panic,
+  `mysqld`, `nginx` and `php-fpm` were still running, all carrying its
+  `rexenv-sandbox-wp_create_serve-<pid>` marker, and its sandbox datadir had been removed
+  on drop — leaving a mysqld serving a datadir that no longer exists. Killing the masters
+  left `nginx: worker process` and `php-fpm: pool www` holding 18088/9783 with `ppid=1`
+  and no marker (the orphan-worker shape). Needs `common::Reaped`, which covers unwinding.
+- [ ] **These examples don't refuse a busy port, so they borrow a broken server.** The
+  leaked mysqld above made `wp_plugins_check`/`wp_themes_check`/`wp_tools_check` fail with
+  `ERROR 3680: Failed to create schema directory (errno 2)` — a message that names nothing
+  useful. `common::require_ports_free` at the top of each turns it into "stop the stack
+  first". Same fix applied to `wp_login_check` today.
+- [ ] **Running provisioning examples in bulk writes into the user's REAL Sites folder.**
+  The nine added 8 directories to `~/rexenv/Sites` (`sites::provision` reads the
+  `sites_dir` SETTING, which a sandboxed `Platform` cannot redirect). Known hazard, hit
+  again by running nine in a row. Until the pin is structural, snapshot the folder before
+  any bulk example run so the delta is attributable.
 
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime

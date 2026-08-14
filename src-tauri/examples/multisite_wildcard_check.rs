@@ -76,7 +76,7 @@ async fn main() {
         &php, &wp, &docroot, domain, "Network",
         &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        &mysql_base,
+        &rexenv_lib::core::database::mysql_client_bin(&mysql_base),
         &Default::default(),
     )
     .expect("install wordpress");

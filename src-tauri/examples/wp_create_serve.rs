@@ -88,7 +88,7 @@ async fn main() {
         &site.name,
         &site.db_name,
         &db_host,
-        &mysql_base,
+        &database::mysql_client_bin(&mysql_base),
         &InstallOptions {
             admin_user: "owner".into(),
             admin_password: "rexenv-pw".into(),

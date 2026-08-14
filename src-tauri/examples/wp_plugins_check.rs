@@ -65,7 +65,7 @@ async fn main() {
         "WP Plugins",
         &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &mysql_base,
+        &database::mysql_client_bin(&mysql_base),
         &Default::default(),
     )
     .expect("install wordpress");
