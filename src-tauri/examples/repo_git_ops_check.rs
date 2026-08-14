@@ -1,7 +1,17 @@
-//! Live check: phase-B git ops (fetch / pull --ff-only / checkout / push)
-//! against a LOCAL bare origin — every path exercised for real, zero network.
+//! Live check: phase-B git ops (fetch / pull --ff-only / checkout / push) plus
+//! the working-tree ops (stash / restore / reset / status) against a LOCAL bare
+//! origin — every path exercised for real, zero network.
 //! Writes only a throwaway temp dir; no services, no app-data.
 //! Run: `cargo run --example repo_git_ops_check`
+//!
+//! The working-tree legs reproduce the situation they exist for, rather than
+//! testing the commands in isolation: a tracked file edited by a build, a
+//! checkout REFUSED because of it, then stash (recoverable) or reset (not)
+//! clearing the way. Two assertions there are the ones worth keeping if the
+//! rest is ever trimmed — a stash must not swallow ignored paths (`vendor/`,
+//! `node_modules/`: minutes of install time, and `-a` would take them), and
+//! reset must not delete untracked files, because that is exactly what its
+//! confirm dialog promises the user.
 
 use rexenv_lib::core::{devtools, repo};
 use rexenv_lib::platform;
@@ -191,6 +201,161 @@ fn main() {
         Ok(()) => failures.push("non-ff push succeeded?!".into()),
         Err(e) if e.to_string().contains("Pull first") => println!("non-ff push mapped (good)"),
         Err(e) => failures.push(format!("non-ff push unmapped: {e}")),
+    }
+
+    // ── Working-tree ops: stash / restore / reset / status ────────────────────
+    // A SECOND checkout, so the legs above (which leave `a` mid-race on feat)
+    // can't decide what these see. This is the user's actual sequence: a build
+    // dirtied the tree, and the checkout they wanted is refused.
+    let b = scratch.join("dirty");
+    git_in(&scratch, &["clone", "-q", origin.to_str().unwrap(), "dirty"]);
+    git_in(&b, &["checkout", "-q", "feat"]);
+    // Ignored build output — the thing that must NEVER end up in a stash.
+    write(&b, ".gitignore", "vendor/\n");
+    git_in(&b, &["add", "-A"]);
+    git_in(&b, &["commit", "-qm", "ignore vendor"]);
+    std::fs::create_dir_all(b.join("vendor")).unwrap();
+    write(&b.join("vendor"), "autoload.php", "<?php // 4 minutes of composer\n");
+    // The dirt: an edited TRACKED file that differs between branches (so the
+    // checkout is genuinely refused) plus an untracked new file.
+    write(&b, "package-lock.json", "lock-local-edit");
+    write(&b, "scratch-note.txt", "not added to git");
+
+    // 9. The wedge itself: checkout refused on a dirty tree.
+    match repo::git_checkout(&*sup, &git, &env, &b, &main_branch, &cancel, &mut quiet) {
+        Ok(()) => failures.push("checkout over a dirty tracked file succeeded?! (no wedge to fix)".into()),
+        Err(e) if e.to_string().contains("Commit or stash") => println!("dirty checkout refused (the wedge)"),
+        Err(e) => failures.push(format!("dirty checkout unmapped: {e}")),
+    }
+
+    // 10. Stash clears it — and leaves the IGNORED tree alone.
+    match repo::git_stash_push(&*sup, &git, &env, &b, &cancel, &mut quiet) {
+        Ok(()) => {
+            let st = repo::read_git_status(sup, &git, &env, &b).unwrap();
+            if st.changed != 0 || st.untracked != 0 {
+                failures.push(format!(
+                    "after stash the tree is not clean: {} changed, {} untracked",
+                    st.changed, st.untracked
+                ));
+            }
+            // The claim `-a` would break: minutes of composer time must still
+            // be on disk. A stash that swallowed vendor/ passes every other
+            // assertion here and ruins the user's afternoon.
+            if !b.join("vendor/autoload.php").is_file() {
+                failures.push("STASH SWALLOWED AN IGNORED PATH — vendor/autoload.php is gone".into());
+            }
+            println!("stash ok (tree clean, ignored vendor/ untouched)");
+        }
+        Err(e) => failures.push(format!("stash failed: {e}")),
+    }
+
+    // 11. …so the checkout the user wanted now works.
+    match repo::git_checkout(&*sup, &git, &env, &b, &main_branch, &cancel, &mut quiet) {
+        Ok(()) => println!("checkout after stash ok (the wedge is gone)"),
+        Err(e) => failures.push(format!("checkout after stash still failed: {e}")),
+    }
+    git_in(&b, &["checkout", "-q", "feat"]);
+
+    // 12. The list names the entry, and restore brings BOTH files back.
+    let stashes = repo::list_stashes(&*sup, &git, &env, &b).unwrap_or_default();
+    match stashes.first() {
+        Some(top) if top.reference == "stash@{0}" && top.message.contains("rexenv") => {
+            println!("stash list: {} · {} · {}", top.reference, top.message, top.age);
+            match repo::git_stash_pop(&*sup, &git, &env, &b, &top.reference, &cancel, &mut quiet) {
+                Ok(()) => {
+                    let back = std::fs::read_to_string(b.join("package-lock.json")).unwrap_or_default();
+                    let untracked_back = b.join("scratch-note.txt").is_file();
+                    if back != "lock-local-edit" || !untracked_back {
+                        failures.push(format!(
+                            "restore lost work: lockfile={back:?}, untracked file back={untracked_back}"
+                        ));
+                    }
+                    if !repo::list_stashes(&*sup, &git, &env, &b).unwrap_or_default().is_empty() {
+                        failures.push("pop left the entry in the list (a second copy of the same work)".into());
+                    }
+                    println!("restore ok (tracked edit + untracked file both back, list empty)");
+                }
+                Err(e) => failures.push(format!("stash pop failed: {e}")),
+            }
+        }
+        Some(other) => failures.push(format!("unexpected stash entry: {other:?}")),
+        None => failures.push("stash list is empty right after a successful stash".into()),
+    }
+
+    // 13. Reset reverts TRACKED changes and keeps untracked ones — the exact
+    //     promise the confirm dialog makes, which nothing else here can check.
+    match repo::git_reset_hard(&*sup, &git, &env, &b, &cancel, &mut quiet) {
+        Ok(()) => {
+            let lock = std::fs::read_to_string(b.join("package-lock.json")).unwrap_or_default();
+            let kept = b.join("scratch-note.txt").is_file();
+            if lock == "lock-local-edit" {
+                failures.push("reset --hard left the tracked edit in place".into());
+            }
+            if !kept {
+                failures.push(
+                    "reset DELETED an untracked file — the confirm promises it keeps them".into(),
+                );
+            }
+            if !b.join("vendor/autoload.php").is_file() {
+                failures.push("reset removed an ignored path".into());
+            }
+            println!("reset ok (tracked reverted, untracked kept, ignored kept)");
+        }
+        Err(e) => failures.push(format!("reset failed: {e}")),
+    }
+
+    // 14. A clean tree refuses to stash rather than reporting a phantom entry
+    //     (git's own "No local changes to save" exits 0).
+    git_in(&b, &["clean", "-qfd"]); // fixture-owned: only this throwaway clone
+    match repo::git_stash_push(&*sup, &git, &env, &b, &cancel, &mut quiet) {
+        Ok(()) => failures.push("stashed a CLEAN tree — the list now shows an entry that isn't work".into()),
+        Err(e) if e.to_string().contains("Nothing to stash") => println!("clean-tree stash refused (good)"),
+        Err(e) => failures.push(format!("clean-tree stash unmapped: {e}")),
+    }
+
+    // 15. Revision syntax never reaches pop, and a missing entry is honest.
+    for bad in ["HEAD@{0}", "stash@{0}^{/x}", ":/text", "--all"] {
+        match repo::git_stash_pop(&*sup, &git, &env, &b, bad, &cancel, &mut quiet) {
+            Ok(()) => failures.push(format!("pop accepted the revision expression {bad:?}")),
+            Err(e) if e.to_string().contains("is not a stash entry") => {}
+            Err(e) => failures.push(format!("pop refused {bad:?} for the wrong reason: {e}")),
+        }
+    }
+    match repo::git_stash_pop(&*sup, &git, &env, &b, "stash@{7}", &cancel, &mut quiet) {
+        Ok(()) => failures.push("popped a stash entry that does not exist".into()),
+        Err(e) if e.to_string().contains("no longer exists") => println!("missing stash entry mapped (good)"),
+        Err(e) => failures.push(format!("missing stash entry unmapped: {e}")),
+    }
+
+    // 16. Status reports WHICH files — the counts in the panel can't.
+    write(&b, "package-lock.json", "dirty again");
+    write(&b, "another-note.txt", "new");
+    let mut seen: Vec<String> = Vec::new();
+    {
+        let mut sink = |l: &str| seen.push(l.to_string());
+        if let Err(e) = repo::git_status_report(&*sup, &git, &env, &b, &cancel, &mut sink) {
+            failures.push(format!("status failed: {e}"));
+        }
+    }
+    let joined = seen.join("\n");
+    if !joined.contains("package-lock.json") || !joined.contains("another-note.txt") {
+        failures.push(format!("status named no files:\n{joined}"));
+    }
+    println!("status ok ({} lines, names the dirty files)", seen.len());
+    git_in(&b, &["checkout", "-q", "--", "."]);
+    let _ = std::fs::remove_file(b.join("another-note.txt"));
+    let mut clean_lines: Vec<String> = Vec::new();
+    {
+        let mut sink = |l: &str| clean_lines.push(l.to_string());
+        let _ = repo::git_status_report(&*sup, &git, &env, &b, &cancel, &mut sink);
+    }
+    if !clean_lines.iter().any(|l| l.contains("working tree clean")) {
+        failures.push(format!(
+            "a clean status printed only the branch line — reads as 'nothing happened':\n{}",
+            clean_lines.join("\n")
+        ));
+    } else {
+        println!("clean status says so in words (not an empty log pane)");
     }
 
     let _ = std::fs::remove_dir_all(&scratch);

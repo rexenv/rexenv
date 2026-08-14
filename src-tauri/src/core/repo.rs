@@ -1239,6 +1239,213 @@ pub fn git_push(
     run_git_op(supervisor, git, env, dir, "push", &args, cancel, on_line)
 }
 
+// ---------------------------------------------------------------------------
+// Working-tree ops — stash / restore / reset / status
+//
+// Why these exist at all, in a panel that is deliberately NOT a git client:
+// every other op here REFUSES on a dirty tree ("you have local changes to files
+// this would touch"), and the changes in question are usually not the user's
+// prose but the residue of a `composer install` / `npm run build` they ran from
+// this very panel. Without a way out, rexenv creates the wedge and then tells
+// the user to go fix it in a terminal. Stash (recoverable) and reset (not) are
+// the two doors out, and Status is what lets someone see what they are about to
+// lose before opening either.
+// ---------------------------------------------------------------------------
+
+/// One `git stash list` entry, for the restore picker.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashEntry {
+    /// The ref exactly as git names it (`stash@{0}`) — what pop is given.
+    pub reference: String,
+    /// Git's own subject line ("On dev: rexenv: 3 changed, 2 untracked").
+    pub message: String,
+    /// Relative age ("2 hours ago") — the stash list's one orienting fact.
+    pub age: String,
+}
+
+/// Format string for the stash listing: unit-separated so a message containing
+/// spaces, colons or tabs can't be mistaken for a field boundary — stash
+/// subjects carry the user's branch name and our own text verbatim.
+pub const STASH_LIST_FORMAT: &str = "--format=%gd%x1f%gs%x1f%cr";
+
+/// Parse `git stash list` in [`STASH_LIST_FORMAT`]. PURE — a line that isn't
+/// three fields is DROPPED rather than guessed at: a half-parsed entry would
+/// put a wrong ref in the restore picker, and pop acts on whatever ref it is
+/// handed.
+pub fn parse_stash_list(out: &str) -> Vec<StashEntry> {
+    out.lines()
+        .filter_map(|line| {
+            let mut parts = line.split('\u{1f}');
+            let reference = parts.next()?.trim();
+            let message = parts.next()?.trim();
+            let age = parts.next().unwrap_or("").trim();
+            if validate_stash_ref(reference).is_err() {
+                return None;
+            }
+            Some(StashEntry {
+                reference: reference.to_string(),
+                message: message.to_string(),
+                age: age.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Accept EXACTLY `stash@{N}` and nothing else.
+///
+/// This is not [`validate_ref`] with extra characters allowed: pop takes a
+/// revision, and a revision syntax is an expression language (`stash@{0}^{/x}`,
+/// `HEAD@{now}`, `:/text`). The check is a whitelist of the one shape the UI
+/// ever produces, so nothing the frontend sends can widen it.
+pub fn validate_stash_ref(r: &str) -> Result<String> {
+    let n = r
+        .strip_prefix("stash@{")
+        .and_then(|rest| rest.strip_suffix('}'))
+        .filter(|d| !d.is_empty() && d.chars().all(|c| c.is_ascii_digit()));
+    match n {
+        Some(_) => Ok(r.to_string()),
+        None => Err(Error::Other(format!(
+            "\"{r}\" is not a stash entry — expected stash@{{0}}, stash@{{1}}, …"
+        ))),
+    }
+}
+
+/// The stash entries in `dir`, newest first (git's own order).
+pub fn list_stashes(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+) -> Result<Vec<StashEntry>> {
+    let lines = run_git_lines(supervisor, git, env, dir, &["stash", "list", STASH_LIST_FORMAT])?;
+    Ok(parse_stash_list(&lines.join("\n")))
+}
+
+/// Argv for Stash — pure, unit-tested (`fetch_args` precedent).
+///
+/// `-u` includes UNTRACKED files, so the tree is genuinely clean afterwards and
+/// the checkout that prompted this can't still be blocked by a new file. It is
+/// NOT `-a`: `--all` sweeps IGNORED paths too, which here means `vendor/` and
+/// `node_modules/` — minutes of install time into a stash entry, and a pop that
+/// then conflicts with a re-install. That flag must never appear.
+pub fn stash_push_args(message: &str) -> Vec<String> {
+    vec!["stash".into(), "push".into(), "-u".into(), "-m".into(), message.to_string()]
+}
+
+/// What a stash made from this state should be CALLED, so the restore picker
+/// says what is inside it rather than "WIP on dev". Git prefixes its own
+/// "On <branch>:", which is why the branch isn't repeated here.
+pub fn stash_message(st: &GitStatus) -> String {
+    let mut parts = Vec::new();
+    if st.changed > 0 {
+        parts.push(format!("{} changed", st.changed));
+    }
+    if st.untracked > 0 {
+        parts.push(format!("{} untracked", st.untracked));
+    }
+    if parts.is_empty() {
+        return "rexenv stash".to_string();
+    }
+    format!("rexenv: {}", parts.join(", "))
+}
+
+/// `git stash push -u -m <message>` — the recoverable way out of a dirty tree.
+///
+/// Refuses on a clean tree instead of letting git's own "No local changes to
+/// save" pass as success: that exits 0, so the panel would report a stash that
+/// does not exist and the restore list would be empty for no visible reason.
+pub fn git_stash_push(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let st = read_git_status(supervisor, git, env, dir)?;
+    if st.changed == 0 && st.untracked == 0 {
+        return Err(Error::Other(
+            "Nothing to stash — this checkout has no uncommitted changes. (Files \
+             ignored by .gitignore, like vendor/ and node_modules/, are never \
+             stashed and never block a checkout.)"
+                .into(),
+        ));
+    }
+    let args = stash_push_args(&stash_message(&st));
+    run_git_op(supervisor, git, env, dir, "stash", &args, cancel, on_line)
+}
+
+/// `git stash pop <ref>` — restore one entry and remove it from the list.
+///
+/// Pop, not apply: an entry that stayed after a successful restore is a second
+/// copy of work that now also exists in the tree, and the next pop of it
+/// conflicts with the changes it created. On a CONFLICT git keeps the entry
+/// itself, so nothing is lost by the failure — the mapped error says so.
+pub fn git_stash_pop(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    stash_ref: &str,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let stash_ref = validate_stash_ref(stash_ref)?;
+    let args = vec!["stash".to_string(), "pop".to_string(), stash_ref];
+    run_git_op(supervisor, git, env, dir, "stash-pop", &args, cancel, on_line)
+}
+
+/// Argv for Reset — pure, unit-tested.
+///
+/// `HEAD` is explicit (not an implied default) and there is NO pathspec: this
+/// is the whole tree, deliberately. What it does NOT do is as load-bearing as
+/// what it does — no `git clean`, so untracked files a person wrote and never
+/// added survive an operation whose name sounds like it takes everything. The
+/// UI's confirm says so, and this is the only place that could make it a lie.
+pub fn reset_hard_args() -> Vec<String> {
+    vec!["reset".into(), "--hard".into(), "HEAD".into()]
+}
+
+/// `git reset --hard HEAD` — the UNRECOVERABLE way out of a dirty tree.
+/// Tracked changes are gone; untracked files are kept (see [`reset_hard_args`]).
+/// The confirmation is the UI's job; by the time this runs it has been given.
+pub fn git_reset_hard(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    run_git_op(supervisor, git, env, dir, "reset", &reset_hard_args(), cancel, on_line)
+}
+
+/// `git status --short --branch` into the job log — the WHICH behind the
+/// panel's counts. The chips can say "3 changed"; only this says which three,
+/// which is what someone deciding between Stash and Reset actually needs.
+pub fn git_status_report(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    dir: &Path,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    let args = ["status", "--short", "--branch"].map(String::from).to_vec();
+    run_git_op(supervisor, git, env, dir, "status", &args, cancel, on_line)?;
+    // A clean tree prints NOTHING but the branch line, which reads as "the
+    // command did nothing" in a log pane. Say it instead.
+    let st = read_git_status(supervisor, git, env, dir)?;
+    if st.changed == 0 && st.untracked == 0 {
+        on_line("working tree clean — nothing to stash or reset.");
+    }
+    for s in list_stashes(supervisor, git, env, dir)? {
+        on_line(&format!("stash {} · {} · {}", s.reference, s.message, s.age));
+    }
+    Ok(())
+}
+
 /// Op failures → honest messages; anything unrecognized falls through to the
 /// shared clone-era mapping (auth/host-key/offline) with the raw tail last.
 pub fn map_git_op_error(op: &str, tail: &[String]) -> Error {
@@ -1258,6 +1465,44 @@ pub fn map_git_op_error(op: &str, tail: &[String]) -> Error {
             "{op} refused: you have local changes to files this would touch. \
              Commit or stash them first, then retry."
         ));
+    }
+    // The entry named is not there. That is one situation, not two: an empty
+    // list and a stale index both mean "pick again", and the reason they are
+    // stale is worth saying — git RENUMBERS the list on every pop, so a picker
+    // left open across one is pointing at a different entry than it shows.
+    if op == "stash-pop"
+        && (joined.contains("No stash entries found")
+            || joined.contains("is not a stash-like commit")
+            || joined.contains("is not a valid reference"))
+    {
+        return Error::Other(
+            "That stash entry no longer exists — the list renumbers on every \
+             restore, so refresh it and pick again."
+                .into(),
+        );
+    }
+    // A pop that conflicts KEEPS the entry (git's own behaviour). Saying so is
+    // the difference between "retry after fixing it" and a user who believes
+    // the work is gone and stops looking for it.
+    if op == "stash-pop"
+        && (joined.contains("CONFLICT")
+            || joined.contains("Merge conflict")
+            || joined.contains("could not restore untracked files")
+            || joined.contains("already exists, no checkout"))
+    {
+        return Error::Other(
+            "The stash didn't apply cleanly — conflicting changes are in your \
+             checkout now, and the stash entry was KEPT (nothing was lost). \
+             Resolve it in your editor/terminal, then drop the entry there."
+                .into(),
+        );
+    }
+    if joined.contains("Failed to resolve 'HEAD'") || joined.contains("unknown revision") {
+        return Error::Other(
+            "This checkout has no commits yet, so there is no HEAD to reset to \
+             or stash against."
+                .into(),
+        );
     }
     if joined.contains("did not match any file") || joined.contains("pathspec") {
         return Error::Other(
@@ -2725,6 +2970,112 @@ mod tests {
         assert!(args.contains(&"--force".to_string()));
         // --prune-tags must never appear: it deletes local user-created tags.
         assert!(!args.contains(&"--prune-tags".to_string()));
+    }
+
+    #[test]
+    fn stash_takes_untracked_but_never_ignored_files() {
+        let args = stash_push_args("rexenv: 3 changed");
+        assert_eq!(args[..2], ["stash".to_string(), "push".to_string()]);
+        // -u so the tree is really clean afterwards (a new file blocks a
+        // checkout too), and the message is passed as its own argv element.
+        assert!(args.contains(&"-u".to_string()));
+        assert_eq!(args.last().map(String::as_str), Some("rexenv: 3 changed"));
+        // -a/--all would sweep vendor/ and node_modules/ into the stash: an
+        // hour of installs parked behind a pop that then fights a re-install.
+        assert!(!args.contains(&"-a".to_string()));
+        assert!(!args.contains(&"--all".to_string()));
+    }
+
+    #[test]
+    fn reset_is_the_whole_tree_and_never_deletes_untracked_files() {
+        let args = reset_hard_args();
+        assert_eq!(args, ["reset", "--hard", "HEAD"].map(String::from).to_vec());
+        // No pathspec (this is the whole tree, on purpose) and — the half the
+        // UI's confirm promises — no clean: a file the user wrote and never
+        // added survives, because nothing here could bring it back.
+        assert!(!args.contains(&"clean".to_string()));
+        assert!(!args.contains(&"-f".to_string()));
+        assert!(!args.contains(&"-d".to_string()));
+    }
+
+    #[test]
+    fn the_stash_message_says_what_is_inside_the_entry() {
+        let st = GitStatus { changed: 3, untracked: 2, ..Default::default() };
+        assert_eq!(stash_message(&st), "rexenv: 3 changed, 2 untracked");
+        let only_changed = GitStatus { changed: 1, ..Default::default() };
+        assert_eq!(stash_message(&only_changed), "rexenv: 1 changed");
+        // The degenerate case can't be reached through the button (a clean
+        // tree is refused before this), but it must still name itself.
+        assert_eq!(stash_message(&GitStatus::default()), "rexenv stash");
+    }
+
+    #[test]
+    fn a_stash_ref_is_exactly_stash_at_n_and_nothing_else() {
+        assert!(validate_stash_ref("stash@{0}").is_ok());
+        assert!(validate_stash_ref("stash@{12}").is_ok());
+        // Revision syntax is an expression language and pop evaluates it —
+        // these are the shapes a widened check would let through.
+        for bad in [
+            "stash@{}",
+            "stash@{0}^{/x}",
+            "stash@{now}",
+            "HEAD@{0}",
+            ":/text",
+            "stash@{0} --force",
+            "--all",
+            "",
+        ] {
+            assert!(validate_stash_ref(bad).is_err(), "{bad} must be refused");
+        }
+    }
+
+    #[test]
+    fn the_stash_list_parses_messages_with_separators_in_them() {
+        // Real shape: git's own "On <branch>: " prefix, our message after it,
+        // and a subject that itself contains colons and spaces.
+        let out = "stash@{0}\u{1f}On dev: rexenv: 3 changed, 2 untracked\u{1f}2 hours ago\n\
+                   stash@{1}\u{1f}WIP on feature/x: 1a2b3c4 fix: the thing\u{1f}3 days ago";
+        let got = parse_stash_list(out);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].reference, "stash@{0}");
+        assert_eq!(got[0].message, "On dev: rexenv: 3 changed, 2 untracked");
+        assert_eq!(got[0].age, "2 hours ago");
+        assert_eq!(got[1].message, "WIP on feature/x: 1a2b3c4 fix: the thing");
+        // A line that isn't the expected shape is DROPPED, never guessed at:
+        // pop acts on whatever ref it is handed, so a half-parsed row is a
+        // wrong revision in the picker.
+        assert!(parse_stash_list("garbage without separators").is_empty());
+        assert!(parse_stash_list("refs/heads/dev\u{1f}subject\u{1f}now").is_empty());
+        assert!(parse_stash_list("").is_empty());
+    }
+
+    #[test]
+    fn a_conflicting_pop_says_the_entry_was_kept() {
+        let tail = vec![
+            "CONFLICT (content): Merge conflict in src/app.php".to_string(),
+            "The stash entry is kept in case you need it again.".to_string(),
+        ];
+        let msg = map_git_op_error("stash-pop", &tail).to_string();
+        assert!(msg.contains("KEPT"), "{msg}");
+        // The same tail under another op must NOT claim a stash was kept.
+        let other = map_git_op_error("pull", &tail).to_string();
+        assert!(!other.contains("stash entry was KEPT"), "{other}");
+
+        let empty = map_git_op_error("stash-pop", &["No stash entries found.".to_string()]);
+        assert!(empty.to_string().contains("no longer exists"), "{empty}");
+        // A stale INDEX is the same situation as an empty list — one message,
+        // and it says why the number moved.
+        let stale = map_git_op_error(
+            "stash-pop",
+            &["error: stash@{7} is not a valid reference".to_string()],
+        );
+        assert!(stale.to_string().contains("renumbers"), "{stale}");
+
+        let unborn = map_git_op_error(
+            "reset",
+            &["fatal: Failed to resolve 'HEAD' as a valid ref.".to_string()],
+        );
+        assert!(unborn.to_string().contains("no commits yet"), "{unborn}");
     }
 
     #[test]

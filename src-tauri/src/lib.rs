@@ -772,6 +772,7 @@ pub fn run() {
             commands::repo::repo_adopt,
             commands::repo::repo_git_op,
             commands::repo::repo_branches,
+            commands::repo::repo_stashes,
             commands::repo::repo_pull_refs,
             commands::repo::repo_check,
             commands::repo::repo_run_offered_steps,

@@ -888,6 +888,24 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     code; composer/install/build are one explicit click each, with the
     disclosure line above the buttons. `GIT_TERMINAL_PROMPT=0` forced — a
     hidden credential prompt fails fast with a mapped error, never hangs.
+  - **Two doors out of a dirty tree — and rexenv creates the dirt.** Every
+    other op refuses on local changes ("commit or stash them first"), and the
+    changes are usually the residue of a `composer install`/`npm run build`
+    started from this very panel: rexenv made the wedge and then pointed at a
+    terminal. So the ops row carries **Stash** (recoverable), **Restore** from
+    the entry list, **Reset** (not recoverable) and **Status**. Rules that are
+    the whole point of them: stash is `push -u` — untracked included, so the
+    tree is really clean — and NEVER `-a`, which would sweep `vendor/` and
+    `node_modules/` (minutes of installs) into an entry that then fights the
+    next install; reset is `--hard HEAD` with no `git clean`, so files the user
+    wrote and never added survive an action whose name sounds total, and the
+    confirm says both halves with the real counts; Restore is `pop` (an applied
+    entry left behind is a second copy of the same work) and a conflict KEEPS
+    the entry, which the error says. A stash entry is a REVISION, not a ref
+    name, so it is whitelisted to exactly `stash@{N}` (`validate_stash_ref`) —
+    revision syntax is an expression language. The list is read live per open:
+    git renumbers it on every pop, so a cached `stash@{1}` names a different
+    entry than it shows (CLAIM-LEDGER #310–#312).
   - **Every child runs in its OWN process group** (`spawn_streamed`/
     `stop_group`, pkill/pgrep `-g`): npm/git spawn worker trees, and cancel
     must kill the TREE (§5 orphan-workers lesson). Jobs die WITH the app

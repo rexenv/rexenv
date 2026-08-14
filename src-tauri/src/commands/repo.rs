@@ -1038,13 +1038,23 @@ pub async fn repo_git_op<R: tauri::Runtime>(
     op: String,
     target_ref: Option<String>,
 ) -> Result<RepoJobState> {
-    if !matches!(op.as_str(), "fetch" | "pull" | "checkout" | "push") {
+    if !matches!(
+        op.as_str(),
+        "fetch" | "pull" | "checkout" | "push" | "stash" | "stash-pop" | "reset" | "status"
+    ) {
         return Err(Error::Other(format!("unknown git op \"{op}\"")));
     }
     let target_ref = match (op.as_str(), target_ref) {
         ("checkout", Some(r)) => Some(repo::validate_ref(&r)?),
         ("checkout", None) => {
             return Err(Error::Other("checkout needs a branch or tag".into()));
+        }
+        // A stash entry is a REVISION, not a ref name — validated by its own
+        // whitelist (`stash@{N}`), because revision syntax is an expression
+        // language and pop evaluates whatever it is handed.
+        ("stash-pop", Some(r)) => Some(repo::validate_stash_ref(&r)?),
+        ("stash-pop", None) => {
+            return Err(Error::Other("restore needs a stash entry".into()));
         }
         (_, r) => r,
     };
@@ -1061,6 +1071,10 @@ pub async fn repo_git_op<R: tauri::Runtime>(
         "fetch" => "git fetch".to_string(),
         "pull" => "git pull --ff-only".to_string(),
         "checkout" => format!("git checkout {}", target_ref.as_deref().unwrap_or("?")),
+        "stash" => "git stash push -u".to_string(),
+        "stash-pop" => format!("git stash pop {}", target_ref.as_deref().unwrap_or("?")),
+        "reset" => "git reset --hard HEAD".to_string(),
+        "status" => "git status".to_string(),
         _ => "git push".to_string(),
     };
     let id = uuid::Uuid::new_v4().to_string();
@@ -1159,6 +1173,20 @@ fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, 
                     )
                 }
             }
+            "stash" => repo::git_stash_push(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
+            "stash-pop" => repo::git_stash_pop(
+                sup,
+                &git.path,
+                &env,
+                &entry.dest,
+                entry.git_ref.as_deref().unwrap_or_default(),
+                &entry.cancel,
+                &mut sink,
+            ),
+            "reset" => repo::git_reset_hard(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
+            "status" => {
+                repo::git_status_report(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink)
+            }
             _ => repo::git_push(sup, &git.path, &env, &entry.dest, &entry.cancel, &mut sink),
         }
     })();
@@ -1185,9 +1213,15 @@ fn run_git_op_job<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<JobEntry>, 
         }
     }
 
-    // Dependencies changed under a pull/checkout? OFFER install/build steps
-    // on this job (explicit clicks — repo_run_step handles them as usual).
-    if matches!(op, "pull" | "checkout") && repo::lockfile_fingerprint(&entry.dest) != before {
+    // Dependencies changed under this op? OFFER install/build steps on this job
+    // (explicit clicks — repo_run_step handles them as usual). Restore and reset
+    // belong here for the same reason pull and checkout do: a stashed or
+    // reverted `composer.lock` leaves the installed tree describing a state that
+    // is no longer in the files, and the person who just moved the tree is the
+    // one who can act on it. `status` is read-only and can never qualify.
+    if matches!(op, "pull" | "checkout" | "stash" | "stash-pop" | "reset")
+        && repo::lockfile_fingerprint(&entry.dest) != before
+    {
         let inspection = repo::inspect_repo(&entry.dest);
         sink("! dependencies changed (lockfile) — run install below.");
         let mut st = entry.state.lock().expect("job state lock");
@@ -1245,6 +1279,33 @@ pub async fn repo_branches<R: tauri::Runtime>(
     })
     .await
     .map_err(|e| Error::Other(format!("branches task failed: {e}")))?
+}
+
+/// The checkout's stash entries, newest first — the Restore picker's list.
+/// Local, fast, no network, runs no repo code (same shape as `repo_branches`).
+///
+/// Read live, never cached in our own state: a stash can be popped or dropped
+/// from the user's terminal at any moment, and a picker offering an entry that
+/// no longer exists hands pop a stale revision — where `stash@{1}` has by then
+/// become a DIFFERENT entry, since the list renumbers on every pop.
+#[tauri::command]
+pub async fn repo_stashes<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    site_id: String,
+    kind: String,
+    dir_name: String,
+) -> Result<Vec<repo::StashEntry>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let jobs = app.state::<RepoJobs>();
+        let site = site_of(&state, &site_id)?;
+        let dir = job_target(&site, &kind, &dir_name)?.dest;
+        let env = shell_env(&state, &jobs, false)?;
+        let git = devtools::resolve_git(state.platform.as_ref(), &env)?;
+        repo::list_stashes(state.platform.supervisor(), &git.path, &env, &dir)
+    })
+    .await
+    .map_err(|e| Error::Other(format!("stash task failed: {e}")))?
 }
 
 /// PR/MR head refs advertised by `origin` — the picker's Pull Requests group.
