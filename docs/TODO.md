@@ -378,7 +378,29 @@ first:
   0 with `Success: Plugin already deactivated.` on stdout and `Warning: Plugin 'x' isn't
   active.` on stderr — so exit-zero-with-a-warning is real on this surface, it just isn't
   what bit here.
-- [ ] **`wp_create_serve`'s edge never binds :8443 under `common::sandbox`.** Was
+- [ ] **`common::sandbox` roots are long enough to break Caddy's admin unix socket
+  (macOS `sun_path` = 104 bytes). DIAGNOSED 14 Aug 2026 — the fix is a ruling, see the
+  question at the end of this item.** `wp_create_serve`'s edge never bound, and caddy's
+  own first line said why once the example was made to print it before panicking:
+  `starting caddy administration endpoint: listen unix //var/folders/51/…/T/
+  rexenv-sandbox-wp_create_serve-4823/config/caddy-admin.sock: bind: invalid argument`.
+  That path is **108 bytes against a 104-byte limit** — over by four. Nothing to do with
+  readiness, ports, or certs.
+  **This is not specific to one example.** It is a function of the sandbox tag's length:
+  `/var/folders/<2>/<27>/T/rexenv-sandbox-<tag>-<pid>/config/caddy-admin.sock`. Shorter
+  tags fit and longer ones don't, so any sandboxed example that starts the edge passes or
+  fails on how it was NAMED. `wp_login_check` is unaffected only because it does not
+  sandbox its paths.
+  ❓ **NEEDS A RULING — three shapes, none obviously right.** (1) Shorten the sandbox root
+  (e.g. `/tmp/rx-<8 hex>`), which fixes every example at once but moves fixtures out of
+  the OS temp dir the invariant currently names. (2) Put the admin socket somewhere short
+  regardless of app-data root, which touches production path logic for a test-only
+  problem. (3) Cap the tag length in `common::sandbox` and refuse a tag that would
+  overflow, which keeps the failure in the fixture layer and makes it loud — but leaves
+  the underlying limit live for any real app-data path a user could choose.
+  I lean (3) plus a refusal message naming the byte count, because it fails at the place
+  the length is chosen; but (1) is the only one that makes the class go away.
+  <details><summary>the symptom it was mistaken for</summary> Was
   diagnosed 14 Aug 2026 as a missing readiness wait; the wait is now IN (a 10s
   `ports::is_listening` gate, like every sibling) and it turned the symptom from a
   ConnectionRefused deep in reqwest into `edge never bound :8443 within 10s (caddy pid
@@ -386,7 +408,7 @@ first:
   Note the discriminator — the same edge on the same port comes up fine in
   `wp_login_check`, which does NOT sandbox its paths. So the suspicion is something the
   edge needs that `common::sandbox` relocates (CA/cert paths, config dir, admin socket).
-  **Does not block the tunnel session**, whose fixture is `wp_login_check`.
+  **Did not block the tunnel session**, whose fixture is `wp_login_check`.</details>
 - [x] **`wp_create_serve` leaked its whole stack on the panic path — FIXED 14 Aug 2026,
   and proved by its own real failure rather than a plant.** Its four services are now
   owned by `common::OwnedService`, whose `Drop` runs while unwinding. Before: the panic

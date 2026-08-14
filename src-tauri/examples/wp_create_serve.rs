@@ -8,7 +8,6 @@
 
 use rexenv_lib::core::wordpress::InstallOptions;
 use rexenv_lib::core::{binaries, database, proxy, services, sites, ssl, wordpress};
-use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::net::SocketAddr;
 
@@ -38,11 +37,11 @@ async fn main() {
     let (plat, _sandbox) = common::sandbox("wp_create_serve");
     let domain = "wpcreate.test";
 
-    let conn = {
-        let p = std::env::temp_dir().join("rexenv-3_1_2.db");
-        let _ = std::fs::remove_file(&p);
-        db::open(&p).unwrap()
-    };
+    // `sandbox_db`, not a bare temp database: it PINS `sites_dir`. Without the
+    // pin `sites::provision` reads the setting, which falls back to the home
+    // directory, and this example wrote `wpcreate.test` into the user's real
+    // ~/rexenv/Sites on every run — caught by SandboxGuard's own alarm, 14 Aug 2026.
+    let conn = common::sandbox_db(&*plat);
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
 
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
@@ -136,7 +135,23 @@ async fn main() {
         }
         std::thread::sleep(Duration::from_millis(250));
     }
-    assert!(edge_up, "edge never bound :{CADDY_HTTPS} within 10s (caddy pid {})", cad.id());
+    if !edge_up {
+        // The sandbox root is removed while unwinding, so caddy's own words have
+        // to be read BEFORE the panic or they are gone with it. "Never bound"
+        // without them sends the reader to the network layer; the answer is
+        // usually in the first line of this file.
+        let log = plat.paths().log_dir().map(|d| d.join("caddy-stdout.log"));
+        let said = log
+            .as_ref()
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .unwrap_or_else(|| "(no caddy log was written)".into());
+        panic!(
+            "edge never bound :{CADDY_HTTPS} within 10s (caddy pid {}).\ncaddy said:\n{}",
+            cad.id(),
+            said.lines().rev().take(12).collect::<Vec<_>>().join("\n")
+        );
+    }
 
     // 4) Verify over HTTPS (validated against our CA): homepage + wp-admin login.
     let addr: SocketAddr = format!("127.0.0.1:{CADDY_HTTPS}").parse().unwrap();
