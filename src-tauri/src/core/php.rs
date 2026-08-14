@@ -102,6 +102,52 @@ pub fn unshipped_patch() -> String {
     format!("{}.0", unshipped_minor())
 }
 
+/// The date upstream **security support ends** for a PHP minor — php.net's
+/// published schedule, `YYYY-MM-DD`.
+///
+/// A DATE, not a status. "Is this version dead?" is then computed against today
+/// ([`eol_since`]) instead of stored, so the answer becomes true on the day it
+/// becomes true and nobody has to remember to flip a bool. The table only ever
+/// grows — a new row when a new minor ships — and
+/// [`every_shipped_minor_declares_its_support_end`] fails the build if that step
+/// is skipped, which is the whole reason this can be a hand-written table at all.
+///
+/// Why it exists: rexenv said NOTHING about EOL anywhere. PHP 8.0 died 26 Nov
+/// 2023, 8.1 on 31 Dec 2025, and the app offered both with the same face as 8.4.
+/// Adding 7.4 would have made it a third silently-dead runtime, which
+/// `docs/DESIGN.md`'s "the sentence in front of the button that starts it" rule
+/// forbids (`docs/PLAN-php-74-support.md` §4.3).
+fn security_end(minor: &str) -> Option<&'static str> {
+    Some(match minor {
+        "7.4" => "2022-11-28",
+        "8.0" => "2023-11-26",
+        "8.1" => "2025-12-31",
+        "8.2" => "2026-12-31",
+        "8.3" => "2027-12-31",
+        "8.4" => "2028-12-31",
+        "8.5" => "2029-12-31",
+        _ => return None,
+    })
+}
+
+/// The date a minor's upstream security support ENDED, or `None` while it is
+/// still supported (or unknown). `Some` = no more security fixes, ever.
+pub fn eol_since(minor: &str) -> Option<&'static str> {
+    eol_since_on(minor, time::OffsetDateTime::now_utc().date())
+}
+
+/// [`eol_since`] against an explicit date — the pure core, so the rule is
+/// testable without waiting for a calendar.
+fn eol_since_on(minor: &str, today: time::Date) -> Option<&'static str> {
+    let end = security_end(minor)?;
+    let parsed = time::Date::parse(
+        end,
+        time::macros::format_description!("[year]-[month]-[day]"),
+    )
+    .ok()?;
+    (today > parsed).then_some(end)
+}
+
 /// Deterministic loopback FastCGI port for a minor series (`"8.3"` → `9783`), or
 /// `None` if `minor` isn't exactly `major.minor` numeric.
 pub fn fpm_port(minor: &str) -> Option<u16> {
@@ -186,6 +232,7 @@ pub fn list_versions(conn: &Connection) -> Result<Vec<PhpVersionView>> {
         .map(|v| PhpVersionView {
             xdebug_supported: binaries::xdebug_supported(&v.minor),
             xdebug_version: binaries::xdebug_version_for(&v.minor),
+            eol_since: eol_since(&v.minor),
             minor: v.minor,
             patch: v.patch,
             fpm_port: v.fpm_port,
@@ -853,6 +900,62 @@ mod tests {
     }
 
     #[test]
+    /// The one thing that keeps a hand-written date table honest: a minor
+    /// cannot enter `PHP_VERSIONS` without declaring when its security support
+    /// ends. Without this the failure is silent and in the safe-looking
+    /// direction — `eol_since` returns `None`, the UI shows no warning, and a
+    /// dead runtime reads as a supported one.
+    #[test]
+    fn every_shipped_minor_declares_its_support_end() {
+        for minor in all_minors() {
+            assert!(
+                security_end(&minor).is_some(),
+                "PHP {minor} ships with no security-support end date — add it to `security_end`"
+            );
+        }
+    }
+
+    /// EOL is computed against TODAY, so it becomes true on the day it becomes
+    /// true. A stored bool would need somebody to remember; nobody did, which is
+    /// why 8.0 was offered silently from Nov 2023.
+    #[test]
+    fn eol_is_derived_from_the_date_not_remembered() {
+        use time::macros::date;
+        // Before, on, and after 8.0's end date (26 Nov 2023).
+        assert_eq!(eol_since_on("8.0", date!(2023 - 11 - 25)), None);
+        assert_eq!(eol_since_on("8.0", date!(2023 - 11 - 26)), None, "the end date itself is still supported");
+        assert_eq!(eol_since_on("8.0", date!(2023 - 11 - 27)), Some("2023-11-26"));
+        // 8.1 died 31 Dec 2025 — rexenv ships it and said nothing.
+        assert_eq!(eol_since_on("8.1", date!(2025 - 12 - 31)), None);
+        assert_eq!(eol_since_on("8.1", date!(2026 - 01 - 01)), Some("2025-12-31"));
+        // A minor still in support, and one with no declared date.
+        assert_eq!(eol_since_on("8.4", date!(2026 - 08 - 14)), None);
+        assert_eq!(eol_since_on(unshipped_minor(), date!(2026 - 08 - 14)), None);
+        // The same future date makes EVERY shipped minor EOL — proving the rule
+        // is the comparison and not a per-version literal someone typed.
+        for minor in all_minors() {
+            assert!(eol_since_on(&minor, date!(2099 - 01 - 01)).is_some(), "{minor}");
+        }
+    }
+
+    /// The tell reaches the row the UI actually renders.
+    #[test]
+    fn the_version_list_carries_the_eol_date() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let rows = list_versions(&conn).unwrap();
+        for r in &rows {
+            assert_eq!(r.eol_since, eol_since(&r.minor), "{}", r.minor);
+        }
+        // Not uniformly null — 8.0 and 8.1 are past their end dates today, so a
+        // field stubbed to None could not pass this.
+        assert!(
+            rows.iter().any(|r| r.eol_since.is_some()),
+            "no EOL row — either the table is wrong or this test has gone vacuous"
+        );
+        assert!(rows.iter().any(|r| r.eol_since.is_none()), "every shipped minor is EOL?");
+    }
+
     /// The UI's Xdebug rule is CORE's, carried down — never re-decided in the
     /// client. `SiteDetail` disabled the toggle on a literal `minor === "8.0"`,
     /// so the frontend held a second copy of `binaries::xdebug_supported` that

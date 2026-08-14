@@ -91,12 +91,12 @@ export const mockServices: ServiceInfo[] = [
  *  Xdebug (its static build exports no Zend symbols), which is the case the dev
  *  UI must render correctly and the one a tidy all-true fixture would hide. */
 export const mockPhpVersions: PhpVersion[] = [
-  { minor: "8.0", patch: "8.0.30", fpmPort: 9780, installed: false, isDefault: false, xdebugSupported: false, xdebugVersion: null },
-  { minor: "8.1", patch: "8.1.34", fpmPort: 9781, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3" },
-  { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3" },
-  { minor: "8.3", patch: "8.3.31", fpmPort: 9783, installed: true, isDefault: true, xdebugSupported: true, xdebugVersion: "3.5.3" },
-  { minor: "8.4", patch: "8.4.23", fpmPort: 9784, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3" },
-  { minor: "8.5", patch: "8.5.8", fpmPort: 9785, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3" },
+  { minor: "8.0", patch: "8.0.30", fpmPort: 9780, installed: false, isDefault: false, xdebugSupported: false, xdebugVersion: null, eolSince: "2023-11-26" },
+  { minor: "8.1", patch: "8.1.34", fpmPort: 9781, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: "2025-12-31" },
+  { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
+  { minor: "8.3", patch: "8.3.31", fpmPort: 9783, installed: true, isDefault: true, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
+  { minor: "8.4", patch: "8.4.23", fpmPort: 9784, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
+  { minor: "8.5", patch: "8.5.8", fpmPort: 9785, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
 ];
 
 /** Whitelisted keys + PHP compiled defaults (mirrors core::php::SETTINGS). */

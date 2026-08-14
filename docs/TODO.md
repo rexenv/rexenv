@@ -364,8 +364,15 @@ evidence cited.
     `SiteDetail`'s `minor === "8.0"` literal is gone. Ledger #321. **L2 gap stated:**
     no wk-check renders `XdebugCard`, so "the control is actually disabled" is
     unproven; `mock.ts` carries the 8.0 not-supported row so the dev route shows it.
-  - [ ] **S0.6 — the EOL tell.** `grep -ri 'eol' src/` → 0 hits, and 8.0 has been
-    EOL since Nov 2023. Must cover 8.0 too: a 7.4-only badge implies 8.0 is fine.
+  - [x] **S0.6 — the EOL tell.** ✓ Covers 8.0 (dead Nov 2023) and **8.1** (dead Dec
+    2025), both of which rexenv had been offering silently — found while building
+    this. `core::php::security_end` holds php.net's END DATES and `eol_since`
+    compares against today, so the answer is computed, not remembered; a new minor
+    without a date fails the build. Surfaced on the Settings row, the create-dialog
+    note, and the site's own Environment card (most sites on a dead runtime got
+    there by import or by outliving the version). For WordPress the note names WP's
+    own outdated-PHP notice in advance. Ledger #322, DESIGN.md honest-UI rule.
+    **L2 gap stated:** no wk-check renders any of the three surfaces.
   - [ ] **S2.0 — branch `manifest()` on source BEFORE any checksum is pinned.**
     `binaries.rs:562-578` hardcodes the static-php.dev URL and gates only on
     `php_sha256().is_some()`, so pinning first yields a permanent 404 that

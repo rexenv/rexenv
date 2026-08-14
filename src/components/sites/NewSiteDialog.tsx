@@ -3,6 +3,7 @@ import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, CheckCircle2, ChevronLeft, ChevronRight, Eye, EyeOff, RefreshCw, X as XIcon } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
+import { eolNote, eolTag } from "@/lib/php";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
@@ -720,6 +721,12 @@ function Step2(p: {
   setMultisite: (v: MultisiteMode) => void;
 }) {
   const domainBase = p.domainBase || "my-site";
+  // The chosen version's row, only when core says it is past its security-
+  // support end. `find` on `installed` and not a literal — which minors are
+  // dead is core's answer (`core::php::eol_since`), computed against today.
+  const eolChoice = p.installed.find((v) => v.minor === p.phpVersion && v.eolSince) as
+    | (import("@/types").PhpVersion & { eolSince: string })
+    | undefined;
   return (
     <div className="flex flex-col gap-3">
       {/* Blueprints are a WORDPRESS preset (plugins, themes, multisite mode,
@@ -860,6 +867,7 @@ function Step2(p: {
             {p.installed.map((v) => (
               <option key={v.minor} value={v.minor}>
                 {v.minor}
+                {eolTag(v.eolSince)}
               </option>
             ))}
           </select>
@@ -892,6 +900,16 @@ function Step2(p: {
           )}
         </Field>
       </div>
+
+      {/* The sentence in front of the button that starts it. An EOL runtime is
+          a legitimate choice — legacy projects are why it is offered — but it
+          is not one to make unknowingly, and for WordPress it also pre-empts a
+          nag the user would otherwise report as a rexenv bug. */}
+      {eolChoice && (
+        <div className="-mt-1 rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-status-warning-bright">
+          {eolNote(eolChoice.minor, eolChoice.eolSince, { wordpress: p.isWordpress })}
+        </div>
+      )}
 
       {p.isWordpress && (
         <div className="mt-1 flex flex-col gap-[14px] border-t border-rex-border-subtle pt-[15px]">

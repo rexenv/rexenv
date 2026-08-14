@@ -203,6 +203,23 @@ the shipped UI toward one.
   scanning for). Filled hat, OUTLINED lenses, decided by rendering it at the
   15px it ships at rather than at 120px: two filled discs joined by a bar read
   as a dumbbell there, rings read as glasses at every size.
+- **A runtime rexenv offers that receives no security fixes SAYS SO, where it is
+  chosen.** rexenv shipped PHP 8.0 from Nov 2023 and 8.1 from Dec 2025 with no
+  tell anywhere — `grep -ri 'eol' src/` returned zero — so the picker gave a dead
+  version the same face as a supported one. That is the "sentence in front of the
+  button" rule failing in the quietest possible direction: nothing is wrong on
+  screen, the user simply was not told. The tell rides the registry row
+  (`eolSince`, computed in core against **today** from php.net's published end
+  dates, so it becomes true on the day it becomes true and no one has to remember
+  to flip a flag), and appears in all three places a version is chosen or lived
+  with: the Settings row's badge, the create dialog's note, and the site's own
+  Environment card — because most sites on a dead runtime got there by import or
+  by outliving the version, never by picking it in a dialog. For WordPress it
+  also names, in advance, the outdated-PHP notice WordPress will put on the site
+  itself; a warning the user meets first from us reads as information, and the
+  same warning met first from WordPress reads as a rexenv bug. **A badge on the
+  newest dead version alone would be worse than none** — it implies the others
+  are fine — which is why 7.4 could not ship until 8.0 and 8.1 were covered too.
 - **A one-off detour is not a preference change.** Picking a browser from the
   chevron opens that one link there and leaves the default alone. Magic Login
   carries the same chevron, because it too ends in a browser — its url is minted

@@ -449,6 +449,11 @@ pub struct PhpVersionView {
     /// where the toggle isn't offered. NOT app-wide: a minor past Xdebug's
     /// support window is frozen at its last release (ledger #320).
     pub xdebug_version: Option<&'static str>,
+    /// The date upstream security support ENDED (`YYYY-MM-DD`), or `None` while
+    /// this minor is still supported. `Some` = rexenv is offering a runtime that
+    /// receives no further security fixes, and the UI must say so before the
+    /// user picks it — rexenv shipped 8.0 and 8.1 silently for years.
+    pub eol_since: Option<&'static str>,
 }
 
 /// A git-sourced wp-content dir's provenance (add-from-Git): which repo/ref a

@@ -11,6 +11,7 @@ import { ResolverHandBackRow } from "@/routes/Import";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
+import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -345,6 +346,17 @@ function PhpVersionRow({
           {v.isDefault && (
             <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
               Default
+            </span>
+          )}
+          {/* An offered runtime that receives no security fixes says so HERE,
+              where it is chosen — not in a doc. rexenv shipped 8.0 from Nov
+              2023 and 8.1 from Dec 2025 with no tell at all. */}
+          {v.eolSince && (
+            <span
+              className="ml-2 rounded border border-status-warning-border bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-warning-bright"
+              title={eolNote(v.minor, v.eolSince)}
+            >
+              EOL {eolWhen(v.eolSince)}
             </span>
           )}
         </div>

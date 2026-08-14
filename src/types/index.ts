@@ -540,6 +540,10 @@ export interface PhpVersion {
   /** The Xdebug release this minor's debug pool loads — not app-wide; a minor
    *  past Xdebug's support window is frozen at its last release. */
   xdebugVersion: string | null;
+  /** `YYYY-MM-DD` when upstream security support ENDED, or null while it is
+   *  still supported. Computed in core against today, so it becomes true on the
+   *  day it becomes true — never a stored flag someone has to remember to flip. */
+  eolSince: string | null;
 }
 
 /** One editable per-version PHP ini setting (mirrors the Rust PhpSettingView).

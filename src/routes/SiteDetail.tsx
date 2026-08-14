@@ -42,6 +42,7 @@ import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
+import { eolNote, eolTag } from "@/lib/php";
 import {
   changeSiteDomain,
   getSitesServing,
@@ -191,9 +192,17 @@ export function SiteDetail() {
     { key: "settings", label: "Settings", show: true },
   ];
 
-  // Installed versions, plus the site's current one (so the select always shows it).
-  const options = versions.filter((v) => v.installed).map((v) => v.minor);
-  if (!options.includes(site.phpVersion)) options.unshift(site.phpVersion);
+  // Installed versions, plus the site's current one (so the select always shows
+  // it). Carries each row's EOL date rather than just the minor: an option that
+  // named a dead runtime with the same face as a live one is what this whole
+  // tell exists to stop, and the current version may itself be the dead one.
+  const options = versions
+    .filter((v) => v.installed)
+    .map((v) => ({ minor: v.minor, eolSince: v.eolSince }));
+  if (!options.some((o) => o.minor === site.phpVersion)) {
+    const row = versions.find((v) => v.minor === site.phpVersion);
+    options.unshift({ minor: site.phpVersion, eolSince: row?.eolSince ?? null });
+  }
 
   return (
     <>
@@ -407,7 +416,7 @@ function Overview({
 }: {
   site: Site;
   isWordpress: boolean;
-  options: string[];
+  options: { minor: string; eolSince: string | null }[];
   switchPhpPending: boolean;
   switchServerPending: boolean;
   onPhp: (v: string) => void;
@@ -425,12 +434,24 @@ function Overview({
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.label ?? site.webServer;
 
+  // The site's OWN version's EOL date, when core says it has one. Read from the
+  // same option rows the select renders, so the badge and the list can never
+  // disagree about which runtimes are dead.
+  const sitesEol = options.find((o) => o.minor === site.phpVersion)?.eolSince ?? null;
   return (
     <>
       <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
         <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
           Environment
         </div>
+        {/* A site already running on a dead runtime is told here, not only at
+            create — most sites on one got there by import or by outliving the
+            version, never by picking it in a dialog. */}
+        {sitesEol && (
+          <div className="mb-[14px] rounded-md border border-status-warning-border bg-status-warning-bg px-2.5 py-1.5 text-[0.6875rem] leading-[1.5] text-status-warning-bright">
+            {eolNote(site.phpVersion, sitesEol, { wordpress: site.type === "wordpress" })}
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-[14px]">
           <EnvMini label="PHP version">
             <span className="font-mono text-[1.125rem] font-semibold text-rex-text">
@@ -442,9 +463,10 @@ function Overview({
               onChange={(e) => onPhp(e.target.value)}
               className={SELECT_CLS}
             >
-              {options.map((m) => (
-                <option key={m} value={m}>
-                  {m}
+              {options.map((o) => (
+                <option key={o.minor} value={o.minor}>
+                  {o.minor}
+                  {eolTag(o.eolSince)}
                 </option>
               ))}
             </select>
