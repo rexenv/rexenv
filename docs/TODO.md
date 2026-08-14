@@ -100,6 +100,22 @@ evidence cited.
   ARCHITECTURE §9; ledger #316; 7 lib tests + the module-wide coverage guard +
   `wp_noise_check` (L1, sandbox, control leg plants the disease); verified end to end
   against the reporting site (7 plugins parsed, the notice on stderr).
+- [x] ⚠ **…and the same report on PHP 8.5, from the OTHER end** (filed + fixed 14 Aug
+  2026, ledger #317). Same dead WordPress tab, no plugin involved: PHP's CLI SAPI
+  prints its own diagnostics to STDOUT, and the pinned 2.12.0 phar raises one under
+  8.5 in its own vendored code (`Deprecated: Case statements followed by a semicolon
+  (;) … react/promise/src/functions.php on line 369`) before wp-cli prints a byte — so
+  the notice arrived in FRONT of every answer. ✓ `-d display_errors=stderr` in the
+  SHARED argv prefix (so the streamed spawns get it too, and before the phar — a `-d`
+  after the script name is an argument to the script). Moved, not silenced: streamed
+  steps merge both streams into one live log, so nothing vanishes from an install.
+  The pair is the point — this flag cannot fix #316's tail and the marker cannot fix
+  this head; both ends verified end to end on the reporting site under 8.4 AND 8.5.
+- [ ] **The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean.** #317 moves its
+  deprecation off stdout; it does not make it go away, and a user running `wp` in
+  rexenv's terminal (deliberately unpinned, #228) still sees it on every command. Worth
+  re-checking when wp-cli ships a release that fixes `react/promise` — the pin bump is
+  the real fix, this is the containment.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control

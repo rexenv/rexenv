@@ -156,6 +156,15 @@ it can:
   trace ends in. Leg A then requires that this still produces an UNPARSEABLE answer
   without the marker — if the disease stops reproducing, the check says CONTROL BROKEN
   and stops, because a fixture that no longer bites makes every later leg vacuous.
+  Its leg D (#317, the other end of the same report) shows what a control is FOR when
+  the environment can answer for you: the claim is that PHP's diagnostics go to stderr,
+  and on a machine whose `php.ini` already redirects them every assertion would pass
+  with the flag deleted. So D re-runs the production argv with the flag removed **as a
+  pair** (`-d` and its value — dropping the value alone would make PHP read the phar
+  path as an ini setting) and requires the diagnostic to appear on stdout before
+  believing the flagged run. The canary is `trigger_error`, deliberately not the phar's
+  real 8.5 deprecation: a check that depends on a bug in someone else's release goes
+  green the day they fix it.
   **`wp_login_client_ip_check` (sandbox tier, 14 Aug 2026) adds the third variant: a
   matrix that defends ITSELF, so the check does not depend on anyone re-running the
   plants.** It extracts the shipped client-IP gate from `wp_login::MU_PLUGIN` between

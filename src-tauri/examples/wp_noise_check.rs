@@ -1,5 +1,5 @@
-//! Manual check: a plugin writing to stdout AFTER a wp command finished cannot
-//! reach what rexenv parses (ledger #316) — the L1 leg.
+//! Manual check: nothing but the command's own output reaches what rexenv parses
+//! — at EITHER end (ledger #316 the tail, #317 the head) — the L1 leg.
 //! Run: `cargo run --example wp_noise_check`
 //!
 //! # The bug this is about
@@ -12,6 +12,13 @@
 //! rexenv said `bad JSON: trailing characters at line 1 column 814`, and every
 //! WordPress screen for that site stopped working. `wp option get home` was
 //! wrong the same way — the noise is not a JSON problem, it is a stdout problem.
+//!
+//! The same report came back for PHP 8.5, and it was the OTHER end: PHP's CLI
+//! SAPI prints its own diagnostics to STDOUT, and the pinned 2.12.0 phar raises
+//! one under 8.5 in its own vendored code (`Deprecated: Case statements followed
+//! by a semicolon (;) … react/promise/src/functions.php on line 369`), before
+//! wp-cli has printed a byte. Same dead screens, no plugin involved. Leg D is
+//! that half.
 //!
 //! # Why an L1 leg, and why the fixture is a REQUIRE FILE
 //!
@@ -33,14 +40,16 @@
 //! Proves: through both captured production entry points, against the real
 //! pinned phar, output written to stdout after the command finished is (1) not
 //! in what the caller parses and (2) not lost either — it is on stderr, saying
-//! where it came from.
+//! where it came from; and that a PHP diagnostic raised before the command's own
+//! output does not land in front of it.
 //!
-//! Does not prove: anything about output printed BEFORE or DURING the command's
-//! own (nothing in rexenv covers that); anything about the streamed spawns,
-//! which deliberately carry no marker (their output is a live log, not a parse);
-//! and nothing about `wp cli info` / `wp --info`, whose early path ends without
-//! running shutdown functions at all — measured, and harmless, because that path
-//! never loads WordPress, so no plugin can print on it.
+//! Does not prove: anything about a plugin that `echo`es to stdout while the
+//! command runs (not a diagnostic, not after the end — nothing in rexenv covers
+//! that); anything about the streamed spawns, which deliberately carry no marker
+//! (their output is a live log, not a parse); and nothing about `wp cli info` /
+//! `wp --info`, whose early path ends without running shutdown functions at all
+//! — measured, and harmless, because that path never loads WordPress, so no
+//! plugin can print on it.
 //!
 //! # Fixture ownership
 //!
@@ -63,10 +72,19 @@ const FIXTURE_JSON: &str = r#"[{"name":"akismet","status":"inactive"}]"#;
 /// The post-run write. Shaped like Elementor's real line so a reader of a failed
 /// run recognises what this is imitating.
 const NOISE_CANARY: &str = "REXENV-NOISE-CANARY";
+/// The BEFORE-the-command write (#317). A real engine diagnostic rather than an
+/// echo, because the claim is about where PHP sends diagnostics — and raised
+/// with `trigger_error` rather than by borrowing the phar's own 8.5 deprecation,
+/// which would make this check depend on a bug in someone else's release. It
+/// therefore fires LATER than the real one (require time, not phar bootstrap) —
+/// which changes nothing, because the flag is an ini value set at process start
+/// and nothing between those two moments touches `display_errors`.
+const HEAD_CANARY: &str = "REXENV-HEAD-CANARY";
 
 struct Fixture {
     dir: PathBuf,
     require: PathBuf,
+    head_require: PathBuf,
     docroot: PathBuf,
 }
 
@@ -92,9 +110,35 @@ fn plant_fixture() -> Fixture {
         ),
     )
     .expect("fixture require file");
+    let head_require = dir.join("head.php");
+    std::fs::write(
+        &head_require,
+        format!(
+            "<?php\ntrigger_error( '{HEAD_CANARY} — raised before the command printed anything', E_USER_DEPRECATED );\n"
+        ),
+    )
+    .expect("fixture head require file");
     let docroot = dir.join("docroot");
     std::fs::create_dir_all(&docroot).expect("fixture docroot");
-    Fixture { dir, require, docroot }
+    Fixture { dir, require, head_require, docroot }
+}
+
+/// The production prefix with the `#317` flag taken out — argv exactly as it was
+/// before the fix, for the control leg. Removed as a PAIR: leaving the bare `-d`
+/// would make PHP read the phar path as the ini setting.
+fn without_display_errors(argv: Vec<String>) -> Vec<String> {
+    let at = argv.iter().position(|a| a == "display_errors=stderr").unwrap_or_else(|| {
+        fail(
+            "D — the prefix no longer carries `display_errors=stderr`",
+            "PHP prints its diagnostics to STDOUT by default, so one deprecation inside the phar \
+             lands in front of every answer rexenv parses (#317). There is nothing left for this \
+             leg to control against.",
+        )
+    });
+    let mut out = argv;
+    out.remove(at);
+    out.remove(at - 1); // its `-d`
+    out
 }
 
 fn fail(step: &str, why: &str) -> ! {
@@ -202,7 +246,71 @@ async fn main() {
     }
     println!("C ok — the tail is on stderr, attributed, and out of the answer");
 
-    println!("\n✓ wp_noise_check: post-run stdout cannot reach what rexenv parses (#316)");
+    // ── D · the HEAD — PHP's own diagnostics (#317) ─────────────────────────
+    //
+    // D1 is the control: the same argv WITHOUT the flag, which is what shipped
+    // until 14 Aug 2026 and what PHP 8.5 turned into a broken WordPress tab.
+    let head_arg = format!("--require={}", fixture.head_require.display());
+    let control_head = std::process::Command::new(&php_bin)
+        .args(without_display_errors(wordpress::wp_argv_prefix(&wp_phar)))
+        .arg(FIXTURE_COMMAND)
+        .arg(&require_arg)
+        .arg(&head_arg)
+        .env("WP_CLI_PACKAGES_DIR", wp_packages::neutral_packages_path(&wp_phar))
+        .env("PATH", "/usr/bin:/bin")
+        .output()
+        .expect("spawn the head control");
+    let head_out = String::from_utf8_lossy(&control_head.stdout).into_owned();
+    if !head_out.contains(HEAD_CANARY) {
+        fail(
+            "CONTROL LEG BROKEN — D proves nothing about the head",
+            &format!(
+                "without `display_errors=stderr`, a PHP diagnostic did NOT reach stdout — so \
+                 this machine's PHP is not doing the thing the flag exists to stop (check its \
+                 php.ini: a `display_errors` already set to stderr or off makes this leg \
+                 vacuous).\n  stdout: {}\n  stderr: {}",
+                head_out.trim(),
+                String::from_utf8_lossy(&control_head.stderr).trim()
+            ),
+        );
+    }
+    println!("D ok (control) — unflagged, a PHP diagnostic lands in front of the answer");
+
+    let treated = wordpress::wp_run_raw(
+        &php_bin,
+        &wp_phar,
+        &fixture.docroot,
+        &[FIXTURE_COMMAND.to_string(), require_arg, head_arg],
+        Duration::from_secs(60),
+    )
+    .unwrap_or_else(|e| fail("D — the flagged run failed outright", &e.to_string()));
+    let head_stdout = String::from_utf8_lossy(&treated.stdout).into_owned();
+    let head_stderr = String::from_utf8_lossy(&treated.stderr).into_owned();
+    if head_stdout.contains(HEAD_CANARY) {
+        fail(
+            "D — the diagnostic is still in front of the answer",
+            &format!(
+                "`display_errors=stderr` is not reaching PHP (a `-d` after the script name is an \
+                 argument to the script, not an ini setting) — #317.\n  stdout: {}",
+                head_stdout.trim()
+            ),
+        );
+    }
+    if !head_stderr.contains(HEAD_CANARY) {
+        fail(
+            "D — the diagnostic was silenced rather than moved",
+            &format!(
+                "a deprecation on the user's site is a real finding; the fix moves it to stderr, \
+                 it does not turn error reporting off (#317).\n  stderr: {}",
+                head_stderr.trim()
+            ),
+        );
+    }
+    // …and the answer itself still parses, with BOTH ends of noise present.
+    check_clean("D (both ends at once)", &head_stdout, &head_stderr);
+    println!("D ok — PHP's diagnostics are on stderr, and the answer survives both ends");
+
+    println!("\n✓ wp_noise_check: neither end of stdout can reach what rexenv parses (#316, #317)");
 }
 
 /// The half both production paths share: what the caller parses is the

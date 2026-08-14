@@ -38,41 +38,57 @@
 //! `--require`** (`core::wp_packages`), rather than trusting resolution it does
 //! not control — that rule is what makes the pin cost nothing.
 //!
-//! # STDOUT is the command's only up to the marker (ledger #316)
+//! # STDOUT is the command's, at both ends (ledger #316, #317)
 //!
-//! wp-cli's stdout is not only wp-cli's. A plugin can write to it from a
-//! shutdown hook, i.e. AFTER the command's own output. Measured 14 Aug 2026:
-//! Elementor 4.2.2 under PHP 8.4 registers its own WP-CLI logger and prints
-//! every PHP notice it collected — the stack trace is
-//! `Manager::shutdown` → `Cli_Logger::save_log` → `WP_CLI::log` →
-//! `fwrite(STDOUT)` — so `wp plugin list --format=json` returned valid JSON
-//! followed by a deprecation notice, the WordPress screen said
-//! `bad JSON: trailing characters at line 1 column 814`, and NOTHING on that
-//! screen could be managed any more. Every wp read on that site was wrong the
-//! same way (`wp option get home` came back with the notice glued to the URL).
+//! wp-cli's stdout is not only wp-cli's, and it gets written to from BOTH
+//! directions. Both halves were reported as the same bug — "the WordPress tab
+//! is dead on this site" — and they need different fixes, which is why they are
+//! written down separately.
 //!
-//! Two plausible fixes were measured and neither works, so don't re-try them:
-//! `-d display_errors=stderr` moves nothing (the write is not PHP's error
-//! display), and an output buffer opened from a shutdown function catches
-//! nothing (the write is not `echo` — it is `fwrite` straight to the stream,
-//! which the output layer never sees). What holds whatever a plugin writes
-//! WITH is POSITION: rexenv passes its own `--require` file, wp-cli loads it
-//! before WordPress and before any plugin, so its `register_shutdown_function`
-//! is FIRST in the queue and its marker is printed after wp-cli's output and
-//! before anything a plugin's later shutdown hook writes. Captured stdout is
-//! cut there ([`split_at_eoo`]) and the tail is APPENDED TO STDERR, never
-//! dropped — the notice is a real problem on the user's site, just not part of
-//! the answer to `plugin list`.
+//! **The TAIL (#316) — a plugin's shutdown hook.** Elementor 4.2.2 registers its
+//! own WP-CLI logger and prints every PHP notice it collected, AFTER the
+//! command's own output: `Manager::shutdown` → `Cli_Logger::save_log` →
+//! `WP_CLI::log` → `fwrite(STDOUT)` (traced 14 Aug 2026). So
+//! `wp plugin list --format=json` returned valid JSON followed by a deprecation
+//! notice, the WordPress screen said `bad JSON: trailing characters at line 1
+//! column 814`, and nothing on it could be managed. `wp option get home` came
+//! back with the notice glued to the URL, so it was never a JSON problem.
+//!
+//! Two plausible fixes were measured and neither touches THIS half, so don't
+//! re-try them here: `-d display_errors=stderr` (the write is not PHP's error
+//! display) and an output buffer opened from a shutdown function (the write is
+//! not `echo` — it is `fwrite` straight to the stream, which the output layer
+//! never sees). What holds whatever a plugin writes WITH is POSITION: rexenv
+//! passes its own `--require` file, wp-cli loads it before WordPress and before
+//! any plugin, so its `register_shutdown_function` is FIRST in the queue and its
+//! marker prints after wp-cli's output and before anything a later shutdown hook
+//! writes. Captured stdout is cut there ([`split_at_eoo`]) and the tail is
+//! APPENDED TO STDERR, never dropped — the notice is a real problem on the
+//! user's site, just not part of the answer to `plugin list`.
+//!
+//! **The HEAD (#317) — PHP's own diagnostics.** The CLI SAPI prints them to
+//! STDOUT by default, so a deprecation raised before wp-cli has printed a byte
+//! arrives glued to the FRONT of the answer. Measured on PHP 8.5.8 with the
+//! pinned 2.12.0 phar: `Deprecated: Case statements followed by a semicolon (;)
+//! are deprecated … react/promise/src/functions.php on line 369` — the phar's
+//! OWN vendored code, on every command, so every read on every 8.5 site broke
+//! and no plugin was involved at all. Here `-d display_errors=stderr` IS the fix
+//! ([`wp_argv_prefix`]): it covers any diagnostic from any file at any moment,
+//! which no marker can, and it loses nothing (stderr is where a diagnostic
+//! belongs, and the streamed steps merge both streams into one live log).
 //!
 //! Scope, stated rather than implied:
 //!
-//! - the cut covers the CAPTURED path — the one whose stdout is parsed. Streamed
-//!   spawns don't carry the file: their output is shown line by line, where a
-//!   trailing notice is noise rather than a parse failure, and a marker would
-//!   have to be filtered out of the user's live log instead.
-//! - nothing here covers output printed BEFORE or DURING the command's own. The
-//!   JSON reads additionally tolerate trailing bytes ([`json_from_wp`]), which
-//!   is the belt for a machine where the require file could not be written.
+//! - the CUT covers the CAPTURED path — the one whose stdout is parsed. Streamed
+//!   spawns don't carry the marker file: their output is shown line by line,
+//!   where a trailing notice is noise rather than a parse failure, and a marker
+//!   would have to be filtered out of the user's live log instead. The
+//!   display_errors half is in the shared prefix and so covers both.
+//! - what remains uncovered is a plugin that `echo`es to stdout while the
+//!   command runs — not a diagnostic, not after the end, and broken for every
+//!   wp-cli user alike. The JSON reads additionally tolerate trailing bytes
+//!   ([`json_from_wp`]), the belt for a machine where the require file could not
+//!   be written.
 
 use super::wp_packages;
 use crate::error::{Error, Result};
@@ -197,8 +213,31 @@ pub fn core_path_arg(docroot: &Path) -> Option<String> {
 /// command line, exempt by decision, and named in the guard.
 ///
 /// The limit: WP-CLI (esp. core extraction) needs more than the default 128M.
+///
+/// `display_errors=stderr` is the OTHER half of #316, and it is about what PHP
+/// itself prints. The CLI SAPI's default is to write diagnostics to STDOUT, so a
+/// deprecation raised anywhere — including inside the phar, before wp-cli has
+/// printed a byte — arrives glued to the front of the answer. Measured 14 Aug
+/// 2026 on PHP 8.5.8 with the pinned 2.12.0 phar: `Deprecated: Case statements
+/// followed by a semicolon (;) are deprecated … react/promise/src/functions.php
+/// on line 369`, on EVERY command, so every read broke on a site that had
+/// nothing wrong with it. Sent to stderr the diagnostic is not lost — it is
+/// where a diagnostic belongs, and the streamed steps merge both streams into
+/// one live log, so nothing disappears from an install either. This is also the
+/// one flag that could not fix the tail half (Elementor's shutdown write is not
+/// PHP's error display), which is why #316 needs both.
+///
+/// Note wp-cli sets `display_errors` to `stderr` itself once WordPress loads
+/// (`Utils\wp_debug_mode`, verified in the pinned phar) — this covers the window
+/// BEFORE that, which is exactly where the 8.5 deprecation lands.
 pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {
-    vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()]
+    vec![
+        "-d".into(),
+        "memory_limit=512M".into(),
+        "-d".into(),
+        "display_errors=stderr".into(),
+        wp_phar.display().to_string(),
+    ]
 }
 
 /// The literal that separates wp-cli's own output from whatever a plugin writes
@@ -4283,6 +4322,28 @@ mod packages_pin_guards {
         let phar = dir.join("wp-cli.phar");
         std::fs::write(&phar, b"phar").unwrap();
         (TempPhar(dir), phar)
+    }
+
+    /// #317: PHP's own diagnostics must not be on the stream the answer is on.
+    /// In the SHARED prefix, so the streamed spawns get it too, and before the
+    /// phar — a `-d` after the script name is an argument to the script.
+    #[test]
+    fn every_wp_cli_runs_php_with_its_diagnostics_on_stderr() {
+        let phar = Path::new("/tmp/wp-cli.phar");
+        let argv = wp_argv_prefix(phar);
+        let at = argv
+            .iter()
+            .position(|a| a == "display_errors=stderr")
+            .expect(
+                "PHP prints diagnostics to STDOUT by default, so one deprecation inside the phar \
+                 (measured: PHP 8.5.8 + wp-cli 2.12.0, react/promise) lands in front of every \
+                 answer rexenv parses (#317)",
+            );
+        assert_eq!(argv[at - 1], "-d", "the value is not attached to a -d flag");
+        assert!(
+            at < argv.iter().position(|a| a.ends_with(".phar")).expect("the phar"),
+            "the flag is after the script name, where PHP hands it to the script instead"
+        );
     }
 
     #[test]
