@@ -195,6 +195,14 @@ the shipped UI toward one.
   recorded window. An affordance whose promise is "this isn't recorded" cannot be
   offered on a best-effort basis — that is the honest-UI rule at its sharpest,
   because the user would see the window they asked for and never learn otherwise.
+  Its glyph is the private-browsing IDIOM — hat + spy glasses
+  (`common/IncognitoIcon.tsx`), the mark every browser's private window has
+  trained people to read — drawn in `currentColor`, never a vendor's own mark or
+  hex, since the same icon rides the Firefox and Brave rows too. Lucide has no
+  incognito icon (its nearest is a carnival mask, which is not what anyone is
+  scanning for). Filled hat, OUTLINED lenses, decided by rendering it at the
+  15px it ships at rather than at 120px: two filled discs joined by a bar read
+  as a dumbbell there, rings read as glasses at every size.
 - **A one-off detour is not a preference change.** Picking a browser from the
   chevron opens that one link there and leaves the default alone. Magic Login
   carries the same chevron, because it too ends in a browser — its url is minted

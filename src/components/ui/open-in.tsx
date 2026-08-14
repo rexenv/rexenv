@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { Code, Globe, VenetianMask } from "lucide-react";
+import { Code, Globe } from "lucide-react";
 import { AppIcon } from "@/components/ui/app-icon";
+import { IncognitoIcon } from "@/components/common/IncognitoIcon";
 import { MenuItem } from "@/components/ui/menu";
 import { openUrlIn, useBrowsers, usePreferredBrowser } from "@/lib/useBrowser";
 import { openSiteInEditor, useEditors, usePreferredEditor } from "@/lib/useEditor";
@@ -59,7 +60,7 @@ export function useBrowserMenu(
       action={
         b.supportsPrivate
           ? {
-              icon: <VenetianMask className="h-[15px] w-[15px]" strokeWidth={1.8} />,
+              icon: <IncognitoIcon className="h-[15px] w-[15px]" />,
               label: `Open in a private ${b.name} window`,
               onSelect: () => open(b, true),
             }
