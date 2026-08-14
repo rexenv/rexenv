@@ -1,17 +1,30 @@
-# Xdebug-enabled PHP "debug" build — recipe + hosting/pinning (§11.2)
+# Xdebug-enabled PHP "debug" build — the FALLBACK recipe, for PHP 8.0 only
 
-The stock static-php.dev **bulk** builds ship **no Xdebug**, and a *static* PHP
-cannot `dlopen` an external `xdebug.so` (no matching loadable artifact is published —
-see TASKS-PHASE3.md §8.1). So the per-site Xdebug toggle (§8.2) needs a **separate
-custom static-php compile** of the same PHP minor with **Xdebug compiled in**.
+> ## Read this first — this file described a path that is no longer the live one
+>
+> **The per-site Xdebug toggle SHIPS, and it does not use this recipe.** Xdebug
+> works on PHP **8.1–8.5** via per-minor `xdebug.so` bottles from the
+> `shivammathur/extensions` tap, loaded into the EXISTING static php-fpm with
+> `-d zend_extension` (`docs/PORTS.md`, the Xdebug row). The premise this file
+> opened with — "a *static* PHP cannot `dlopen` an external `xdebug.so`" — is
+> false as a general claim: it is true of **PHP 8.0's** build specifically, which
+> exports 98 symbols and no `_OnUpdateBool`, and false of 8.1+, which export
+> ~39,000 (measured on the real cache, 14 Aug 2026).
+>
+> So what remains here is a **fallback recipe for the ONE minor still excluded,
+> 8.0** — not the way §8.2 works. Anyone who picked this up believing otherwise
+> would have built an artifact rexenv has no use for.
 
-This file is the reproducible recipe for producing that artifact, hosting it, and
-pinning it so `BinaryProvider` can fetch it on demand like every other binary.
+This file is the reproducible recipe for producing an Xdebug-compiled-in build,
+hosting it, and pinning it so `BinaryProvider` can fetch it on demand like every
+other binary.
 
-> Status: the in-repo wiring is done (`core::binaries` `php-debug` / `php-fpm-debug`
-> variants, gated on a pinned checksum). The variant stays **unresolvable** until a
-> maintainer runs this recipe, uploads the artifacts, and fills the four
-> `PHP_DEBUG_*_SHA256` consts. Until then §8.2 remains blocked.
+> Status: the in-repo wiring is done (`core::binaries` `php-debug` /
+> `php-fpm-debug` variants, gated on a pinned checksum) and stays **unresolvable**
+> until someone runs this recipe and fills the four `PHP_DEBUG_*_SHA256` consts.
+> §8.2 itself is NOT blocked on that — only 8.0's row is. PHP 8.0 is upstream-EOL,
+> so leaving it excluded is an accepted outcome (`docs/TODO.md`, "Blocked on
+> external work").
 
 ## What to build
 
@@ -68,14 +81,21 @@ tar -C buildroot/bin -czf php-8.3.31-fpm-xdebug-macos-aarch64.tar.gz php-fpm
 shasum -a 256 php-8.3.31-*-xdebug-macos-*.tar.gz   # → the four SHA-256s
 ```
 
-1. Upload the four `.tar.gz` to the host behind `PHP_DEBUG_BASE_URL`.
-   **The host itself is an OPEN DECISION (review item B33, tracked in
-   `docs/TODO.md`)** — a `dl.` host is wired in `core/binaries.rs:40` but was
-   never ratified vs the canonical project domain. Note: whichever host serves
-   these, rexenv becomes a DISTRIBUTOR of PHP at that moment — ship the PHP
-   licence + Xdebug licence texts alongside the artifacts.
-   (`src-tauri/src/core/binaries.rs`), keeping the exact file names
-   `php-{ver}-{cli|fpm}-xdebug-macos-{aarch64|x86_64}.tar.gz`.
+1. Upload the four `.tar.gz` as a release in **`rexenv/runtimes`** — the public
+   build/host repo, created 14 Aug 2026. **This settles B33**, which had been open
+   since the Xdebug work: the host is GitHub Releases, and `dl.rexenv.dev` is not
+   used. The reasons are in `docs/PLAN-php-74-support.md` §6, and the one that
+   decided it is that a release there is IMMUTABLE and its tag is never reused, so
+   a pinned URL can 404 but can never resolve to different bytes — which is
+   exactly what static-php.dev and FrankenPHP cannot promise.
+   Prefer adding a job to that repo's workflow over building by hand: what
+   produced an artifact should be a public log with an attestation, not a laptop.
+   Keep the exact file names `php-{ver}-{cli|fpm}-xdebug-macos-{aarch64|x86_64}.tar.gz`
+   and point `PHP_DEBUG_BASE_URL` (`core/binaries.rs`) at the release tag —
+   the FULL tag, like `php_self_hosted_tag` does, not a stable base.
+   rexenv becomes a DISTRIBUTOR of PHP at that moment: ship the PHP licence, the
+   Xdebug licence, and the statically linked deps' licences alongside (the
+   `rexenv/runtimes` build script already collects the last set automatically).
 2. Fill the four consts `PHP_DEBUG_{CLI,FPM}_MAC_{ARM64,AMD64}_SHA256` with the
    `shasum` output. The moment they're non-empty, `manifest("php-debug", …)` and
    `manifest("php-fpm-debug", …)` resolve and `prepare_binary` (de-quarantine →

@@ -761,11 +761,20 @@ first:
   packages + OFL fonts + bundled SQLite; regeneration commands in its header),
   DCO sign-off in `CONTRIBUTING.md`, README licence section. Regenerate the
   notices file per release.
-- [ ] **B33 — php-debug download host**: `dl.rexenv.dev` is wired
-  (`core/binaries.rs:40`, inert until the four SHA consts are filled) but the
-  host choice vs the canonical domain was never settled. Note added to
-  `docs/xdebug-debug-build.md`. When it activates, ship the PHP + Xdebug licence
-  texts beside the artifacts (rexenv becomes a distributor of PHP at that moment).
+- [x] **B33 — php-debug download host — DECIDED + BUILT 14 Aug 2026: GitHub
+  Releases in the public `rexenv/runtimes` repo; `dl.rexenv.dev` is not used.**
+  ✓ Repo created with the build workflow, gates, licence collection and the
+  immutability contract (`docs/PLAN-php-74-support.md` §6). What decided it: a
+  release there is immutable and its tag is never reused, so a pinned URL can 404
+  but can never resolve to different bytes — the property neither static-php.dev
+  nor FrankenPHP offers, and the reason `core/binaries.rs` carries two comments
+  about pins going stale. The distributor obligation is met in the repo (PHP
+  licence shipped; dep licences collected from the sources the build actually
+  downloaded, not a checked-in list that would describe last year's extension set).
+  **The prize is smaller than this row implied**, and that correction matters more
+  than the decision: `docs/PORTS.md` records Xdebug already shipping for PHP
+  8.1–8.5 via ghcr bottles, so B33 unblocks Xdebug on **8.0 only** —
+  `docs/xdebug-debug-build.md` said otherwise and has been corrected in place.
 - [ ] **`rex config get|set`** — parked on which settings keys to allow-list
   (never the whole KV table).
 - [x] **Neutralise the WP-CLI packages-dir inheritance, or accept it in writing?**
