@@ -339,6 +339,16 @@ evidence cited.
   number nobody records drifts again. Do NOT fold this into the 7.4 work: 7.4
   matches the 12.0 the other PHP rows already have, so it neither causes nor
   worsens this.
+- [ ] **A FrankenPHP site's `php_version` is a promise it cannot keep.** FrankenPHP
+  serves every site with the PHP compiled into it (`FRANKENPHP_EMBEDDED_PHP`,
+  currently 8.5.8) — never the site's pool — so an 8.1 site on FrankenPHP is
+  silently served by 8.5 while the picker says 8.1. Ledger #326 refuses the
+  MAJOR mismatch (7.4 × FrankenPHP), which is where it stops being skew and
+  becomes a different language; the same-major case is deliberately left alone
+  because refusing it would break FrankenPHP sites that work today. **Options,
+  neither free:** show the served version honestly on a FrankenPHP site (the
+  picker becomes read-only or annotated), or refuse the pairing outright and
+  make FrankenPHP a server whose PHP is not chosen. Found while gating 7.4.
 - [ ] **PHP 7.4 support** (planned 14 Aug 2026, `docs/PLAN-php-74-support.md`). The
   standing claim that 7.4 "has no build and never will" was true about static-php.dev
   and **false about PHP**: static-php-cli has no version floor (7.4 download+extract

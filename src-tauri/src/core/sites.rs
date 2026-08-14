@@ -76,6 +76,38 @@ fn ensure_server_available(server: WebServer) -> Result<()> {
     }
 }
 
+/// A FrankenPHP site is served by the PHP compiled INTO FrankenPHP, not by the
+/// site's php-fpm pool — so `php_version` is a promise FrankenPHP cannot keep.
+///
+/// Refused when the MAJOR versions differ, which is the line where "ignored"
+/// becomes "broken": running an 8.1 codebase on 8.5 is a version skew, running a
+/// **7.4** codebase on 8.5 is a different language — the removals PHP 8.0 made
+/// are exactly why a site is still pinned to 7.4. The rule compares data rather
+/// than naming versions, so it stays true when either pin moves.
+///
+/// Scope, stated: the same-major mismatch (an 8.1 site served by 8.5) is NOT
+/// refused here. It is a real honesty gap and it predates 7.4; it is tracked in
+/// `docs/TODO.md` rather than fixed by widening this guard, because refusing it
+/// would break FrankenPHP sites that work today.
+fn ensure_server_runs_php(server: WebServer, php_version: &str) -> Result<()> {
+    if server != WebServer::Frankenphp {
+        return Ok(());
+    }
+    let major = |v: &str| v.split('.').next().unwrap_or_default().to_string();
+    let embedded = binaries::FRANKENPHP_EMBEDDED_PHP;
+    if major(php_version) == major(embedded) {
+        return Ok(());
+    }
+    Err(Error::Other(format!(
+        "FrankenPHP embeds its own PHP {} and cannot run PHP {}. A site on {} would be \
+         served by {} instead — silently. Use Nginx or Apache for this site.",
+        php::minor_of(embedded),
+        php::minor_of(php_version),
+        php::minor_of(php_version),
+        php::minor_of(embedded),
+    )))
+}
+
 /// The per-site override backend port for `server`, or `None` for nginx (which
 /// has no per-site port — it vhosts by `server_name` on the shared stack).
 /// FrankenPHP/Apache hash the domain into a small loopback range, so two domains
@@ -387,6 +419,7 @@ fn create_recording_ownership(
     validate_domain(&new.domain)?;
     validate_docroot_path(&new.path)?;
     ensure_server_available(new.web_server)?;
+    ensure_server_runs_php(new.web_server, &new.php_version)?;
     if store::domain_exists(conn, &new.domain)? {
         return Err(Error::Other(format!(
             "domain already in use: {}",
@@ -1038,6 +1071,10 @@ fn validate_docroot_path(path: &str) -> Result<()> {
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
     ensure_server_available(server)?;
     let Some(_site) = get(conn, id)? else { return Ok(None) };
+    // The site keeps its PHP version across a server switch, so the pair has to
+    // be checked here too — a 7.4 site switched to FrankenPHP is the same lie
+    // as one created that way.
+    ensure_server_runs_php(server, &_site.php_version)?;
     // Switching servers reallocates the recorded override port: a free port in
     // the new server's range, or None when switching to nginx (B20 §4).
     let others: Vec<Site> = list(conn)?.into_iter().filter(|s| s.id != id).collect();
@@ -1115,6 +1152,13 @@ pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Opt
             "rexenv has no PHP {minor} build. Available: {}.",
             php::available_minors().join(", ")
         )));
+    }
+    // Third door into the same lie: a FrankenPHP site whose PHP is switched to a
+    // major FrankenPHP cannot run. Checked against the site's CURRENT server, so
+    // all three ways to form the pair (create, switch server, switch PHP) are
+    // covered rather than the two that were obvious.
+    if let Some(site) = get(conn, id)? {
+        ensure_server_runs_php(site.web_server, &minor)?;
     }
     if !store::set_site_php_version(conn, id, &minor)? {
         return Ok(None);
@@ -3856,6 +3900,44 @@ mod tests {
         // Unsupported version is rejected; unknown id is a no-op (None).
         assert!(set_php_version(&conn, &site.id, php::unshipped_minor()).is_err());
         assert!(set_php_version(&conn, "nope", "8.3").unwrap().is_none());
+    }
+
+    /// FrankenPHP serves a site with the PHP compiled into FrankenPHP, so a
+    /// 7.4 site on FrankenPHP would silently run 8.5 — a different language, not
+    /// a version skew. All THREE ways to form that pair are refused; covering
+    /// only create and server-switch would leave the php-switch door open, which
+    /// is the shape of guard this repo keeps getting bitten by.
+    #[test]
+    fn frankenphp_refuses_a_php_major_it_cannot_run() {
+        let conn = db::open_in_memory().unwrap();
+
+        // (1) create
+        let mut n = sample("FP", "fp.test");
+        n.web_server = WebServer::Frankenphp;
+        n.php_version = "7.4".into();
+        let err = create(&conn, n).unwrap_err().to_string();
+        assert!(err.contains("FrankenPHP embeds its own PHP"), "{err}");
+        assert!(err.contains("7.4") && err.contains("8.5"), "names both: {err}");
+
+        // (2) switch the SERVER of an existing 7.4 site
+        let mut a = sample("A", "a.test");
+        a.php_version = "7.4".into();
+        let a = create(&conn, a).unwrap();
+        assert!(set_web_server(&conn, &a.id, WebServer::Frankenphp).is_err());
+        // …and the row is untouched by the refusal.
+        assert_eq!(get(&conn, &a.id).unwrap().unwrap().web_server, WebServer::Nginx);
+
+        // (3) switch the PHP of an existing FrankenPHP site
+        let mut b = sample("B", "b.test");
+        b.web_server = WebServer::Frankenphp;
+        b.php_version = "8.5".into();
+        let b = create(&conn, b).unwrap();
+        assert!(set_php_version(&conn, &b.id, "7.4").is_err());
+        assert_eq!(get(&conn, &b.id).unwrap().unwrap().php_version, "8.5");
+
+        // The SAME-major mismatch is deliberately allowed — it predates this and
+        // refusing it would break FrankenPHP sites that work today.
+        assert!(set_php_version(&conn, &b.id, "8.1").is_ok());
     }
 
     #[test]

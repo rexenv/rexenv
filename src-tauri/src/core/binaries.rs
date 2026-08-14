@@ -60,6 +60,14 @@ pub const COMPOSER_VERSION: &str = "2.10.2";
 /// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
 /// per-site override server on an internal loopback port — Phase 2 §2.
 pub const FRANKENPHP_VERSION: &str = "1.12.4";
+/// The PHP compiled INTO the pinned FrankenPHP binary. FrankenPHP does not use
+/// rexenv's php-fpm pools — a FrankenPHP site is served by THIS PHP whatever its
+/// `php_version` says. Recorded as data (it was only ever a sentence in the
+/// re-pin comment below) so `core::sites` can refuse a combination FrankenPHP
+/// cannot honour, instead of the site quietly running something else.
+/// **Moves with `FRANKENPHP_VERSION`** — the re-pin procedure prints it
+/// (`frankenphp version` → "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4").
+pub const FRANKENPHP_EMBEDDED_PHP: &str = "8.5.8";
 /// Default PostgreSQL version (theseus-rs portable build — a full bin/lib/share
 /// tree, like MySQL). Phase 2 §5.3. Must be in [`POSTGRES_VERSIONS`].
 pub const POSTGRES_VERSION: &str = "18.4.0";
