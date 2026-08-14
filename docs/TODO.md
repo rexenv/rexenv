@@ -357,8 +357,13 @@ evidence cited.
     plant-proven in both directions with a frozen `"7.4" => 3.1.6` row. The old gate
     failed SILENTLY — `None` reads exactly like "this minor has no Xdebug", which is
     a real state (8.0), so the bug wore a supported outcome's disguise.
-  - [ ] **S0.5 — Xdebug support in the DTO.** `SiteDetail.tsx:909` hand-copies the
-    core rule as `minor === "8.0"`; `lib/ipc/index.ts:406` copies another.
+  - [x] **S0.5 — Xdebug support in the DTO.** ✓ `PhpVersionView` (a SEPARATE type
+    from the persistence `PhpVersion`, so a row whose derived fields were never
+    filled is unrepresentable rather than merely unlikely) carries
+    `xdebugSupported` + `xdebugVersion`, derived per read in `core::php::list_versions`.
+    `SiteDetail`'s `minor === "8.0"` literal is gone. Ledger #321. **L2 gap stated:**
+    no wk-check renders `XdebugCard`, so "the control is actually disabled" is
+    unproven; `mock.ts` carries the 8.0 not-supported row so the dev route shows it.
   - [ ] **S0.6 — the EOL tell.** `grep -ri 'eol' src/` → 0 hits, and 8.0 has been
     EOL since Nov 2023. Must cover 8.0 too: a 7.4-only badge implies 8.0 is fine.
   - [ ] **S2.0 — branch `manifest()` on source BEFORE any checksum is pinned.**

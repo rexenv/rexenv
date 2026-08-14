@@ -4,7 +4,7 @@
 use crate::core;
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::PhpVersion;
+use crate::state::models::PhpVersionView;
 use tauri::State;
 
 fn lock<'a>(
@@ -18,7 +18,7 @@ fn lock<'a>(
 
 /// All registered PHP versions (installed + available) for the Settings UI.
 #[tauri::command]
-pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersion>> {
+pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersionView>> {
     let conn = lock(&state)?;
     core::php::list_versions(&conn)
 }

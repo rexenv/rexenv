@@ -902,16 +902,27 @@ function SettingsTab({ site }: { site: Site }) {
 
 /** Per-site Xdebug toggle (§8.2). On = this site's PHP runs in the version's
  *  DEBUG pool (Xdebug loaded, mode debug,develop); other sites on the same
- *  version are unaffected. Client-side disable mirrors the CORE rules
- *  (FrankenPHP / PHP 8.0) — the backend is the enforcement. */
+ *  version are unaffected. Client-side disable mirrors the CORE rules — the
+ *  backend is the enforcement.
+ *
+ *  Which minors support Xdebug comes from the registry row (`xdebugSupported`,
+ *  derived in core from the pinned bottle table), NOT from a literal here. It
+ *  was `minor === "8.0"`: a second copy of `binaries::xdebug_supported` free to
+ *  disagree with it the moment the pinned set changed. */
 function XdebugCard({ site }: { site: Site }) {
   const qc = useQueryClient();
+  const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
   const minor = site.phpVersion.split(".").slice(0, 2).join(".");
+  const row = versions.find((v) => v.minor === minor);
+  // Unknown row = say nothing yet rather than guess. The versions query is
+  // shared cache with the page's own, so this is a first-paint blink at worst,
+  // and the backend refuses regardless.
+  const supported = row?.xdebugSupported ?? true;
   const blocked =
     site.webServer === "frankenphp"
       ? "Not available on FrankenPHP sites — FrankenPHP embeds its own PHP. Switch the site to Nginx or Apache first."
-      : minor === "8.0"
-        ? "Not available for PHP 8.0 — its build can't load extensions. Switch the site to PHP 8.1 or newer first."
+      : !supported
+        ? `Not available for PHP ${minor} — its build can't load extensions. Switch the site to a version that supports Xdebug first.`
         : null;
 
   const toggle = useMutation({

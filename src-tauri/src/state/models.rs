@@ -419,6 +419,38 @@ pub struct PhpVersion {
     pub is_default: bool,
 }
 
+/// A PHP version AS THE UI SEES IT — the stored row plus the facts that are
+/// derived from the pinned build set rather than recorded.
+///
+/// A SEPARATE type on purpose. Hanging `xdebug_supported` off [`PhpVersion`]
+/// would make it a field that is true when `core::php::list_versions` built the
+/// value and `false` when `store::list_php_versions` did — a recorded-vs-derived
+/// disagreement inside one struct, which is a defect family this project already
+/// tracks. Here the persistence type simply has no such field, so the wrong
+/// answer is unrepresentable rather than merely unlikely.
+///
+/// It exists because the frontend was hand-copying core's rules: `SiteDetail`
+/// disabled the Xdebug toggle on a literal `minor === "8.0"`, so the UI's idea
+/// of which minors support Xdebug was a second, silently-diverging copy of
+/// `binaries::xdebug_supported` — the "guard covers claimed surface" shape, four
+/// of which have already bitten here. The client renders what core computed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhpVersionView {
+    pub minor: String,
+    pub patch: String,
+    pub fpm_port: u16,
+    pub installed: bool,
+    pub is_default: bool,
+    /// Whether the per-site Xdebug toggle can be offered for this minor —
+    /// `binaries::xdebug_supported`, not a client-side guess.
+    pub xdebug_supported: bool,
+    /// The Xdebug release this minor's debug pool actually loads, or `None`
+    /// where the toggle isn't offered. NOT app-wide: a minor past Xdebug's
+    /// support window is frozen at its last release (ledger #320).
+    pub xdebug_version: Option<&'static str>,
+}
+
 /// A git-sourced wp-content dir's provenance (add-from-Git): which repo/ref a
 /// plugin or theme folder was cloned from. Drives the list "git" badge and is
 /// the seam for future update-pull/watch features.

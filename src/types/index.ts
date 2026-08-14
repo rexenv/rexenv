@@ -523,13 +523,23 @@ export interface SiteServing {
   serving: boolean;
 }
 
-/** A PHP version in the registry (mirrors the Rust PhpVersion). */
+/** A PHP version in the registry (mirrors the Rust PhpVersionView).
+ *
+ *  `xdebugSupported` / `xdebugVersion` are DERIVED in core from the pinned build
+ *  set and sent down — never re-decided here. The UI used to disable the Xdebug
+ *  toggle on a literal `minor === "8.0"`, i.e. a second copy of
+ *  `binaries::xdebug_supported` that could silently disagree with it. */
 export interface PhpVersion {
   minor: string; // "8.3" — the key + what Site.phpVersion references
   patch: string; // "8.3.31"
   fpmPort: number;
   installed: boolean;
   isDefault: boolean;
+  /** Can the per-site Xdebug toggle be offered for this minor? */
+  xdebugSupported: boolean;
+  /** The Xdebug release this minor's debug pool loads — not app-wide; a minor
+   *  past Xdebug's support window is frozen at its last release. */
+  xdebugVersion: string | null;
 }
 
 /** One editable per-version PHP ini setting (mirrors the Rust PhpSettingView).

@@ -403,8 +403,10 @@ export async function setSiteWebServer(id: string, server: WebServer): Promise<S
 
 /** Toggle a site's Xdebug (§8.2). Enabling downloads the minor's pinned
  *  xdebug.so on first use and starts the debug pool (load-probe gated);
- *  FrankenPHP sites and PHP 8.0 are refused by core with the real reason.
- *  Returns the updated site. */
+ *  FrankenPHP sites, and any minor whose registry row reports
+ *  `xdebugSupported: false`, are refused by core with the real reason. That
+ *  flag — not a version literal repeated here — is what the UI reads. Returns
+ *  the updated site. */
 export async function setSiteXdebug(id: string, enabled: boolean): Promise<Site | null> {
   if (!isTauri()) return null;
   return invoke<Site | null>("set_site_xdebug", { id, enabled });

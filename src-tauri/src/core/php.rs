@@ -13,7 +13,7 @@ use crate::core::{binaries, ports, services};
 use crate::core::proc::Proc;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
-use crate::state::{models::PhpVersion, store};
+use crate::state::{models::{PhpVersion, PhpVersionView}, store};
 use rusqlite::Connection;
 
 
@@ -173,8 +173,26 @@ pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
 }
 
 /// All registered PHP versions (installed + available), for the UI.
-pub fn list_versions(conn: &Connection) -> Result<Vec<PhpVersion>> {
-    store::list_php_versions(conn)
+///
+/// The stored row plus what is DERIVED from the pinned build set — Xdebug
+/// availability and, where offered, the release that minor's debug pool loads.
+/// Derived here rather than stored, so a pin change moves the UI on the next
+/// read and there is no column to migrate; and returned as a distinct view type
+/// so no caller can hold a [`PhpVersion`] whose derived fields were never
+/// filled (see [`PhpVersionView`]).
+pub fn list_versions(conn: &Connection) -> Result<Vec<PhpVersionView>> {
+    Ok(store::list_php_versions(conn)?
+        .into_iter()
+        .map(|v| PhpVersionView {
+            xdebug_supported: binaries::xdebug_supported(&v.minor),
+            xdebug_version: binaries::xdebug_version_for(&v.minor),
+            minor: v.minor,
+            patch: v.patch,
+            fpm_port: v.fpm_port,
+            installed: v.installed,
+            is_default: v.is_default,
+        })
+        .collect())
 }
 
 /// Enable (install) or disable (remove) a PHP version. Guards on removal: the
@@ -832,6 +850,38 @@ mod tests {
         // reads naturally and the port/cache rules exercise their real branches.
         assert!(fpm_port(m).is_some(), "{m} must be port-derivable like any minor");
         assert_eq!(minor_of(&unshipped_patch()), m);
+    }
+
+    #[test]
+    /// The UI's Xdebug rule is CORE's, carried down — never re-decided in the
+    /// client. `SiteDetail` disabled the toggle on a literal `minor === "8.0"`,
+    /// so the frontend held a second copy of `binaries::xdebug_supported` that
+    /// was free to disagree with it (four guards of that shape have bitten
+    /// here). This asserts the carried value equals the source for EVERY row,
+    /// so the copy cannot come back by drifting — it has to come back by
+    /// deleting this.
+    #[test]
+    fn the_version_list_carries_cores_xdebug_rule_rather_than_the_ui_guessing() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let rows = list_versions(&conn).unwrap();
+        assert!(!rows.is_empty());
+        for r in &rows {
+            assert_eq!(
+                r.xdebug_supported,
+                binaries::xdebug_supported(&r.minor),
+                "{} disagrees with core",
+                r.minor
+            );
+            assert_eq!(r.xdebug_version, binaries::xdebug_version_for(&r.minor), "{}", r.minor);
+            // The two travel together: a version without support, or support
+            // without a version, would each render a control that lies.
+            assert_eq!(r.xdebug_supported, r.xdebug_version.is_some(), "{}", r.minor);
+        }
+        // …and the set is not uniformly true, so an accessor stubbed to a
+        // constant could not pass this. 8.0 ships and has no Xdebug.
+        assert!(rows.iter().any(|r| !r.xdebug_supported), "no unsupported row — the fixture is too tidy");
+        assert!(rows.iter().any(|r| r.xdebug_supported));
     }
 
     #[test]
