@@ -787,8 +787,13 @@ Security postures resting on unproven third-party assumptions — the shape that
    vhosts can never be shared, because the only way in is a Sites lookup that errors.)
 3. **#103** — the dotfile guard (`~/.ssh` one bug from the internet, per #98). **nginx
    is PROVEN LIVE** — `dotfile_guard_check` 404s `.env`/`.git`/`.hidden-php` over the
-   wire, with the secret never crossing and `.well-known` still exempt. Apache and
-   FrankenPHP are the open legs: same probes, their backends.
+   wire, with the secret never crossing and `.well-known` still exempt. **Apache is now PROVEN LIVE too** (14 Aug 2026, `apache_site_check`): the same four
+   probes on the httpd backend — `.env`/`.git/config`/`.hidden/x.php` 404 with the secret
+   absent from the body and the dot-dir PHP never executing, and `/.well-known/` still
+   200. Plant-proved: replacing the guard rule with an inert one fails all three and
+   leaks the secret. **FrankenPHP is the one open leg left**: its guard exists in the
+   generated config (`@dot_root … respond 404`) and is unit-tested as a string, never
+   over the wire.
 4. **#175** — login-autostart "never download / never prompt": untested at any level.
 5. **#36** — wp_login's PHP-injection safety inherited, not re-checked at the injection
    point (its sibling has a dedicated test).

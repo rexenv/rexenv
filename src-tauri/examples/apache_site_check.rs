@@ -47,6 +47,8 @@ fn load_commands_clean(path: &std::path::Path) -> bool {
         })
 }
 
+const DOT_SECRET: &str = "REXENV_APACHE_DOT_9f2c";
+
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
@@ -87,6 +89,18 @@ async fn main() {
     )
     .unwrap();
     std::fs::write(docroot.join("style.css"), "body{}\n").unwrap();
+    // #103's Apache leg. The guard is in the generated conf
+    // (`RewriteRule "(^|/)\\.(?!well-known(/|$))" - [R=404,L]`) and unit-tested as a
+    // string; this is the only place it is exercised over the wire on this backend.
+    // The secret is checked for ABSENCE in the body, not just a 404 code: a 404
+    // page that happens to echo the request would still leak it.
+    std::fs::create_dir_all(docroot.join(".git")).unwrap();
+    std::fs::create_dir_all(docroot.join(".hidden")).unwrap();
+    std::fs::create_dir_all(docroot.join(".well-known")).unwrap();
+    std::fs::write(docroot.join(".env"), format!("APP_KEY={DOT_SECRET}\n")).unwrap();
+    std::fs::write(docroot.join(".git/config"), "[core]\n").unwrap();
+    std::fs::write(docroot.join(".hidden/x.php"), "<?php echo 'DOTPHP-RAN';").unwrap();
+    std::fs::write(docroot.join(".well-known/probe"), "well-known-ok").unwrap();
     std::fs::write(
         docroot.join(".htaccess"),
         "RewriteEngine On\nRewriteRule ^ht-check$ /index.php [R=302,L]\n",
@@ -175,6 +189,28 @@ async fn main() {
         let ht_ok = ht.starts_with("HTTP/1.1 302");
         println!("  php-via-fpm={php_ok} · fallback-routing={pretty_ok} · css-mime={css_ok} · htaccess-302={ht_ok}");
         ok &= php_ok && pretty_ok && css_ok && ht_ok;
+
+        // #103, Apache backend — the same four probes the nginx leg runs.
+        let mut dot_ok = true;
+        for (path, what) in [
+            ("/.env", "the .env"),
+            ("/.git/config", "the .git config"),
+            ("/.hidden/x.php", "a dot-dir .php"),
+        ] {
+            let r = http(&format!("{base}{path}"), &[]);
+            let blocked = r.starts_with("HTTP/1.1 404");
+            let leaked = r.contains(DOT_SECRET) || r.contains("DOTPHP-RAN");
+            if !blocked || leaked {
+                println!("  ✗ {what} at {path}: 404={blocked} leaked={leaked}");
+            }
+            dot_ok &= blocked && !leaked;
+        }
+        // The exemption has to stay REAL, or "everything 404s" would pass the
+        // three above while breaking ACME.
+        let wk = http(&format!("{base}/.well-known/probe"), &[]);
+        let wk_ok = wk.starts_with("HTTP/1.1 200") && wk.contains("well-known-ok");
+        println!("  dotfiles-404={dot_ok} · well-known-still-200={wk_ok}");
+        ok &= dot_ok && wk_ok;
     }
 
     // Cleanup: children + docroot (the conf under app-data config dir stays —
