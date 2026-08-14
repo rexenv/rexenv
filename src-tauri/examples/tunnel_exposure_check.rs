@@ -3,7 +3,7 @@
 //!
 //!   cargo run --example tunnel_exposure_check       (NETWORK + stack stopped)
 //!
-//! Carries FIVE ledger claims on one fixture, because standing up a real
+//! Carries SIX ledger claims on one fixture, because standing up a real
 //! cloudflared is the expensive part and each claim needs the same thing in
 //! front of it.
 //!
@@ -51,7 +51,7 @@
 mod common;
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{binaries, db as coredb, php as corephp, ports as coreports, services, sites, ssl, tunnels, wp_tunnel};
+use rexenv_lib::core::{binaries, db as coredb, database, php as corephp, ports as coreports, services, sites, ssl, tunnels, wordpress, wp_login, wp_tunnel};
 use rexenv_lib::platform;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::{Path, PathBuf};
@@ -220,10 +220,33 @@ async fn main() {
         std::thread::sleep(Duration::from_millis(250));
     }
 
-    // No WordPress install: nothing left here needs it. `hello.html` and
-    // `echo.php` are served by nginx + php-fpm directly, and the two legs that
-    // needed a WP site are the ones that could not fail (see below). Dropping
-    // it takes ~40s and a database off every run.
+    // WordPress IS installed here again (14 Aug 2026). The comment this replaces
+    // said "nothing left here needs it", which was true when it was written and
+    // stopped being true the moment leg 8 came back — so it is spelled out:
+    // **do not drop this again without checking leg 8 first.** It costs ~40s and
+    // a database on every run of this fixture, including the five claims that do
+    // not need it, and that price was paid deliberately: the alternative was a
+    // second copy of this file's tunnel-safety scaffolding (panic hook, triple
+    // reap, URL capture) living in an example that already had WordPress, and a
+    // second copy of the thing that stops a public tunnel leaking is a second
+    // thing to keep correct.
+    let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
+    let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli");
+    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.expect("mysql");
+    if let Err(e) = wordpress::install_for_site(
+        &php,
+        &wp,
+        &docroot,
+        SHARED,
+        "Shared",
+        &wordpress::db_name_for(SiteType::Wordpress, SHARED),
+        &format!("127.0.0.1:{}", coredb::DbEngine::Mysql.port()),
+        // The CLIENT binary, never the basedir — see docs/TODO.md, 15 Jul→14 Aug.
+        &database::mysql_client_bin(&mysql_base),
+        &Default::default(),
+    ) {
+        fail("FIXTURE — WordPress did not install on the shared site", &format!("{e}"));
+    }
 
     // ── The tunnel, started as late as possible ─────────────────────────────
     let bin = binaries::resolve(&*plat, "cloudflared", binaries::CLOUDFLARED_VERSION)
@@ -466,6 +489,77 @@ async fn main() {
         );
     }
     println!("6 ok — the other site is not reachable through this tunnel");
+
+    // ── 8 · a magic-link token cannot be replayed through the public URL ───
+    //
+    // WHAT THIS PROVES, and what it cannot. It proves the PAIR is load-bearing:
+    // with the Cloudflare-header gate deleted the Host gate denies in its place,
+    // and only with BOTH removed does the replay succeed. It does NOT prove
+    // which gate fires on the shipped code — that needed markers compiled into
+    // the mu-plugin, run by hand on 14 Aug 2026 (CLAIM-LEDGER #307/#33: `cf`
+    // fires first, and the Host gate is never reached). A leg claiming to
+    // re-prove that would be claiming what it cannot see.
+    //
+    // Verified by a TWO-PART plant, because a one-part plant could not fail:
+    // deleting the CF gate alone leaves the Host gate denying, which is exactly
+    // how the two legs this file used to carry passed while proving nothing.
+    //
+    // THE CONTROL IS THE SAME TOKEN, deliberately. `wp_login` rejects a tunnel
+    // attempt BEFORE consuming the stored option — so a remote caller cannot
+    // burn a user's pending token — which means one token shows both halves:
+    // denied through the public URL, then still good locally. A second fresh
+    // token would leave "denied because it was already spent" open, and that
+    // reading is indistinguishable from the real one in the response.
+    let (token, _) =
+        wp_login::issue(&php, &wp, &docroot, "wp-content", SHARED, 1, wp_login::LOGIN_TTL_SECS)
+            .expect("issue a one-time login");
+    let magic = format!("?rexenv_login={token}&rexenv_user=1");
+    let logged_in = |r: &reqwest::Response| {
+        r.headers()
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .any(|c| c.contains("wordpress_logged_in"))
+    };
+    let replay = net
+        .get(format!("{public}/{magic}"))
+        .send()
+        .await
+        .expect("replay through the tunnel");
+    let replay_in = logged_in(&replay);
+    let control = origin
+        .get(format!("http://127.0.0.1:{}/{magic}", services::NGINX_HTTP_PORT))
+        .header("Host", SHARED)
+        .send()
+        .await
+        .expect("same token, presented locally");
+    let control_in = logged_in(&control);
+    // ORDER MATTERS, and the first version had it backwards. A SUCCESSFUL replay
+    // consumes the token, so it necessarily breaks the control that follows it —
+    // and a control-first check then reports the worst outcome available as
+    // "this leg proves NOTHING". Measured 14 Aug 2026 with all three deniers
+    // planted out: the replay logged in and the leg blamed its own control.
+    // Read the replay first; a broken control CORROBORATES it rather than
+    // obscuring it.
+    if replay_in {
+        fail(
+            "8 — a magic-link token REPLAYED through the public tunnel LOGGED IN",
+            &format!(
+                "a link captured while a site is shared granted a session to whoever held it.\n  \
+                 same token still valid locally afterwards: {control_in} (false is EXPECTED here — \
+                 the replay consumed it, which is itself confirmation the replay went through)"
+            ),
+        );
+    }
+    if !control_in {
+        fail(
+            "8 — CONTROL BROKEN, this leg proves NOTHING",
+            "the replay was denied, but the SAME token did not log in locally either — so \
+             \"denied\" is indistinguishable from \"the token was never valid\". Fix the \
+             control before believing the denial.",
+        );
+    }
+    println!("8 ok — magic link denied through the public URL; the SAME token then logged in locally");
 
     // ── 7 · stopping the share really unpublishes it ────────────────────────
     // The control that makes this leg mean anything: the ORIGIN must still be
