@@ -463,7 +463,7 @@ strategy:
       - { runner: macos-15-intel, arch: x86_64  }
 steps:
   - pin Xcode explicitly (sudo xcode-select -s …)      # Xcode 27 hard-errors below macOS 12
-  - export MACOSX_DEPLOYMENT_TARGET=11.0               # before EVERY dep build, not just php
+  - export MACOSX_DEPLOYMENT_TARGET=12.0               # NOT 11.0 — see §10b. spc's own macOS default, and what every PHP rexenv already ships is. Before EVERY dep build, not just php
   - shivammathur/setup-php@v2 with php-version 8.4     # spc needs PHP >= 8.4 on the BUILD host
   - fetch the backports tarball, VERIFY its sha256 against the pin, mirror it as an asset
   - spc download --with-php=7.4 --custom-url "php-src:file://…" --for-extensions "$EXTS" --prefer-pre-built
@@ -652,7 +652,7 @@ Three things worth keeping:
   quietly becomes a frozen, known-vulnerable PHP. Record the exact source commit in the pin
   comment (as `binaries.rs` already does for FrankenPHP) and mirror the tarball (§3).
 - **Deployment-target discipline is all-or-nothing.** One dep built without
-  `MACOSX_DEPLOYMENT_TARGET=11.0` produces a silent `minos` bump. Assert it per-dep in CI, not
+  `MACOSX_DEPLOYMENT_TARGET` (12.0 — §10b) produces a silent `minos` bump. Assert it per-dep in CI, not
   just on `php`.
 - **Xcode 27 hard-errors below macOS 12.** Pin `xcode-select` and treat the pin as part of the
   reproducibility contract.
