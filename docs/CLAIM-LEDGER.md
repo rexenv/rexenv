@@ -776,9 +776,15 @@ Security postures resting on unproven third-party assumptions — the shape that
    measurement**: the hole was reachable through a tunnel and only through a tunnel. An
    earlier reading of this cluster claimed a LAN exposure; the edge replaces a
    caller-supplied `X-Forwarded-For` with its own peer, so it never existed.
-2. **#10/#13** — "a tunnel can only expose its one site": the cross-site negative is
-   still untested through a live tunnel. (**#37 is closed** — internal vhosts can never
-   be shared, because the only way in is a Sites lookup that errors.)
+2. **#13** — "a tunnel can only expose its one site". **#10's cross-site negative was
+   tested through a live tunnel on 14 Aug 2026** (`tunnel_exposure_check` leg 6) and this
+   entry said otherwise for the rest of that day — the stale-index shape this file warns
+   about, found while working the cluster it belongs to. What is genuinely open is #13's
+   PREMISE, which leg 6 does not reach: a site on an OVERRIDE server (FrankenPHP/Apache)
+   is not the nginx vhost the tunnel points at, so the question is whether nginx's
+   default-server fallthrough publishes a DIFFERENT site at the public URL. That needs an
+   override-server site standing behind a live tunnel. (**#37 is closed** — internal
+   vhosts can never be shared, because the only way in is a Sites lookup that errors.)
 3. **#103** — the dotfile guard (`~/.ssh` one bug from the internet, per #98). **nginx
    is PROVEN LIVE** — `dotfile_guard_check` 404s `.env`/`.git`/`.hidden-php` over the
    wire, with the secret never crossing and `.well-known` still exempt. Apache and
