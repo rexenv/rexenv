@@ -29,6 +29,10 @@ async fn main() {
         let _ = std::fs::remove_file(&p);
         db::open(&p).unwrap()
     };
+    // Pin `sites_dir` into the sandbox: `sites::provision` reads the SETTING,
+    // which falls back to the home directory, so without this the docroots land
+    // in the user's real ~/rexenv/Sites (14 Aug 2026 sweep).
+    common::pin_sites_dir(&conn, &*plat);
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
 
     // Resolve everything we need.

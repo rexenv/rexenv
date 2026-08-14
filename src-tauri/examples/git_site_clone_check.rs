@@ -395,6 +395,10 @@ fn main() {
     println!("\n=== 6. a Blank-PHP site from a repo gets no phpinfo page ===");
     let db_path = scratch.join("git-site-check.db");
     let conn = db::open(&db_path).expect("db");
+    // Pin `sites_dir` into the sandbox: `sites::provision` reads the SETTING,
+    // which falls back to the home directory, so without this the docroots land
+    // in the user's real ~/rexenv/Sites (14 Aug 2026 sweep).
+    common::pin_sites_dir(&conn, &*plat);
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
     let site = sites::provision(
         &conn,

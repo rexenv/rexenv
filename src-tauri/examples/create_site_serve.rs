@@ -29,6 +29,10 @@ async fn main() {
     let db_path = std::env::temp_dir().join("rexenv-7_1.db");
     let _ = std::fs::remove_file(&db_path);
     let conn = db::open(&db_path).expect("open db");
+    // Pin `sites_dir` into the sandbox: `sites::provision` reads the SETTING,
+    // which falls back to the home directory, so without this the docroots land
+    // in the user's real ~/rexenv/Sites (14 Aug 2026 sweep).
+    common::pin_sites_dir(&conn, &*plat);
 
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
 

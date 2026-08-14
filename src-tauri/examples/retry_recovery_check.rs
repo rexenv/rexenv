@@ -64,6 +64,10 @@ async fn main() {
     let second_path = project(&projects, "second", "SECOND-SITE");
 
     let conn = db::open(&sandbox.root().join("retry.db")).expect("db");
+    // Pin `sites_dir` into the sandbox: `sites::provision` reads the SETTING,
+    // which falls back to the home directory, so without this the docroots land
+    // in the user's real ~/rexenv/Sites (14 Aug 2026 sweep).
+    common::pin_sites_dir(&conn, &*plat);
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).expect("ca");
     let mk = |domain: &str, path: &str| NewSite {
         name: domain.into(),

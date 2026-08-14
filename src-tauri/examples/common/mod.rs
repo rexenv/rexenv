@@ -129,15 +129,32 @@
 pub fn sandbox_db(platform: &dyn Platform) -> rusqlite::Connection {
     let conn = rexenv_lib::state::db::open_for_platform(platform.paths())
         .expect("open the sandbox database");
+    pin_sites_dir(&conn, platform);
+    conn
+}
+
+/// Pin `sites_dir` into the sandbox on a connection the example opened ITSELF.
+///
+/// [`sandbox_db`] is the preferred door because it cannot be used without the
+/// pin. This exists for the examples that open their database somewhere of their
+/// own choosing (a named file under the sandbox root, a fixture path a later
+/// assertion refers to) and would otherwise have to give that up to be safe.
+///
+/// Called by 11 examples found on 14 Aug 2026 by grepping for `sandbox()` callers
+/// that provision without pinning. Two had been found before that — one on
+/// 13 Aug, one this morning — and BOTH were caught by [`SandboxGuard`]'s alarm
+/// after the fact rather than by review. The alarm is the backstop working; the
+/// eleven are what it had not happened to catch yet, because catching them
+/// required someone to run them.
+pub fn pin_sites_dir(conn: &rusqlite::Connection, platform: &dyn Platform) {
     let sites = platform
         .paths()
         .app_data_dir()
         .expect("sandbox app data")
         .join("Sites");
     std::fs::create_dir_all(&sites).expect("sandbox sites dir");
-    rexenv_lib::state::store::set_setting(&conn, "sites_dir", &sites.to_string_lossy())
+    rexenv_lib::state::store::set_setting(conn, "sites_dir", &sites.to_string_lossy())
         .expect("pin the sandbox sites dir");
-    conn
 }
 
 /// Every entry in the REAL sites folder, for the guard's before/after.
