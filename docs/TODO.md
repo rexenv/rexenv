@@ -322,6 +322,33 @@ first:
   end-to-end "replay denied through a real tunnel" observation on the next live
   `tunnel_exposure_check` run. Do NOT reinstate a leg that passes with the CF gate
   removed — that is what was cut, twice.
+- [ ] **Nine examples pass the MySQL basedir where `install_for_site` wants the client
+  binary — red since 15 Jul 2026, invisible because of their tier.** `b5861c4` renamed
+  `mysql_basedir` → `db_client` and changed its MEANING (extracted tree → client binary).
+  Both are `&Path`, so nothing failed to compile. That commit did touch these files, but
+  only to add the unrelated `db_engine` field, so the wrong argument rode along.
+  `create_database` execs the client unconditionally (`CREATE DATABASE IF NOT EXISTS` is
+  SQL-level idempotence, not a skipped exec), and exec'ing a directory is EACCES before
+  any DB contact — measured 14 Aug 2026 — so **no leftover database can make these pass
+  on any machine**. They are simply red, and all are network/stack tier, which is not
+  the tier that runs routinely.
+  Affected: `adminer_deeplink_check`, `blueprint_check`, `multisite_check`,
+  `multisite_wildcard_check`, `network_check`, `wp_create_serve`, `wp_plugins_check`,
+  `wp_themes_check`, `wp_tools_check`. Already correct: `cli_wp_install_check`,
+  `mariadb_site_check`, `wp_install_stream_check`, `wp_login_check` (fixed 14 Aug).
+  ⚠ **The codebase already knew** — `wp_install_stream_check` carries "db_client = the
+  CLIENT BINARY … not the base dir — wp_plugins_check passes the base and is latently
+  stale". Someone hit it, fixed their own caller, named a second victim, and the note sat
+  there. Fourth instance of the codebase-knew-already shape.
+  Production is NOT reachable: every real caller derives the client through
+  `DbEngine::sql_client_bins` (`site_provision.rs:1130/1386`, `dbrestore.rs:101`), the one
+  place that knows the layout. Only examples hand-roll it.
+  Work: (a) the nine one-line fixes; (b) make `mysql_exec` refuse a directory with a
+  message that NAMES the argument — an hour of debugging turned into a sentence, and it
+  guards any future hand-rolled caller including production; (c) considered and not
+  taken yet — a `SqlClient` newtype constructible only by `sql_client_bins`, which makes
+  the wrong call unrepresentable but touches core signatures plus 13 examples.
+
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled

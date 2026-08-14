@@ -767,7 +767,8 @@ Security postures resting on unproven third-party assumptions — the shape that
    Protection now rests on TWO Cloudflare behaviours instead of one — a higher cost of
    failure, not a different shape, and not independence. What remains OPEN is narrower:
    an end-to-end tunnel-replay leg that fails with the CF gate deleted (two attempts did
-   not), and the network-tier edge-append leg in `wp_login_check`. **#307's scope was corrected by
+   not). The edge's own behaviour is no longer open — leg (E) of `wp_login_check` ran
+   14 Aug 2026 and measured it. **#307's scope was corrected by
    measurement**: the hole was reachable through a tunnel and only through a tunnel. An
    earlier reading of this cluster claimed a LAN exposure; the edge replaces a
    caller-supplied `X-Forwarded-For` with its own peer, so it never existed.
