@@ -129,6 +129,17 @@ it can:
   a threaded-resolver rebuild makes the whole class obsolete). **This layer caught
   the most bugs this month.** Discipline: `common::sandbox` + `common::Reaped` +
   fixture ports (`examples/common/mod.rs` — read its invariant first).
+  **`relink_tree_check` (sandbox tier, 14 Aug 2026) is this layer aimed at the tool
+  chain itself.** `prepare_binary_tree`'s bug was never arithmetic — it was WHAT the
+  chain was asked to look at: `needs_tree_relink` treated any `@loader_path/` prefix
+  as in-tree, so a bottle whose deps read `@loader_path/../../../../opt/<f>/lib/…`
+  passed both the rewrite and the VERIFY loop, the provider reported success over 49
+  Mach-Os, and dyld then refused the binary. No pure test can catch that, because the
+  claim is about `otool`/`install_name_tool`/`codesign` on a real Mach-O. The fixture
+  is the example's OWN binary with one `/usr/lib` dep rewritten, so it needs no
+  download and no service; leg C is the control (an already-in-tree path must be left
+  ALONE, or leg A would pass for the boring reason that the predicate rejects
+  everything), and the plant — restoring the old prefix test — fails leg A by name.
   A live check does not have to be networked to earn its layer: `git_site_clone_check`
   (sandbox tier) builds its own fixture repositories with real `git init`/`commit` and
   clones them locally, so it needs no remote, no credentials and no service — and it

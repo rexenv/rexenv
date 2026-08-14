@@ -337,12 +337,20 @@ evidence cited.
     the example and both manual steps moved off the `7.4` literal. Ledger #318,
     plant-proven (7.2.34 into `PHP_VERSIONS` → fixture self-heals to 7.1). The two
     manual steps still carry a literal and the row says so.
-  - [ ] **S0.2 — `needs_tree_relink` waves through an ESCAPING `@loader_path`.**
-    `platform/macos/mod.rs:1660-1665`. Reproduced: `prepare_binary_tree` reports
-    success over 49 Mach-Os and the binary dies in dyld; the dead tree then caches
-    forever because the marker file exists (`binaries.rs:893-905`). Latent today
-    (homebrew-core bottles use `@@HOMEBREW_PREFIX@@`); fatal to the bottle fallback.
-    `mod.rs:2378` currently enshrines the blanket allowance.
+  - [x] **S0.2 — `needs_tree_relink` waved through an ESCAPING `@loader_path`.**
+    ✓ The prefix is now RESOLVED (lexically, component-wise) and required to land
+    under the bundle root; `@executable_path` is always rewritten because it is
+    unanswerable from the tree. Ledger #319, plant-proven at BOTH layers — L0
+    `an_escaping_loader_path_is_not_mistaken_for_in_tree` and the new L1
+    `relink_tree_check` (sandbox), whose leg B proves the tree is REPAIRED rather
+    than merely refused and whose leg C is the control.
+  - [ ] **S0.3 — a bundle tree that dyld cannot load is cached FOREVER.**
+    `resolve_bundle`'s early return only stats `dir.join(member)`
+    (`core/binaries.rs:893-905`) and `ensure_member_extracted` checks the same one
+    file, so a tree that publishes but cannot LOAD is never re-downloaded and never
+    repaired — this is what made #319 unrecoverable in the field rather than merely
+    wrong. Neighbour of ledger #86. The fix is a load-proving marker (exec the
+    member, or record a relink receipt), not another stat.
   - [ ] **S0.4 — per-minor Xdebug version.** 7.4's last is 3.1.6; one global
     `XDEBUG_VERSION` (`binaries.rs:115,414,871`) makes `xdebug-7.4` unresolvable.
   - [ ] **S0.5 — Xdebug support in the DTO.** `SiteDetail.tsx:909` hand-copies the

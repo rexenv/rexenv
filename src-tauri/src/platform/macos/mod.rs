@@ -1653,15 +1653,70 @@ impl MacosBinaryProvider {
         Ok(())
     }
 
+    /// Lexically resolve a `@loader_path`-relative load command against the
+    /// Mach-O's own directory. **Lexical on purpose** — `canonicalize` would fail
+    /// on a dep not staged yet and would resolve symlinks the bundle keeps
+    /// deliberately; what matters here is where the load command POINTS, which is
+    /// a string question, not a filesystem one.
+    fn resolve_loader_relative(macho_dir: &Path, rest: &str) -> PathBuf {
+        use std::path::Component;
+        let mut out = macho_dir.to_path_buf();
+        for comp in Path::new(rest).components() {
+            match comp {
+                Component::ParentDir => {
+                    out.pop();
+                }
+                Component::CurDir => {}
+                c => out.push(c.as_os_str()),
+            }
+        }
+        out
+    }
+
     /// Whether a load-command path must be rewritten to point inside the bundle
-    /// tree. System libs and already-relative entries are fine; everything else
-    /// (Homebrew `@@HOMEBREW_PREFIX@@`/`@@HOMEBREW_CELLAR@@` placeholders, real
+    /// tree. System libs are fine; everything else (Homebrew
+    /// `@@HOMEBREW_PREFIX@@`/`@@HOMEBREW_CELLAR@@` placeholders, real
     /// `/opt/homebrew`//`/usr/local` paths, `@rpath` we don't manage) is not.
-    fn needs_tree_relink(dep: &str) -> bool {
-        !(dep.starts_with("/usr/lib/")
-            || dep.starts_with("/System/")
-            || dep.starts_with("@loader_path/")
-            || dep.starts_with("@executable_path/"))
+    ///
+    /// **A `@loader_path/` prefix is not by itself proof of being in-tree, and
+    /// treating it as such published bundles dyld refuses to load.** This
+    /// returned `false` for anything starting `@loader_path/`, so the
+    /// shivammathur `php@7.4` bottle — whose every non-system dep reads
+    /// `@loader_path/../../../../opt/<formula>/lib/…` — sailed through BOTH the
+    /// rewrite loop and the post-relink verify loop, `prepare_binary_tree`
+    /// reported success over 49 Mach-Os, and the published binary then died:
+    ///
+    /// ```text
+    /// dyld: Library not loaded: @loader_path/../../../../opt/tidy-html5/lib/libtidy.58.dylib
+    /// ```
+    ///
+    /// Reproduced end to end 14 Aug 2026 (`docs/PLAN-php-74-support.md` §5.2), and
+    /// the failure is unrecoverable in the field: `resolve_bundle`'s early return
+    /// only checks that the `member` file EXISTS, so the dead tree is cached and
+    /// every later resolve short-circuits to it. The guard's claimed surface is
+    /// "nothing unresolvable remains" and it was checking one syntactic prefix
+    /// inside that surface — the ledger's `guard covers claimed surface` family.
+    ///
+    /// So the prefix is now RESOLVED and required to land under `root`. Escaping
+    /// entries are relinked like any other foreign dep, which means a dep we did
+    /// not bundle is a loud error instead of a silent publish.
+    ///
+    /// `@executable_path/` is deliberately NOT given the same treatment and always
+    /// needs relinking: the executable that will load a given dylib is chosen by
+    /// whoever spawns it, so it cannot be resolved from the tree at all. Rewriting
+    /// it to `@loader_path` makes it well-defined. No bundle rexenv ships uses it
+    /// (checked across the cached redis/mariadb/httpd/xdebug trees).
+    fn needs_tree_relink(root: &Path, macho: &Path, dep: &str) -> bool {
+        if dep.starts_with("/usr/lib/") || dep.starts_with("/System/") {
+            return false;
+        }
+        let Some(rest) = dep.strip_prefix("@loader_path/") else {
+            return true;
+        };
+        match macho.parent() {
+            Some(dir) => !Self::resolve_loader_relative(dir, rest).starts_with(root),
+            None => true,
+        }
     }
 
     /// The `@loader_path`-relative path from `macho` to the bundle's
@@ -1784,7 +1839,10 @@ impl MacosBinaryProvider {
     /// never publish a tree that can't load.
     fn relink_into_tree(root: &Path, macho: &Path) -> Result<()> {
         let id = Self::dylib_id(macho)?;
-        if let Some(old) = id.as_deref().filter(|d| Self::needs_tree_relink(d)) {
+        if let Some(old) = id
+            .as_deref()
+            .filter(|d| Self::needs_tree_relink(root, macho, d))
+        {
             let base = Path::new(old)
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -1793,7 +1851,7 @@ impl MacosBinaryProvider {
         }
         for dep in Self::load_command_deps(macho)? {
             // A dylib's own ID shows up in -L output — handled above, skip here.
-            if id.as_deref() == Some(dep.as_str()) || !Self::needs_tree_relink(&dep) {
+            if id.as_deref() == Some(dep.as_str()) || !Self::needs_tree_relink(root, macho, &dep) {
                 continue;
             }
             let base = Path::new(&dep)
@@ -1809,9 +1867,11 @@ impl MacosBinaryProvider {
             let target = Self::loader_path_dep(root, macho, base)?;
             Self::install_name_tool(&["-change", &dep, &target], macho)?;
         }
-        // Verify: every load command must now be system or in-tree relative.
+        // Verify: every load command must now be system or in-tree relative —
+        // and "in-tree" means RESOLVED under `root`, not merely spelled with a
+        // `@loader_path/` prefix. See `needs_tree_relink`.
         for dep in Self::load_command_deps(macho)? {
-            if Self::needs_tree_relink(&dep) {
+            if Self::needs_tree_relink(root, macho, &dep) {
                 return Err(Error::Other(format!(
                     "{} still references {dep} after relinking",
                     macho.display()
@@ -2358,24 +2418,66 @@ mod tests {
 
     #[test]
     fn needs_tree_relink_flags_only_unresolvable_deps() {
+        let root = Path::new("/cache/redis-8.8.0");
+        let bin = Path::new("/cache/redis-8.8.0/bin/redis-server");
+        let flag = |dep: &str| MacosBinaryProvider::needs_tree_relink(root, bin, dep);
+
         // Bottle placeholders and real Homebrew prefixes must be rewritten.
-        assert!(MacosBinaryProvider::needs_tree_relink(
-            "@@HOMEBREW_PREFIX@@/opt/openssl@3/lib/libssl.3.dylib"
-        ));
-        assert!(MacosBinaryProvider::needs_tree_relink(
-            "@@HOMEBREW_CELLAR@@/openssl@3/3.6.3/lib/libcrypto.3.dylib"
-        ));
-        assert!(MacosBinaryProvider::needs_tree_relink(
-            "/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib"
-        ));
+        assert!(flag("@@HOMEBREW_PREFIX@@/opt/openssl@3/lib/libssl.3.dylib"));
+        assert!(flag("@@HOMEBREW_CELLAR@@/openssl@3/3.6.3/lib/libcrypto.3.dylib"));
+        assert!(flag("/opt/homebrew/opt/openssl@3/lib/libssl.3.dylib"));
         // @rpath is unmanaged in bundles — rewrite it into the tree too.
-        assert!(MacosBinaryProvider::needs_tree_relink("@rpath/libfoo.dylib"));
-        // System and already-relative entries stay untouched.
-        assert!(!MacosBinaryProvider::needs_tree_relink("/usr/lib/libSystem.B.dylib"));
-        assert!(!MacosBinaryProvider::needs_tree_relink(
+        assert!(flag("@rpath/libfoo.dylib"));
+        // System entries stay untouched.
+        assert!(!flag("/usr/lib/libSystem.B.dylib"));
+        assert!(!flag(
             "/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation"
         ));
-        assert!(!MacosBinaryProvider::needs_tree_relink("@loader_path/../lib/libssl.3.dylib"));
+        // A @loader_path that lands INSIDE the tree is genuinely in-tree.
+        assert!(!flag("@loader_path/../lib/libssl.3.dylib"));
+        // …and one from a nested Mach-O, which is what our own rewrite emits.
+        assert!(!MacosBinaryProvider::needs_tree_relink(
+            root,
+            Path::new("/cache/redis-8.8.0/lib/ossl-modules/legacy.dylib"),
+            "@loader_path/../../lib/libcrypto.3.dylib"
+        ));
+    }
+
+    /// The regression that motivated resolving the prefix instead of trusting it.
+    /// Every non-system dep of the shivammathur `php@7.4` bottle is spelled
+    /// `@loader_path/../../../../opt/<formula>/lib/…` — which ESCAPES the bundle.
+    /// The old predicate returned false for the whole `@loader_path/` family, so
+    /// both the rewrite loop and the post-relink verify loop skipped them,
+    /// `prepare_binary_tree` reported success, and dyld then refused the binary
+    /// with `Library not loaded: @loader_path/../../../../opt/tidy-html5/…`.
+    #[test]
+    fn an_escaping_loader_path_is_not_mistaken_for_in_tree() {
+        let root = Path::new("/cache/php-7.4.33");
+        let bin = Path::new("/cache/php-7.4.33/bin/php");
+        // Real strings, read off the bottle (docs/PLAN-php-74-support.md §5.2).
+        for dep in [
+            "@loader_path/../../../../opt/tidy-html5/lib/libtidy.58.dylib",
+            "@loader_path/../../../../opt/openssl@3/lib/libssl.3.dylib",
+            "@loader_path/../../../../opt/icu4c@74/lib/libicuuc.74.dylib",
+        ] {
+            assert!(
+                MacosBinaryProvider::needs_tree_relink(root, bin, dep),
+                "escapes the bundle but was treated as in-tree: {dep}"
+            );
+        }
+        // Climbing past the filesystem root and back down does not sneak in.
+        assert!(MacosBinaryProvider::needs_tree_relink(
+            root,
+            bin,
+            "@loader_path/../../../../../../../../../../cache/php-7.4.33-evil/lib/libx.dylib"
+        ));
+        // `@executable_path` is unresolvable from the tree — the loading
+        // executable is whoever spawns — so it always gets rewritten.
+        assert!(MacosBinaryProvider::needs_tree_relink(
+            root,
+            bin,
+            "@executable_path/../lib/libssl.3.dylib"
+        ));
     }
 
     #[test]

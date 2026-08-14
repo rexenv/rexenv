@@ -144,6 +144,7 @@ prefetch_responsiveness_check network
 priv_check system
 ready_split_check service
 redis_bundle_check network
+relink_tree_check sandbox
 repo_clone_check network
 repo_git_ops_check sandbox
 repo_install_check network
