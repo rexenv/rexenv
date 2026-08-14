@@ -16,6 +16,7 @@ use std::thread;
 use std::time::Duration;
 
 const PORT: u16 = frankenphp::FRANKENPHP_BASE_PORT; // 8200
+const DOT_SECRET: &str = "REXENV_FP_DOT_7a31";
 const DOMAIN: &str = "fp.test";
 
 #[tokio::main]
@@ -26,6 +27,17 @@ async fn main() {
     let docroot = std::env::temp_dir().join("rexenv-fp-docroot");
     std::fs::create_dir_all(&docroot).unwrap();
     std::fs::write(docroot.join("index.php"), "<?php phpinfo();\n").unwrap();
+    // #103's FrankenPHP leg. The guard is in the generated config
+    // (`@dot_root` / nested-dot matchers + `respond 404`, ordered before
+    // `php_server`) and unit-tested as a string; this is the only place it is
+    // exercised over the wire on this backend. Closes the last open leg on #103.
+    std::fs::create_dir_all(docroot.join(".git")).unwrap();
+    std::fs::create_dir_all(docroot.join(".hidden")).unwrap();
+    std::fs::create_dir_all(docroot.join(".well-known")).unwrap();
+    std::fs::write(docroot.join(".env"), format!("APP_KEY={DOT_SECRET}\n")).unwrap();
+    std::fs::write(docroot.join(".git/config"), "[core]\n").unwrap();
+    std::fs::write(docroot.join(".hidden/x.php"), "<?php echo 'DOTPHP-RAN';").unwrap();
+    std::fs::write(docroot.join(".well-known/probe"), "well-known-ok").unwrap();
 
     if let Err(e) = ports::ensure_free(&*plat, PORT, ports::Proto::Tcp, "FrankenPHP") {
         eprintln!("port {PORT} busy: {e}");
@@ -56,12 +68,42 @@ async fn main() {
     println!("http={code}  embedded PHP reported = {php_ver}");
     println!(":2019 admin bound = {admin_bound}  (must be false — admin off)");
 
+    // #103, FrankenPHP backend — the same four probes nginx and Apache run.
+    // The body is checked for the SECRET's absence, not just the status: a 404
+    // page that echoed the request would still serve it. And /.well-known/ must
+    // still be 200, or "deny every dot path" would satisfy the three denials
+    // while breaking ACME — the fix someone reaches for first.
+    let get = |path: &str| -> String {
+        let out = Command::new("curl")
+            .args(["-s", "-i", "-H", &format!("Host: {DOMAIN}"),
+                   &format!("http://127.0.0.1:{PORT}{path}")])
+            .output().expect("curl").stdout;
+        String::from_utf8_lossy(&out).to_string()
+    };
+    let mut dot_ok = true;
+    for (path, what) in [
+        ("/.env", "the .env"),
+        ("/.git/config", "the .git config"),
+        ("/.hidden/x.php", "a dot-dir .php"),
+    ] {
+        let r = get(path);
+        let blocked = r.starts_with("HTTP/1.1 404");
+        let leaked = r.contains(DOT_SECRET) || r.contains("DOTPHP-RAN");
+        if !blocked || leaked {
+            println!("  ✗ {what} at {path}: 404={blocked} leaked={leaked}");
+        }
+        dot_ok &= blocked && !leaked;
+    }
+    let wk = get("/.well-known/probe");
+    let wk_ok = wk.starts_with("HTTP/1.1 200") && wk.contains("well-known-ok");
+    println!("dotfiles-404={dot_ok} · well-known-still-200={wk_ok}");
+
     // Cleanup.
     let _ = frankenphp::stop(&*plat, child.id());
     let _ = child.wait();
     let _ = std::fs::remove_dir_all(&docroot);
 
-    let ok = listening && code == "200" && php_ver.starts_with("8.") && !admin_bound;
+    let ok = listening && code == "200" && php_ver.starts_with("8.") && !admin_bound && dot_ok && wk_ok;
     if ok {
         println!("\nOK — FrankenPHP backend serves embedded PHP on a loopback port, no edge/admin.");
     } else {

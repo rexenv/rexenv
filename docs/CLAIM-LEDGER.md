@@ -791,9 +791,13 @@ Security postures resting on unproven third-party assumptions — the shape that
    probes on the httpd backend — `.env`/`.git/config`/`.hidden/x.php` 404 with the secret
    absent from the body and the dot-dir PHP never executing, and `/.well-known/` still
    200. Plant-proved: replacing the guard rule with an inert one fails all three and
-   leaks the secret. **FrankenPHP is the one open leg left**: its guard exists in the
-   generated config (`@dot_root … respond 404`) and is unit-tested as a string, never
-   over the wire.
+   leaks the secret. **FrankenPHP is now proven live too** (14 Aug 2026, `frankenphp_serve`), so **#103 is
+   CLOSED on all three backends** — nginx, Apache and FrankenPHP each run the same four
+   probes over the wire. The FrankenPHP plant is worth keeping: replacing `respond
+   @dot_root 404` with `respond … 200` fails the three denials but leaks NOTHING,
+   because Caddy's bodyless `respond` returns an empty 200 — status proof without
+   content proof. Removing the guard entirely is the plant that matches the other two:
+   the `.env` secret served and the dot-dir PHP executed.
 4. **#175** — login-autostart "never download / never prompt": untested at any level.
 5. **#36** — wp_login's PHP-injection safety inherited, not re-checked at the injection
    point (its sibling has a dedicated test).
