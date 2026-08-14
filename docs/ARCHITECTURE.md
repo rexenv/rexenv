@@ -521,6 +521,17 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   it even looks the browser up (CLAIM-LEDGER #301).
 - **The chevron next to "Open in browser" is one-time.** It opens THIS url
   elsewhere and changes no setting — the default moves in Settings only.
+- **Each row of that menu has a SECOND target: the same url in that browser's
+  private window** (`open -na <app> --args --incognito|-private-window <url>`) —
+  a logged-out look at the site without signing out of the session you are
+  working in. `-n` is load-bearing: for an already-running app macOS drops
+  `--args` entirely, so the url would land in an ordinary tab under a control
+  that said private. It is offered ONLY for browsers whose private flag is in
+  the table and has been seen to work; Safari has no private-window command line
+  and its row shows nothing, and the backend errors rather than falling back to
+  a normal window if one is ever asked for anyway (CLAIM-LEDGER #309). The
+  private path is an ARGUMENT to `open_in_browser`, not a second function, so
+  the URL-only guard is one check covering both modes.
 - **Icons are the apps' real icons**, extracted from the installed bundle
   (`CFBundleIconFile` → `.icns` → `sips` → PNG data URI, cached per process), not
   a hand-drawn brand table that would hardcode vendor hex and rot on every

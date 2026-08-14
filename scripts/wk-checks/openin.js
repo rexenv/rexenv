@@ -81,8 +81,69 @@ const url = (q) => `${BASE}/dev/ui-review?view=openin${q ?? ""}`;
   }
   if ((await page.getByText("default", { exact: true }).count()) === 0)
     fails.push("menu does not mark which browser a plain click uses");
+  // Each row carries a SECOND target — the same url in that browser's private
+  // window — and only for browsers that can really open one. Safari has no
+  // private-window command line, so its row must offer nothing: an icon that
+  // quietly opened an ordinary, recorded window is the failure this feature
+  // cannot have. (Fixture mirrors the real table: safari no, chrome/firefox yes.)
+  const privates = page.getByRole("button", { name: /private .+ window/i });
+  if ((await privates.count()) !== 2)
+    fails.push(`expected 2 private targets (Chrome, Firefox), saw ${await privates.count()}`);
+  if ((await page.getByRole("button", { name: /private Safari window/i }).count()) !== 0)
+    fails.push("Safari has no private-window command line yet its row offers one");
+
+  // Sibling, never nested — the whole reason this check runs in WebKit: WKWebView
+  // drops the inner click of a nested button, so the private icon would look
+  // right and do nothing. Checked over the WHOLE document, not just this menu.
+  const nested = await page.evaluate(() => document.querySelectorAll("button button").length);
+  if (nested !== 0) fails.push(`${nested} nested <button>s — WKWebView will swallow those clicks`);
+
+  // And the seam, same rule as the chevrons: without a divider the icon reads as
+  // decoration on the row rather than its own target.
+  const rowSeams = await page.evaluate(() =>
+    [...document.querySelectorAll("button")]
+      .filter((b) => /private .+ window/i.test(b.getAttribute("aria-label") ?? ""))
+      .map((b) => {
+        const sep = b.previousElementSibling;
+        const cs = sep ? getComputedStyle(sep) : null;
+        return {
+          label: b.getAttribute("aria-label"),
+          w: sep ? sep.getBoundingClientRect().width : 0,
+          bg: cs ? cs.backgroundColor : "none",
+        };
+      }),
+  );
+  for (const s of rowSeams) {
+    if (s.w < 0.5 || s.bg === "rgba(0, 0, 0, 0)")
+      fails.push(`private target "${s.label}" has no separator (${s.w}px, ${s.bg})`);
+  }
+
+  // The click itself: the icon must ask for a PRIVATE window, and must not also
+  // fire the row's ordinary open. Both are one IPC call apart, so the mock
+  // records them and the probe reads them back.
+  await page.evaluate(() => { window.__rexOpens = []; });
+  await page.getByRole("button", { name: /private Google Chrome window/i }).click();
+  await page.waitForTimeout(250);
+  const privOpens = await page.evaluate(() => window.__rexOpens ?? []);
+  if (privOpens.length !== 1)
+    fails.push(`private icon fired ${privOpens.length} opens, expected exactly 1`);
+  const p = privOpens[0];
+  if (p && (p.cmd !== "open_in_browser" || p.args?.private !== true || p.args?.browserId !== "chrome"))
+    fails.push(`private icon sent ${JSON.stringify(p)} — expected open_in_browser chrome private:true`);
+  if ((await page.getByText("default", { exact: true }).count()) !== 0)
+    fails.push("menu stayed open after the private pick");
+
+  // The row beside it stays the ORDINARY open — the two targets must not have
+  // collapsed into one behaviour.
+  await chevrons().first().click();
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { window.__rexOpens = []; });
   await page.getByRole("button", { name: /^Firefox/ }).click();
   await page.waitForTimeout(250);
+  const rowOpens = await page.evaluate(() => window.__rexOpens ?? []);
+  const r = rowOpens[0];
+  if (rowOpens.length !== 1 || !r || r.args?.private !== false || r.args?.browserId !== "firefox")
+    fails.push(`row pick sent ${JSON.stringify(rowOpens)} — expected one firefox open with private:false`);
   if ((await page.getByText("default", { exact: true }).count()) !== 0)
     fails.push("menu stayed open after a pick");
 

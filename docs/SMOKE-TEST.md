@@ -262,6 +262,20 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   orphan ("STOPPED A PUBLIC SHARE THIS APP HAD NO RECORD OF"). On a clean machine its
   ABSENCE is correct — do not read a missing line as the backstop not running.
 
+## Which app opens a link
+- [ ] Site header → chevron beside **Open in browser**: every browser you have is
+  listed, the one a plain click uses is marked `default`, and picking one opens
+  the site there **without** changing the default.
+- [ ] Each row's second icon (right of the divider) opens the site in **that
+  browser's private/incognito window** — check the window really is private (the
+  incognito/private badge, and the site logged OUT even though your normal window
+  is signed in). This is the one part no probe can see.
+- [ ] **Safari's row has no private icon.** Safari has no private-window command
+  line; a row that offered one would open an ordinary, recorded window.
+- [ ] The same two targets work from the Quick-links **Browser** tile and from the
+  **Magic Login** chevron — a magic link opened privately signs you in there
+  without touching the session in your normal window.
+
 ## Settings
 - [ ] Theme switch Dark ↔ Light ↔ System re-skins the app correctly.
 - [ ] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version.

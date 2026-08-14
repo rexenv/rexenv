@@ -38,7 +38,12 @@ export function usePreferredBrowser(): BrowserApp | null {
 
 /** Open one url in a chosen browser — the chevron menu's action. Deliberately
  *  does NOT touch the preference: a menu that rewrote the default would leave
- *  the user wondering why everything opens somewhere new. */
-export function openUrlIn(browser: BrowserApp, url: string): void {
-  void openInBrowser(browser.id, url).catch(toastBackendError);
+ *  the user wondering why everything opens somewhere new.
+ *
+ *  `isPrivate` is the second target on each menu row (private/incognito window).
+ *  Only pass it for a browser with `supportsPrivate` — the backend refuses for
+ *  the others instead of quietly opening a recorded window, and the user would
+ *  see that refusal as a toast. */
+export function openUrlIn(browser: BrowserApp, url: string, isPrivate = false): void {
+  void openInBrowser(browser.id, url, isPrivate).catch(toastBackendError);
 }

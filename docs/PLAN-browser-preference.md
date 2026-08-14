@@ -54,7 +54,10 @@ open**, not once at save time — a one-time check on a mutable fact is a
 snapshot, and the user can uninstall a browser any day (`one-fact-lifetime-guards`).
 
 `open_in_browser(browser_id, url)` is the separate, explicit one-time path used
-only by the chevron menu.
+only by the chevron menu. (Extended 14 Aug 2026 to
+`open_in_browser(browser_id, url, private)` for the per-row private-window
+target — an argument rather than a second function, so the URL guard below stays
+ONE check covering both modes. See ARCHITECTURE §8.2 and ledger #309.)
 
 ### Guard: `open_in_browser` takes URLs, never paths
 

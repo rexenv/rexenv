@@ -1222,19 +1222,20 @@ impl ShellRunner for MacosShell {
         let default_bundle = Self::default_browser_bundle_id();
         MacosShell::BROWSERS
             .iter()
-            .filter(|(_, _, app, _)| Self::app_installed(app))
-            .map(|(id, name, app, bundle)| crate::platform::traits::BrowserApp {
+            .filter(|(_, _, app, _, _)| Self::app_installed(app))
+            .map(|(id, name, app, bundle, private)| crate::platform::traits::BrowserApp {
                 id: (*id).to_string(),
                 name: (*name).to_string(),
                 icon: Self::app_icon_data_uri(app),
                 system_default: default_bundle
                     .as_deref()
                     .is_some_and(|d| d.eq_ignore_ascii_case(bundle)),
+                supports_private: private.is_some(),
             })
             .collect()
     }
 
-    fn open_in_browser(&self, browser_id: &str, url: &str) -> Result<()> {
+    fn open_in_browser(&self, browser_id: &str, url: &str, private: bool) -> Result<()> {
         // URLs only — `open -a <browser> <path>` would hand a LOCAL FILE to the
         // browser, and every caller here is a link affordance. Checked before we
         // look the browser up, so the refusal never depends on what's installed.
@@ -1244,14 +1245,33 @@ impl ShellRunner for MacosShell {
                  chosen browser (paths go to the system handler)"
             )));
         }
-        let (_, name, app, _) = MacosShell::BROWSERS
+        let (_, name, app, _, private_flag) = MacosShell::BROWSERS
             .iter()
-            .find(|(id, _, _, _)| *id == browser_id)
+            .find(|(id, _, _, _, _)| *id == browser_id)
             .ok_or_else(|| Error::Other(format!("unknown browser: {browser_id}")))?;
         if !Self::app_installed(app) {
             return Err(Error::Other(format!("{name} is not installed anymore")));
         }
-        let status = std::process::Command::new("open").args(["-a", app, url]).status()?;
+        let status = if private {
+            // Refuse rather than fall back: opening a normal window here would
+            // record the visit in the user's history under a control that said
+            // "private". The UI hides the affordance for these browsers, so
+            // reaching this is a bug, not a user mistake.
+            let flag = private_flag.ok_or_else(|| {
+                Error::Other(format!(
+                    "{name} has no private-window command line — rexenv only offers private mode \
+                     for browsers it can actually open one in"
+                ))
+            })?;
+            // `-n` (new instance) is REQUIRED. `open -a <app> --args …` DROPS the
+            // arguments entirely when the app is already running, so the url
+            // would land in an ordinary tab — silently the opposite of what was
+            // asked. With `-n` the second instance hands its command line to the
+            // running one, which opens exactly one private window.
+            std::process::Command::new("open").args(["-na", app, "--args", flag, url]).status()?
+        } else {
+            std::process::Command::new("open").args(["-a", app, url]).status()?
+        };
         if status.success() {
             Ok(())
         } else {
@@ -1373,31 +1393,64 @@ impl MacosShell {
     ];
 
     /// Browsers we can detect: (stable id, display name, .app bundle name,
-    /// bundle identifier). The bundle id is what LaunchServices names as the
-    /// `https` handler, so it is what marks the system default. Ordered by
-    /// rough popularity — the first detected one is the fallback default.
-    const BROWSERS: &'static [(&'static str, &'static str, &'static str, &'static str)] = &[
-        ("safari", "Safari", "Safari", "com.apple.safari"),
-        ("chrome", "Google Chrome", "Google Chrome", "com.google.chrome"),
-        ("firefox", "Firefox", "Firefox", "org.mozilla.firefox"),
-        ("brave", "Brave", "Brave Browser", "com.brave.browser"),
-        ("edge", "Microsoft Edge", "Microsoft Edge", "com.microsoft.edgemac"),
-        ("arc", "Arc", "Arc", "company.thebrowser.browser"),
-        ("opera", "Opera", "Opera", "com.operasoftware.opera"),
-        ("vivaldi", "Vivaldi", "Vivaldi", "com.vivaldi.vivaldi"),
-        ("chromium", "Chromium", "Chromium", "org.chromium.chromium"),
-        ("atlas", "ChatGPT Atlas", "ChatGPT Atlas", "com.openai.atlas"),
-        ("zen", "Zen Browser", "Zen Browser", "app.zen-browser.zen"),
-        ("orion", "Orion", "Orion", "com.kagi.kagimacos"),
-        ("librewolf", "LibreWolf", "LibreWolf", "io.gitlab.librewolf-community"),
-        ("chrome-canary", "Chrome Canary", "Google Chrome Canary", "com.google.chrome.canary"),
+    /// bundle identifier, private-window flag). The bundle id is what
+    /// LaunchServices names as the `https` handler, so it is what marks the
+    /// system default. Ordered by rough popularity — the first detected one is
+    /// the fallback default.
+    ///
+    /// The last field is the command-line flag that opens the url straight in a
+    /// private/incognito window, or `None` when this browser has no such flag
+    /// **that we have actually seen work**. `None` is the safe default and the
+    /// UI simply draws no private affordance on that row:
+    /// - Safari has no private-window command line at all (only a ⇧⌘N keystroke
+    ///   through the Accessibility API, a TCC grant rexenv does not ask for).
+    /// - Arc and ChatGPT Atlas are Chromium forks, but a fork is free to swallow
+    ///   the window flags — and a flag that is *ignored* opens a NORMAL window
+    ///   under a control labelled private, which is worse than no control.
+    ///   Filling one in is a one-line change once it is tested on a real install.
+    /// - Orion is WebKit with no documented flag; every Tor Browser window is
+    ///   already private, so the affordance would say nothing.
+    const BROWSERS: &'static [(
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        Option<&'static str>,
+    )] = &[
+        ("safari", "Safari", "Safari", "com.apple.safari", None),
+        ("chrome", "Google Chrome", "Google Chrome", "com.google.chrome", Some("--incognito")),
+        ("firefox", "Firefox", "Firefox", "org.mozilla.firefox", Some("-private-window")),
+        ("brave", "Brave", "Brave Browser", "com.brave.browser", Some("--incognito")),
+        ("edge", "Microsoft Edge", "Microsoft Edge", "com.microsoft.edgemac", Some("--inprivate")),
+        ("arc", "Arc", "Arc", "company.thebrowser.browser", None),
+        ("opera", "Opera", "Opera", "com.operasoftware.opera", Some("--private")),
+        ("vivaldi", "Vivaldi", "Vivaldi", "com.vivaldi.vivaldi", Some("--incognito")),
+        ("chromium", "Chromium", "Chromium", "org.chromium.chromium", Some("--incognito")),
+        ("atlas", "ChatGPT Atlas", "ChatGPT Atlas", "com.openai.atlas", None),
+        ("zen", "Zen Browser", "Zen Browser", "app.zen-browser.zen", Some("-private-window")),
+        ("orion", "Orion", "Orion", "com.kagi.kagimacos", None),
+        (
+            "librewolf",
+            "LibreWolf",
+            "LibreWolf",
+            "io.gitlab.librewolf-community",
+            Some("-private-window"),
+        ),
+        (
+            "chrome-canary",
+            "Chrome Canary",
+            "Google Chrome Canary",
+            "com.google.chrome.canary",
+            Some("--incognito"),
+        ),
         (
             "firefox-dev",
             "Firefox Developer Edition",
             "Firefox Developer Edition",
             "org.mozilla.firefoxdeveloperedition",
+            Some("-private-window"),
         ),
-        ("tor", "Tor Browser", "Tor Browser", "org.torproject.torbrowser"),
+        ("tor", "Tor Browser", "Tor Browser", "org.torproject.torbrowser", None),
     ];
 
     /// The `.app` bundle directory for a bundle NAME, searched in the two places

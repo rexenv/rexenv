@@ -504,13 +504,22 @@ export async function listBrowsers(): Promise<BrowserApp[]> {
  *  chevron beside "Open in browser". The default moves in Settings only, so a
  *  one-off detour can't silently redirect everything afterwards. Rejects
  *  anything that isn't an http(s) URL (a browser will happily display a local
- *  file). Falls back to a new tab outside Tauri. */
-export async function openInBrowser(browserId: string, url: string): Promise<void> {
+ *  file). Falls back to a new tab outside Tauri.
+ *
+ *  `isPrivate` asks for a private/incognito window and is only offered for
+ *  browsers whose `supportsPrivate` is true; the backend errors rather than
+ *  downgrade to a normal window for the rest. Outside Tauri there is no private
+ *  `window.open`, so the dev-server fallback stays an ordinary tab. */
+export async function openInBrowser(
+  browserId: string,
+  url: string,
+  isPrivate = false,
+): Promise<void> {
   if (!isTauri()) {
     window.open(url, "_blank");
     return;
   }
-  await invoke("open_in_browser", { browserId, url });
+  await invoke("open_in_browser", { browserId, url, private: isPrivate });
 }
 
 /** Open a path or URL. Paths go to the OS handler (Finder); `http(s)` links go

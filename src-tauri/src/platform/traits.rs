@@ -322,8 +322,16 @@ pub trait ShellRunner: Send + Sync {
     /// `https://` — `open -a <browser> <path>` will happily hand a local FILE to
     /// a browser, and every caller of this (the chevron menu, the preferred-
     /// browser route in `open_external`) is a link affordance. Paths keep going
-    /// through [`Self::open`], which asks the OS handler.
-    fn open_in_browser(&self, _browser_id: &str, _url: &str) -> Result<()> {
+    /// through [`Self::open`], which asks the OS handler. The scheme check must
+    /// cover BOTH modes from one place — a private-window path with its own
+    /// copy of the guard is a second surface to forget.
+    ///
+    /// `private` asks for a private/incognito window. Implementations MUST error
+    /// rather than fall back to a normal window when the browser has no such
+    /// command line ([`BrowserApp::supports_private`] is `false`): a "private"
+    /// action that silently opens a recorded window is the one failure this
+    /// feature cannot have.
+    fn open_in_browser(&self, _browser_id: &str, _url: &str, _private: bool) -> Result<()> {
         Err(crate::error::Error::Unsupported("open_in_browser"))
     }
 
@@ -423,6 +431,12 @@ pub struct BrowserApp {
     /// picks which icon the button wears when the user has chosen nothing. The
     /// actual open still goes through the OS handler.
     pub system_default: bool,
+    /// This browser can be opened straight into a private/incognito window
+    /// (`ShellRunner::open_in_browser` with `private`). `false` is common and
+    /// honest — Safari has no such command line at all — and the UI then draws
+    /// NO private affordance on that row. Never guess `true`: an ignored flag
+    /// opens a normal, recorded window under a control that promised privacy.
+    pub supports_private: bool,
 }
 
 /// Pull the `https` handler's bundle id out of raw

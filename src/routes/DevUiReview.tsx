@@ -55,7 +55,7 @@ import { QuickTile } from "@/routes/SiteDetail";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplitButton } from "@/components/ui/split-button";
-import { useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { usePreferredEditor } from "@/lib/useEditor";
 import { Code, ExternalLink, Globe } from "lucide-react";
@@ -692,13 +692,19 @@ const ICON = {
 
 /** `browsers=one` collapses the list to a single app — the state where the
  *  chevron must NOT render at all. `icons=none` drops every icon, the honest
- *  degrade to the monochrome glyph. */
+ *  degrade to the monochrome glyph.
+ *
+ *  Safari carries `supportsPrivate: false` because the real detection does: it
+ *  has no private-window command line. A fixture where every browser could open
+ *  privately would render a menu no Mac produces, and the mixed row — one entry
+ *  with no private target next to two that have one — is exactly the layout
+ *  that has to hold up. */
 function mockBrowsers(): BrowserApp[] {
   const noIcons = params.get("icons") === "none";
   const all: BrowserApp[] = [
-    { id: "safari", name: "Safari", icon: noIcons ? null : ICON.safari, systemDefault: false },
-    { id: "chrome", name: "Google Chrome", icon: noIcons ? null : ICON.chrome, systemDefault: true },
-    { id: "firefox", name: "Firefox", icon: noIcons ? null : ICON.firefox, systemDefault: false },
+    { id: "safari", name: "Safari", icon: noIcons ? null : ICON.safari, systemDefault: false, supportsPrivate: false },
+    { id: "chrome", name: "Google Chrome", icon: noIcons ? null : ICON.chrome, systemDefault: true, supportsPrivate: true },
+    { id: "firefox", name: "Firefox", icon: noIcons ? null : ICON.firefox, systemDefault: false, supportsPrivate: true },
   ];
   if (params.get("browsers") === "one") return [all[1]];
   if (params.get("browsers") === "none") return [];
@@ -730,6 +736,7 @@ function OpenInView() {
         <SplitButton
           onClick={() => {}}
           menu={browserMenu}
+          menuWidth={BROWSER_MENU_WIDTH}
           chevronLabel="Open this site in another browser"
         >
           <AppIcon
@@ -743,6 +750,7 @@ function OpenInView() {
           variant="primary"
           onClick={() => {}}
           menu={browserMenu}
+          menuWidth={BROWSER_MENU_WIDTH}
           chevronLabel="Sign in through another browser"
         >
           <WordPressIcon className="h-[15px] w-[15px]" />
@@ -756,6 +764,7 @@ function OpenInView() {
           label={browser ? `Open in ${browser.name}` : "Browser"}
           onClick={() => {}}
           menu={browserMenu}
+          menuWidth={BROWSER_MENU_WIDTH}
           menuLabel="Open this site in another browser"
         />
         <QuickTile
@@ -764,6 +773,7 @@ function OpenInView() {
           label="Magic Login"
           onClick={() => {}}
           menu={browserMenu}
+          menuWidth={BROWSER_MENU_WIDTH}
           menuLabel="Sign in through another browser"
         />
         <QuickTile
@@ -782,8 +792,18 @@ function OpenInView() {
 export function DevUiReview() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    mockIPC((cmd) => {
+    mockIPC((cmd, args) => {
       switch (cmd) {
+        // Recorded, not just accepted: the "open it privately" target has to be
+        // provable, and the only difference between it and the row next to it is
+        // one argument. The wk-check reads these back — an icon that fired the
+        // ordinary open would otherwise look identical from the outside.
+        case "open_in_browser":
+        case "open_external": {
+          const w = window as unknown as { __rexOpens?: unknown[] };
+          (w.__rexOpens ??= []).push({ cmd, args });
+          return null;
+        }
         case "db_import_record":
           return record();
         case "db_import_state":

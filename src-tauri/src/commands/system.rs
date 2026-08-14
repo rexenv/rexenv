@@ -201,7 +201,7 @@ pub const PREFERRED_BROWSER_KEY: &str = "preferred_browser";
 pub fn open_external(state: State<'_, AppState>, target: String) -> Result<()> {
     if target.starts_with("http://") || target.starts_with("https://") {
         if let Some(browser) = preferred_browser(&state) {
-            match state.platform.shell().open_in_browser(&browser, &target) {
+            match state.platform.shell().open_in_browser(&browser, &target, false) {
                 Ok(()) => return Ok(()),
                 Err(e) => log::warn!(
                     "preferred browser {browser:?} could not open {target}: {e} — \
@@ -236,9 +236,19 @@ pub fn list_browsers(state: State<'_, AppState>) -> Vec<crate::platform::traits:
 /// chevron menu next to "Open in browser". Changing the default is Settings'
 /// job; a menu that silently rewrote it would leave the user wondering why
 /// everything opens somewhere new.
+///
+/// `private` opens a private/incognito window (the second target on each row of
+/// that menu). It errors — never quietly opens a normal window — for a browser
+/// whose `supports_private` is false; that is the same one-time detour, just in
+/// a window the browser won't record.
 #[tauri::command]
-pub fn open_in_browser(state: State<'_, AppState>, browser_id: String, url: String) -> Result<()> {
-    state.platform.shell().open_in_browser(&browser_id, &url)
+pub fn open_in_browser(
+    state: State<'_, AppState>,
+    browser_id: String,
+    url: String,
+    private: bool,
+) -> Result<()> {
+    state.platform.shell().open_in_browser(&browser_id, &url, private)
 }
 
 /// Reveal a file in the OS file manager with the file selected — e.g. the

@@ -835,6 +835,11 @@ export interface BrowserApp {
   /** This is the OS's current default handler for https. Display only: it picks
    *  which icon the button wears when the user has chosen nothing. */
   systemDefault: boolean;
+  /** This browser can be opened straight into a private/incognito window. False
+   *  is honest and common (Safari has no such command line) — that row then
+   *  shows NO private target, because an affordance that quietly opened a
+   *  recorded window would be worse than none. */
+  supportsPrivate: boolean;
 }
 
 /** Firefox trust state (mirrors the Rust FirefoxTrustStatus DTO). Firefox keeps

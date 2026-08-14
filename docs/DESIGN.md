@@ -175,6 +175,15 @@ the shipped UI toward one.
   11 Aug). Bordered variants collapse their facing borders into the seam;
   `primary` draws no border at all and needs its own divider. `openin.js` asserts
   a non-transparent `border-left` on every chevron, whatever the variant.
+- **A menu row may carry a SECOND target, under the same seam rule.** `MenuItem`'s
+  `action` splits an icon off behind a divider — "open it in that browser's
+  private window" — as a sibling button that hovers on its own, so which half is
+  about to fire is never a guess (same nested-button reason as the chevron). It
+  renders ONLY where the action is real: Safari has no private-window command
+  line, so its row shows nothing rather than an icon that would open an ordinary,
+  recorded window. An affordance whose promise is "this isn't recorded" cannot be
+  offered on a best-effort basis — that is the honest-UI rule at its sharpest,
+  because the user would see the window they asked for and never learn otherwise.
 - **A one-off detour is not a preference change.** Picking a browser from the
   chevron opens that one link there and leaves the default alone. Magic Login
   carries the same chevron, because it too ends in a browser — its url is minted

@@ -29,7 +29,7 @@ import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
 import { Menu } from "@/components/ui/menu";
 import { SplitButton } from "@/components/ui/split-button";
-import { useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { Button } from "@/components/ui/button";
@@ -364,6 +364,7 @@ function SiteHeader({
           <SplitButton
             onClick={() => void openExternal(url).catch(toastBackendError)}
             menu={browserMenu}
+            menuWidth={BROWSER_MENU_WIDTH}
             chevronLabel="Open this site in another browser"
           >
             <AppIcon
@@ -379,6 +380,7 @@ function SiteHeader({
               disabled={adminBusy}
               onClick={onOpenAdmin}
               menu={adminMenu}
+              menuWidth={BROWSER_MENU_WIDTH}
               chevronLabel="Sign in through another browser"
             >
               <WordPressIcon className="h-[15px] w-[15px]" />
@@ -518,6 +520,7 @@ function Overview({
               label={browser ? `Open in ${browser.name}` : "Browser"}
               onClick={() => void openExternal(url).catch(toastBackendError)}
               menu={browserMenu}
+              menuWidth={BROWSER_MENU_WIDTH}
               menuLabel="Open this site in another browser"
             />
             {isWordpress && (
@@ -527,6 +530,7 @@ function Overview({
                 label="Magic Login"
                 onClick={() => void openWpAdmin(site)}
                 menu={adminMenu}
+                menuWidth={BROWSER_MENU_WIDTH}
                 menuLabel="Sign in through another browser"
               />
             )}
@@ -1364,6 +1368,7 @@ export function QuickTile({
   span2,
   menu,
   menuLabel,
+  menuWidth = 210,
 }: {
   icon: React.ReactNode;
   iconColor: string;
@@ -1372,6 +1377,7 @@ export function QuickTile({
   span2?: boolean;
   menu?: React.ReactNode;
   menuLabel?: string;
+  menuWidth?: number;
 }) {
   return (
     <div
@@ -1388,7 +1394,7 @@ export function QuickTile({
         <span className="truncate">{label}</span>
       </button>
       {menu && (
-        <Menu align="right" width={210} trigger={
+        <Menu align="right" width={menuWidth} trigger={
           <button
             aria-label={menuLabel}
             title={menuLabel}

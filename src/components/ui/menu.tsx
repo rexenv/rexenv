@@ -112,14 +112,21 @@ export function MenuItem({
   children,
   onSelect,
   danger,
+  action,
 }: {
   icon?: ReactNode;
   children: ReactNode;
   onSelect?: () => void;
   danger?: boolean;
+  /** A SECOND target on the same row, split off by a divider — "…and open it
+   *  privately". Rendered as a SIBLING button, never nested inside the row's
+   *  own button: nested buttons are invalid HTML and WebKit swallows the inner
+   *  click (the same reason `SplitButton` is two buttons). Each half hovers on
+   *  its own, so which one is about to fire is never a guess. */
+  action?: { icon: ReactNode; label: string; onSelect: () => void };
 }) {
   const { close } = useContext(MenuCtx);
-  return (
+  const row = (
     <button
       type="button"
       onClick={() => {
@@ -127,7 +134,9 @@ export function MenuItem({
         close();
       }}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-[7px] px-[9px] py-[7px] text-left text-[0.78125rem] transition-colors",
+        "flex items-center gap-2.5 px-[9px] py-[7px] text-left text-[0.78125rem] transition-colors",
+        // min-w-0 keeps a truncating child truncating inside the flex row.
+        action ? "min-w-0 flex-1 rounded-l-[7px]" : "w-full rounded-[7px]",
         danger
           ? "text-status-error-bright hover:bg-status-error-bg"
           : "text-rex-text-bright hover:bg-rex-hover",
@@ -136,6 +145,25 @@ export function MenuItem({
       {icon}
       {children}
     </button>
+  );
+  if (!action) return row;
+  return (
+    <div className="flex w-full items-stretch">
+      {row}
+      <div className="my-[5px] w-px flex-none bg-rex-border-strong" />
+      <button
+        type="button"
+        aria-label={action.label}
+        title={action.label}
+        onClick={() => {
+          action.onSelect();
+          close();
+        }}
+        className="flex flex-none items-center rounded-r-[7px] px-[9px] text-rex-text-dim transition-colors hover:bg-rex-hover hover:text-rex-text-bright"
+      >
+        {action.icon}
+      </button>
+    </div>
   );
 }
 

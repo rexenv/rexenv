@@ -72,10 +72,28 @@ evidence cited.
   one-time chevron beside "Open in browser", and a Settings "Web browser" row.
   ARCHITECTURE §8.2; ledger #301–262; `browser_detect_check` (L1) +
   `openin.js` (L2, plant-proven); design record `docs/PLAN-browser-preference.md`.
+- [x] **Open a site in a browser's PRIVATE window** (14 Aug 2026). Checking a site
+  logged-out meant signing out of the session you were working in. ✓ Each row of
+  the browser chevron carries a second target behind a divider (`MenuItem`'s
+  `action`), backed by a per-browser private flag in the macOS `BROWSERS` table
+  (`open -na <app> --args --incognito|-private-window <url>` — `-n` is
+  load-bearing) and a `private` ARGUMENT on `open_in_browser`, so the URL-only
+  guard stays one check for both modes. Offered only where the flag is known to
+  work: Safari has none, and the backend refuses rather than opening a normal
+  window. ARCHITECTURE §8.2; ledger #261 (widened) + #309; `browser_detect_check`
+  (L1) + `openin.js` (L2, plant-proven ×2); the window really being private is a
+  human eye — SMOKE "Which app opens a link".
+- [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
+  `BROWSERS` table because no one has run the flag on a real install, and a fork
+  that swallows the flag it inherited opens an ordinary window under a control
+  that said private. One-line each once tested; the rows simply show no private
+  icon until then.
 - [ ] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
   stubs** (Phase 4, same shape as `detect_editors`). Until they are filled, those
   platforms open every link in the OS handler and show no chevron — honest, but
-  the Settings row will read "No browser detected".
+  the Settings row will read "No browser detected". The private-window arm is
+  part of that stub: `supports_private` is false everywhere, so those platforms
+  show no private target rather than a dead one.
 
 - [x] **MCP server M1 — read-only diagnosis + opt-in card** (branch `feat/mcp-m1`).
   ✓ Socket + `rex mcp` shim + registry (list_sites / site_status / tail_log) +

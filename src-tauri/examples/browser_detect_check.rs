@@ -3,12 +3,18 @@
 //! that only a machine with apps installed can prove.
 //! Read-only: reads app bundles, runs `defaults`/`sips`, writes only its own
 //! temp PNG (deleted). It never OPENS anything — no browser is launched, so it
-//! is safe with the stack running and safe on a machine someone is using.
+//! is safe with the stack running and safe on a machine someone is using. Every
+//! `open_in_browser` call below is one the code MUST refuse; a browser window
+//! appearing while this runs IS the failure it watches for.
 //! Run: `cargo run --example browser_detect_check`
 //!
 //! What to eyeball on a real machine:
 //! - Every browser you actually have is listed, and exactly one (or zero) is
 //!   marked `system default` — the one your Mac really opens links with.
+//! - `private` is `yes` for your Chromium/Firefox-family browsers and `no` for
+//!   Safari (it has no private-window command line). A `no` row draws no
+//!   private icon in the chevron menu at all — see the refusal check below for
+//!   why that beats a control that silently opens a recorded window.
 //! - `icon` says `PNG <n> bytes` for the mainstream browsers. `none` is an
 //!   allowed, honest outcome (icon only in a compiled asset catalog) — the UI
 //!   draws its own glyph there — but `none` for EVERY app means the extraction
@@ -34,10 +40,11 @@ fn main() {
         }
         let icon = describe_icon(b.icon.as_deref(), &mut icons_ok);
         println!(
-            "  {:<28} id={:<14} {:<22} icon={icon}",
+            "  {:<28} id={:<14} {:<22} private={:<4} icon={icon}",
             b.name,
             b.id,
-            if b.system_default { "SYSTEM DEFAULT" } else { "" }
+            if b.system_default { "SYSTEM DEFAULT" } else { "" },
+            if b.supports_private { "yes" } else { "no" }
         );
     }
 
@@ -54,14 +61,42 @@ fn main() {
     println!();
     let id = browsers.first().map(|b| b.id.clone()).unwrap_or_else(|| "safari".into());
     let mut failed = false;
-    for path in ["/etc/hosts", "file:///etc/hosts", "/Applications"] {
-        match shell.open_in_browser(&id, path) {
+    // Both modes, because the guard is claimed for the whole surface: a private
+    // window that took paths would be the same file-disclosure with one extra
+    // argument, and the private path is exactly the kind of second entrance a
+    // one-place check forgets.
+    for private in [false, true] {
+        for path in ["/etc/hosts", "file:///etc/hosts", "/Applications"] {
+            match shell.open_in_browser(&id, path, private) {
+                Ok(()) => {
+                    eprintln!(
+                        "FAIL: open_in_browser({id}, {path}, private={private}) OPENED A PATH — \
+                         the URL guard is gone"
+                    );
+                    failed = true;
+                }
+                Err(e) => println!("path refused, as it must (private={private}): {path} → {e}"),
+            }
+        }
+    }
+
+    // A browser with no private-window command line must REFUSE, not fall back
+    // to an ordinary window: the whole point of the affordance is that the visit
+    // isn't recorded, so a silent downgrade is the one outcome worse than an
+    // error. (If this regresses, a real window opens — that is the alarm.)
+    match browsers.iter().find(|b| !b.supports_private) {
+        Some(b) => match shell.open_in_browser(&b.id, "https://rexenv.invalid/", true) {
             Ok(()) => {
-                eprintln!("FAIL: open_in_browser({id}, {path}) OPENED A PATH — the URL guard is gone");
+                eprintln!(
+                    "FAIL: {} has no private-window flag yet open_in_browser(private=true) \
+                     SUCCEEDED — a normal, recorded window under a private control",
+                    b.name
+                );
                 failed = true;
             }
-            Err(e) => println!("path refused, as it must: {path} → {e}"),
-        }
+            Err(e) => println!("private refused for {}, as it must: {e}", b.name),
+        },
+        None => println!("(every detected browser supports private windows — refusal not exercised)"),
     }
 
     println!();
