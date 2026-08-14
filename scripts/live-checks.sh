@@ -168,6 +168,7 @@ terminal_check sandbox
 terminal_site_check stack
 tunnel_check network
 tunnel_exposure_check network
+tunnel_guard_check sandbox
 tunnel_muplugin_check sandbox
 tunnel_sweep sandbox
 valet_import_check sandbox

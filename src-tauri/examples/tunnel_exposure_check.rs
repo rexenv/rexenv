@@ -55,7 +55,7 @@ use rexenv_lib::core::{binaries, db as coredb, database, php as corephp, ports a
 use rexenv_lib::platform;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+
 use std::time::Duration;
 
 const HTTPS: u16 = 8443;
@@ -71,8 +71,6 @@ foreach (['HTTP_CF_RAY','HTTP_CF_CONNECTING_IP','HTTP_HOST','HTTP_X_FORWARDED_FO
 const HELLO: &str = "<!doctype html><title>shared</title><p>REXENV-SHARED-SITE</p>";
 const HELLO_OTHER: &str = "<!doctype html><title>other</title><p>REXENV-OTHER-SITE</p>";
 
-/// The cloudflared pid, reachable from every teardown path.
-static TUNNEL_PID: AtomicU32 = AtomicU32::new(0);
 /// The STACK this example started. Reaching it from `fail` is what the first
 /// version got wrong: the tunnel was reaped from every path and the services
 /// were not, so a failed run left nginx, php-fpm and MySQL holding the shared
@@ -80,18 +78,16 @@ static TUNNEL_PID: AtomicU32 = AtomicU32::new(0);
 /// Services outliving the app is production's rule; here it is litter.
 static STACK: std::sync::Mutex<Option<ServiceManager>> = std::sync::Mutex::new(None);
 
-/// Idempotent. Called from Drop, from `fail`, from the panic hook, and after
-/// the last leg. Tunnel FIRST — it is the one thing that is public.
-/// The tunnel only — leg 7 needs the ORIGIN still up, or it cannot tell "the
-/// tunnel stopped" from "nginx went away", which is how its first version
-/// passed with `tunnels::stop` neutered.
+/// The tunnel half lives in `common::reap_public_tunnel` now — shared, because a
+/// second copy of the thing that stops a public tunnel leaking is a second thing
+/// to keep correct, and `common::tunnel_guard_check` proves it fires from Drop,
+/// from a panic and from `fail()`'s explicit call.
+///
+/// Kept separate from the stack teardown on purpose: leg 7 needs the ORIGIN
+/// still up, or it cannot tell "the tunnel stopped" from "nginx went away" —
+/// which is how its first version passed with `tunnels::stop` neutered.
 fn reap_tunnel() {
-    let plat = platform::current();
-    let pid = TUNNEL_PID.swap(0, Ordering::SeqCst);
-    if pid != 0 {
-        let _ = tunnels::stop(&*plat, pid);
-        eprintln!("tunnel_exposure_check: tunnel pid {pid} stopped");
-    }
+    common::reap_public_tunnel();
 }
 
 fn reap_all() {
@@ -254,7 +250,11 @@ async fn main() {
         .expect("cloudflared");
     let child = tunnels::start(&*plat, &bin, SHARED, services::NGINX_HTTP_PORT).expect("start tunnel");
     let pid = child.id();
-    TUNNEL_PID.store(pid, Ordering::SeqCst);
+    // The shared guard: registers the pid for every teardown path AND proves the
+    // process actually died, escalating stop → SIGTERM → SIGKILL and shouting the
+    // pid and URL if all three fail. The old `let _ = tunnels::stop(..)` here was
+    // silent best-effort — a tunnel that ignored it stayed public with nothing said.
+    let _tunnel = common::adopt_public_tunnel(pid, "(URL not captured yet)");
     let mut public = None;
     let deadline = std::time::Instant::now() + Duration::from_secs(45);
     while std::time::Instant::now() < deadline {
@@ -286,6 +286,7 @@ async fn main() {
     //
     // So: ask 1.1.1.1 directly (the same helper the prober uses — one truth),
     // then hand reqwest the address so no system lookup ever happens.
+    common::note_public_tunnel_url(&public);
     let host = public.trim_start_matches("https://").trim_end_matches('/').to_string();
     let mut edge_ip = None;
     for _ in 0..30 {

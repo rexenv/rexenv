@@ -37,9 +37,12 @@ pub const EDGE_PROBE_PATH: &str = "/__rexenv-probe";
 
 /// Path of Caddy's admin unix socket under the platform config dir.
 pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
-    let path = platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE);
-    check_unix_socket_len(&path)?;
-    Ok(path)
+    // Deliberately NOT length-checked here. Computing this path is not the same
+    // as binding it: `admin_alive` probes it, `reload`/`stop` connect to it, and
+    // a sandboxed edge runs with admin OFF and never binds it at all. A check at
+    // construction turned a working example into a hard failure (14 Aug 2026) —
+    // the guard belongs at the bind, in `start_privileged`.
+    Ok(platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE))
 }
 
 /// Longest unix-socket path that will bind on macOS: `sun_path[104]` counts the
@@ -354,6 +357,10 @@ fn sh_quote(path: &Path) -> String {
 /// drive it through Caddy's localhost admin API — no further prompts.
 pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Result<()> {
     let sock = admin_socket_path(platform)?;
+    // THIS is where the path is bound, so this is where a length that cannot be
+    // bound has to be refused — with the numbers, because the kernel's own answer
+    // is "bind: invalid argument" and a user cannot diagnose that from a UI.
+    check_unix_socket_len(&sock)?;
     let appdata = platform.paths().app_data_dir()?;
     // Start the edge as root (binds :80/:443), THEN hand its admin unix socket to the
     // invoking user with 0600 perms so rexenv can drive reload/stop with NO further

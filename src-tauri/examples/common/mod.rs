@@ -381,14 +381,24 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
     let sock_len = root.join("config").join("caddy-admin.sock").as_os_str().len();
     if sock_len > rexenv_lib::core::proxy::MAX_UNIX_SOCKET_PATH {
         let over = sock_len - rexenv_lib::core::proxy::MAX_UNIX_SOCKET_PATH;
+        // A WARNING, not a refusal — and the first version got this wrong.
+        // Whether the length matters depends on whether the example's edge asks
+        // for an ADMIN SOCKET, and `sandbox` cannot know that: the sandboxed edge
+        // in `tunnel_exposure_check` runs with admin off, so the path is never
+        // bound and the example is fine. Refusing here blocked a working check —
+        // found by migrating that example onto the shared guard in the same
+        // session, which is the argument for migrating in the same session.
+        // The hard failure belongs at the point of USE, where the answer is
+        // known: `core::proxy::admin_socket_path` refuses there with the same
+        // arithmetic. This line exists so a future example that DOES ask for the
+        // socket learns why before it reads "bind: invalid argument".
         eprintln!(
-            "\n✗ REFUSING TO RUN — this example's sandbox tag makes the edge unstartable\n  \
-             tag {tag:?} produces a caddy admin socket path of {sock_len} bytes; macOS binds \
-             at most {}.\n  Over by {over}. The edge would fail with \"bind: invalid argument\", \
-             which names nothing.\n  Shorten the tag by at least {over} characters.\n",
+            "\n⚠ sandbox tag {tag:?} produces a caddy admin socket path of {sock_len} bytes; \
+             macOS binds at most {} (over by {over}).\n  \
+             Harmless unless this example's edge enables the ADMIN socket — if it does, it \
+             will fail with \"bind: invalid argument\". Shorten the tag by {over}.\n",
             rexenv_lib::core::proxy::MAX_UNIX_SOCKET_PATH
         );
-        std::process::exit(1);
     }
 
     let _ = std::fs::remove_dir_all(&root);
@@ -703,4 +713,135 @@ fn command_of(pid: u32) -> String {
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// Public tunnels
+// ---------------------------------------------------------------------------
+
+/// The live tunnel's pid, reachable from every teardown path (a static, because
+/// `fail()` and a panic hook cannot be handed a value).
+static TUNNEL_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// Its public URL, printed if the reap cannot prove the process died.
+static TUNNEL_URL: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+static HOOK_INSTALLED: std::sync::Once = std::sync::Once::new();
+
+/// Guard for a tunnel that is PUBLIC while it runs.
+///
+/// A leaked cloudflared is the one outcome an example must not produce, and the
+/// three paths that end a run today all skip something:
+///
+/// - normal scope exit → `Drop` runs;
+/// - `fail()` → `process::exit` runs NO destructors (this has bitten twice —
+///   a Mailpit guard, then this file's own tunnel), so `fail` must reap first;
+/// - a panic → `Drop` runs while unwinding, but only if the guard is still in
+///   scope, so a hook is installed as well.
+///
+/// [`tunnel_guard_check`](../tunnel_guard_check.rs) proves all three by running
+/// this example's own binary in each mode and asserting the child is dead
+/// afterwards — arranged, not assumed.
+///
+/// # The guard's own failure mode
+///
+/// `tunnels::stop` used to be called as `let _ = …`: best-effort, silent. If the
+/// tunnel did not die, nothing said so and a public URL stayed up. So this reaps
+/// in three escalating steps and PROVES the outcome — stop, then SIGTERM, then
+/// SIGKILL, polling for the process to actually go. If it is still alive after
+/// all three, the example SHOUTS the pid and the URL, because at that point the
+/// only remaining remedy is a human with a terminal.
+pub struct PublicTunnel(());
+
+/// Register a live tunnel and install the panic hook. Hold the returned guard
+/// for the rest of the run.
+pub fn adopt_public_tunnel(pid: u32, public_url: &str) -> PublicTunnel {
+    TUNNEL_PID.store(pid, std::sync::atomic::Ordering::SeqCst);
+    if let Ok(mut u) = TUNNEL_URL.lock() {
+        *u = public_url.to_string();
+    }
+    HOOK_INSTALLED.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            reap_public_tunnel();
+            prev(info);
+        }));
+    });
+    eprintln!("public tunnel adopted: pid {pid} at {public_url}");
+    PublicTunnel(())
+}
+
+/// Record the public URL once it is known. A quick tunnel's URL does not exist
+/// until cloudflared prints it, so the guard is adopted BEFORE the URL — the pid
+/// is the thing that must be reachable from the teardown paths, and a tunnel
+/// with an unknown URL still has to die.
+pub fn note_public_tunnel_url(url: &str) {
+    if let Ok(mut u) = TUNNEL_URL.lock() {
+        *u = url.to_string();
+    }
+}
+
+fn pid_alive(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn gone_within(pid: u32, ms: u64) -> bool {
+    for _ in 0..(ms / 100).max(1) {
+        if !pid_alive(pid) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    !pid_alive(pid)
+}
+
+/// Stop the registered tunnel and PROVE it stopped. Idempotent; safe from
+/// `Drop`, from `fail()`, and from the panic hook.
+pub fn reap_public_tunnel() {
+    let pid = TUNNEL_PID.swap(0, std::sync::atomic::Ordering::SeqCst);
+    if pid == 0 {
+        return;
+    }
+    let url = TUNNEL_URL.lock().map(|u| u.clone()).unwrap_or_default();
+    let plat = rexenv_lib::platform::current();
+
+    let _ = rexenv_lib::core::tunnels::stop(&*plat, pid);
+    if gone_within(pid, 3000) {
+        eprintln!("public tunnel reaped: pid {pid} stopped (verified dead)");
+        return;
+    }
+    // The production stop path did not take. Escalate, and say that it had to —
+    // a tunnel that ignores `tunnels::stop` is itself worth knowing about.
+    // Observed on the first real run of this guard (14 Aug 2026): cloudflared was
+    // still alive 3s after `tunnels::stop`. Whether that is a defect in
+    // `tunnels::stop` or just a graceful shutdown slower than the window is NOT
+    // established here — what matters is that it is now SAID. The previous
+    // `let _ = tunnels::stop(..)` would have returned quietly with the process
+    // still running and a public URL still up.
+    eprintln!("public tunnel pid {pid} still alive 3s after tunnels::stop — escalating to SIGTERM");
+    let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
+    if gone_within(pid, 3000) {
+        eprintln!("public tunnel reaped: pid {pid} stopped after SIGTERM (verified dead)");
+        return;
+    }
+    let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
+    if gone_within(pid, 3000) {
+        eprintln!("public tunnel reaped: pid {pid} stopped after SIGKILL (verified dead)");
+        return;
+    }
+    eprintln!(
+        "\n!! A PUBLIC TUNNEL IS STILL RUNNING AND THIS EXAMPLE COULD NOT STOP IT !!\n  \
+         pid {pid} survived tunnels::stop, SIGTERM and SIGKILL.\n  \
+         public URL: {url}\n  \
+         It is reachable from the internet until someone kills it by hand:\n    \
+         kill -9 {pid}\n"
+    );
+}
+
+impl Drop for PublicTunnel {
+    fn drop(&mut self) {
+        reap_public_tunnel();
+    }
 }
