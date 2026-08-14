@@ -643,6 +643,61 @@ Three things worth keeping:
   `configure: error` with the context ABOVE it. At ~40 minutes a round trip, a build
   that cannot explain itself is the costliest thing in this plan.
 
+## 10c. It builds. What it actually took — 14 runs, 14 Aug 2026
+
+**PHP 7.4.33 builds green on `macos-15` (arm64) and `macos-15-intel`**, cli + fpm,
+39 extensions including **gd, intl and mysqli**, dylib closure `/usr/lib` +
+`/System` only, `minos 12.0`, ~22 MB per artifact, ~7 minutes per arch.
+
+**None of the real blockers was PHP refusing to compile**, which is the risk the
+whole plan was written around. Three were fixes upstream had already made and 7.4
+never received, because it went EOL first:
+
+| What broke | 7.4 | 8.3 |
+|---|---|---|
+| `PHP_TEST_BUILD` (killed gd) | `AC_RUN_IFELSE` — **executes** a probe linked against libpng/webp/jpeg/freetype; one traps in a static initializer → `Illegal instruction`, `$? = 132` | `AC_LINK_IFELSE` — links, never runs |
+| `ext/bcmath` | K&R definitions (`void bc_add (n1, n2, …)`) — **C23 removed the syntax** and the runner's clang defaults to `-std=gnu23` | n/a — `-std=gnu17` fixes it |
+| `ext/intl` | hardcoded `PHP_CXX_COMPILE_STDCXX(11, …)`; ICU 74+ headers need C++14/17 | probes `icu-uc --atleast-version=74`, asks for 17 |
+
+**The pattern is the finding**: when 7.4 fails against a modern toolchain, look at
+what php-src did in 8.x before inventing anything. These are not workarounds.
+
+The check that would have short-circuited three rounds cost seconds and was
+available the whole time: **rexenv already ships a static PHP 8.3 with gd, built
+by the same tool from the same libraries.** A working control sat in the binary
+cache, and "what differs between the version that works and the one that doesn't"
+beats another 40-minute experiment. Runs 5 and 6 — narrow extension set, and every
+dependency built from source — were both aimed at libraries that were innocent.
+
+Costs that were about DEBUGGABILITY rather than the build:
+
+- spc does not echo configure's output, so the first failure was
+  `Command exited with non-zero code: 1` and `config.log` died with the workspace.
+- A 120-line tail of `config.log` showed configure's *later* probes twice. The
+  failure line was in the middle both times. Uploading the whole file as an
+  artifact ended the guessing in one round.
+- `--prefer-pre-built` asks `api.github.com` unauthenticated — 60/hr **per IP**,
+  shared across the runner fleet, so it 403s and the build dies before compiling.
+
+Two gates caught things worth catching, one of them my own error:
+
+- The arch gate compared `file(1)`'s output to `aarch64`; macOS says `arm64`. It
+  failed a good binary — the cheap direction for a strict gate, and allowed once.
+- The licence collector walked past **libxml2**, whose file is named `Copyright`.
+  A statically linked dependency with no findable licence is now a build FAILURE,
+  not a warning: we are the distributor, and a warning in a green build is one
+  nobody reads.
+
+### Xdebug on 7.4: no — measured, not assumed
+
+The built binaries export ~22,400 symbols but **not `_OnUpdateBool`**, so
+`xdebug.so` cannot dlopen into them — the same wall PHP 8.0 hits (its build
+exports 98). So **7.4 ships without the Xdebug toggle**, and rexenv needs no code
+for that: `xdebug_supported()` answers `false` for any minor with no bottle row,
+so the toggle is unofferable by construction and the UI already says why (#320,
+#321). Whether `--no-strip` or an export flag would change the answer is S1.2
+work, not a blocker.
+
 ## 11. Risks that survive the plan
 
 - **The dep chain is the unmeasured cost.** PHP builds in 74 s; ICU/OpenSSL/curl/gd from
