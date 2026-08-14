@@ -195,6 +195,35 @@ const DETACHED_STATUS = {
     "This checkout can't be verified as pushed (detached HEAD — commits made here may not be on any branch).",
 };
 
+/** `?clean=1`: nothing uncommitted. The state where the working-tree row must
+ *  DISABLE Stash and Reset — a Stash button that is live on a clean tree
+ *  produces git's exit-0 "No local changes to save", which looks like success
+ *  and leaves an empty restore list behind it. */
+const CLEAN_STATUS = {
+  ...ASSET_STATUS,
+  changed: 0,
+  untracked: 0,
+  lossWarning: null,
+};
+
+/** The stash list (`?stashes=none` empties it). Shaped like the real thing, not
+ *  friendlier: git's own "On <branch>: " prefix, our generated message after
+ *  it, and a second entry from a plain terminal `git stash` — whose subject is
+ *  the commit summary and carries colons of its own, which is exactly what the
+ *  unit-separated parse exists for. */
+const STASHES = [
+  {
+    reference: "stash@{0}",
+    message: "On feat/x: rexenv: 3 changed, 2 untracked",
+    age: "12 minutes ago",
+  },
+  {
+    reference: "stash@{1}",
+    message: "WIP on feat/x: 1a2b3c4 fix: block editor crash",
+    age: "3 days ago",
+  },
+];
+
 /** Settled zero-exec check jobs (`repo_check` returns AFTER the worker ran).
  *  NEEDED: composer stale + node missing → steps offered. CLEAN: report only. */
 const CHECK_JOB_BASE = {
@@ -464,6 +493,7 @@ export function DevGitPanel() {
   const showLinkPanel = params.get("panel") === "link";
   const watchMode = params.get("watch"); // "1" running | "exited"
   const detached = params.get("detached") === "1";
+  const cleanTree = params.get("clean") === "1";
   const opFails = params.get("op") === "fail"; // `repotoast.js`: the failure path
   useEffect(() => {
     mockIPC(async (cmd, args) => {
@@ -477,7 +507,9 @@ export function DevGitPanel() {
         case "repo_site_jobs":
           return rehydrate ? [RUNNING_JOB] : [];
         case "repo_asset_status":
-          return detached ? DETACHED_STATUS : ASSET_STATUS;
+          return cleanTree ? CLEAN_STATUS : detached ? DETACHED_STATUS : ASSET_STATUS;
+        case "repo_stashes":
+          return params.get("stashes") === "none" ? [] : STASHES;
         case "repo_scripts":
           return {
             manager: "pnpm",
@@ -527,8 +559,15 @@ export function DevGitPanel() {
                 { number: 97, sha: "821807eff31", ref: "refs/pull/97/head" },
                 { number: 42, sha: "5c0ffee4d2b", ref: "refs/pull/42/head" },
               ];
-        case "repo_git_op":
+        case "repo_git_op": {
+          // RECORDED, not merely answered: Reset and Restore differ from the
+          // buttons beside them by one argument, and "did the confirm actually
+          // gate the destructive one" is only visible as a call that did not
+          // happen. `repopanel.js` reads this back.
+          const w = window as unknown as { __repoOps?: unknown[] };
+          (w.__repoOps ??= []).push(args);
           return opFails ? OP_JOB_FAILED : OP_JOB;
+        }
         case "tail_log": {
           const key = String((args as { key?: string } | undefined)?.key ?? "");
           return key.includes("site-provision-")

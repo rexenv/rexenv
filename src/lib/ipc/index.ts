@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoJobState, RepoKind, RepoPullRef, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
+import type { AppInfo, AgentAction, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpVersion, PlannedDownload, ServiceInfo, Site, SiteCertInfo, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ScratchPackage, TeardownReport, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import {
   mockAppInfo,
   mockDatabases,
@@ -1687,17 +1687,33 @@ export async function repoAdopt(
   await invoke("repo_adopt", { siteId, kind, dirName });
 }
 
-/** Start one git op (fetch / pull --ff-only / checkout / push) as a streamed
- *  job on a managed asset. Same events/cancel/one-job-per-dir as the add
- *  flow; a pull/checkout that changes lockfiles OFFERS install steps. */
+/** Start one git op as a streamed job on a managed asset. Same events/cancel/
+ *  one-job-per-dir as the add flow; an op that changes lockfiles OFFERS install
+ *  steps.
+ *
+ *  `targetRef` carries the checkout target for `checkout`, and the stash entry
+ *  (`stash@{N}`, validated as a REVISION by its own whitelist) for `stash-pop`.
+ *  `reset` is unrecoverable for tracked changes — the caller has already
+ *  confirmed by the time this runs. */
 export async function repoGitOp(
   siteId: string,
   kind: RepoKind,
   dirName: string,
-  op: "fetch" | "pull" | "checkout" | "push",
+  op: RepoGitOp,
   targetRef: string | null,
 ): Promise<RepoJobState> {
   return invoke<RepoJobState>("repo_git_op", { siteId, kind, dirName, op, targetRef });
+}
+
+/** Stash entries for this checkout, newest first — the Restore picker's list.
+ *  Read LIVE on every open, never held: git renumbers the list on every pop,
+ *  so a cached `stash@{1}` names a different entry than the row showing it. */
+export async function repoStashes(
+  siteId: string,
+  kind: RepoKind,
+  dirName: string,
+): Promise<RepoStashEntry[]> {
+  return invoke<RepoStashEntry[]>("repo_stashes", { siteId, kind, dirName });
 }
 
 /** Branch names for the checkout dropdown (local + remote-tracking). */

@@ -30,7 +30,13 @@ export function Overlay({
   }, [onClose]);
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onClose}>
+      {/* role/aria-modal so a screen reader announces this as the modal it
+          behaves like — and so anything scoping to the dialog (a probe, an
+          assistive tool) can tell the card's "Reset" from the "Reset" button
+          it was opened from, which is the pair that matters most. */}
       <div
+        role="dialog"
+        aria-modal="true"
         className={`${cardClassName} rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >

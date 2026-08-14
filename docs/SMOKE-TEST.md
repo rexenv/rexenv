@@ -118,6 +118,22 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
       - The repo's package.json scripts are listed; `dev` offers "Start watching"
         (that is how a Vite dev server runs), a one-shot like `build` offers Run.
       - **No "Build zip" button** — that is a plugin/theme thing.
+      - **Working tree row** (the way out of a dirty checkout). Run `composer
+        install` (or edit a tracked file) so the tree is dirty, then try
+        Checkout: it is refused, naming the local changes.
+        - **Status** lists the dirty files by name in the log pane, and the
+          stash list under them. On a clean tree it SAYS "working tree clean"
+          rather than printing an empty pane.
+        - **Stash** → the chips go clean, a "1 stashed" chip appears, and the
+          Checkout that was refused now works. **Check in a terminal that
+          `vendor/` and `node_modules/` are still on disk** — a stash that took
+          them would look identical here and cost you the install.
+        - **Restore** (pick the entry — it shows your own message and its age)
+          puts the tracked edits AND any untracked file back, and the chip goes.
+        - **Reset** on a dirty tree: the confirm names the real counts, says the
+          changes cannot be recovered, and says untracked files are kept.
+          Cancel changes nothing. Confirm, then check the untracked file is
+          still there — that is the half only a human can verify.
 - [ ] **Any PHP repository.** New site → **Blank PHP** → From Git → a Symfony (or
       Craft/Statamic) repo. The clone phase names what it found and the site serves
       from that framework's own folder (`public/`, `web/`, `pub/`), not the project

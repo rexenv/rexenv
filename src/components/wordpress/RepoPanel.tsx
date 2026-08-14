@@ -3,10 +3,16 @@
  *  on the shared runner). Ops-glue, deliberately NOT a git client: no
  *  commit/stage/merge UI — a diverged branch is an honest error pointing at
  *  the editor/terminal. A pull/checkout that changes lockfiles OFFERS
- *  install/build steps right here (explicit clicks, disclosure shown). */
+ *  install/build steps right here (explicit clicks, disclosure shown).
+ *
+ *  The second row is the working tree: Status / Stash / Restore / Reset. It is
+ *  the way OUT of the state every op in the first row refuses on — and the
+ *  dirt is usually rexenv's own, left by a composer/npm step started from this
+ *  panel. Still not a git client: nothing here stages, commits or merges. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
+import { confirm } from "@/components/ui/dialog";
 import {
   onRepoJobOutput,
   onRepoJobState,
@@ -25,13 +31,14 @@ import {
   repoScriptJob,
   repoScripts,
   repoSiteJobs,
+  repoStashes,
   repoWatchLog,
   repoWatchStart,
   repoWatchStop,
   repoWatches,
   tailLog,
 } from "@/lib/ipc";
-import type { RepoJobState, RepoKind, RepoStepState } from "@/types";
+import type { RepoGitOp, RepoJobState, RepoKind, RepoStepState } from "@/types";
 import { revealPath } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -80,6 +87,14 @@ function actionLabel(job: RepoJobState, step: RepoStepState): string {
       return "Push";
     case "checkout":
       return job.gitRef ? `Checkout ${job.gitRef}` : "Checkout";
+    case "stash":
+      return "Stash";
+    case "stash-pop":
+      return job.gitRef ? `Restore ${job.gitRef}` : "Restore";
+    case "reset":
+      return "Reset";
+    case "status":
+      return "Status";
     case "check":
       return "Dependency check";
     default:
@@ -103,6 +118,18 @@ const ARCHIVE_TITLE =
 const ARCHIVE_BLOCKED_TITLE =
   "No .distignore in this checkout — without one the zip would include .git and node_modules, and dist-archive would report that as a success. Add a .distignore file at the top of this checkout (.gitignore syntax) listing what must not ship.";
 const ARCHIVE_BUSY_TITLE = "another job is running for this checkout";
+
+/** Working-tree copy, kept together because the two halves are guarded as a
+ *  unit (CLAIM-LEDGER #310/#311). The load-bearing clauses are what these
+ *  actions DON'T take: a stash never touches ignored paths (`vendor/`,
+ *  `node_modules/` — the installs someone waited minutes for), and Reset
+ *  deletes no untracked file, because for those there is no stash, no reflog
+ *  and no remote to get them back from. Both are the first lines a later trim
+ *  would cut, and both are why these buttons are safe to click. */
+const STASH_TITLE =
+  "git stash push -u — parks your uncommitted work, INCLUDING new files, so a checkout can proceed. Restore brings it back. Ignored paths (vendor/, node_modules/) are never stashed.";
+const RESET_TITLE =
+  "git reset --hard HEAD — throws your tracked changes away for good. Untracked files are kept, and ignored paths are untouched.";
 const NO_VERSION_NOTE =
   "no version found in the plugin header, style.css or composer.json, so the name carries none";
 
@@ -151,11 +178,13 @@ export function RepoPanel({
   const [opLines, setOpLines] = useState<string[]>([]);
   const [opLogOpen, setOpLogOpen] = useState(false);
   const [checkoutRef, setCheckoutRef] = useState("");
+  const [restoreRef, setRestoreRef] = useState("");
   const opLogRef = useRef<HTMLDivElement | null>(null);
   const adoptedRef = useRef(false);
   const jobsKey = ["repo-jobs", siteId, kind] as const;
   const statusKey = ["repo-status", siteId, kind, asset.dirName] as const;
   const branchesKey = ["repo-branches", siteId, kind, asset.dirName] as const;
+  const stashKey = ["repo-stashes", siteId, kind, asset.dirName] as const;
 
   // Branch, dirtiness and ahead/behind are things a TERMINAL changes while this
   // panel is open — `git checkout` outside rexenv left this showing the old
@@ -173,6 +202,17 @@ export function RepoPanel({
   const branches = useQuery({
     queryKey: branchesKey,
     queryFn: () => repoBranches(siteId, kind, asset.dirName),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  // Stashes move under this panel for the same reason branches do — `git stash
+  // pop` in a terminal, and worse, git RENUMBERS the list on every pop, so a
+  // held `stash@{1}` would name a different entry than the row showing it.
+  // Local git, no network: same focus refetch, never cached.
+  const stashes = useQuery({
+    queryKey: stashKey,
+    queryFn: () => repoStashes(siteId, kind, asset.dirName),
     staleTime: 0,
     refetchOnWindowFocus: true,
     retry: false,
@@ -257,6 +297,7 @@ export function RepoPanel({
       if (s.steps.every((st) => st.status !== "running")) {
         qc.invalidateQueries({ queryKey: statusKey });
         qc.invalidateQueries({ queryKey: branchesKey });
+        qc.invalidateQueries({ queryKey: stashKey });
         qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
       }
     }).then((u) => un.push(u));
@@ -283,6 +324,7 @@ export function RepoPanel({
         if (s.steps.every((st) => st.status !== "running")) {
           qc.invalidateQueries({ queryKey: statusKey });
           qc.invalidateQueries({ queryKey: branchesKey });
+          qc.invalidateQueries({ queryKey: stashKey });
           qc.invalidateQueries({ queryKey: ["repo-assets", siteId] });
         }
       })
@@ -390,7 +432,7 @@ export function RepoPanel({
   }, [opJob, qc, statusKey]);
 
   const runOp = useMutation({
-    mutationFn: (args: { op: "fetch" | "pull" | "checkout" | "push"; ref?: string }) =>
+    mutationFn: (args: { op: RepoGitOp; ref?: string }) =>
       repoGitOp(siteId, kind, asset.dirName, args.op, args.ref ?? null),
     onSuccess: (snap) => {
       adoptedRef.current = true;
@@ -488,6 +530,44 @@ export function RepoPanel({
     : null;
   const detachedReason = "Detached HEAD (tag or PR checkout) — check out a branch first";
   const clean = s ? s.changed === 0 && s.untracked === 0 : false;
+  const stashList = stashes.data ?? [];
+
+  // Reset is the one button here that destroys work with nothing to recover it
+  // from, so the confirm states BOTH halves with the counts the panel just
+  // read: what goes ("cannot be recovered" — not "are discarded", which reads
+  // like a tidy-up), and what stays. The second half matters as much: without
+  // it a user who wants the untracked files gone clicks Reset, believes it
+  // took them, and finds out later that it didn't.
+  const onReset = async () => {
+    const changed = s?.changed ?? 0;
+    const untracked = s?.untracked ?? 0;
+    const kept =
+      untracked > 0
+        ? ` The ${untracked} untracked file${untracked === 1 ? "" : "s"} in this checkout ${
+            untracked === 1 ? "is" : "are"
+          } KEPT, and ignored paths (vendor/, node_modules/) are untouched.`
+        : " Ignored paths (vendor/, node_modules/) are untouched.";
+    const ok = await confirm({
+      title: `Reset ${asset.dirName} to HEAD?`,
+      message:
+        `${changed} changed file${changed === 1 ? "" : "s"} will be thrown away and CANNOT be ` +
+        `recovered — there is no stash, no reflog and no remote copy of uncommitted work.${kept}` +
+        `\n\nStash instead if you might want any of it back.`,
+      confirmLabel: "Reset",
+      danger: true,
+    });
+    if (ok) runOp.mutate({ op: "reset" });
+  };
+
+  // The newest entry is the one someone almost always means; picking it for
+  // them is safe because restore is explicit (a second click) — but it must be
+  // re-derived, never remembered: the list renumbers on every pop, so a held
+  // `stash@{1}` would point at a different entry than the row it came from.
+  useEffect(() => {
+    const top = stashList[0]?.reference ?? "";
+    if (!stashList.some((e) => e.reference === restoreRef)) setRestoreRef(top);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stashes.data]);
   const opRunning = opJob?.steps.some((st) => st.status === "running") ?? false;
   // Which button is waiting on its OWN start call. The job card only appears
   // once the call returns, and for Build zip that call first resolves PHP +
@@ -542,6 +622,16 @@ export function RepoPanel({
               </Chip>
             ) : (
               !s.unborn && !s.detached && <Chip tone="warn">no upstream</Chip>
+            )}
+            {/* Stashed work is INVISIBLE in a checkout — the files are gone
+                from the tree and the branch looks clean. A count here is how
+                someone remembers, days later, that it is parked rather than
+                lost. Absent when there is none: an empty "0 stashed" chip
+                teaches a feature to people who aren't using it. */}
+            {stashList.length > 0 && (
+              <Chip>
+                {stashList.length} stashed
+              </Chip>
             )}
             <Chip>{asset.source}</Chip>
             <button
@@ -684,6 +774,81 @@ export function RepoPanel({
               title="Zero-exec check: are composer/npm deps missing or stale? Runs no repo code — installs stay behind explicit clicks"
             >
               {checkDeps.isPending && <BtnSpinner />} Check deps
+            </button>
+          </div>
+
+          {/* Working tree — the way OUT of the state the row above refuses on.
+              Its own line on purpose: these act on UNCOMMITTED work, not on the
+              remote, and one of them cannot be undone. Mixed into the fetch/pull
+              row, Reset sat one tab-stop from Pull. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+              Working tree
+            </span>
+            <button
+              className={BTN}
+              disabled={opsDisabled}
+              onClick={() => runOp.mutate({ op: "status" })}
+              title="git status --short --branch — WHICH files are dirty (the chips can only count them), plus the stash list"
+            >
+              {pendingOp === "status" && <BtnSpinner />} Status
+            </button>
+            <button
+              className={BTN}
+              disabled={opsDisabled || clean}
+              onClick={() => runOp.mutate({ op: "stash" })}
+              title={
+                clean
+                  ? "Nothing to stash — this checkout has no uncommitted changes"
+                  : STASH_TITLE
+              }
+            >
+              {pendingOp === "stash" && <BtnSpinner />} Stash
+            </button>
+            <RefPicker
+              value={restoreRef}
+              onChange={setRestoreRef}
+              disabled={opsDisabled || stashList.length === 0}
+              ariaLabel="Stash entry to restore"
+              placeholder="Filter stashes…"
+              emptyText="No matching stash entries."
+              groups={[
+                {
+                  label: null,
+                  items: stashList.map((e) => ({
+                    value: e.reference,
+                    // The message is the point — "stash@{2}" alone says nothing
+                    // about which afternoon's work it is.
+                    label: `${e.reference} · ${e.message}`,
+                    hint: e.age,
+                  })),
+                  note: stashList.length === 0 ? "nothing stashed in this checkout" : undefined,
+                },
+              ]}
+            />
+            <button
+              className={BTN}
+              disabled={opsDisabled || restoreRef === ""}
+              onClick={() => runOp.mutate({ op: "stash-pop", ref: restoreRef })}
+              title={
+                stashList.length === 0
+                  ? "Nothing stashed in this checkout"
+                  : "git stash pop — puts that entry's changes back and removes it from the list. A conflict keeps the entry, so nothing is lost."
+              }
+            >
+              {pendingOp === "stash-pop" && <BtnSpinner />} Restore
+            </button>
+            <button
+              className={cn(BTN, "hover:border-status-error-bright hover:text-status-error-bright")}
+              disabled={opsDisabled || (s?.changed ?? 0) === 0}
+              onClick={() => void onReset()}
+              title={
+                (s?.changed ?? 0) === 0
+                  ? "No tracked changes to reset"
+                  : RESET_TITLE
+              }
+            >
+              {pendingOp === "reset" && <BtnSpinner />} Reset
             </button>
           </div>
 

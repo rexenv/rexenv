@@ -1031,6 +1031,10 @@ export interface RepoStepState {
     | "pull"
     | "checkout"
     | "push"
+    | "stash"
+    | "stash-pop"
+    | "reset"
+    | "status"
     | "script"
     | "check";
   label: string;
@@ -1050,8 +1054,8 @@ export interface RepoJobState {
   dirName: string;
   url: string;
   gitRef: string | null;
-  /** "add" (clone+detect flow) or a git op ("fetch" | "pull" | "checkout"
-   *  | "push"). The add panel adopts only add-jobs; RepoPanel owns ops. */
+  /** "add" (clone+detect flow) or a git op ({@link RepoGitOp}). The add panel
+   *  adopts only add-jobs; RepoPanel owns ops. */
   op: string;
   /** Flat log-file key (`repo-<domain>-<dir>.log`) — seeds the log pane via
    *  `tailLog` when the panel reconnects to a live job after a remount. */
@@ -1226,6 +1230,30 @@ export interface RepoBranches {
   remote: string[];
   /** Local tags, newest first. Checkout target is `refs/tags/<name>`. */
   tags: string[];
+}
+
+/** The ops `repo_git_op` accepts (mirrors the Rust whitelist). The last four
+ *  are working-tree ops: `stash`/`stash-pop` are the recoverable way out of a
+ *  dirty tree, `reset` the unrecoverable one, `status` reads and writes
+ *  nothing. */
+export type RepoGitOp =
+  | "fetch"
+  | "pull"
+  | "checkout"
+  | "push"
+  | "stash"
+  | "stash-pop"
+  | "reset"
+  | "status";
+
+/** One `git stash list` entry (mirrors the Rust StashEntry DTO). */
+export interface RepoStashEntry {
+  /** The ref exactly as git names it — `stash@{0}`. What restore is given. */
+  reference: string;
+  /** Git's own subject ("On dev: rexenv: 3 changed, 2 untracked"). */
+  message: string;
+  /** Relative age, e.g. "2 hours ago". */
+  age: string;
 }
 
 /** One PR/MR head ref the remote advertises (refs-only — number + sha is all

@@ -150,6 +150,17 @@ the shipped UI toward one.
   site — while reset made you retype a domain you couldn't select. The copy button is
   half the rule: a gate people can only satisfy by retyping from memory is a gate
   people learn to skim. Match is trimmed, because a pasted value drags whitespace.
+  **What the gate covers, scoped 14 Aug 2026 when Reset arrived:** actions that
+  destroy a WHOLE artifact rexenv cannot rebuild — a site, a database. The
+  Repository panel's Reset (`git reset --hard HEAD`) is irreversible too, and it
+  gets the plain danger confirm instead, for two reasons that have to hold
+  together: it is a ROUTINE unstick (a composer/npm step rexenv itself ran
+  dirtied the tree, and the next checkout is refused), and the recoverable
+  alternative is one button to its left — the dialog names it ("Stash instead if
+  you might want any of it back"). A gate on the routine path is the gate people
+  route around, and the way around this one is a terminal, where there is no
+  confirm at all. The confirm earns its keep by saying what it does NOT take:
+  untracked files and ignored paths survive, with the counts read live.
 - **Chrome may lead with a RECORDED fact, never with a guess.** Where a slow probe
   decides what to render (`wp-info` boots WP-CLI three times), render from what we
   already recorded (`site.type`) and let the live answer correct it — the fix for

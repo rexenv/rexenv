@@ -35,6 +35,8 @@ export function RefPicker({
   groups,
   disabled,
   ariaLabel,
+  placeholder,
+  emptyText,
   onOpenChange,
 }: {
   value: string;
@@ -42,6 +44,13 @@ export function RefPicker({
   groups: RefGroup[];
   disabled?: boolean;
   ariaLabel: string;
+  /** Filter-box placeholder. Defaults to refs, because that is what this
+   *  mostly lists — the stash picker lists entries, and a box that says
+   *  "refs" over a list of stashes is a small lie in the one place someone
+   *  is looking for a specific thing. */
+  placeholder?: string;
+  /** Copy for the no-match row, same reason as `placeholder`. */
+  emptyText?: string;
   /** Fires on every open/close — lets the owner lazy-load network-backed
    *  groups (PR refs) only once the picker is actually opened. */
   onOpenChange?: (open: boolean) => void;
@@ -166,12 +175,12 @@ export function RefPicker({
               <Command.Input
                 {...TECH_INPUT}
                 autoFocus
-                placeholder="Filter refs…"
+                placeholder={placeholder ?? "Filter refs…"}
                 className="w-full border-b border-rex-border bg-transparent px-3 py-2 font-mono text-[0.71875rem] text-rex-text placeholder:text-rex-text-dim focus:outline-none"
               />
               <Command.List className="max-h-[260px] overflow-y-auto overscroll-contain p-[5px]">
                 <Command.Empty className="px-[9px] py-2 font-mono text-[0.6875rem] text-rex-text-muted">
-                  No matching refs.
+                  {emptyText ?? "No matching refs."}
                 </Command.Empty>
                 {groups
                   .filter((g) => g.items.length > 0 || g.note)
