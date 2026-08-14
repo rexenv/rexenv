@@ -34,7 +34,9 @@ async fn main() {
         (database::MYSQL_PORT, "MySQL"),
     ]);
 
-    let (plat, _sandbox) = common::sandbox("wp_create_serve");
+    // Tag kept SHORT on purpose: it sets the length of the caddy admin socket
+    // path, and "wp_create_serve" pushed it 6 bytes past what macOS can bind.
+    let (plat, _sandbox) = common::sandbox("wpcreate");
     let domain = "wpcreate.test";
 
     // `sandbox_db`, not a bare temp database: it PINS `sites_dir`. Without the

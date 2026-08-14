@@ -37,7 +37,44 @@ pub const EDGE_PROBE_PATH: &str = "/__rexenv-probe";
 
 /// Path of Caddy's admin unix socket under the platform config dir.
 pub fn admin_socket_path(platform: &dyn Platform) -> Result<PathBuf> {
-    Ok(platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE))
+    let path = platform.paths().config_dir()?.join(ADMIN_SOCKET_FILE);
+    check_unix_socket_len(&path)?;
+    Ok(path)
+}
+
+/// Longest unix-socket path that will bind on macOS: `sun_path[104]` counts the
+/// NUL, so 103 bytes of path. **Measured 14 Aug 2026** by binding at increasing
+/// lengths until it failed, not read off a header — the number that matters is
+/// the one the kernel enforces.
+pub const MAX_UNIX_SOCKET_PATH: usize = 103;
+
+/// Refuse a socket path the kernel cannot bind, WITH the numbers.
+///
+/// The alternative is what a user actually gets today: the edge fails to start
+/// and caddy says `bind: invalid argument`. That names nothing — not the path,
+/// not the limit, not the fact that a length is the problem — and it reaches the
+/// user as "rexenv won't start" with nothing to search for. It cost an hour to
+/// diagnose from a log; from a UI it is undiagnosable.
+///
+/// Headroom is not generous. The path is
+/// `<home>/Library/Application Support/dev.rexenv.rexenv/config/caddy-admin.sock`
+/// — 70 bytes after `/Users/<name>`, so a home directory name over 26 characters
+/// overflows. Short account names are fine; `firstname.lastname` homes and
+/// network/AD mounts are the ones that get close.
+pub fn check_unix_socket_len(path: &Path) -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+    let len = path.as_os_str().as_bytes().len();
+    if len <= MAX_UNIX_SOCKET_PATH {
+        return Ok(());
+    }
+    Err(crate::error::Error::Other(format!(
+        "the edge's admin socket path is {len} bytes and macOS cannot bind more than \
+         {MAX_UNIX_SOCKET_PATH}:\n  {}\n\nThis is a PATH LENGTH problem, not a permissions \
+         one — the kernel reports it as \"bind: invalid argument\". rexenv keeps this socket \
+         beside its application-support data, so the length is driven by your home directory. \
+         Moving rexenv's data directory to a shorter path fixes it.",
+        path.display()
+    )))
 }
 
 /// What is on the other end of loopback `:443`.
@@ -628,6 +665,38 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn admin_socket_path_refuses_a_length_the_kernel_cannot_bind() {
+        use super::{check_unix_socket_len, MAX_UNIX_SOCKET_PATH};
+        use std::path::PathBuf;
+        // The ceiling itself is MEASURED (14 Aug 2026: binding at increasing
+        // lengths, 103 bound and 104 did not). This guard is about the message:
+        // caddy's own words for this are "bind: invalid argument", which names
+        // neither the path nor the limit and reaches a user as "rexenv won't
+        // start". The real one is 82 bytes on a 5-character home directory, so
+        // the headroom is ~26 characters of home-directory name — small enough
+        // to reach a real person with a long one.
+        let ok = PathBuf::from("/Users/wpdev/Library/Application Support/dev.rexenv.rexenv/config/caddy-admin.sock");
+        assert!(ok.as_os_str().len() <= MAX_UNIX_SOCKET_PATH);
+        assert!(check_unix_socket_len(&ok).is_ok(), "the ordinary path must pass");
+
+        let long = PathBuf::from(format!("/Users/{}/Library/Application Support/dev.rexenv.rexenv/config/caddy-admin.sock", "n".repeat(40)));
+        let e = check_unix_socket_len(&long).unwrap_err().to_string();
+        // The message must carry the diagnosis, not just refuse: both numbers
+        // and the path, or it is the same dead end with a different spelling.
+        assert!(e.contains(&long.display().to_string()), "must name the path: {e}");
+        assert!(e.contains(&MAX_UNIX_SOCKET_PATH.to_string()), "must name the limit: {e}");
+        assert!(e.contains(&long.as_os_str().len().to_string()), "must name the actual length: {e}");
+        assert!(e.contains("bind: invalid argument"), "must connect it to what the kernel says: {e}");
+
+        // The boundary is the byte, not a round number near it.
+        let at = PathBuf::from(format!("/{}", "a".repeat(MAX_UNIX_SOCKET_PATH - 1)));
+        assert_eq!(at.as_os_str().len(), MAX_UNIX_SOCKET_PATH);
+        assert!(check_unix_socket_len(&at).is_ok(), "exactly at the limit must pass");
+        let over = PathBuf::from(format!("/{}", "a".repeat(MAX_UNIX_SOCKET_PATH)));
+        assert!(check_unix_socket_len(&over).is_err(), "one byte over must fail");
+    }
+
     use super::*;
 
     /// The onboarding notice's must-say list, and the ONE VOICE check across

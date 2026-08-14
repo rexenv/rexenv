@@ -349,6 +349,31 @@ pub fn sandbox(tag: &str) -> (Box<dyn Platform>, SandboxGuard) {
     let hosts = real.paths().hosts_file();
     let root = std::env::temp_dir()
         .join(format!("rexenv-sandbox-{tag}-{}", std::process::id()));
+
+    // A sandbox root that is too LONG breaks the edge, and the failure names
+    // nothing. Caddy's admin unix socket lives at `<root>/config/caddy-admin.sock`
+    // and macOS binds at most 103 bytes of socket path, so whether a sandboxed
+    // example can start the edge depends on how it was NAMED: `wp_create_serve`
+    // came to 108 bytes and caddy said only `bind: invalid argument` (14 Aug
+    // 2026). Refuse here, where the length is chosen, with the arithmetic — an
+    // example that fails on its own tag should say so in one line.
+    //
+    // This is the FIXTURE half. The same ceiling exists in production
+    // (`core::proxy::check_unix_socket_len`), where the driver is the user's home
+    // directory rather than a tag.
+    let sock_len = root.join("config").join("caddy-admin.sock").as_os_str().len();
+    if sock_len > rexenv_lib::core::proxy::MAX_UNIX_SOCKET_PATH {
+        let over = sock_len - rexenv_lib::core::proxy::MAX_UNIX_SOCKET_PATH;
+        eprintln!(
+            "\n✗ REFUSING TO RUN — this example's sandbox tag makes the edge unstartable\n  \
+             tag {tag:?} produces a caddy admin socket path of {sock_len} bytes; macOS binds \
+             at most {}.\n  Over by {over}. The edge would fail with \"bind: invalid argument\", \
+             which names nothing.\n  Shorten the tag by at least {over} characters.\n",
+            rexenv_lib::core::proxy::MAX_UNIX_SOCKET_PATH
+        );
+        std::process::exit(1);
+    }
+
     let _ = std::fs::remove_dir_all(&root);
     // Sweep this tag's LEFTOVERS from earlier runs. `SandboxGuard`'s Drop
     // removes the root, but an example that ends with `process::exit` — which
