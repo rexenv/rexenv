@@ -184,6 +184,7 @@ wp_install_serve network
 wp_install_stream_check network
 wp_login_check network
 wp_login_client_ip_check sandbox
+wp_noise_check sandbox
 wp_packages_check sandbox
 wp_plugins_check network
 wp_real443_setup demo

@@ -616,6 +616,29 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   machine. The card reads the LOGIN-SHELL `WP_CLI_PACKAGES_DIR`, not the app's — rexenv
   is Finder-launched, so a user's export is invisible here and visible to every
   streamed spawn.
+- **STDOUT is the command's only up to the marker (#316):** wp-cli's stdout is not only
+  wp-cli's — a plugin can write to it from a shutdown hook, i.e. AFTER the command's own
+  output. Measured 14 Aug 2026: Elementor 4.2.2 on PHP 8.4 registers its own WP-CLI
+  logger and prints the notices it collected (`Manager::shutdown` →
+  `Cli_Logger::save_log` → `WP_CLI::log` → `fwrite(STDOUT)`), so `wp plugin list
+  --format=json` returned valid JSON with a deprecation notice glued to it, the
+  WordPress screens said `bad JSON: trailing characters at line 1 column 814`, and
+  nothing on that site could be managed. `wp option get home` was wrong the same way —
+  it is a stdout problem, not a JSON one. Two plausible fixes were measured and neither
+  works (don't re-try them): `-d display_errors=stderr` moves nothing, because the write
+  is not PHP's error display; an output buffer opened at shutdown catches nothing,
+  because the write is not `echo`. What holds whatever a plugin writes WITH is POSITION:
+  every CAPTURED spawn passes rexenv's own `--require` file, wp-cli loads it before
+  WordPress and before any plugin, so its `register_shutdown_function` is first in the
+  queue and its marker prints after the command's output and before anything a later
+  shutdown hook writes. Captured stdout is cut there and the tail is APPENDED TO STDERR,
+  never dropped — the notice is a real problem on that site, just not part of the answer.
+  Scope stated rather than implied: streamed spawns carry no marker (their output is a
+  live log, where a notice is noise and a marker would be a defect); nothing covers
+  output printed before or during the command's; and the JSON reads additionally
+  tolerate trailing bytes, as the belt for a machine where the require file could not be
+  written. `wp cli info`/`--info` never run shutdown functions and so get no marker —
+  harmless, because that path never loads WordPress.
 - **wp-cli argument hygiene (extends M7):** anything that lands in wp-cli argv from IPC
   is whitelisted in core (`DEBUG_FLAGS`, `PERMALINK_STRUCTURES`, `USER_ROLES`); names
   that can't be whitelisted because they're site-defined (cron hooks) pass as a single

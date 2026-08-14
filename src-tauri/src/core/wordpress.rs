@@ -37,6 +37,42 @@
 //! **Anything that must run a command we chose bundles it and passes
 //! `--require`** (`core::wp_packages`), rather than trusting resolution it does
 //! not control — that rule is what makes the pin cost nothing.
+//!
+//! # STDOUT is the command's only up to the marker (ledger #316)
+//!
+//! wp-cli's stdout is not only wp-cli's. A plugin can write to it from a
+//! shutdown hook, i.e. AFTER the command's own output. Measured 14 Aug 2026:
+//! Elementor 4.2.2 under PHP 8.4 registers its own WP-CLI logger and prints
+//! every PHP notice it collected — the stack trace is
+//! `Manager::shutdown` → `Cli_Logger::save_log` → `WP_CLI::log` →
+//! `fwrite(STDOUT)` — so `wp plugin list --format=json` returned valid JSON
+//! followed by a deprecation notice, the WordPress screen said
+//! `bad JSON: trailing characters at line 1 column 814`, and NOTHING on that
+//! screen could be managed any more. Every wp read on that site was wrong the
+//! same way (`wp option get home` came back with the notice glued to the URL).
+//!
+//! Two plausible fixes were measured and neither works, so don't re-try them:
+//! `-d display_errors=stderr` moves nothing (the write is not PHP's error
+//! display), and an output buffer opened from a shutdown function catches
+//! nothing (the write is not `echo` — it is `fwrite` straight to the stream,
+//! which the output layer never sees). What holds whatever a plugin writes
+//! WITH is POSITION: rexenv passes its own `--require` file, wp-cli loads it
+//! before WordPress and before any plugin, so its `register_shutdown_function`
+//! is FIRST in the queue and its marker is printed after wp-cli's output and
+//! before anything a plugin's later shutdown hook writes. Captured stdout is
+//! cut there ([`split_at_eoo`]) and the tail is APPENDED TO STDERR, never
+//! dropped — the notice is a real problem on the user's site, just not part of
+//! the answer to `plugin list`.
+//!
+//! Scope, stated rather than implied:
+//!
+//! - the cut covers the CAPTURED path — the one whose stdout is parsed. Streamed
+//!   spawns don't carry the file: their output is shown line by line, where a
+//!   trailing notice is noise rather than a parse failure, and a marker would
+//!   have to be filtered out of the user's live log instead.
+//! - nothing here covers output printed BEFORE or DURING the command's own. The
+//!   JSON reads additionally tolerate trailing bytes ([`json_from_wp`]), which
+//!   is the belt for a machine where the require file could not be written.
 
 use super::wp_packages;
 use crate::error::{Error, Result};
@@ -165,14 +201,130 @@ pub fn wp_argv_prefix(wp_phar: &Path) -> Vec<String> {
     vec!["-d".into(), "memory_limit=512M".into(), wp_phar.display().to_string()]
 }
 
+/// The literal that separates wp-cli's own output from whatever a plugin writes
+/// to stdout after the command finished (module header, #316). Written by
+/// [`eoo_require_php`]'s shutdown function; consumed by [`split_at_eoo`].
+pub const EOO_MARKER: &str = "<<<rexenv:end-of-output>>>";
+
+/// The require file's name, VERSION-STAMPED: it is written once and never
+/// rewritten, so a changed body needs a new name or the old file wins forever
+/// (the same rule as `wp_packages`' materialised tree).
+const EOO_REQUIRE_FILE: &str = ".rexenv-end-of-output-1.php";
+
+/// The file's body. Built from [`EOO_MARKER`] rather than repeating it, so the
+/// PHP and the Rust that cuts on it cannot drift apart.
+fn eoo_require_php() -> String {
+    format!(
+        "<?php\n\
+         // rexenv — see core/wordpress.rs. wp-cli loads a `--require` file before\n\
+         // WordPress and before any plugin, so this is the FIRST registered shutdown\n\
+         // function: everything a plugin writes to stdout after the command finished\n\
+         // lands after this marker, whatever it writes with. Nothing else happens here.\n\
+         register_shutdown_function( static function () {{\n\
+         \techo '{EOO_MARKER}' . \"\\n\";\n\
+         }} );\n"
+    )
+}
+
+/// `--require=<file>` for the marker, or `None` when the file is not there.
+///
+/// `None` rather than the flag matters: wp-cli REFUSES to run when a required
+/// file is missing (`Error: Required file '…' doesn't exist`, exit 1), so a
+/// flag passed hopefully would turn a failed write into every wp command
+/// failing. Absent file ⇒ no flag ⇒ the pre-#316 behaviour, which is noisy
+/// rather than broken.
+///
+/// Beside the phar for [`wp_packages::neutral_packages_path`]'s reason — it is
+/// the one path every spawn site already holds. Materialised through a temp
+/// file and a rename because rexenv runs wp commands CONCURRENTLY (status polls
+/// against site reads): a half-written PHP file is a parse error in every
+/// command that reads it mid-write, and a rename is the only write that no
+/// reader can observe partially.
+fn eoo_require_arg(wp_phar: &Path) -> Option<String> {
+    let path = wp_phar.with_file_name(EOO_REQUIRE_FILE);
+    if !path.is_file() {
+        let tmp = path.with_file_name(format!("{EOO_REQUIRE_FILE}.{}.tmp", std::process::id()));
+        if std::fs::write(&tmp, eoo_require_php()).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+        let _ = std::fs::remove_file(&tmp);
+    }
+    path.is_file().then(|| format!("--require={}", path.display()))
+}
+
+/// Split captured stdout at the marker: `(what the command printed, what was
+/// printed after it finished)`.
+///
+/// The LAST occurrence wins, not the first. The marker is printed once by us,
+/// but a site's own data can contain any string — an option value, a post
+/// body — and cutting at the first hit would silently truncate a legitimate
+/// answer. Cutting at the last one can only ever discard more of the tail,
+/// which is the half that is already not the command's.
+///
+/// No marker ⇒ everything is the command's output. That is the honest reading
+/// on a machine where the require file could not be written, and it is also
+/// what `core::terminal`'s deliberately-unpinned `wp` produces.
+pub fn split_at_eoo(stdout: &[u8]) -> (&[u8], &[u8]) {
+    let needle = EOO_MARKER.as_bytes();
+    match rfind(stdout, needle) {
+        Some(at) => (&stdout[..at], &stdout[at + needle.len()..]),
+        None => (stdout, &[]),
+    }
+}
+
+/// Last index of `needle` in `hay`.
+fn rfind(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || hay.len() < needle.len() {
+        return None;
+    }
+    (0..=hay.len() - needle.len()).rev().find(|&i| &hay[i..i + needle.len()] == needle)
+}
+
+/// What the post-run tail is introduced by when it is moved to stderr. Says
+/// where it came from, because on a failing command it lands in an error a user
+/// reads and "Deprecated: …" with no attribution reads as rexenv's own.
+const POST_RUN_NOTE: &str =
+    "\nrexenv: written to stdout AFTER the command finished (a plugin's shutdown hook), \
+     so it is not part of the command's output:\n";
+
+/// Cut a captured `Output` at the marker, carrying the tail over to stderr.
+///
+/// EVERY captured spawn goes through this — asserted by
+/// `every_captured_wp_cli_spawn_cuts_the_post_run_tail`, because "the parsed
+/// paths were updated" is exactly the coverage-by-list this module already
+/// learned not to trust (#228's row named four spawn sites when there were
+/// seven).
+fn cut_post_run_tail(mut out: Output) -> Output {
+    let (clean, tail) = split_at_eoo(&out.stdout);
+    let (clean, tail) = (clean.to_vec(), tail.to_vec());
+    // Our own trailing newline is not a diagnostic — only report a tail that
+    // has something in it.
+    if tail.iter().any(|b| !b.is_ascii_whitespace()) {
+        out.stderr.extend_from_slice(POST_RUN_NOTE.as_bytes());
+        out.stderr.extend_from_slice(&tail);
+    }
+    out.stdout = clean;
+    out
+}
+
 /// The bundled PHP running the pinned phar with the command set pinned — the
 /// ONE `Command::new(php_bin)` in the tree, so a captured spawn cannot be
 /// assembled without the pin. Streamed spawns cannot use a `Command` (they go
 /// through `ProcessSupervisor`) and pair [`wp_argv_prefix`] with
 /// [`wp_packages::with_pinned_packages`] instead.
+///
+/// The end-of-output marker rides along here rather than in [`wp_argv_prefix`]
+/// for the same reason: the prefix is shared with the STREAMED spawns, whose
+/// output is a live log rather than something parsed, and a marker line in a
+/// user's install log is a defect with no upside. `--require` is the first
+/// wp-cli argument, so ours is the first required file — a later one cannot
+/// register a shutdown function ahead of it.
 fn wp_command(php_bin: &Path, wp_phar: &Path) -> Command {
     let mut cmd = Command::new(php_bin);
     cmd.args(wp_argv_prefix(wp_phar));
+    if let Some(require) = eoo_require_arg(wp_phar) {
+        cmd.arg(require);
+    }
     let (key, value) = wp_packages::pin_packages_env(wp_phar);
     cmd.env(key, value);
     cmd
@@ -198,7 +350,7 @@ pub fn wp_cli(
             }
         }
     }
-    Ok(cmd.output()?)
+    Ok(cut_post_run_tail(cmd.output()?))
 }
 
 /// Run a command with a hard wall-clock cap: poll `try_wait`, SIGKILL on
@@ -260,7 +412,7 @@ fn wp_cli_timed(
     let mut cmd = wp_command(php_bin, wp_phar);
     cmd.args(args);
     let what = format!("wp {}", args.first().copied().unwrap_or(""));
-    run_with_timeout(cmd, timeout, &what)
+    Ok(cut_post_run_tail(run_with_timeout(cmd, timeout, &what)?))
 }
 
 /// Run WP-CLI and return stdout, erroring (with stderr) on a non-zero exit.
@@ -335,7 +487,7 @@ pub fn wp_run_raw(
     let mut cmd = wp_command(php_bin, wp_phar);
     cmd.args(args).arg(&path);
     let what = format!("wp {}", args.first().map(String::as_str).unwrap_or(""));
-    run_with_timeout(cmd, timeout, &what)
+    Ok(cut_post_run_tail(run_with_timeout(cmd, timeout, &what)?))
 }
 
 /// Typed JSON bridge: run a WP-CLI command scoped to a docroot with
@@ -353,8 +505,25 @@ pub fn wp_json<T: serde::de::DeserializeOwned>(
     full.push(&path);
     full.push("--format=json");
     let out = wp_cli_checked(php_bin, wp_phar, &full, None)?;
-    serde_json::from_str(out.trim())
-        .map_err(|e| Error::Other(format!("wp {}: bad JSON: {e}", args.first().copied().unwrap_or(""))))
+    json_from_wp(&out, &format!("wp {}", args.first().copied().unwrap_or("")))
+}
+
+/// Deserialize the FIRST JSON value in some wp-cli stdout.
+///
+/// The difference from `serde_json::from_str` is what happens after that value:
+/// trailing bytes are ignored instead of failing the read. That is the belt
+/// behind the marker cut (#316) — the braces are `--require`ing the marker and
+/// cutting there, and this is what still works when the require file could not
+/// be written and a plugin's shutdown hook glued a deprecation notice onto the
+/// end of a perfectly good array.
+///
+/// Deliberately one-sided: bytes BEFORE the value are still a parse error.
+/// Skipping forward to the first `{`/`[` would mean guessing which brace starts
+/// the answer, and a wrong guess returns a plausible object rather than an
+/// error — the failure mode this project rates worse than a refusal.
+fn json_from_wp<T: serde::de::DeserializeOwned>(text: &str, what: &str) -> Result<T> {
+    let mut de = serde_json::Deserializer::from_str(text.trim());
+    T::deserialize(&mut de).map_err(|e| Error::Other(format!("{what}: bad JSON: {e}")))
 }
 
 /// Fixed allowance for a download-capable command's non-download work (api
@@ -578,8 +747,7 @@ fn wp_json_timed<T: serde::de::DeserializeOwned>(
     full.extend_from_slice(args);
     full.push("--format=json");
     let out = wp_run_timed(php_bin, wp_phar, docroot, &full, timeout)?;
-    serde_json::from_str(out.trim())
-        .map_err(|e| Error::Other(format!("wp {}: bad JSON: {e}", args.first().copied().unwrap_or(""))))
+    json_from_wp(&out, &format!("wp {}", args.first().copied().unwrap_or("")))
 }
 
 /// What `wp_info` reports about a docroot (mirrors the frontend `WpInfo`).
@@ -2132,8 +2300,7 @@ pub fn options_get(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Result<WpO
         timezones: Vec<String>,
     }
     let out = wp_run(php_bin, wp_phar, docroot, &["eval", &options_eval_script()])?;
-    let ev: Eval = serde_json::from_str(out.trim())
-        .map_err(|e| Error::Other(format!("options read: bad JSON: {e}")))?;
+    let ev: Eval = json_from_wp(&out, "options read")?;
     let roles: Vec<WpRole> = wp_json(php_bin, wp_phar, docroot, &["role", "list"])?;
 
     let fields = OPTION_FIELDS
@@ -2188,8 +2355,7 @@ pub fn option_update(
     let timezones: Vec<String> = if field.kind == OptionKind::Timezone {
         let out =
             wp_run(php_bin, wp_phar, docroot, &["eval", "echo json_encode(timezone_identifiers_list());"])?;
-        serde_json::from_str(out.trim())
-            .map_err(|e| Error::Other(format!("timezone list: bad JSON: {e}")))?
+        json_from_wp(&out, "timezone list")?
     } else {
         Vec::new()
     };
@@ -2203,8 +2369,7 @@ pub fn option_update(
         .map_err(|reason| Error::Other(format!("{}: {reason}", field.label)))?;
 
     let cur = wp_run(php_bin, wp_phar, docroot, &["option", "get", name, "--format=json"])?;
-    let cur_v: serde_json::Value = serde_json::from_str(cur.trim())
-        .map_err(|e| Error::Other(format!("option {name}: bad JSON: {e}")))?;
+    let cur_v: serde_json::Value = json_from_wp(&cur, &format!("option {name}"))?;
     if scalar_display(&cur_v).is_none() {
         return Err(Error::Other(format!("{name} is not editable (non-scalar value)")));
     }
@@ -2429,8 +2594,7 @@ pub fn core_switch_version(
             "global $wp_db_version; echo json_encode([\"code\"=>(int)$wp_db_version,\"db\"=>(int)get_option(\"db_version\")]);",
         ],
     )?;
-    let db: DbProbe = serde_json::from_str(probe.trim())
-        .map_err(|e| Error::Other(format!("db-version probe: bad JSON: {e}")))?;
+    let db: DbProbe = json_from_wp(&probe, "db-version probe")?;
 
     Ok(WpCoreSwitch { version: version.into(), db_update_required: db.code != db.db })
 }
@@ -4075,7 +4239,19 @@ mod packages_pin_guards {
 
         let args: Vec<String> =
             cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
-        assert_eq!(args, wp_argv_prefix(&phar), "the shared prefix is not what gets spawned");
+        let prefix = wp_argv_prefix(&phar);
+        assert_eq!(
+            args[..prefix.len()],
+            prefix[..],
+            "the shared prefix is not what gets spawned"
+        );
+        // …and the ONLY thing after it is the end-of-output require (#316),
+        // which is what makes "ours is the first required file" true.
+        assert_eq!(
+            args[prefix.len()..],
+            [format!("--require={}", phar.with_file_name(EOO_REQUIRE_FILE).display())],
+            "the captured spawn's argv is no longer prefix + the end-of-output require"
+        );
 
         let (key, value) = wp_packages::pin_packages_env(&phar);
         let pinned = cmd
@@ -4089,6 +4265,172 @@ mod packages_pin_guards {
              machine has in `~/.wp-cli/packages` (#228)"
         );
         let _ = std::fs::remove_dir_all(phar.parent().unwrap().parent().unwrap().parent().unwrap());
+    }
+
+    // ── #316 · stdout is the command's only up to the marker ────────────────
+
+    /// A temp dir this test owns, removed however the test ends.
+    struct TempPhar(PathBuf);
+    impl Drop for TempPhar {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    fn temp_phar(tag: &str) -> (TempPhar, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("rexenv-eoo-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let phar = dir.join("wp-cli.phar");
+        std::fs::write(&phar, b"phar").unwrap();
+        (TempPhar(dir), phar)
+    }
+
+    #[test]
+    fn no_marker_means_every_byte_is_the_commands_output() {
+        let out = b"6.8.3\n";
+        let (clean, tail) = split_at_eoo(out);
+        assert_eq!(clean, out);
+        assert!(tail.is_empty());
+    }
+
+    /// The 14 Aug 2026 shape verbatim: valid JSON, then Elementor's shutdown
+    /// notice. Before #316 this was `bad JSON: trailing characters`.
+    #[test]
+    fn the_cut_keeps_the_json_and_hands_back_the_notice() {
+        let json = r#"[{"name":"elementor","status":"active"}]"#;
+        let notice = "PHP: 2026-08-14 [notice X 0][…] Implicitly marking parameter $key as \
+                      nullable is deprecated\n";
+        let raw = format!("{json}\n{EOO_MARKER}\n{notice}");
+        let (clean, tail) = split_at_eoo(raw.as_bytes());
+        assert_eq!(String::from_utf8_lossy(clean).trim(), json);
+        assert!(String::from_utf8_lossy(tail).contains("Implicitly marking parameter"));
+        let _: Vec<serde_json::Value> = json_from_wp(&String::from_utf8_lossy(clean), "t").unwrap();
+    }
+
+    /// A site's own data can contain any string, and the marker is printed
+    /// AFTER all of it — so the last hit is ours and the first may not be.
+    #[test]
+    fn the_last_marker_wins_so_site_data_cannot_truncate_the_answer() {
+        let raw = format!("value with {EOO_MARKER} inside it\n{EOO_MARKER}\nnoise\n");
+        let (clean, tail) = split_at_eoo(raw.as_bytes());
+        assert_eq!(String::from_utf8_lossy(clean), format!("value with {EOO_MARKER} inside it\n"));
+        assert_eq!(String::from_utf8_lossy(tail).trim(), "noise");
+    }
+
+    #[test]
+    fn the_tail_is_carried_to_stderr_not_dropped() {
+        let out = Output {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: format!("https://xyz.rex\n{EOO_MARKER}\nDeprecated: something\n").into_bytes(),
+            stderr: b"".to_vec(),
+        };
+        let cut = cut_post_run_tail(out);
+        assert_eq!(String::from_utf8_lossy(&cut.stdout), "https://xyz.rex\n");
+        let err = String::from_utf8_lossy(&cut.stderr);
+        assert!(err.contains("Deprecated: something"), "the tail was dropped: {err}");
+        assert!(
+            err.contains("AFTER the command finished"),
+            "the tail reached stderr unattributed, so it reads as rexenv's own error: {err}"
+        );
+    }
+
+    /// Our own trailing newline is not a diagnostic — a quiet run must not grow
+    /// a stderr, because a caller that treats any stderr as trouble would then
+    /// see trouble on every command.
+    #[test]
+    fn a_quiet_run_gains_no_stderr() {
+        let out = Output {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: format!("6.8.3\n{EOO_MARKER}\n").into_bytes(),
+            stderr: b"".to_vec(),
+        };
+        let cut = cut_post_run_tail(out);
+        assert_eq!(String::from_utf8_lossy(&cut.stdout), "6.8.3\n");
+        assert!(cut.stderr.is_empty(), "stderr: {}", String::from_utf8_lossy(&cut.stderr));
+    }
+
+    #[test]
+    fn the_require_file_is_materialised_and_prints_the_marker() {
+        let (_own, phar) = temp_phar("write");
+        let arg = eoo_require_arg(&phar).expect("the require file is written beside the phar");
+        let path = phar.with_file_name(EOO_REQUIRE_FILE);
+        assert_eq!(arg, format!("--require={}", path.display()));
+        let php = std::fs::read_to_string(&path).unwrap();
+        assert!(php.contains("register_shutdown_function"), "{php}");
+        assert!(php.contains(EOO_MARKER), "the file prints a marker the cut does not know: {php}");
+        // Second call: the file is not rewritten under a concurrent reader.
+        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
+        assert!(eoo_require_arg(&phar).is_some());
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), before);
+    }
+
+    /// wp-cli REFUSES to run when a required file is missing, so an
+    /// unwritable location must yield no flag at all — noisy, never broken.
+    #[test]
+    fn an_unwritable_location_yields_no_require_flag() {
+        let phar = std::env::temp_dir()
+            .join(format!("rexenv-eoo-nodir-{}", std::process::id()))
+            .join("nope")
+            .join("wp-cli.phar");
+        assert!(eoo_require_arg(&phar).is_none(), "a flag was passed for a file that isn't there");
+    }
+
+    /// The belt: trailing bytes are ignored, LEADING bytes are still an error.
+    #[test]
+    fn the_json_read_tolerates_a_tail_but_never_guesses_at_a_head() {
+        let rows: Vec<serde_json::Value> =
+            json_from_wp(r#"[{"name":"akismet"}]PHP: notice…"#, "wp plugin").unwrap();
+        assert_eq!(rows.len(), 1);
+        let err = json_from_wp::<Vec<serde_json::Value>>(r#"notice…[{"name":"akismet"}]"#, "wp plugin")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("bad JSON"), "leading junk was guessed past: {err}");
+    }
+
+    /// Coverage as a property of the module, not a list of the three sites that
+    /// were remembered on the day (#228's lesson, applied to #316).
+    #[test]
+    fn every_captured_wp_cli_spawn_cuts_the_post_run_tail() {
+        let this = strip_comments(&crate::core::copy_scan::production_source(include_str!(
+            "wordpress.rs"
+        )));
+        let mut fns: Vec<(String, String)> = Vec::new();
+        let (mut name, mut body) = (String::new(), String::new());
+        for line in this.lines() {
+            let starts_fn = !line.starts_with(char::is_whitespace)
+                && (line.starts_with("fn ")
+                    || line.starts_with("pub fn ")
+                    || line.starts_with("pub(crate) fn "));
+            if starts_fn {
+                if !name.is_empty() {
+                    fns.push((std::mem::take(&mut name), std::mem::take(&mut body)));
+                }
+                name = line.split('(').next().unwrap_or(line).to_string();
+            }
+            body.push_str(line);
+            body.push('\n');
+        }
+        fns.push((name, body));
+
+        let mut checked = 0;
+        for (name, body) in &fns {
+            if !body.contains("wp_command(php_bin, wp_phar)") {
+                continue;
+            }
+            checked += 1;
+            assert!(
+                body.contains("cut_post_run_tail("),
+                "`{name}` spawns the captured wp-cli command and returns its stdout uncut — a \
+                 plugin's shutdown hook (Elementor on PHP 8.4) writes to that stdout after the \
+                 command finished, and whatever parses it reads the notice as part of the \
+                 answer (#316)."
+            );
+        }
+        assert_eq!(
+            checked, 3,
+            "the scan found {checked} captured spawn sites (expected 3: wp_cli, wp_cli_timed, \
+             wp_run_raw) — either a site was added without a cut, or the scan has stopped working"
+        );
     }
 
     /// The streamed spawn cannot use a `Command`, so it is the one site where

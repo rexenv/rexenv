@@ -83,6 +83,23 @@ evidence cited.
   window. ARCHITECTURE §8.2; ledger #261 (widened) + #309; `browser_detect_check`
   (L1) + `openin.js` (L2, plant-proven ×2); the window really being private is a
   human eye — SMOKE "Which app opens a link".
+- [x] ⚠ **A plugin's shutdown hook broke every WordPress screen on a PHP 8.4 site**
+  (filed + fixed 14 Aug 2026). Activating Elementor 4.2.2 under PHP 8.4 made the
+  Plugins/Themes/Users/Tools tabs die with `wp plugin: bad JSON: trailing characters
+  at line 1 column 814` — the site was unmanageable from rexenv, and `wp option get
+  home` was wrong the same way, so it was never a JSON problem. Cause, traced rather
+  than guessed: Elementor registers its own WP-CLI logger and prints the notices it
+  collected from a shutdown hook (`Manager::shutdown` → `Cli_Logger::save_log` →
+  `WP_CLI::log` → `fwrite(STDOUT)`), i.e. AFTER the command's own output. ✓ Fixed by
+  POSITION, not by mechanism: a rexenv `--require` file beside the phar registers the
+  FIRST shutdown function, its marker separates the command's output from everything
+  printed after it, and every captured spawn cuts there (`cut_post_run_tail`) and
+  carries the tail over to stderr attributed rather than dropping it. The two
+  plausible alternatives are recorded as MEASURED NON-FIXES —
+  `-d display_errors=stderr` and a shutdown-opened output buffer both move nothing.
+  ARCHITECTURE §9; ledger #316; 7 lib tests + the module-wide coverage guard +
+  `wp_noise_check` (L1, sandbox, control leg plants the disease); verified end to end
+  against the reporting site (7 plugins parsed, the notice on stderr).
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control

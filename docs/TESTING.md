@@ -146,6 +146,16 @@ it can:
   way" — the vacuous-pass shape, one layer up from where this project usually catches
   it. Its verdict is also scoped in the ledger to what the run showed (one hook style,
   one machine), not to the claim's ambition.
+  **`wp_noise_check` (sandbox tier, 14 Aug 2026) is the same pattern aimed at somebody
+  else's code.** The claim (#316) is about ORDER inside the real phar — that rexenv's
+  `--require` shutdown function runs before a plugin's — which no lib test can reach: L0
+  proves the cut and the argv, and would keep proving them the day wp-cli changed when
+  required files load. So the fixture reproduces the MECHANISM rather than the plugin: a
+  require file that registers a `before_wp_load` command printing JSON and a shutdown
+  function that writes to stdout with `fwrite`, which is the exact call Elementor's real
+  trace ends in. Leg A then requires that this still produces an UNPARSEABLE answer
+  without the marker — if the disease stops reproducing, the check says CONTROL BROKEN
+  and stops, because a fixture that no longer bites makes every later leg vacuous.
   **`wp_login_client_ip_check` (sandbox tier, 14 Aug 2026) adds the third variant: a
   matrix that defends ITSELF, so the check does not depend on anyone re-running the
   plants.** It extracts the shipped client-IP gate from `wp_login::MU_PLUGIN` between
