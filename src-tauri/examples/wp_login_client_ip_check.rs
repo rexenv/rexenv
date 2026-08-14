@@ -14,9 +14,14 @@
 //! entry — until 14 Aug 2026. The header shapes below marked "measured" are
 //! verbatim from a real quick tunnel (CLAIM-LEDGER #307), not invented.
 //!
-//! The bug was found through the tunnel but is NOT tunnel-only: the edge binds
-//! every interface, so a LAN caller sending `X-Forwarded-For: 127.0.0.1` passed
-//! the gate with no tunnel and no Cloudflare anywhere in the request.
+//! Scope of the bug, corrected 14 Aug 2026 after measuring the edge: it was
+//! reachable through a TUNNEL and only through a tunnel. The tunnel is the one
+//! path that does not traverse our edge (cloudflared → nginx directly), so caller
+//! entries survive. Through the edge they do not — Caddy replaces the header with
+//! its own peer (`wp_login_check` leg E). An earlier note here claimed a LAN hole;
+//! that was inference and the measurement refuted it. The LAN rows below are kept
+//! as PARSE cases — they are what makes a first-hop read unable to satisfy the
+//! matrix — not as reachable production scenarios.
 
 use rexenv_lib::core::wp_login::MU_PLUGIN;
 use rexenv_lib::platform;
@@ -99,15 +104,15 @@ fn matrix() -> Vec<Case> {
         Case { xff: None, remote: LOOPBACK, allow: true,
                why: "local, no XFF at all" },
         Case { xff: Some("127.0.0.1"), remote: LOOPBACK, allow: true,
-               why: "local through the edge — Caddy appended its loopback peer" },
+               why: "local through the edge — Caddy set the header to its loopback peer" },
         Case { xff: Some("203.0.113.7, 127.0.0.1"), remote: LOOPBACK, allow: true,
-               why: "local client that sent its OWN XFF — DENIED before the fix (false deny)" },
+               why: "parse case: caller entry then a trusted last hop — denied by the old read" },
         Case { xff: Some("127.0.0.1,103.209.197.170"), remote: LOOPBACK, allow: false,
                why: "measured: tunnel replay with a spoofed header — ALLOWED before the fix (#307)" },
         Case { xff: Some("103.209.197.170"), remote: LOOPBACK, allow: false,
                why: "measured: tunnel, caller sent nothing — denied before the fix too" },
         Case { xff: Some("127.0.0.1, 192.168.1.50"), remote: LOOPBACK, allow: false,
-               why: "LAN caller spoofing loopback — ALLOWED before the fix, no tunnel involved" },
+               why: "parse case: spoofed first hop, real last hop (not reachable via our edge)" },
         Case { xff: Some("192.168.1.50"), remote: LOOPBACK, allow: false,
                why: "LAN caller, no spoof" },
         Case { xff: Some("127.0.0.1, 10.0.0.5, 127.0.0.1"), remote: LOOPBACK, allow: true,

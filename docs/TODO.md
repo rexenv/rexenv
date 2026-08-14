@@ -312,11 +312,13 @@ first:
   across exactly one upgrade.
   ✓ The client-IP gate now reads the LAST hop, not the first (#307) — proven by
   `wp_login_client_ip_check` (sandbox tier, 13 shapes, self-defending matrix,
-  plant-proved 3×). This also closed a **non-tunnel** exposure: a LAN caller spoofing
-  `X-Forwarded-For: 127.0.0.1` passed the gate on the ordinary path.
+  plant-proved 3×). **Scope corrected after measuring:** the hole was reachable through
+  a tunnel and ONLY through a tunnel — the edge replaces a caller-supplied
+  `X-Forwarded-For` with its own peer, so the LAN exposure an earlier note claimed here
+  never existed (leg E refuted it).
   ✓ `wp_login.rs`'s module doc rewritten to what is known, hedged where it is inference.
   ☐ (3) The leg. Two pieces: a **network-tier** leg in `wp_login_check` asserting our own
-  edge appends its peer LAST (NOT yet written; needs the stack to run), and the
+  edge replaces caller-supplied XFF — leg (E) ✓ RUN 14 Aug 2026 (with a control header, so a dropped request cannot read as a dropped header), and the
   end-to-end "replay denied through a real tunnel" observation on the next live
   `tunnel_exposure_check` run. Do NOT reinstate a leg that passes with the CF gate
   removed — that is what was cut, twice.

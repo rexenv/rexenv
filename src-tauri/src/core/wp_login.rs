@@ -16,9 +16,14 @@
 //!       2. **Client IP** must be loopback — the LAST `X-Forwarded-For` hop, else
 //!          `REMOTE_ADDR`. Never the first: Cloudflare APPENDS rather than
 //!          replaces, so the leftmost entry is whatever the caller sent (#307).
-//!          The last entry is written by the last proxy — our own edge locally
-//!          (Caddy appends its peer), Cloudflare on the tunnel path (cloudflared
-//!          goes straight to nginx, so Caddy is not in that chain at all).
+//!          The last entry is written by the last proxy. LOCALLY there is only
+//!          ever one entry: our edge REPLACES a caller-supplied header with its
+//!          own peer, so nothing the caller sends survives (observed 14 Aug 2026,
+//!          `wp_login_check` leg E — a Caddy default, so version-sensitive). On
+//!          the TUNNEL path Caddy is not in the chain at all (cloudflared goes
+//!          straight to nginx), which is exactly why caller entries survive there
+//!          — and why the leftmost read was exploitable through a tunnel, and
+//!          only through a tunnel.
 //!       3. **Host** must be local: `localhost`/`.localhost`/`.test`, or the site's
 //!          OWN domain (injected per-site so custom TLDs like `.rex` work) plus its
 //!          subdomains for multisite. Through a tunnel this denies ONLY because the
@@ -40,9 +45,14 @@
 //!     own loopback port, stamped unforgeably by nginx — is recorded with the
 //!     objection to it in CLAIM-LEDGER #307.
 //!
-//!     Check (2) is not only about tunnels. The edge binds every interface, so
-//!     before 14 Aug 2026 a LAN caller sending `X-Forwarded-For: 127.0.0.1`
-//!     passed it with no tunnel and no Cloudflare anywhere in the request.
+//!     Check (2) and the LAN, recorded because the first version of this
+//!     paragraph got it wrong: the edge binds every interface, so a LAN caller CAN
+//!     reach it — and the edge overwrites their `X-Forwarded-For` with their real
+//!     address, so this check has denied them all along, before and after #307.
+//!     The claim that the leftmost read left a LAN hole was inference; leg E
+//!     measured the edge and refuted it. #307 was exploitable through a tunnel and
+//!     only through a tunnel, because the tunnel is the one path that does not
+//!     traverse our edge.
 
 use crate::core::wordpress::wp_run;
 use crate::error::{Error, Result};
@@ -106,12 +116,14 @@ add_action('init', function () {
     // "127.0.0.1,<real IP>" and the leftmost read that shipped until 14 Aug 2026
     // took the attacker's value (measured through a real quick tunnel —
     // CLAIM-LEDGER #307). The last entry is written by the last proxy in the
-    // chain: our own edge locally (Caddy appends its peer), Cloudflare through a
-    // tunnel (cloudflared goes straight to nginx; Caddy is not in that chain).
+    // chain. Locally that is our edge, which REPLACES a caller-supplied header
+    // with its own peer, so no caller entry reaches PHP at all (measured — see
+    // wp_login_check leg E). Through a tunnel Caddy is not in the chain
+    // (cloudflared goes straight to nginx), so caller entries DO survive, and
+    // Cloudflare's appended IP is the last one.
     //
-    // NOT a tunnel-only bug. The edge binds every interface, so before this a LAN
-    // caller sending "X-Forwarded-For: 127.0.0.1" passed the gate with no tunnel
-    // and no Cloudflare anywhere in the request.
+    // Tunnel-only, and that is not a comfort: it is the one path where a captured
+    // link is reachable by someone else.
     $xff      = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
     $hops     = array_values(array_filter(array_map('trim', explode(',', $xff)), 'strlen'));
     $client   = $hops ? end($hops) : (string) ($_SERVER['REMOTE_ADDR'] ?? '');

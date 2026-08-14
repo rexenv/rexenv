@@ -3,12 +3,19 @@
 //!   (A) a loopback magic link → 302 to wp-admin WITH a `wordpress_logged_in` cookie;
 //!   (B) reusing the SAME token → denied (single-use, no logged-in cookie);
 //!   (C) a FRESH token presented with a Cloudflare tunnel header (`CF-Connecting-IP`)
-//!       → denied (loopback/local-only), so a shared-tunnel replay can't log in.
+//!       → denied (loopback/local-only), so a shared-tunnel replay can't log in;
+//!   (E) OBSERVATION — our edge REPLACES a caller-supplied `X-Forwarded-For`
+//!       with its own peer, so the local path has no XFF injection surface;
+//!   (F) a local request that carries its OWN `X-Forwarded-For` still logs in
+//!       (indifference, not proof the read moved — see the note on the leg).
 //!
-//! Run (ports 8443/8080/18088/9783/13306/11025/18025 free): `cargo run --example wp_login_check`
+//! Run with the stack STOPPED (this brings up its own on the production nginx
+//! port): `cargo run --example wp_login_check`
+
+mod common;
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{services, sites, ssl, wordpress, wp_login};
+use rexenv_lib::core::{proxy, services, sites, ssl, wordpress, wp_login};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
@@ -28,6 +35,19 @@ fn has_login_cookie(resp: &reqwest::Response) -> bool {
 
 #[tokio::main]
 async fn main() {
+    // FIRST statement: a precondition that runs after the side effect is not a
+    // precondition. This example provisions a site and starts real services; if
+    // a live stack already holds these ports it would quietly use the user's.
+    common::require_ports_free(&[
+        (HTTPS, "this example's edge — it would measure someone else's proxy"),
+        (8080, "this example's HTTP edge"),
+        (services::NGINX_HTTP_PORT, "the SHARED nginx — the user's running stack"),
+        (9783, "a php-fpm pool"),
+        (13306, "MySQL"),
+        (11025, "Mailpit SMTP"),
+        (18025, "Mailpit HTTP"),
+    ]);
+
     let plat = platform::current();
     let domain = "wplogin.test";
 
@@ -87,7 +107,12 @@ async fn main() {
         "WP Login",
         &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        &mysql_base,
+        // The bundled mysql CLIENT, not the basedir: `install_for_site` execs this
+        // to CREATE the database. Handing it the extracted tree exec'd a directory
+        // → `PermissionDenied` (EACCES), which reads like a filesystem-permissions
+        // problem and is really a wrong-argument one. Same shape as the
+        // create_database slip on 13 Aug 2026.
+        &rexenv_lib::core::database::mysql_client_bin(&mysql_base),
         &Default::default(),
     )
     .expect("install wordpress");
@@ -173,6 +198,115 @@ async fn main() {
     );
     println!("✓ (D) Open-admin flow → primary admin logged in, redirected to /wp-admin/");
 
+    // (E) OBSERVATION, dated — OUR edge REPLACES a caller-supplied
+    // X-Forwarded-For with its own peer.
+    //
+    // Scoped like #2 and #10: a fact about CADDY, observed on this machine
+    // through our own edge on this date, not a settlement about reverse proxies
+    // in general — and version-sensitive, since it is Caddy's untrusted-proxy
+    // default that produces it. It matters because the client-IP gate reads the
+    // LAST hop (#307), and what this establishes is stronger than that read
+    // needs locally: the caller's entries never arrive at all.
+    //
+    // Refuse to measure before believing the answer: if something else is
+    // holding :8443, this would attribute ITS behaviour to Caddy and write that
+    // into the ledger. `require_ports_free` above proves the port was free when
+    // we started; this proves the thing now answering is the edge WE started.
+    match proxy::edge_wire(domain, HTTPS).await {
+        proxy::EdgeWire::Ours => {}
+        other => {
+            eprintln!(
+                "\n✗ (E) REFUSING TO MEASURE — :{HTTPS} answers as {other:?}, not our edge.\n  \
+                 Whatever is there now would have its X-Forwarded-For behaviour recorded as \
+                 Caddy's. Stop it and re-run rather than believing this number.\n"
+            );
+            let _ = mgr.stop_all(&*plat);
+            std::process::exit(1);
+        }
+    }
+
+    // The probe echoes a CONTROL header alongside the one under test. Without it
+    // this leg cannot tell "the edge dropped our X-Forwarded-For" from "the client
+    // never sent one" — the two produce an identical reading, and the second would
+    // have us record a Caddy behaviour that was never exercised.
+    let probe = docroot.join("rexenv-xff-probe.php");
+    std::fs::write(
+        &probe,
+        "<?php echo ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '(absent)'), \"\\n\", \
+         ($_SERVER['HTTP_X_REXENV_PROBE'] ?? '(absent)');",
+    )
+    .expect("write probe");
+    let sent = "203.0.113.7";
+    let body = match client
+        .get(format!("https://{domain}:{HTTPS}/rexenv-xff-probe.php"))
+        .header("X-Forwarded-For", sent)
+        .header("X-Rexenv-Probe", "sentinel")
+        .send()
+        .await
+    {
+        Ok(r) => r.text().await.unwrap_or_default(),
+        Err(e) => {
+            let _ = std::fs::remove_file(&probe);
+            let _ = mgr.stop_all(&*plat);
+            panic!("(E) probe request failed: {e}");
+        }
+    };
+    let mut parts = body.splitn(2, '\n');
+    let seen = parts.next().unwrap_or("").trim().to_string();
+    let control = parts.next().unwrap_or("").trim().to_string();
+    // Remove BEFORE asserting — a panic skips everything after it, and this file
+    // lives in a real docroot.
+    let _ = std::fs::remove_file(&probe);
+    let last_hop = seen.rsplit(',').next().unwrap_or("").trim().to_string();
+    println!("(E) sent X-Forwarded-For: {sent} + X-Rexenv-Probe: sentinel");
+    println!("    PHP saw XFF={seen:?} control={control:?} (last hop {last_hop:?})");
+    assert_eq!(
+        control, "sentinel",
+        "(E) CONTROL LEG BROKEN — our own header never reached PHP, so this run proves \
+         NOTHING about what the edge does to X-Forwarded-For. Fix the probe before reading \
+         the value above."
+    );
+    assert_eq!(
+        seen, "127.0.0.1",
+        "(E) the edge no longer REPLACES the caller's X-Forwarded-For with its own peer.\n  \
+         Observed 14 Aug 2026: sending {sent:?} through our edge arrived at PHP as exactly \
+         \"127.0.0.1\" — Caddy discards caller-supplied entries rather than appending to them, \
+         so on the LOCAL path a caller cannot inject an XFF entry at all.\n  \
+         If this now fails with the caller's value present, a local injection path has opened \
+         that did not exist: the #307 last-hop read still holds (the last entry is still the \
+         edge's peer), but wp_login.rs, ARCHITECTURE and CLAIM-LEDGER #307 must stop saying \
+         the local path cannot be injected. This is the useful failure — do not \"fix\" it by \
+         relaxing the expected value."
+    );
+    println!("✓ (E) edge REPLACES caller-supplied XFF with its own peer — no local injection path");
+
+    // (F) A local request that carries its OWN X-Forwarded-For still logs in.
+    //
+    // HONEST SCOPE: this would have passed before #307 too, because (E) shows the
+    // edge discards the caller's entry — PHP never sees it, so leftmost and
+    // last-hop reads agree here. It is NOT evidence that the read moved (that is
+    // wp_login_client_ip_check's job, at the parse layer). What it proves is that
+    // the local flow is indifferent to a client-set XFF, which is the half a user
+    // would notice if the edge's replacement behaviour ever changed.
+    let (token4, _) =
+        wp_login::issue(&php, &wp, &docroot, "wp-content", domain, 1, wp_login::LOGIN_TTL_SECS)
+            .unwrap();
+    let f = client
+        .get(magic(&token4))
+        .header("X-Forwarded-For", sent)
+        .send()
+        .await
+        .expect("F");
+    let f_login = has_login_cookie(&f);
+    println!("(F) local request carrying its own XFF: logged_in_cookie={f_login}");
+    assert!(
+        f_login,
+        "(F) a local magic link was denied because the CALLER sent an X-Forwarded-For — \
+         that is the leftmost read (#307) coming back"
+    );
+    println!("✓ (F) local request with its own XFF → still logged in (indifference; see the leg note)");
+
     mgr.stop_all(&*plat).unwrap();
-    println!("\nALL GOOD — magic login is single-use, short-TTL, and loopback/local-only.");
+    println!("\nALL GOOD — magic login is single-use, short-TTL, and local-only; the edge \
+              replaces caller-supplied X-Forwarded-For.");
 }

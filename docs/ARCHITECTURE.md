@@ -639,8 +639,11 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   because the tunnel mu-plugin restored the public host, gated on the same headers); the
   client-IP check reads the **last** `X-Forwarded-For` hop — never the first, which is
   whatever the caller sent, since Cloudflare appends rather than replaces (CLAIM-LEDGER
-  #307, fixed 14 Aug 2026 — before which a LAN caller spoofing a loopback entry passed
-  it with no tunnel involved). The include-time/`init` ordering that makes the Host check
+  #307, fixed 14 Aug 2026). That was reachable **through a tunnel and only through a
+  tunnel**: the tunnel is the one path that skips the edge (cloudflared → nginx direct),
+  and the edge REPLACES a caller-supplied `X-Forwarded-For` with its own peer, so on
+  every other path the caller's entry never reaches PHP (measured, `wp_login_check` leg
+  E — a Caddy default, so re-measured rather than assumed). The include-time/`init` ordering that makes the Host check
   work is WordPress's boot order, not filename sort (#308).
 - **A site can reach ITSELF** (`core/wp_dns.rs`, 10 Aug 2026): the bundled static-php
   builds link libcurl against **c-ares**, which resolves from `/etc/resolv.conf` ALONE
