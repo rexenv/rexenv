@@ -24,6 +24,17 @@ async fn main() {
     // Sandboxed: every path the app derives (config dir, nginx PREFIX and
     // therefore nginx.pid, run/, certs) lands in a throwaway root, so this
     // example cannot touch the running stack. See examples/common.
+    // FIRST statement: `common::sandbox` makes the PATHS throwaway and does
+    // NOTHING about ports. These are the production ports; running beside a live
+    // stack means using the user's services, not our own.
+    common::require_ports_free(&[
+        (CADDY_HTTPS, "this example's edge"),
+        (CADDY_HTTP, "this example's HTTP edge"),
+        (NGINX_PORT, "the SHARED nginx — the user's running stack"),
+        (services::PHP_FPM_PORT, "a php-fpm pool"),
+        (database::MYSQL_PORT, "MySQL"),
+    ]);
+
     let (plat, _sandbox) = common::sandbox("wp_create_serve");
     let domain = "wpcreate.test";
 
@@ -46,8 +57,12 @@ async fn main() {
     let socket = database::socket_path(&*plat).unwrap();
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-    let mut mysqld =
-        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
+    // Owned from the moment it exists: a panic anywhere below must not leave a
+    // MySQL running against a datadir that `_sandbox` removes on the way out.
+    let mut mysqld = common::OwnedService::new(
+        database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap(),
+        "mysqld",
+    );
     for _ in 0..30 {
         if database::mysql_running(database::MYSQL_PORT) {
             break;
@@ -101,10 +116,27 @@ async fn main() {
     // 3) Bring the shared stack up so the site is browsable.
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
     let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
-    let mut fpm = services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap();
-    let mut ngx = services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
-    let mut cad = proxy::start(&*plat, &caddy, &cfg.caddyfile).unwrap();
-    std::thread::sleep(Duration::from_millis(1200));
+    let mut fpm =
+        common::OwnedService::new(services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap(), "php-fpm");
+    let mut ngx = common::OwnedService::new(
+        services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
+        "nginx",
+    );
+    let mut cad =
+        common::OwnedService::new(proxy::start(&*plat, &caddy, &cfg.caddyfile).unwrap(), "caddy");
+
+    // `proxy::start` returns when the process is SPAWNED, not when it is
+    // listening. A flat sleep raced it and this example panicked with
+    // ConnectionRefused on :8443 — gate on the socket like every sibling does.
+    let mut edge_up = false;
+    for _ in 0..40 {
+        if rexenv_lib::core::ports::is_listening(CADDY_HTTPS) {
+            edge_up = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    assert!(edge_up, "edge never bound :{CADDY_HTTPS} within 10s (caddy pid {})", cad.id());
 
     // 4) Verify over HTTPS (validated against our CA): homepage + wp-admin login.
     let addr: SocketAddr = format!("127.0.0.1:{CADDY_HTTPS}").parse().unwrap();
@@ -128,10 +160,12 @@ async fn main() {
         login_body.contains("name=\"log\"") && login_body.contains("name=\"pwd\"");
     println!("GET /wp-login.php -> {login_code}; login form present: {has_login_form}");
 
-    let _ = proxy::stop(&*plat, cad.id()); let _ = cad.wait();
-    let _ = services::stop(&*plat, ngx.id()); let _ = ngx.wait();
-    let _ = services::stop(&*plat, fpm.id()); let _ = fpm.wait();
-    let _ = database::stop(&*plat, mysqld.id()); let _ = mysqld.wait();
+    // Explicit teardown for the happy path; Drop covers every other path,
+    // which is the half that was missing.
+    cad.stop();
+    ngx.stop();
+    fpm.stop();
+    mysqld.stop();
 
     let ok = home_code == 200 && home_body.contains("WP Create Check") && login_code == 200 && has_login_form;
     if ok {

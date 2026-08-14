@@ -559,6 +559,67 @@ impl Drop for Reaped {
     }
 }
 
+/// Own a service that listens on a SHARED (production) port and stop it on drop
+/// — including when the example panics.
+///
+/// **Why not [`Reaped`].** That type also sweeps its port for title-rewritten
+/// workers, and the sweep decides ownership by PROGRAM NAME. On a fixture port
+/// that is unambiguous. On 9783 or 18088 the user's own php-fpm and nginx match
+/// the same names, so pointing the sweep there could kill the running stack —
+/// which is exactly what `Reaped`'s contract forbids. Ownership here is the
+/// `Child` handle: a process THIS example spawned, never ambiguous.
+///
+/// **What it does not cover, stated because the gap is the interesting part.**
+/// [`Proc::terminate`] sends SIGTERM and only escalates to SIGKILL after a
+/// grace period, and a master that shuts down on SIGTERM takes its workers with
+/// it. A master that ignores SIGTERM gets killed and CAN leave workers holding
+/// the port — the case `Reaped`'s sweep exists for. Pair this with
+/// [`require_ports_free`] so that residue surfaces in the NEXT run as a refusal
+/// naming the port, rather than as a service quietly borrowed from a corpse.
+///
+/// Written 14 Aug 2026 after `wp_create_serve` panicked before its teardown
+/// lines and left mysqld, nginx and php-fpm running — while its sandbox datadir
+/// was removed on drop, leaving a MySQL answering on a directory that no longer
+/// existed. Three later examples connected to it and failed with
+/// `ERROR 3680: Failed to create schema directory (errno 2)`, which names
+/// nothing, and the wrong three examples got blamed.
+pub struct OwnedService {
+    proc: Option<Proc>,
+    pid: u32,
+    what: &'static str,
+}
+
+impl OwnedService {
+    /// Take exclusive ownership of a service `child`. `what` is for messages.
+    pub fn new(child: Child, what: &'static str) -> Self {
+        let pid = child.id();
+        Self { proc: Some(Proc::Child(child, Instant::now())), pid, what }
+    }
+
+    /// The spawned pid — valid for printing after stopping too.
+    pub fn id(&self) -> u32 {
+        self.pid
+    }
+
+    /// Stop the service. Idempotent; runs from `Drop` on the panic path too.
+    pub fn stop(&mut self) {
+        if let Some(mut proc) = self.proc.take() {
+            proc.terminate();
+        }
+    }
+
+    /// Name, for a teardown line that says what it stopped.
+    pub fn what(&self) -> &'static str {
+        self.what
+    }
+}
+
+impl Drop for OwnedService {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 /// Kill anything still LISTENING on `port` whose command line contains
 /// `marker` — the orphaned workers a dead master leaves behind.
 ///

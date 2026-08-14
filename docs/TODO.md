@@ -378,22 +378,38 @@ first:
   0 with `Success: Plugin already deactivated.` on stdout and `Warning: Plugin 'x' isn't
   active.` on stderr — so exit-zero-with-a-warning is real on this surface, it just isn't
   what bit here.
-- [ ] **`wp_create_serve` requests the edge before it is listening.** `proxy::start`
-  returns and the next statement issues an HTTPS request; there is no readiness wait, so
-  it panics with ConnectionRefused on :8443. Every sibling that works has a
-  `for _ in 0..40 { if ports::is_listening(..) { break } sleep(250ms) }` gate. Reproduced
-  in isolation with the ports verified free, so it is not contention.
-- [ ] **`wp_create_serve` leaks its whole stack on the panic path.** After the panic,
+- [ ] **`wp_create_serve`'s edge never binds :8443 under `common::sandbox`.** Was
+  diagnosed 14 Aug 2026 as a missing readiness wait; the wait is now IN (a 10s
+  `ports::is_listening` gate, like every sibling) and it turned the symptom from a
+  ConnectionRefused deep in reqwest into `edge never bound :8443 within 10s (caddy pid
+  N)`. The wait was necessary but was not the bug: caddy spawns and never listens.
+  Note the discriminator — the same edge on the same port comes up fine in
+  `wp_login_check`, which does NOT sandbox its paths. So the suspicion is something the
+  edge needs that `common::sandbox` relocates (CA/cert paths, config dir, admin socket).
+  **Does not block the tunnel session**, whose fixture is `wp_login_check`.
+- [x] **`wp_create_serve` leaked its whole stack on the panic path — FIXED 14 Aug 2026,
+  and proved by its own real failure rather than a plant.** Its four services are now
+  owned by `common::OwnedService`, whose `Drop` runs while unwinding. Before: the panic
+  left mysqld, nginx and php-fpm running. After, on the SAME panic path: zero marked
+  processes and 18088/9783/13306/8443/8080 all free. `OwnedService` deliberately does NOT
+  sweep its port the way `Reaped` does — that sweep decides ownership by program name,
+  which is safe on a fixture port and would let a sweep of 9783 kill the user's own
+  php-fpm. Ownership here is the `Child` handle. The residual is documented on the type:
+  a master that ignores SIGTERM can still orphan workers, which is why it is paired with
+  `require_ports_free`. Original finding kept below for the shape.
+  <details><summary>what it looked like</summary> After the panic,
   `mysqld`, `nginx` and `php-fpm` were still running, all carrying its
   `rexenv-sandbox-wp_create_serve-<pid>` marker, and its sandbox datadir had been removed
   on drop — leaving a mysqld serving a datadir that no longer exists. Killing the masters
   left `nginx: worker process` and `php-fpm: pool www` holding 18088/9783 with `ppid=1`
-  and no marker (the orphan-worker shape). Needs `common::Reaped`, which covers unwinding.
-- [ ] **These examples don't refuse a busy port, so they borrow a broken server.** The
+  and no marker (the orphan-worker shape).</details>
+- [x] **These examples didn't refuse a busy port, so they borrowed a broken server —
+  FIXED 14 Aug 2026.** `common::require_ports_free` is now the first statement in
+  `wp_create_serve`, `wp_plugins_check`, `wp_themes_check` and `wp_tools_check` (and in
+  `wp_login_check`, earlier today).</details><details><summary>what it looked like</summary> The
   leaked mysqld above made `wp_plugins_check`/`wp_themes_check`/`wp_tools_check` fail with
   `ERROR 3680: Failed to create schema directory (errno 2)` — a message that names nothing
-  useful. `common::require_ports_free` at the top of each turns it into "stop the stack
-  first". Same fix applied to `wp_login_check` today.
+  useful.</details>
 - [ ] **Running provisioning examples in bulk writes into the user's REAL Sites folder.**
   The nine added 8 directories to `~/rexenv/Sites` (`sites::provision` reads the
   `sites_dir` SETTING, which a sandboxed `Platform` cannot redirect). Known hazard, hit

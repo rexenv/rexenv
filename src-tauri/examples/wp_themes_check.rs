@@ -12,8 +12,17 @@ use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
 use std::time::Duration;
 
+mod common;
+
 #[tokio::main]
 async fn main() {
+    // FIRST statement: this example starts a real mysqld on the production
+    // port. Without this it silently BORROWS whatever is already there —
+    // including a corpse left by another example, which on 14 Aug 2026 gave
+    // "ERROR 3680: Failed to create schema directory (errno 2)" and got three
+    // innocent examples blamed for it.
+    common::require_ports_free(&[(database::MYSQL_PORT, "MySQL")]);
+
     let plat = platform::current();
     let domain = "wpthemes.test";
 
