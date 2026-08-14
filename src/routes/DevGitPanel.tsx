@@ -16,13 +16,24 @@ import { SiteRow } from "@/routes/Sites";
 import { useDownloads } from "@/lib/useDownloads";
 import { siteProvisionRetry } from "@/lib/ipc";
 
+/** What `git ls-remote` answers with for a repo anyone actually works on.
+ *  The branch list is long ON PURPOSE: the first fetch used to render a native
+ *  <select>, which is perfectly usable against the three-branch fixture that
+ *  hid the problem and useless against a real project. A fixture that keeps the
+ *  friendly shape is how the plain select survived here for months. */
 const PROBE = {
   url: "https://github.com/acme/my-plugin",
   host: "github.com",
   dirName: "my-plugin",
   refCandidate: null,
   defaultBranch: "main",
-  branches: ["main", "develop", "feat/fast-build"],
+  branches: [
+    "main",
+    "develop",
+    "feat/fast-build",
+    ...Array.from({ length: 88 }, (_, i) => `feat/topic-${i + 1}`),
+    "release/2026-08",
+  ],
   tags: ["v1.2.0", "v1.1.0"],
 };
 

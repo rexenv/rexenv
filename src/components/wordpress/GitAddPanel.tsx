@@ -25,6 +25,7 @@ import {
 import type { RepoJobState } from "@/types";
 import { toast, toastBackendError } from "@/lib/toast";
 import { mergeTailAndStreamed, StepDot } from "./repoJobUi";
+import { RefPicker } from "./RefPicker";
 
 /** Mirror of WordPressManager's BTN (kept local — importing it would create a
  *  module cycle with the panel embed). */
@@ -226,28 +227,36 @@ export function GitAddPanel({
         </button>
         {probe.data && (
           <>
-            <select
+            {/* The SAME searchable picker the Repository panel uses. This was
+                a plain <select>, which is fine for the five-branch repo people
+                test with and useless for the real one: `ls-remote` on a busy
+                project answers with hundreds of branches, and a native select
+                gives you a scroll and first-letter jumping to find one. The
+                two places you pick a branch should also not behave
+                differently — this is the FIRST one a new user meets. */}
+            <RefPicker
               value={selRef}
-              onChange={(e) => setSelRef(e.target.value)}
-              className="h-[30px] max-w-[220px] rounded border border-rex-border bg-rex-surface-2 px-1.5 font-mono text-[0.75rem] text-rex-text outline-none focus:border-brand"
-              aria-label="Branch or tag"
-            >
-              {probe.data.branches.map((b) => (
-                <option key={`b-${b}`} value={b}>
-                  {b}
-                  {b === probe.data?.defaultBranch ? " (default)" : ""}
-                </option>
-              ))}
-              {probe.data.tags.length > 0 && (
-                <optgroup label="Tags">
-                  {probe.data.tags.map((t) => (
-                    <option key={`t-${t}`} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-            </select>
+              onChange={setSelRef}
+              ariaLabel="Branch or tag"
+              placeholder="Filter branches and tags…"
+              emptyText="No matching branch or tag."
+              groups={[
+                {
+                  label: null,
+                  items: probe.data.branches.map((b) => ({
+                    value: b,
+                    hint: b === probe.data?.defaultBranch ? "default" : undefined,
+                  })),
+                },
+                {
+                  label: "Tags",
+                  // Bare name, not refs/tags/<name>: this goes to `git clone
+                  // --branch`, which takes either — and the name is what the
+                  // user picked out of the list.
+                  items: probe.data.tags.map((t) => ({ value: t })),
+                },
+              ]}
+            />
             <input
               {...TECH_INPUT}
               value={dirName}

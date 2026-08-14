@@ -30,7 +30,7 @@ would be writing a second clone path beside the reviewed one.
 |---|---|---|
 | Parse any pasted repo reference | `core/repo.rs::parse_source` | https / ssh:// / `git@host:path` / `owner/repo` / forge `/tree/<ref>` URLs; refuses `git://`, archives, whitespace |
 | Validate URL + auth **before** any clone | `core/repo.rs::probe_remote` + `commands/repo.rs::repo_probe` | `git ls-remote`, 30s cap; **already site-independent** — the New Site dialog can call it with no site row in existence |
-| Branch/tag picker UI | `src/components/wordpress/RefPicker.tsx` | searchable combobox, grouped, portaled |
+| Branch/tag picker UI | `src/components/wordpress/RefPicker.tsx` | searchable combobox, grouped, portaled — used at ALL THREE ref choices (New Site's From-Git, the add-plugin/theme Fetch, and the Repository panel's Checkout + Restore). The Fetch one was a plain `<select>` until 14 Aug 2026: fine against a three-branch fixture, useless against the remote list a real project answers with |
 | Streamed, cancellable clone | `core/repo.rs::clone_repo` | `--no-recurse-submodules` (CVE-2024-32002 class), `protocol.ext.allow=never`, `GIT_TERMINAL_PROMPT=0`, process-group cancel, removes only the dir it created |
 | Honest git error mapping | `core/repo.rs::map_git_error` | auth / not-found / no-such-ref, each with a `$`-prefixed fix line |
 | Read-only repo inspection | `core/repo.rs::inspect_repo` | composer.json, package manager (`packageManager` > lockfile > npm), build script, `.nvmrc`/engines |

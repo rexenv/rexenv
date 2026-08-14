@@ -32,11 +32,45 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
   await input.fill("https://github.com/acme/my-plugin");
   await page.getByRole("button", { name: "Fetch" }).click();
   await page.waitForTimeout(400);
+  // The ref control is the SEARCHABLE picker, not a native select: the first
+  // fetch answers with every branch the remote advertises (92 in this fixture,
+  // hundreds on a real project), and a <select> makes finding one a scroll.
   const sel = page.getByLabel("Branch or tag");
-  if (!(await sel.isVisible())) fails.push("ref select missing after probe");
-  const opts = await sel.locator("option").allTextContents();
-  if (!opts.some((o) => o.includes("main (default)"))) fails.push("default branch not marked");
-  if (!opts.some((o) => o.includes("v1.2.0"))) fails.push("tags missing from select");
+  if (!(await sel.isVisible())) fails.push("ref picker missing after probe");
+  const isNativeSelect = (await sel.locator("option").count()) !== 0;
+  if (isNativeSelect) {
+    // Named and SKIP the rest: a probe that then waits 30s for a filter box
+    // that cannot exist reports a stack trace where a sentence belongs.
+    fails.push("the ref control is still a native <select> — no search at the ~100-branch scale");
+  } else {
+  await sel.click();
+  await page.waitForTimeout(300);
+  const listed = page.locator('[cmdk-item]');
+  if ((await listed.count()) < 90)
+    fails.push(`picker listed ${await listed.count()} refs, expected the full remote list`);
+  for (const text of ["default", "v1.2.0", "Tags"]) {
+    if ((await page.getByText(text, { exact: false }).count()) === 0)
+      fails.push(`ref picker missing: ${text}`);
+  }
+  // Filtering is the whole point — and it must reach a branch that is nowhere
+  // near the top of the list.
+  await page.getByPlaceholder(/Filter branches/).fill("release");
+  await page.waitForTimeout(250);
+  const narrowed = await listed.count();
+  if (narrowed !== 1)
+    fails.push(`filtering "release" left ${narrowed} items, expected exactly release/2026-08`);
+  await page.getByText("release/2026-08", { exact: false }).click();
+  await page.waitForTimeout(200);
+  if ((await sel.textContent())?.includes("release/2026-08") !== true)
+    fails.push("picking a filtered branch did not set the ref");
+  // Back to the default for the Add step below.
+  await sel.click();
+  await page.waitForTimeout(250);
+  await page.getByPlaceholder(/Filter branches/).fill("main");
+  await page.waitForTimeout(250);
+  await page.getByText("main", { exact: true }).first().click();
+  await page.waitForTimeout(200);
+  }
   const folder = page.getByLabel("Folder name");
   if ((await folder.inputValue()) !== "my-plugin") fails.push("folder not prefilled");
   if (!(await page.getByRole("button", { name: "Add plugin" }).isVisible()))
