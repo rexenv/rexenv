@@ -373,10 +373,14 @@ evidence cited.
     there by import or by outliving the version). For WordPress the note names WP's
     own outdated-PHP notice in advance. Ledger #322, DESIGN.md honest-UI rule.
     **L2 gap stated:** no wk-check renders any of the three surfaces.
-  - [ ] **S2.0 — branch `manifest()` on source BEFORE any checksum is pinned.**
-    `binaries.rs:562-578` hardcodes the static-php.dev URL and gates only on
-    `php_sha256().is_some()`, so pinning first yields a permanent 404 that
-    `manifest_pins_every_pinned_php_version` cannot catch (URL *shape* only).
+  - [x] **S2.0 — branch `manifest()` on source BEFORE any checksum is pinned.** ✓
+    `php_url` picks the publishing source; `php_self_hosted_tag` carries the FULL
+    immutable release tag into the URL (a rebuild is a new tag, never a re-upload
+    — the property neither static-php.dev nor FrankenPHP offers). An empty hash
+    const reads as unpinned, so 7.4 is wired but unresolvable until its artifact
+    exists. Ledger #323, plant-proven. `manifest_pins_every_pinned_php_version`
+    strengthened from URL *shape* to HOST — shape was the hole: every 404 in this
+    family has the right shape.
   - [ ] **S1.1 — `rexenv/runtimes` + the build workflow.** OWNER DECISION: public
     repo (needed for free attestations) and the licence read (PLAN §6.5) — the one
     item that cannot be fixed by a later commit.

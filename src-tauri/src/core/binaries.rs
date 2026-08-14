@@ -528,11 +528,66 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
     .to_string()
 }
 
-/// Pinned SHA-256 for a static-php "bulk" artifact, or `None` if the
-/// version isn't pinned. `kind` is `"cli"` or `"fpm"`. Both arches are pinned
-/// together, so a `Some` for one arch implies a `Some` for the other.
+/// The rexenv-hosted release TAG serving a self-built PHP artifact, or `None`
+/// for a version that comes from static-php.dev.
+///
+/// Some PHP versions have **no upstream portable build at all** — static-php.dev
+/// publishes 8.x only, and 7.4 is not published anywhere (verified: every
+/// `dl.static-php.dev/.../php-7.4.3*` URL 404s). Those are built by
+/// `rexenv/runtimes` CI and hosted as GitHub Release assets
+/// (`docs/PLAN-php-74-support.md` §2/§6).
+///
+/// **The FULL tag lives here and goes into the pinned URL**, rather than a stable
+/// base + a separate version const. Both of rexenv's existing upstreams —
+/// static-php.dev and FrankenPHP — REBUILD release assets in place, which is why
+/// this file carries two long comments about pins going stale under a stable URL.
+/// Our own repo is the chance to make a pin permanent, and it only works if the
+/// URL names one immutable release: a rebuild is a NEW tag (`-2`), never a
+/// re-upload, so a pin can 404 but can never silently change bytes.
+fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
+    match version {
+        "7.4.33" => Some("php-7.4.33-1"),
+        _ => None,
+    }
+}
+
+/// The download URL for a pinned PHP build, from whichever source publishes it.
+///
+/// **This branch must exist BEFORE any checksum is pinned.** `manifest`'s PHP arms
+/// gate only on `php_sha256(..).is_some()` and used to hardcode the static-php.dev
+/// template, so filling in 7.4's four hashes first would have produced a manifest
+/// that resolves to a permanent 404 — and `manifest_pins_every_pinned_php_version`
+/// would have stayed green, because it asserts the URL's SHAPE. The failure would
+/// have surfaced only on a user's machine, as "php-fpm 7.4 download failed".
+fn php_url(kind: &str, version: &str, arch: Arch) -> String {
+    let arch = php_arch(arch);
+    match php_self_hosted_tag(version) {
+        Some(tag) => format!(
+            "https://github.com/rexenv/runtimes/releases/download/{tag}/php-{version}-{kind}-macos-{arch}.tar.gz"
+        ),
+        None => format!(
+            "https://dl.static-php.dev/static-php-cli/bulk/php-{version}-{kind}-macos-{arch}.tar.gz"
+        ),
+    }
+}
+
+// Self-built 7.4 artifacts (rexenv/runtimes) — EMPTY until the release exists and
+// its hashes are pinned, which keeps the version UNRESOLVABLE rather than
+// resolving to a 404 (same shape as the php-debug consts below).
+const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "";
+const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "";
+const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "";
+const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "";
+
+/// Pinned SHA-256 for a PHP artifact, or `None` if the version isn't pinned.
+/// `kind` is `"cli"` or `"fpm"`. Both arches are pinned together, so a `Some` for
+/// one arch implies a `Some` for the other. An EMPTY const is treated as unpinned
+/// — that is what keeps a self-built version wired but unresolvable until its
+/// artifact actually exists.
 fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match (kind, version) {
+        ("cli", "7.4.33") => (PHP_7_4_33_CLI_MAC_ARM64_SHA256, PHP_7_4_33_CLI_MAC_AMD64_SHA256),
+        ("fpm", "7.4.33") => (PHP_7_4_33_FPM_MAC_ARM64_SHA256, PHP_7_4_33_FPM_MAC_AMD64_SHA256),
         ("cli", "8.0.30") => (PHP_8_0_30_CLI_MAC_ARM64_SHA256, PHP_8_0_30_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.0.30") => (PHP_8_0_30_FPM_MAC_ARM64_SHA256, PHP_8_0_30_FPM_MAC_AMD64_SHA256),
         ("cli", "8.1.34") => (PHP_8_1_34_CLI_MAC_ARM64_SHA256, PHP_8_1_34_CLI_MAC_AMD64_SHA256),
@@ -547,10 +602,11 @@ fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
         ("fpm", "8.5.8") => (PHP_8_5_8_FPM_MAC_ARM64_SHA256, PHP_8_5_8_FPM_MAC_AMD64_SHA256),
         _ => return None,
     };
-    Some(match arch {
+    let v = match arch {
         Arch::Arm64 => arm,
         Arch::X86_64 => amd,
-    })
+    };
+    (!v.is_empty()).then_some(v)
 }
 
 // Debug build (Xdebug compiled in) SHA-256 — EMPTY until the artifact is built
@@ -613,22 +669,18 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGz,
             member: "caddy",
         }),
-        // PHP is version-driven: any version pinned in `php_sha256` resolves (the
-        // static-php URL is templated; only the checksum varies per version/arch).
+        // PHP is version-driven: any version pinned in `php_sha256` resolves. The
+        // SOURCE is `php_url`'s job — most versions come from static-php.dev, the
+        // ones nobody publishes are built and hosted by us — so a version can
+        // never resolve to a URL its artifact was never uploaded to.
         ("php", "macos", v) if php_sha256("cli", v, arch).is_some() => Some(BinarySpec {
-            url: format!(
-                "https://dl.static-php.dev/static-php-cli/bulk/php-{v}-cli-macos-{}.tar.gz",
-                php_arch(arch)
-            ),
+            url: php_url("cli", v, arch),
             checksum: Checksum::Sha256(php_sha256("cli", v, arch).unwrap().to_string()),
             archive: Archive::TarGz,
             member: "php",
         }),
         ("php-fpm", "macos", v) if php_sha256("fpm", v, arch).is_some() => Some(BinarySpec {
-            url: format!(
-                "https://dl.static-php.dev/static-php-cli/bulk/php-{v}-fpm-macos-{}.tar.gz",
-                php_arch(arch)
-            ),
+            url: php_url("fpm", v, arch),
             checksum: Checksum::Sha256(php_sha256("fpm", v, arch).unwrap().to_string()),
             archive: Archive::TarGz,
             member: "php-fpm",
@@ -2506,7 +2558,53 @@ mod tests {
             let arm = manifest("php", v, "macos", Arch::Arm64).unwrap();
             let amd = manifest("php", v, "macos", Arch::X86_64).unwrap();
             assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+            // …and it points at the source that actually PUBLISHES it. Shape
+            // alone is not enough: every 404 in this family has the right shape.
+            let expected_host = if php_self_hosted_tag(v).is_some() {
+                "https://github.com/rexenv/runtimes/releases/download/"
+            } else {
+                "https://dl.static-php.dev/static-php-cli/bulk/"
+            };
+            assert!(arm.url.starts_with(expected_host), "{v}: {}", arm.url);
         }
+    }
+
+    /// The trap this branch exists to defuse. `manifest`'s PHP arms gate ONLY on
+    /// `php_sha256(..).is_some()`, so pinning a self-built version's four hashes
+    /// while the URL was still hardcoded to static-php.dev would have produced a
+    /// manifest resolving to a permanent 404 — and the test above would have
+    /// stayed green, because it asserted the URL's SHAPE. The failure would have
+    /// surfaced on a user's machine as "php-fpm 7.4 download failed".
+    ///
+    /// So the source branch is asserted DIRECTLY, on the pure URL builder, while
+    /// the version is still unresolvable. It cannot wait for the pin: by then the
+    /// mistake has already shipped.
+    #[test]
+    fn a_self_hosted_php_never_points_at_static_php_dev() {
+        for kind in ["cli", "fpm"] {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                let url = php_url(kind, "7.4.33", arch);
+                assert!(!url.contains("dl.static-php.dev"), "{url}");
+                // The FULL immutable tag is in the URL, not a stable base that a
+                // rebuild could quietly refill (see `php_self_hosted_tag`).
+                assert!(url.contains("/releases/download/php-7.4.33-1/"), "{url}");
+                assert!(url.ends_with(&format!("php-7.4.33-{kind}-macos-{}.tar.gz", php_arch(arch))));
+                // A version static-php.dev DOES publish still comes from there.
+                assert!(php_url(kind, PHP_VERSION, arch).contains("dl.static-php.dev"));
+            }
+        }
+        // And it is wired but UNRESOLVABLE until the artifact exists — an empty
+        // checksum const reads as unpinned, so nothing tries to fetch a file
+        // that has not been built (the php-debug rule, applied to a real version).
+        for name in ["php", "php-fpm"] {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                assert!(
+                    manifest(name, "7.4.33", "macos", arch).is_none(),
+                    "{name} 7.4.33 resolved before its artifact was hosted"
+                );
+            }
+        }
+        assert!(!PHP_VERSIONS.contains(&"7.4.33"), "7.4 is offered before it can be downloaded");
     }
 
     #[test]
