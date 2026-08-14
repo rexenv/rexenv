@@ -53,7 +53,7 @@ L3 = scripted manual.
 | 10 | tunnels.rs:8 | ⚠ Sharing one site can't expose another site or a tool | ◐ live 14 Aug 2026 (`tunnel_exposure_check` leg 6): through a real tunnel the shared site's page is served, and the SAME request with `Host: other.test` does not return the other site's page. **Stated honestly: this is a WATCH on cloudflared, not a guard on our code.** Removing the `--http-host-header` pin does not fail this leg — it fails the FIXTURE, because the tunnel then serves nothing at our host (404). So the plant proves the pin is load-bearing without proving the leg can catch a caller-Host override; that property belongs to cloudflared and would change only if cloudflared changed |
 | 11 | tunnels.rs:66 | api.trycloudflare.com never recorded as public URL | ✅ `extract_url_never_takes_the_registration_endpoint` |
 | 12 | tunnels.rs:103 | PID_PENDING sentinel structurally inert | 🔨 L0 (assert the sentinel is never signalled) |
-| 13 | tunnels.rs:110 | Override-site refusal; premise: default-server fallthrough publishes another site | ◐ refusal proven; premise 🔨 L1 |
+| 13 | tunnels.rs:110 (the refusal) + core/sites.rs `is_nginx_served` + examples/override_fallthrough_check | Override-site refusal; premise: default-server fallthrough publishes another site | ✅ **premise CONFIRMED live 14 Aug 2026.** An override-server site gets NO nginx server block (`rebuild_configs_for` filters on `is_nginx_served`, sites.rs:1999), so a request carrying its Host falls through to the first vhost: `Host: fpsite.test` was served **`first.test`'s** bytes. Controls in the same run — each nginx site serves its OWN marker — so "another site came back" is distinguishable from "this nginx serves one thing to every Host", and the check refuses with CONTROLS BROKEN if they fail. **So the refusal is protecting against something real.** **No tunnel is used, deliberately:** a tunnel's whole contribution here is `--http-host-header`, i.e. a Host header on a loopback request to nginx, and #10's leg 3 already measured live that the Host arriving at nginx through a real tunnel is the site's own domain. The premise is those two halves composed — re-standing a public tunnel would re-prove the finished half while adding a public URL to a question that has nothing to do with Cloudflare. Structural half asserted BEFORE serving: if an override site ever gains an nginx vhost the check fails loudly and says the refusal needs re-reading rather than the check re-running |
 | 14 | tunnels.rs:137 | Transport errors are non-evidence, never downgrade | ✅ `fold_probe_reads_one_fact_honestly` |
 | 15 | tunnels.rs:150 | Any non-530 response proves the tunnel path | ◐ fold proven; semantic premise 🚫 |
 | 16 | tunnels.rs:279 | Edge IP from live lookup, never a constant | 🔨 L0 (no-IP-literal source guard) |
@@ -472,7 +472,7 @@ migrate-after-wiring ordering #246, the blueprint refusal #247 and the provision
 card's fixed header #248; the plugin-update progress stream #249; the zip
 install source's own gate #259 and the cursor it can never advance #260; the
 WP-CLI packages tell #301; the per-site artifact sweep #302 and the sites-folder rule #303 and the edge-wire tri-state #304 its four callers #305 and the onboarding notice #306; the leftmost-XFF finding #307 and the mu-plugin ordering pairing #308):
-**✅ 224 · ◐ 50 · 🔨 29 · 🚫 5** of 308 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 225 · ◐ 49 · 🔨 29 · 🚫 5** of 308 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -776,14 +776,14 @@ Security postures resting on unproven third-party assumptions — the shape that
    measurement**: the hole was reachable through a tunnel and only through a tunnel. An
    earlier reading of this cluster claimed a LAN exposure; the edge replaces a
    caller-supplied `X-Forwarded-For` with its own peer, so it never existed.
-2. **#13** — "a tunnel can only expose its one site". **#10's cross-site negative was
-   tested through a live tunnel on 14 Aug 2026** (`tunnel_exposure_check` leg 6) and this
+2. **CLOSED 14 Aug 2026 — both halves.** #10's cross-site negative was
+   tested through a live tunnel on 14 Aug 2026 (`tunnel_exposure_check` leg 6) and this
    entry said otherwise for the rest of that day — the stale-index shape this file warns
-   about, found while working the cluster it belongs to. What is genuinely open is #13's
-   PREMISE, which leg 6 does not reach: a site on an OVERRIDE server (FrankenPHP/Apache)
-   is not the nginx vhost the tunnel points at, so the question is whether nginx's
-   default-server fallthrough publishes a DIFFERENT site at the public URL. That needs an
-   override-server site standing behind a live tunnel. (**#37 is closed** — internal
+   about, found while working the cluster it belongs to. #13's PREMISE is confirmed too
+   (`override_fallthrough_check`): an override site has no nginx vhost, and a request
+   carrying its Host is served the FIRST site's bytes — so the refusal is real. It needed
+   no tunnel: the tunnel's contribution is a Host header, and leg 3 already measured that
+   live. (**#37 is closed** — internal
    vhosts can never be shared, because the only way in is a Sites lookup that errors.)
 3. **#103** — the dotfile guard (`~/.ssh` one bug from the internet, per #98). **nginx
    is PROVEN LIVE** — `dotfile_guard_check` 404s `.env`/`.git`/`.hidden-php` over the

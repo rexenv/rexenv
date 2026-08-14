@@ -132,6 +132,7 @@ mysql_serve service
 network_check network
 nginx_fetch network
 nginx_php_serve sandbox
+override_fallthrough_check service
 php_fetch network
 php_fpm_serve sandbox
 php_per_site_serve service
