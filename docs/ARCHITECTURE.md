@@ -642,6 +642,24 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
 - **Mail:** php-fpm `sendmail_path` (DOUBLE-quoted in the pool ini — the parser strips
   bare quotes and app-data paths contain spaces) → Mailpit's `sendmail -t -S
   127.0.0.1:11025` shim → SMTP sink; inbox UI reads the HTTP API on 18025 (`core/mail.rs`).
+  - **Unread is a SERVER-side search, and read state never waits for the poll.** The
+    inbox list refetches every 5s, which is the whole design constraint on this screen:
+    anything that becomes true only on the next refetch happens somewhere between
+    instantly and five seconds later. That is what the read flip did — fetching a
+    message's detail is what marks it read in Mailpit (its documented side effect), and
+    nothing told the list, so the row's unread dot cleared whenever the poll next came
+    round. It reads as "clicking the subject works, clicking the sender doesn't"; it was
+    the poll phase, not the click target. The preview now patches the cached list at the
+    moment the fact becomes true and lets the poll reconcile. Same rule for **Mark all
+    read** (`PUT /api/v1/messages`, no IDs — Mailpit's "all mailbox messages"), which
+    deliberately does NOT invalidate afterwards: the write succeeded, so the patch is the
+    truth, and an immediate refetch only opens a window for an in-flight list to answer
+    with the state from before it. The **Unread filter** is `is:unread` composed into the
+    Mailpit query (`mail::search_query`), never a filter over the fetched page — the page
+    is what hides the unread mail you are looking for. Its counts stay mailbox-wide
+    (Mailpit's own contract), and the message you are READING stays pinned in the list
+    while its preview is open, or the filter would delete the row out from under you
+    (CLAIM-LEDGER #313–#315).
 - **"Log in as"** (`core/wp_login.rs`): one-time, single-use, local-only magic link via
   a mu-plugin. Three checks, and their relationship is NOT three independent layers —
   the module doc states what each one actually rests on, because a confident wrong

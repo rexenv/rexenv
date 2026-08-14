@@ -37,6 +37,13 @@
  *               the Browser/editor Quick-links tiles. `browsers=one|none`
  *               (the no-chevron and nothing-detected states), `icons=none`
  *               (the honest degrade to a monochrome glyph)
+ *    mail     — the whole Mail screen against a mocked Mailpit: the All/Unread
+ *               filter, Mark all read, and the read-state flip. The mock marks
+ *               a message read when its DETAIL is fetched, exactly as Mailpit
+ *               does, so a UI that waits for the next 5s poll is visibly wrong
+ *               here. `stale=1` makes Mark all read a no-op on the server side,
+ *               which is the scenario that proves the screen updates from its
+ *               own patch rather than from a refetch
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
@@ -48,6 +55,7 @@ import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { WpCliPackagesCard } from "@/routes/Settings";
+import { Mail as MailScreen } from "@/routes/Mail";
 import { OnboardingDone } from "@/routes/Onboarding";
 import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
@@ -711,6 +719,35 @@ function mockBrowsers(): BrowserApp[] {
   return all;
 }
 
+/** The Mail screen's inbox fixture. Shaped like real captured mail, not like a
+ *  demo: two sites' worth of WordPress notifications with the addresses that
+ *  make the site grouping work, a mix of read and unread, and enough of them
+ *  that "find the new ones" is a real question — which is the whole reason the
+ *  unread filter exists. `MAIL_READ` is mutable on purpose: previewing a
+ *  message marks it read in Mailpit as a side effect of fetching it, and a mock
+ *  that never reflected that would let a broken read-state flip look fine. */
+const MAIL_READ = new Set<string>(["m-4", "m-6"]);
+const MAIL_FIXTURE = [
+  { id: "m-1", from: { name: "WordPress", address: "wordpress@shop.rex" }, to: [{ name: "", address: "owner@example.com" }], subject: "New order #1042", created: "2026-08-14T09:41:00Z", snippet: "A new order has been placed" },
+  { id: "m-2", from: { name: "WordPress", address: "wordpress@shop.rex" }, to: [{ name: "", address: "owner@example.com" }], subject: "Password reset requested", created: "2026-08-14T09:12:00Z", snippet: "Someone asked to reset" },
+  { id: "m-3", from: { name: "Contact form", address: "forms@blog.rex" }, to: [{ name: "", address: "editor@example.com" }], subject: "New enquiry from Rina", created: "2026-08-14T08:55:00Z", snippet: "Hello, I wanted to ask" },
+  { id: "m-4", from: { name: "WordPress", address: "wordpress@blog.rex" }, to: [{ name: "", address: "editor@example.com" }], subject: "Plugin updated: Akismet", created: "2026-08-13T22:03:00Z", snippet: "Akismet was updated" },
+  { id: "m-5", from: { name: "WordPress", address: "wordpress@shop.rex" }, to: [{ name: "", address: "owner@example.com" }], subject: "Your site has updates", created: "2026-08-13T20:15:00Z", snippet: "Please update" },
+  { id: "m-6", from: { name: "Newsletter", address: "news@somewhere.test" }, to: [{ name: "", address: "owner@example.com" }], subject: "Weekly digest", created: "2026-08-13T07:00:00Z", snippet: "This week in" },
+];
+
+function mailList(query: string | undefined, unreadOnly: boolean) {
+  const q = (query ?? "").trim().toLowerCase();
+  const all = MAIL_FIXTURE.map((m) => ({ ...m, read: MAIL_READ.has(m.id) }));
+  let messages = q
+    ? all.filter((m) => m.subject.toLowerCase().includes(q) || m.from.address.toLowerCase().includes(q))
+    : all;
+  if (unreadOnly) messages = messages.filter((m) => !m.read);
+  // total/unread stay MAILBOX-WIDE while filtering, exactly as Mailpit answers
+  // — the filter chip's count depends on it.
+  return { total: all.length, unread: all.filter((m) => !m.read).length, messages };
+}
+
 function mockEditors(): EditorApp[] {
   const noIcons = params.get("icons") === "none";
   return [
@@ -832,6 +869,43 @@ export function DevUiReview() {
                 dir: "~/.wp-cli/packages",
                 names: ["danielbachhuber/php-compat-command", "wp-cli/dist-archive-command"],
               };
+        case "mailpit_status":
+          return { running: true, uiUrl: "http://127.0.0.1:18025", smtpPort: 11025, httpPort: 18025 };
+        case "mailpit_messages": {
+          const a = (args ?? {}) as { query?: string; unreadOnly?: boolean };
+          const w = window as unknown as { __mailCalls?: unknown[] };
+          (w.__mailCalls ??= []).push({ cmd, query: a.query ?? "", unreadOnly: !!a.unreadOnly });
+          return mailList(a.query, !!a.unreadOnly);
+        }
+        case "mailpit_message": {
+          const id = String((args as { id?: string } | undefined)?.id ?? "");
+          // Mailpit marks a message read as a SIDE EFFECT of this fetch. The
+          // mock does the same, so a UI that only flips on the next poll is
+          // visibly wrong here rather than accidentally right.
+          MAIL_READ.add(id);
+          const m = MAIL_FIXTURE.find((x) => x.id === id) ?? MAIL_FIXTURE[0];
+          return {
+            id: m.id, from: m.from, to: m.to, cc: [], subject: m.subject,
+            date: m.created, text: `${m.snippet}…`, html: "",
+            headers: [{ name: "Subject", value: m.subject }],
+          };
+        }
+        case "mailpit_mark_all_read": {
+          const w = window as unknown as { __mailCalls?: unknown[] };
+          (w.__mailCalls ??= []).push({ cmd });
+          // Deliberately NOT applied to MAIL_READ when `?stale=1`: that is the
+          // scenario proving the screen updates from its own patch rather than
+          // from the next 5s poll, which is the difference the user feels.
+          if (params.get("stale") !== "1") MAIL_FIXTURE.forEach((m) => MAIL_READ.add(m.id));
+          return null;
+        }
+        case "list_sites":
+          return params.get("view") === "mail"
+            ? [
+                fixtureSite({ id: "s-shop", name: "shop", domain: "shop.rex" }),
+                fixtureSite({ id: "s-blog", name: "blog", domain: "blog.rex" }),
+              ]
+            : [];
         case "list_editors":
           return params.get("view") === "openin" ? mockEditors() : [];
         case "list_browsers":
@@ -868,6 +942,13 @@ export function DevUiReview() {
         {view === "delete" && <DeleteView />}
         {view === "badges" && <BadgesView />}
         {view === "openin" && <OpenInView />}
+        {view === "mail" && (
+          <div className="h-[620px] overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
+            <div className="flex h-full flex-col">
+              <MailScreen />
+            </div>
+          </div>
+        )}
         {view === "provision" && <ProvisionCardView />}
         {view === "resolver" && (
           <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">

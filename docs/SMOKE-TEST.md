@@ -240,6 +240,15 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 ## Mail (Mailpit)
 - [ ] Trigger a WP email (e.g. password reset); it appears in **Mail** (inbox count increments).
 - [ ] Opening the message shows its HTML/text body.
+- [ ] **The row loses its unread dot as the preview opens** — not a second or two
+      later. (The list polls every 5s; if the dot clears "eventually", the patch
+      that makes it immediate has regressed.) The sidebar's mail badge drops too.
+- [ ] **Unread** filter shows only unread mail, and the message you then OPEN
+      stays in the list while you read it instead of vanishing at the next poll.
+      Search + Unread together narrow: both terms apply.
+- [ ] **Mark all read** empties the unread count immediately, disables itself,
+      and **deletes nothing** — the captured count is unchanged. Trigger one more
+      email afterwards: it is the only unread one, which is the point of it.
 
 ## Database (Adminer deep-link)
 - [ ] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login.

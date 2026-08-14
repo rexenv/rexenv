@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, ExternalLink, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
+import { CheckCheck, ChevronRight, ExternalLink, Globe, Mail as MailIcon, Search, Trash2 } from "lucide-react";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -12,13 +12,14 @@ import {
   listSites,
   mailpitClear,
   mailpitDelete,
+  mailpitMarkAllRead,
   mailpitMessage,
   mailpitMessageRaw,
   mailpitMessages,
   mailpitStatus,
   openExternal,
 } from "@/lib/ipc";
-import type { MailSummary, Site } from "@/types";
+import type { MailList, MailSummary, Site } from "@/types";
 
 type PreviewTab = "html" | "text" | "raw" | "headers";
 
@@ -121,6 +122,7 @@ function groupBySite(messages: MailSummary[], sites: Site[]): MailGroup[] {
 export function Mail() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [siteFilter, setSiteFilter] = useState<string>("all");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -132,14 +134,31 @@ export function Mail() {
     queryFn: mailpitStatus,
     refetchInterval: 5000,
   });
+  // The unread filter is part of the KEY, not something applied to the result:
+  // it is a Mailpit search (`is:unread`), so the server decides what comes back.
+  // Filtering the returned page here would only hide the unread messages that
+  // happened to be on it — which is the "I can't find the new ones" problem the
+  // filter exists to solve, wearing a fix.
   const { data: list } = useQuery({
-    queryKey: ["mailpit-messages", search],
-    queryFn: () => mailpitMessages(search),
+    queryKey: ["mailpit-messages", search, unreadOnly],
+    queryFn: () => mailpitMessages(search, unreadOnly),
     refetchInterval: 5000,
   });
   const { data: sites } = useQuery({ queryKey: ["sites"], queryFn: listSites });
 
-  const messages = list?.messages ?? [];
+  // The message being read STAYS on the list while it is open, even after the
+  // preview marks it read and the unread filter would drop it. Without this the
+  // row vanished under the cursor on the next poll and took the preview with it
+  // — the filter would punish you for using it.
+  const [pinned, setPinned] = useState<MailSummary | null>(null);
+  const messages = useMemo(() => {
+    const base = list?.messages ?? [];
+    if (!pinned || base.some((m) => m.id === pinned.id)) return base;
+    // Only while the filter is what removed it. If the message is gone for real
+    // (deleted, inbox cleared), it must disappear like any other.
+    if (!unreadOnly || !list) return base;
+    return [{ ...pinned, read: true }, ...base];
+  }, [list, pinned, unreadOnly]);
   const groups = useMemo(() => groupBySite(messages, sites ?? []), [messages, sites]);
   const visibleGroups = siteFilter === "all" ? groups : groups.filter((g) => g.key === siteFilter);
 
@@ -157,9 +176,14 @@ export function Mail() {
       else next.add(key);
       return next;
     });
-  // Keep a valid selection as the inbox changes.
+  // Keep a valid selection as the inbox changes. `messages` already carries the
+  // pinned row, so a message that only left the LIST (because it is now read
+  // and the unread filter is on) keeps its preview open.
   useEffect(() => {
-    if (selectedId && !messages.some((m) => m.id === selectedId)) setSelectedId(null);
+    if (selectedId && !messages.some((m) => m.id === selectedId)) {
+      setSelectedId(null);
+      setPinned(null);
+    }
   }, [messages, selectedId]);
   // Prune checked IDs that no longer exist (deleted elsewhere / new search).
   useEffect(() => {
@@ -176,6 +200,24 @@ export function Mail() {
       setSelectedId(null);
       setChecked(new Set());
       qc.invalidateQueries({ queryKey: ["mailpit-messages"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const markAllRead = useMutation({
+    mutationFn: mailpitMarkAllRead,
+    // Patch what is on screen before the refetch lands, for the same reason the
+    // preview does (see `Preview`): the poll is 5s wide, and a button whose
+    // effect appears somewhere in the next five seconds reads as a button that
+    // didn't work.
+    onSuccess: () => {
+      qc.setQueriesData<MailList>({ queryKey: ["mailpit-messages"] }, (old) =>
+        old ? { ...old, unread: 0, messages: old.messages.map((m) => ({ ...m, read: true })) } : old,
+      );
+      // No invalidate here on purpose. The PUT succeeded, so the patch IS the
+      // truth, and the 5s poll reconciles anyway. Refetching immediately only
+      // opens a window where an in-flight list answers with the state from
+      // before the write — which is how a button that worked reads as a button
+      // that didn't.
     },
     onError: (e) => toastBackendError(e),
   });
@@ -259,6 +301,19 @@ export function Mail() {
             </button>
           )}
           <button
+            onClick={() => markAllRead.mutate()}
+            disabled={markAllRead.isPending || (list?.unread ?? 0) === 0}
+            title={
+              (list?.unread ?? 0) === 0
+                ? "Nothing unread"
+                : "Mark every captured message read — the way to make the NEXT mail your site sends stand out"
+            }
+            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border"
+          >
+            <CheckCheck className="h-3.5 w-3.5" />
+            Mark all read
+          </button>
+          <button
             onClick={clearAll}
             disabled={clear.isPending || messages.length === 0}
             className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-status-error/60 hover:text-status-error-bright disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-rex-border disabled:hover:text-rex-text"
@@ -282,6 +337,38 @@ export function Mail() {
                 className="h-[34px] flex-1 bg-transparent text-[0.78125rem] text-rex-text outline-none placeholder:text-rex-text-muted"
               />
             </div>
+            {/* All / Unread. A segmented pair rather than a checkbox: which one
+                you are looking at has to be readable at a glance, and the count
+                belongs on the thing that filters BY it. `list.unread` stays
+                mailbox-wide while filtering (Mailpit's own contract), so this
+                number never becomes "unread among the unread". */}
+            <div className="flex items-center gap-1 rounded-lg border border-rex-border bg-rex-surface-2 p-0.5">
+              {([false, true] as const).map((only) => (
+                <button
+                  key={String(only)}
+                  onClick={() => setUnreadOnly(only)}
+                  aria-pressed={unreadOnly === only}
+                  // A stable accessible name: the visible label carries a live
+                  // COUNT, so "Unread 4" would rename the control every time a
+                  // mail arrived — for a screen reader and for anything else
+                  // that addresses it by name.
+                  aria-label={only ? "Show unread only" : "Show all mail"}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-[6px] px-2 py-1 text-[0.75rem] transition-colors",
+                    unreadOnly === only
+                      ? "bg-rex-surface-1 font-medium text-rex-text"
+                      : "text-rex-text-muted hover:text-rex-text",
+                  )}
+                >
+                  {only ? "Unread" : "All"}
+                  {only && (list?.unread ?? 0) > 0 && (
+                    <span className="rounded-full bg-brand px-1.5 py-px font-mono text-[0.59375rem] font-semibold text-white">
+                      {list?.unread}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
             <select
               value={siteFilter}
               onChange={(e) => setSiteFilter(e.target.value)}
@@ -298,7 +385,13 @@ export function Mail() {
           <div className="min-h-0 flex-1 overflow-auto">
             {visibleGroups.length === 0 ? (
               <div className="p-6 text-center text-[0.78125rem] text-rex-text-muted">
-                {search ? "No messages match your search." : "No mail captured yet."}
+                {unreadOnly
+                  ? search
+                    ? "No unread messages match your search."
+                    : "Nothing unread — every captured message has been opened."
+                  : search
+                    ? "No messages match your search."
+                    : "No mail captured yet."}
               </div>
             ) : (
               visibleGroups.map((g) => (
@@ -340,6 +433,7 @@ export function Mail() {
                         onDelete={() => del.mutate([m.id])}
                         onClick={() => {
                           setSelectedId(m.id);
+                          setPinned(m);
                           setTab("html");
                         }}
                       />
@@ -407,6 +501,12 @@ function MessageRow({
     <div
       role="button"
       tabIndex={0}
+      // Unread is otherwise carried ONLY by a coloured dot and a heavier font —
+      // nothing a screen reader announces, and nothing a probe can assert on.
+      // The label says it, and `data-read` is what the WebKit check reads to
+      // prove the state flips on click rather than on the next poll.
+      aria-label={`${m.read ? "Read" : "Unread"} message: ${m.subject || "(no subject)"} from ${m.from.address}`}
+      data-read={m.read ? "1" : "0"}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -468,7 +568,30 @@ function Preview({
   tab: PreviewTab;
   onTab: (t: PreviewTab) => void;
 }) {
+  const qc = useQueryClient();
   const { data: msg } = useQuery({ queryKey: ["mailpit-message", id], queryFn: () => mailpitMessage(id) });
+
+  // Fetching the detail is WHAT MARKS THE MESSAGE READ in Mailpit — it is that
+  // request's documented side effect. Until now nothing told the list, so the
+  // row kept its unread dot until the next 5s poll happened to come round:
+  // sometimes instant, sometimes five seconds, which reads as "clicking the
+  // subject works but clicking the sender doesn't". The list already knows
+  // everything it needs; patch it here, at the moment the fact became true,
+  // and let the poll reconcile.
+  const readId = msg?.id;
+  useEffect(() => {
+    if (!readId) return;
+    qc.setQueriesData<MailList>({ queryKey: ["mailpit-messages"] }, (old) => {
+      if (!old) return old;
+      const target = old.messages.find((m) => m.id === readId);
+      if (!target || target.read) return old; // already read: never double-count
+      return {
+        ...old,
+        unread: Math.max(0, old.unread - 1),
+        messages: old.messages.map((m) => (m.id === readId ? { ...m, read: true } : m)),
+      };
+    });
+  }, [readId, qc]);
   const { data: raw } = useQuery({
     queryKey: ["mailpit-raw", id],
     queryFn: () => mailpitMessageRaw(id),

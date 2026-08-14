@@ -789,11 +789,18 @@ export async function wpDebugLogDownload(siteId: string): Promise<string> {
 // actually change state (the real backend talks to Mailpit's HTTP API).
 let mockInbox = mockMailList.messages.map((m) => ({ ...m }));
 
-/** Inbox listing, optionally filtered by a Mailpit search query. Mock outside Tauri. */
-export async function mailpitMessages(query?: string): Promise<MailList> {
+/** Inbox listing, optionally filtered by a Mailpit search query and/or the
+ *  unread filter. Mock outside Tauri.
+ *
+ *  `unreadOnly` is a flag, not something the caller splices into `query`: the
+ *  two compose in the BACKEND (`mail::search_query`), so a filter can never
+ *  replace the search and widen the list while the user was narrowing it.
+ *  `total`/`unread` stay MAILBOX-WIDE while filtering (Mailpit's own contract),
+ *  which is what lets the filter chip keep showing how many unread there are. */
+export async function mailpitMessages(query?: string, unreadOnly = false): Promise<MailList> {
   if (!isTauri()) {
     const q = query?.trim().toLowerCase();
-    const messages = q
+    const matched = q
       ? mockInbox.filter(
           (m) =>
             m.subject.toLowerCase().includes(q) ||
@@ -801,9 +808,22 @@ export async function mailpitMessages(query?: string): Promise<MailList> {
             m.snippet.toLowerCase().includes(q),
         )
       : mockInbox;
-    return { total: messages.length, unread: messages.filter((m) => !m.read).length, messages };
+    const messages = unreadOnly ? matched.filter((m) => !m.read) : matched;
+    return { total: mockInbox.length, unread: mockInbox.filter((m) => !m.read).length, messages };
   }
-  return invoke<MailList>("mailpit_messages", { query });
+  return invoke<MailList>("mailpit_messages", { query, unreadOnly });
+}
+
+/** Mark EVERY captured message read. No per-id variant on purpose — see
+ *  `core/mail.rs::mark_all_read`: the same empty-body shape means "everything"
+ *  on Mailpit's delete endpoint, so the all-messages case gets its own name
+ *  rather than an id list someone can accidentally pass empty. */
+export async function mailpitMarkAllRead(): Promise<void> {
+  if (!isTauri()) {
+    mockInbox = mockInbox.map((m) => ({ ...m, read: true }));
+    return;
+  }
+  await invoke("mailpit_mark_all_read");
 }
 
 /** One message (body + headers) for the preview pane. Mock outside Tauri. */

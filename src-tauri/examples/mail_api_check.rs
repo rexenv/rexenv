@@ -1,6 +1,12 @@
 //! Phase-3 §2.3 check: the Mailpit HTTP-API client (list / detail / raw / search /
-//! clear) parses real Mailpit responses. Starts Mailpit, injects two messages via
-//! the sendmail shim, then exercises every `core::mail` API function.
+//! unread filter / mark-all-read / clear) parses real Mailpit responses. Starts
+//! Mailpit, injects two messages via the sendmail shim, then exercises every
+//! `core::mail` API function.
+//!
+//! The unread legs run AFTER `detail`, deliberately: previewing a message is
+//! what marks it read in Mailpit, so at that point exactly one of the two is
+//! unread. Asserted on a fresh inbox (all unread) or a swept one (none), a
+//! filter that returns everything would pass without filtering anything.
 //!
 //! Run (ports 11025/18025 free): `cargo run --example mail_api_check`
 
@@ -63,6 +69,40 @@ async fn main() {
     assert!(!d.from.address.is_empty(), "from missing");
     assert!(!d.html.is_empty(), "html body missing");
     assert!(d.headers.iter().any(|h| h.name.eq_ignore_ascii_case("subject")), "subject header missing");
+
+    // The unread filter + Mark all read, in the ONE order that can prove both:
+    // reading a message is a SIDE EFFECT of `detail` above, so by now exactly
+    // one of the two is read. A filter asserted on a fresh inbox (everything
+    // unread) or a swept one (nothing unread) would pass while filtering
+    // nothing at all.
+    let unread = mail::list(mail::search_query(None, true).as_deref()).await.expect("unread list");
+    println!("✓ is:unread → {} of {} message(s)", unread.messages.len(), list.total);
+    assert_eq!(unread.messages.len(), 1, "the unread filter did not narrow the inbox");
+    assert!(unread.messages.iter().all(|m| !m.read), "a READ message came back from is:unread");
+    assert!(unread.messages.iter().all(|m| m.id != id), "the message just previewed is still unread");
+
+    // Composed with a search: both terms must apply. A filter that REPLACED the
+    // search would return the unread message even when it doesn't match the
+    // text — and would look like it worked, because unread mail did appear.
+    let other_subject = &unread.messages[0].subject.clone();
+    let both = mail::list(mail::search_query(Some("Welcome"), true).as_deref())
+        .await
+        .expect("search+unread");
+    println!("✓ 'Welcome is:unread' → {} hit(s) (unread subject is {other_subject:?})", both.messages.len());
+    assert!(
+        both.messages.iter().all(|m| !m.read && m.subject.contains("Welcome")),
+        "search + unread did not compose — one of the two terms was dropped"
+    );
+
+    // Mark all read: every message, no ids, and the unread filter goes empty.
+    mail::mark_all_read().await.expect("mark all read");
+    let after = mail::list(None).await.expect("list after mark-all");
+    println!("✓ mark all read: unread={} (was {})", after.unread, list.unread);
+    assert_eq!(after.unread, 0, "unread count survived Mark all read");
+    assert!(after.messages.iter().all(|m| m.read), "a message stayed unread after Mark all read");
+    assert_eq!(after.total, list.total, "MARK ALL READ DELETED MESSAGES — it must only flip a flag");
+    let none_unread = mail::list(mail::search_query(None, true).as_deref()).await.expect("unread after");
+    assert!(none_unread.messages.is_empty(), "is:unread still returns messages after Mark all read");
 
     // raw
     let raw = mail::raw(&id).await.expect("raw");

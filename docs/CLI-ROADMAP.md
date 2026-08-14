@@ -100,7 +100,8 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `mail list` | `mailpit_messages` | ✓ | shipped 16 Jul — 3 real caught messages listed |
+| `mail list` | `mailpit_messages` | ✓ | shipped 16 Jul — 3 real caught messages listed. The socket command now also takes `unread` (bool, absent = whole inbox, so an older `rex` against a newer app is unchanged); the CLI flag itself is not wired yet |
+| `mail mark-read` | `mailpit_mark_all_read` | IPC exists | socket command `mail.mark_read` landed 14 Aug 2026 with the Mail screen's "Mark all read"; no CLI verb yet |
 | `mail clear [--yes]` | `mailpit_clear` | ✓ | shipped 16 Jul (confirm-gated; not live-run — user mail) |
 | `mail open` | `mailpit_status` (uiUrl) + local `open` | ✓ | shipped 16 Jul |
 

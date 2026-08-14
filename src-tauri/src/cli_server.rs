@@ -972,7 +972,15 @@ where
         "mail.list" => {
             let state = app_state(app)?;
             let query = args["query"].as_str().map(str::to_string);
-            Ok(to_value(&commands::mail::mailpit_messages(state.clone(), query).await?)?)
+            // Optional and absent-means-false: an older `rex` talking to a newer
+            // app sends no `unread`, and must keep getting the whole inbox.
+            let unread = args["unread"].as_bool();
+            Ok(to_value(&commands::mail::mailpit_messages(state.clone(), query, unread).await?)?)
+        }
+        "mail.mark_read" => {
+            let state = app_state(app)?;
+            commands::mail::mailpit_mark_all_read(state.clone()).await?;
+            Ok(Value::Null)
         }
         "mail.clear" => {
             let state = app_state(app)?;

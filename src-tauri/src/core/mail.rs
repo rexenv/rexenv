@@ -337,6 +337,50 @@ pub async fn delete(ids: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// The Mailpit search term that selects unread messages — the inbox filter's
+/// whole implementation, and it lives HERE rather than in the frontend because
+/// this is where the query string is built either way. Server-side by design:
+/// filtering the returned page in the UI would only hide the unread messages
+/// that happen to be on it, which is exactly the "I can't find the new ones"
+/// problem the filter exists for.
+pub const UNREAD_QUERY: &str = "is:unread";
+
+/// Combine the user's search text with the unread filter, or return `None` when
+/// neither is asked for (so the caller keeps using the plain listing endpoint).
+/// PURE — unit-tested, because the two inputs compose in the one place that can
+/// get it wrong: a filter that replaced the search would silently widen the
+/// result the moment both are on.
+pub fn search_query(search: Option<&str>, unread_only: bool) -> Option<String> {
+    let text = search.map(str::trim).filter(|q| !q.is_empty());
+    match (text, unread_only) {
+        (Some(q), true) => Some(format!("{q} {UNREAD_QUERY}")),
+        (Some(q), false) => Some(q.to_string()),
+        (None, true) => Some(UNREAD_QUERY.to_string()),
+        (None, false) => None,
+    }
+}
+
+/// Mark EVERY captured message read (`PUT /api/v1/messages`, no IDs and no
+/// search — Mailpit's documented "then all mailbox messages are updated").
+///
+/// The empty body is the whole point here and a trap everywhere else: the same
+/// shape on `DELETE` means "delete everything", which is why [`delete`] refuses
+/// an empty ID list rather than falling through to a wipe. Marking all read is
+/// spelled as its OWN function for that reason — there is no id-taking variant
+/// that can be called with an empty list and quietly do this.
+pub async fn mark_all_read() -> Result<()> {
+    let url = format!("{}/api/v1/messages", api_base());
+    client()
+        .put(&url)
+        .json(&serde_json::json!({ "Read": true }))
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("mailpit PUT {url}: {e}")))?
+        .error_for_status()
+        .map_err(|e| Error::Other(format!("mailpit PUT {url}: {e}")))?;
+    Ok(())
+}
+
 /// Minimal percent-encoding for a search query (keeps unreserved chars; encodes
 /// the rest as %XX). Avoids a url crate dependency for this one small use.
 fn url_encode(s: &str) -> String {
@@ -371,6 +415,23 @@ mod tests {
         assert_eq!(url_encode("hello world"), "hello%20world");
         assert_eq!(url_encode("a@b.test"), "a%40b.test");
         assert_eq!(url_encode("Az0-_.~"), "Az0-_.~");
+    }
+
+    #[test]
+    fn the_unread_filter_narrows_a_search_instead_of_replacing_it() {
+        // Both on: the terms COMPOSE. A filter that replaced the search would
+        // widen the list at the exact moment the user was narrowing it — and
+        // it would look like it worked, because unread mail did appear.
+        assert_eq!(search_query(Some("invoice"), true).as_deref(), Some("invoice is:unread"));
+        assert_eq!(search_query(Some("invoice"), false).as_deref(), Some("invoice"));
+        assert_eq!(search_query(None, true).as_deref(), Some("is:unread"));
+        // Neither: None, so the caller keeps the plain listing endpoint rather
+        // than searching for an empty string.
+        assert_eq!(search_query(None, false), None);
+        assert_eq!(search_query(Some("   "), false), None);
+        assert_eq!(search_query(Some("  "), true).as_deref(), Some("is:unread"));
+        // Whitespace around real text is trimmed, not carried into the query.
+        assert_eq!(search_query(Some(" hi "), true).as_deref(), Some("hi is:unread"));
     }
 
     #[test]

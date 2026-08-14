@@ -57,13 +57,28 @@ pub async fn stop_mail(state: State<'_, AppState>) -> Result<()> {
     mgr.stop_mailpit(state.platform.as_ref())
 }
 
-/// Inbox listing, optionally filtered by a Mailpit search query (§2.3).
+/// Inbox listing, optionally filtered by a Mailpit search query and/or the
+/// unread filter (§2.3).
+///
+/// `unread_only` is a flag rather than something the UI splices into `query`
+/// itself: the two compose in ONE place (`mail::search_query`), so the filter
+/// can never replace the search — which would widen the list at the moment the
+/// user was narrowing it, and look like it worked.
 #[tauri::command]
 pub async fn mailpit_messages(
     _state: State<'_, AppState>,
     query: Option<String>,
+    unread_only: Option<bool>,
 ) -> Result<mail::MailList> {
-    mail::list(query.as_deref()).await
+    let q = mail::search_query(query.as_deref(), unread_only.unwrap_or(false));
+    mail::list(q.as_deref()).await
+}
+
+/// Mark every captured message read ("Mark all read"). Not per-id on purpose —
+/// see `mail::mark_all_read` for why the all-messages case is its own function.
+#[tauri::command]
+pub async fn mailpit_mark_all_read(_state: State<'_, AppState>) -> Result<()> {
+    mail::mark_all_read().await
 }
 
 /// One message (body + headers) for the preview pane; marks it read.
