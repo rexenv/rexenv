@@ -140,6 +140,11 @@ it can:
   download and no service; leg C is the control (an already-in-tree path must be left
   ALONE, or leg A would pass for the boring reason that the predicate rejects
   everything), and the plant — restoring the old prefix test — fails leg A by name.
+  **`php_fpm_serve` takes a VERSION argument** (`cargo run --example php_fpm_serve
+  7.4.33`) for the same reason: the pool config generator emits one file per
+  minor, so "php-fpm accepts it" is a claim about each minor's own binary. Reading
+  `PHP_VERSION` could only ever ask about the newest, which is the version least
+  likely to break — 7.4's php-fpm is a different program (ledger #327).
   A live check does not have to be networked to earn its layer: `git_site_clone_check`
   (sandbox tier) builds its own fixture repositories with real `git init`/`commit` and
   clones them locally, so it needs no remote, no credentials and no service — and it
