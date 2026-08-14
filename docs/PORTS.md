@@ -12,7 +12,7 @@ binary, update THIS file in the same commit.
 | Caddy admin | **unix socket** (`<config>/caddy-admin.sock`, `0600`) — never TCP `:2019` | — | `core/proxy.rs` `ADMIN_SOCKET_FILE` |
 | Embedded DNS | **15353** | UDP | `core/dns.rs` `DEFAULT_DNS_PORT` |
 | Shared Nginx | **18088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` |
-| php-fpm pools | **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (8.0–8.5, one pool per installed minor) |
+| php-fpm pools | **9774**, **9780–9785** | TCP | `core/php.rs` — `9700 + major*10 + minor` (7.4 and 8.0–8.5, one pool per installed minor). **Not contiguous**: 7.4 → 9774 sits below the 8.x block, which is the formula being honest rather than a range being tidy |
 | php-fpm DEBUG (Xdebug) pools | **9981–9985** | TCP | `core/php.rs` — `9900 + major*10 + minor` (8.1–8.5 only; started on demand for Xdebug-toggled sites) |
 | Xdebug DBGp (IDE listens) | **9003** | TCP | Xdebug default — outbound from PHP to the IDE, rexenv binds nothing |
 | FrankenPHP override backends | **8200–8299** (per-site, RECORDED — allocated lowest-free, collision-free; never re-derived) | TCP | `core/frankenphp.rs` `FRANKENPHP_BASE_PORT`, `sites.override_port` |

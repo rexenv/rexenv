@@ -92,10 +92,11 @@ hoist the list once and pass it in.
 
 ## 3. PHP mapping and the two traps
 
-We pin 8.0–8.5; **7.4 has no build and never will** (static-php.dev never published it).
+We pin **7.4 and 8.0–8.5**. The line here used to read *"7.4 has no build and never will"* — true of static-php.dev, false of PHP: rexenv builds and hosts 7.4 itself since 14 Aug 2026 (`docs/PLAN-php-74-support.md`). **A Valet/Herd project isolated to 7.4 now imports onto a real 7.4 pool** instead of being the canonical needs-attention row.
 
 - Marker minor is in our pinned set → map straight across.
-- Marker minor is not pinned (7.4, or anything newer than we ship) → **needs attention**
+- Marker minor is not pinned (7.2 or older, or anything newer than we ship — **7.4 is
+  pinned now**) → **needs attention**
   with an explicit choice: import on a named available version, or skip this site. Never
   a silent substitution.
 

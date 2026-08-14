@@ -3,7 +3,7 @@
 A native, lightweight, limitless local development environment for web & WordPress developers. **No Docker.** macOS first, then Windows and Linux.
 
 > **Status:** Phases 1–3 and the deferred-services family are **complete on macOS** —
-> one-click WordPress on real `https://*.rex`, multi-PHP (8.0–8.5), Nginx + per-site
+> one-click WordPress on real `https://*.rex`, multi-PHP (7.4–8.5), Nginx + per-site
 > FrankenPHP/Apache, MySQL/MariaDB per site + PostgreSQL/Redis, per-engine DB version
 > switching, WordPress Manager (incl. multisite), Mailpit, Adminer, logs, terminal,
 > Cloudflare tunnels, blueprints, autostart — plus, since July 2026: linked sites
@@ -19,7 +19,7 @@ A native, lightweight, limitless local development environment for web & WordPre
 
 One app to run your entire local stack — web servers (**Nginx**, per-site **FrankenPHP**
 or **Apache** with `.htaccess`; OpenLiteSpeed blocked upstream — no macOS binary exists),
-multiple PHP versions (8.0–8.5), databases (**MySQL** or **MariaDB** per site,
+multiple PHP versions (7.4–8.5), databases (**MySQL** or **MariaDB** per site,
 **PostgreSQL**, **Redis** — each engine switchable between pinned versions with
 per-version data dirs), one-click WordPress with a full plugin/theme/user/
 **multisite** manager, local `.rex` domains with auto-HTTPS, mail catching (Mailpit), a DB
@@ -156,7 +156,7 @@ rexenv/
         │   ├── service_manager.rs  # owns the stack: dbs, pools, overrides, mail, edge
         │   ├── sites.rs · site_env.rs · site_metrics.rs   # lifecycle, env vars, metrics
         │   ├── services.rs     # nginx + php-fpm config gen & control
-        │   ├── php.rs · phpconf.rs  # multi-version pools (8.0–8.5); wp-config/.env readers
+        │   ├── php.rs · phpconf.rs  # multi-version pools (7.4–8.5); wp-config/.env readers
         │   ├── frankenphp.rs · apache.rs   # per-site override backends (loopback, never the edge)
         │   ├── proxy.rs        # Caddy edge (unix-socket admin, root daemon, adoption)
         │   ├── database.rs · mariadb.rs · postgres.rs · redis.rs · db.rs   # engines + DbEngine
@@ -199,7 +199,7 @@ rexenv/
 ## Build phases (summary)
 
 1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test` (now `*.rex`).
-2. **Phase 2 core** — ✅ done. Multi-PHP (8.0–8.5), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *The once-deferred services shipped later via Homebrew-bottle **bundles** (`resolve_bundle` + `prepare_binary_tree` dylib relinking): **Redis**, **MariaDB** (+ per-site MySQL/MariaDB choice at create), **Apache** override, and per-engine DB **version switching** (per-series data dirs). OpenLiteSpeed stays blocked upstream — no macOS binary exists (`docs/TODO.md` "Blocked").*
+2. **Phase 2 core** — ✅ done. Multi-PHP (7.4–8.5; 7.4 is rexenv's OWN build, hosted in `rexenv/runtimes` — static-php.dev publishes none), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *The once-deferred services shipped later via Homebrew-bottle **bundles** (`resolve_bundle` + `prepare_binary_tree` dylib relinking): **Redis**, **MariaDB** (+ per-site MySQL/MariaDB choice at create), **Apache** override, and per-engine DB **version switching** (per-series data dirs). OpenLiteSpeed stays blocked upstream — no macOS binary exists (`docs/TODO.md` "Blocked").*
 3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
 4. **Release** — hardening + `.dmg` packaging done except the clean-Mac verification (`docs/TODO.md`); audit history in `docs/archive/`.
 5. **Phase 4/5** — Windows, then Linux ports (fill the `platform/` stubs).

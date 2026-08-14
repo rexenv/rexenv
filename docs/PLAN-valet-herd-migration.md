@@ -244,12 +244,14 @@ one per site) — note as future, don't build it here.
 ### d) PHP versions
 
 **The premise that we lack 8.1/8.2 is stale — we already pin 8.0.30 / 8.1.34 / 8.2.31 /
-8.3.31 / 8.4.23 / 8.5.8** (`core/binaries.rs:20-28`; pools 9780–9785). The dominant Valet/Herd cohort maps exactly. Genuinely absent: **7.4**
+8.3.31 / 8.4.23 / 8.5.8** plus **7.4.33** (`core/binaries.rs`; pools 9774 + 9780–9785). The dominant Valet/Herd cohort maps exactly, and **7.4 — once the one genuinely absent minor — now maps too** (rexenv builds it: `docs/PLAN-php-74-support.md`).
 (static-php.dev never published it — needs a self-hosted build, the same blocked class as
 the Xdebug debug build) and anything older.
 
-- Unavailable version → surface honestly per site ("PHP 7.4 not available — import with
-  8.0? the site may break"), explicit choice, **never a silent substitute**.
+- Unavailable version → surface honestly per site ("PHP 7.2 not available — import with
+  7.4? the site may break"), explicit choice, **never a silent substitute**. *(The example
+  said 7.4 until rexenv started shipping it — pick the example from what is actually
+  unpinned, or this line teaches the wrong lesson.)*
 - **Trap 1:** a site row referencing an unpinned version silently serves on the DEFAULT
   pool today (`pool_port_for`, `core/sites.rs:905-911`) — that's exactly the silent
   substitution we forbid, so the importer must never write an unpinned version.

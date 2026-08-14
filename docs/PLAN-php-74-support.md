@@ -1,8 +1,23 @@
 # PHP 7.4 support — where the binary comes from, and what shipping it costs
 
-**Status: PLANNED 14 Aug 2026** against `67712c7`. Not started. Supersedes the standing
-claim, repeated in four docs and eight tests, that **7.4 "has no build and never will."**
-That sentence was true about *static-php.dev* and false about *PHP*. It is now retired.
+**Status: SHIPPED 15 Aug 2026.** PHP 7.4.33 is a first-class minor: built by
+`rexenv/runtimes` (release `php-7.4.33-1`, immutable), pinned by SHA-256, and
+run-proven through rexenv's own download → verify → relink → sign → exec path
+(`php_versions_check`: *"all 7 PHP versions resolved"*). Planned against `67712c7`.
+
+Supersedes the standing claim, repeated in four docs and eight tests, that
+**7.4 "has no build and never will."** That sentence was true about
+*static-php.dev* and false about *PHP*. It is retired, and every doc that carried
+it is corrected rather than merely annotated.
+
+**What shipped vs what is deferred**, so the difference is stated and not discovered:
+
+| | |
+|---|---|
+| ✅ 7.4.33 cli + fpm, both arches, pool 9774 | 39 extensions incl. **gd, intl, mysqli** |
+| ✅ EOL tell covering 7.4 **and** 8.0/8.1 | ✅ FrankenPHP × 7.4 refused in core (#326) |
+| ❌ **No Xdebug on 7.4** — measured, §10c | ❌ No `opcache` — spc cannot build it for 7.4 |
+| ⏳ Extension set narrower than the 8.x rows | S1.2 in `docs/TODO.md` |
 
 Goal: a rexenv site can run PHP 7.4, from the same picker, with the same pool model, as
 every other minor — because the legacy WordPress and Laravel projects developers actually

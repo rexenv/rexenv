@@ -57,7 +57,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
                 shared Nginx :18088 (ONE process, a server block per site, vhost by server_name)
                      │  fastcgi_pass → the site's PHP version's pool
                      ▼
-                php-fpm pool 978x (ONE pool per PHP minor, not per site)
+                php-fpm pool 9774 / 978x (ONE pool per PHP minor, not per site)
                      ▼
                 WordPress → the site's DB ENGINE: MySQL :13306 or MariaDB :13307
                 (per-site `sites.db_engine`, chosen at create, immutable after —

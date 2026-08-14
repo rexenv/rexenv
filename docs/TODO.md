@@ -149,9 +149,13 @@ evidence cited.
 - [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
   fix for #251 — the mu-plugin covers the WordPress HTTP API, not raw `curl_init()` in
   a plugin, and not non-WordPress PHP apps rexenv hosts). Needs a self-built
-  static-php (`--enable-threaded-resolver` instead of `--enable-ares`) for 6 minors ×
-  cli/fpm × 2 arches, i.e. the same self-hosted-artifact path the Xdebug debug build is
-  blocked on (`docs/xdebug-debug-build.md`). Until then `wp_dns_check` FAILS LOUDLY the
+  static-php (`--enable-threaded-resolver` instead of `--enable-ares`) for 7 minors ×
+  cli/fpm × 2 arches. **That path is no longer blocked** — it was "the same
+  self-hosted-artifact path the Xdebug debug build is blocked on", and as of
+  14 Aug 2026 `rexenv/runtimes` builds, gates, signs and publishes exactly this
+  shape of artifact (`docs/PLAN-php-74-support.md`). What remains is deciding
+  whether to rebuild all seven minors ourselves, which is a much larger
+  commitment than one EOL version nobody else publishes. Until then `wp_dns_check` FAILS LOUDLY the
   day a build stops using c-ares — that is the signal this item is done.
 - [ ] **DNS agent answers ARBITRARY names when queried directly** (found in the
   28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
@@ -407,12 +411,27 @@ evidence cited.
     exists. Ledger #323, plant-proven. `manifest_pins_every_pinned_php_version`
     strengthened from URL *shape* to HOST — shape was the hole: every 404 in this
     family has the right shape.
-  - [ ] **S1.1 — `rexenv/runtimes` + the build workflow.** OWNER DECISION: public
-    repo (needed for free attestations) and the licence read (PLAN §6.5) — the one
-    item that cannot be fixed by a later commit.
-  - [ ] **S2.1 / S2.2 / S3** — pin + `PHP_VERSIONS`, doc sweep, live proof.
-    Note `verify.sh` cannot gate any of this: `php_versions_check` is NETWORK tier
-    and `php_pools_serve` is SERVICE tier.
+  - [x] **S1.1 — `rexenv/runtimes` + the build workflow.** ✓ Public repo created
+    15 Aug 2026 with the workflow, four publish gates, licence collection (a source
+    with no findable licence FAILS the build) and the immutability contract. 14
+    build rounds; the three real blockers were all fixes upstream had already made
+    and 7.4 never received — PLAN §10c.
+  - [x] **S2.1 — pin + `PHP_VERSIONS`.** ✓ Ledger #325. Pinned from the bytes rexenv
+    itself downloads, cross-checked against the release's SHA256SUMS, run-proven by
+    hand AND through `php_versions_check`. The resolvability assertion flipped in
+    the same commit as the pin.
+  - [x] **S2.2 — doc sweep.** ✓ PORTS/ARCHITECTURE/README/valet-import/valet-migration
+    corrected in place; the c-ares item's "blocked on the self-hosted path" is
+    retired because that path now exists.
+  - [ ] **S3 — live proof beyond the download.** `php_versions_check` (NETWORK)
+    proves 7.4 downloads, verifies, signs and RUNS. Still owed: a 7.4 site actually
+    SERVING — `php_pools_serve` is SERVICE tier, and neither runs in `verify.sh`, so
+    a green verify says nothing about either.
+  - [ ] **S1.2 — grow the 7.4 extension set toward the 8.x rows.** Shipped set is the
+    WordPress/Laravel-critical core (39 modules). The 8.x bulk rows also carry dba,
+    pgsql, redis, soap, xsl, sysv*, gmp, bz2, ftp, calendar, posix, pcntl, readline,
+    shmop. Add back one at a time with CI as the judge: every extension drags
+    libraries into the one shared LIBS line, which is what made gd expensive.
 
 ## Ledger-driven proof backlog
 
