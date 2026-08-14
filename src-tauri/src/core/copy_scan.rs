@@ -20,7 +20,21 @@
 //! naming precisely the bug — that a test module can sit mid-file, so cutting at
 //! the first `#[cfg(test)]` silently stops covering the rest — and the next two
 //! scanners went naive anyway, one of them written while citing the other
-//! defect. Extraction is what documentation could not do here: the right code
+//! defect.
+//!
+//! **The sharpest instance came later, 14 Aug 2026, and it is the one to quote:**
+//! a guard was placed at path CONSTRUCTION rather than at the point of USE
+//! (`proxy::admin_socket_path` vs `start_privileged`), turning a working example
+//! into a hard failure. The lesson "a guard belongs where the thing is used" had
+//! been WRITTEN UP THAT SAME DAY, by the same author, one commit earlier — the
+//! Apache/FrankenPHP dotfile legs exist because a guard proven as a string had
+//! never met the server that reads it. So the note did not fail because nobody
+//! had read it; it failed on the person who wrote it, within an hour. Writing a
+//! lesson down does not install it. What caught it was INTEGRATION — migrating a
+//! real caller onto the new code in the same session — not the note, and not
+//! review.
+//!
+//! Extraction is what documentation could not do here: the right code
 //! and its explanation were both already in the repo, in the file the third
 //! guard was written to scan.
 //!

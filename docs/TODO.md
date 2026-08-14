@@ -438,6 +438,17 @@ first:
   again by running nine in a row. Until the pin is structural, snapshot the folder before
   any bulk example run so the delta is attributable.
 
+- [ ] ❓ **Does `tunnels::stop` routinely need SIGTERM?** Observed once, 14 Aug 2026, on
+  the first run of `common::adopt_public_tunnel`: cloudflared was still alive 3s after
+  `tunnels::stop`, and the guard's escalation stopped it. **One sighting is not a
+  finding** — it may be a defect in the stop path or simply a graceful shutdown slower
+  than a 3s window, and convicting `tunnels::stop` on a single observation would be the
+  attribution-by-elimination move this file keeps refusing. What makes it worth queuing:
+  if it IS routine, production's own stop path has the same gap and nothing there
+  escalates. Not urgent — the app's exit hook and the crash sweep both cover a survivor —
+  so the plan is to watch the guard's output over the next few tunnel runs and open it
+  properly only if it recurs.
+
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled
