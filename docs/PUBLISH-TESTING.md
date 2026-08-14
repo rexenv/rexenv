@@ -377,10 +377,13 @@ exactly with the scan, not that any machine matches the original pass.
    (Herd's copy wins). No domain appears twice.
 5. **PHP pins** — rows with isolation markers show their pinned minor (both
    marker formats — `php@8.4`-style and bare-digit); rows with no marker show
-   the default. **Expected, not a bug:** a pin rexenv doesn't ship (anything outside
-   PHP 8.0–8.5) flips the row AMBER "needs attention — PHP x.y isn't one rexenv ships,
-   choose a version to import it on", still shows their pin, and disables its checkbox
-   until you pick one (a legacy 7.4-isolated project renders this).
+   the default. **Expected, not a bug:** a pin rexenv doesn't ship flips the row
+   AMBER "needs attention — PHP x.y isn't one rexenv ships, choose a version to
+   import it on", still shows their pin, and disables its checkbox until you pick one.
+   **Needs a fixture project isolated to a minor rexenv genuinely does not ship** —
+   this said "a legacy 7.4-isolated project" on the belief 7.4 was unshippable, which
+   `docs/PLAN-php-74-support.md` retired. Check the shipped set first and pick below
+   it (7.2 today), or this gate silently stops testing the amber branch it names.
 6. **Docroot resolution** — a Laravel/Bedrock row must show `(serving public/)`
    or `(serving web/)`, not the project root. **Two amber "needs attention" cases are
    also expected here, not bugs:** a project with a `LocalValetDriver.php` in its root

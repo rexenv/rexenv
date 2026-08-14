@@ -1287,16 +1287,23 @@ mod tests {
     #[test]
     fn an_unshipped_php_version_is_refused_by_name_never_substituted() {
         // The import path's rule, and it binds harder for an agent: silently
-        // bumping 7.4 to 8.0 would have it report a compatibility result for a
-        // version it never tested. Worse than a refusal, and invisible.
+        // bumping an unshipped minor to a neighbour would have it report a
+        // compatibility result for a version it never tested. Worse than a
+        // refusal, and invisible.
+        //
+        // The asked-for version is DERIVED (`php::unshipped_minor`), not the
+        // `7.4` literal this used to carry — that literal was chosen on the
+        // belief 7.4 could never ship, and this test would have gone vacuous
+        // the day it did.
         let conn = crate::state::db::open_in_memory().unwrap();
         let mut row = test_site("c58e0a41-7d2f-4b19-93a6-6e1c5d8f0a24", "probe.scratch.rex", SiteOrigin::Agent);
         row.expires_at = Some("2099-01-01 00:00:00".into());
         crate::state::store::insert_site(&conn, &row).unwrap();
 
         // The refusal lives in CORE, so the CLI and UI give the same answer.
-        let err = crate::core::sites::set_php_version(&conn, &row.id, "7.4").unwrap_err().to_string();
-        assert!(err.contains("no PHP 7.4 build"), "names what was asked for: {err}");
+        let asked = crate::core::php::unshipped_minor();
+        let err = crate::core::sites::set_php_version(&conn, &row.id, asked).unwrap_err().to_string();
+        assert!(err.contains(&format!("no PHP {asked} build")), "names what was asked for: {err}");
         for shipped in crate::core::php::available_minors() {
             assert!(err.contains(&shipped), "the refusal must name `{shipped}`: {err}");
         }

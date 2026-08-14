@@ -275,6 +275,7 @@ L3 = scripted manual.
 | 109 | php.rs:75 | Unsupported minor can never grow a debug pool | ✅ lib test |
 | 110 | php.rs:905 | Alive-in-grace never reaped; dead master always | ✅ lib test |
 | 111 | site_env.rs:4 | Per-site env never touches shared pools; unescapables rejected | ✅ 4 lib tests |
+| 318 | core/php.rs (`unshipped_minor`, `unshipped_patch`) + its consumers in core/php.rs, core/sites.rs, core/binaries.rs, mcp_server/scratch.rs, examples/mcp_scratch_check.rs | **The "a version rexenv does not ship" fixture is DERIVED from `PHP_VERSIONS`, so it cannot outlive the belief that made it true.** `7.4` was that fixture in eight asserts, one live example and two manual steps, chosen on a comment saying static-php.dev would never publish it — and the moment 7.4 gains a pin, `is_outdated_php_cache("php-7.4.33")` keeps **passing for the opposite reason**: 7.4.33 becomes the pinned patch, so "not outdated" is trivially true and the unpinned-minor branch it existed to cover goes untested. Same family as #224's derived refusal set and the same defect as the ledger's vacuous-green rows: the assert and the thing it claims to check stop pointing at each other, silently. Candidates are minors OLDER than any floor rexenv plans, and exhausting them PANICS rather than returning a shipped one — a fixture that cannot be found is a loud failure, never a quiet substitution | ✅ `the_unshipped_fixture_is_derived_from_the_pinned_set` (absent from `patch_for_minor` AND `available_minors`, and still port-derivable so the refusal/cache branches take their real paths). **Plant-proven 14 Aug 2026**: adding `7.2.34` to `PHP_VERSIONS` and re-running the four consumers stays green — the fixture moved to the next candidate on its own, which is exactly what the `7.4` literal could not do. **Scope, stated:** `docs/SMOKE-TEST.md` step 12 and `docs/PUBLISH-TESTING.md` step 5 are human steps and still carry a literal (7.2); both now say to check the shipped set first, which is prose, not a guard |
 
 ## Witness-type modules (confverify / dbdump / dbrestore / dbmirror / dbsource / confedit / confrewrite / dbcompat)
 
@@ -484,7 +485,7 @@ WP-CLI packages tell #301; the per-site artifact sweep #302 and the sites-folder
 end-of-output cut #316 and the diagnostics-to-stderr flag #317, the two halves
 that stopped a plugin's shutdown hook and PHP's own deprecations from breaking
 every WordPress screen on a PHP 8.4 / 8.5 site):
-**✅ 234 · ◐ 49 · 🔨 29 · 🚫 5** of 317 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+**✅ 235 · ◐ 49 · 🔨 29 · 🚫 5** of 318 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

@@ -21,9 +21,11 @@ pub const PHP_VERSION: &str = "8.3.31";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
-/// 7.4 is deliberately absent: static-php.dev never published it — offering it
-/// needs a self-built + self-hosted artifact (same blocked path as the Xdebug
-/// debug build). 8.0 is upstream-EOL, frozen at 8.0.30 (its only bulk build).
+/// 7.4 is absent **because this list is static-php.dev's bulk set and that source
+/// has none** — not because no 7.4 build can exist. That second reading was the
+/// standing belief here and it is wrong: static-php-cli has no version floor, and
+/// `docs/PLAN-php-74-support.md` carries the self-build + hosting design that
+/// closes it. 8.0 is upstream-EOL, frozen at 8.0.30 (its only bulk build).
 pub const PHP_VERSIONS: &[&str] =
     &["8.0.30", "8.1.34", "8.2.31", "8.3.31", "8.4.23", "8.5.8"];
 /// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
@@ -2341,7 +2343,7 @@ mod tests {
     fn xdebug_is_refused_for_php_80_and_unknown_minors() {
         // 8.0's static build exports no Zend symbols — dlopen fails, so the
         // toggle must be unofferable by construction.
-        for minor in ["8.0", "7.4", "9.0", ""] {
+        for minor in ["8.0", crate::core::php::unshipped_minor(), "9.0", ""] {
             assert!(!xdebug_supported(minor), "{minor}");
             assert!(xdebug_bundle_id(minor).is_none());
             assert!(bundle_manifest(&format!("xdebug-{minor}"), XDEBUG_VERSION, "macos", Arch::Arm64)
@@ -2444,8 +2446,15 @@ mod tests {
         assert!(!is_outdated_php_cache(".staging-php-8.3.31-123-0"));
         assert!(!is_outdated_php_cache("php-8.3"));
         assert!(!is_outdated_php_cache("php-8.3.31.1"));
-        assert!(!is_outdated_php_cache("php-8.6.1")); // unpinned minor
-        assert!(!is_outdated_php_cache("php-7.4.33")); // unpinned minor
+        assert!(!is_outdated_php_cache("php-8.6.1")); // unpinned minor (newer app)
+        // …and an unpinned minor OLDER than the set. This was `php-7.4.33`, and
+        // that literal would keep this assert GREEN the day 7.4 gains a pin —
+        // for the opposite reason (7.4.33 becomes the pinned patch, so "not
+        // outdated" is trivially true and the unpinned branch stops being
+        // covered). Derived, so it cannot rot that way. See `php::unshipped_minor`.
+        let older = format!("php-{}", crate::core::php::unshipped_patch());
+        assert!(!is_outdated_php_cache(&older), "{older}");
+        assert!(!is_outdated_php_cache(&format!("php-fpm-{}", crate::core::php::unshipped_patch())));
     }
 
     #[test]

@@ -1106,8 +1106,10 @@ pub fn set_php_version(conn: &Connection, id: &str, version: &str) -> Result<Opt
         // NAME what is available; never substitute a neighbouring minor. The
         // import path settled this rule (`phpTarget: null` when theirs isn't one
         // we ship, so the user chooses) and it holds harder for an agent: a
-        // silent bump from 7.4 to 8.0 would have it report a compatibility
-        // result for a version it never tested. The set is derived, not listed
+        // silent bump to the nearest shipped minor would have it report a
+        // compatibility result for a version it never tested — and the nearer
+        // the substitute, the more convincing the wrong answer. The set is
+        // derived, not listed
         // again, so this sentence cannot outlive the versions it names.
         return Err(Error::Other(format!(
             "rexenv has no PHP {minor} build. Available: {}.",
@@ -3852,7 +3854,7 @@ mod tests {
         assert_eq!(u2.php_version, "8.2");
 
         // Unsupported version is rejected; unknown id is a no-op (None).
-        assert!(set_php_version(&conn, &site.id, "7.4").is_err());
+        assert!(set_php_version(&conn, &site.id, php::unshipped_minor()).is_err());
         assert!(set_php_version(&conn, "nope", "8.3").unwrap().is_none());
     }
 
@@ -3907,7 +3909,7 @@ mod tests {
 
         // An unknown version falls back to the default pool.
         let mut d = sample("D", "d.test");
-        d.php_version = "7.4".into();
+        d.php_version = php::unshipped_minor().into();
         let d = create(&conn, d).unwrap();
         assert_eq!(nginx_site_for(&d, &no_limits, &no_env).php_fpm_port, services::PHP_FPM_PORT);
     }

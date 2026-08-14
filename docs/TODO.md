@@ -332,10 +332,11 @@ evidence cited.
   `shivammathur/php-src-backports` (vanilla 7.4.33 fails on OpenSSL 3.6), hosted as
   immutable GitHub Release assets — one manifest arm + four checksums, versus ~76
   pinned digests for the ghcr-bottle alternative.
-  - [ ] **S0.1 — derive the "unshipped version" fixture.** 7.4 is the codebase's own
-    negative fixture in 8 asserts + 1 example + 2 manual steps. `binaries.rs:2448`
-    keeps PASSING after 7.4 ships, for the opposite reason. Derive it from
-    `PHP_VERSIONS`; another literal re-arms the trap for whoever ships 7.3.
+  - [x] **S0.1 — derive the "unshipped version" fixture.** ✓ `php::unshipped_minor()`
+    /`unshipped_patch()` walk candidates and PANIC if they all ship; all 8 asserts,
+    the example and both manual steps moved off the `7.4` literal. Ledger #318,
+    plant-proven (7.2.34 into `PHP_VERSIONS` → fixture self-heals to 7.1). The two
+    manual steps still carry a literal and the row says so.
   - [ ] **S0.2 — `needs_tree_relink` waves through an ESCAPING `@loader_path`.**
     `platform/macos/mod.rs:1660-1665`. Reproduced: `prepare_binary_tree` reports
     success over 49 Mach-Os and the binary dies in dyld; the dead tree then caches

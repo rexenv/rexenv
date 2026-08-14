@@ -392,9 +392,12 @@ YOUR OWN sites in the list. Keep the Sites page visible.
 Steps 6–11 gate what an agent can CREATE and RUN. These two surfaces are
 different: one refuses rather than guessing, and the other is the second place a
 user consents to something. Keep a scratch site from step 6 alive for these.
-- [ ] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.4."*
-  → REFUSED, and the refusal must **name the versions rexenv does have**
-  (8.0–8.5). Then ask for 8.1 → it switches, and SiteDetail shows 8.1. First
+- [ ] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.2."*
+  → REFUSED, and the refusal must **name the versions rexenv does have**. Ask for
+  whatever `php::unshipped_minor()` currently returns if 7.2 ever ships — this step
+  used to say 7.4 on the belief 7.4 was unshippable, and
+  `docs/PLAN-php-74-support.md` retired that. Then ask for 8.1 → it switches, and
+  SiteDetail shows 8.1. First
   switch to a version downloads it, so expect a slow call once.
   **Tells:** it silently uses a different version (an agent would then report a
   compatibility result for a version it never tested — worse than a refusal, and

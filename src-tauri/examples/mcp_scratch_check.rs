@@ -386,12 +386,16 @@ async fn main() {
     // 9) M2b — the PHP switch, for real. Every pinned minor is warm in the
     //    shared binary cache on a developer machine, so this is offline at the
     //    sandbox tier exactly as the tier promises.
+    //    The asked-for version is DERIVED from the pinned set, not a `7.4`
+    //    literal — that literal rested on 7.4 being unshippable, and this probe
+    //    would have gone vacuous the day it shipped.
+    let unshipped = rexenv_lib::core::php::unshipped_minor();
     let (is_err, text) = call(
         &mut stream, &mut reader, 70, "set_php_version",
-        serde_json::json!({ "site_id": ours.id, "version": "7.4" }),
+        serde_json::json!({ "site_id": ours.id, "version": unshipped }),
     );
     assert!(is_err, "an unshipped version must be refused: {text}");
-    assert!(text.contains("no PHP 7.4 build"), "names what was asked for: {text}");
+    assert!(text.contains(&format!("no PHP {unshipped} build")), "names what was asked for: {text}");
     for shipped in rexenv_lib::core::php::available_minors() {
         assert!(text.contains(&shipped), "the refusal must name `{shipped}`: {text}");
     }
@@ -422,7 +426,7 @@ async fn main() {
         assert!(now.is_scratch(), "the agent's PHP switch PROMOTED the site — a cap bypass");
         assert!(now.expires_at.is_some(), "…and cleared its expiry");
     }
-    println!("✓ set_php_version: 7.4 refused by name (row untouched), 8.2→8.3 switched, site NOT promoted");
+    println!("✓ set_php_version: {unshipped} refused by name (row untouched), 8.2→8.3 switched, site NOT promoted");
 
     // 10) M2b — mail. The three states are told apart by a STAT, so they are
     //     provable here without Mailpit; what needs a running Mailpit is the

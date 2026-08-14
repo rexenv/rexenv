@@ -66,6 +66,42 @@ pub fn patch_for_minor(minor: &str) -> Option<&'static str> {
         .find(|p| minor_of(p) == minor)
 }
 
+/// A PHP minor rexenv does **not** ship — the fixture every "refused by name"
+/// test and probe asks for. **Derived, never a literal**: it returns the first
+/// candidate `patch_for_minor` cannot resolve, so the day that minor gains a
+/// pinned build this PANICS instead of quietly testing nothing.
+///
+/// Why this is a function and not a `"7.4"` in each test. `7.4` was hardcoded as
+/// this fixture in eight asserts, one live example and two manual steps, on the
+/// strength of a comment saying static-php.dev would never publish it
+/// (`docs/PLAN-php-74-support.md` retires that). The moment 7.4 gains a pinned
+/// build, `is_outdated_php_cache("php-7.4.33")` keeps **passing** — for the
+/// OPPOSITE reason: 7.4.33 becomes the pinned patch, so "not outdated" is
+/// trivially true and the unpinned-minor branch it was written to cover goes
+/// untested. A literal fixture is a snapshot of a mutable fact; this is the fact
+/// itself, which is the same rule `available_minors` above already follows.
+///
+/// Public rather than `#[cfg(test)]` because `examples/mcp_scratch_check.rs` is a
+/// separate crate and needs the same answer — a second copy of the candidate list
+/// over there is precisely the drift being fixed.
+///
+/// The candidates are upstream-EOL minors OLDER than any floor rexenv plans, so a
+/// panic here is a real "we now ship PHP 7.0" alarm, not routine churn.
+pub fn unshipped_minor() -> &'static str {
+    const CANDIDATES: &[&str] = &["7.2", "7.1", "7.0", "5.6"];
+    CANDIDATES
+        .iter()
+        .copied()
+        .find(|m| patch_for_minor(m).is_none())
+        .expect("every unshipped-minor fixture candidate now has a pinned build — add an older one")
+}
+
+/// A full `x.y.z` in [`unshipped_minor`]'s series, for the rules that parse a
+/// patch string (cache-dir names). `.0` is a real release in every candidate.
+pub fn unshipped_patch() -> String {
+    format!("{}.0", unshipped_minor())
+}
+
 /// Deterministic loopback FastCGI port for a minor series (`"8.3"` → `9783`), or
 /// `None` if `minor` isn't exactly `major.minor` numeric.
 pub fn fpm_port(minor: &str) -> Option<u16> {
@@ -771,7 +807,8 @@ mod tests {
     #[test]
     fn minors_and_patches_track_pinned_builds() {
         let minors = all_minors();
-        // The offered set: 8.0–8.5 (no 7.4 — static-php never published it).
+        // The offered set today. A minor JOINING it is a deliberate pin change
+        // (docs/PLAN-php-74-support.md), so this list is a floor, not a ceiling.
         for want in ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"] {
             assert!(minors.contains(&want.to_string()), "missing {want}");
         }
@@ -781,7 +818,20 @@ mod tests {
             assert_eq!(&minor_of(patch), m);
             assert!(fpm_port(m).is_some());
         }
-        assert!(patch_for_minor("7.4").is_none());
+        assert!(patch_for_minor(unshipped_minor()).is_none());
+    }
+
+    /// The fixture must be a fact, not a literal — this is what makes every
+    /// "refused by name" assert below mean something.
+    #[test]
+    fn the_unshipped_fixture_is_derived_from_the_pinned_set() {
+        let m = unshipped_minor();
+        assert!(patch_for_minor(m).is_none(), "{m} is pinned — not a valid fixture");
+        assert!(!available_minors().contains(&m.to_string()), "{m}");
+        // …and it parses as a minor everywhere a real one would, so a refusal
+        // reads naturally and the port/cache rules exercise their real branches.
+        assert!(fpm_port(m).is_some(), "{m} must be port-derivable like any minor");
+        assert_eq!(minor_of(&unshipped_patch()), m);
     }
 
     #[test]
@@ -844,7 +894,7 @@ mod tests {
         // Can't default to an uninstalled version.
         assert!(set_default(&conn, "8.1").is_err());
         // Unknown version errors.
-        assert!(set_default(&conn, "7.4").is_err());
+        assert!(set_default(&conn, unshipped_minor()).is_err());
 
         // Install 8.1, then make it the default → exactly one default, and it moved.
         set_installed(&conn, "8.1", true).unwrap();
