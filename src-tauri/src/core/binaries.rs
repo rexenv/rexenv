@@ -106,14 +106,22 @@ pub const HTTPD_VERSION: &str = "2.4.68";
 /// apr / apr-util versions bundled into the httpd bundle.
 pub const BUNDLED_APR_VERSION: &str = "1.7.6";
 pub const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
-/// Pinned Xdebug version (per-site toggle, §8.2). ONE `xdebug.so` per PHP minor
-/// from shivammathur/homebrew-extensions bottles (the tap GitHub Actions
-/// setup-php uses on macOS) — they dlopen straight into our EXISTING static-php
-/// binaries (ABI = Zend API nr + NTS + non-debug, all matching; live-proven
-/// cli+fpm on 8.1–8.5, full DBGp handshake). No debug PHP build needed; the
-/// debug pool is the same fpm binary + `-d zend_extension`. PHP 8.0 is
-/// EXCLUDED: the Nov 2024 static 8.0.30 build exports no Zend symbols, so any
-/// external .so fails to dlopen (`_OnUpdateBool` unresolved).
+/// Xdebug version pinned for the CURRENT PHP minors (per-site toggle, §8.2). ONE
+/// `xdebug.so` per PHP minor from shivammathur/homebrew-extensions bottles (the
+/// tap GitHub Actions setup-php uses on macOS) — they dlopen straight into our
+/// EXISTING static-php binaries (ABI = Zend API nr + NTS + non-debug, all
+/// matching; live-proven cli+fpm on 8.1–8.5, full DBGp handshake). No debug PHP
+/// build needed; the debug pool is the same fpm binary + `-d zend_extension`.
+/// PHP 8.0 is EXCLUDED: the Nov 2024 static 8.0.30 build exports no Zend symbols,
+/// so any external .so fails to dlopen (`_OnUpdateBool` unresolved).
+///
+/// **This is a DEFAULT, not the law.** Xdebug's own support windows close: 3.1.6
+/// is the last release for PHP 7.4 and no later one will ever exist, so a single
+/// app-wide pin would make `xdebug-7.4` unresolvable by construction the day 7.4
+/// ships (`docs/PLAN-php-74-support.md` §4.6). The per-minor version lives in
+/// [`xdebug_bottle`]'s table beside the digests it must agree with — one row, one
+/// version, one pair of hashes, so a minor cannot end up asking for a `.so` that
+/// was never pinned for it.
 pub const XDEBUG_VERSION: &str = "3.5.3";
 
 /// How a downloaded artifact is packaged.
@@ -389,16 +397,32 @@ const XDEBUG_PHP84_BOTTLE_AMD64_SHA256: &str = "bf938d1b176343cd13be5ae1b786e1d0
 const XDEBUG_PHP85_BOTTLE_ARM64_SHA256: &str = "c648f2a92e7f1995fb95b46981b16ffa9048c4507625f12999e247e7a3b58581";
 const XDEBUG_PHP85_BOTTLE_AMD64_SHA256: &str = "068070ccb2080d8ce7a312fc934dfe3c6d5901c6527a20fcec783f78e619b53c";
 
-/// The formula + per-arch digests of the Xdebug bottle matching a PHP minor.
-/// `None` = no Xdebug for that minor (8.0's static build can't dlopen — see
-/// [`XDEBUG_VERSION`]). The single source of which minors support the toggle.
-fn xdebug_bottle(minor: &str) -> Option<(&'static str, &'static str, &'static str)> {
+/// One PHP minor's Xdebug row: the version pinned FOR THAT MINOR, the tap
+/// formula, and the two arch digests. Kept as one struct so the four facts can
+/// never be edited apart — a version bumped without its hashes is a 404, and
+/// hashes bumped without their version silently resolve the old cache dir.
+#[derive(Debug, Clone, Copy)]
+struct XdebugBottle {
+    /// Xdebug release for this minor. NOT necessarily [`XDEBUG_VERSION`]: a
+    /// minor past Xdebug's support window is frozen at its last release (7.4 →
+    /// 3.1.6, and there will never be a 3.2 for it).
+    version: &'static str,
+    formula: &'static str,
+    arm64: &'static str,
+    amd64: &'static str,
+}
+
+/// The Xdebug row for a PHP minor. `None` = no Xdebug for that minor (8.0's
+/// static build can't dlopen — see [`XDEBUG_VERSION`]). The single source of
+/// which minors support the toggle AND of which release each one gets.
+fn xdebug_bottle(minor: &str) -> Option<XdebugBottle> {
+    let row = |version, formula, arm64, amd64| Some(XdebugBottle { version, formula, arm64, amd64 });
     match minor {
-        "8.1" => Some(("xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256)),
-        "8.2" => Some(("xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256)),
-        "8.3" => Some(("xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256)),
-        "8.4" => Some(("xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256)),
-        "8.5" => Some(("xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256)),
+        "8.1" => row(XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256),
+        "8.2" => row(XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256),
+        "8.3" => row(XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256),
+        "8.4" => row(XDEBUG_VERSION, "xdebug@8.4", XDEBUG_PHP84_BOTTLE_ARM64_SHA256, XDEBUG_PHP84_BOTTLE_AMD64_SHA256),
+        "8.5" => row(XDEBUG_VERSION, "xdebug@8.5", XDEBUG_PHP85_BOTTLE_ARM64_SHA256, XDEBUG_PHP85_BOTTLE_AMD64_SHA256),
         _ => None,
     }
 }
@@ -408,12 +432,42 @@ pub fn xdebug_supported(minor: &str) -> bool {
     xdebug_bottle(minor).is_some()
 }
 
+/// The Xdebug release pinned for a PHP minor, or `None` where the toggle isn't
+/// offered. For the UI: the version a debug pool will actually load, which is
+/// not app-wide (see [`XDEBUG_VERSION`]).
+pub fn xdebug_version_for(minor: &str) -> Option<&'static str> {
+    xdebug_bottle(minor).map(|b| b.version)
+}
+
+/// The one-part bundle for an Xdebug row: a bare `xdebug.so` from the
+/// shivammathur/extensions tap (NOT homebrew/core), links only system
+/// libSystem+libz so the relink pass is a no-op and re-sign applies as usual.
+/// Loaded into the SAME static php-fpm by the debug pool (`core::php`), never a
+/// separate PHP build.
+///
+/// Pure and taking the ROW rather than the minor, so a frozen-version row can be
+/// exercised before one is in the table — which is the case this whole shape
+/// exists for.
+fn xdebug_spec(bottle: &XdebugBottle, arch: Arch) -> BundleSpec {
+    let digest = pick(arch, bottle.arm64, bottle.amd64);
+    BundleSpec {
+        member: "xdebug.so",
+        parts: vec![BundlePart {
+            formula: bottle.formula,
+            url: tap_bottle_url("shivammathur/extensions", bottle.formula, &digest),
+            checksum: Checksum::Sha256(digest),
+            include: &["xdebug.so"],
+        }],
+    }
+}
+
 /// The bundle (name, version) whose cached tree holds `xdebug.so` for a PHP
 /// minor — pass to [`resolve_bundle`]. The minor is baked into the NAME (the
-/// .so is ABI-bound to it); the VERSION is Xdebug's, so a pin bump busts the
-/// cache dir like every other binary.
+/// .so is ABI-bound to it); the VERSION is that minor's Xdebug release, so a pin
+/// bump busts the cache dir like every other binary — and a minor frozen at an
+/// older release keeps its own dir instead of colliding with the current one.
 pub fn xdebug_bundle_id(minor: &str) -> Option<(String, &'static str)> {
-    xdebug_bottle(minor).map(|_| (format!("xdebug-{minor}"), XDEBUG_VERSION))
+    xdebug_bottle(minor).map(|b| (format!("xdebug-{minor}"), b.version))
 }
 
 /// Caddy uses `mac_arm64`/`mac_amd64`; static-php uses `macos-aarch64`/`macos-x86_64`.
@@ -870,19 +924,16 @@ pub fn bundle_manifest(name: &str, version: &str, os: &str, arch: Arch) -> Optio
         // system libSystem+libz, so the relink pass is a no-op and re-sign
         // applies as usual. Loaded into the SAME static php-fpm by the debug
         // pool (`core::php`), never a separate PHP build.
-        (n, "macos", v) if n.starts_with("xdebug-") && v == XDEBUG_VERSION => {
-            let minor = n.strip_prefix("xdebug-")?;
-            let (formula, arm_sha, amd_sha) = xdebug_bottle(minor)?;
-            let digest = pick(arch, arm_sha, amd_sha);
-            Some(BundleSpec {
-                member: "xdebug.so",
-                parts: vec![BundlePart {
-                    formula,
-                    url: tap_bottle_url("shivammathur/extensions", formula, &digest),
-                    checksum: Checksum::Sha256(digest),
-                    include: &["xdebug.so"],
-                }],
-            })
+        // The version gate is THAT MINOR's pinned release, not one app-wide
+        // constant: a minor past Xdebug's support window is frozen at its last
+        // release, and gating on a single version would make its bundle
+        // unresolvable rather than merely older.
+        (n, "macos", v) if n.starts_with("xdebug-") => {
+            let bottle = xdebug_bottle(n.strip_prefix("xdebug-")?)?;
+            // Cache-dir identity is honest: only THIS minor's pinned release
+            // resolves. Comparing against the row rather than one app-wide
+            // constant is the whole point — see [`XdebugBottle::version`].
+            (v == bottle.version).then(|| xdebug_spec(&bottle, arch))
         }
         _ => None,
     }
@@ -2312,7 +2363,12 @@ mod tests {
             assert!(xdebug_supported(minor), "{minor}");
             let (name, version) = xdebug_bundle_id(minor).unwrap();
             assert_eq!(name, format!("xdebug-{minor}"));
+            // These minors are all inside Xdebug's current support window, so
+            // they sit at the default — asserted from the SAME accessor the UI
+            // reads, not from the constant, so a minor frozen at an older
+            // release would show up here rather than hide behind the constant.
             assert_eq!(version, XDEBUG_VERSION);
+            assert_eq!(xdebug_version_for(minor), Some(version));
             for arch in [Arch::Arm64, Arch::X86_64] {
                 let bundle = bundle_manifest(&name, version, "macos", arch).unwrap();
                 assert_eq!(bundle.member, "xdebug.so");
@@ -2346,11 +2402,56 @@ mod tests {
         for minor in ["8.0", crate::core::php::unshipped_minor(), "9.0", ""] {
             assert!(!xdebug_supported(minor), "{minor}");
             assert!(xdebug_bundle_id(minor).is_none());
+            assert!(xdebug_version_for(minor).is_none(), "{minor}");
             assert!(bundle_manifest(&format!("xdebug-{minor}"), XDEBUG_VERSION, "macos", Arch::Arm64)
                 .is_none());
         }
         // Wrong version never resolves (cache-dir identity is honest).
         assert!(bundle_manifest("xdebug-8.4", "0.0.1", "macos", Arch::Arm64).is_none());
+    }
+
+    /// The version a minor gets is that minor's ROW, never one app-wide pin.
+    /// 7.4's last Xdebug is 3.1.6 and no later one will exist, so a single
+    /// constant would make `xdebug-7.4` unresolvable the day 7.4 ships —
+    /// silently, because `bundle_manifest` returning None reads exactly like
+    /// "this minor has no Xdebug" (`docs/PLAN-php-74-support.md` §4.6).
+    #[test]
+    fn a_minors_xdebug_version_comes_from_its_own_row() {
+        // A row frozen OFF the default — the shape 7.4 will have. Built here
+        // rather than added to the table so the mechanism is proven BEFORE the
+        // first frozen minor ships, which is the only time the proof is worth
+        // anything: once 7.4 is in the table, a broken gate is a live bug.
+        let frozen = XdebugBottle {
+            version: "3.1.6", // the last Xdebug for PHP 7.4; there will be no other
+            formula: "xdebug@7.4",
+            arm64: XDEBUG_PHP81_BOTTLE_ARM64_SHA256, // stand-ins: identity is what's under test
+            amd64: XDEBUG_PHP81_BOTTLE_AMD64_SHA256,
+        };
+        assert_ne!(frozen.version, XDEBUG_VERSION, "the fixture must differ from the default");
+
+        // The spec follows the ROW: its formula, its digests, its tap path.
+        let spec = xdebug_spec(&frozen, Arch::Arm64);
+        assert_eq!(spec.member, "xdebug.so");
+        assert_eq!(spec.parts[0].formula, "xdebug@7.4");
+        assert!(
+            spec.parts[0].url.starts_with("https://ghcr.io/v2/shivammathur/extensions/xdebug/7.4/"),
+            "{}",
+            spec.parts[0].url
+        );
+        // …and the two arches stay distinct through the row, as everywhere else.
+        assert_ne!(
+            checksum_hex(&spec.parts[0].checksum),
+            checksum_hex(&xdebug_spec(&frozen, Arch::X86_64).parts[0].checksum)
+        );
+
+        // The GATE is the row's version, not the constant. For a supported
+        // minor, its own version resolves and any other — including a frozen
+        // minor's — does not. A single app-wide pin would invert this: the
+        // frozen minor would resolve to nothing, silently, and `None` reads
+        // exactly like "this minor has no Xdebug".
+        assert!(bundle_manifest("xdebug-8.4", XDEBUG_VERSION, "macos", Arch::Arm64).is_some());
+        assert!(bundle_manifest("xdebug-8.4", frozen.version, "macos", Arch::Arm64).is_none());
+        assert_eq!(xdebug_version_for("8.4"), Some(XDEBUG_VERSION));
     }
 
     #[test]

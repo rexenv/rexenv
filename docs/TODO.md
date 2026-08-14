@@ -351,8 +351,12 @@ evidence cited.
     repaired — this is what made #319 unrecoverable in the field rather than merely
     wrong. Neighbour of ledger #86. The fix is a load-proving marker (exec the
     member, or record a relink receipt), not another stat.
-  - [ ] **S0.4 — per-minor Xdebug version.** 7.4's last is 3.1.6; one global
-    `XDEBUG_VERSION` (`binaries.rs:115,414,871`) makes `xdebug-7.4` unresolvable.
+  - [x] **S0.4 — per-minor Xdebug version.** ✓ `XdebugBottle` carries version +
+    formula + both digests as ONE row; `bundle_manifest` gates on the row, not on
+    `XDEBUG_VERSION` (now the DEFAULT the in-window minors reference). Ledger #320,
+    plant-proven in both directions with a frozen `"7.4" => 3.1.6` row. The old gate
+    failed SILENTLY — `None` reads exactly like "this minor has no Xdebug", which is
+    a real state (8.0), so the bug wore a supported outcome's disguise.
   - [ ] **S0.5 — Xdebug support in the DTO.** `SiteDetail.tsx:909` hand-copies the
     core rule as `minor === "8.0"`; `lib/ipc/index.ts:406` copies another.
   - [ ] **S0.6 — the EOL tell.** `grep -ri 'eol' src/` → 0 hits, and 8.0 has been
