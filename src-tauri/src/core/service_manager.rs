@@ -247,7 +247,10 @@ const ADOPTED_MISS_LIMIT: u32 = 2;
 /// AND liveness), never `proc.alive()`/`kill -0` (a bare pid a recycled process
 /// would satisfy — the trap). A recycled foreign pid carries no app-data marker,
 /// so it reads as a miss and is correctly reaped.
-fn adopted_reap_decision(still_ours: bool, misses: u32, limit: u32) -> (u32, bool) {
+/// `pub(crate)`: the php-fpm pool reap (`core::php::pool_fate`, B29b) shares
+/// this exact contract rather than re-expressing it — one definition of
+/// "misses accumulate, health resets, reap at the limit".
+pub(crate) fn adopted_reap_decision(still_ours: bool, misses: u32, limit: u32) -> (u32, bool) {
     if still_ours {
         (0, false)
     } else {

@@ -492,6 +492,51 @@ struct Pool {
     child: Proc,
     /// Debug (Xdebug) pool — same binary, own port/config, `-d zend_extension`.
     debug: bool,
+    /// Consecutive `reap_dead` polls that read dead-looking (B29b). A probe
+    /// result is not positive evidence — a transient failed port probe on a
+    /// loaded box, or a momentary pid-table hiccup on an adopted master, must
+    /// not cost the user a serving pool. Reset to 0 by any healthy poll.
+    misses: u32,
+}
+
+/// Consecutive dead-looking polls before a pool is reaped on PROBE evidence
+/// (B29b). Same value and rationale as the adopted-service reap's
+/// `ADOPTED_MISS_LIMIT` (B29): the watchdog ticks every 10s, so 2 ≈ 20s —
+/// past any transient hiccup, still prompt for a genuinely dead pool. A
+/// spawned master whose `try_wait` reports exit is positive evidence and is
+/// reaped immediately, counter or no counter.
+const POOL_MISS_LIMIT: u32 = 2;
+
+/// What one poll could see of a pool's MASTER.
+enum MasterSight {
+    /// A spawned child whose `try_wait` returned an exit status — positive
+    /// evidence of death, not a probe. (The reverse, `Ok(None)`, is equally
+    /// positive: it is our own child handle, no recycle trap exists.)
+    ChildExited,
+    /// Probe evidence: for a spawned child, "alive" (true); for an ADOPTED
+    /// master, whether the pid POSITIVELY identifies as php-fpm — `kill -0`
+    /// alone would keep a dead pool alive on a recycled pid (the B29 trap).
+    Probed(bool),
+}
+
+/// One pool's fate from one poll (B29b). Returns `(new_misses, reap)`.
+///
+/// - [`MasterSight::ChildExited`] reaps immediately — a crash during start
+///   must restart, grace or no grace, and `try_wait` cannot flap.
+/// - Everything else is a probe: healthy = master identified AND (the port
+///   serves OR the child is within its start grace). The miss arithmetic is
+///   [`service_manager::adopted_reap_decision`] — the same contract, one
+///   definition. Note the AND: a `php-fpm`-titled listener on the port with
+///   the master GONE is the orphan-worker failure ("UI shows running, every
+///   site hangs") and must keep accruing misses even though the port answers.
+fn pool_fate(master: MasterSight, serving: bool, starting: bool, misses: u32) -> (u32, bool) {
+    match master {
+        MasterSight::ChildExited => (misses, true),
+        MasterSight::Probed(master_ok) => {
+            let healthy = master_ok && (serving || starting);
+            crate::core::service_manager::adopted_reap_decision(healthy, misses, POOL_MISS_LIMIT)
+        }
+    }
 }
 
 /// Owns one php-fpm master per PHP version. Held by the `ServiceManager`.
@@ -552,6 +597,7 @@ impl PhpFpmPools {
             port,
             child: child.into(),
             debug: false,
+            misses: 0,
         });
         Ok(())
     }
@@ -593,6 +639,7 @@ impl PhpFpmPools {
             port,
             child: child.into(),
             debug: true,
+            misses: 0,
         });
         Ok(())
     }
@@ -610,6 +657,7 @@ impl PhpFpmPools {
             port,
             child: Proc::Adopted(pid),
             debug,
+            misses: 0,
         });
     }
 
@@ -641,9 +689,30 @@ impl PhpFpmPools {
             // the lock) hasn't bound yet; killing it here is the watchdog/
             // Start-all race. Within the start grace, alive + not-listening
             // means "starting", not "dead".
-            let dead_now = !p.child.alive()
-                || (!services::fpm_running(p.port) && !p.child.starting());
-            if dead_now {
+            //
+            // B29b: probe evidence goes through a MISS COUNTER, never a single
+            // poll. Only a spawned child's `try_wait` exit — positive evidence
+            // — reaps immediately. An ADOPTED master is identified by its
+            // command line, not `kill -0`: a recycled pid must read as a miss.
+            let master = if p.child.is_adopted() {
+                let ours = platform
+                    .supervisor()
+                    .pid_command(p.child.id())
+                    .is_some_and(|cmd| cmd.contains("php-fpm"));
+                MasterSight::Probed(ours)
+            } else if !p.child.alive() {
+                MasterSight::ChildExited
+            } else {
+                MasterSight::Probed(true)
+            };
+            let (misses, reap) = pool_fate(
+                master,
+                services::fpm_running(p.port),
+                p.child.starting(),
+                p.misses,
+            );
+            p.misses = misses;
+            if reap {
                 dead.push(p);
             } else {
                 self.pools.push(p);
@@ -1121,44 +1190,53 @@ mod tests {
     /// alive + within the start grace must NOT be reaped. A dead master must
     /// still be reaped immediately, grace or no grace (a crash during start
     /// has to restart).
+    use crate::platform::traits::*;
+
+    /// Test supervisor: `pid_command` answers with a fixed string, so a test
+    /// chooses whether an adopted master identifies as php-fpm, something
+    /// recycled, or gone (`None`).
+    struct StubSupervisor {
+        cmd: Option<&'static str>,
+    }
+    impl ProcessSupervisor for StubSupervisor {
+        fn spawn(&self, _: &std::path::Path, _: &[String]) -> crate::error::Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn spawn_logged(
+            &self,
+            _: &std::path::Path,
+            _: &[String],
+            _: &std::path::Path,
+        ) -> crate::error::Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn stop(&self, _pid: u32) -> crate::error::Result<()> {
+            Ok(())
+        }
+        fn pid_command(&self, _pid: u32) -> Option<String> {
+            self.cmd.map(String::from)
+        }
+    }
+    struct StubPlatform(StubSupervisor);
+    impl Platform for StubPlatform {
+        fn supervisor(&self) -> &dyn ProcessSupervisor {
+            &self.0
+        }
+        fn paths(&self) -> &dyn Paths { unimplemented!() }
+        fn dns(&self) -> &dyn DnsManager { unimplemented!() }
+        fn cert_trust(&self) -> &dyn CertTrustManager { unimplemented!() }
+        fn privileges(&self) -> &dyn PrivilegeManager { unimplemented!() }
+        fn autostart(&self) -> &dyn AutostartManager { unimplemented!() }
+        fn permissions(&self) -> &dyn PermissionManager { unimplemented!() }
+        fn shell(&self) -> &dyn ShellRunner { unimplemented!() }
+        fn binaries(&self) -> &dyn BinaryProvider { unimplemented!() }
+        fn edge(&self) -> &dyn EdgeSupervisor { unimplemented!() }
+        fn dns_agent(&self) -> &dyn DnsAgentManager { unimplemented!() }
+    }
+
     #[test]
     fn reap_dead_spares_a_starting_child_but_reaps_a_dead_master() {
-        use crate::platform::traits::*;
-
-        struct StubSupervisor;
-        impl ProcessSupervisor for StubSupervisor {
-            fn spawn(&self, _: &std::path::Path, _: &[String]) -> crate::error::Result<std::process::Child> {
-                unimplemented!()
-            }
-            fn spawn_logged(
-                &self,
-                _: &std::path::Path,
-                _: &[String],
-                _: &std::path::Path,
-            ) -> crate::error::Result<std::process::Child> {
-                unimplemented!()
-            }
-            fn stop(&self, _pid: u32) -> crate::error::Result<()> {
-                Ok(())
-            }
-        }
-        struct StubPlatform(StubSupervisor);
-        impl Platform for StubPlatform {
-            fn supervisor(&self) -> &dyn ProcessSupervisor {
-                &self.0
-            }
-            fn paths(&self) -> &dyn Paths { unimplemented!() }
-            fn dns(&self) -> &dyn DnsManager { unimplemented!() }
-            fn cert_trust(&self) -> &dyn CertTrustManager { unimplemented!() }
-            fn privileges(&self) -> &dyn PrivilegeManager { unimplemented!() }
-            fn autostart(&self) -> &dyn AutostartManager { unimplemented!() }
-            fn permissions(&self) -> &dyn PermissionManager { unimplemented!() }
-            fn shell(&self) -> &dyn ShellRunner { unimplemented!() }
-            fn binaries(&self) -> &dyn BinaryProvider { unimplemented!() }
-            fn edge(&self) -> &dyn EdgeSupervisor { unimplemented!() }
-            fn dns_agent(&self) -> &dyn DnsAgentManager { unimplemented!() }
-        }
-        let platform = StubPlatform(StubSupervisor);
+        let platform = StubPlatform(StubSupervisor { cmd: None });
 
         // Port 1 is never listening on a dev box without root — both pools
         // read "port closed"; only liveness + grace differ.
@@ -1172,12 +1250,14 @@ mod tests {
             port: 1,
             child: alive.into(), // freshly stamped → within START_GRACE
             debug: false,
+            misses: 0,
         });
         pools.pools.push(Pool {
             minor: "8.3".into(),
             port: 1,
             child: dead.into(),
             debug: false,
+            misses: 0,
         });
 
         let reaped = pools.reap_dead(&platform);
@@ -1190,5 +1270,86 @@ mod tests {
             p.child.kill();
             p.child.wait();
         }
+    }
+
+    /// B29b, the decision table. The one-miss bug: a single failed port probe
+    /// on a loaded box reaped a serving pool. Probe evidence now accrues
+    /// misses; only a spawned child's `try_wait` exit reaps on sight.
+    #[test]
+    fn pool_fate_takes_consecutive_misses_for_probes_and_one_exit_for_evidence() {
+        // One failed port probe (master fine, past grace) is a MISS, not a reap.
+        assert_eq!(
+            pool_fate(MasterSight::Probed(true), false, false, 0),
+            (1, false),
+            "a single failed port probe reaped a live pool — the B29b one-miss bug"
+        );
+        // The limit is real: the second consecutive miss reaps.
+        assert_eq!(pool_fate(MasterSight::Probed(true), false, false, 1), (2, true));
+        // Health RESETS the count — misses are consecutive, never cumulative.
+        assert_eq!(pool_fate(MasterSight::Probed(true), true, false, 1), (0, false));
+        // The start grace counts as health (the watchdog/Start-all race).
+        assert_eq!(pool_fate(MasterSight::Probed(true), false, true, 1), (0, false));
+        // A spawned child's exit is positive evidence: reaped at zero misses,
+        // grace or no grace.
+        assert!(pool_fate(MasterSight::ChildExited, true, true, 0).1);
+        // Orphan workers: the port SERVES but the master no longer identifies
+        // — that is the "UI shows running, every site hangs" failure, and a
+        // green port must not reset the count.
+        assert_eq!(
+            pool_fate(MasterSight::Probed(false), true, false, 1),
+            (2, true),
+            "a serving port with an unidentified master must keep accruing misses"
+        );
+    }
+
+    /// B29b wiring: `reap_dead` really consults the counter (a live child past
+    /// its grace with a closed port survives poll one, dies on poll two), and
+    /// an ADOPTED master is judged by POSITIVE IDENTIFICATION, not `kill -0` —
+    /// a pid whose command line is not php-fpm is reaped even while the port
+    /// serves (recycled pid / orphaned workers), while an identified master on
+    /// a serving port never accrues a miss.
+    #[test]
+    fn reap_dead_needs_two_misses_and_identifies_adopted_masters_positively() {
+        // A real listener makes fpm_running(port) true without any php-fpm.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let serving_port = listener.local_addr().unwrap().port();
+
+        // Poll 1 vs poll 2 for a probe-dead spawned pool.
+        let platform = StubPlatform(StubSupervisor { cmd: None });
+        let alive = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let backdated =
+            std::time::Instant::now() - Proc::START_GRACE - std::time::Duration::from_secs(1);
+        let mut pools = PhpFpmPools::default();
+        pools.pools.push(Pool {
+            minor: "8.4".into(),
+            port: 1, // never listening without root
+            child: Proc::Child(alive, backdated),
+            debug: false,
+            misses: 0,
+        });
+        assert!(
+            pools.reap_dead(&platform).is_empty(),
+            "first failed probe must keep the pool (miss 1 of {POOL_MISS_LIMIT})"
+        );
+        assert!(pools.has("8.4", false));
+        let reaped = pools.reap_dead(&platform);
+        assert_eq!(reaped, vec![("8.4".to_string(), false)], "second miss reaps");
+
+        // Adopted, port serving, but the pid identifies as NOT php-fpm
+        // (recycled) — reaped after the limit despite the green port.
+        let recycled = StubPlatform(StubSupervisor { cmd: Some("totally-not-fpm --flag") });
+        let mut pools = PhpFpmPools::default();
+        pools.adopt("8.3", serving_port, 4242, false);
+        assert!(pools.reap_dead(&recycled).is_empty(), "miss 1: kept");
+        assert!(!pools.reap_dead(&recycled).is_empty(), "recycled pid reaped at the limit");
+
+        // Adopted, port serving, pid identifies as php-fpm — healthy forever.
+        let ours = StubPlatform(StubSupervisor { cmd: Some("php-fpm: master process (conf)") });
+        let mut pools = PhpFpmPools::default();
+        pools.adopt("8.3", serving_port, 4242, false);
+        for _ in 0..4 {
+            assert!(pools.reap_dead(&ours).is_empty(), "an identified serving master never reaps");
+        }
+        assert_eq!(pools.pools[0].misses, 0, "health must RESET the count, not just not-reap");
     }
 }

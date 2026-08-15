@@ -272,6 +272,7 @@ L3 = scripted manual.
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
 | 102 | logs.rs:7 | Log keys validated; tail never handed a UI path | ◐ key gate ✅; call-site discipline 🔨 L0 |
+| 330 | php.rs (`pool_fate`, `POOL_MISS_LIMIT`, `Pool::misses`, `reap_dead`) | **A pool is reaped on probe evidence only after consecutive misses; an adopted master is judged by positive identification, never `kill -0`** (B29b — the July review's finding that the fpm pool reap was one-miss while the adopted-service reap had already grown both protections in B29). One failed port probe on a loaded box must not cost a serving pool; a spawned child's `try_wait` exit is positive evidence and reaps on sight; a recycled pid or a `php-fpm`-titled orphan worker set (port green, master gone) accrues misses and reaps at the limit — the "UI shows running, every site hangs" failure must not be immortal just because the port answers. The miss arithmetic is `service_manager::adopted_reap_decision` shared, not re-expressed — one definition of the contract | ✅ `pool_fate_takes_consecutive_misses_for_probes_and_one_exit_for_evidence` (full decision table incl. the serving-port/unidentified-master case) + `reap_dead_needs_two_misses_and_identifies_adopted_masters_positively` (wiring: real backdated child + real TCP listener; identified-serving master's count proven to RESET). **Plant-proven both ways**: `POOL_MISS_LIMIT = 1` fails the table's first line by name; replacing the identification with `true` (the old `kill -0` semantics) fails the recycled-pid leg |
 | 103 | services.rs:414 | ⚠ Dotfile paths 404, never reach fastcgi (all three templates) | ◐ nginx leg ✅ `dotfile_guard_check` (T11: .env/.git/.hidden-php 404 over the wire, secret never crosses, .well-known exempt); Apache + FrankenPHP legs 🔨 L1 |
 | 104 | services.rs:122 | `-t` gate runs against a candidate the live pool never reads | ◐ shape ✅; candidate-vs-live isolation 🔨 L1 |
 | 105 | services.rs:315 | nginx never 413s an upload PHP would accept | ✅ 2 lib tests |
@@ -497,8 +498,8 @@ end-of-output cut #316 and the diagnostics-to-stderr flag #317, the two halves
 that stopped a plugin's shutdown hook and PHP's own deprecations from breaking
 every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #329;
 the webview-dialog legs A+B and the measured retirement of #40/#166's impossible
-L2 labels):
-**✅ 246 · ◐ 51 · 🔨 27 · 🚫 5** of 329 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+L2 labels; the pool-reap miss counter #330):
+**✅ 247 · ◐ 51 · 🔨 27 · 🚫 5** of 330 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
