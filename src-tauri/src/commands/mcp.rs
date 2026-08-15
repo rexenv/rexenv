@@ -40,13 +40,14 @@ fn resolve_target_labels(conn: &rusqlite::Connection, rows: &mut [feed::AgentAct
     if rows.iter().all(|r| r.target_site.is_none()) {
         return Ok(());
     }
-    let mut by_id = std::collections::HashMap::new();
-    let mut stmt = conn.prepare("SELECT id, domain FROM sites")?;
-    let mapped = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-    for row in mapped {
-        let (id, domain) = row?;
-        by_id.insert(id, domain);
-    }
+    // Through the owning module, never a hand-rolled `SELECT … FROM sites` —
+    // the #167 guard flagged the previous inline query on its first run: a
+    // schema change would have broken this read with nothing pointing here.
+    let by_id: std::collections::HashMap<String, String> =
+        crate::state::store::list_sites(conn)?
+            .into_iter()
+            .map(|s| (s.id, s.domain))
+            .collect();
     for r in rows.iter_mut() {
         if let Some(id) = &r.target_site {
             r.target_label = by_id.get(id).cloned();

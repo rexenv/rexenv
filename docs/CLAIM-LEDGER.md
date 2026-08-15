@@ -390,7 +390,7 @@ L3 = scripted manual.
 
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
-| 167 | store.rs:1 | Only state/ hand-writes SQL against the app's SQLite schema (core reaches it only via store.rs fns). NOT "core writes no SQL" — withdrawn 29 Jul: core runs `information_schema` reads + `CREATE DATABASE`/`GRANT` on the developer's MySQL/Postgres in dbmirror | 🔨 L0 (planned rusqlite-outside-state grep guard — note: it would scan IMPORTS, not SQL-string content, so it is itself the surface-coverage shape — see Defect families below) |
+| 167 | store.rs:1 | **Every app table's SQL lives in the ONE module that owns it** — state/ for everything except `agent_actions`, which is `mcp_server/feed.rs`'s whole subject (and feed.rs may touch no other). Narrowed 15 Aug 2026 BY the guard: "state/'s alone" was already false — feed.rs had hand-written `agent_actions` SQL since M2a, the fourth claim this year whose surface quietly grew. NOT "core writes no SQL" — withdrawn 29 Jul: core runs `information_schema` reads + `CREATE DATABASE`/`GRANT` on the developer's MySQL/Postgres in dbmirror (those tables are not in the app schema, so the scan never looks at them) | ✅ `app_schema_sql_lives_only_in_each_tables_owning_module` — scans SQL-STRING content (verb keyword + app-table word), exactly as the defect-families note demanded, with the table list read from the MIGRATED SCHEMA at test time so a new table joins the scan by existing. Comments and test modules stripped; canaries both ways (state/ must yield ≥20 hits, feed.rs ≥1, or the zero is vacuous — plant-proven by breaking the keywords, which fails the canary by name). **Its first run caught a live violation**: `commands/mcp.rs` hand-rolled `SELECT id, domain FROM sites`; now `store::list_sites` — the guard's plant was a real bug |
 | 168 | store.rs:478 | ConnectedVerified mint demands the witness; probe only upgrades | ✅ 2 lib tests |
 | 169 | store.rs:715 | INSERT never upsert — first backup wins | ✅ lib test |
 | 170 | db.rs:143 | NULL = present-unverified, never stale; upgrades never spray alarms | ✅ 2 lib tests |
@@ -501,8 +501,8 @@ that stopped a plugin's shutdown hook and PHP's own deprecations from breaking
 every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #329;
 the webview-dialog legs A+B and the measured retirement of #40/#166's impossible
 L2 labels; the pool-reap miss counter #330; the bundle prepare receipt #331; per-backend
-tunnel origins #332):
-**✅ 248 · ◐ 52 · 🔨 27 · 🚫 5** of 332 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+tunnel origins #332; the app-schema SQL ownership scan #167 closed):
+**✅ 249 · ◐ 52 · 🔨 26 · 🚫 5** of 332 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -575,7 +575,9 @@ at THING Y ≠ X. They diverge along different axes:
     scanned only `tools.rs` when the boundary is also `ReadCtx` in `readctx.rs`
     (fixed — now scans both, proven to fire on a planted violation).
   - #167's planned rusqlite grep: asserts "core writes no app SQL", but a grep for
-    the `rusqlite` import checks IMPORTS, not SQL-string content.
+    the `rusqlite` import checks IMPORTS, not SQL-string content. (Built 15 Aug
+    2026 as the SQL-string scan this note demanded — and its first run found both
+    a false claim, feed.rs, and a live violation, commands/mcp.rs.)
 - **Data / fixture — a mock or fixture friendlier than production.** The check exercises
   the right surface at the right time, but on UNREPRESENTATIVE inputs, so the gap is in the
   DATA/mock, not the code. THREE misses this session, and the escalation is the point — the
@@ -780,7 +782,7 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 | #71, #178, #181-half, #182-half, #186-half | guard escapes: cfg(test) hatch, panic on read, import cross-guard, crash ordering, cancel boundary |
 
 **Tier 3 — untidy if false (structural lints and scoping tests; fine forever on the
-shelf):** #16, #24, #61, #102-half, #160, #163, #167, #188, #189, #193, #55-half.
+shelf):** #16, #24, #61, #102-half, #160, #163, #188, #189, #193, #55-half (#167 closed 15 Aug 2026 — see the row; its first run caught a live violation).
 
 L3-by-nature rows (#46 two-process handoff, #67/#155/#156 root-install reality,
 #107/#159 live negatives) route to SMOKE-TEST/PUBLISH-TESTING, not this backlog.

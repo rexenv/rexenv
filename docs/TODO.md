@@ -695,9 +695,10 @@ first:
   ~~`webview_dialogs` L2 (#166)~~ (closed 15 Aug 2026 — the L2 shape was measured
   impossible before building, which was the queued instruction; legs landed at
   L0+L1, eye-half in SMOKE; `docs/PLAN-webview-dialog-proofs.md`),
-  import-graph lint (#163), rusqlite-outside-state
-  guard (#167 — must scan SQL-STRING content, not just the `rusqlite` import, or
-  it repeats the surface-coverage shape; see "Defect families" in the ledger).
+  import-graph lint (#163), ~~rusqlite-outside-state
+  guard (#167)~~ (closed 15 Aug 2026 as the SQL-string scan the defect-families
+  note demanded; its first run found the claim already false — feed.rs owns
+  `agent_actions` SQL — and a live violation in `commands/mcp.rs`, both handled).
 
 - [ ] **Live-check transients — a known-unknown, written down so the third one
   isn't a third undocumented data point.** Two unexplained failures on 3 Aug

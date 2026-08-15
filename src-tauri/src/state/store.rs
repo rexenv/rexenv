@@ -6,6 +6,15 @@
 //! — it reads `information_schema` and issues `CREATE DATABASE`/`GRANT` against
 //! the developer's MySQL/Postgres in `core::dbmirror`. The honest, narrow
 //! guarantee is only that the app's OWN SQLite schema is state/'s alone.
+//!
+//! Narrowed AGAIN 15 Aug 2026, by the guard that was supposed to prove it
+//! (ledger #167): `mcp_server/feed.rs` has hand-written SQL against
+//! `agent_actions` since M2a — "state/'s alone" was already false when the
+//! guard arrived, the fourth claim this year whose surface had quietly grown.
+//! The honest shape is PER-TABLE ownership: every app table's SQL lives in the
+//! ONE module that owns it — state/ for everything except `agent_actions`,
+//! which is feed.rs's whole subject. The guard asserts exactly that list, and
+//! that feed.rs touches no table but its own.
 
 use crate::error::{Error, Result};
 use crate::state::models::{
@@ -1577,5 +1586,133 @@ mod tests {
         insert_site(&conn2, &scratch(Some(&emoji))).unwrap();
         let back2 = get_site(&conn2, "b41d7c58-2e0a-49f6-9a13-7d5c8e2f4011").unwrap().unwrap();
         assert_eq!(back2.agent_client.as_ref().unwrap().chars().count(), AGENT_CLIENT_MAX);
+    }
+
+    /// Ledger #167 — the module-doc claim, as a scan of SQL-STRING CONTENT.
+    ///
+    /// Scanning the `rusqlite` IMPORT was the planned shape and was rejected in
+    /// the ledger's own note as the surface-coverage trap: a module can receive
+    /// a `&Connection` and hand-write SQL without importing anything. So the
+    /// needle is the SQL itself — a verb keyword followed by an APP TABLE name
+    /// — and the table list comes from the migrated schema at test time, never
+    /// a hand-kept list (a new table joins the scan by existing).
+    ///
+    /// First run found the claim already false: `mcp_server/feed.rs` has
+    /// hand-written `agent_actions` SQL since M2a. The guard therefore asserts
+    /// the honest per-table ownership: state/ owns every table except
+    /// `agent_actions`, which is feed.rs's — and feed.rs may touch no other.
+    #[test]
+    fn app_schema_sql_lives_only_in_each_tables_owning_module() {
+        let conn = db::open_in_memory().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            .unwrap();
+        let tables: Vec<String> =
+            stmt.query_map([], |r| r.get::<_, String>(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert!(tables.len() >= 5, "schema walk found {} tables — detection broken", tables.len());
+
+        // SQL-shaped mention of an app table: verb keyword + the table as a
+        // whole word. Uppercased text so casing can't dodge the scan.
+        let hits = |text: &str| -> Vec<String> {
+            let up = text.to_uppercase();
+            let mut out = Vec::new();
+            for t in &tables {
+                let tu = t.to_uppercase();
+                for kw in ["FROM ", "INTO ", "UPDATE ", "JOIN ", "TABLE "] {
+                    let needle = format!("{kw}{tu}");
+                    let mut at = 0;
+                    while let Some(i) = up[at..].find(&needle) {
+                        let end = at + i + needle.len();
+                        let boundary = up[end..]
+                            .chars()
+                            .next()
+                            .map(|c| !c.is_ascii_alphanumeric() && c != '_')
+                            .unwrap_or(true);
+                        if boundary {
+                            out.push(format!("{kw}{t}"));
+                        }
+                        at = end;
+                    }
+                }
+            }
+            out
+        };
+
+        // Walk src/ (production lines only — comments and #[cfg(test)] modules
+        // stripped, or the scan reads its own explanation and this very test's
+        // fixtures).
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+                        let rel = path.strip_prefix(root).unwrap_or(&path).display().to_string();
+                        let prod = crate::core::copy_scan::production_source(&text);
+                        let stripped: String = prod
+                            .lines()
+                            .map(|l| {
+                                let cut = l
+                                    .match_indices("//")
+                                    .find(|(i, _)| *i == 0 || !l[..*i].ends_with(':'))
+                                    .map(|(i, _)| i);
+                                cut.map_or(l, |i| &l[..i])
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        out.push((rel, stripped));
+                    }
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut sources = Vec::new();
+        walk(&root.join("src"), &mut sources);
+        assert!(sources.len() > 50, "source walk found {} files — it stopped working", sources.len());
+
+        let mut state_hits = 0usize;
+        let mut feed_hits: Vec<String> = Vec::new();
+        let mut violations: Vec<String> = Vec::new();
+        for (path, text) in &sources {
+            let found = hits(text);
+            if found.is_empty() {
+                continue;
+            }
+            if path.starts_with("src/state/") {
+                state_hits += found.len();
+            } else if path == "src/mcp_server/feed.rs" {
+                feed_hits.extend(found);
+            } else {
+                for f in found {
+                    violations.push(format!("{path}: {f}"));
+                }
+            }
+        }
+
+        // Canaries first: a matcher that finds nothing where SQL definitely
+        // lives would make the zero below vacuous.
+        assert!(state_hits >= 20, "only {state_hits} SQL hits in state/ — the matcher is broken");
+        assert!(!feed_hits.is_empty(), "no hits in feed.rs — the matcher is broken");
+
+        // feed.rs's exemption is scoped to ITS table, not a blanket.
+        let strays: Vec<&String> =
+            feed_hits.iter().filter(|h| !h.to_lowercase().contains("agent_actions")).collect();
+        assert!(
+            strays.is_empty(),
+            "mcp_server/feed.rs touches app tables beyond agent_actions: {strays:?} — its \
+             exemption covers only the table it owns; anything else goes through state/"
+        );
+
+        assert!(
+            violations.is_empty(),
+            "hand-written SQL against the app schema outside its owning module:\n  {}\n\
+             The app database's SQL lives in state/ (all tables) or mcp_server/feed.rs \
+             (agent_actions only). Add a function to the owning module instead — a second \
+             writer is how a schema change breaks a caller nobody re-tested (#167).",
+            violations.join("\n  ")
+        );
     }
 }

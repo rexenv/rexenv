@@ -524,4 +524,4 @@ CF-header discriminator probes (#2/#33), manifest HEAD+digest sweep, Bedrock liv
 provision, fpm candidate isolation (#104), sandbox adoption cohorts (§4.4),
 ~~`webview_dialogs` L2 coverage (#166)~~ (closed 15 Aug 2026 at L0+L1+SMOKE — the L2
 shape was measured impossible), import-graph lint (#163), rusqlite-outside-state
-guard (#167).
+guard (#167 — closed 15 Aug 2026; see the ledger row).
