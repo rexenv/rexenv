@@ -723,6 +723,44 @@ fn write_pin_marker(dir: &Path, checksum: &Checksum) {
     let _ = std::fs::write(dir.join(PIN_MARKER), checksum_hex(checksum));
 }
 
+/// The prepare receipt: a published BUNDLE tree records which revision of the
+/// prepare logic (relink + verify + re-sign) built it (S0.3, neighbour of
+/// #86/#328). `resolve_bundle`'s early return used to stat only the member
+/// file — but "the file exists" cannot see "dyld refuses to load it", so a
+/// tree published by a prepare whose VERIFY was wrong (#319: an escaping
+/// `@loader_path` waved through over 49 Mach-Os) was cached forever: never
+/// re-downloaded, never repaired, unrecoverable in the field short of
+/// deleting the cache by hand.
+const PREPARE_RECEIPT: &str = ".rexenv-prepared";
+
+/// Bump this when a prepare-logic bug that could have PUBLISHED a broken tree
+/// is fixed — the bump is what makes existing caches stale, so the fix
+/// actually reaches machines that already hold the broken output. Rev 1 =
+/// the post-#319 relink predicate (resolved `@loader_path`, escape-refusing).
+const PREPARE_REV: &str = "1";
+
+/// Whether a published bundle tree carries a CURRENT prepare receipt.
+///
+/// An ABSENT receipt is stale — deliberately the opposite asymmetry from
+/// [`cache_matches_pin`]'s marker, and for the same kind of reason: every
+/// pre-receipt tree was prepared by logic that includes the #319 predicate
+/// era, and a broken tree is indistinguishable from a good one by any stat.
+/// The one-time cost is re-downloading each cached bundle once; the
+/// alternative is a field machine serving a tree dyld refuses, forever.
+fn bundle_prepared_current(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join(PREPARE_RECEIPT))
+        .map(|s| s.trim() == PREPARE_REV)
+        .unwrap_or(false)
+}
+
+/// Stamp the receipt into a STAGING tree that `prepare_binary_tree` just
+/// finished (and whose member was verified present) — written before the
+/// atomic publish, so a published tree either carries it or predates it.
+fn write_prepare_receipt(staging: &Path) -> Result<()> {
+    std::fs::write(staging.join(PREPARE_RECEIPT), PREPARE_REV)?;
+    Ok(())
+}
+
 /// Look up the download spec for `name`@`version` on `os`+`arch`, or `None` if
 /// unknown. `php` resolves the CLI build; `php-fpm` the FPM build.
 pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<BinarySpec> {
@@ -1076,8 +1114,15 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
 
     let bin_dir = platform.paths().bin_dir()?;
     let dir = bin_dir.join(format!("{name}-{version}"));
-    if dir.join(spec.member).exists() {
+    if dir.join(spec.member).exists() && bundle_prepared_current(&dir) {
         return Ok(dir);
+    }
+    // Present but without a current prepare receipt: the tree may be the
+    // output of a prepare whose verify was wrong (#319 published trees dyld
+    // refused, and a member-stat kept them forever). Drop and refetch — same
+    // shape as `resolve`'s stale-pin path.
+    if dir.exists() {
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     let id = downloads::item_id(name, version);
@@ -1112,6 +1157,7 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
         // published tree is self-contained — no Homebrew install needed.
         platform.binaries().prepare_binary_tree(&staging)?;
         ensure_member_extracted(&staging, name, version, spec.member)?;
+        write_prepare_receipt(&staging)?;
         publish(&staging, &dir, spec.member)
     }
     .await;
@@ -1157,9 +1203,12 @@ pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
         // `member` is the marker for file/tree distributions; executables are
         // published at `dir/<name>` (for those, member == name anyway).
         Some(spec) => dir.join(spec.member).exists() || dir.join(name).exists(),
-        // Bottle bundles (redis) publish their own `member` marker.
+        // Bottle bundles (redis) publish their own `member` marker — AND must
+        // carry a current prepare receipt, or `resolve_bundle` will refetch
+        // and the planner would have promised "cached" about a tree the
+        // resolve is about to drop (S0.3).
         None => match bundle_manifest(name, version, std::env::consts::OS, arch) {
-            Some(bundle) => dir.join(bundle.member).exists(),
+            Some(bundle) => dir.join(bundle.member).exists() && bundle_prepared_current(&dir),
             None => false,
         },
     }
@@ -2681,6 +2730,36 @@ mod tests {
         assert!(!cache_matches_pin(&dir, "7.4.33", &pin), "self-hosted, unmarked → refetch");
         assert!(php_self_hosted_tag(PHP_VERSION).is_none());
         assert!(cache_matches_pin(&dir, PHP_VERSION, &pin), "upstream, unmarked → grandfathered");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// S0.3, the bundle sibling of the pin marker above: a published bundle
+    /// tree is cached only while it carries a CURRENT prepare receipt. The
+    /// member file existing cannot see "dyld refuses this tree" — #319
+    /// published exactly that, and the member-stat early return made it
+    /// unrecoverable in the field. Absence is stale HERE (unlike the pin
+    /// marker's grandfathering) because every pre-receipt tree is from the
+    /// era that includes the broken predicate, and no stat can tell a good
+    /// one from a poisoned one.
+    #[test]
+    fn a_bundle_tree_is_cached_only_with_a_current_prepare_receipt() {
+        let dir =
+            std::env::temp_dir().join(format!("rexenv-prep-receipt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Absent → stale (the whole point: pre-receipt trees refetch once).
+        assert!(!bundle_prepared_current(&dir), "an unreceipted tree must be stale");
+
+        // Current rev → cached.
+        write_prepare_receipt(&dir).unwrap();
+        assert!(bundle_prepared_current(&dir));
+
+        // A PAST rev → stale: bumping PREPARE_REV is how a prepare-logic fix
+        // reaches machines already holding the broken output.
+        std::fs::write(dir.join(PREPARE_RECEIPT), "0").unwrap();
+        assert!(!bundle_prepared_current(&dir), "an old-rev tree must be stale");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

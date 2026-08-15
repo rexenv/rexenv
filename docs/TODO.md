@@ -376,13 +376,17 @@ evidence cited.
     `an_escaping_loader_path_is_not_mistaken_for_in_tree` and the new L1
     `relink_tree_check` (sandbox), whose leg B proves the tree is REPAIRED rather
     than merely refused and whose leg C is the control.
-  - [ ] **S0.3 — a bundle tree that dyld cannot load is cached FOREVER.**
-    `resolve_bundle`'s early return only stats `dir.join(member)`
-    (`core/binaries.rs:893-905`) and `ensure_member_extracted` checks the same one
-    file, so a tree that publishes but cannot LOAD is never re-downloaded and never
-    repaired — this is what made #319 unrecoverable in the field rather than merely
-    wrong. Neighbour of ledger #86. The fix is a load-proving marker (exec the
-    member, or record a relink receipt), not another stat.
+  - [x] **S0.3 — a bundle tree that dyld cannot load is cached FOREVER.** ✓ DONE
+    15 Aug 2026, ledger #331 — the **relink-receipt** shape, not exec-the-member
+    (a member can be a dylib — `xdebug.so` — and exec proves nothing about one).
+    `.rexenv-prepared` records the prepare-logic revision, stamped after
+    prepare+member-verify, before the atomic publish; `resolve_bundle` and
+    `is_cached` both require a CURRENT receipt, absence is stale (every
+    pre-receipt tree is from the era that includes #319's broken predicate, and
+    no stat can tell a good one from a poisoned one — one refetch per cached
+    bundle is the price of repairing the field). Fixing a future prepare bug =
+    bump `PREPARE_REV`, which is what carries the fix to machines already
+    holding the broken output. Plant-proven (absence-reads-cached fails by name).
   - [x] **S0.4 — per-minor Xdebug version.** ✓ `XdebugBottle` carries version +
     formula + both digests as ONE row; `bundle_manifest` gates on the row, not on
     `XDEBUG_VERSION` (now the DEFAULT the in-window minors reference). Ledger #320,
