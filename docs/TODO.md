@@ -423,10 +423,14 @@ evidence cited.
   - [x] **S2.2 — doc sweep.** ✓ PORTS/ARCHITECTURE/README/valet-import/valet-migration
     corrected in place; the c-ares item's "blocked on the self-hosted path" is
     retired because that path now exists.
-  - [ ] **S3 — live proof beyond the download.** `php_versions_check` (NETWORK)
-    proves 7.4 downloads, verifies, signs and RUNS. Still owed: a 7.4 site actually
-    SERVING — `php_pools_serve` is SERVICE tier, and neither runs in `verify.sh`, so
-    a green verify says nothing about either.
+  - [x] **S3 — live proof beyond the download.** ✓ `php_versions_check` (NETWORK):
+    7.4 downloads, verifies, relinks, signs and RUNS. ✓ `php_fpm_serve 7.4.33`
+    (sandbox): 7.4's own php-fpm accepts the config rexenv generates for it
+    (ledger #327). ✓ `php_pools_serve` (SERVICE, stack stopped): all seven pools up
+    together, 7.4 on 9774, all stopped clean with no leaked workers.
+    **Still owed, and not claimed:** a 7.4 SITE answering over HTTPS end to end
+    (browser → Caddy → nginx → 9774 → WordPress). Needs a real site; it is a
+    SMOKE-TEST item, not an example. Neither tier runs in `verify.sh`.
   - [ ] **S1.2 — grow the 7.4 extension set toward the 8.x rows.** Shipped set is the
     WordPress/Laravel-critical core (39 modules). The 8.x bulk rows also carry dba,
     pgsql, redis, soap, xsl, sysv*, gmp, bz2, ftp, calendar, posix, pcntl, readline,

@@ -392,6 +392,17 @@ YOUR OWN sites in the list. Keep the Sites page visible.
 Steps 6–11 gate what an agent can CREATE and RUN. These two surfaces are
 different: one refuses rather than guessing, and the other is the second place a
 user consents to something. Keep a scratch site from step 6 alive for these.
+- [ ] **11b. A PHP 7.4 site actually serves.** Settings → PHP versions → install
+  **7.4**, then create a WordPress site on it and open it. Expect: the site loads,
+  `phpinfo()`/Site Health reports **7.4.33**, and WordPress shows its own
+  "outdated PHP" notice — **which rexenv should already have warned about** in the
+  create dialog and on the site's Environment card. That warning arriving first is
+  the thing being tested; WordPress saying it first reads as a rexenv bug.
+  **Tells:** the site serves but reports 8.x (it landed on the wrong pool);
+  no EOL warning anywhere (the honest-UI promise, ledger #322); the Xdebug toggle
+  is offered on 7.4 (it must not be — 7.4's build cannot dlopen, ledger #320/#321).
+  This is the ONE leg no automated tier covers: the pools, the binary and the
+  generated config are all proven, a served page is not.
 - [ ] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.2."*
   → REFUSED, and the refusal must **name the versions rexenv does have**. Ask for
   whatever `php::unshipped_minor()` currently returns if 7.2 ever ships — this step
