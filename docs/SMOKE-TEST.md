@@ -318,7 +318,7 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 - [ ] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version.
 - [ ] "Start rexenv on login" toggles (LaunchAgent created/removed).
 
-## AI agents (MCP) — opt-in endpoint (ships in v0.1.0 only if this passes)
+## AI agents (MCP) — opt-in endpoint (ships only if this passes)
 **Covers M1 (1–5), M2a (6–11) and M2b (12–14).** HOLDs: 4, 8, 11, 14.
 Socket: `~/Library/Application Support/dev.rexenv.rexenv/config/rexenv-mcp.sock`.
 Run the four functional steps AND eyeball the PACKAGED webview — this project's UI
@@ -343,8 +343,9 @@ have found it. That is why step 4 is a hold, not a note.
   NEXT call ERRORS. **Tell #2:** if the socket remains, or the agent keeps working,
   disable isn't tearing down. **⚠ A step-4 failure is a HOLD, not a note.** "Disable
   drops the socket" is the security-relevant half — an endpoint you can't turn off is
-  a standing same-user attack surface. Fix-then-ship; do NOT ship v0.1.0 with MCP if
-  step 4 fails.
+  a standing same-user attack surface. Fix-then-ship; do NOT ship MCP in ANY release
+  if step 4 fails. (This said "v0.1.0" — a hold written against one version reads as
+  spent once that version is out, which is the opposite of what a standing hold is.)
 - [ ] **5. Persistence + startup gating.** Restart with the toggle ON → the socket
   rebinds at launch; restart with it OFF → no socket.
 

@@ -1,8 +1,10 @@
 # PHP 7.4 support — where the binary comes from, and what shipping it costs
 
 **Status: SHIPPED 15 Aug 2026.** PHP 7.4.33 is a first-class minor: built by
-`rexenv/runtimes` (release `php-7.4.33-1`, immutable), pinned by SHA-256, and
-run-proven through rexenv's own download → verify → relink → sign → exec path
+`rexenv/runtimes` (immutable releases; the live tag is `php_self_hosted_tag` in
+`core/binaries.rs` and is deliberately not restated here — it has moved twice
+since this line first spelled `-1`), pinned by SHA-256, and run-proven through
+rexenv's own download → verify → relink → sign → exec path
 (`php_versions_check`: *"all 7 PHP versions resolved"*). Planned against `67712c7`.
 
 Supersedes the standing claim, repeated in four docs and eight tests, that

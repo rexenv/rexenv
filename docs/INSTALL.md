@@ -71,7 +71,11 @@ real HTTPS dev stack.)
 - **"app is damaged and can't be opened"** → usually means the download was
   quarantined; right-click → Open as above. (The app is ad-hoc code-signed, which
   is what lets Apple Silicon run it at all.)
-- **Nothing happens / very old Mac** → check you're on **macOS 11 or later**.
+- **Nothing happens / very old Mac** → check you're on **macOS 15 (Sequoia) or
+  later**, the same floor as the Requirements section above. (This line said
+  macOS 11 until 15 Aug 2026 — the number the Requirements section had already
+  been corrected away from, left behind in the one place a person reads *because*
+  something is wrong.)
 
 ## Updating
 

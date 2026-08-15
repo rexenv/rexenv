@@ -584,7 +584,10 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
     }
 }
 
-// Self-built 7.4 artifacts — OURS (rexenv/runtimes, release `php-7.4.33-4`).
+// Self-built 7.4 artifacts — OURS (rexenv/runtimes). The live release tag is
+// `php_self_hosted_tag` above, NOT this comment: it read `-4` while the code
+// said `-6`, because a re-pin edits the consts and the tag and leaves the prose.
+// Read the tag, never a sentence about it.
 //
 // **Re-pinned 15 Aug 2026 after -1 shipped broken.** It had no `phar`, and both
 // WP-CLI and Composer ARE phars run through the SITE's PHP, so every WordPress
@@ -2783,8 +2786,10 @@ mod tests {
                 // The FULL immutable tag is in the URL, not a stable base that a
                 // rebuild could quietly refill (see `php_self_hosted_tag`). The
                 // tag is READ, not spelled: it was written as `php-7.4.33-1`
-                // here and the pin moved to -4 two rebuilds later, so a literal
-                // would fail for being right about the wrong thing.
+                // here and the pin has moved twice since (-4, then -6), so a
+                // literal would fail for being right about the wrong thing.
+                // Every sentence in this file that spelled a tag went stale;
+                // this assertion did not, because it asks the code.
                 let tag = php_self_hosted_tag("7.4.33").expect("7.4.33 is self-hosted");
                 assert!(url.contains(&format!("/releases/download/{tag}/")), "{url}");
                 assert!(url.ends_with(&format!("php-7.4.33-{kind}-macos-{}.tar.gz", php_arch(arch))));
@@ -2792,8 +2797,9 @@ mod tests {
                 assert!(php_url(kind, PHP_VERSION, arch).contains("dl.static-php.dev"));
             }
         }
-        // It RESOLVES now — the artifact exists (release `php-7.4.33-1`, pinned
-        // 14 Aug 2026). This assertion was the inverse until then: "wired but
+        // It RESOLVES now — the artifact exists (first pinned 14 Aug 2026; the
+        // live tag is `php_self_hosted_tag`, deliberately not repeated here).
+        // This assertion was the inverse until then: "wired but
         // unresolvable", which is what an empty checksum const buys. Flipping it
         // in the same commit as the pin is the point — the two facts must never
         // disagree, because a version that resolves without a real artifact is

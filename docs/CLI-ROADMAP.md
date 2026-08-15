@@ -59,7 +59,7 @@ convention) — see "Infrastructure" for progress streaming.
 
 | Command | Backing IPC | Tag | Notes |
 |---|---|---|---|
-| `php list` | `list_php_versions` | ✓ | shipped 16 Jul — live (6 pinned minors) |
+| `php list` | `list_php_versions` | ✓ | shipped 16 Jul — live. (Listed "6 pinned minors" until 7.4 shipped 15 Aug 2026; the count is `binaries::PHP_VERSIONS`, so don't write it down again.) |
 | `php default <minor>` | `set_default_php_version` | ✓ | shipped 16 Jul — flip + restore live |
 | `php install <minor>` / `php uninstall <minor>` | `set_php_version_installed` | ✓ | shipped 16 Jul — thin passthrough, NOT live-run (pool stop is meaningless under the example guard); verify in-app once |
 | `php settings <minor> [set K=V]` | `get_php_settings` / `apply_php_settings` | ✓ | shipped 16 Jul — read live (real ini values); set is a passthrough (pool restart guard-blocked in harness) |

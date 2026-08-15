@@ -89,10 +89,18 @@ export const mockServices: ServiceInfo[] = [
   { name: "Caddy", running: false, pid: null, port: 443, cpuPercent: 0.0, ramMb: 0, kind: "web", version: "2.11.4", isRouter: true },
 ];
 
-/** Shaped like production, including the awkward rows: 8.0 ships but has NO
- *  Xdebug (its static build exports no Zend symbols), which is the case the dev
- *  UI must render correctly and the one a tidy all-true fixture would hide. */
+/** Shaped like production, including the awkward rows: 8.0 and 7.4 ship but have
+ *  NO Xdebug (neither static build exports `_OnUpdateBool`, so no `.so` can
+ *  dlopen into them), which is the case the dev UI must render correctly and the
+ *  one a tidy all-true fixture would hide.
+ *
+ *  **7.4 leads the list and its port breaks the pattern on purpose.** `fpmPort`
+ *  is `9700 + major*10 + minor`, so 7.4 → **9774**, BELOW the contiguous
+ *  9780–9785 block. A fixture that quietly renumbered it to 9779 would look
+ *  tidier and would hide any layout that assumes the ports ascend with the list
+ *  or sit in one range. Production is not tidy here; neither is this. */
 export const mockPhpVersions: PhpVersion[] = [
+  { minor: "7.4", patch: "7.4.33", fpmPort: 9774, installed: false, isDefault: false, xdebugSupported: false, xdebugVersion: null, eolSince: "2022-11-28" },
   { minor: "8.0", patch: "8.0.30", fpmPort: 9780, installed: false, isDefault: false, xdebugSupported: false, xdebugVersion: null, eolSince: "2023-11-26" },
   { minor: "8.1", patch: "8.1.34", fpmPort: 9781, installed: false, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: "2025-12-31" },
   { minor: "8.2", patch: "8.2.31", fpmPort: 9782, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },

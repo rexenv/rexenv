@@ -6,8 +6,12 @@ Mac by hand. Each item lists the **exact command**, **expected result**, **why i
 matters**, and whether it's **🚧 publish-blocking** or **🟢 nice-to-have**.
 
 **Already verified (no action needed):**
-- All code fixes are unit-tested and green — `cd src-tauri && cargo test --lib` → **336
-  passed / 0 failed**, `cargo build --examples` clean, `tsc --noEmit` clean.
+- All code fixes are unit-tested and green — the gate is `./scripts/verify-full.sh`
+  and its own `verify-full: all green` line is the verdict. **No test count is
+  written here on purpose**: this bullet used to read "336 passed / 0 failed",
+  which was a number generated in one place and copied to another, i.e. the same
+  shape `docs/TESTING.md` stopped writing counts down for and the same shape the
+  ledger tally is script-enforced against. Run the script; read its output.
 - The tap **static** side: the built app is validly ad-hoc signed (`codesign --verify`
   passes), universal `x86_64 arm64`, and the cask — now living in its own repo,
   `github.com/rexenv/homebrew-tap` — passes `brew style --cask rexenv/tap/rexenv`.
@@ -30,8 +34,12 @@ Run before §A, on the dmg you are about to test. Two minutes.
 
 ```sh
 cd <your rexenv checkout>
+# Read the version from the manifest rather than typing it — this line named
+# 0.1.0 through two releases, and a stale path silently checks nothing (the
+# `ls` below is what catches it, but only if you notice the count).
+V=$(node -p "require('./package.json').version")
 APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/rexenv.app"
-DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_0.1.0_universal.dmg"
+DMG="src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_${V}_universal.dmg"
 
 # 1. Identity of what you are about to test — record these next to the §A result.
 shasum -a 256 "$DMG"
