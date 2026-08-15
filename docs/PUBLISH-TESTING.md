@@ -82,7 +82,7 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) 🚧 0.2.0 — §A0 ✅ PASSED, §A ATTEMPTED AND **VOID** (re-run on a clean account)
+## A) ✅ 0.2.0 — §A0 ✅ PASSED, §A ✅ PASSED (second run; the first was void)
 
 **0.2.0 candidate (2026-08-16).** `rexenv_0.2.0_universal.dmg`, sha256
 `bd019d8d5a9333908986575c1608c75f2d85a7246f7557e0d82566b95601e973`, 23,411,247
@@ -110,21 +110,25 @@ and `rexenv_0.2.0_universal.dmg.sha256`, whose digest was re-checked against the
 dmg with `shasum -c` before upload). A draft is invisible to `brew` and to the
 tap's `update-cask.yml` poller, so nothing reaches a user until it is published.
 
-**§A 🚧 ATTEMPTED 16 Aug 2026 AND VOID — NOT a pass.** Run on the developer's own
-login, the app launched **without** Gatekeeper blocking it. That is not a failure of
-the artefact: `spctl` rejects the signature, assessments are enabled, the synthetic
-quarantine flag matches a real browser download, and `cp -R` propagates it. It is a
-failure of the INSTRUMENT — that account had already approved rexenv repeatedly and
-`/Applications/rexenv.app` already existed, so the copy landed over a bundle the
-account already trusted. A first-launch test on a machine that knows the app cannot
-fail, so its green means nothing and is recorded as void rather than as a pass.
+**§A ✅ PASSED 16 Aug 2026, on the SECOND run.** Both halves observed: quarantined,
+Gatekeeper **blocked** the launch; after `xattr -rd`, the app **launched**. That is
+the pass — a run where the block was seen, on a setup where it could have been
+missed.
 
-**Re-run required before publishing**, per the boxed note in §A-orig: delete
-`/Applications/rexenv.app` first, download through a **browser** (not `curl` — it
-sets no quarantine), install by Finder drag, and do it on the clean account or a
-fresh user. Publishing IS the §A sign-off; that rule does not relax for this
-release. **Do not press Publish before a valid §A** — on this flow the button is the
-signature, and the cask starts tracking the release within 15 minutes of it.
+**The FIRST run the same day was VOID and is kept here, because the difference is
+the whole lesson.** On the developer's own login the app launched with no block, and
+every measurement said the artefact was fine: `spctl --assess` → `rejected`,
+`spctl --status` → assessments enabled, the synthetic flag `0083` identical to what a
+real Chrome download carries on that machine (114 files in `~/Downloads`), and
+`cp -R` from the mounted quarantined dmg propagating quarantine (`0283`). Faithful
+setup, blockable artefact, no block — because that account had approved rexenv many
+times and `/Applications/rexenv.app` already existed, so `cp -R` landed **over** a
+bundle the account already trusted. **A first-launch test on a machine that already
+knows the app cannot fail**, and a green that cannot fail is not a pass. What made
+the second run valid is in §A-orig's boxed note: remove the existing bundle first,
+and download through a browser rather than `curl`, which sets no quarantine at all.
+
+Publishing IS the §A sign-off; that rule does not relax for this release.
 
 ## A-prev) ✅ PASSED for 0.1.1 (and 0.1.0) — Apple-Silicon ad-hoc launch test
 
@@ -920,7 +924,7 @@ Result: ____ (date, reqwest version).
 | # | Check | Status |
 |---|---|---|
 | A0 | Artefact integrity, per slice — **0.2.0 `bd019d8d…`** | ✅ passed 16 Aug 2026 (by hand; CI does not run while the repo is private) |
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | 🚧 **publish-blocking.** Attempted 16 Aug on the dev login and VOID — no block appeared because that account already trusted the app. Re-run on the clean account, browser download, `/Applications/rexenv.app` deleted first |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | ✅ **passed 16 Aug 2026, second run** — blocked while quarantined, launched after `xattr -rd`. The first run that day was VOID (dev login already trusted the app); see §A for why that distinction is kept |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
