@@ -948,7 +948,10 @@ first:
   live, and the first real Radicle-layout link (flagged UNVERIFIED in code, #95).
 - [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
-  Intel machine.
+  Intel machine. **Also re-run the `minos` sweep there**: PORTS.md's floor table
+  is measured from THIS machine's cache, which holds arm64 slices only, so every
+  number in it is an arm64 number and the x86_64 floor is assumed rather than
+  measured. Same shape as the digests — hashed once, never exercised.
 - [ ] **In-app verifies owed** (CLI passthroughs whose service-touching half the
   example harness guard-blocks; fold into the next deep test): `php
   install/uninstall`, `php settings set`, `db versions --set`, `site

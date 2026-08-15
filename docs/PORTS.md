@@ -61,12 +61,25 @@ number nobody records drifts again. **The app's stated floor
 binaries the default stack requires** — today that is nginx/cloudflared at 15.0.
 Re-measure and update this table whenever a pin changes.
 
+**Re-measured 15 Aug 2026 after PHP 7.4.33 landed** (every Mach-O in the cache, not
+just the headline binary per entry). 7.4 is `minos 12.0`, so **it does not move the
+floor** — which is the answer the rule exists to produce rather than assume. The
+sweep also convicted this table's own PHP row: it said "all minors", and 8.0.30 is
+**14.0**, not 12.0. That row had been wrong since the table was written; nothing
+depended on it because the floor is set by nginx either way, which is exactly how a
+wrong number survives — it is only load-bearing on the day something else moves.
+
 | Binary | minos |
 |---|---|
-| Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, PHP (all minors incl. 7.4) | 12.0 |
-| MySQL 8.0.44 / 8.4.6, MariaDB 11.4.12 / 12.3.2, Redis 8.8.0 | 14.0 |
+| Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, **PHP 7.4.33 / 8.1.34 / 8.2.31 / 8.3.31 / 8.4.23 / 8.5.8** | 12.0 |
+| **PHP 8.0.30** (cli + fpm — the one PHP row that is NOT 12.0), MySQL 8.0.44 / 8.4.6, MariaDB 11.4.12 / 12.3.2, Redis 8.8.0, Apache httpd 2.4.68, Xdebug 3.5.3 bottles | 14.0 |
 | **nginx 1.30.3, cloudflared 2026.6.1** | **15.0** — the default stack's floor |
 | **PostgreSQL 16.14.0 / 17.10.0 / 18.4.0** | **26.0** — presumed refused by dyld below macOS 26 (the documented enforcement class), UNVERIFIED: see the TODO item and the 15 Aug measurement note below |
+
+**Arch caveat on every number above: these are the arm64 slices.** The cache holds
+only what this machine downloaded, so the x86_64 artifacts' `minos` has never been
+measured — same standing gap as the un-run Intel digests at the foot of this file.
+An Intel pass should re-run the sweep, not just the smoke test.
 
 jirutka publishes NO darwin nginx below minos 14 (checked 1.24.0→1.31.3, 15 Aug
 2026: only the stale 1.24.0/1.26.1/1.26.2 are 14.0; everything current is 15.0), so
