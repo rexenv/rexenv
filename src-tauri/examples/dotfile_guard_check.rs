@@ -12,9 +12,13 @@
 //!   /.well-known/x    → 200 (the root exemption stays real)
 //!   /index.php        → 200 (control: PHP itself works)
 //!
-//! Apache + FrankenPHP legs: ledger backlog (same probes, their backends).
+//! All THREE templates get the same probes against their real backends
+//! (15 Aug 2026 — the Apache and FrankenPHP legs closed the #103 backlog):
+//! nginx+fpm, httpd+the SAME fpm pool (mod_proxy_fcgi), and FrankenPHP's
+//! embedded PHP. Each backend gets its own control leg first — "404 on the
+//! dotfile" proves nothing about a server that 404s everything.
 
-use rexenv_lib::core::{binaries, services};
+use rexenv_lib::core::{apache, binaries, frankenphp, services};
 use std::fs;
 use std::process::ExitCode;
 use std::thread;
@@ -25,6 +29,8 @@ use common::Reaped;
 
 const HTTP_PORT: u16 = 18132; // fixture — claimed in common/mod.rs
 const FPM_PORT: u16 = 9793; // fixture
+const FRANKEN_PORT: u16 = 9794; // fixture
+const APACHE_PORT: u16 = 9795; // fixture
 
 const ENV_SECRET: &str = "REXENV_DOTFILE_SECRET_e5b1";
 const PHP_MARKER: &str = "REXENV_HIDDEN_PHP_RAN_e5b1";
@@ -93,6 +99,102 @@ async fn main() -> ExitCode {
     checks.is("root /.well-known/ stays exempt", wk.contains("well-known-ok"), &wk);
 
     nginx.reap();
+
+    // ── the same five probes against a REAL Apache (same fpm pool) ─────────
+    // The claim is per-TEMPLATE: apache.rs's deny is a mod_rewrite [R=404]
+    // that must precede the WP routing, and only httpd can say whether that
+    // ordering actually denies before mod_proxy_fcgi hands .php to the pool.
+    let basedir = binaries::resolve_bundle(&*plat, "httpd", binaries::HTTPD_VERSION)
+        .await
+        .expect("httpd bundle (cached)");
+    let apache_conf = apache::write_config(
+        &*plat,
+        &basedir,
+        domain,
+        &docroot,
+        APACHE_PORT,
+        FPM_PORT,
+        services::RewriteMode::Single,
+        &[],
+    )
+    .expect("apache conf");
+    let mut httpd = Reaped::new(
+        apache::start(&*plat, &basedir, domain, &apache_conf).expect("start apache"),
+        APACHE_PORT,
+        "httpd",
+    );
+    for _ in 0..40 {
+        if apache::running(APACHE_PORT) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    let control = common::http_get(APACHE_PORT, domain, "/index.php");
+    checks.is("apache control: PHP executes", control.contains("rexenv-control-ok"), &control);
+    probe_backend(&mut checks, "apache", APACHE_PORT, domain);
+    httpd.reap();
     fpm.reap();
+
+    // ── and against a REAL FrankenPHP (its embedded PHP, no pool) ──────────
+    let franken_bin = binaries::resolve(&*plat, "frankenphp", binaries::FRANKENPHP_VERSION)
+        .await
+        .expect("frankenphp (cached)");
+    let franken_conf = frankenphp::write_config(
+        &*plat,
+        domain,
+        &docroot,
+        FRANKEN_PORT,
+        services::RewriteMode::Single,
+        &[],
+    )
+    .expect("frankenphp conf");
+    let mut franken = Reaped::new(
+        frankenphp::start(&*plat, &franken_bin, domain, &franken_conf, &[])
+            .expect("start frankenphp"),
+        FRANKEN_PORT,
+        "frankenphp",
+    );
+    for _ in 0..40 {
+        if frankenphp::running(FRANKEN_PORT) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    let control = common::http_get(FRANKEN_PORT, domain, "/index.php");
+    checks.is("frankenphp control: PHP executes", control.contains("rexenv-control-ok"), &control);
+    probe_backend(&mut checks, "frankenphp", FRANKEN_PORT, domain);
+    franken.reap();
+
     checks.verdict()
+}
+
+/// The #103 probe set, identical for every backend: the three dotfile paths
+/// 404, the secret never crosses, the hidden .php never executes, and root
+/// `/.well-known/` stays exempt. The caller runs the backend's CONTROL leg
+/// first — without PHP provably executing, every 404 here is vacuous.
+fn probe_backend(checks: &mut common::Check, backend: &str, port: u16, domain: &str) {
+    for (path, what) in
+        [("/.env", "the .env"), ("/.git/config", "the .git config"), ("/.hidden/x.php", "a dot-dir .php")]
+    {
+        let resp = common::http_get(port, domain, path);
+        checks.is(
+            &format!("{backend}: {what} is 404"),
+            resp.starts_with("HTTP/1.1 404"),
+            resp.lines().next().unwrap_or(""),
+        );
+    }
+    let env_resp = common::http_get(port, domain, "/.env");
+    checks.is(
+        &format!("{backend}: the secret never crosses the wire"),
+        !env_resp.contains(ENV_SECRET),
+        "leaked",
+    );
+    let php_resp = common::http_get(port, domain, "/.hidden/x.php");
+    checks.is(
+        &format!("{backend}: a dot-dir .php never executes"),
+        !php_resp.contains(PHP_MARKER),
+        "php executed behind the guard",
+    );
+    let wk = common::http_get(port, domain, "/.well-known/probe");
+    checks.is(&format!("{backend}: root /.well-known/ stays exempt"), wk.contains("well-known-ok"), &wk);
 }

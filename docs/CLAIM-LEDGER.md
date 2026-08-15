@@ -286,7 +286,7 @@ L3 = scripted manual.
 |---|---|---|---|
 | 102 | logs.rs:7 | Log keys validated; tail never handed a UI path | ◐ key gate ✅; call-site discipline 🔨 L0 |
 | 330 | php.rs (`pool_fate`, `POOL_MISS_LIMIT`, `Pool::misses`, `reap_dead`) | **A pool is reaped on probe evidence only after consecutive misses; an adopted master is judged by positive identification, never `kill -0`** (B29b — the July review's finding that the fpm pool reap was one-miss while the adopted-service reap had already grown both protections in B29). One failed port probe on a loaded box must not cost a serving pool; a spawned child's `try_wait` exit is positive evidence and reaps on sight; a recycled pid or a `php-fpm`-titled orphan worker set (port green, master gone) accrues misses and reaps at the limit — the "UI shows running, every site hangs" failure must not be immortal just because the port answers. The miss arithmetic is `service_manager::adopted_reap_decision` shared, not re-expressed — one definition of the contract | ✅ `pool_fate_takes_consecutive_misses_for_probes_and_one_exit_for_evidence` (full decision table incl. the serving-port/unidentified-master case) + `reap_dead_needs_two_misses_and_identifies_adopted_masters_positively` (wiring: real backdated child + real TCP listener; identified-serving master's count proven to RESET). **Plant-proven both ways**: `POOL_MISS_LIMIT = 1` fails the table's first line by name; replacing the identification with `true` (the old `kill -0` semantics) fails the recycled-pid leg |
-| 103 | services.rs:414 | ⚠ Dotfile paths 404, never reach fastcgi (all three templates) | ◐ nginx leg ✅ `dotfile_guard_check` (T11: .env/.git/.hidden-php 404 over the wire, secret never crosses, .well-known exempt); Apache + FrankenPHP legs 🔨 L1 |
+| 103 | services.rs:414 + apache.rs (the `[R=404,L]` deny) + frankenphp.rs (`dotfile_guard`) | ⚠ Dotfile paths 404, never reach fastcgi/PHP (all three templates) | ✅ **all three backends live, 15 Aug 2026** — `dotfile_guard_check` runs the SAME five probes (.env 404 + secret never on the wire, .git/config 404, dot-dir .php 404 + marker never executes, root `.well-known` exempt) against real nginx+fpm, real httpd sharing the same fpm pool via mod_proxy_fcgi, and real FrankenPHP's embedded PHP — each behind its own control leg (PHP provably executes first, or every 404 is vacuous). **Plant-proven per template**: commenting Apache's RewriteRule deny fails ONLY the Apache legs — the .env comes back `200 OK` with the secret on the wire and the hidden .php executes, the exact incident — and emptying frankenphp's `dotfile_guard` fails only its legs the same way. The isolation is the point: three templates are three chances to regress independently, and the probes fail by backend name |
 | 104 | services.rs:122 | `-t` gate runs against a candidate the live pool never reads | ◐ shape ✅; candidate-vs-live isolation 🔨 L1 |
 | 105 | services.rs:315 | nginx never 413s an upload PHP would accept | ✅ 2 lib tests |
 | 106 | services.rs:769 | Long requests not killed at 300s | ✅ lib test |
@@ -515,8 +515,8 @@ L2 labels; the pool-reap miss counter #330; the bundle prepare receipt #331; per
 tunnel origins #332; the app-schema SQL ownership scan #167 and the core
 import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
 mid-dump-kill server-side leg #116 closed; the resolver-drift banner #334; the
-delete-kill ordering #190 closed):
-**✅ 253 · ◐ 51 · 🔨 25 · 🚫 5** of 334 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+delete-kill ordering #190 closed; #103's Apache/FrankenPHP legs):
+**✅ 254 · ◐ 50 · 🔨 25 · 🚫 5** of 334 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -820,7 +820,7 @@ Open, in order:
 2. **#175** (wiring half) — rides SMOKE-TEST's cold-cache login item.
 
 Closed since this list was first ranked — see the rows: #33, #307, #308 (tunnel
-replay + ordering), #10, #13 (cross-site + override fallthrough), #103 (dotfiles,
-all three backends), #37, #36, #44; #40/#166 (webview dialogs + custom-scheme
+replay + ordering), #10, #13 (cross-site + override fallthrough), #103 (dotfiles —
+nginx first, and since 15 Aug 2026 genuinely all three backends; this line claimed all three EARLY, the stale-summary shape again), #37, #36, #44; #40/#166 (webview dialogs + custom-scheme
 redirect — automatable halves landed at L0+L1, the L2 idea measured impossible,
 the eye-only remainder mapped to SMOKE).

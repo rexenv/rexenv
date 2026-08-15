@@ -756,7 +756,7 @@ first:
 - [ ] Live re-point (#242 L1): a linked site pointed at a folder the user moved
   actually SERVES from it — the shape and the preflight are lib-proven, the
   serving half needs the stack (sandbox-tier example or SMOKE).
-- [ ] Then: Apache/FrankenPHP dotfile legs (#103), fpm candidate isolation
+- [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), fpm candidate isolation
   (#104/#191), manifest HEAD+digest sweep, Bedrock live provision (#35),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
   `download_progress_check`'s bin-cache delete off the REAL shared cache

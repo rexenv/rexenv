@@ -327,7 +327,7 @@ testing backlog, worked highest-risk first:
 1. CF-header set as tunnel discriminator (wp_tunnel + wp_login) — L1
 2. "a tunnel can only expose its one site" — asserted in three modules, negative never
    probed — L1
-3. dotfile guard proven only as a config substring — L1 (live 404)
+3. dotfile guard proven only as a config substring — L1 (live 404) *(closed: nginx at T11, Apache+FrankenPHP 15 Aug 2026 — #103 ✅)*
 4. login-autostart "never download / never prompt" — untested at any level — L0+L1
 5. wp_login PHP-injection safety inherited, not tested at the injection point — L0
 6. DNS answer-anything justified by an unasserted loopback bind — L0
