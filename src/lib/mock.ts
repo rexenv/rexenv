@@ -190,3 +190,14 @@ export function mockMailDetail(id: string): MailDetail {
     ],
   };
 }
+
+/** Resolver drift for the dev/WebKit harness: `?drift=test,dev` in the URL is
+ *  the fixture. Absent/empty → `[]`, which is the ordinary state and MUST
+ *  render nothing (the #306 rule) — the harness probe asserts both ways. */
+export function mockResolverDrift(): string[] {
+  const raw = new URLSearchParams(window.location.search).get("drift") ?? "";
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}

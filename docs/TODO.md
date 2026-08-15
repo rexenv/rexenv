@@ -269,8 +269,12 @@ evidence cited.
   only place a takeover can be redone — there is no `rex` command for it). An
   absent field reads ⚠ unknown, never ✓, so an older app cannot report a clean
   check it never ran. `doctor`'s one-line description gained resolvers.
-  - [ ] **remaining: the frontend binding needs a caller — RULED 15 Aug 2026,
-    copy pending approval, then build.** Shape approved: a dismissible
+  - [x] **remaining: the frontend binding needs a caller — RULED, copy approved
+    with one redline ("You can take it back from Import."), BUILT 15 Aug 2026.**
+    ✓ `ResolverDriftBanner` on Sites, first in the banner stack; ledger #334
+    (L2 lifecycle probe, plant-proven ×2, and the probe's first run caught the
+    self-heal firing on the query's loading state — it would have wiped every
+    dismissal on every launch). Original ruling kept below.** Shape approved: a dismissible
     launch-time banner on the Sites screen when `resolverDrift()` reports lost
     TLDs, pointing at Import, doctor's voice. Two ruled conditions: (a) it must
     NOT render when nothing was taken back — `[]` renders NOTHING, the ordinary

@@ -52,7 +52,7 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
-import { KeepSiteDialog, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
+import { KeepSiteDialog, ResolverDriftBanner, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { WpCliPackagesCard } from "@/routes/Settings";
 import { Mail as MailScreen } from "@/routes/Mail";
@@ -912,6 +912,10 @@ export function DevUiReview() {
           return mockBrowsers();
         case "get_setting":
           return null;
+        case "resolver_drift":
+          // `?drift=test,dev` is the fixture; absent → [] (the ordinary state,
+          // which the probe requires to render NOTHING).
+          return (params.get("drift") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
         case "mcp_status":
         case "mcp_set_enabled":
           return mcpStatusMock();
@@ -941,6 +945,16 @@ export function DevUiReview() {
         {view === "sites" && <SitesScaleView />}
         {view === "delete" && <DeleteView />}
         {view === "badges" && <BadgesView />}
+        {view === "drift" && (
+          // The banner + a landmark that renders REGARDLESS, so the probe's
+          // "no banner" legs can tell zero-render from a broken route.
+          <div data-probe="drift-view">
+            <ResolverDriftBanner />
+            <div className="text-[0.71875rem] text-rex-text-muted">
+              drift harness mounted (fixture: ?drift=tld1,tld2)
+            </div>
+          </div>
+        )}
         {view === "openin" && <OpenInView />}
         {view === "mail" && (
           <div className="h-[620px] overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">

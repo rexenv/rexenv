@@ -15,6 +15,7 @@ import {
   mockMailList,
   mockPhpSettings,
   mockPhpVersions,
+  mockResolverDrift,
   mockServices,
   mockSites,
   mockSitesServing,
@@ -282,7 +283,7 @@ export async function resolverHandBack(tld: string): Promise<ResolverPlan> {
 
 /** TLDs we borrowed whose file another tool has since reclaimed. */
 export async function resolverDrift(): Promise<string[]> {
-  if (!isTauri()) return [];
+  if (!isTauri()) return mockResolverDrift();
   return invoke<string[]>("resolver_drift");
 }
 

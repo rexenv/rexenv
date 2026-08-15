@@ -106,6 +106,9 @@ const SCENARIOS = [
   // overflow assertion.
   ["provision-long-label", "view=provision", []],
   ["scratch-rows", "view=scratch", []],
+  // Resolver-drift banner: the probe drives the WHOLE lifecycle (present →
+  // dismissed → ours-again heals → re-loss re-shows) by re-navigating itself.
+  ["resolver-drift", "view=drift&drift=test", []],
   ["scratch-keep-dialog", "view=keep", []],
 ];
 
@@ -317,6 +320,71 @@ const PROBES = {
   // empty → every destructive button disabled; a near-miss → still disabled;
   // the exact domain (trailing space, since the copy button invites a paste) →
   // all enabled. The copy button must exist, or the gate is retype-from-memory.
+  // The resolver-drift banner's four ruled behaviours, driven end to end.
+  // Both zero-render legs lean on the landmark: absence of the banner is also
+  // what a broken route renders, so "no banner" only counts with the view
+  // provably mounted (the probe-needs-a-known-good rule).
+  resolverDrift: async (page) => {
+    const problems = [];
+    const banner = () =>
+      page.evaluate(
+        () => document.querySelector('[data-probe="resolver-drift-banner"]')?.innerText ?? null,
+      );
+    const mounted = () =>
+      page.evaluate(() => !!document.querySelector('[data-probe="drift-view"]'));
+    const goto = async (drift) => {
+      const u = new URL(page.url());
+      if (drift === null) u.searchParams.delete("drift");
+      else u.searchParams.set("drift", drift);
+      await page.goto(u.toString());
+      await page.waitForSelector('[data-probe="drift-view"]');
+    };
+
+    // Clean slate: a previous run's dismissals must not leak in.
+    await page.evaluate(() => localStorage.removeItem("rexenv.resolverDriftDismissedTlds"));
+    await goto("test");
+
+    // 1. One drifted TLD: symptom-first headline + the approved sentence.
+    let t = await banner();
+    if (!t) problems.push("drifted .test rendered no banner");
+    else {
+      if (!/Your \.test sites stopped resolving/.test(t))
+        problems.push(`headline does not name the symptom + TLD: ${JSON.stringify(t.slice(0, 120))}`);
+      if (!/You can take it back from Import\./.test(t))
+        problems.push("the approved (redlined) sentence is missing");
+      if (!/Valet or Herd/.test(t))
+        problems.push("the banner stopped naming who took the file");
+    }
+
+    // 2. Two TLDs read as a list.
+    await goto("test,dev");
+    t = await banner();
+    if (!t || !/\.test and \.dev sites stopped resolving/.test(t))
+      problems.push(`two drifted TLDs did not render as a list: ${JSON.stringify((t ?? "").slice(0, 120))}`);
+
+    // 3. Dismiss hides it — and PERSISTS across a reload with the same drift.
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page.waitForFunction(
+      () => !document.querySelector('[data-probe="resolver-drift-banner"]'),
+    );
+    await goto("test,dev");
+    if (await banner()) problems.push("a dismissed drift re-rendered on reload (dismissal did not persist)");
+    if (!(await mounted())) problems.push("CONTROL BROKEN: harness view absent — the dismissal legs prove nothing");
+
+    // 4. Zero drift renders NOTHING (the #306 rule) — and self-heals the
+    //    stored dismissals, because the TLDs read as ours again.
+    await goto(null);
+    if (await banner()) problems.push("nothing is drifted and the banner rendered anyway (#306's shape)");
+    if (!(await mounted())) problems.push("CONTROL BROKEN: harness view absent on the zero-drift leg");
+
+    // 5. The NEXT loss re-shows: the ours-again visit pruned the dismissal.
+    await goto("test");
+    if (!(await banner()))
+      problems.push(
+        "a re-drifted TLD stayed hidden behind an old dismissal — the self-heal is not pruning",
+      );
+    return problems;
+  },
   deleteGate: async (page) => {
     const problems = await page.evaluate(() => {
       const out = [];
@@ -360,6 +428,7 @@ function probeFor(name) {
   if (name === "scratch-rows") return PROBES.scratchGroup;
   if (name.startsWith("provision")) return PROBES.provisionRow;
   if (name.startsWith("delete")) return PROBES.deleteGate;
+  if (name === "resolver-drift") return PROBES.resolverDrift;
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }

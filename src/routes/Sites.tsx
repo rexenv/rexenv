@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X } from "lucide-react";
+import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -15,7 +15,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { defaultTld, listSites, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
+import { defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
@@ -770,6 +770,7 @@ export function Sites() {
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]">
+        <ResolverDriftBanner />
         <ReapBanner />
         <ImportBanner />
         {prov.job && (prov.running || prov.job.status !== "ok") && (
@@ -1036,6 +1037,93 @@ function ReapBanner() {
  * has already decided. Most useful on an empty site list — which is exactly
  * when a Valet user is wondering where their sites are.
  */
+/** TLDs another tool took back — the user's sites on them are dark while
+ *  every health check stays green, so the fact comes to them instead of
+ *  waiting in a log or on the Import screen (ruled 15 Aug 2026; copy approved
+ *  with one redline). Two load-bearing behaviours:
+ *  - `[]` renders NOTHING. Nothing-taken-back is the ordinary state, and a
+ *    notice for it would be the import bug's shape in a new place (#306).
+ *  - Dismissal is PER-TLD and CLEARS when that TLD reads as ours again: the
+ *    stored set self-heals against the live answer, so a dismissed .test
+ *    returns on the NEXT loss and a newly lost .dev is never hidden by an
+ *    old dismissal — nobody tracks that by hand. */
+export function ResolverDriftBanner() {
+  const navigate = useNavigate();
+  const DISMISS_KEY = "rexenv.resolverDriftDismissedTlds";
+  const [dismissed, setDismissed] = useState<string[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(DISMISS_KEY) ?? "[]");
+      return Array.isArray(v) ? v.filter((t) => typeof t === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const { data, isSuccess } = useQuery({
+    queryKey: ["resolver-drift"],
+    queryFn: resolverDrift,
+    staleTime: 60_000,
+  });
+  // Coerced, not trusted: the dev harness's catch-all mock once answered `1`
+  // here and the crash took the whole Sites route with it. A malformed answer
+  // must degrade to the ordinary state, never to a white page.
+  const drift = useMemo(() => (Array.isArray(data) ? data.filter((t) => typeof t === "string") : []), [data]);
+  // Self-heal: a dismissal only means anything about a CURRENTLY drifted TLD.
+  // Pruning here is what makes "dismissed .test re-shows on the next loss"
+  // true without any second record of when a takeover was redone.
+  useEffect(() => {
+    // ONLY on a resolved answer: while the query loads, `drift` is [] and []
+    // means "unknown", not "ours again" — pruning on it wiped every dismissal
+    // on every mount. The harness probe caught this on its first run (the
+    // dismissed banner re-rendered after a reload).
+    if (!isSuccess) return;
+    const pruned = dismissed.filter((t) => drift.includes(t));
+    if (pruned.length !== dismissed.length) {
+      localStorage.setItem(DISMISS_KEY, JSON.stringify(pruned));
+      setDismissed(pruned);
+    }
+  }, [isSuccess, drift, dismissed]);
+  const visible = drift.filter((t) => !dismissed.includes(t));
+  if (visible.length === 0) return null;
+
+  const names = visible.map((t) => `.${t}`);
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const single = names.length === 1;
+  return (
+    <div
+      data-probe="resolver-drift-banner"
+      className="mb-2 mt-1 flex items-start gap-3 rounded-xl border border-status-warning-border bg-status-warning-bg px-4 py-3"
+    >
+      <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-status-warning-bright" strokeWidth={1.8} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[0.8125rem] font-medium text-rex-text">
+          Your {list} sites stopped resolving
+        </div>
+        <div className="mt-0.5 text-[0.71875rem] leading-[1.5] text-rex-text-muted">
+          {single
+            ? `Valet or Herd took ${list}'s resolver file back, so those sites won't load until rexenv takes it over again. You can take it back from Import.`
+            : `Valet or Herd took the resolver files for ${list} back, so those sites won't load until rexenv takes them over again. You can take them back from Import.`}
+        </div>
+      </div>
+      <Button variant="secondary" onClick={() => navigate("/import")}>
+        Go to Import
+      </Button>
+      <Button
+        variant="ghost"
+        onClick={() => {
+          const next = [...new Set([...dismissed, ...visible])];
+          localStorage.setItem(DISMISS_KEY, JSON.stringify(next));
+          setDismissed(next);
+        }}
+      >
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+
 function ImportBanner() {
   const navigate = useNavigate();
   const DISMISS_KEY = "rexenv.importBannerDismissed";
