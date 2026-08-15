@@ -23,6 +23,16 @@ pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersionVie
     core::php::list_versions(&conn)
 }
 
+/// The PHP minor FrankenPHP actually serves — its embedded build, never the
+/// site's pool (ruled 15 Aug 2026: the SiteDetail picker goes read-only with
+/// this annotation for FrankenPHP sites, instead of a `php_version` promise
+/// the server cannot keep). Served from the ONE pin (`FRANKENPHP_EMBEDDED_PHP`)
+/// so the UI can never carry a second copy that drifts.
+#[tauri::command]
+pub fn frankenphp_embedded_php() -> String {
+    core::php::minor_of(core::binaries::FRANKENPHP_EMBEDDED_PHP)
+}
+
 /// Enable (install) or disable (remove) a PHP version. Guarded in `core::php`
 /// (can't remove the default or a version a site is using). Installing
 /// prefetches the version's FPM + CLI builds right away (hub batch with live

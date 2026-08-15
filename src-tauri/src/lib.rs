@@ -643,6 +643,7 @@ pub fn run() {
             commands::sites::keep_site,
             commands::sites::scratch_packages,
             commands::php::list_php_versions,
+            commands::php::frankenphp_embedded_php,
             commands::php::set_php_version_installed,
             commands::php::set_default_php_version,
             commands::php::get_php_settings,

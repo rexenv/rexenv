@@ -57,7 +57,9 @@ export const mockSites: Site[] = [
     type: "wordpress",
     status: "stopped",
     phpVersion: "8.1",
-    webServer: "apache",
+    // FrankenPHP on purpose: the dev route must render the read-only PHP
+    // picker + "Fixed by FrankenPHP" note (the stored 8.1 is NOT what serves).
+    webServer: "frankenphp",
     ssl: true,
     path: "~/Sites/network",
     createdAt: "2026-06-03 12:00:00",

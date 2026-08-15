@@ -46,6 +46,7 @@ import { eolNote, eolTag } from "@/lib/php";
 import {
   changeSiteDomain,
   getSitesServing,
+  frankenphpEmbeddedPhp,
   listPhpVersions,
   listSiteEnv,
   listSites,
@@ -427,6 +428,17 @@ function Overview({
 }) {
   const url = `https://${site.domain}`;
   const wpConfig = `${site.path}/wp-config.php`;
+  // FrankenPHP serves every site with its EMBEDDED PHP, never the site's pool
+  // — so for a FrankenPHP site the picker is read-only and the number shown is
+  // the version that actually serves, not the stored one (ruled 15 Aug 2026;
+  // the stored `phpVersion` would be a promise the server cannot keep).
+  const onFrankenphp = site.webServer === "frankenphp";
+  const { data: embeddedPhp } = useQuery({
+    queryKey: ["frankenphp-embedded-php"],
+    queryFn: frankenphpEmbeddedPhp,
+    enabled: onFrankenphp,
+    staleTime: Infinity,
+  });
   const editor = usePreferredEditor();
   const editorMenu = useEditorMenu(site.path);
   const browser = usePreferredBrowser();
@@ -455,21 +467,40 @@ function Overview({
         <div className="grid grid-cols-3 gap-[14px]">
           <EnvMini label="PHP version">
             <span className="font-mono text-[1.125rem] font-semibold text-rex-text">
-              {site.phpVersion}
+              {onFrankenphp ? (embeddedPhp ?? site.phpVersion) : site.phpVersion}
             </span>
-            <select
-              value={site.phpVersion}
-              disabled={switchPhpPending}
-              onChange={(e) => onPhp(e.target.value)}
-              className={SELECT_CLS}
-            >
-              {options.map((o) => (
-                <option key={o.minor} value={o.minor}>
-                  {o.minor}
-                  {eolTag(o.eolSince)}
-                </option>
-              ))}
-            </select>
+            {onFrankenphp ? (
+              <>
+                <select
+                  value={embeddedPhp ?? site.phpVersion}
+                  disabled
+                  title="FrankenPHP embeds its own PHP build; sites it serves never use the per-version pools."
+                  className={SELECT_CLS}
+                >
+                  <option value={embeddedPhp ?? site.phpVersion}>
+                    {embeddedPhp ?? site.phpVersion} — FrankenPHP's embedded PHP
+                  </option>
+                </select>
+                <div className="mt-1 text-[0.6875rem] leading-[1.5] text-rex-text-muted">
+                  Fixed by FrankenPHP. Switch the web server to Nginx or Apache
+                  to choose a version.
+                </div>
+              </>
+            ) : (
+              <select
+                value={site.phpVersion}
+                disabled={switchPhpPending}
+                onChange={(e) => onPhp(e.target.value)}
+                className={SELECT_CLS}
+              >
+                {options.map((o) => (
+                  <option key={o.minor} value={o.minor}>
+                    {o.minor}
+                    {eolTag(o.eolSince)}
+                  </option>
+                ))}
+              </select>
+            )}
           </EnvMini>
           <EnvMini label="Web server">
             <span className="text-[0.9375rem] font-semibold capitalize text-rex-text">

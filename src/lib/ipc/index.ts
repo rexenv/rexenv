@@ -451,6 +451,13 @@ export async function listPhpVersions(): Promise<PhpVersion[]> {
   return invoke<PhpVersion[]>("list_php_versions");
 }
 
+/** The PHP minor FrankenPHP actually serves (its embedded build, never the
+ * site's pool). One backend pin, no frontend copy to drift. */
+export async function frankenphpEmbeddedPhp(): Promise<string> {
+  if (!isTauri()) return "8.5";
+  return invoke<string>("frankenphp_embedded_php");
+}
+
 /** Install (enable) or remove (disable) a PHP version. No-op outside Tauri. */
 export async function setPhpVersionInstalled(minor: string, installed: boolean): Promise<void> {
   if (!isTauri()) return;
