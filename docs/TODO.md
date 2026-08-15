@@ -144,20 +144,82 @@ evidence cited.
 
   **NOT fixed on the 0.2.0 branch, deliberately.** `tokens.css` compiles into the
   artefact; the tagged dmg `bd019d8d…` is built and §A0-passed, and this is a
-  design decision (promote consumers to `--rex-text-muted` / lighten the tokens /
-  darken the surfaces) across 143 usages, not a defect repair. Doing it here would
+  design decision across 143 usages, not a defect repair. Doing it there would
   cost a rebuild and a re-run of §A0 to change how the app looks, mid-release.
+  **Do this after 0.2.0 ships** (§A → SMOKE → §D), on its own branch.
 
-  **The deliverable is the scan, not the three token edits.** A derived L0 check
-  over `tokens.css` — every text-token × surface-token pair, per theme, failing
-  under 4.5:1, with an explicit allow-list for pairings that are decorative or
-  never composed. That is the `core::copy_scan` shape: the comment stops being
-  prose and becomes a check, and it answers what a hand-audit cannot — which
-  pairs the app actually COMPOSES versus which are merely possible. Write the
-  scan first, then let it tell you the real blast radius; picking replacement
-  colours before that is guessing at the size of the job.
-  **Also settle DESIGN.md's silence in the same pass** — an unstated standard is
-  why one comment got to speak for the whole system unchallenged.
+  ### The measurement that decides the approach — do this arithmetic first
+
+  Lightening each token until it clears 4.5:1 against the WORST surface it can
+  sit on (dark `--rex-surface-2-hover` `#232734`; light `--rex-surface-3`
+  `#e6e8ed`) gives:
+
+  | token | dark now | dark needs | light now | light needs |
+  |---|---|---|---|---|
+  | `--rex-text-dim` | `#6e7681` | `#888e97` | `#767d8a` | `#636974` |
+  | `--rex-text-faint` | `#5f6675` | `#888e99` | `#8b919d` | `#646972` |
+  | `--rex-text-label` | `#525a68` | `#888e97` | `#6d7482` | `#626975` |
+  | `--rex-text-muted` | `#8a90a0` — already passes | | `#5a6170` — already passes | |
+
+  **All three land on `--rex-text-muted`.** At 9.5–10.5px you cannot keep a
+  four-level text hierarchy AND pass AA — retuning the values yields four tokens
+  that look identical and a hierarchy that is dead in the design but still alive
+  in the code. So the real decision is **not which colours**, it is **which of
+  these 143 things are text somebody must read**, and which are ornament.
+
+  ### The work, in order
+
+  1. **Write the scan FIRST, before touching a colour.** Home is
+     `core::copy_scan` — it already owns "reading frontend source from a Rust
+     test" and already carries a build-mechanism lint of exactly this shape
+     (`no_tailwind_class_name_is_built_by_interpolation`). Parse `tokens.css`
+     per theme block, compute WCAG relative luminance, fail any pair under
+     4.5:1. **Three traps, all from this repo's own history:**
+     - `tokens.css` has TWO theme blocks. A parser that reads only `:root`
+       silently checks dark alone and stays green — the same defect as cutting
+       at the first `#[cfg(test)]`. Assert both themes were found with non-zero
+       token counts.
+     - **Landmark canary** (`copy_scan`'s own rule): a parser that returns an
+       empty map makes every check pass vacuously. Assert a known-good pair
+       (`text-bright` on `surface-1` > 10:1) so a broken parser fails loudly.
+     - **Every allow-list entry is itself a claim** — "this pair is never
+       composed" — and claims rot. Each needs a written reason, and the scan
+       should print the pairs it found so the list can be audited.
+     **Done when:** the scan is in `verify.sh` and **RED today**. Red is the
+     proof it works. Plant-prove by lifting one token over 4.5 and seeing green.
+  2. **Let the scan size the job.** The cross-product is the strict bound; some
+     pairs are never composed. Read the output before deciding anything —
+     picking colours before this is guessing at the size of the work.
+  3. **Resolve it, and the arithmetic above forces the shape.** Migrate
+     `text-dim`'s 120 consumers to `--rex-text-muted` (no new colour to choose;
+     it already passes). Keep `text-faint`/`text-label` only where the thing is
+     **not text anyone reads** — icons, separators, decorative rules. Ornament
+     is exempt from AA; a service version number in the status footer is
+     information, not ornament, so that exemption does not cover most of the
+     120. **Do not tune the token values to pass** — see above.
+     **Size is not a lever**: AA-large's 3:1 needs ≥24px (or ≥18.66px bold), and
+     9.5px text is not becoming 24px. Contrast is the only road.
+  4. **Write the rule into `docs/DESIGN.md` in the same pass.** It states no
+     contrast rule at all today, and that silence is why one comment spoke for
+     the whole system unchallenged. Body/label text AA 4.5:1, ornament exempt —
+     with the scan as the enforcement, not the paragraph.
+  5. **Migrate the consumers.** `text-dim` 120 · `text-label` 16 · `text-faint`
+     7. Mechanical once the scan is red: it names every remaining failure.
+  6. **Close it.** Ledger #337 `🔨` → `✅` with the scan's name; tick this row
+     with ✓ evidence; the tally is already enforced by `verify.sh`. **Delete the
+     comment at `tokens.css:236`** — once the scan exists it is redundant, and
+     the comment was the defect.
+
+  ### What not to do
+
+  - **Do not pick colours first.** Scan → scope → colours.
+  - **Do not grow the allow-list without reasons.** A reasonless entry silently
+    shrinks the check — the fifth "guard covers claimed surface" in this repo.
+  - **Do not touch `tokens.css` on the release branch.** It compiles into the
+    artefact.
+  - **Do not close this by rewriting the comment.** §6.5 just proved that the
+    most specific written warning in the repo still shipped false. The
+    deliverable is the scan, not the paragraph.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
