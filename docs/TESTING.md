@@ -338,6 +338,15 @@ Ledger discipline: a new "must never / always / is safe because" comment adds a 
 the same commit. A proof-commit flips the verdict and names the proof. That keeps the
 metric honest and the ledger from rotting into the archive problem.
 
+**And for any claim whose subject is a third party's behaviour, the FIRST step is a
+measurement of which layer can observe the subject at all — before any test is
+designed.** Promoted from a note to standing rule 15 Aug 2026, after it saved two
+sessions in one week: #2/#33 (the CF-header set was simulated in every guard until a
+live run measured it) and #40/#166 (both carried `🔨 L2` for months; the measurement
+showed Playwright contains neither subject, and a wk-check would have tested
+Playwright's own machinery forever). The dotfile guards went eight months as a config
+substring for want of the same question.
+
 ## 3. Coverage of the classes we actually hit
 
 Per recurring class: the honest mechanism — lint, test helper, or documented audit.

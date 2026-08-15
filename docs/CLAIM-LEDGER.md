@@ -18,6 +18,15 @@ was skipped once and is now enforced by `scripts/ledger-tally.sh --check` in
 `verify.sh`, so a row can no longer land while the summary still describes the file
 as it was yesterday.
 
+**Standing first step for any row whose subject is a THIRD PARTY'S behaviour**
+(⚠ rows, engine/runtime/tool internals): before designing a test, MEASURE which
+layer can even observe the subject. Twice in one week that measurement killed a
+planned test that would have passed forever — #2/#33's live CF-header run replaced
+years of simulated headers, and #40/#166's queued L2 legs died on the fact that
+Playwright contains neither subject (`docs/PLAN-webview-dialog-proofs.md`). A
+verdict layer assigned without that measurement is a guess wearing a plan's
+clothes.
+
 Verdicts:
 - ✅ **proven** — a named lib test or example exercises exactly this claim.
 - ◐ **half-proven** — the stated half is proven; the noted half is not (layer in note).
@@ -319,7 +328,7 @@ L3 = scripted manual.
 | 130 | confrewrite.rs:5 | Backup-first; half-written unrepresentable; unknown digest reads conservative | ✅ 5 lib tests |
 | 131 | dbcompat.rs:12 | Cautions never change whether it runs; a block is never a dead end | ✅ 3 lib tests |
 | 195 | dbdump.rs (dump_tool_flags) + database.rs:155 | Every dump-tool flag is accepted by the real binaries; --connect-timeout is not honored (mysqldump hard-errors, mariadb-dump warns+ignores — vendor split DISCOVERED by the proof, old "every tool hard-errors" comment corrected) | ✅ `db_dump_flags_check` (28 Jul 2026, all 4 cached tools) |
-| 329 | core/db.rs (`SqlClient`) + every client-taking signature in database/dbrestore/dbmirror/dbdump/confverify/wordpress | **The SQL client travels as a TYPE, constructible only where the engine's layout is known** (`DbEngine::sql_client_bins` and `cached_sql_client`; a `#[cfg(test)]` door for fixture clients). The class this closes: `b5861c4` renamed `mysql_basedir` → `db_client` and changed the parameter's MEANING (extracted tree → client binary) with no type change, so nine examples kept passing the tree, nothing failed to compile, and they sat red 15 Jul→14 Aug 2026 — exec of a directory is EACCES before any DB contact, an error naming nothing. The raw path helpers (`mysql_client_bin`, `mariadb_client_bin`) are `pub(crate)` so no caller outside the crate can hand-derive the path and pass it where the client is meant | ✅ **structural (type-level), and the migration itself was the plant**: converting the tree found TWO victims the 14 Aug nine-example sweep missed because they never called `mysql_client_bin` — `site_resources_check` hand-built `bin_dir/mysql-<v>` (the TREE) and passed it to `db_sizes`, and `db_drop_check` passed `&basedir` to `create_database`/`drop_database`; both latently red, both now compile errors resolved through the constructors. L0 witness: the field is private and the module exposes no other constructor — a `&Path`/`PathBuf` at any converted call site is E0308 |
+| 329 | core/db.rs (`SqlClient`) + every client-taking signature in database/dbrestore/dbmirror/dbdump/confverify/wordpress | **The SQL client travels as a TYPE, constructible only where the engine's layout is known** (`DbEngine::sql_client_bins` and `cached_sql_client`; a `#[cfg(test)]` door for fixture clients). The class this closes: `b5861c4` renamed `mysql_basedir` → `db_client` and changed the parameter's MEANING (extracted tree → client binary) with no type change, so nine examples kept passing the tree, nothing failed to compile, and they sat red 15 Jul→14 Aug 2026 — exec of a directory is EACCES before any DB contact, an error naming nothing. The raw path helpers (`mysql_client_bin`, `mariadb_client_bin`) are `pub(crate)` so no caller outside the crate can hand-derive the path and pass it where the client is meant | ✅ **structural (type-level), and the migration itself was the plant**: converting the tree found TWO victims the 14 Aug nine-example sweep missed because they never called `mysql_client_bin` — `site_resources_check` hand-built `bin_dir/mysql-<v>` (the TREE) and passed it to `db_sizes`, and `db_drop_check` passed `&basedir` to `create_database`/`drop_database`; both latently red, both now compile errors resolved through the constructors. L0 witness: the field is private and the module exposes no other constructor — a `&Path`/`PathBuf` at any converted call site is E0308. **The general lesson, for the next one of these: a grep is as complete as its pattern; a type sees every caller** |
 
 ## core/valet.rs / repo.rs / wordpress.rs / devtools.rs / mail.rs / ports.rs / ssl.rs
 

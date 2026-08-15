@@ -157,16 +157,23 @@ evidence cited.
   cli/fpm × 2 arches. **That path is no longer blocked** — it was "the same
   self-hosted-artifact path the Xdebug debug build is blocked on", and as of
   14 Aug 2026 `rexenv/runtimes` builds, gates, signs and publishes exactly this
-  shape of artifact (`docs/PLAN-php-74-support.md`). What remains is deciding
-  whether to rebuild all seven minors ourselves, which is a much larger
-  commitment than one EOL version nobody else publishes. Until then `wp_dns_check` FAILS LOUDLY the
+  shape of artifact (`docs/PLAN-php-74-support.md`). **RULED 15 Aug 2026: not
+  now.** Rebuilding seven minors self-hosted is a maintenance burden carried
+  forever, for a dependency nobody has complained about — a commitment, not a
+  fix. The option stays recorded here with the runtimes-repo note so it is
+  known when there is a reason. Until then `wp_dns_check` FAILS LOUDLY the
   day a build stops using c-ares — that is the signal this item is done.
-- [ ] **DNS agent answers ARBITRARY names when queried directly** (found in the
-  28 Jul live tunnel diagnosis): `dig -p 15353 @127.0.0.1 <any-hostname>` returns
-  `127.0.0.1` — the hickory handler is a catch-all, not per-TLD zones
-  (`core/dns.rs` module doc; loopback bind keeps it safe, ledger #44). Harmless
-  while only our `/etc/resolver/<tld>` files route to it, but "answers anything"
-  is unintended. Scope answers to configured TLDs; NXDOMAIN the rest.
+- [x] **DNS agent answers ARBITRARY names when queried directly — ACCEPTED
+  15 Aug 2026, not deferred.** `dig -p 15353 @127.0.0.1 <any-hostname>` returns
+  `127.0.0.1`; the hickory handler is a catch-all, not per-TLD zones. RULED
+  accepted with reason: scoping to configured TLDs would require the agent to
+  KNOW the TLD set — reloadable state or per-query config reads — and #45's
+  proven, load-bearing design is exactly "no in-process TLD state; adding a TLD
+  never restarts DNS"; a KeepAlive LaunchAgent that outlives app updates is the
+  worst place to introduce reloadable state. The actual containment is the
+  loopback bind (#44, structural since T10) and it holds. **What would reopen
+  this is the agent ever binding beyond loopback — never the arbitrary-names
+  behaviour itself.**
 - [x] **rexenv's WP-CLI no longer inherits `~/.wp-cli/packages`** — DONE, all four
   parts (found 4 Aug 2026
   while costing dist-archive; ledger #228). Every `wp` rexenv runs FOR A USER is
@@ -586,9 +593,16 @@ first:
   (`common::OwnedService`) so the panic cannot manufacture the corpse-mysqld condition
   the first sighting was tangled with. Nothing new was ruled in or out — still filed
   as unexplained.
-- [ ] **`common::sandbox` roots are long enough to break Caddy's admin unix socket
-  (macOS `sun_path` = 104 bytes). DIAGNOSED 14 Aug 2026 — the fix is a ruling, see the
-  question at the end of this item.** `wp_create_serve`'s edge never bound, and caddy's
+- [x] **`common::sandbox` roots are long enough to break Caddy's admin unix socket
+  (macOS `sun_path` = 104 bytes). RULED 15 Aug 2026 — the current containment IS the
+  fix.** Shape (1) (short roots like `/tmp/rx-<hex>`) is REJECTED: moving fixture
+  roots out of the OS temp dir trades a real invariant every example depends on for
+  a rarer failure. What stands: production refuses at the point of use
+  (`core::proxy::admin_socket_path`, where whether an admin socket is even asked for
+  is known) and `common::sandbox` WARNS with the byte arithmetic at the point the
+  length is chosen (a refusal there was tried and blocked a working check — the
+  sandboxed edge in `tunnel_exposure_check` runs with admin off). The class is
+  contained where it can bite. Original diagnosis kept below. `wp_create_serve`'s edge never bound, and caddy's
   own first line said why once the example was made to print it before panicking:
   `starting caddy administration endpoint: listen unix //var/folders/51/…/T/
   rexenv-sandbox-wp_create_serve-4823/config/caddy-admin.sock: bind: invalid argument`.
