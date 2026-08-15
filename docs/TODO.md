@@ -269,10 +269,20 @@ evidence cited.
   only place a takeover can be redone — there is no `rex` command for it). An
   absent field reads ⚠ unknown, never ✓, so an older app cannot report a clean
   check it never ran. `doctor`'s one-line description gained resolvers.
-  - [ ] **remaining: the frontend binding needs a caller.** `resolverDrift()` in
-    `src/lib/ipc/index.ts` still has zero. The Import screen already renders the
-    fact well when scanned ("Valet or Herd took .rex back"); what is missing is
-    anything that says so without the user going there.
+  - [ ] **remaining: the frontend binding needs a caller — RULED 15 Aug 2026,
+    copy pending approval, then build.** Shape approved: a dismissible
+    launch-time banner on the Sites screen when `resolverDrift()` reports lost
+    TLDs, pointing at Import, doctor's voice. Two ruled conditions: (a) it must
+    NOT render when nothing was taken back — `[]` renders NOTHING, the ordinary
+    state, exactly the onboarding-notice rule (#306); (b) dismissal persists
+    PER-TLD, and clears when that TLD reads as ours again — so a dismissed
+    `.test` re-shows on the NEXT takeover-loss, and a newly lost `.dev` is never
+    hidden by an old dismissal (self-healing: drop stored dismissals for TLDs no
+    longer drifted). DRAFT COPY, awaiting redline before landing —
+    title: "Your .test sites stopped resolving" (multi-TLD: "Your .test and
+    .dev sites stopped resolving"); body: "Valet or Herd took .test's resolver
+    file back, so those sites won't load until rexenv takes it over again.
+    That's redone in Import."; actions: [Go to Import] [Dismiss].
   ✓ **The continuous watcher is CLOSED, not deferred again** (Stage 1 D3): a fact
   surfaced in doctor, Import and startup is enough without polling. If that is
   wrong it shows up as someone confused about why their sites stopped resolving,
