@@ -132,10 +132,65 @@ pub fn remove_symlink_best_effort(platform: &dyn Platform) {
 mod tests {
     use super::*;
 
+    /// A fixture directory, EMPTY on every entry.
+    ///
+    /// The name is keyed on the pid so two concurrent runs cannot collide — but a
+    /// pid is *reused*, and this fixture used to `create_dir_all` over whatever
+    /// was already there and leave it behind afterwards. So a run that drew a pid
+    /// some earlier run had drawn inherited that run's leftovers, and
+    /// `status_reads_missing_stale_and_current_links` — whose FIRST assertion is
+    /// "there is no link yet" — failed against the `bin/rex` symlink its own
+    /// previous incarnation had created. Caught 15 Aug 2026 in `verify-full`, on a
+    /// pid whose leftover `bin/rex` was dated four days earlier; 485 of these
+    /// directories had accumulated under `$TMPDIR` by then.
+    ///
+    /// That is the worst shape a gate can have: green on almost every run, red on
+    /// no diff, and red *repeatably* for the one machine that drew the wrong pid —
+    /// which reads as "the tree is broken" rather than "the fixture is dirty".
+    ///
+    /// Removing FIRST rather than cleaning up after is deliberate: a cleanup at the
+    /// end is skipped by exactly the runs that matter (a panicking test never
+    /// reaches it), and leaves the next run to inherit the mess of the failure it
+    /// was trying to diagnose. The path is fixture-owned by construction — built
+    /// here from `temp_dir()` and our own prefix, never taken from a caller — so
+    /// the recursive delete cannot reach anything this function did not make.
+    ///
+    /// Stated cost: an EMPTY directory per pid still survives a run. That is
+    /// litter, not a hazard — the next run to draw the pid empties it on entry —
+    /// and it is the price of the ordering above. `$TMPDIR` is periodically swept
+    /// by the OS. (The `cli` crate has one of these too: `soft_request`'s deaf
+    /// listener leaves `rexenv-cli-test-deaf-<pid>.sock` behind. Same shape, and
+    /// it is NOT fixed here — sockets are keyed on a pid that is not reused within
+    /// a run, so it has never gone red.)
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("rexenv-cli-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::create_dir_all(&dir);
         dir
+    }
+
+    /// The fixture's own invariant, asserted rather than assumed.
+    ///
+    /// Every test below opens with `scratch(...)` and then asserts something about
+    /// an ABSENCE — no link yet, no stale target. That only means anything if the
+    /// directory starts empty, and nothing checked it, so a dirty one produced a
+    /// failure that pointed at the code under test instead of at the fixture.
+    /// Planting the leftover here is the whole test: it is what a reused pid does.
+    #[test]
+    fn the_fixture_directory_starts_empty_even_if_a_previous_run_left_it_dirty() {
+        let dir = scratch("selfcheck");
+        // Exactly what the status test leaves behind: a file and a bin/rex symlink.
+        std::fs::write(dir.join("rex"), "stale").unwrap();
+        try_symlink_unprivileged(&dir.join("rex"), &dir.join("bin").join("rex")).unwrap();
+        assert!(dir.join("bin").join("rex").exists(), "plant did not take");
+
+        // A second entry is a second RUN that drew the same pid.
+        let again = scratch("selfcheck");
+        assert_eq!(again, dir, "same pid + name must name the same directory");
+        assert!(
+            std::fs::read_dir(&again).unwrap().next().is_none(),
+            "scratch handed back a dirty directory — every absence assertion below is vacuous"
+        );
     }
 
     #[test]
