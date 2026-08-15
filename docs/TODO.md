@@ -384,14 +384,23 @@ evidence cited.
   number nobody records drifts again. Do NOT fold this into the 7.4 work: 7.4
   matches the 12.0 the other PHP rows already have, so it neither causes nor
   worsens this.
-- [ ] ⚠ **PostgreSQL is broken on every macOS below 26 - feature-dead, not
-  floor-adjacent** (found 15 Aug 2026 during the floor sweep). All three pinned
-  theseus-rs builds carry `minos 26.0`: on macOS 15 dyld refuses `postgres` and
-  the engine cannot start at all. Fix = re-pin to theseus-rs releases built with
-  a lower deployment target (or another source); until then the Databases screen
-  offers an engine that cannot run for most users, with no honest tell. Worth
-  checking what error the user actually SEES today - a dyld kill may surface as
-  a meaningless spawn failure.
+- [ ] ⚠ **PostgreSQL's pinned builds carry `minos 26.0` — presumed dead below
+  macOS 26, and the presumption cannot be tested from this machine** (found
+  15 Aug 2026 during the floor sweep; MEASURED as far as this host allows the
+  same day). What the measurement showed: dyld on macOS 26 enforces minos for
+  NEITHER main executables NOR dylibs — postgres patched to `minos 99.0`
+  (binary and libssl, re-signed) runs clean — while deterministic dyld crashes
+  of minos-15 binaries on macOS 14 are documented in the wild. So enforcement
+  is a property of the OLDER host's dyld, and only a macOS 14/15 VM can settle
+  whether postgres actually fails there (PUBLISH-TESTING clean-VM shape).
+  **The failure surface IS traced, labelled as prediction:** if dyld kills the
+  child at spawn, the user gets "PostgreSQL did not start within Ns — see
+  postgres-stdout.log" (`await_ready` names the log; `spawn_logged` captures
+  BOTH streams, so dyld's real reason lands in that log) — a timeout pointing
+  at a log that holds the truth, not a silent no-op, but the top-level line
+  says nothing about macOS versions. If the VM confirms the refusal: re-pin to
+  lower-target theseus-rs releases (or another source), and consider a
+  version-aware tell on the Databases screen.
 - [ ] **Option, not a commitment: a self-built nginx (deployment target 12)
   would drop the app floor from 15 to 14** (MySQL's floor). Same
   `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -

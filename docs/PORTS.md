@@ -66,12 +66,22 @@ Re-measure and update this table whenever a pin changes.
 | Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, PHP (all minors incl. 7.4) | 12.0 |
 | MySQL 8.0.44 / 8.4.6, MariaDB 11.4.12 / 12.3.2, Redis 8.8.0 | 14.0 |
 | **nginx 1.30.3, cloudflared 2026.6.1** | **15.0** — the default stack's floor |
-| **PostgreSQL 16.14.0 / 17.10.0 / 18.4.0** | **26.0** — broken below macOS 26; open TODO (theseus-rs builds target the runner OS) |
+| **PostgreSQL 16.14.0 / 17.10.0 / 18.4.0** | **26.0** — presumed refused by dyld below macOS 26 (the documented enforcement class), UNVERIFIED: see the TODO item and the 15 Aug measurement note below |
 
 jirutka publishes NO darwin nginx below minos 14 (checked 1.24.0→1.31.3, 15 Aug
 2026: only the stale 1.24.0/1.26.1/1.26.2 are 14.0; everything current is 15.0), so
 lowering the floor below 15 means a self-built nginx — recorded as an option in
 TODO, not a commitment.
+
+**What `minos` does and does not prove (measured 15 Aug 2026).** On THIS machine
+(macOS 26), dyld enforces minos for neither main executables nor dylibs: a copy of
+postgres patched to `minos 99.0` (binary AND libssl, re-signed) runs clean. Yet the
+hard refusal is real on older hosts — deterministic dyld crashes of minos-15
+binaries on macOS 14 are documented in the wild — so enforcement is a property of
+the HOST's dyld, and a machine on the newest macOS can never observe it. The floor
+above therefore rests on measured metadata + the documented enforcement class, not
+on a refusal reproduced here; confirming what actually happens on macOS 14/15 needs
+an older-macOS VM (PUBLISH-TESTING's clean-VM shape).
 
 All checksum-locked (SHA-256/512 by source). macOS `prepare_binary` order is non-negotiable:
 **de-quarantine → relink Homebrew dylibs → codesign LAST** (relinking invalidates the
