@@ -513,6 +513,28 @@ evidence cited.
     PHP 8.2 CORE extension), `opcache` (spc's static patch starts at 8.0),
     `opentelemetry`/`protobuf` (spc guards on < 8.0), `swoole` (dropped 7.4).
     Recorded in `docs/PORTS.md` beside the pin, which is where someone looks.
+  - [ ] **Ship the PHP 7.4 licence texts onto the user's machine.** rexenv BUILDS
+    and hosts 7.4, so rexenv is its distributor and PHP License 3.01 §2 attaches
+    to us — the notice belongs with "the documentation and/or other materials
+    provided with the distribution". Today that is `THIRD-PARTY-NOTICES.md` and
+    the release page: the build publishes `licenses-<arch>.tar.gz` (PHP-3.01 +
+    every statically linked dep) beside each artifact, but `core/binaries.rs`
+    fetches only the binary tarball, so **nothing lands in the binary cache
+    beside `php`/`php-fpm`**. Reproduced-in-the-docs is defensible; shipped-beside
+    -the-bytes is not arguable. Cheapest honest fix: a second manifest arm
+    downloading `licenses-<arch>.tar.gz` into `bin/php-7.4.33/` at prepare time.
+    Owner's call — recorded here rather than bolted on mid-release. Written up in
+    `THIRD-PARTY-NOTICES.md` ("PHP 7.4.33 — rexenv's own build") and
+    `docs/PLAN-php-74-support.md` §6.5.
+  - [ ] **`rexenv/runtimes`' release notes for `php-7.4.33-6` describe `-4`.** Two
+    lines are stale on the release page users and auditors read: it says
+    `MACOSX_DEPLOYMENT_TARGET=11.0` was "asserted per artifact" (the artifacts
+    measure `minos 12.0` — spc's macOS default; PLAN §10b corrected 11.0→12.0 and
+    the workflow followed, the prose did not), and it says "the extension set is
+    narrower than the 8.x builds … widening is in progress" when `-6` IS the
+    parity build (60 modules, five documented absences). Fix in the runtimes repo;
+    nothing in rexenv depends on it, but a release page is a claim surface.
+
   - [ ] **PCRE JIT is compiled OUT of 7.4** — PHP 7.4 bundles PCRE2 10.35 (May
     2020), too old for Apple Silicon JIT, so Composer died on `Allocation of JIT
     memory failed`. `--without-pcre-jit` removes the capability. Regex throughput

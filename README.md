@@ -214,14 +214,20 @@ rexenv is licensed under the **Apache License 2.0** (`LICENSE`). Contributions
 are accepted under the same licence with a DCO sign-off (`CONTRIBUTING.md`).
 
 What ships in the app (Rust crates, npm packages, fonts, bundled SQLite) is
-inventoried in **`THIRD-PARTY-NOTICES.md`**. The server binaries rexenv
-downloads at runtime (PHP, MySQL, MariaDB, PostgreSQL, Redis, nginx, Caddy,
-FrankenPHP, Apache httpd, Mailpit, Adminer, cloudflared, WP-CLI, Composer,
+inventoried in **`THIRD-PARTY-NOTICES.md`**. Most server binaries rexenv
+downloads at runtime (PHP **8.0–8.5**, MySQL, MariaDB, PostgreSQL, Redis, nginx,
+Caddy, FrankenPHP, Apache httpd, Mailpit, Adminer, cloudflared, WP-CLI, Composer,
 Xdebug) are **not redistributed by rexenv** — they are fetched checksum-pinned
 from their own distributors (official upstreams, static-php.dev,
 jirutka/nginx-binaries, theseus-rs, Homebrew's bottle registry — the full
 source-and-version table is `docs/PORTS.md`) and remain under their own
 licences on your machine. Trusting rexenv therefore includes trusting those
 build sources; the pinned checksums are the enforcement.
+
+**PHP 7.4.33 is the one exception, and it cuts the other way:** nobody publishes
+a portable 7.4, so rexenv **builds and hosts it** (`rexenv/runtimes`) and is
+therefore its distributor. It carries the PHP License 3.01 and the licences of
+everything statically linked into it — reproduced in `THIRD-PARTY-NOTICES.md`
+and published beside the artifacts as `licenses-<arch>.tar.gz`.
 
 Vulnerabilities: report privately first — see `SECURITY.md`.
