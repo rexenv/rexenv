@@ -615,6 +615,100 @@ const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "f6878248da0b9e119d29ec21fbe73e8c6
 const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "3f32e75738c66642c64b8d817680a872519007cf3903ad5824fa01c04be3fec9";
 const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "fc75852c08304d5c92ccb5c6f0e13f70719fda6262d6a2e798af8d4b86b2bfc4";
 
+// ── The licence texts that travel with a PHP we BUILT ────────────────────────
+//
+// Pinned the same way and from the same release as the binaries above: each
+// downloaded over the real `releases/download` URL rexenv itself uses, hashed
+// locally, and cross-checked against the release's own SHA256SUMS (16 entries
+// per arch, identical file lists, `PHP-3.01.txt` among them).
+const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "d8fd80a258f1d8e6609d3e0e95a3b62e5c30820a3dba8e0390c78e4494491478";
+const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "fa1ae808cb2febdb01e2df2975b0618dba4c0caff39f51161328ee97c2b60ba2";
+
+/// Directory inside a published cache dir holding the artifact's licence texts.
+/// Matches the tarball's own top-level dir, so extraction is `strip = 0`.
+pub const LICENSES_DIR: &str = "licenses";
+
+/// The licence-text download for an artifact **rexenv is the distributor of**,
+/// or `None` when somebody else distributes it.
+///
+/// # Why this exists as a manifest arm rather than a line in a notices file
+///
+/// rexenv fetches every other server binary from the party that built it, and
+/// carries no obligation for those. PHP 7.4 is the exception: nobody publishes a
+/// portable 7.4, so `rexenv/runtimes` builds it and rexenv ships those bytes to
+/// users. That makes rexenv a distributor, and PHP License 3.01 §2 asks for the
+/// notice in "the documentation and/or other materials provided with the
+/// distribution" — plus the licences of everything statically linked in, which
+/// travel inside the Mach-O whether or not anybody names them.
+///
+/// `THIRD-PARTY-NOTICES.md` reproduces them, and that is defensible. It is also
+/// an ARGUMENT, and a licence obligation is the last place to hold a position
+/// that needs defending. The texts ship beside the bytes instead, which is not
+/// arguable, and the cost is this function plus one fetch.
+///
+/// **Keyed on `php_self_hosted_tag`, never on the string "7.4"** — so a second
+/// self-built runtime inherits the obligation by existing, and if the day comes
+/// that 7.4 is published upstream and the tag goes away, this goes quiet on its
+/// own. The rule is "we built it, so its licences travel with it".
+/// Whether rexenv is the DISTRIBUTOR of `name`@`version` — it built the bytes
+/// and hosts them — and therefore owes the licence texts beside them.
+///
+/// The one question that decides the obligation, in one place, so the answer
+/// cannot be given differently by a manifest arm, a cache check and a doc.
+pub fn is_self_distributed(name: &str, version: &str) -> bool {
+    (name == "php" || name == "php-fpm") && php_self_hosted_tag(version).is_some()
+}
+
+fn php_licenses_spec(name: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
+    if !is_self_distributed(name, version) {
+        return None;
+    }
+    let tag = php_self_hosted_tag(version)?;
+    let (arm, amd) = match version {
+        "7.4.33" => (
+            PHP_7_4_33_LICENSES_MAC_ARM64_SHA256,
+            PHP_7_4_33_LICENSES_MAC_AMD64_SHA256,
+        ),
+        // A self-hosted version with no licence pin is a BUG, not a default:
+        // it means we shipped somebody's code without its licence. Refuse to
+        // resolve rather than resolve without them.
+        _ => return None,
+    };
+    let hex = match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    };
+    if hex.is_empty() {
+        return None;
+    }
+    Some(BinarySpec {
+        url: format!(
+            "https://github.com/rexenv/runtimes/releases/download/{tag}/licenses-{}.tar.gz",
+            php_arch(arch)
+        ),
+        checksum: Checksum::Sha256(hex.to_string()),
+        archive: Archive::TarGzTree,
+        member: LICENSES_DIR,
+    })
+}
+
+/// Whether a published cache dir carries the licence texts it owes.
+///
+/// `true` when nothing is owed — the ordinary case, every binary somebody else
+/// distributes. When something IS owed, an absent or empty `licenses/` makes the
+/// dir stale, which costs one re-fetch on machines that cached 7.4 before this
+/// shipped. That asymmetry is the `.rexenv-prepared` receipt's (S0.3, #331): a
+/// pin marker cannot see a directory that was never fetched, and "the binary is
+/// the right bytes" was true of those caches — they are missing something the
+/// pin never described. One refetch is the price of repairing the field, and
+/// the field here is a licence obligation rather than a broken dylib.
+fn licenses_satisfied(dir: &Path, name: &str, version: &str, arch: Arch) -> bool {
+    if php_licenses_spec(name, version, arch).is_none() {
+        return true;
+    }
+    std::fs::read_dir(dir.join(LICENSES_DIR)).is_ok_and(|mut d| d.next().is_some())
+}
+
 /// Pinned SHA-256 for a PHP artifact, or `None` if the version isn't pinned.
 /// `kind` is `"cli"` or `"fpm"`. Both arches are pinned together, so a `Some` for
 /// one arch implies a `Some` for the other. An EMPTY const is treated as unpinned
@@ -1347,11 +1441,16 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
             "{name} is a directory distribution — use resolve_dir"
         )));
     }
-    if bin_path.exists() && cache_matches_pin(&dir, version, &spec.checksum) {
+    if bin_path.exists()
+        && cache_matches_pin(&dir, version, &spec.checksum)
+        && licenses_satisfied(&dir, name, version, arch)
+    {
         return Ok(bin_path);
     }
     // Present but NOT the pinned bytes: a re-issued artifact at an unchanged
-    // version. Drop it and fetch, rather than serving it forever.
+    // version. Drop it and fetch, rather than serving it forever. Also reached
+    // when the bytes are right but the licence texts we OWE alongside them are
+    // absent — a cache from before those shipped.
     if bin_path.exists() {
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1386,6 +1485,30 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         }
         platform.permissions().set_executable(&staged_bin)?;
         platform.binaries().prepare_binary(&staged_bin)?;
+        // The licences of an artifact WE distribute, fetched into the same
+        // staging dir so they are part of the same atomic publish: a published
+        // 7.4 either carries its licence texts or does not exist. Fetching
+        // after the publish would create exactly the state this is meant to
+        // rule out — the binary on disk, in use, with nothing beside it.
+        //
+        // A failure here fails the resolve. That is the point: shipping the
+        // interpreter and silently skipping its licence is the outcome being
+        // prevented, so it cannot be the fallback when the network is unkind.
+        if let Some(lic) = php_licenses_spec(name, version, arch) {
+            let archive = staging.join(".licenses.tar.gz");
+            download(&lic.url, &archive, Some(&lic.checksum), Some(&id)).await?;
+            extract_tar_gz_tree_filtered(open_buffered(&archive)?, &staging, 0, None)?;
+            std::fs::remove_file(&archive)?;
+            let dir = staging.join(LICENSES_DIR);
+            if !std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()) {
+                return Err(Error::Other(format!(
+                    "{name} {version} is an artifact rexenv builds and distributes, but its \
+                     licence archive unpacked to nothing at {} — refusing to publish an \
+                     interpreter without the licences that must ship beside it",
+                    dir.display()
+                )));
+            }
+        }
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, name)
     }
@@ -2818,6 +2941,207 @@ mod tests {
         let c = manifest("php", "7.4.33", "macos", Arch::X86_64).unwrap();
         assert_ne!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
         assert_ne!(checksum_hex(&a.checksum), checksum_hex(&c.checksum));
+    }
+
+    /// **If we built it, its licence texts ship with it — derived, never listed.**
+    ///
+    /// The obligation attaches to the act of DISTRIBUTING, so the guard is keyed
+    /// on `php_self_hosted_tag` rather than on the string "7.4". A second
+    /// self-built runtime therefore inherits the check by existing: pin its
+    /// binaries, forget its licences, and this fails by name before it ships.
+    /// That direction matters more than today's row — the 7.4 licences are
+    /// present and will stay present; the NEXT one is the one nobody is thinking
+    /// about, and shipping somebody's code without its licence is not a defect
+    /// you get to fix in the following release.
+    #[test]
+    fn every_php_we_distribute_ourselves_ships_its_licences() {
+        let mut self_hosted = 0;
+        for v in PHP_VERSIONS {
+            let Some(tag) = php_self_hosted_tag(v) else {
+                // Somebody else's build: we owe nothing, and must not invent an
+                // obligation by fetching a licence archive that does not exist.
+                for name in ["php", "php-fpm"] {
+                    for arch in [Arch::Arm64, Arch::X86_64] {
+                        assert!(
+                            php_licenses_spec(name, v, arch).is_none(),
+                            "{name} {v} is upstream's build — rexenv is not its distributor"
+                        );
+                    }
+                }
+                continue;
+            };
+            self_hosted += 1;
+            for name in ["php", "php-fpm"] {
+                for arch in [Arch::Arm64, Arch::X86_64] {
+                    let lic = php_licenses_spec(name, v, arch).unwrap_or_else(|| {
+                        panic!(
+                            "rexenv BUILDS and hosts {name} {v} (release {tag}), so it is the \
+                             distributor and PHP License 3.01 §2 attaches — but no licence \
+                             archive is pinned for it. Pin `licenses-<arch>.tar.gz` from the \
+                             same release, or stop shipping this version."
+                        )
+                    });
+                    // Same immutable release as the bytes it covers. A licence
+                    // archive from a DIFFERENT build documents a different set of
+                    // statically linked deps, which is a quiet way to be wrong.
+                    assert!(
+                        lic.url.contains(&format!("/releases/download/{tag}/")),
+                        "licences must come from the same release as the binary: {}",
+                        lic.url
+                    );
+                    assert_eq!(checksum_hex(&lic.checksum).len(), 64, "real digest, not a stub");
+                    assert_eq!(lic.archive, Archive::TarGzTree, "a tree of texts, not one file");
+                    // Both arches pinned, and pinned SEPARATELY — the archives
+                    // carry the same file list but are distinct artifacts, and a
+                    // copy-paste that pointed both at one digest would fail the
+                    // download for the other rather than being caught here.
+                    assert_ne!(
+                        checksum_hex(&php_licenses_spec(name, v, Arch::Arm64).unwrap().checksum),
+                        checksum_hex(&php_licenses_spec(name, v, Arch::X86_64).unwrap().checksum),
+                        "both arches share a licence digest — one of them is wrong"
+                    );
+                }
+            }
+            // Only the binaries are ours to cover; nothing else grows the duty.
+            assert!(php_licenses_spec("caddy", v, Arch::Arm64).is_none());
+        }
+        assert!(self_hosted > 0, "no self-hosted PHP — this guard is now vacuous, delete or fix it");
+    }
+
+    /// **The notices file cannot claim rexenv distributes nothing while it does.**
+    ///
+    /// # Why this guard exists, which is not "check the notices"
+    ///
+    /// `THIRD-PARTY-NOTICES.md` opened with a sentence saying rexenv redistributes
+    /// none of the binaries it downloads. That went false the day 7.4.33 shipped —
+    /// a PHP rexenv builds and hosts — and it shipped false, in a public repo, for
+    /// a day. README carried the same claim in its own words.
+    ///
+    /// The part worth encoding is that **it was flagged in advance and shipped
+    /// anyway**. `docs/PLAN-php-74-support.md` §6.5 named this exact file and line
+    /// range, and called it the one item on the plan that a later commit could not
+    /// fix. Then the build landed, the docs sweep ran, and the sentence did not
+    /// move. So the lesson is not "remember the notices" — an author who had
+    /// written down that this specific sentence was un-fixable-later still did not
+    /// fix it. Flagging is not a mechanism. This is the same finding
+    /// `core::copy_scan` records at greater length: writing a lesson down does not
+    /// install it, and the thing that catches it is a check that runs.
+    ///
+    /// Keyed on `is_self_distributed` rather than on "7.4", so it is a rule: the
+    /// day rexenv self-builds a second runtime the guard already covers it, and
+    /// the day it stops self-building anything the guard stands down on its own.
+    ///
+    /// Both halves, for the enable-moment reason (`mcp_server`): a BAN alone is
+    /// satisfied by deleting the false sentence and saying nothing, which leaves a
+    /// notices file that is no longer wrong and still does not discharge the duty.
+    ///
+    /// **One rule this imposes on the prose:** the banned sentence may not appear
+    /// even as a quotation of its own history. A scanner cannot tell a quote from
+    /// a claim, and neither can somebody skimming for what rexenv redistributes.
+    #[test]
+    fn the_notices_cannot_disclaim_distribution_while_we_distribute() {
+        const NOTICES: &str = include_str!("../../../THIRD-PARTY-NOTICES.md");
+        const README: &str = include_str!("../../../README.md");
+
+        // The live fact. Everything below is conditional on it, so this reads as
+        // a rule rather than as a list of today's strings.
+        let distributing: Vec<&str> =
+            PHP_VERSIONS.iter().copied().filter(|v| is_self_distributed("php", v)).collect();
+        if distributing.is_empty() {
+            return; // rexenv distributes nobody else's bytes — nothing is owed.
+        }
+
+        // Landmarks: if a file is ever gutted, every `contains` below would pass
+        // vacuously on the ban half and fail confusingly on the must-say half.
+        for (file, name, landmark) in [
+            (NOTICES, "THIRD-PARTY-NOTICES.md", "# Third-party notices"),
+            (README, "README.md", "## Licence"),
+        ] {
+            assert!(file.contains(landmark), "{name} is not the file this guard thinks it is");
+        }
+
+        // Sentences that are ONLY true while rexenv distributes nothing of its
+        // own. Assembled from fragments so the phrase does not appear literally
+        // in this file — otherwise a future guard that scanned Rust sources too
+        // would trip on its own ban list (#228's canary trap, one layer over).
+        let banned: Vec<String> = [
+            ["redistributes", "none of them"],
+            ["are", "not redistributed by rexenv"],
+        ]
+        .iter()
+        .map(|parts| parts.join(" "))
+        .collect();
+
+        for (file, name) in [(NOTICES, "THIRD-PARTY-NOTICES.md"), (README, "README.md")] {
+            for phrase in &banned {
+                assert!(
+                    !file.contains(phrase.as_str()),
+                    "{name} still says \"{phrase}\", but rexenv BUILDS and hosts {:?} — it is \
+                     the distributor of those bytes and PHP License 3.01 attaches. This exact \
+                     sentence shipped false once, after the plan had named it as the one thing \
+                     a later commit could not fix. Scope the claim to the builds somebody else \
+                     publishes.",
+                    distributing
+                );
+            }
+        }
+
+        // ...and what the file must SAY once it does distribute. Deleting the
+        // false sentence and adding nothing would pass a ban-only guard while
+        // leaving the obligation undocumented — the erosion direction, and the
+        // likelier one, because the shortest edit that clears a ban is a delete.
+        const MUST_SAY: &[(&str, &str)] = &[
+            ("PHP License 3.01", "WHICH licence attaches to the PHP we build"),
+            (
+                "licenses-<arch>.tar.gz",
+                "WHERE the texts are published beside the artifacts",
+            ),
+            (
+                "licenses/",
+                "that the texts also land on the user's machine beside the binary",
+            ),
+        ];
+        for (phrase, why) in MUST_SAY {
+            assert!(
+                NOTICES.contains(phrase),
+                "THIRD-PARTY-NOTICES.md no longer says {why} (looked for \"{phrase}\"). rexenv \
+                 distributes {distributing:?}; this file is the \"other materials provided with \
+                 the distribution\" that §2 asks for."
+            );
+        }
+        // README is a summary, so it owes the licence NAME and nothing more —
+        // the detail lives in the notices file and duplicating it here would be
+        // a second copy to drift.
+        assert!(
+            README.contains("PHP License 3.01"),
+            "README describes what rexenv does and does not redistribute; it must name the \
+             licence of the one thing it DOES."
+        );
+    }
+
+    /// The cache test's two directions. A dir owing nothing is satisfied whatever
+    /// is on disk; a dir owing texts is NOT satisfied by an absent or empty
+    /// `licenses/`, which is what every cache from before this shipped looks like.
+    #[test]
+    fn a_cache_that_owes_licences_is_stale_until_they_are_there() {
+        let tmp = std::env::temp_dir().join(format!("rexenv-lic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // Upstream's build: nothing owed, so an empty dir is fine.
+        assert!(licenses_satisfied(&tmp, "php", PHP_VERSION, Arch::Arm64));
+        // Ours: the same empty dir is stale — this is the pre-existing-cache case.
+        assert!(!licenses_satisfied(&tmp, "php", "7.4.33", Arch::Arm64));
+        // An EMPTY licenses/ is stale too. A tarball that unpacked to nothing
+        // would otherwise read as satisfied, which is the vacuous-green shape.
+        std::fs::create_dir_all(tmp.join(LICENSES_DIR)).unwrap();
+        assert!(!licenses_satisfied(&tmp, "php", "7.4.33", Arch::Arm64));
+        std::fs::write(tmp.join(LICENSES_DIR).join("PHP-3.01.txt"), "…").unwrap();
+        assert!(licenses_satisfied(&tmp, "php", "7.4.33", Arch::Arm64));
+        // A binary we do not distribute never gains the requirement.
+        assert!(licenses_satisfied(&tmp, "caddy", CADDY_VERSION, Arch::Arm64));
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

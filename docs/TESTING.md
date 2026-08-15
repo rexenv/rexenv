@@ -269,6 +269,14 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   **Closed 15 Aug 2026** (`manifest_sweep_check`, network tier, #335): every pin
   HEAD-probed on both arches and everything under the size cap re-hashed against
   its digest — including the Intel pins that were hashed once and never re-run.
+- **A licence obligation asserted only in prose** (#336, closed 16 Aug 2026). The
+  claim "an artifact rexenv BUILT ships its licence texts beside its bytes" is
+  discharged by FILES on disk, so a manifest arm returning `Some` proves nothing
+  about it. L0 covers the derivation (a self-hosted version with no licence pin
+  fails by name) and the staleness rule; **only `php_versions_check` (network
+  tier) sees the texts land** — beside `php` AND `php-fpm`, which are separate
+  artifacts published by separate resolves. The field-repair path (a cache
+  predating the fix) is planted rather than assumed.
 - **SQL text under `sql_mode`** (`dbmirror.rs:282`): backslash-escape assertions that
   change meaning under `NO_BACKSLASH_ESCAPES`; the live restore example is the real
   proof.

@@ -513,19 +513,31 @@ evidence cited.
     PHP 8.2 CORE extension), `opcache` (spc's static patch starts at 8.0),
     `opentelemetry`/`protobuf` (spc guards on < 8.0), `swoole` (dropped 7.4).
     Recorded in `docs/PORTS.md` beside the pin, which is where someone looks.
-  - [ ] **Ship the PHP 7.4 licence texts onto the user's machine.** rexenv BUILDS
-    and hosts 7.4, so rexenv is its distributor and PHP License 3.01 §2 attaches
-    to us — the notice belongs with "the documentation and/or other materials
-    provided with the distribution". Today that is `THIRD-PARTY-NOTICES.md` and
-    the release page: the build publishes `licenses-<arch>.tar.gz` (PHP-3.01 +
-    every statically linked dep) beside each artifact, but `core/binaries.rs`
-    fetches only the binary tarball, so **nothing lands in the binary cache
-    beside `php`/`php-fpm`**. Reproduced-in-the-docs is defensible; shipped-beside
-    -the-bytes is not arguable. Cheapest honest fix: a second manifest arm
-    downloading `licenses-<arch>.tar.gz` into `bin/php-7.4.33/` at prepare time.
-    Owner's call — recorded here rather than bolted on mid-release. Written up in
-    `THIRD-PARTY-NOTICES.md` ("PHP 7.4.33 — rexenv's own build") and
-    `docs/PLAN-php-74-support.md` §6.5.
+  - [x] **Ship the PHP 7.4 licence texts onto the user's machine.** ✓ 16 Aug 2026,
+    ledger #336. rexenv BUILDS and hosts 7.4, so it is the distributor and PHP
+    License 3.01 §2 attaches. Reproduced-in-the-docs was defensible; shipped-
+    beside-the-bytes is not arguable, and a licence obligation is the last place
+    to hold a position that needs defending. ✓ `php_licenses_spec` — a second
+    manifest arm keyed on `is_self_distributed` (never on "7.4"), fetched INSIDE
+    the same staging dir as the binary so it rides the atomic publish: a
+    published 7.4 either carries `licenses/` or does not exist. A fetch failure
+    FAILS the resolve, because "ship the interpreter anyway" is the outcome being
+    prevented. Caches from before this are stale via `licenses_satisfied` and
+    repair on next resolve (the `.rexenv-prepared` asymmetry, #331 — one refetch
+    is the price of repairing the field). Both arches pinned from the release's
+    own SHA256SUMS. L0 plant-proven both ways; L1 `php_versions_check` asserts 15
+    files incl. `PHP-3.01.txt` beside BOTH `php` and `php-fpm`, and a
+    licence-less cache was planted and observed self-repairing.
+  - [x] **A guard for the class, not the instance** (the notices lesson). ✓
+    `the_notices_cannot_disclaim_distribution_while_we_distribute`. The finding
+    was not "check the notices": `docs/PLAN-php-74-support.md` §6.5 named that
+    exact sentence, and called it the one item a later commit could not fix — and
+    it shipped false anyway, in a public repo, for a day, through a docs sweep.
+    **Flagging is not a mechanism**, which is `core::copy_scan`'s finding one
+    layer down. Ban + must-say halves (a ban alone is satisfied by deleting the
+    sentence and saying nothing), keyed on the live `is_self_distributed` fact so
+    a second self-built runtime inherits it by existing and the guard stands down
+    on its own if self-building ever stops.
   - [ ] **`rexenv/runtimes`' release notes for `php-7.4.33-6` describe `-4`.** Two
     lines are stale on the release page users and auditors read: it says
     `MACOSX_DEPLOYMENT_TARGET=11.0` was "asserted per artifact" (the artifacts
@@ -948,10 +960,32 @@ first:
   live, and the first real Radicle-layout link (flagged UNVERIFIED in code, #95).
 - [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
-  Intel machine. **Also re-run the `minos` sweep there**: PORTS.md's floor table
-  is measured from THIS machine's cache, which holds arm64 slices only, so every
-  number in it is an arm64 number and the x86_64 floor is assumed rather than
-  measured. Same shape as the digests — hashed once, never exercised.
+  Intel machine.
+- [ ] ⚠ **The macOS floor is a claim about BOTH slices and half of it has never
+  been measured.** PORTS.md's `minos` table is measured from this machine's
+  binary cache, which only ever downloads the host arch — so every number in it
+  is an **arm64** number, and `minimumSystemVersion: 15.0` is asserted for x86_64
+  on the assumption that upstream builds both slices to the same deployment
+  target. Nothing checks that. **This is the arm64-DMG mistake's shape**: a
+  universal artifact whose two halves differ, working perfectly on the machine
+  that made it and wrong for everyone on the other chip — except the failure
+  here is worse than a thin binary, because it is invisible until an Intel user
+  on macOS 15 finds their web server will not start. (The 15 Aug re-measure also
+  showed the table can simply be WRONG where nothing depends on it: PHP 8.0.30
+  is 14.0 and had been recorded as 12.0 since the table was written.)
+  **What it would take, cheapest first:**
+  1. **No Intel Mac needed for the measurement** — `minos` is metadata. Fetch the
+     x86_64 artifact for every pin and read `otool -l`/`vtool -show` on it. The
+     download URLs are already enumerated by `manifest_sweep_check`, which walks
+     BOTH arches; a `minos` column is a few lines in an example that already
+     fetches these bytes, and the sweep is the natural home because it is the one
+     check that already refuses to be arch-blind.
+  2. Assert the *derived* rule rather than the numbers: `max(minos)` over the
+     default-stack binaries, per arch, must equal `tauri.conf.json`'s
+     `minimumSystemVersion`. That fails on a pin bump that raises a floor, which
+     is the event the current table can only be updated by hand for.
+  3. Only then does an actual Intel machine matter, and for the OTHER half — the
+     run-verify above, which metadata cannot stand in for.
 - [ ] **In-app verifies owed** (CLI passthroughs whose service-touching half the
   example harness guard-blocks; fold into the next deep test): `php
   install/uninstall`, `php settings set`, `db versions --set`, `site

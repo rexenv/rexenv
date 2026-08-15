@@ -28,8 +28,8 @@ GitHub Release assets that the app then downloads. Every other row in
 License 3.01 §2/§6 obligation attaches to us for it, and so do the licences of
 every dependency statically linked into the binary — they travel inside the
 Mach-O whether or not anyone names them. See **"PHP 7.4.33 — rexenv's own
-build"** below for what is shipped, where, and the one place the obligation is
-currently thinner than it should be.
+build"** below for what is shipped and where — including onto your machine,
+beside the interpreter.
 
 rexenv itself is licensed under the Apache License 2.0 (see `LICENSE`).
 
@@ -128,15 +128,28 @@ imagemagick, imap, postgresql, ext-zip). A dependency with no findable licence
 whose file is named `Copyright`, is why: a warning inside a green build is one
 nobody reads.
 
-**The honest limit, stated rather than discovered.** rexenv's app fetches only
-the binary tarball. `licenses-<arch>.tar.gz` is a separate asset that nothing in
-`core/binaries.rs` downloads, so **the licence texts do not land on the user's
-machine beside the binary** — this file and the release page are where they are
-reproduced. PHP License 3.01 §2 asks for the notice in "the documentation and/or
-other materials provided with the distribution", which this file is; carrying the
-texts into the binary cache alongside `php`/`php-fpm` would be strictly better
-and is a decision for the owner rather than something to bolt on mid-release
-(`docs/TODO.md`, "ship the PHP 7.4 licence texts onto the user's machine").
+**They also ship onto your machine, beside the bytes** (16 Aug 2026). rexenv
+downloads `licenses-<arch>.tar.gz` as part of resolving 7.4 and unpacks it into
+the same cache directory as the interpreter, inside the same atomic publish — so
+a published 7.4 either carries its licence texts or does not exist:
+
+```
+~/Library/Application Support/dev.rexenv.rexenv/bin/php-7.4.33/
+├── php
+└── licenses/          PHP-3.01.txt, php-src.LICENSE, curl.COPYING, …
+```
+
+(and the same beside `php-fpm-7.4.33/php-fpm`, which is a separate artifact with
+its own resolve). A fetch failure fails the resolve rather than falling back to
+shipping the interpreter alone — the fallback would be the exact outcome this
+prevents. A cache from before this existed is treated as stale and repaired on
+next resolve, at the cost of one re-download.
+
+**Why it was not left at "reproduced in this file".** That reading is
+defensible under §2's "documentation and/or other materials provided with the
+distribution" — and it is an ARGUMENT. A licence obligation is the last place to
+hold a position that needs defending, and a second manifest arm is a small price
+for not having to make one.
 
 **Naming.** PHP License 3.01 §4/§6 restrict use of the name "PHP" in derived
 products. rexenv's build is unmodified upstream PHP (plus the backport branch's

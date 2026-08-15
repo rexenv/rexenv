@@ -31,6 +31,64 @@ use rexenv_lib::platform;
 use std::path::Path;
 use std::process::Command;
 
+/// At least this many licence files must sit beside a binary rexenv BUILT.
+///
+/// A FLOOR, not the exact count (15 today): the set grows whenever the build
+/// gains a statically linked dependency, and an exact assertion would be edited
+/// to whatever was found rather than checked — which is how a guard becomes a
+/// transcript of the current state.
+const MIN_LICENCE_FILES: usize = 10;
+
+/// Problems with the licence texts beside `bin`, or empty if there are none.
+///
+/// Returns empty for every build somebody ELSE distributes: asserting a
+/// `licenses/` beside static-php.dev's 8.x would invent an obligation rexenv
+/// does not have, and would fail on seven of the eight rows. The question of
+/// who owes what is asked of `binaries::is_self_distributed`, so this example
+/// cannot answer it differently from the code that acts on it.
+///
+/// L0 proves the pin exists and that a cache without the texts is stale. Only a
+/// real resolve proves the archive fetches, unpacks where the code expects, and
+/// survives the atomic publish — and the obligation is discharged by FILES next
+/// to the binary, so files are what this looks at.
+fn licence_problems(v: &str, bin: &Path, kind: &str) -> Vec<String> {
+    if !binaries::is_self_distributed(kind, v) {
+        return Vec::new();
+    }
+    let dir = bin.parent().unwrap().join(binaries::LICENSES_DIR);
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(e) => {
+            return vec![format!(
+                "{kind} {v}: rexenv built and distributes this interpreter, but there is no \
+                 licences/ beside it ({}): {e}",
+                dir.display()
+            )]
+        }
+    };
+    let names: Vec<String> =
+        entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    let mut problems = Vec::new();
+    if names.len() < MIN_LICENCE_FILES {
+        problems.push(format!(
+            "{kind} {v}: {} licence file(s) in {}, expected at least {MIN_LICENCE_FILES}",
+            names.len(),
+            dir.display()
+        ));
+    }
+    // The one text that is not optional: PHP's own.
+    if !names.iter().any(|n| n.contains("PHP-3.01")) {
+        problems.push(format!(
+            "{kind} {v}: no PHP-3.01 licence beside the binary (found: {names:?}). \
+             §2 wants the notice with the distribution."
+        ));
+    }
+    if problems.is_empty() {
+        println!("  licences: {} files incl. PHP-3.01", names.len());
+    }
+    problems
+}
+
 /// First line of `<bin> -v`, or an error string.
 fn version_line(bin: &Path) -> Result<String, String> {
     let out = Command::new(bin)
@@ -104,6 +162,10 @@ async fn main() {
                     }
                     Err(e) => fail(format!("php {v}: file(1) failed: {e}")),
                 }
+
+                for p in licence_problems(v, &path, "php") {
+                    fail(p);
+                }
             }
             Err(e) => fail(format!("php {v}: resolve failed: {e}")),
         }
@@ -122,6 +184,12 @@ async fn main() {
                         }
                     }
                     Err(e) => fail(format!("php-fpm {v}: {e}")),
+                }
+                // Separately, for the same reason the version is: `php-fpm-7.4.33`
+                // is its own cache dir published by its own resolve, so the cli's
+                // licences say nothing about it.
+                for p in licence_problems(v, &path, "php-fpm") {
+                    fail(p);
                 }
             }
             Err(e) => fail(format!("php-fpm {v}: resolve failed: {e}")),

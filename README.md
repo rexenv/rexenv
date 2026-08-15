@@ -227,7 +227,8 @@ build sources; the pinned checksums are the enforcement.
 **PHP 7.4.33 is the one exception, and it cuts the other way:** nobody publishes
 a portable 7.4, so rexenv **builds and hosts it** (`rexenv/runtimes`) and is
 therefore its distributor. It carries the PHP License 3.01 and the licences of
-everything statically linked into it — reproduced in `THIRD-PARTY-NOTICES.md`
-and published beside the artifacts as `licenses-<arch>.tar.gz`.
+everything statically linked into it — reproduced in `THIRD-PARTY-NOTICES.md`,
+published beside the artifacts as `licenses-<arch>.tar.gz`, and **installed onto
+your machine next to the interpreter** at `bin/php-7.4.33/licenses/`.
 
 Vulnerabilities: report privately first — see `SECURITY.md`.
