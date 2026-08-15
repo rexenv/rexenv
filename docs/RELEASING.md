@@ -80,9 +80,15 @@ above). A local build also dodges the 10× macOS-minute multiplier on a private 
    ```
    Tag the same `v<X.Y.Z>` **here** too, so a shipped dmg maps to a commit. Careful:
    **pushing a `v*` tag triggers `release.yml`**, which would spend tens of 10×-billed
-   macOS minutes building a second dmg nobody can download. Either keep the tag local
-   (`git tag v<X.Y.Z>`) until the repo is public, or disable the **Release** workflow
-   in the Actions tab first.
+   macOS minutes building a second dmg nobody can download. Keep the tag local
+   (`git tag -a v<X.Y.Z> <commit>`) until the repo is public, or disable the
+   **Release** workflow in the Actions tab first.
+
+   **This is enforced, not remembered** (16 Aug 2026): `scripts/git-hooks/pre-push`
+   refuses a `v*` tag push to `rexenv/rexenv` while the repo is private, and stands
+   down on its own once it is public. It exists because this paragraph is a memory,
+   and the piped-verdict rule proved that a rule relying on memory is not a control —
+   it was walked into by the person who wrote it, in the session he wrote it.
 6. Publish the tap release → **Update cask** picks it up (≤15 min, or Run workflow).
 
 ### Going public later — three things flip in one commit

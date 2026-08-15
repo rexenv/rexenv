@@ -135,6 +135,9 @@ bundle the account already trusted. **A first-launch test on a machine that alre
 knows the app cannot fail**, and a green that cannot fail is not a pass. What made
 the second run valid is in §A-orig's boxed note: remove the existing bundle first,
 and download through a browser rather than `curl`, which sets no quarantine at all.
+**Both runs were on the developer's own login** — the account switch that note first
+called for turned out not to be needed, which is worth knowing before the next
+release budgets for one.
 
 Publishing IS the §A sign-off; that rule does not relax for this release.
 
@@ -251,12 +254,17 @@ open /Applications/rexenv.app                            # EXPECT: it launches
 > replacing it. A first-launch test on an account that already knows the app is a
 > test that cannot fail, which is the vacuous-green shape this repo keeps finding.
 >
-> **Two fixes to the procedure, both required:**
-> 1. **`rm -rf /Applications/rexenv.app` before copying.** Copying over an existing
->    bundle leaves a hybrid whose approval state is not the new build's.
-> 2. **Run it on the clean account** (`rexenv-tester-1`, the fixture §D already
->    uses), or a fresh macOS user, or a VM. The dev login cannot answer this
->    question about itself.
+> **The fix, and it is cheaper than it first looked:**
+> 1. **`rm -rf /Applications/rexenv.app` before copying** — required. Copying over an
+>    existing bundle leaves a hybrid whose approval state is not the new build's.
+> 2. **Download through a browser**, not `curl` — required, see below.
+> 3. A clean account (`rexenv-tester-1`) or fresh user is the belt-and-braces
+>    option, **but 0.2.0's passing run did NOT need it**: it was done on the
+>    developer's own login with steps 1 and 2 only, and Gatekeeper blocked exactly
+>    as it should. So the expensive half is optional and the cheap half is the one
+>    that matters — recorded because the first draft of this note said the account
+>    switch was required, which would have made every future §A cost an account
+>    switch it does not need.
 >
 > **And delete the old advice, which was measurably wrong:** this note used to say
 > that if the synthetic xattr doesn't trip Gatekeeper, "the definitive test is to

@@ -1,0 +1,116 @@
+#!/bin/bash
+# Refuse pushing a `v*` tag to a PRIVATE rexenv/rexenv.
+#
+# Installed via `core.hooksPath` (see CONTRIBUTING.md), so it is versioned with
+# the repo rather than living unshared in `.git/hooks`.
+#
+# ── WHY ─────────────────────────────────────────────────────────────────────
+#
+# `.github/workflows/release.yml` fires on `push: tags: ["v*"]`. While
+# `rexenv/rexenv` is private that build is pure waste and worse than waste:
+#
+#   * it spends tens of macOS-runner minutes at the private-repo 10x multiplier,
+#   * to produce a dmg NOBODY CAN DOWNLOAD — `brew` fetches a cask url with no
+#     auth, and a private repo's release asset answers 404 to that, which is the
+#     entire reason the artefact ships from the tap instead (docs/RELEASING.md),
+#   * and it drafts a release in the wrong repo, next to the real one on the tap,
+#     which is exactly the kind of second artefact that gets published by mistake.
+#
+# `docs/RELEASING.md` already says to keep the tag local until the repo is
+# public. That instruction is a MEMORY, and this repo's own finding is that a
+# rule which relies on memory is not a control: the piped-verdict rule was walked
+# into by the person who wrote it, in the session he wrote it. So the tag-local
+# rule gets a mechanism too, for the same reason the pre-commit receipt exists.
+#
+# ── IT RETIRES ITSELF ───────────────────────────────────────────────────────
+#
+# When `rexenv/rexenv` goes public, pushing a `v*` tag becomes the INTENDED way
+# to cut a release (RELEASING.md, "the automated pipeline"). So this asks GitHub
+# whether the repo is still private and stands down the moment it is not. A guard
+# that outlives its reason becomes a nuisance, and a nuisance trains `--no-verify`
+# into a habit, which kills every other hook here too.
+#
+# ── WHAT IT DOES NOT CATCH ──────────────────────────────────────────────────
+#
+#   1. Anything but `v*` tags to this repo's own remote. Branches, other tags,
+#      other remotes and forks are untouched — none of them trigger release.yml.
+#   2. `Actions → Release → Run workflow`, which starts the same build from the
+#      web UI. Nothing local can see that.
+#   3. `--no-verify`, deliberately. This is an honesty aid on your own machine,
+#      not a permission system.
+#
+# Tag DELETIONS are allowed: deleting a tag does not fire a `push` event with a
+# ref to build, and being unable to undo a mistake is not a safety property.
+
+set -euo pipefail
+
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
+
+# ── Only this repo's remote. A fork or a mirror has no release.yml of ours. ──
+case "$REMOTE_URL" in
+  *rexenv/rexenv.git | *rexenv/rexenv | *rexenv/rexenv/) ;;
+  *) exit 0 ;;
+esac
+
+# ── Collect the `v*` tags this push would CREATE or UPDATE ──────────────────
+# stdin is `<local-ref> <local-sha> <remote-ref> <remote-sha>` per ref. A local
+# sha of all zeros is a deletion.
+ZERO='0000000000000000000000000000000000000000'
+tags=()
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+  [ -n "${remote_ref:-}" ] || continue
+  case "$remote_ref" in refs/tags/v*) ;; *) continue ;; esac
+  [ "$local_sha" = "$ZERO" ] && continue # a deletion builds nothing
+  tags+=("${remote_ref#refs/tags/}")
+done
+
+[ ${#tags[@]} -eq 0 ] && exit 0
+
+# ── Is the repo still private? ──────────────────────────────────────────────
+# UNKNOWN is treated as private, i.e. refused. The two errors are not
+# symmetrical: a wrong refusal costs one `--no-verify`, and a wrong allow costs
+# a 10x-billed build plus a stray draft release in the wrong repo. This only
+# ever runs when someone pushes a `v*` tag, so the strict direction is cheap.
+private='unknown'
+if command -v gh >/dev/null 2>&1; then
+  private="$(gh api repos/rexenv/rexenv --jq '.private' 2>/dev/null || echo unknown)"
+fi
+
+if [ "$private" = "false" ]; then
+  exit 0 # public — pushing a tag is now the intended release path
+fi
+
+printf '\n  ✗ pre-push: refusing to push %s to a private rexenv/rexenv\n\n' "${tags[*]}"  >&2
+if [ "$private" = 'unknown' ]; then
+  cat >&2 <<'MSG'
+    (Could not ask GitHub whether the repo is public — no `gh`, not logged in,
+    or offline. Unknown is treated as PRIVATE, because a wrong refusal costs you
+    one flag and a wrong allow costs a billed build and a stray release.)
+
+MSG
+fi
+cat >&2 <<MSG
+    release.yml fires on \`push: tags: ["v*"]\`. While this repo is private that
+    build spends tens of macOS-runner minutes at the 10x private multiplier to
+    produce a dmg nobody can download — \`brew\` fetches a cask url with NO auth,
+    and a private repo's asset answers 404. It also drafts a release here, beside
+    the real one on the tap, which is a second artefact waiting to be published
+    by mistake.
+
+  Keep the tag local — that is the whole interim flow (docs/RELEASING.md):
+
+      git tag -a v<X.Y.Z> <commit>     # local, so a dmg maps to a commit
+      # the ARTEFACT goes to the tap:
+      gh release create v<X.Y.Z> --repo rexenv/homebrew-tap --draft ...
+
+  If you MEAN to run the CI build — the repo just went public, or you have
+  disabled the Release workflow in the Actions tab first:
+
+      git push --no-verify origin ${tags[*]}
+
+  This hook stands down on its own once rexenv/rexenv is public.
+  See scripts/git-hooks/pre-push and docs/RELEASING.md.
+
+MSG
+exit 1
