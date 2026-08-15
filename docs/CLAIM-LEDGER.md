@@ -308,7 +308,7 @@ L3 = scripted manual.
 | 113 | confverify.rs:20 | Password never touches argv or logs | ◐ file path ✅; argv-absence 🔨 L0 |
 | 114 | dbdump.rs:4 | Refusable pairing can't reach a connection attempt | ✅ witness-type test |
 | 115 | dbdump.rs:14 | Partial dump unrepresentable as an artifact | ✅ lib test + `db_dump_check` |
-| 116 | dbdump.rs:23 | ⚠ Cancelled dump changes nothing server-side | 🔨 L1 (metadata locks after mid-dump kill) |
+| 116 | dbdump.rs:23 | ⚠ Cancelled dump changes nothing server-side — `--single-transaction` takes only locks that ordinary dead-session teardown releases | ✅ `db_dump_check` §8 (15 Aug 2026): the REAL mysqldump with the production flag set is parked MID-TABLE deterministically (its stdout pipe is never read — no timing race, no giant fixture), the CONTROL proves a metadata lock is genuinely held while it runs (a DDL under `lock_wait_timeout=1` times out, with the timeout string required in stderr), then SIGKILL — the kill a cancel performs — and the SAME DDL succeeds within seconds, with the row count unchanged. The control's broken-fixture path fired for real during construction (§7's discarded-tablespace plant made the dump exit before parking, and the leg said CONTROL BROKEN, this proves NOTHING — then failed). **Scoped like #228: measured with the bundled mysqldump 8.4 against MySQL 8.4 on this machine.** The MariaDB pairing rests on the same teardown mechanism but was not measured |
 | 117 | dbdump.rs:56 | Ours = positive identification, never a string match | ✅ lib test |
 | 118 | dbdump.rs:388 | Manifest carries no credential (type-level) | ✅ `the_manifest_type_cannot_carry_a_credential` |
 | 241 | dbdump.rs:599 | The artifact is scanned and fed as BYTES: a dump is not UTF-8 and never was, so no amount of latin1, BLOB or serialized-plugin content can fail a copy that already succeeded | ✅ `the_scan_reads_a_dump_that_is_not_utf8` (latin1 `0xE9`, raw `0xFF 0xFE 0x00 0x80`) + `the_sandbox_line_is_still_detected_only_on_the_first_line` (the rewrite's index→flag swap) + live `db_dump_check`, where the fixture now seeds a latin1 column and a BLOB so the REAL mysqldump writes the bytes and the example ASSERTS `std::str::from_utf8` fails on its own artifact before scanning it. **Found in production, one layer past #239**: the user's 2 GB dump completed, then `BufRead::lines()` killed the job with "stream did not contain valid UTF-8" — the whole copy paid for and thrown away. Same fix applied to the restore's sandbox-line skip and its stderr reader (where the client quotes the offending row, so the failure message itself carries non-UTF-8) |
@@ -512,8 +512,9 @@ every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #32
 the webview-dialog legs A+B and the measured retirement of #40/#166's impossible
 L2 labels; the pool-reap miss counter #330; the bundle prepare receipt #331; per-backend
 tunnel origins #332; the app-schema SQL ownership scan #167 and the core
-import-graph lint #163 closed; the FrankenPHP read-only picker #333):
-**✅ 250 · ◐ 52 · 🔨 26 · 🚫 5** of 333 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+import-graph lint #163 closed; the FrankenPHP read-only picker #333; the
+mid-dump-kill server-side leg #116 closed):
+**✅ 251 · ◐ 52 · 🔨 25 · 🚫 5** of 333 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -771,7 +772,7 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 | #25, #26, #29, #30, #31 | a share outlives its site / claim races ⇒ stale PUBLIC exposure; #30 additionally signals a recycled (foreign) pid |
 | #54, #59 | a second SQLite writer/brain (cli crate linking the lib; dns-agent touching state) ⇒ corruption class |
 | #49 | cancelled takeover loses the user's own resolver config (Valet's file, no backup) |
-| #116 | a cancelled dump mutates THEIR server (locks/sessions) |
+| ~~#116~~ | *(closed 15 Aug 2026 — `db_dump_check` §8, control-first, real mid-table kill.)* a cancelled dump mutates THEIR server (locks/sessions) |
 | #190-half | site delete leaves its tunnel publishing a dead docroot |
 
 **Tier 2 — silent wrong answer (the debugging-days class):**

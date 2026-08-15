@@ -17,7 +17,13 @@
 //!   7. a table the SOURCE cannot read is FOUND by the probe and SKIPPED by the
 //!      dump — with a control leg proving that same table still aborts a dump
 //!      that doesn't skip it (the bug a user hit on 8 Aug 2026: 12 dead plugin
-//!      tables in a 2 GB database ended the whole migration).
+//!      tables in a 2 GB database ended the whole migration);
+//!   8. a KILLED mid-dump client changes nothing server-side (ledger #116): the
+//!      running dump provably HOLDS a metadata lock (the control — a DDL times
+//!      out under it), and after SIGKILL the same DDL succeeds, because
+//!      `--single-transaction` takes only locks that ordinary session teardown
+//!      releases. The dump is parked mid-table deterministically by never
+//!      reading its stdout pipe — no timing race, no giant fixture.
 
 use rexenv_lib::core::dbcompat::{compat, Source, Target, Version};
 use rexenv_lib::core::dbdump::{self, DumpOutcome, DumpRequest, LiveCheck, OurEngine, SelfImport};
@@ -353,6 +359,90 @@ async fn main() {
     ok &= m3.skipped_tables == vec!["wp_broken".to_string()];
     ok &= !m3.tables.contains(&"wp_broken".to_string());
     ok &= dbdump::load_manifest(&dest3, "dumpcheck.test").is_ok();
+
+    println!("\n=== 8. a killed mid-dump client changes nothing server-side (#116) ===");
+    // ~4 MB of dump output, far past every buffer between mysqldump and us
+    // (its 64 KB stdout pipe + loopback socket buffers), so a dump whose
+    // stdout is never read WILL block mid-table with its locks held.
+    let sql = |stmt: &str, what: &str| {
+        let out = std::process::Command::new(client.path())
+            .args(database::client_base_args(PORT))
+            .args([DB, "-e", stmt])
+            .output()
+            .expect("run client");
+        (out.status.success(), String::from_utf8_lossy(&out.stderr).into_owned(), what.to_string())
+    };
+    assert!(sql("CREATE TABLE wp_bulk (id INT AUTO_INCREMENT PRIMARY KEY, t LONGTEXT)", "create").0);
+    for _ in 0..4 {
+        assert!(sql("INSERT INTO wp_bulk (t) VALUES (REPEAT('x',65000))", "seed").0);
+    }
+    for _ in 0..4 {
+        assert!(sql("INSERT INTO wp_bulk (t) SELECT t FROM wp_bulk", "double").0);
+    }
+
+    // The REAL dump tool with the production flag set (proven accepted by
+    // db_dump_flags_check), stdout piped and DELIBERATELY unread.
+    let (_, dump_bin) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+        .await
+        .expect("dump tool");
+    let mut dump_child = std::process::Command::new(&dump_bin)
+        .args(["--host=127.0.0.1", &format!("--port={PORT}"), "--user=root"])
+        .args(dbdump::dump_tool_flags(Vendor::Mysql, "8.4"))
+        // wp_bulk only: §7's planted wp_broken (discarded tablespace) is still
+        // in the database and would error the dump before it could park.
+        .args([DB, "wp_bulk"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn mysqldump");
+
+    // CONTROL: while the dump is parked, a DDL under lock_wait_timeout=1 must
+    // time out — without observing the lock HELD, "released after the kill"
+    // would also pass on a dump that never took one.
+    let ddl = "SET SESSION lock_wait_timeout=1; ALTER TABLE wp_bulk COMMENT='mdl-probe'";
+    let mut lock_seen = false;
+    for _ in 0..30 {
+        if let Ok(Some(status)) = dump_child.try_wait() {
+            eprintln!("CONTROL BROKEN — mysqldump exited (status {status:?}) before blocking; \
+                       the fixture is too small to park it and this leg proves NOTHING");
+            break;
+        }
+        let (ok_ddl, stderr, _) = sql(ddl, "probe");
+        if !ok_ddl && stderr.contains("Lock wait timeout") {
+            lock_seen = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    println!("  control: running dump holds a metadata lock (DDL timed out): {lock_seen}");
+    ok &= lock_seen;
+
+    // The kill a cancel performs — SIGKILL, no goodbye — then the SAME DDL
+    // must go through: the server rolled the snapshot back and released its
+    // locks as part of ordinary dead-session teardown.
+    dump_child.kill().expect("kill mysqldump");
+    let _ = dump_child.wait();
+    let mut released = false;
+    for _ in 0..30 {
+        let (ok_ddl, _, _) = sql(ddl, "post-kill probe");
+        if ok_ddl {
+            released = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    println!("  after SIGKILL: the same DDL succeeds (locks released): {released}");
+    ok &= released;
+    // …and the data the dump was reading is untouched.
+    let count_out = std::process::Command::new(client.path())
+        .args(database::client_base_args(PORT))
+        .args([DB, "-N", "-B", "-e", "SELECT COUNT(*) FROM wp_bulk"])
+        .output()
+        .expect("count");
+    let count = String::from_utf8_lossy(&count_out.stdout).trim().to_string();
+    println!("  row count unchanged (64): {}", count == "64");
+    ok &= count == "64";
 
     mysqld.reap();
     drop(defaults);

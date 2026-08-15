@@ -728,7 +728,7 @@ first:
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled
-  takeover rollback (#49), cancelled-dump server-side (#116), delete-kill ordering
+  takeover rollback (#49), ~~cancelled-dump server-side (#116)~~ (closed 15 Aug 2026, db_dump_check §8), delete-kill ordering
   (#190).
 - [ ] Live re-point (#242 L1): a linked site pointed at a folder the user moved
   actually SERVES from it — the shape and the preflight are lib-proven, the
