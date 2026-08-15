@@ -398,7 +398,11 @@ evidence cited.
   postgres-stdout.log" (`await_ready` names the log; `spawn_logged` captures
   BOTH streams, so dyld's real reason lands in that log) — a timeout pointing
   at a log that holds the truth, not a silent no-op, but the top-level line
-  says nothing about macOS versions. If the VM confirms the refusal: re-pin to
+  says nothing about macOS versions. The VM check has TWO questions, not one
+  (ruled 15 Aug 2026): whether it fails, AND whether the message leads anywhere —
+  a user reading "didn't start in Ns" looks at Postgres, not at their macOS
+  version, so if the refusal is real the top-level line needs the version fact,
+  not just the log pointer. If the VM confirms the refusal: re-pin to
   lower-target theseus-rs releases (or another source), and consider a
   version-aware tell on the Databases screen.
 - [ ] **Option, not a commitment: a self-built nginx (deployment target 12)
@@ -737,11 +741,17 @@ first:
   measurement and is DOWNGRADED to suspect — not explained away: its "stopped after
   SIGTERM (verified dead)" step doesn't fit a pure-zombie story, since a zombie ignores
   SIGTERM too. Watch the evidence file; convict on clean measurements only.
+  **First REAL-cloudflared datapoints, 15 Aug 2026** (`tunnel_delete_order_check`):
+  production's `stop_for_domain` killed a live registered cloudflared INSIDE a 527ms
+  delete, and the guard's own `tunnels::stop` killed a deliberately-leaked live one
+  in **2ms** (evidence line `pid=39638 outcome=stop elapsed_ms=2`). Two clean
+  measurements, both instant — the weight now leans hard toward the 14 Aug sighting
+  having been the zombie artifact.
 
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled
-  takeover rollback (#49), ~~cancelled-dump server-side (#116)~~ (closed 15 Aug 2026, db_dump_check §8), delete-kill ordering (#190 — FIXTURE BUILT 15 Aug 2026, `tunnel_delete_order_check`, run held for the coordinated go: needs nothing from the machine's owner, ~60s, one guarded public URL)
+  takeover rollback (#49), ~~cancelled-dump server-side (#116)~~ (closed 15 Aug 2026, db_dump_check §8), ~~delete-kill ordering (#190)~~ (closed 15 Aug 2026 — `tunnel_delete_order_check` run live + plant-proven with a real leaked cloudflared, caught and reaped)
   (#190).
 - [ ] Live re-point (#242 L1): a linked site pointed at a folder the user moved
   actually SERVES from it — the shape and the preflight are lib-proven, the
