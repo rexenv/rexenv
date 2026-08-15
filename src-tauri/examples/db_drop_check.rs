@@ -10,8 +10,8 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-fn db_exists(basedir: &std::path::Path, port: u16, name: &str) -> bool {
-    let out = Command::new(database::mysql_client_bin(basedir))
+fn db_exists(client: &std::path::Path, port: u16, name: &str) -> bool {
+    let out = Command::new(client)
         .args([
             "--no-defaults",
             "--protocol=TCP",
@@ -38,6 +38,10 @@ async fn main() {
     let basedir = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION)
         .await
         .expect("resolve mysql");
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     // Use a running server if there is one; otherwise start our own and stop it after.
     let mut started: Option<std::process::Child> = None;
@@ -60,16 +64,16 @@ async fn main() {
     let name = wordpress::db_name_for(SiteType::Wordpress, "dropcheck.test");
     assert_eq!(name, "wp_dropcheck_test");
 
-    database::create_database(&basedir, port, &name).expect("create");
-    assert!(db_exists(&basedir, port, &name), "database missing after create");
+    database::create_database(&db_client, port, &name).expect("create");
+    assert!(db_exists(db_client.path(), port, &name), "database missing after create");
     println!("created {name} ✓");
 
-    database::drop_database(&basedir, port, &name).expect("drop");
-    assert!(!db_exists(&basedir, port, &name), "database still there after drop");
+    database::drop_database(&db_client, port, &name).expect("drop");
+    assert!(!db_exists(db_client.path(), port, &name), "database still there after drop");
     println!("dropped {name} ✓");
 
     // Dropping a nonexistent DB is a clean no-op (IF EXISTS).
-    database::drop_database(&basedir, port, &name).expect("re-drop is a no-op");
+    database::drop_database(&db_client, port, &name).expect("re-drop is a no-op");
     println!("re-drop no-op ✓");
 
     if let Some(child) = &started {

@@ -5,6 +5,7 @@
 //! `mysqld` master is supervised like the other services. `basedir` is the
 //! extracted MySQL tree from `core::binaries::resolve_dir("mysql", …)`.
 
+use crate::core::db::SqlClient;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use std::path::{Path, PathBuf};
@@ -22,7 +23,13 @@ pub fn mysqld_bin(basedir: &Path) -> PathBuf {
 }
 
 /// `mysql` client inside the extracted MySQL tree.
-pub fn mysql_client_bin(basedir: &Path) -> PathBuf {
+///
+/// `pub(crate)` deliberately: outside the crate the client is only ever
+/// obtained as a [`crate::core::db::SqlClient`] from `sql_client_bins` /
+/// `cached_sql_client`, so a bare path can no longer be handed to the
+/// functions that exec it — the `&Path`-means-two-things class that left nine
+/// examples red for a month (docs/TODO.md, 14 Aug 2026).
+pub(crate) fn mysql_client_bin(basedir: &Path) -> PathBuf {
     basedir.join("bin/mysql")
 }
 
@@ -117,8 +124,8 @@ pub fn client_base_args(port: u16) -> [String; 6] {
 /// loopback server, root/no password — the local-dev setup). `client` is the
 /// client BINARY (`bin/mysql` from the MySQL tree, or `bin/mariadb` from the
 /// mariadb bundle — same protocol, same flags); `what` labels the error.
-fn mysql_exec(client: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
-    let out = std::process::Command::new(client)
+fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
+    let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .args(["-e", sql])
         .output()?;
@@ -186,7 +193,7 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
 /// rationale as `--result-file` in [`export_to_downloads`]). DESTRUCTIVE: the
 /// dump executes as-is, so tables it contains overwrite existing ones; the
 /// caller owns the confirm/backup UX. Requires the MySQL server to be running.
-pub fn import_from_file(client: &Path, port: u16, name: &str, file: &Path) -> Result<()> {
+pub fn import_from_file(client: &SqlClient, port: u16, name: &str, file: &Path) -> Result<()> {
     validate_db_name(name)?;
     let f = std::fs::File::open(file)
         .map_err(|e| Error::Other(format!("open {}: {e}", file.display())))?;
@@ -196,7 +203,7 @@ pub fn import_from_file(client: &Path, port: u16, name: &str, file: &Path) -> Re
             file.display()
         )));
     }
-    let out = std::process::Command::new(client)
+    let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .arg(name)
         .stdin(std::process::Stdio::from(f))
@@ -215,7 +222,7 @@ pub fn import_from_file(client: &Path, port: u16, name: &str, file: &Path) -> Re
 /// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
 /// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv
 /// must always use its own client from the extracted MySQL tree.
-pub fn create_database(client: &Path, port: u16, name: &str) -> Result<()> {
+pub fn create_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
     validate_db_name(name)?;
     mysql_exec(
         client,
@@ -228,7 +235,7 @@ pub fn create_database(client: &Path, port: u16, name: &str) -> Result<()> {
 /// Drop a site's database if it exists (site teardown). Same strict name rule
 /// as [`create_database`] — the caller passes only a name derived from the
 /// site's validated domain, so an arbitrary/other database can't be named.
-pub fn drop_database(client: &Path, port: u16, name: &str) -> Result<()> {
+pub fn drop_database(client: &SqlClient, port: u16, name: &str) -> Result<()> {
     validate_db_name(name)?;
     mysql_exec(
         client,
@@ -242,8 +249,8 @@ pub fn drop_database(client: &Path, port: u16, name: &str) -> Result<()> {
 /// `information_schema` query on the bundled client — backs the per-site "DB
 /// size" number on the Sites page (a REAL per-site figure even for sites that
 /// share nginx + a php-fpm pool). Requires the server to be running.
-pub fn db_sizes(client: &Path, port: u16) -> Result<Vec<(String, u64)>> {
-    let out = std::process::Command::new(client)
+pub fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64)>> {
+    let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .args([
             "-N", // no header
@@ -356,17 +363,17 @@ mod tests {
 
     #[test]
     fn create_database_rejects_unsafe_names() {
-        let base = Path::new("/nonexistent");
+        let base = SqlClient::test_at("/nonexistent");
         for bad in ["", "wp;drop", "a`b", "a b", "a-b"] {
-            assert!(create_database(base, 13306, bad).is_err(), "accepted {bad:?}");
+            assert!(create_database(&base, 13306, bad).is_err(), "accepted {bad:?}");
         }
     }
 
     #[test]
     fn drop_database_rejects_unsafe_names() {
-        let base = Path::new("/nonexistent");
+        let base = SqlClient::test_at("/nonexistent");
         for bad in ["", "wp;drop", "a`b", "a b", "a-b", "*", "wp_x.y"] {
-            assert!(drop_database(base, 13306, bad).is_err(), "accepted {bad:?}");
+            assert!(drop_database(&base, 13306, bad).is_err(), "accepted {bad:?}");
         }
     }
 }

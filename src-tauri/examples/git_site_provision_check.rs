@@ -29,7 +29,7 @@
 //! that record — never a derived path (the 24 Jul Sites-folder incident).
 
 use rexenv_lib::commands::{self, site_provision};
-use rexenv_lib::core::{binaries, database, dotenv, sites, ssl};
+use rexenv_lib::core::{database, dotenv, sites, ssl};
 use rexenv_lib::state::app::AppState;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::Path;
@@ -96,8 +96,10 @@ async fn main() {
     let _ = std::fs::remove_file(&db_file);
     let conn = rexenv_lib::state::db::open(&db_file).unwrap();
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
-    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
-    let mysql = mysql_base.join("bin/mysql");
+    let (mysql, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     let app = tauri::test::mock_app();
     app.manage(commands::repo::RepoJobs::default());
@@ -268,7 +270,7 @@ async fn main() {
         }
         // The migrations are the point: an empty database here means the app
         // talks to a file the Databases screen never shows.
-        let tables = table_count(&mysql, &site.db_name);
+        let tables = table_count(mysql.path(), &site.db_name);
         println!("  {} has {tables} tables", site.db_name);
         if tables == 0 {
             failures.push(format!("Laravel: {} has no tables — migrations did not land", site.db_name));
@@ -405,7 +407,7 @@ async fn main() {
             }
         }
         // WordPress actually installed into the site's database.
-        let tables = table_count(&mysql, &site.db_name);
+        let tables = table_count(mysql.path(), &site.db_name);
         println!("  {} has {tables} tables", site.db_name);
         if tables == 0 {
             failures.push(format!("Bedrock: {} has no tables — wp core install did not run", site.db_name));

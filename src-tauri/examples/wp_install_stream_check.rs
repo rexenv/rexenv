@@ -39,6 +39,10 @@ async fn main() {
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     // Reuse a running MySQL (the dev stack), else start our own.
     let mut own_mysqld = None;
@@ -86,9 +90,9 @@ async fn main() {
         "WP Install Stream",
         &wordpress::db_name_for(SiteType::Wordpress, &domain),
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        // db_client = the CLIENT BINARY (how core/db.rs derives it), not the
-        // base dir — wp_plugins_check passes the base and is latently stale.
-        &mysql_base.join("bin/mysql"),
+        // db_client is a typed SqlClient now (ledger #329) — the base-dir
+        // mixup this note used to warn about no longer compiles.
+        &db_client,
         &Default::default(),
     )
     .expect("install wordpress");
@@ -360,7 +364,7 @@ async fn main() {
     // Sites dir — an earlier version of this line deleted every site.
     let _ = std::fs::remove_dir_all(&docroot);
     let _ = database::drop_database(
-        &mysql_base.join("bin/mysql"),
+        &db_client,
         database::MYSQL_PORT,
         &wordpress::db_name_for(SiteType::Wordpress, &domain),
     );

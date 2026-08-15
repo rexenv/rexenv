@@ -34,6 +34,10 @@ async fn main() {
     let nginx = binaries::resolve(&*plat, "nginx", binaries::NGINX_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     // MySQL.
     let datadir = database::data_dir(&*plat).unwrap();
@@ -64,7 +68,7 @@ async fn main() {
         docroot: std::path::Path::new(&site.path),
         db_name: &wordpress::db_name_for(SiteType::Wordpress, domain),
         db_host: &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        db_client: &mysql_base.join("bin/mysql"),
+        db_client: &db_client,
         url: &format!("https://{domain}"),
         title: "rexenv WP Demo",
         admin_user: "admin",

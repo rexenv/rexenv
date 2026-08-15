@@ -77,7 +77,10 @@ async fn main() {
     }
     assert!(database::mysql_running(PORT), "sandbox mysqld came up");
 
-    let client = database::mysql_client_bin(&basedir);
+    let (client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
     database::create_database(&client, PORT, DB).expect("create source db");
     // A latin1 column and a BLOB, populated with bytes that are NOT valid UTF-8
     // — which is what a real WordPress database holds and what a real mysqldump
@@ -94,7 +97,7 @@ async fn main() {
             (2,'p)ss;w(rd survives', 'plain', NULL), \
             (3,'third', 0x80818283, 0xDEADBEEF);"
     );
-    let out = std::process::Command::new(&client)
+    let out = std::process::Command::new(client.path())
         .args(["--no-defaults", "--protocol=TCP", "--host=127.0.0.1"])
         .arg(format!("--port={PORT}"))
         .args(["--user=root", "-e", &seed])
@@ -264,7 +267,7 @@ async fn main() {
          INSERT INTO wp_broken VALUES (1,'doomed'); \
          ALTER TABLE wp_broken DISCARD TABLESPACE;"
     );
-    let out = std::process::Command::new(&client)
+    let out = std::process::Command::new(client.path())
         .args(["--no-defaults", "--protocol=TCP", "--host=127.0.0.1"])
         .arg(format!("--port={PORT}"))
         .args(["--user=root", "-e", &plant])
@@ -272,7 +275,7 @@ async fn main() {
         .expect("plant");
     assert!(out.status.success(), "plant failed: {}", String::from_utf8_lossy(&out.stderr));
     // The plant must actually be broken, or everything below proves nothing.
-    let reads = std::process::Command::new(&client)
+    let reads = std::process::Command::new(client.path())
         .args(["--no-defaults", "--protocol=TCP", "--host=127.0.0.1"])
         .arg(format!("--port={PORT}"))
         .args(["--user=root", "-e", &format!("SELECT * FROM {DB}.wp_broken")])

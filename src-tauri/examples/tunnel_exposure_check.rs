@@ -51,7 +51,7 @@
 mod common;
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{binaries, db as coredb, database, php as corephp, ports as coreports, services, sites, ssl, tunnels, wordpress, wp_login, wp_tunnel};
+use rexenv_lib::core::{binaries, db as coredb, php as corephp, ports as coreports, services, sites, ssl, tunnels, wordpress, wp_login, wp_tunnel};
 use rexenv_lib::platform;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::{Path, PathBuf};
@@ -228,7 +228,10 @@ async fn main() {
     // thing to keep correct.
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.expect("php");
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.expect("wp-cli");
-    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.expect("mysql");
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
     if let Err(e) = wordpress::install_for_site(
         &php,
         &wp,
@@ -238,7 +241,7 @@ async fn main() {
         &wordpress::db_name_for(SiteType::Wordpress, SHARED),
         &format!("127.0.0.1:{}", coredb::DbEngine::Mysql.port()),
         // The CLIENT binary, never the basedir — see docs/TODO.md, 15 Jul→14 Aug.
-        &database::mysql_client_bin(&mysql_base),
+        &db_client,
         &Default::default(),
     ) {
         fail("FIXTURE — WordPress did not install on the shared site", &format!("{e}"));

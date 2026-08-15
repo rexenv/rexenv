@@ -28,6 +28,7 @@
 //! locks a dead session's cleanup wouldn't already release. Nothing about their
 //! server changes because a dump stopped early.
 
+use crate::core::db::SqlClient;
 use crate::core::dbcompat::{Verdict, Version};
 use crate::core::dbimport::DbConnection;
 use crate::core::dbsource::{Identity, Vendor};
@@ -250,7 +251,7 @@ pub struct SourceSize {
 /// Requires the gate's witness — cheap refusals happen before any connection.
 pub fn preflight_live(
     _cleared: &Cleared,
-    client: &Path,
+    client: &SqlClient,
     defaults: &DefaultsFile,
     db: &str,
 ) -> Result<LiveCheck> {
@@ -327,7 +328,7 @@ pub fn preflight_live(
 /// A probe that itself fails to run returns EMPTY, not an error: this is an
 /// optimisation of the dump, and being unable to check must never be the thing
 /// that blocks a migration that would have worked.
-pub fn unreadable_tables(client: &Path, defaults: &DefaultsFile, db: &str) -> Result<Vec<String>> {
+pub fn unreadable_tables(client: &SqlClient, defaults: &DefaultsFile, db: &str) -> Result<Vec<String>> {
     let list = client_query(
         client,
         defaults,
@@ -396,13 +397,13 @@ fn escape_ident(s: &str) -> String {
 /// non-zero when any statement errored, which is the normal case here. What
 /// matters is which names reached stdout.
 fn client_script_forcing(
-    client: &Path,
+    client: &SqlClient,
     defaults: &DefaultsFile,
     db: &str,
     script: &str,
 ) -> std::result::Result<String, String> {
     use std::io::Write;
-    let mut child = std::process::Command::new(client)
+    let mut child = std::process::Command::new(client.path())
         .arg(format!("--defaults-extra-file={}", defaults.path().display())) // MUST be first
         .args(["--connect-timeout=10", "-N", "-B", "--force"])
         .arg(db)
@@ -430,11 +431,11 @@ fn client_script_forcing(
 /// and only this tool accepts the flag at all). Shared with
 /// `core::confverify`'s sign-in check, which authenticates the same way.
 pub(crate) fn client_query(
-    client: &Path,
+    client: &SqlClient,
     defaults: &DefaultsFile,
     sql: &str,
 ) -> std::result::Result<String, String> {
-    let out = std::process::Command::new(client)
+    let out = std::process::Command::new(client.path())
         .arg(format!("--defaults-extra-file={}", defaults.path().display())) // MUST be first
         .args(["--connect-timeout=10", "-N", "-B", "-e", sql])
         .output()

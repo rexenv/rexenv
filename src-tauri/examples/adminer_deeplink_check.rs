@@ -76,6 +76,10 @@ async fn main() {
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
     {
         let _ = Command::new(mysql_base.join("bin/mysql"))
             .args(["-h127.0.0.1", "-P13306", "-uroot", "-e", &format!("DROP DATABASE IF EXISTS {db_name}")])
@@ -87,7 +91,7 @@ async fn main() {
         &php, &wp, &docroot, domain, "DB Site",
         &db_name,
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        &rexenv_lib::core::database::mysql_client_bin(&mysql_base),
+        &db_client,
         &Default::default(),
     )
     .expect("install wordpress");

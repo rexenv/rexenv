@@ -98,7 +98,10 @@ async fn main() {
     // Install WordPress (MySQL is up now).
     let php = rexenv_lib::core::binaries::resolve(&*plat, "php", rexenv_lib::core::binaries::PHP_VERSION).await.unwrap();
     let wp = rexenv_lib::core::binaries::resolve_file(&*plat, "wp-cli", rexenv_lib::core::binaries::WP_CLI_VERSION).await.unwrap();
-    let mysql_base = rexenv_lib::core::binaries::resolve_dir(&*plat, "mysql", rexenv_lib::core::binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
     wordpress::install_for_site(
         &php,
         &wp,
@@ -112,7 +115,7 @@ async fn main() {
         // → `PermissionDenied` (EACCES), which reads like a filesystem-permissions
         // problem and is really a wrong-argument one. Same shape as the
         // create_database slip on 13 Aug 2026.
-        &rexenv_lib::core::database::mysql_client_bin(&mysql_base),
+        &db_client,
         &Default::default(),
     )
     .expect("install wordpress");

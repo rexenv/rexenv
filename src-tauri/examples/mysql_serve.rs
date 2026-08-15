@@ -41,7 +41,14 @@ async fn main() {
     println!("mysql_running={up}");
 
     // Connect with the bundled client.
-    let out = Command::new(database::mysql_client_bin(&basedir))
+    let out = Command::new(
+        rexenv_lib::core::db::DbEngine::Mysql
+            .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+            .await
+            .expect("bundled MySQL client")
+            .0
+            .path(),
+    )
         .args([
             "--no-defaults",
             "--protocol=TCP",

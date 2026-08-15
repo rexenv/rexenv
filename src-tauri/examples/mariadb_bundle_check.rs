@@ -45,8 +45,8 @@ fn signature_valid(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-fn sql(basedir: &std::path::Path, port: u16, stmt: &str) -> (bool, String) {
-    let out = Command::new(mariadb::mariadb_client_bin(basedir))
+fn sql(client: &std::path::Path, port: u16, stmt: &str) -> (bool, String) {
+    let out = Command::new(client)
         .args([
             "--no-defaults",
             "--protocol=TCP",
@@ -129,12 +129,16 @@ async fn main() {
     ok &= up;
 
     if up {
-        let (vok, ver) = sql(&basedir, port, "SELECT VERSION()");
+        let (client, _) = DbEngine::Mariadb
+            .sql_client_bins(&*plat, binaries::MARIADB_VERSION)
+            .await
+            .expect("bundled MariaDB client");
+        let (vok, ver) = sql(client.path(), port, "SELECT VERSION()");
         println!("  SELECT VERSION() → {ver}");
         ok &= vok && ver.contains("MariaDB");
-        let (cok, _) = sql(&basedir, port, "CREATE DATABASE IF NOT EXISTS rexenv_check");
-        let (_, dbs) = sql(&basedir, port, "SHOW DATABASES LIKE 'rexenv_check'");
-        let (dok, _) = sql(&basedir, port, "DROP DATABASE IF EXISTS rexenv_check");
+        let (cok, _) = sql(client.path(), port, "CREATE DATABASE IF NOT EXISTS rexenv_check");
+        let (_, dbs) = sql(client.path(), port, "SHOW DATABASES LIKE 'rexenv_check'");
+        let (dok, _) = sql(client.path(), port, "DROP DATABASE IF EXISTS rexenv_check");
         println!("  CREATE → {cok} · visible → {} · DROP → {dok}", dbs == "rexenv_check");
         ok &= cok && dbs == "rexenv_check" && dok;
     }

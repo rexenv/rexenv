@@ -151,9 +151,20 @@ async fn main() {
     // The client binaries: the interactive array INCLUDING the connect bound
     // is valid for clients — the contrast that makes the exclusion coherent.
     let client_args = database::client_base_args(13306).to_vec();
-    for (label, client) in
-        [("mysql-client", mysql.join("bin/mysql")), ("mariadb-client", mariadb::mariadb_client_bin(&mdb))]
-    {
+    // Client paths via `sql_client_bins` — the ONE constructor of `SqlClient`
+    // — so this probe exercises the exact binary production would spawn.
+    let (mdb_client, _) = rexenv_lib::core::db::DbEngine::Mariadb
+        .sql_client_bins(&*plat, binaries::MARIADB_VERSION)
+        .await
+        .expect("mariadb client");
+    let (mysql_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, binaries::MYSQL_VERSION)
+        .await
+        .expect("mysql client");
+    for (label, client) in [
+        ("mysql-client", mysql_client.path().to_path_buf()),
+        ("mariadb-client", mdb_client.path().to_path_buf()),
+    ] {
         let (pass, err) = parses(&client, &client_args);
         check(
             &mut ok,

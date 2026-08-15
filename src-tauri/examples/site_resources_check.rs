@@ -21,12 +21,15 @@ async fn main() {
 
     // (1) Real per-DB disk sizes.
     assert!(DbEngine::Mysql.running(), "MySQL must be running (Start all)");
-    let base = plat
-        .paths()
-        .bin_dir()
-        .unwrap()
-        .join(format!("mysql-{}", binaries::MYSQL_VERSION));
-    let sizes = database::db_sizes(&base, DbEngine::Mysql.port()).unwrap();
+    // The client via `cached_sql_client` — production's own status-poll path.
+    // The previous version hand-built `bin_dir/mysql-<v>` (the TREE) and passed
+    // it to db_sizes, which execs it: EACCES before any DB contact. A tenth
+    // victim of the tree-vs-client class, found by the SqlClient type change —
+    // the 14 Aug sweep grepped for mysql_client_bin and this file never called it.
+    let client = DbEngine::Mysql
+        .cached_sql_client(&*plat, binaries::MYSQL_VERSION)
+        .expect("bundled MySQL client cached (Start all downloads it)");
+    let sizes = database::db_sizes(&client, DbEngine::Mysql.port()).unwrap();
     println!("== db sizes ==");
     for (name, bytes) in &sizes {
         println!("{name:<30} {:>8.1} MB", *bytes as f64 / 1e6);

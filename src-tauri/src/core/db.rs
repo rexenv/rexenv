@@ -12,8 +12,39 @@ use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::SiteDbEngine;
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
+
+/// The SQL CLIENT BINARY (`bin/mysql` / `bin/mariadb`), as a type instead of a
+/// bare `&Path`.
+///
+/// Constructible ONLY by [`DbEngine::sql_client_bins`] and
+/// [`DbEngine::cached_sql_client`] — the places that know an engine's on-disk
+/// layout. Exists because `&Path` meant two things on this surface: `b5861c4`
+/// renamed `mysql_basedir` → `db_client` and changed the parameter's MEANING
+/// (extracted tree → client binary) without changing its type, so nine
+/// examples kept passing the tree, nothing failed to compile, and they sat
+/// red from 15 Jul to 14 Aug 2026 — exec'ing a directory is EACCES before any
+/// DB contact, so no leftover state could ever make them pass. With the
+/// client as its own type, that call does not compile, which is the guard a
+/// review comment provably was not.
+#[derive(Debug, Clone)]
+pub struct SqlClient(PathBuf);
+
+impl SqlClient {
+    /// The binary's path — for spawning and for error messages.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Test-only constructor (fixture clients at nonexistent paths, refusal
+    /// tests). Everything that runs for real goes through
+    /// [`DbEngine::sql_client_bins`] / [`DbEngine::cached_sql_client`].
+    #[cfg(test)]
+    pub(crate) fn test_at(path: impl Into<PathBuf>) -> SqlClient {
+        SqlClient(path.into())
+    }
+}
 
 /// Loopback ports for the database services. Each is non-default so it doesn't
 /// clash with a system install (MySQL 3306 / Postgres 5432 / Redis 6379).
@@ -210,15 +241,15 @@ impl DbEngine {
         &self,
         platform: &dyn Platform,
         version: &str,
-    ) -> Result<(PathBuf, PathBuf)> {
+    ) -> Result<(SqlClient, PathBuf)> {
         match self {
             DbEngine::Mysql => {
                 let base = binaries::resolve_dir(platform, "mysql", version).await?;
-                Ok((base.join("bin/mysql"), base.join("bin/mysqldump")))
+                Ok((SqlClient(database::mysql_client_bin(&base)), base.join("bin/mysqldump")))
             }
             DbEngine::Mariadb => {
                 let base = binaries::resolve_bundle(platform, "mariadb", version).await?;
-                Ok((mariadb::mariadb_client_bin(&base), mariadb::mariadb_dump_bin(&base)))
+                Ok((SqlClient(mariadb::mariadb_client_bin(&base)), mariadb::mariadb_dump_bin(&base)))
             }
             other => Err(Error::Other(format!(
                 "{} does not host site databases",
@@ -230,7 +261,7 @@ impl DbEngine {
     /// The SQL client from an ALREADY-published cache — strictly offline, for
     /// status-poll paths (the per-site DB-size query) where triggering a
     /// download is wrong. `None` when uncached or not a site engine.
-    pub fn cached_sql_client(&self, platform: &dyn Platform, version: &str) -> Option<PathBuf> {
+    pub fn cached_sql_client(&self, platform: &dyn Platform, version: &str) -> Option<SqlClient> {
         let bin_dir = platform.paths().bin_dir().ok()?;
         let client = match self {
             DbEngine::Mysql => bin_dir.join(format!("mysql-{version}")).join("bin/mysql"),
@@ -239,7 +270,7 @@ impl DbEngine {
             }
             _ => return None,
         };
-        client.is_file().then_some(client)
+        client.is_file().then_some(SqlClient(client))
     }
 
     /// Whether the engine's datadir FOR A VERSION was ever initialized — the

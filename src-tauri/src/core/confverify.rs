@@ -21,6 +21,7 @@
 //! 0600 [`DefaultsFile`] (deleted on Drop), and never touches argv or logs —
 //! Stage 2's rules, same implementation.
 
+use crate::core::db::SqlClient;
 use crate::core::dbdump::{self, DefaultsFile};
 use crate::core::dbimport;
 use crate::core::phpconf::Unreadable;
@@ -111,7 +112,7 @@ impl VerifyFail {
 /// directory, so it can never clash with a running import's).
 pub fn verify_signin(
     platform: &dyn Platform,
-    client: &Path,
+    client: &SqlClient,
     docroot: &Path,
     scratch_dir: &Path,
     expected_port: u16,
@@ -255,7 +256,7 @@ mod tests {
         let platform = crate::platform::current();
         let out = verify_signin(
             &*platform,
-            Path::new("/nonexistent/mysql"),
+            &SqlClient::test_at("/nonexistent/mysql"),
             &dir,
             &dir.join("scratch"),
             13306,
@@ -284,7 +285,7 @@ mod tests {
         let platform = crate::platform::current();
         let out = verify_signin(
             &*platform,
-            Path::new("/nonexistent/mysql"),
+            &SqlClient::test_at("/nonexistent/mysql"),
             &dir,
             &dir.join("scratch"),
             13306,

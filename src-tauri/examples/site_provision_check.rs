@@ -19,7 +19,7 @@
 //! Run: `cargo run --example site_provision_check`
 
 use rexenv_lib::commands::{self, site_provision};
-use rexenv_lib::core::{binaries, database, sites, ssl, wordpress};
+use rexenv_lib::core::{database, sites, ssl, wordpress};
 use rexenv_lib::state::app::AppState;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::sync::{Arc, Mutex};
@@ -37,7 +37,10 @@ async fn main() {
         rexenv_lib::state::db::open(&p).unwrap()
     };
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
-    let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     let app = tauri::test::mock_app();
     app.manage(commands::repo::RepoJobs::default());
@@ -275,11 +278,7 @@ async fn main() {
         let state = handle.state::<AppState>();
         let conn = state.db.lock().unwrap();
         if let Ok(Some(site)) = sites::get(&conn, &id) {
-            let _ = database::drop_database(
-                &mysql_base.join("bin/mysql"),
-                database::MYSQL_PORT,
-                &site.db_name,
-            );
+            let _ = database::drop_database(&db_client, database::MYSQL_PORT, &site.db_name);
             let plat = rexenv_lib::platform::current();
             match sites::teardown(&conn, &*plat, &id) {
                 Ok(t) if t.existed => println!(

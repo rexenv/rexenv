@@ -316,6 +316,7 @@ L3 = scripted manual.
 | 130 | confrewrite.rs:5 | Backup-first; half-written unrepresentable; unknown digest reads conservative | ✅ 5 lib tests |
 | 131 | dbcompat.rs:12 | Cautions never change whether it runs; a block is never a dead end | ✅ 3 lib tests |
 | 195 | dbdump.rs (dump_tool_flags) + database.rs:155 | Every dump-tool flag is accepted by the real binaries; --connect-timeout is not honored (mysqldump hard-errors, mariadb-dump warns+ignores — vendor split DISCOVERED by the proof, old "every tool hard-errors" comment corrected) | ✅ `db_dump_flags_check` (28 Jul 2026, all 4 cached tools) |
+| 329 | core/db.rs (`SqlClient`) + every client-taking signature in database/dbrestore/dbmirror/dbdump/confverify/wordpress | **The SQL client travels as a TYPE, constructible only where the engine's layout is known** (`DbEngine::sql_client_bins` and `cached_sql_client`; a `#[cfg(test)]` door for fixture clients). The class this closes: `b5861c4` renamed `mysql_basedir` → `db_client` and changed the parameter's MEANING (extracted tree → client binary) with no type change, so nine examples kept passing the tree, nothing failed to compile, and they sat red 15 Jul→14 Aug 2026 — exec of a directory is EACCES before any DB contact, an error naming nothing. The raw path helpers (`mysql_client_bin`, `mariadb_client_bin`) are `pub(crate)` so no caller outside the crate can hand-derive the path and pass it where the client is meant | ✅ **structural (type-level), and the migration itself was the plant**: converting the tree found TWO victims the 14 Aug nine-example sweep missed because they never called `mysql_client_bin` — `site_resources_check` hand-built `bin_dir/mysql-<v>` (the TREE) and passed it to `db_sizes`, and `db_drop_check` passed `&basedir` to `create_database`/`drop_database`; both latently red, both now compile errors resolved through the constructors. L0 witness: the field is private and the module exposes no other constructor — a `&Path`/`PathBuf` at any converted call site is E0308 |
 
 ## core/valet.rs / repo.rs / wordpress.rs / devtools.rs / mail.rs / ports.rs / ssl.rs
 
@@ -494,8 +495,8 @@ install source's own gate #259 and the cursor it can never advance #260; the
 WP-CLI packages tell #301; the per-site artifact sweep #302 and the sites-folder rule #303 and the edge-wire tri-state #304 its four callers #305 and the onboarding notice #306; the leftmost-XFF finding #307 and the mu-plugin ordering pairing #308; the
 end-of-output cut #316 and the diagnostics-to-stderr flag #317, the two halves
 that stopped a plugin's shutdown hook and PHP's own deprecations from breaking
-every WordPress screen on a PHP 8.4 / 8.5 site):
-**✅ 245 · ◐ 49 · 🔨 29 · 🚫 5** of 328 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #329):
+**✅ 246 · ◐ 49 · 🔨 29 · 🚫 5** of 329 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 

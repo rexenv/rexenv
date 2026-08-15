@@ -85,7 +85,10 @@ async fn main() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
     assert!(database::mysql_running(PORT), "sandbox mysqld is up");
-    let client = database::mysql_client_bin(&basedir);
+    let (client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     database::create_database(&client, PORT, SRC_DB).unwrap();
     let mut seed = format!(
@@ -100,7 +103,7 @@ async fn main() {
         " INSERT INTO wp_options VALUES {};",
         (1..=OPTIONS).map(|i| format!("({i},'opt {i}')")).collect::<Vec<_>>().join(",")
     ));
-    exec(&client, &seed).expect("seed source");
+    exec(client.path(), &seed).expect("seed source");
 
     // ── a real artifact + manifest via Half A ───────────────────────────────
     let dest = sandbox.root().join("db-imports");
@@ -178,7 +181,7 @@ async fn main() {
         FeedOutcome::Cancelled => panic!("not cancelled"),
     };
     dbrestore::finish(&conn, "s1", TGT_DB, &verified).unwrap();
-    let (p, o) = (count(&client, TGT_DB, "wp_posts"), count(&client, TGT_DB, "wp_options"));
+    let (p, o) = (count(client.path(), TGT_DB, "wp_posts"), count(client.path(), TGT_DB, "wp_options"));
     println!("  wp_posts={p} (want {POSTS}), wp_options={o} (want {OPTIONS})");
     ok &= p == POSTS && o == OPTIONS;
     let site = rexenv_lib::state::store::get_site(&conn, "s1").unwrap().unwrap();
@@ -233,7 +236,7 @@ async fn main() {
         Ok(_) => "SUCCEEDED (wrong)".into(),
     });
     // The dangerous state: wp_posts EXISTS with rows. It must not verify.
-    let partial_rows = count(&client, tgt2, "wp_posts");
+    let partial_rows = count(client.path(), tgt2, "wp_posts");
     let verify = dbrestore::verify_complete(&client, PORT, tgt2, &bad_man);
     println!("  partial state: wp_posts has {partial_rows} rows, and verify says:");
     match &verify {
@@ -259,13 +262,13 @@ async fn main() {
     assert!(matches!(refed, FeedOutcome::Fed { .. }));
     let v2 = dbrestore::verify_complete(&client, PORT, tgt2, &manifest).expect("retry verifies");
     dbrestore::finish(&conn, "s2", tgt2, &v2).unwrap();
-    let (p2, o2) = (count(&client, tgt2, "wp_posts"), count(&client, tgt2, "wp_options"));
+    let (p2, o2) = (count(client.path(), tgt2, "wp_posts"), count(client.path(), tgt2, "wp_options"));
     println!("  after retry: wp_posts={p2} (want {POSTS}), wp_options={o2} (want {OPTIONS})");
     ok &= p2 == POSTS && o2 == OPTIONS;
 
     println!("\n=== 4. a pre-existing database is never dropped by any path ===");
     let keep = "restorecheck_keep";
-    exec(&client, &format!(
+    exec(client.path(), &format!(
         "CREATE DATABASE {keep}; CREATE TABLE {keep}.their_extra (id INT PRIMARY KEY); \
          INSERT INTO {keep}.their_extra VALUES (42);"
     ))
@@ -294,7 +297,7 @@ async fn main() {
     assert!(matches!(fed_k, FeedOutcome::Fed { .. }));
     let v_k = dbrestore::verify_complete(&client, PORT, keep, &manifest)
         .expect("membership verify tolerates their extra table");
-    let extra = count(&client, keep, "their_extra");
+    let extra = count(client.path(), keep, "their_extra");
     println!("  their_extra survives with {extra} row(s); manifest tables verified: {}", v_k.tables);
     ok &= extra == 1;
     // The SQL guard: once pre-existing, nothing can re-claim it.
@@ -305,7 +308,7 @@ async fn main() {
     let m2 = dbmirror::mirror(&client, PORT, TGT_DB, "ea_user", r#"p'a\s"s!"#).unwrap();
     println!("  first: {m1:?}; rerun: {m2:?} (idempotent)");
     ok &= matches!(m1, MirrorOutcome::Mirrored { .. }) && matches!(m2, MirrorOutcome::Mirrored { .. });
-    let hosts = exec(&client, "SELECT host FROM mysql.user WHERE user='ea_user' ORDER BY host").unwrap();
+    let hosts = exec(client.path(), "SELECT host FROM mysql.user WHERE user='ea_user' ORDER BY host").unwrap();
     let hosts: Vec<&str> = hosts.lines().map(|l| l.trim()).collect();
     println!("  hosts: {hosts:?} (must be loopback only)");
     ok &= hosts == ["127.0.0.1", "localhost"];
@@ -318,7 +321,7 @@ async fn main() {
     };
     let their_defaults =
         dbdump::DefaultsFile::create(&*plat, &sandbox.root().join("their-cnf"), &their_conn).unwrap();
-    let as_them = std::process::Command::new(&client)
+    let as_them = std::process::Command::new(client.path())
         .arg(format!("--defaults-extra-file={}", their_defaults.path().display()))
         .args(["-N", "-B", "-e", &format!("SELECT COUNT(*) FROM `{TGT_DB}`.wp_posts")])
         .output()
@@ -331,7 +334,7 @@ async fn main() {
     println!("  root -> {root_refusal:?}");
     ok &= matches!(root_refusal, MirrorOutcome::RefusedReserved { .. });
     // And our root is still passwordless — the pinned flag array still works.
-    ok &= exec(&client, "SELECT 1").is_ok();
+    ok &= exec(client.path(), "SELECT 1").is_ok();
 
     mysqld.reap();
     drop(defaults);

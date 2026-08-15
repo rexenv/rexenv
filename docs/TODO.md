@@ -525,11 +525,20 @@ first:
   Production is NOT reachable: every real caller derives the client through
   `DbEngine::sql_client_bins` (`site_provision.rs:1130/1386`, `dbrestore.rs:101`), the one
   place that knows the layout. Only examples hand-roll it.
-  Work: (a) the nine one-line fixes; (b) make `mysql_exec` refuse a directory with a
-  message that NAMES the argument — an hour of debugging turned into a sentence, and it
-  guards any future hand-rolled caller including production; (c) considered and not
-  taken yet — a `SqlClient` newtype constructible only by `sql_client_bins`, which makes
-  the wrong call unrepresentable but touches core signatures plus 13 examples.
+  Work: (a) the nine one-line fixes ✓; (b) make `mysql_exec` refuse a directory with a
+  message that NAMES the argument — **subsumed by (c), 15 Aug 2026**: a directory can no
+  longer reach `mysql_exec`, because its argument can no longer be built from a path;
+  (c) ✓ **DONE 15 Aug 2026, ledger #329** — `SqlClient` in `core/db.rs`, constructible
+  only by `sql_client_bins`/`cached_sql_client` (plus a `#[cfg(test)]` door), private
+  field, raw path helpers demoted to `pub(crate)`. Every client-taking signature in
+  database/dbrestore/dbmirror/dbdump/confverify/wordpress takes `&SqlClient`; ~30
+  example call sites converted to the constructors. **The migration found TWO more
+  victims the 14 Aug sweep missed** (neither called `mysql_client_bin`, so the grep
+  never saw them): `site_resources_check` passed a hand-built `bin_dir/mysql-<v>` TREE
+  to `db_sizes`, and `db_drop_check` passed `&basedir` to `create_database`/
+  `drop_database` — both latently red at the same tier that hid the first nine, both
+  surfaced as compile errors the moment the type existed. That is the class argument in
+  one sentence: the sweep fixed nine instances; the type found eleven.
 
 - [ ] **`wp_plugins_check` failed its deactivate assertion once and has not reproduced —
   the product-bug flag raised 14 Aug 2026 is RETRACTED, mechanism refuted.** The suspicion

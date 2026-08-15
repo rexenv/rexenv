@@ -25,8 +25,10 @@ pub fn mariadbd_bin(basedir: &Path) -> PathBuf {
     basedir.join("bin/mariadbd")
 }
 
-/// `mariadb` client inside the bundle tree.
-pub fn mariadb_client_bin(basedir: &Path) -> PathBuf {
+/// `mariadb` client inside the bundle tree. `pub(crate)` for the same reason
+/// as `database::mysql_client_bin`: outside the crate the client travels only
+/// as a [`crate::core::db::SqlClient`].
+pub(crate) fn mariadb_client_bin(basedir: &Path) -> PathBuf {
     basedir.join("bin/mariadb")
 }
 

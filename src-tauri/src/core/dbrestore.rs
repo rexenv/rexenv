@@ -33,6 +33,7 @@
 //! partial restore fails naming the missing tables, and nothing downstream can
 //! call it done.
 
+use crate::core::db::SqlClient;
 use crate::core::database::client_base_args;
 use crate::core::dbdump::Manifest;
 use crate::error::{Error, Result};
@@ -91,7 +92,7 @@ pub fn record_provenance(conn: &Connection, site_id: &str, exists_now: bool) -> 
 ///   `DROP TABLE IF EXISTS` performs exactly the overwrite that was confirmed.
 pub fn prepare_target(
     recorded: &Recorded,
-    client: &Path,
+    client: &SqlClient,
     port: u16,
     name: &str,
 ) -> Result<()> {
@@ -104,7 +105,7 @@ pub fn prepare_target(
 /// Drop a failed restore's database — only if the record says we made it. The
 /// check lives HERE, not at call sites: there is no drop-on-cleanup path that
 /// doesn't consult the witness.
-pub fn cleanup_failed(recorded: &Recorded, client: &Path, port: u16, name: &str) -> Result<bool> {
+pub fn cleanup_failed(recorded: &Recorded, client: &SqlClient, port: u16, name: &str) -> Result<bool> {
     if !recorded.ours {
         return Ok(false);
     }
@@ -133,7 +134,7 @@ pub enum FeedOutcome {
 #[allow(clippy::too_many_arguments)]
 pub fn feed(
     _recorded: &Recorded,
-    client: &Path,
+    client: &SqlClient,
     port: u16,
     name: &str,
     artifact: &Path,
@@ -145,7 +146,7 @@ pub fn feed(
         .map_err(|e| Error::Other(format!("open {}: {e}", artifact.display())))?;
     let mut reader = std::io::BufReader::new(file);
 
-    let mut child = std::process::Command::new(client)
+    let mut child = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .arg(name)
         .stdin(std::process::Stdio::piped())
@@ -252,7 +253,7 @@ pub struct Verified {
 /// legitimately holds tables the dump never mentioned, and those must neither
 /// fail the check nor count toward it.
 pub fn verify_complete(
-    client: &Path,
+    client: &SqlClient,
     port: u16,
     name: &str,
     manifest: &Manifest,
@@ -298,12 +299,12 @@ pub fn finish(conn: &Connection, site_id: &str, db_name: &str, _proof: &Verified
 }
 
 /// The tables a database holds, via `information_schema` on the bundled client.
-pub fn list_tables(client: &Path, port: u16, name: &str) -> Result<Vec<String>> {
+pub fn list_tables(client: &SqlClient, port: u16, name: &str) -> Result<Vec<String>> {
     let sql = format!(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = '{}'",
         name.replace('\\', "\\\\").replace('\'', "''")
     );
-    let out = std::process::Command::new(client)
+    let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .args(["-N", "-B", "-e", &sql])
         .output()?;
@@ -322,8 +323,8 @@ pub fn list_tables(client: &Path, port: u16, name: &str) -> Result<Vec<String>> 
 
 /// Does a database exist on our engine right now? The live half of the
 /// provenance question — consulted only when nothing is recorded.
-pub fn database_exists(client: &Path, port: u16, name: &str) -> Result<bool> {
-    let out = std::process::Command::new(client)
+pub fn database_exists(client: &SqlClient, port: u16, name: &str) -> Result<bool> {
+    let out = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .args(["-N", "-B", "-e", "SHOW DATABASES"])
         .output()?;
@@ -396,7 +397,7 @@ mod tests {
         let theirs = record_provenance(&conn, "s1", true).unwrap();
         // A nonexistent client binary proves no engine call happens on the
         // refusal path: reaching one would error, refusing returns Ok(false).
-        let out = cleanup_failed(&theirs, Path::new("/nonexistent/mysql"), 1, "keep_me").unwrap();
+        let out = cleanup_failed(&theirs, &SqlClient::test_at("/nonexistent/mysql"), 1, "keep_me").unwrap();
         assert!(!out, "a pre-existing database is never dropped, so no client runs");
     }
 

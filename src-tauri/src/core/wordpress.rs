@@ -91,6 +91,7 @@
 //!   be written.
 
 use super::wp_packages;
+use crate::core::db::SqlClient;
 use crate::error::{Error, Result};
 use crate::state::models::SiteType;
 use serde::{Deserialize, Serialize};
@@ -2712,7 +2713,7 @@ pub struct WpInstall<'a> {
     pub db_host: &'a str,
     /// Bundled MySQL-protocol client BINARY that creates the DB (`bin/mysql`
     /// from the MySQL tree, or `bin/mariadb` from the mariadb bundle).
-    pub db_client: &'a Path,
+    pub db_client: &'a SqlClient,
     /// Full site URL, e.g. `https://mysite.test`.
     pub url: &'a str,
     pub title: &'a str,
@@ -2821,7 +2822,7 @@ pub fn install_for_site(
     name: &str,
     db_name: &str,
     db_host: &str,
-    db_client: &Path,
+    db_client: &SqlClient,
     opts: &InstallOptions,
 ) -> Result<()> {
     let r = resolve_install_options(domain, name, opts);
@@ -2963,7 +2964,7 @@ pub fn reset_site(
     domain: &str,
     site_name: &str,
     db_name: &str,
-    db_client: &Path,
+    db_client: &SqlClient,
     db_port: u16,
 ) -> Result<()> {
     // 1) Erase: drop the database with the bundled client (PATH-safe).

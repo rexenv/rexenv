@@ -42,6 +42,10 @@ async fn main() {
     let caddy = binaries::resolve(&*plat, "caddy", binaries::CADDY_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     // MySQL.
     let datadir = database::data_dir(&*plat).unwrap();
@@ -95,7 +99,7 @@ async fn main() {
             docroot: &docroot,
             db_name: &db_name,
             db_host: &format!("127.0.0.1:{}", database::MYSQL_PORT),
-            db_client: &mysql_base.join("bin/mysql"),
+            db_client: &db_client,
             url: &url,
             title: "rexenv WP Demo",
             admin_user: "admin",

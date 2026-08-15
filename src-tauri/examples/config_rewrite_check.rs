@@ -67,7 +67,10 @@ async fn main() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
     assert!(database::mysql_running(PORT), "sandbox mysqld is up");
-    let client = database::mysql_client_bin(&basedir);
+    let (client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
     database::create_database(&client, PORT, DB).expect("create the imported copy");
 
     // ── the fixture site: a root-case wp-config pointing at "their" server ──

@@ -36,6 +36,10 @@ async fn main() {
     let php = binaries::resolve(&*plat, "php", binaries::PHP_VERSION).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::WP_CLI_VERSION).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
 
     let datadir = database::data_dir(&*plat).unwrap();
     let socket = database::socket_path(&*plat).unwrap();
@@ -78,7 +82,7 @@ async fn main() {
         "WP Tools",
         &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", database::MYSQL_PORT),
-        &database::mysql_client_bin(&mysql_base),
+        &db_client,
         &Default::default(),
     )
     .expect("install wordpress");

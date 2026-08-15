@@ -76,6 +76,10 @@ async fn main() {
 
     // Clean slate (re-runnable).
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::MYSQL_VERSION).await.unwrap();
+    let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
+        .sql_client_bins(&*plat, rexenv_lib::core::binaries::MYSQL_VERSION)
+        .await
+        .expect("bundled MySQL client");
     {
         let _ = Command::new(mysql_base.join("bin/mysql"))
             .args(["-h127.0.0.1", "-P13306", "-uroot", "-e",
@@ -89,7 +93,7 @@ async fn main() {
         &php, &wp, &docroot, domain, "Network",
         &wordpress::db_name_for(SiteType::Wordpress, domain),
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
-        &rexenv_lib::core::database::mysql_client_bin(&mysql_base),
+        &db_client,
         &Default::default(),
     )
     .expect("install wordpress");

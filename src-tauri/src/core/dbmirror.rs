@@ -21,10 +21,10 @@
 //! The password travels over the client's stdin inside the SQL text — never on
 //! argv, never in an env var, never logged (the SQL is not echoed anywhere).
 
+use crate::core::db::SqlClient;
 use crate::core::database::{client_base_args, validate_db_name};
 use crate::error::{Error, Result};
 use std::io::Write;
-use std::path::Path;
 
 /// Accounts we never create, alter, or grant as — whatever a site's config
 /// says. Checked case-insensitively.
@@ -79,7 +79,7 @@ pub const USER_NAME_MAX: usize = 32;
 /// GRANT ALL PRIVILEGES ON `db`.* TO 'u'@'h';   -- db wildcard-escaped (grant_db_object)
 /// ```
 pub fn mirror(
-    client: &Path,
+    client: &SqlClient,
     port: u16,
     db: &str,
     user: &str,
@@ -138,7 +138,7 @@ pub fn dedicated_user_name(domain: &str) -> String {
 /// cannot land in [`RESERVED_USERS`]; [`mirror`]'s refusal branch firing here
 /// is a bug, and reported as one rather than mapped to a user-facing outcome.
 pub fn mirror_dedicated(
-    client: &Path,
+    client: &SqlClient,
     port: u16,
     db: &str,
     domain: &str,
@@ -160,7 +160,7 @@ pub fn mirror_dedicated(
 /// the reserved refusal is a hard error here (unlike [`mirror`]'s outcome):
 /// no record should ever hold a reserved name — mirror never records one —
 /// but a drop must be UNABLE to take root out even on a corrupt record.
-pub fn drop_mirrored(client: &Path, port: u16, user: &str) -> Result<()> {
+pub fn drop_mirrored(client: &SqlClient, port: u16, user: &str) -> Result<()> {
     if RESERVED_USERS.iter().any(|r| r.eq_ignore_ascii_case(user)) {
         return Err(Error::Other(format!(
             "refusing to drop reserved database account {user:?}"
@@ -177,8 +177,8 @@ pub fn drop_mirrored(client: &Path, port: u16, user: &str) -> Result<()> {
 /// Feed SQL to the bundled client over stdin (never argv), as passwordless
 /// root via the pinned [`client_base_args`]. Shared by mirror and drop so the
 /// no-argv rule has one implementation.
-fn run_sql(client: &Path, port: u16, sql: &str, what: &str) -> Result<()> {
-    let mut child = std::process::Command::new(client)
+fn run_sql(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<()> {
+    let mut child = std::process::Command::new(client.path())
         .args(client_base_args(port))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
@@ -275,7 +275,7 @@ mod tests {
     fn reserved_users_are_an_outcome_not_an_error_and_never_reach_a_client() {
         // A nonexistent client path proves refusal happens before any spawn.
         for user in ["root", "ROOT", "Root", "mysql.sys", "mariadb.sys", "postgres", ""] {
-            match mirror(Path::new("/nonexistent/mysql"), 1, "ea", user, "pw") {
+            match mirror(&SqlClient::test_at("/nonexistent/mysql"), 1, "ea", user, "pw") {
                 Ok(MirrorOutcome::RefusedReserved { user: u }) => assert_eq!(u, user),
                 other => panic!("{user}: {other:?}"),
             }
@@ -337,8 +337,8 @@ mod tests {
     #[test]
     fn oversized_user_names_error_before_any_client_runs() {
         let long = "u".repeat(33);
-        assert!(mirror(Path::new("/nonexistent/mysql"), 1, "ea", &long, "pw").is_err());
-        assert!(drop_mirrored(Path::new("/nonexistent/mysql"), 1, &long).is_err());
+        assert!(mirror(&SqlClient::test_at("/nonexistent/mysql"), 1, "ea", &long, "pw").is_err());
+        assert!(drop_mirrored(&SqlClient::test_at("/nonexistent/mysql"), 1, &long).is_err());
     }
 
     #[test]
@@ -397,7 +397,7 @@ mod tests {
         // path proves it), and as a hard error — a drop must be unable to
         // take root out even on a corrupt record.
         for user in ["root", "ROOT", "mysql.sys", "postgres", ""] {
-            let err = drop_mirrored(Path::new("/nonexistent/mysql"), 1, user);
+            let err = drop_mirrored(&SqlClient::test_at("/nonexistent/mysql"), 1, user);
             assert!(err.is_err(), "{user} was accepted");
         }
         // A quote in a recorded name cannot break out of the SQL string.
