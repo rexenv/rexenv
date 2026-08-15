@@ -47,8 +47,13 @@ git rev-parse --short HEAD; git status --porcelain | wc -l   # EXPECT: 0 uncommi
 ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | wc -l  # EXPECT: 1
 
 # 2. Both slices present in both binaries.
+#    NOTE: `rex` is in Contents/MacOS, NOT Contents/Resources. This line said
+#    Resources until 15 Aug 2026 and `lipo` answered "can't open input file" —
+#    a check that cannot find its subject proves nothing about it, and this is
+#    the copy a HUMAN runs (release.yml has always had the right path, and while
+#    the repo is private CI does not run at all, so the doc IS the check).
 lipo -archs "$APP/Contents/MacOS/rexenv"     # EXPECT: x86_64 arm64
-lipo -archs "$APP/Contents/Resources/rex"    # EXPECT: x86_64 arm64
+lipo -archs "$APP/Contents/MacOS/rex"        # EXPECT: x86_64 arm64
 
 # 3. Embedded payloads are in the ARM SLICE ON ITS OWN, not merely somewhere in
 #    the fat binary. Today that is the vendored `wp dist-archive` PHP tree
@@ -60,7 +65,14 @@ strings -a /tmp/rexenv-arm64 | grep -c Dist_Archive_Command   # EXPECT: > 0
 lipo -thin x86_64 "$APP/Contents/MacOS/rexenv" -output /tmp/rexenv-x86
 strings -a /tmp/rexenv-x86 | grep -c Dist_Archive_Command     # EXPECT: > 0
 rm -f /tmp/rexenv-arm64 /tmp/rexenv-x86
+
+# 4. The signature, over the whole bundle including the sidecar.
+codesign --verify --deep --strict --verbose=2 "$APP"   # EXPECT: valid on disk
 ```
+
+**Keep this block equal to `release.yml`'s "§A0 artefact integrity" step.** They
+have drifted once already — in the direction where the doc is wrong and CI is
+right, which is the dangerous one while the repo is private and CI never runs.
 
 **Expected:** clean tree, one dmg, both slices in both binaries, and a non-zero
 count in **each** slice separately. A zero on either side is a HOLD — do not run
@@ -70,7 +82,27 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ✅ PASSED for 0.1.1 (and 0.1.0) — Apple-Silicon ad-hoc launch test
+## A) 🚧 0.2.0 — §A0 ✅ PASSED, §A **NOT RUN** (yours; it needs a GUI)
+
+**0.2.0 candidate (2026-08-15).** `rexenv_0.2.0_universal.dmg`, sha256
+`1cb01ead2382c4b4fdb8b7be90aa2840b1264a7b78fbc8aba41e7513929362c6`, 23,393,958
+bytes, built from commit **`3a03610`** with `npm run release:mac` on a clean tree.
+(Commits after `3a03610` are documentation only — including this paragraph — and
+are not in the artefact. The tag belongs on `3a03610`.)
+
+**§A0 ✅** — run by hand, every leg: exactly one dmg; `Contents/MacOS/rexenv` and
+`Contents/MacOS/rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in the arm64
+slice and ×5 in the x86_64 slice **separately**; `codesign --verify --deep
+--strict` → *valid on disk* / *satisfies its Designated Requirement*; and the
+bundled `rex --version` → `rex 0.2.0`, so the sidecar carries the release version
+rather than a stale build. Release gate `verify-full: all green` ran first, at
+this commit, on a clean tree.
+
+**§A 🚧 NOT RUN — it is the human gate and cannot be automated.** Quarantine the
+dmg, confirm Gatekeeper BLOCKS it, `xattr -rd`, confirm it launches. Publishing IS
+the §A sign-off; that rule does not relax for this release.
+
+## A-prev) ✅ PASSED for 0.1.1 (and 0.1.0) — Apple-Silicon ad-hoc launch test
 
 **0.1.1 (2026-08-13): §A0 ✅, §A ✅ — PUBLISHED.** `rexenv_0.1.1_universal.dmg` sha256
 `14b64dae1ce633f31c46c5f033cdc2f5528c93ad14465f6db08db051bbd40241`, built from
@@ -830,7 +862,8 @@ Result: ____ (date, reqwest version).
 
 | # | Check | Status |
 |---|---|---|
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **re-run on the fresh `0e57f11c…` dmg** | 🚧 **do before announcing the tap** |
+| A0 | Artefact integrity, per slice — **0.2.0 `1cb01ead…`** | ✅ passed 15 Aug 2026 (by hand; CI does not run while the repo is private) |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `1cb01ead…`** | 🚧 **publish-blocking; publishing IS the sign-off** |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
