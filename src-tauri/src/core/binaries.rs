@@ -554,11 +554,12 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
 /// re-upload, so a pin can 404 but can never silently change bytes.
 fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
     match version {
-        // -4, not -1. Builds 1–3 are still there and still immutable; that is
-        // the contract working, not a mess. -1 shipped without `phar` (WP-CLI
-        // and Composer ARE phars, so no WordPress action could run) and -2 with
-        // a PCRE JIT that cannot allocate on Apple Silicon.
-        "7.4.33" => Some("php-7.4.33-4"),
+        // -6. Every earlier build is still published and still immutable; that
+        // is the contract working, not a mess. -1 had no `phar` (WP-CLI and
+        // Composer ARE phars, so no WordPress action could run), -2 had a PCRE
+        // JIT that cannot allocate on Apple Silicon, and -4 was short 5 of the
+        // extensions the 8.x rows carry.
+        "7.4.33" => Some("php-7.4.33-6"),
         _ => None,
     }
 }
@@ -606,10 +607,10 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
 // Unlike static-php.dev and FrankenPHP, these bytes CANNOT change under the
 // URL: the release is immutable and the tag is never reused (a rebuild is
 // `php-7.4.33-2`). A pin here can 404; it can never drift.
-const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "0a06e653feb4b4595b9ee860cd2b467ca3e7ddfbbb002df960a068052cc3f5e4";
-const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "c2e53cefe9af0e7c1f1081e3d28fbc0697431133d3c98bdcbe9a3b94af93cff9";
-const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "74943cc0f750d41aa35e8ea199c008f3591dacb21f924ba0b56b0aaf7a340588";
-const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "724f48b675163b41902437182da13f4728a531fe2bfe5935071f285541a6bccb";
+const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "7fac111fda4e549b136da008fb8f7568c9ea32b96e67cc5fb18e1e431569ed22";
+const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "f6878248da0b9e119d29ec21fbe73e8c6c1bfdc34b2d23250a3783b9c04b5598";
+const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "3f32e75738c66642c64b8d817680a872519007cf3903ad5824fa01c04be3fec9";
+const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "fc75852c08304d5c92ccb5c6f0e13f70719fda6262d6a2e798af8d4b86b2bfc4";
 
 /// Pinned SHA-256 for a PHP artifact, or `None` if the version isn't pinned.
 /// `kind` is `"cli"` or `"fpm"`. Both arches are pinned together, so a `Some` for

@@ -431,14 +431,17 @@ evidence cited.
     **Still owed, and not claimed:** a 7.4 SITE answering over HTTPS end to end
     (browser → Caddy → nginx → 9774 → WordPress). Needs a real site; it is a
     SMOKE-TEST item, not an example. Neither tier runs in `verify.sh`.
-  - [x] **S1.2 — grow the 7.4 extension set toward the 8.x rows.** ✓ 55 modules
-    (was 36) — dba, pgsql, soap, xsl, gmp, bz2, ftp, calendar, posix, pcntl,
-    readline, shmop, sysv* and, critically, **phar**. Forced by a real failure:
-    the narrow set was a diagnostic narrowing during the gd hunt, the hypothesis
-    was wrong, and it shipped. Still absent with reasons: opcache
-    (spc's static patch starts at 8.0), opentelemetry/protobuf (spc guards on
-    < 8.0), swoole/event (dropped 7.4), random (8.2 core), and the four PECL
-    ones (apcu/redis/imagick/imap) which are a follow-up, not a blocker.
+  - [x] **S1.2 — 7.4 is at parity with the 8.x rows except five.** ✓ 60 modules
+    (was 36), release `php-7.4.33-6`: the phar fix brought back dba/pgsql/soap/
+    xsl/gmp/bz2/ftp/calendar/posix/pcntl/readline/shmop/sysv* **and phar**, and
+    the parity pass added **apcu, redis, imagick, imap, event** — all five
+    attempted rather than assumed, because whether a PECL release still supports
+    7.4 is a fact about that release. **redis mattered most**: rexenv ships Redis
+    as a SERVICE, so without it a 7.4 site could not use the object cache the app
+    itself offers. Absent, each for a reason and none an omission: `random` (a
+    PHP 8.2 CORE extension), `opcache` (spc's static patch starts at 8.0),
+    `opentelemetry`/`protobuf` (spc guards on < 8.0), `swoole` (dropped 7.4).
+    Recorded in `docs/PORTS.md` beside the pin, which is where someone looks.
   - [ ] **PCRE JIT is compiled OUT of 7.4** — PHP 7.4 bundles PCRE2 10.35 (May
     2020), too old for Apple Silicon JIT, so Composer died on `Allocation of JIT
     memory failed`. `--without-pcre-jit` removes the capability. Regex throughput
