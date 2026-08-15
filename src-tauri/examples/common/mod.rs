@@ -116,7 +116,7 @@
 // (retry_recovery_check), 18099 (linked_site_check, valet_import_check),
 // 13397-13399 (config_rewrite/db_restore/db_dump), 9799 (apache_site_check),
 // 9998/19003 (xdebug_pool_check), 18131/9791 (nginx_php_serve), 9792
-// (php_fpm_serve), 18132/9793/9794/9795 (dotfile_guard_check), 18134-18136
+// (php_fpm_serve), 18132/9793/9794/9795 (dotfile_guard_check), 9796/9797 (fpm_candidate_check), 18134-18136
 // (edge_wire_check: a squatting listener, a deliberately EMPTY port, and a
 // plaintext responder — the three shapes `proxy::edge_wire` must tell apart).
 

@@ -530,7 +530,7 @@ commit lands standalone value.
 
 Backlog after T13 (ledger-driven, next sessions): tunnel second-Host negative (#10),
 CF-header discriminator probes (#2/#33), manifest HEAD+digest sweep, Bedrock live
-provision, fpm candidate isolation (#104), sandbox adoption cohorts (§4.4),
+provision, ~~fpm candidate isolation (#104)~~ (closed 15 Aug 2026), sandbox adoption cohorts (§4.4),
 ~~`webview_dialogs` L2 coverage (#166)~~ (closed 15 Aug 2026 at L0+L1+SMOKE — the L2
 shape was measured impossible), ~~import-graph lint (#163)~~ (closed 15 Aug 2026), rusqlite-outside-state
 guard (#167 — closed 15 Aug 2026; see the ledger row).

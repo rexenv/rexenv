@@ -104,6 +104,7 @@ dns_ssl_autostart_check system
 download_progress_check network
 edge_adopt_reload_check stack
 edge_wire_check sandbox
+fpm_candidate_check sandbox
 frankenphp_edge_serve service
 frankenphp_fetch network
 frankenphp_serve service
