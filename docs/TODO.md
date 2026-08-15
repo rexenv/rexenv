@@ -555,6 +555,14 @@ first:
   0 with `Success: Plugin already deactivated.` on stdout and `Warning: Plugin 'x' isn't
   active.` on stderr — so exit-zero-with-a-warning is real on this surface, it just isn't
   what bit here.
+  **15 Aug 2026 — a recurrence now captures itself.** The original sighting produced no
+  evidence because the assert printed only "not deactivated" and the panic then leaked
+  mysqld into the next run. The example now dumps deactivate's own stdout, the parsed
+  list, and a raw `wp plugin list` re-read (the raw read separates "parsed list stale"
+  from "really still active") before panicking, and mysqld is Drop-owned
+  (`common::OwnedService`) so the panic cannot manufacture the corpse-mysqld condition
+  the first sighting was tangled with. Nothing new was ruled in or out — still filed
+  as unexplained.
 - [ ] **`common::sandbox` roots are long enough to break Caddy's admin unix socket
   (macOS `sun_path` = 104 bytes). DIAGNOSED 14 Aug 2026 — the fix is a ruling, see the
   question at the end of this item.** `wp_create_serve`'s edge never bound, and caddy's

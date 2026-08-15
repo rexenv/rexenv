@@ -35,8 +35,12 @@ async fn main() {
     let socket = database::socket_path(&*plat).unwrap();
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-    let mut mysqld =
+    let mysqld =
         database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
+    // Drop-owned: an assertion panic below must not leave mysqld running.
+    // The 14 Aug 2026 corpse-mysqld incident is what a leak here costs — the
+    // NEXT example borrows the corpse and fails with an error naming nothing.
+    let mut mysqld = common::OwnedService::new(mysqld, "mysqld");
     for _ in 0..30 {
         if database::mysql_running(database::MYSQL_PORT) {
             break;
@@ -104,9 +108,37 @@ async fn main() {
     println!("✓ installed by slug + activated → Active");
 
     // Bulk-deactivate (one call), confirm inactive.
-    wordpress::plugin_deactivate(&php, &wp, &docroot, &["hello-dolly".into()]).expect("deactivate");
+    //
+    // This assertion failed ONCE (14 Aug 2026) with deactivate returning Ok and
+    // the plugin still `active`, and has not reproduced since — filed in
+    // docs/TODO.md as an UNEXPLAINED failure, not a flake (the obvious
+    // mechanisms were measured and refuted: wp_run checks exit status, and the
+    // instrumented re-run showed deactivate doing what it claims). What that
+    // sighting lacked was a capture, so a recurrence answered nothing. On a
+    // mismatch this now dumps everything a diagnosis would need BEFORE
+    // panicking: deactivate's own stdout, the parsed list, and a raw
+    // `wp plugin list` re-read — the raw read is what separates "the parsed
+    // list was stale" from "the plugin really is still active".
+    let deactivate_out = wordpress::plugin_deactivate(&php, &wp, &docroot, &["hello-dolly".into()])
+        .expect("deactivate");
     let list = wordpress::plugin_list(&php, &wp, &docroot, false).unwrap();
-    assert_eq!(status(&list, "hello-dolly"), "inactive", "not deactivated");
+    let st = status(&list, "hello-dolly");
+    if st != "inactive" {
+        eprintln!("\nUNEXPLAINED-FAILURE CAPTURE (docs/TODO.md, wp_plugins_check 14 Aug 2026):");
+        eprintln!("  deactivate returned Ok, status is {st:?} not \"inactive\"");
+        eprintln!("  deactivate stdout: {deactivate_out:?}");
+        eprintln!("  parsed list: {list:?}");
+        match wordpress::wp_cli(&php, &wp, &["plugin", "list", "--format=csv", &path_arg], None) {
+            Ok(o) => eprintln!(
+                "  raw `wp plugin list` (exit {:?}):\n  stdout: {}\n  stderr: {}",
+                o.status.code(),
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            ),
+            Err(e) => eprintln!("  raw `wp plugin list` itself failed: {e}"),
+        }
+        panic!("not deactivated — capture above; append it to the TODO item");
+    }
     println!("✓ bulk-deactivate → Inactive");
 
     // Delete, confirm gone.
@@ -115,7 +147,6 @@ async fn main() {
     assert!(!has(&list, "hello-dolly"), "hello-dolly still present after delete");
     println!("✓ delete → gone ({} plugins remain)", list.len());
 
-    let _ = database::stop(&*plat, mysqld.id());
-    let _ = mysqld.wait();
+    mysqld.stop();
     println!("\nALL GOOD — plugin install/activate/deactivate/delete reflect in wp plugin list.");
 }
