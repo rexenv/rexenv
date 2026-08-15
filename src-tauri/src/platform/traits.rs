@@ -751,3 +751,77 @@ mod default_browser_tests {
         assert_eq!(parse_default_browser_bundle_id(inline).as_deref(), Some("com.apple.safari"));
     }
 }
+
+#[cfg(test)]
+mod import_graph {
+    /// Ledger #163 — the module doc's own rule, as a scan instead of a review
+    /// habit: `core/` PRODUCTION code never names an OS implementation module
+    /// and never carries an OS conditional. The day either appears, "adding an
+    /// OS = filling stubs, NOT restructuring core" stops being true — the
+    /// non-negotiable in CLAUDE.md this file anchors. Tests are exempt
+    /// (asserting macOS-specific MESSAGES from a stub platform is legitimate
+    /// and common), which is why the scan reads production lines only.
+    #[test]
+    fn core_production_code_never_names_an_os_or_carries_an_os_cfg() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let needles =
+            ["platform::macos", "platform::windows", "platform::linux", "#[cfg(target_os"];
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        // Production lines only, comments stripped — a guard
+                        // that reads prose reads its own explanation (#235).
+                        let prod = crate::core::copy_scan::production_source(&text);
+                        let stripped: String = prod
+                            .lines()
+                            .map(|l| {
+                                let cut = l
+                                    .match_indices("//")
+                                    .find(|(i, _)| *i == 0 || !l[..*i].ends_with(':'))
+                                    .map(|(i, _)| i);
+                                cut.map_or(l, |i| &l[..i])
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        out.push((path.display().to_string(), stripped));
+                    }
+                }
+            }
+        }
+
+        // Canary: the same needles over platform/ must hit — mod.rs selects
+        // impls with #[cfg(target_os)] by design. A matcher that finds
+        // nothing there would make core's zero vacuous.
+        let mut platform_files = Vec::new();
+        walk(&root.join("src/platform"), &mut platform_files);
+        let canary: usize = platform_files
+            .iter()
+            .map(|(_, t)| needles.iter().map(|n| t.matches(n).count()).sum::<usize>())
+            .sum();
+        assert!(canary >= 2, "only {canary} needle hits in platform/ — the matcher is broken");
+
+        let mut core_files = Vec::new();
+        walk(&root.join("src/core"), &mut core_files);
+        assert!(core_files.len() > 30, "core walk found {} files — it stopped working", core_files.len());
+
+        let violations: Vec<String> = core_files
+            .iter()
+            .flat_map(|(p, t)| {
+                needles.iter().filter(|n| t.contains(*n)).map(move |n| format!("{p}: {n}"))
+            })
+            .collect();
+        assert!(
+            violations.is_empty(),
+            "core/ production code reaches OS-specific ground:\n  {}\n\
+             ALL OS-specific code lives behind the traits in this file — express the \
+             difference as a trait method and implement it per platform (#163).",
+            violations.join("\n  ")
+        );
+    }
+}

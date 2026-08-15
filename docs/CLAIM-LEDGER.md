@@ -379,7 +379,7 @@ L3 = scripted manual.
 | 160 | macos/mod.rs:1279 | Missing CLT never pops a GUI dialog from background | 🔨 L3 (macOS) |
 | 161 | macos/mod.rs:1375 | Never ship/publish a tree that can't load | ✅ 3 lib tests |
 | 162 | macos/mod.rs:2059 | Login keychain only, never System | ✅ 2 lib tests |
-| 163 | traits.rs:3 | core/ depends only on traits, never OS-specific imports | 🔨 L0 (import-graph lint; today a review rule) |
+| 163 | traits.rs:3 | core/ depends only on traits, never OS-specific imports — the CLAUDE.md non-negotiable ("adding an OS = filling stubs, NOT restructuring") | ✅ `core_production_code_never_names_an_os_or_carries_an_os_cfg` (15 Aug 2026): scans core/'s PRODUCTION lines (comments + `#[cfg(test)]` modules stripped — tests legitimately gate on macOS to assert stub-platform messages) for `platform::{macos,windows,linux}` and `#[cfg(target_os`; canary counts the same needles in `platform/`, where the cfg-selection lives by design, so a broken matcher fails by name rather than making core's zero vacuous. **Plant-proven**: a `platform::macos` literal planted in `core/ports.rs` fails naming the file |
 | 164 | traits.rs:153 | Recycled pid fails identification, never signalled | ✅ 4 lib tests |
 | 165 | traits.rs:346 | `env -0` parse survives rc noise | ✅ lib test |
 | 261 | macos/mod.rs (`open_in_browser`) + traits.rs (`ShellRunner::open_in_browser` doc) | **A chosen browser is handed URLs, never paths — in EVERY mode.** `open -a "Google Chrome" /etc/hosts` doesn't fail — it DISPLAYS the file, so the difference between "open my site in Firefox" and "read this file out of my home directory in Firefox" is one argument. The scheme is checked before the browser is looked up, so the refusal can't depend on what happens to be installed, and paths keep going through `open` (the OS handler), which is the only route that ever needed them. **Scope widened 14 Aug 2026 with the private-window target**: the private path was deliberately built as an ARGUMENT to this function rather than a sibling `open_in_browser_private`, because a second entrance carries its own copy of the guard and this ledger already records four claims that checked one place inside the surface they claimed. One function, one check, both modes | ✅ `browser_detect_check` (a bare path, a `file://` URL and a directory all refused against the machine's real first browser — now looped over `private=false` AND `private=true`, six refusals; the check fails loudly if any one OPENS) |
@@ -501,8 +501,9 @@ that stopped a plugin's shutdown hook and PHP's own deprecations from breaking
 every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #329;
 the webview-dialog legs A+B and the measured retirement of #40/#166's impossible
 L2 labels; the pool-reap miss counter #330; the bundle prepare receipt #331; per-backend
-tunnel origins #332; the app-schema SQL ownership scan #167 closed):
-**✅ 249 · ◐ 52 · 🔨 26 · 🚫 5** of 332 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+tunnel origins #332; the app-schema SQL ownership scan #167 and the core
+import-graph lint #163 closed):
+**✅ 250 · ◐ 52 · 🔨 25 · 🚫 5** of 332 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -782,7 +783,7 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 | #71, #178, #181-half, #182-half, #186-half | guard escapes: cfg(test) hatch, panic on read, import cross-guard, crash ordering, cancel boundary |
 
 **Tier 3 — untidy if false (structural lints and scoping tests; fine forever on the
-shelf):** #16, #24, #61, #102-half, #160, #163, #188, #189, #193, #55-half (#167 closed 15 Aug 2026 — see the row; its first run caught a live violation).
+shelf):** #16, #24, #61, #102-half, #160, #188, #189, #193, #55-half (#163 and #167 closed 15 Aug 2026 — see the row; its first run caught a live violation).
 
 L3-by-nature rows (#46 two-process handoff, #67/#155/#156 root-install reality,
 #107/#159 live negatives) route to SMOKE-TEST/PUBLISH-TESTING, not this backlog.
