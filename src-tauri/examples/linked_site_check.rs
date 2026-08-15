@@ -121,6 +121,80 @@ async fn main() {
     println!("  GET /marker.txt via the {DOMAIN} vhost  : {served}");
     ok &= served;
 
+    println!("\n=== re-point after the user moved the folder (#242's serving half) ===");
+    // The user relocated their project. The shape + preflight are lib-proven;
+    // this is the half only a real nginx can prove: after `set_path` +
+    // rebuild + the PRODUCTION reload, the vhost actually serves from the
+    // moved folder.
+    let moved = std::env::temp_dir().join("rexenv-linked-check-moved");
+    let _ = std::fs::remove_dir_all(&moved);
+    std::fs::rename(&project, &moved).unwrap();
+
+    // Control: the vhost still points at the OLD path, which no longer
+    // exists — the marker must STOP being served, or the reload below could
+    // pass on a config nobody rebuilt.
+    let stale = client
+        .get(format!("http://127.0.0.1:{NGINX_PORT}/marker.txt"))
+        .header("Host", DOMAIN)
+        .send()
+        .await
+        .map(|r| r.status().as_u16())
+        .unwrap_or(0);
+    println!("  after the move, before re-point: /marker.txt -> {stale} (want 404)");
+    ok &= stale == 404;
+
+    // A marker that exists ONLY post-move, so serving it can only mean the
+    // root really is the new folder — not a cache, not the old tree.
+    const MOVED_MARKER: &str = "SERVED-FROM-THE-MOVED-FOLDER";
+    std::fs::write(moved.join("moved.txt"), MOVED_MARKER).unwrap();
+
+    // The refusals the preflight promises, at the real fixture:
+    ok &= sites::check_docroot_relink(&site, &std::env::temp_dir().join("rexenv-no-such-dir"))
+        .is_err(); // not a folder on disk
+    ok &= sites::check_docroot_relink(&site, std::path::Path::new(&site.path)).is_err(); // same folder
+
+    // The command's core sequence: check → set_path (RECORDS, never writes
+    // files) → rebuild → the PRODUCTION reload path.
+    sites::check_docroot_relink(&site, &moved).expect("relink preflight");
+    let site = sites::set_path(&conn, &*plat, &site.id, &moved)
+        .expect("set_path")
+        .expect("site exists");
+    ok &= site.docroot_managed == Some(false); // still theirs, still never deletable
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let outcome =
+        services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, NGINX_PORT)
+            .expect("reload nginx");
+    println!("  reload outcome: {outcome:?}");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let served_moved = client
+        .get(format!("http://127.0.0.1:{NGINX_PORT}/moved.txt"))
+        .header("Host", DOMAIN)
+        .send()
+        .await
+        .map(|r| r.text())
+        .unwrap()
+        .await
+        .unwrap_or_default()
+        .contains(MOVED_MARKER);
+    let old_marker_travelled = client
+        .get(format!("http://127.0.0.1:{NGINX_PORT}/marker.txt"))
+        .header("Host", DOMAIN)
+        .send()
+        .await
+        .map(|r| r.text())
+        .unwrap()
+        .await
+        .unwrap_or_default()
+        .contains(MARKER);
+    println!("  the post-move-only marker serves    : {served_moved}");
+    println!("  the user's files travelled and serve: {old_marker_travelled}");
+    ok &= served_moved && old_marker_travelled;
+
+    // Delete-leg bookkeeping follows the folder: the site now IS `moved`.
+    let project = moved;
+    let before: Vec<String> = entries(&project);
+
     println!("\n=== delete the site ===");
     let out = sites::teardown(&conn, &*plat, &site.id).unwrap();
     let cert_gone =

@@ -753,9 +753,9 @@ first:
   races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled
   takeover rollback (#49), ~~cancelled-dump server-side (#116)~~ (closed 15 Aug 2026, db_dump_check §8), ~~delete-kill ordering (#190)~~ (closed 15 Aug 2026 — `tunnel_delete_order_check` run live + plant-proven with a real leaked cloudflared, caught and reaped)
   (#190).
-- [ ] Live re-point (#242 L1): a linked site pointed at a folder the user moved
-  actually SERVES from it — the shape and the preflight are lib-proven, the
-  serving half needs the stack (sandbox-tier example or SMOKE).
+- [x] Live re-point (#242 L1) ✓ 15 Aug 2026 — `linked_site_check`'s re-point leg:
+  real rename, a 404 control proving the reload is load-bearing, the command's
+  core sequence, and a post-move-only marker served through the vhost.
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
   isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), Bedrock live provision (#35),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
