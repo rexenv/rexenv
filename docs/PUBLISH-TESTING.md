@@ -104,9 +104,17 @@ repair for the copies already distributed. Ledger #336.)_
 than a stale build. Release gate `verify-full: all green` ran first, at this
 commit, on a clean tree.
 
+**Staged as a DRAFT on the tap, 16 Aug 2026** — `rexenv/homebrew-tap`, title
+`rexenv 0.2.0`, tag `v0.2.0`, `prerelease: false`, both assets attached (the dmg
+and `rexenv_0.2.0_universal.dmg.sha256`, whose digest was re-checked against the
+dmg with `shasum -c` before upload). A draft is invisible to `brew` and to the
+tap's `update-cask.yml` poller, so nothing reaches a user until it is published.
+
 **§A 🚧 NOT RUN — it is the human gate and cannot be automated.** Quarantine the
 dmg, confirm Gatekeeper BLOCKS it, `xattr -rd`, confirm it launches. Publishing IS
-the §A sign-off; that rule does not relax for this release.
+the §A sign-off; that rule does not relax for this release. **Do not press Publish
+before §A passes** — on this flow the button is the signature, and the cask starts
+tracking the release within 15 minutes of it.
 
 ## A-prev) ✅ PASSED for 0.1.1 (and 0.1.0) — Apple-Silicon ad-hoc launch test
 
