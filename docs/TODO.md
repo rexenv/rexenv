@@ -633,6 +633,27 @@ first:
   escalates. Not urgent — the app's exit hook and the crash sweep both cover a survivor —
   so the plan is to watch the guard's output over the next few tunnel runs and open it
   properly only if it recurs.
+  **15 Aug 2026 — the watch now has a record to accumulate into.** Checked for
+  accumulated evidence first: there was none and there COULD have been none — a
+  successful `live-checks.sh` run deletes its log directory, so the guard's stderr only
+  persisted if a human was watching (the one kept failure dir from 14 Aug has no
+  escalation lines). Two changes in `common::reap_public_tunnel`: every reap now appends
+  an outcome line (`stop` / `stop_slow_no_signal` / `stop_no_effect_10s` / `sigterm` /
+  `sigkill` / `survived_all`, with elapsed ms) to
+  `src-tauri/target/tunnel-stop-evidence.log`, fast path included so the base rate
+  accumulates; and the anomalous path watches 3s→10s BEFORE signalling, because a death
+  right after SIGTERM is indistinguishable from the earlier stop still finishing — the
+  immediate escalation was destroying exactly the evidence this question needs.
+  **And the recorder's first run impeached the sighting's own instrument**: it logged
+  `tunnel_guard_check`'s sleep stand-in as SURVIVING SIGKILL, which is impossible — the
+  guard's `pid_alive` was `kill -0`, which answers "alive" for a macOS ZOMBIE, and the
+  tunnel pid is the example's own child that nothing `wait()`s, so every dead cloudflared
+  is a zombie until the example exits. `pid_alive` now reads `ps -o state=` and counts
+  `Z` as dead (production's `process_running` semantics; it already did this, so
+  `tunnels::stop` itself was never fooled). The 14 Aug sighting sits on the broken
+  measurement and is DOWNGRADED to suspect — not explained away: its "stopped after
+  SIGTERM (verified dead)" step doesn't fit a pure-zombie story, since a zombie ignores
+  SIGTERM too. Watch the evidence file; convict on clean measurements only.
 
 - [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
   discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime

@@ -779,22 +779,76 @@ pub fn note_public_tunnel_url(url: &str) {
     }
 }
 
+/// Alive means RUNNING — a zombie counts as dead, exactly as production's
+/// `process_running` counts it. This cannot be `kill -0`: that succeeds on a
+/// zombie, and the tunnel pid here is this example's OWN child, which nothing
+/// ever `wait()`s — so from the moment cloudflared exits until the example
+/// does, `kill -0` answers "alive" about a corpse. Found 15 Aug 2026 when the
+/// guard's evidence file recorded `tunnel_guard_check`'s sleep stand-in as
+/// surviving SIGKILL (it was a zombie throughout); the 14 Aug "still alive 3s
+/// after tunnels::stop" sighting has the same measurement under it.
 fn pid_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    match std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "state="])
+        .output()
+    {
+        Ok(o) => {
+            let state = String::from_utf8_lossy(&o.stdout);
+            let state = state.trim();
+            !state.is_empty() && !state.starts_with('Z')
+        }
+        Err(_) => false,
+    }
 }
 
 fn gone_within(pid: u32, ms: u64) -> bool {
-    for _ in 0..(ms / 100).max(1) {
+    wait_dead(pid, ms).is_some()
+}
+
+/// Poll until `pid` is gone; `Some(elapsed ms)` if it died within `ms`.
+fn wait_dead(pid: u32, ms: u64) -> Option<u64> {
+    let start = Instant::now();
+    loop {
         if !pid_alive(pid) {
-            return true;
+            return Some(start.elapsed().as_millis() as u64);
+        }
+        if start.elapsed() >= Duration::from_millis(ms) {
+            return None;
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    !pid_alive(pid)
+}
+
+/// Append one reap observation to the persistent evidence file for the
+/// "does `tunnels::stop` routinely need SIGTERM?" question (docs/TODO.md,
+/// filed 14 Aug 2026 on ONE sighting).
+///
+/// This file exists because the original plan — "watch the guard's output over
+/// the next few tunnel runs" — could not work: a successful `live-checks.sh`
+/// run DELETES its log directory, so the only sightings that persist are ones
+/// a human happened to be watching. Every reap now leaves a line here, fast
+/// path included — the base rate ("N runs, all dead under a second") is itself
+/// evidence, and it is exactly what a one-sighting question needs.
+///
+/// Lives under `target/` (compile-time manifest dir): machine-local,
+/// gitignored, survives across runs, and an example writing there is not
+/// touching anything real.
+fn record_tunnel_stop_evidence(pid: u32, outcome: &str, elapsed_ms: u64) {
+    use std::io::Write;
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/target/tunnel-stop-evidence.log");
+    let epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let example = std::env::args()
+        .next()
+        .map(|a| {
+            Path::new(&a).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or(a)
+        })
+        .unwrap_or_default();
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(f, "epoch={epoch} example={example} pid={pid} outcome={outcome} elapsed_ms={elapsed_ms}");
+    }
 }
 
 /// Stop the registered tunnel and PROVE it stopped. Idempotent; safe from
@@ -807,30 +861,53 @@ pub fn reap_public_tunnel() {
     let url = TUNNEL_URL.lock().map(|u| u.clone()).unwrap_or_default();
     let plat = rexenv_lib::platform::current();
 
+    let start = Instant::now();
     let _ = rexenv_lib::core::tunnels::stop(&*plat, pid);
-    if gone_within(pid, 3000) {
-        eprintln!("public tunnel reaped: pid {pid} stopped (verified dead)");
+    if let Some(ms) = wait_dead(pid, 3000) {
+        record_tunnel_stop_evidence(pid, "stop", ms);
+        eprintln!("public tunnel reaped: pid {pid} stopped in {ms}ms (verified dead)");
         return;
     }
-    // The production stop path did not take. Escalate, and say that it had to —
-    // a tunnel that ignores `tunnels::stop` is itself worth knowing about.
-    // Observed on the first real run of this guard (14 Aug 2026): cloudflared was
-    // still alive 3s after `tunnels::stop`. Whether that is a defect in
-    // `tunnels::stop` or just a graceful shutdown slower than the window is NOT
-    // established here — what matters is that it is now SAID. The previous
-    // `let _ = tunnels::stop(..)` would have returned quietly with the process
-    // still running and a public URL still up.
-    eprintln!("public tunnel pid {pid} still alive 3s after tunnels::stop — escalating to SIGTERM");
+    // The production stop path did not take within 3s. Observed once on the
+    // first real run of this guard (14 Aug 2026), and whether that was a
+    // defect in `tunnels::stop` or a graceful shutdown slower than the window
+    // could not be told apart — signalling immediately DESTROYS the evidence,
+    // because a death right after SIGTERM is indistinguishable from the
+    // earlier stop still finishing. So the anomalous path now watches a
+    // further 7s before escalating: a death in the 3–10s window with no signal
+    // sent is "graceful but slow", recorded as such; survival past 10s is the
+    // stop path genuinely not taking. The cost is bounded (≤7s more of a
+    // teardown that is already anomalous) and only ever paid on the case the
+    // TODO question is about. The previous `let _ = tunnels::stop(..)` would
+    // have returned quietly with the process still up and the URL still public.
+    eprintln!(
+        "public tunnel pid {pid} still alive 3s after tunnels::stop — \
+         watching to 10s before escalating (slow-graceful vs stop-defect)"
+    );
+    if wait_dead(pid, 7000).is_some() {
+        let total = start.elapsed().as_millis() as u64;
+        record_tunnel_stop_evidence(pid, "stop_slow_no_signal", total);
+        eprintln!(
+            "public tunnel reaped: pid {pid} stopped in {total}ms with NO signal sent — \
+             tunnels::stop worked, just slower than 3s (recorded)"
+        );
+        return;
+    }
+    record_tunnel_stop_evidence(pid, "stop_no_effect_10s", start.elapsed().as_millis() as u64);
+    eprintln!("public tunnel pid {pid} still alive 10s after tunnels::stop — escalating to SIGTERM");
     let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
     if gone_within(pid, 3000) {
+        record_tunnel_stop_evidence(pid, "sigterm", start.elapsed().as_millis() as u64);
         eprintln!("public tunnel reaped: pid {pid} stopped after SIGTERM (verified dead)");
         return;
     }
     let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status();
     if gone_within(pid, 3000) {
+        record_tunnel_stop_evidence(pid, "sigkill", start.elapsed().as_millis() as u64);
         eprintln!("public tunnel reaped: pid {pid} stopped after SIGKILL (verified dead)");
         return;
     }
+    record_tunnel_stop_evidence(pid, "survived_all", start.elapsed().as_millis() as u64);
     eprintln!(
         "\n!! A PUBLIC TUNNEL IS STILL RUNNING AND THIS EXAMPLE COULD NOT STOP IT !!\n  \
          pid {pid} survived tunnels::stop, SIGTERM and SIGKILL.\n  \
