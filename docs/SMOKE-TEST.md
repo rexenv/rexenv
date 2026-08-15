@@ -274,6 +274,11 @@ no SMOKE step today and is covered by `repo_*` examples only.*
   It prints the banner→resolver deltas and the break/recovery windows.
 - [ ] Toggle **Share publicly**; a `*.trycloudflare.com` URL appears, badge Unverified →
   **Live** once the probe confirms.
+- [ ] **An override site shares too** (per-backend origins, 15 Aug 2026 — ledger
+  #332's live half): switch a site to FrankenPHP (or Apache), share it, and the
+  public URL serves THAT site's content — not another site's (the old nginx-origin
+  fallthrough). Sharing it while its server is stopped refuses with a message
+  naming the server, and does not start a tunnel.
 - [ ] **Unverified + dead link on THIS machine is NORMAL on networks that negative-cache
   DNS** (the router NXDOMAINs a hostname created seconds ago): verify from a SECOND
   DEVICE (phone on cellular). Only unreachable-everywhere is a real failure — do not

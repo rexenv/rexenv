@@ -115,7 +115,11 @@ evidence cited.
   deprecation off stdout; it does not make it go away, and a user running `wp` in
   rexenv's terminal (deliberately unpinned, #228) still sees it on every command. Worth
   re-checking when wp-cli ships a release that fixes `react/promise` — the pin bump is
-  the real fix, this is the containment.
+  the real fix, this is the containment. **Re-checked 15 Aug 2026:** 2.12.0 is still
+  the latest release (upstream issue wp-cli/wp-cli#6271 tracks this exact deprecation);
+  `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
+  transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
+  nothing to bump yet.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
@@ -285,12 +289,16 @@ evidence cited.
   parse `config/application.php` env defines so WP_DEBUG/WP_DEBUG_LOG read
   truthfully on non-stock layouts; today's honest state is `indeterminate`
   ("can't determine", `core/logs.rs:208-252`).
-- [ ] **Per-backend tunnel origins for override sites** (deferred, re-scoped 28 Jul —
-  smaller than first estimated since the web-server-switch-while-shared refusal now
-  exists): resolve the RECORDED override port at tunnel start as the `--url`
-  origin; refuse when that backend isn't up; replace `ensure_tunnelable`'s
-  "can't be shared yet" refusal (`core/tunnels.rs:117-123`). Probe/mu-plugin/row
-  machinery are origin-agnostic.
+- [x] **Per-backend tunnel origins for override sites** ✓ DONE 15 Aug 2026, ledger
+  #332. `tunnels::origin_port` resolves nginx-served → shared HTTP port, override →
+  `sites::recorded_override_port` (the config generator's own accessor, so origin and
+  reality cannot drift); a stopped override backend refuses at start from the
+  ServiceManager's override map (ownership+liveness, never a bare port-listen);
+  `ensure_tunnelable` and the Tunnels card's courtesy wall are retired. Mid-share
+  drift was already covered (web-server switch/docroot move refuse while shared).
+  Plant-proven at L0. **Still owed (the row's noted half): an override site serving
+  through a REAL tunnel end to end** — SMOKE §Public sharing gained the step; a
+  network-tier leg would need a FrankenPHP fixture on `tunnel_exposure_check`.
 - [x] **`wp dist-archive` in the RepoPanel — build a distributable zip to Downloads**
   ✓ **shipped 5 Aug 2026**, all 9 tasks (`docs/PLAN-dist-archive.md`, one commit each),
   ledger **#229–#236**, SMOKE §Git assets (5 steps, step 2 a HOLD — the zip is opened).

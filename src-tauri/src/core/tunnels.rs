@@ -2,7 +2,9 @@
 //!
 //! A "quick tunnel" exposes ONE site publicly: cloudflared dials out to Cloudflare
 //! and reverse-proxies a `https://<random>.trycloudflare.com` URL to a local
-//! origin. The origin is the **shared nginx HTTP port** with the site's `Host`
+//! origin. The origin is the **backend that serves THAT site** ([`origin_port`]:
+//! the shared nginx HTTP port for vhosted sites, the site's own recorded
+//! override port for Apache/FrankenPHP sites) with the site's `Host`
 //! (`--http-host-header`) — a plain-HTTP origin, so there's no local-CA
 //! origin-trust problem and no `--no-tls-verify`; cloudflared provides the
 //! external TLS. The tunnel is scoped to that single Host: it never points at the
@@ -22,13 +24,17 @@ pub fn log_path(platform: &dyn Platform, domain: &str) -> Result<PathBuf> {
     Ok(platform.paths().log_dir()?.join(format!("tunnel-{domain}.log")))
 }
 
-/// Start a quick tunnel for `domain` against the shared nginx port (with the site
-/// Host). Returns the supervised child; poll [`read_url`] for the public URL.
+/// Start a quick tunnel for `domain` against the site's own origin (with the
+/// site Host). Returns the supervised child; poll [`read_url`] for the public
+/// URL.
 pub fn start(
     platform: &dyn Platform,
     cloudflared_bin: &std::path::Path,
     domain: &str,
-    nginx_http_port: u16,
+    // The site's own serving backend — [`origin_port`], never a raw port a
+    // caller picked (nginx for vhosted sites, the recorded override port for
+    // Apache/FrankenPHP sites).
+    origin_port: u16,
 ) -> Result<Child> {
     let log = log_path(platform, domain)?;
     if let Some(parent) = log.parent() {
@@ -40,7 +46,7 @@ pub fn start(
         "tunnel".to_string(),
         "--no-autoupdate".to_string(),
         "--url".to_string(),
-        format!("http://127.0.0.1:{nginx_http_port}"),
+        format!("http://127.0.0.1:{origin_port}"),
         "--http-host-header".to_string(),
         domain.to_string(),
     ];
@@ -105,28 +111,36 @@ pub enum TunnelHealth {
 /// missed, and `pid_command` finds nothing so the sweep treats it as dead.
 pub const PID_PENDING: u32 = u32::MAX;
 
-/// Refuse a tunnel for any site the shared nginx does not serve (step 3,
-/// 28 Jul 2026). The tunnel's origin is nginx `:18088` routed by Host header;
-/// an Apache/FrankenPHP override site has NO nginx vhost, so its Host would
-/// fall through to nginx's DEFAULT server — we would publish a DIFFERENT
-/// site's content on the public URL. Cross-site exposure, so starting must be
-/// impossible, not discouraged: this runs in core, ahead of every IPC and CLI
-/// path, and reads the SAME predicate the nginx config generator uses
-/// (`sites::is_nginx_served`) so eligibility can never drift from reality.
-/// Fixable later by originating from the site's own recorded backend port —
-/// the refusal says "yet" truthfully.
-pub fn ensure_tunnelable(site: &crate::state::models::Site) -> Result<()> {
+/// The loopback ORIGIN a tunnel for `site` publishes (step 3, 28 Jul 2026;
+/// per-backend origins built 15 Aug 2026, replacing the "can't be shared yet"
+/// refusal this used to be).
+///
+/// An nginx-served site's origin is the shared nginx HTTP port, routed by the
+/// Host header `--http-host-header` pins. An Apache/FrankenPHP override site
+/// has NO nginx vhost — a request carrying its Host falls through to nginx's
+/// DEFAULT server, which is a DIFFERENT site's content (#13 measured the
+/// fallthrough live) — so its origin is its OWN backend port, read through
+/// `sites::recorded_override_port`, the SAME accessor the config generator
+/// serves from. That sameness is the safety property: whatever port actually
+/// serves this site is the only port a tunnel for it can publish, and the
+/// cross-site case is unrepresentable rather than refused. A site whose
+/// override port cannot be determined refuses rather than guessing.
+///
+/// Origin selection says nothing about the backend being UP — that is a
+/// liveness fact the ServiceManager owns, checked (as a courtesy snapshot,
+/// not a wall) at the one start path in `commands::tunnels`.
+pub fn origin_port(site: &crate::state::models::Site) -> Result<u16> {
     if crate::core::sites::is_nginx_served(site) {
-        return Ok(());
+        return Ok(crate::core::services::NGINX_HTTP_PORT);
     }
-    Err(crate::error::Error::Other(format!(
-        "{domain} can't be shared yet: it runs on {server}, and tunnels currently \
-         originate from the shared nginx — starting one would publish whatever \
-         nginx's default site answers with, which is a DIFFERENT site. Switch the \
-         site's web server to nginx to share it.",
-        domain = site.domain,
-        server = site.web_server.as_db(),
-    )))
+    crate::core::sites::recorded_override_port(site).ok_or_else(|| {
+        crate::error::Error::Other(format!(
+            "{domain} runs on {server} but has no recorded backend port to share — \
+             re-save the site's web server (Site → Settings), then share it.",
+            domain = site.domain,
+            server = site.web_server.as_db(),
+        ))
+    })
 }
 
 /// A single health probe's raw result.
@@ -572,8 +586,14 @@ mod tests {
         assert!(!is_our_tunnel("cloudflared --http-host-header acme.rex", "", "acme.rex"));
     }
 
+    /// A tunnel's origin is the backend that serves THAT site — never nginx's
+    /// port for a site nginx has no vhost for, because a request carrying its
+    /// Host falls through to nginx's DEFAULT server and a different site's
+    /// content goes public (#13 measured the fallthrough live). The recorded
+    /// override port wins over any derivation, and a site whose port cannot
+    /// be determined refuses with the site's own name rather than guessing.
     #[test]
-    fn ensure_tunnelable_walls_off_override_sites() {
+    fn origin_port_is_the_sites_own_backend_never_nginxs_default() {
         use crate::state::models::*;
         let site = |ws: WebServer| Site {
             id: "t1".into(),
@@ -605,13 +625,41 @@ mod tests {
             git_migrate: None,
             git_build_assets: None,
         };
-        assert!(ensure_tunnelable(&site(WebServer::Nginx)).is_ok());
+        // nginx-served → the shared nginx HTTP port, routed by Host.
+        assert_eq!(
+            origin_port(&site(WebServer::Nginx)).unwrap(),
+            crate::core::services::NGINX_HTTP_PORT
+        );
         for ws in [WebServer::Apache, WebServer::Frankenphp] {
-            let msg = ensure_tunnelable(&site(ws)).unwrap_err().to_string();
-            // The reason must be specific: the site's own name, its server,
-            // and WHY (the default-vhost exposure), not a generic unsupported.
-            for needle in ["acme.rex", ws.as_db(), "DIFFERENT site"] {
-                assert!(msg.contains(needle), "{ws:?} message missing {needle:?}: {msg}");
+            // The RECORDED port wins — it is what the config generator serves
+            // from, so origin and reality cannot drift.
+            let mut s = site(ws);
+            s.override_port = Some(41234);
+            assert_eq!(origin_port(&s).unwrap(), 41234, "{ws:?} recorded port");
+            assert_ne!(
+                origin_port(&s).unwrap(),
+                crate::core::services::NGINX_HTTP_PORT,
+                "an override site's origin must NEVER be nginx — that is the \
+                 default-vhost cross-site exposure"
+            );
+            // No record → the same derived port the generator's accessor
+            // yields, or a refusal naming the site — never nginx's port.
+            let s = site(ws);
+            match origin_port(&s) {
+                Ok(p) => {
+                    assert_eq!(
+                        Some(p),
+                        crate::core::sites::recorded_override_port(&s),
+                        "{ws:?}: origin must be the generator's own answer"
+                    );
+                    assert_ne!(p, crate::core::services::NGINX_HTTP_PORT);
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    for needle in ["acme.rex", ws.as_db()] {
+                        assert!(msg.contains(needle), "{ws:?} refusal missing {needle:?}: {msg}");
+                    }
+                }
             }
         }
     }

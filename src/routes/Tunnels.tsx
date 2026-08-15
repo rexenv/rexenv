@@ -241,10 +241,11 @@ function TunnelCard({
 }) {
   const on = !!tunnel?.running;
   const health = tunnel?.health ?? "unverified";
-  // Courtesy mirror of the backend wall (core::tunnels::ensure_tunnelable):
-  // override sites have no nginx vhost and tunnels originate from nginx.
-  const overrideServer =
-    site.webServer === "apache" || site.webServer === "frankenphp" ? site.webServer : null;
+  // Override sites are shareable since 15 Aug 2026: the tunnel originates
+  // from the site's OWN recorded backend port (core::tunnels::origin_port),
+  // so the old "can't be shared yet" wall — and its courtesy mirror here —
+  // are gone. A stopped backend is refused by the backend with a message
+  // naming the fix; the UI does not pre-guess liveness.
   const state: CardState = busy ? (on ? "stopping" : "starting") : on ? "live" : "idle";
   // The live border reads the SAME fact as the badge — the tunnel's health.
   const liveBorder = {
@@ -287,11 +288,7 @@ function TunnelCard({
         )}
         {state === "stopping" && <span className="text-[0.75rem] text-rex-text-muted">Stopping…</span>}
         {state === "idle" && (
-          <span className="text-[0.75rem] text-rex-text-muted">
-            {overrideServer
-              ? `Runs on ${overrideServer === "frankenphp" ? "FrankenPHP" : "Apache"} — can't be shared yet`
-              : "Share publicly"}
-          </span>
+          <span className="text-[0.75rem] text-rex-text-muted">Share publicly</span>
         )}
 
         {/* busy DISABLES the control: while "Starting…" the toggle looks
@@ -304,12 +301,6 @@ function TunnelCard({
           running={on || busy}
           busy={busy}
           variant={!on && busy ? "setting" : "status"}
-          disabled={!on && !!overrideServer}
-          title={
-            !on && overrideServer
-              ? `Tunnels originate from nginx; this site runs on ${overrideServer}.`
-              : undefined
-          }
           onToggle={() => onToggle(!on)}
           label={`${on ? "Stop" : "Start"} sharing ${site.name}`}
         />

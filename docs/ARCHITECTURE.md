@@ -751,9 +751,17 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   makes it true for sites that predate it. The real elimination of the bug class is a
   PHP build using curl's threaded resolver (open, `docs/TODO.md`).
 - **Tunnels** (`core/tunnels.rs` + `core/wp_tunnel.rs` + `commands/tunnels.rs`):
-  per-site cloudflared quick tunnel, scoped to ONE site Host, outbound-only. Behind
+  per-site cloudflared quick tunnel, scoped to ONE site Host, outbound-only. **The
+  origin is the backend that serves THAT site** (`tunnels::origin_port`, 15 Aug 2026):
+  the shared nginx HTTP port for vhosted sites, the site's own RECORDED override port
+  for Apache/FrankenPHP sites — read through the same accessor the config generator
+  uses, so origin and reality cannot drift, and an override site's Host can never fall
+  through to nginx's default server (#13's measured cross-site exposure; this replaced
+  the old "can't be shared yet" refusal). A stopped override backend refuses at start
+  (ownership+liveness from the ServiceManager, never a bare port-listen). Behind
   the edge `REMOTE_ADDR` is always `127.0.0.1`, so loopback-only enforcement keys off
-  `CF-*` headers + leftmost `X-Forwarded-For` + `Host`, never the IP. On tunnel start
+  `CF-*` headers + last-hop `X-Forwarded-For` + `Host`, never the IP (the last hop,
+  never the first — the first is whatever the caller sent; #307). On tunnel start
   an auto-managed mu-plugin bakes in the public origin (HOST/HTTPS overrides +
   siteurl/home filters + output-buffer rewrite for plain/JSON-escaped/%-encoded);
   removed on stop; local requests untouched.

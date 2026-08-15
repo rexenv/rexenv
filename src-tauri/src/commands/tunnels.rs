@@ -4,7 +4,7 @@
 //! tunnel can only be started for a real site (looked up by id) — internal
 //! tooling vhosts aren't sites, so they can never be shared.
 
-use crate::core::{binaries, services, tunnels, wp_tunnel};
+use crate::core::{binaries, tunnels, wp_tunnel};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::models::{Site, SiteType};
@@ -504,10 +504,35 @@ pub async fn start_tunnel<R: tauri::Runtime>(
     id: String,
 ) -> Result<TunnelInfo> {
     let site = tunnel_site(&state, &id)?;
-    // Cross-site exposure wall (step 3): an override site has no nginx vhost,
-    // and the tunnel's origin IS nginx — refused before anything spawns, on
-    // every path (UI and CLI both land here).
-    tunnels::ensure_tunnelable(&site)?;
+    // The origin is the backend that serves THIS site (per-backend origins,
+    // 15 Aug 2026): nginx for vhosted sites, the site's own recorded override
+    // port for Apache/FrankenPHP — never nginx's default server for a site it
+    // has no vhost for (#13's cross-site fallthrough). Resolved before
+    // anything spawns, on every path (UI and CLI both land here).
+    let origin_port = tunnels::origin_port(&site)?;
+    // For an override site, refuse when its backend isn't running. This is a
+    // COURTESY SNAPSHOT, not the safety wall: ownership+liveness from the
+    // ServiceManager (never a bare port-listen — a squatter on the recorded
+    // port must not be published as the site), and the backend stopping after
+    // this check merely 502s the site's OWN origin, it cannot serve anyone
+    // else's content — the safety property is origin selection above.
+    if !crate::core::sites::is_nginx_served(&site) {
+        let served = state
+            .services
+            .lock()
+            .await
+            .override_pids()
+            .iter()
+            .any(|(d, _)| d == &site.domain);
+        if !served {
+            return Err(Error::Other(format!(
+                "{domain} isn't being served right now — its {server} server is stopped. \
+                 Start the site's server (Start all), then share it.",
+                domain = site.domain,
+                server = site.web_server.as_db(),
+            )));
+        }
+    }
     let domain = site.domain.clone();
 
     // A dead child must never read "already sharing": sweep exited children
@@ -595,7 +620,7 @@ pub async fn start_tunnel<R: tauri::Runtime>(
             return Err(e);
         }
     };
-    let mut child = match tunnels::start(platform, &bin, &domain, services::NGINX_HTTP_PORT) {
+    let mut child = match tunnels::start(platform, &bin, &domain, origin_port) {
         Ok(child) => child,
         Err(e) => {
             delete_tunnel_row(&state, &domain);
