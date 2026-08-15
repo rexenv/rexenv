@@ -447,6 +447,15 @@ user consents to something. Keep a scratch site from step 6 alive for these.
 - [ ] **Sleep/wake, then reboot** (ledger #67/#155 territory): after each, a site loads
   over HTTPS *without opening the app* — the root edge daemon (KeepAlive) and the DNS
   LaunchAgent both came back on their own.
+- [ ] **Login autostart stays silent on a cold cache** (ledger #175 — this checklist IS
+  that row's wiring proof; the code has only a text-order guard, which cannot see
+  behaviour). Setup: enable "start services on launch" + "Open rexenv at login", then
+  move one binary out of the cache (e.g. `mv "…/bin/mysql-"* /tmp/`), reboot, log in,
+  and WATCH the first minute: **no download progress anywhere, no admin password
+  prompt** — only the honest "binaries not downloaded yet (…) — open rexenv and press
+  Start all once" health toast. Put the binary back afterwards. A warm-cache reboot is
+  the control: everything comes up with no prompt because the boot daemon already
+  serves the edge.
 - [ ] **DNS outlives the app** (ledger #46): quit rexenv →
   `dig foo.rex @127.0.0.1 -p 15353 +short` still answers `127.0.0.1`; sites keep
   resolving indefinitely (not just while caches last).

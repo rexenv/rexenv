@@ -430,7 +430,7 @@ L3 = scripted manual.
 
 | # | Anchor | Claim | Verdict |
 |---|---|---|---|
-| 175 | commands/services.rs:206 | ⚠ Login autostart: never download, never prompt | ◐ both DECISIONS proven at L0 since T10 (`uncached_names_lists_exactly…`, `login_edge_action_never_runs_a_privileged_plan` — pure fns the command now calls); the end-to-end login run stays 🔨 L3 |
+| 175 | commands/services.rs (`auto_start_inner` + the order guard in its tests) | ⚠ Login autostart: never download, never prompt | ◐ three layers, each labelled as exactly what it is (15 Aug 2026). **Decisions** — L0-proven (`uncached_names_lists_exactly…`, `login_edge_action_never_runs_a_privileged_plan`), and both ARE called by `auto_start_inner`. **Ordering** — `auto_start_checks_the_cache_before_starting_and_decides_the_edge_before_running_it`: the cache check precedes `start_core` and the edge decision precedes `proxy::start`, **as SOURCE TEXT, not behaviour** — the guard's own failure message says so, because the dotfile guards went eight months string-proven without meeting a server. Plant-proved both directions: moving the check after `start_core` fails it (compile-clean plant — the first plant broke the borrow checker, which is the compiler failing, not the guard); reordering unrelated lines does not. Comment-stripping is LOAD-BEARING and canaried: the function's own guard-2 comment names `login_edge_action`, and the canary caught this guard's first version reading it. **Wiring** — that no download and no escalation is ATTEMPTED is unproven and stays so: nothing outside `lib.rs` setup constructs `AppState`, so the #210 recording-fake shape has nothing to attach to, and refactoring a login path on a released product to prove four statements was ruled out 15 Aug 2026. Rides SMOKE-TEST (cold-cache login: no download activity, no admin prompt) |
 | 176 | commands/services.rs:287 | Single monitor source of truth; DNS deliberately not a row | ✅ lib test + 2 examples |
 | 177 | commands/system.rs:94 | Footer and Services tab can never disagree | ✅ 2 lib tests (counting halves) |
 | 178 | commands/system.rs:61 | Reading it can never panic | 🔨 L0 |
@@ -780,66 +780,23 @@ L3-by-nature rows (#46 two-process handoff, #67/#155/#156 root-install reality,
 
 ## The highest-risk cluster (work these first)
 
-Security postures resting on unproven third-party assumptions — the shape that burned us:
+**Row IDs and a hook only — the verdicts live in the rows.** This section used to
+restate what each row proved, and that prose was wrong FIVE times out of seven when
+finally checked against the rows (13–15 Aug 2026: #103 said "never a live 404" after
+`dotfile_guard_check` proved it; #10 said "untested through a live tunnel" the day
+after leg 6 tested it; #175 said "untested at any level" over two L0 tests; #36 and
+#44 sat listed as open while their rows read ✅ since T10). Each was found the same
+way — by working the row it summarised — and the section that carried the
+stale-index warning was the thing that kept going stale. The ranking is the only
+editorial content here, and row IDs in an order do not drift; everything else is a
+lookup.
 
-1. **#2** — the CF-header premise is MEASURED as of 14 Aug 2026 (#2 ◐, a watch on
-   Cloudflare rather than a settlement). **#33 and #307 CLOSED 14 Aug 2026** — the
-   end-to-end tunnel-replay leg landed with a three-part plant that can fail, and
-   post-#307 the client-IP gate is independently sufficient against a real tunnel replay
-   (resting on Cloudflare APPENDING the connecting IP — fact 2 — which is not the property
-   #2 watches). The posture was RULED on 14 Aug 2026
-   and is no longer an open question: the CF-header gate is what denies; the Host gate
-   is a second expression of the same fact (#308); the client-IP gate read the leftmost
-   XFF entry and was satisfiable by the caller until **#307** fixed it to the last hop.
-   Protection now rests on TWO Cloudflare behaviours instead of one — a higher cost of
-   failure, not a different shape, and not independence. What remains OPEN is narrower:
-   an end-to-end tunnel-replay leg that fails with the CF gate deleted (two attempts did
-   not). The edge's own behaviour is no longer open — leg (E) of `wp_login_check` ran
-   14 Aug 2026 and measured it. **#307's scope was corrected by
-   measurement**: the hole was reachable through a tunnel and only through a tunnel. An
-   earlier reading of this cluster claimed a LAN exposure; the edge replaces a
-   caller-supplied `X-Forwarded-For` with its own peer, so it never existed.
-2. **CLOSED 14 Aug 2026 — both halves.** #10's cross-site negative was
-   tested through a live tunnel on 14 Aug 2026 (`tunnel_exposure_check` leg 6) and this
-   entry said otherwise for the rest of that day — the stale-index shape this file warns
-   about, found while working the cluster it belongs to. #13's PREMISE is confirmed too
-   (`override_fallthrough_check`): an override site has no nginx vhost, and a request
-   carrying its Host is served the FIRST site's bytes — so the refusal is real. It needed
-   no tunnel: the tunnel's contribution is a Host header, and leg 3 already measured that
-   live. (**#37 is closed** — internal
-   vhosts can never be shared, because the only way in is a Sites lookup that errors.)
-3. **#103** — the dotfile guard (`~/.ssh` one bug from the internet, per #98). **nginx
-   is PROVEN LIVE** — `dotfile_guard_check` 404s `.env`/`.git`/`.hidden-php` over the
-   wire, with the secret never crossing and `.well-known` still exempt. **Apache is now PROVEN LIVE too** (14 Aug 2026, `apache_site_check`): the same four
-   probes on the httpd backend — `.env`/`.git/config`/`.hidden/x.php` 404 with the secret
-   absent from the body and the dot-dir PHP never executing, and `/.well-known/` still
-   200. Plant-proved: replacing the guard rule with an inert one fails all three and
-   leaks the secret. **FrankenPHP is now proven live too** (14 Aug 2026, `frankenphp_serve`), so **#103 is
-   CLOSED on all three backends** — nginx, Apache and FrankenPHP each run the same four
-   probes over the wire. The FrankenPHP plant is worth keeping: replacing `respond
-   @dot_root 404` with `respond … 200` fails the three denials but leaks NOTHING,
-   because Caddy's bodyless `respond` returns an empty 200 — status proof without
-   content proof. Removing the guard entirely is the plant that matches the other two:
-   the `.env` secret served and the dot-dir PHP executed.
-4. **#175** — login-autostart "never download / never prompt". **The "untested at any
-   level" this entry used to say was WRONG** (corrected 15 Aug 2026 — the third stale
-   cluster line found this week, each time by working the row it summarises). Both
-   DECISIONS are L0-proven and both are CALLED by `auto_start_inner`:
-   `downloads::uncached_names` aborts before anything starts, and
-   `service_manager::login_edge_action` skips a privileged edge plan.
-   What is genuinely open is the WIRING and it is not cheaply reachable: proving that
-   `auto_start_inner` consults them in that ORDER — download-check before `start_core`,
-   not after — needs the function driven with fakes, and **nothing in this repo
-   constructs `AppState` outside `lib.rs` setup**, so neither a test nor an example can
-   call it today. The recording-fake shape that proved #210 (`RecordingPrivileges`,
-   which returns Ok so the path keeps RUNNING and the test measures whether an
-   escalation was attempted rather than whether it worked) is the right instrument and
-   has nothing to attach to.
-   So the options are: make `auto_start_inner`'s guard sequence drivable — a production
-   refactor of a LOGIN path on a released product; or a source-shape order guard (weak,
-   but it is what would catch a refactor moving the download check after the start); or
-   leave the wiring to L3. **Not decided.**
-5. **#36** — wp_login's PHP-injection safety inherited, not re-checked at the injection
-   point (its sibling has a dedicated test).
-6. **#44** — DNS answer-anything justified by a loopback bind nothing asserts.
-7. **#40/#166** — WebKit/wry internals claims; `webview_dialogs.rs` has zero tests.
+Open, in order:
+
+1. **#2** — the CF-header watch (a fact about Cloudflare; can go false silently).
+2. **#40 / #166** — WebKit/wry internals claims; `webview_dialogs.rs` has zero tests.
+3. **#175** (wiring half) — rides SMOKE-TEST's cold-cache login item.
+
+Closed since this list was first ranked — see the rows: #33, #307, #308 (tunnel
+replay + ordering), #10, #13 (cross-site + override fallthrough), #103 (dotfiles,
+all three backends), #37, #36, #44.

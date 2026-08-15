@@ -403,3 +403,76 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
 pub async fn services_status(state: State<'_, AppState>) -> Result<Vec<ServiceStatus>> {
     enriched_status(&state)
 }
+
+#[cfg(test)]
+mod tests {
+    /// #175's order guard — and a statement of what it is NOT.
+    ///
+    /// **This proves TEXT ORDER, not behaviour.** It reads `auto_start_inner`'s
+    /// source and asserts the download check comes before `start_core` and the
+    /// edge decision before the edge could start. It cannot see whether a
+    /// download or an escalation is ever ATTEMPTED — that is the wiring half of
+    /// #175, which rides SMOKE-TEST (a reboot on a cold cache), because nothing
+    /// outside `lib.rs` setup can construct the `AppState` the function takes.
+    /// The dotfile guards went eight months string-proven without meeting a
+    /// server; this guard is labelled to prevent the same misreading.
+    ///
+    /// Why it exists anyway (#308's reason): a tidy refactor that moves the
+    /// uncached-cache check after `start_core` breaks "never download at login"
+    /// SILENTLY — services come up, then the abort fires late or not at all —
+    /// and a comment does not fail.
+    #[test]
+    fn auto_start_checks_the_cache_before_starting_and_decides_the_edge_before_running_it() {
+        // Comment-stripped, and the stripping is LOAD-BEARING here: the guard-2
+        // comment inside auto_start_inner names `login_edge_action` in prose, so
+        // an unstripped scan could pass on the comment alone (the four-times
+        // failure recorded in core::copy_scan).
+        // BOTH strippers composed: production_source cuts the test module (this
+        // one), strip_ts_comments drops `//` prose (same syntax as Rust). The
+        // canary below caught this test's own first version using only the
+        // first — the comment naming login_edge_action survived and the guard
+        // was reading it.
+        let src = crate::core::copy_scan::strip_ts_comments(
+            &crate::core::copy_scan::production_source(include_str!("services.rs")),
+        );
+        let start = src
+            .find("async fn auto_start_inner")
+            .expect("auto_start_inner exists (renamed? update this guard AND ledger #175)");
+        let body = &src[start..];
+        let end = body[1..].find("\nasync fn ").map(|i| i + 1).unwrap_or(body.len());
+        let body = &body[..end];
+
+        let pos = |needle: &str| {
+            body.find(needle).unwrap_or_else(|| {
+                panic!(
+                    "auto_start_inner no longer contains `{needle}` — a login-safety guard \
+                     call is gone, or moved out of the function. TEXT-ORDER guard only: \
+                     re-check the behaviour by hand (SMOKE-TEST: cold-cache login) and \
+                     update ledger #175."
+                )
+            })
+        };
+        assert!(
+            pos("uncached_names(") < pos("start_core("),
+            "TEXT ORDER violated: the cold-cache check now sits AFTER start_core in \
+             auto_start_inner's source. \"Never download at login\" aborts late or not at \
+             all. This guard cannot see behaviour — if the reorder is intentional, the \
+             SMOKE-TEST cold-cache login item is where the real answer lives."
+        );
+        assert!(
+            pos("login_edge_action(") < pos("proxy::start("),
+            "TEXT ORDER violated: the edge decision now sits AFTER the edge start in \
+             auto_start_inner's source — a privileged plan could run (= an auth prompt \
+             at login) before the skip decision is consulted."
+        );
+        // Canary both ways: the stripper stripped (the guard-2 prose names
+        // login_edge_action and must be gone), and the file's test module is cut
+        // (this very string would otherwise be found in itself).
+        assert!(
+            !body.contains("Guard 2 is the pure"),
+            "production_source stripped nothing — the assertions above may be reading \
+             the comments that explain them"
+        );
+        assert!(!body.contains("TEXT ORDER violated"), "test module not cut from the scan");
+    }
+}
