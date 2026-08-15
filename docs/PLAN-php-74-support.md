@@ -16,8 +16,9 @@ it is corrected rather than merely annotated.
 
 | | |
 |---|---|
-| ✅ 7.4.33 cli + fpm, both arches, pool 9774 | 39 extensions incl. **gd, intl, mysqli** |
+| ✅ 7.4.33 cli + fpm, both arches, pool 9774 | 60 extensions incl. **gd, intl, mysqli, redis** |
 | ✅ EOL tell covering 7.4 **and** 8.0/8.1 | ✅ FrankenPHP × 7.4 refused in core (#326) |
+| ✅ Licence texts ship beside the bytes (#336) | ✅ …and a guard on the notices claim |
 | ❌ **No Xdebug on 7.4** — measured, §10c | ❌ No `opcache` — spc cannot build it for 7.4 |
 | ⏳ Extension set narrower than the 8.x rows | S1.2 in `docs/TODO.md` |
 
@@ -525,6 +526,37 @@ becomes **flatly false** and must change in the same commit.
 > **cannot be fixed by a later commit** — it must be settled before the first asset is
 > uploaded. `group@php.net` grants written permission on naming questions and has historically
 > been responsive, if certainty is wanted.
+
+### 6.5-outcome — SETTLED 16 Aug 2026, and the paragraph above did not prevent it
+
+The obligation is discharged twice over: the licence texts are published beside
+the artifacts (`licenses-<arch>.tar.gz`, PHP-3.01 + every statically linked dep,
+a dep with no findable licence FAILING the build) **and pinned + downloaded onto
+the user's machine** into `bin/php-7.4.33/licenses/`, inside the same atomic
+publish as the interpreter. Reproducing them in `THIRD-PARTY-NOTICES.md` alone
+was defensible under §2 and was still only an argument; a licence obligation is
+the last place to hold a position that needs defending. Ledger #336.
+
+**But the honest record of what happened here is the reason this section is kept
+rather than ticked.** The paragraph above names `THIRD-PARTY-NOTICES.md:6-12` by
+line number, quotes the sentence, and calls it the one item a later commit cannot
+fix. Then 7.4 shipped, the same-commit docs sweep ran, and **the sentence did not
+move** — it sat false in a public repo for a day and was found by reading, not by
+any check. The most specific warning this plan contains failed on the release it
+was written for.
+
+So: **flagging is not a mechanism.** `core::copy_scan` records the identical
+finding one layer down — a correct implementation with the lesson written beside
+it did not stop the same mistake three times, and the third author was citing the
+second. What closed this was a test that runs
+(`the_notices_cannot_disclaim_distribution_while_we_distribute`), keyed on
+`is_self_distributed` so it covers the next self-built runtime rather than this
+one. When a future plan identifies something a later commit cannot fix, the
+deliverable is the guard, not the paragraph.
+
+_(The banned sentence is quoted above deliberately and safely: the guard scans
+`THIRD-PARTY-NOTICES.md` and `README.md`, not this file. Do not "helpfully"
+restore it to either of those — that is what the ban is for.)_
 
 ---
 
