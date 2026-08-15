@@ -1022,6 +1022,15 @@ first:
   Two teeth grown from the first real run: the cask hash bump now compares sha256
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
+- [x] **0.2.0 released** ✓ 16 Aug 2026. `rexenv_0.2.0_universal.dmg` `bd019d8d…`
+  from `3755966` (tag `v0.2.0`, local — origin stays tagless while the repo is
+  private). `verify-full: all green` → §A0 → §A → draft → publish → cask bumped by
+  `update-cask.yml` (`449b576`). The published asset was re-checked ANONYMOUSLY and
+  three-way-matched against the cask's pin and the bytes §A was run on. Two things
+  this release cost that are written up rather than remembered: the licence texts
+  now ship beside the PHP we build (#336), and §A's first run was VOID because the
+  dev login already trusted the app — the script needed `/Applications/rexenv.app`
+  removed and a browser download to be capable of failing at all.
 - [ ] **Flip the release host back when `rexenv/rexenv` goes public** — three things
   in ONE commit, or the tap's guard fails the bump: the cask's `url`, its `verified:`,
   and `SOURCE_REPO` in `update-cask.yml` (all in `rexenv/homebrew-tap`). Then CI's

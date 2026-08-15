@@ -82,9 +82,17 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) ✅ 0.2.0 — §A0 ✅ PASSED, §A ✅ PASSED (second run; the first was void)
+## A) ✅ 0.2.0 — PUBLISHED (§A0 ✅, §A ✅ on the second run)
 
-**0.2.0 candidate (2026-08-16).** `rexenv_0.2.0_universal.dmg`, sha256
+**0.2.0 PUBLISHED 16 Aug 2026** at `homebrew-tap/releases/tag/v0.2.0`, and the cask
+bumped to it by `update-cask.yml` (commit `449b576`, `github-actions[bot]`).
+**Verified independent of any local Homebrew, the check that caught the placeholder
+hash in 0.1.0:** the published asset downloads **anonymously** (HTTP 200,
+23,411,247 bytes) and hashes to exactly what the cask pins — and to exactly the
+bytes §A0 and §A were run against. Three-way match, so what a user installs is what
+was tested rather than something built beside it.
+
+`rexenv_0.2.0_universal.dmg`, sha256
 `bd019d8d5a9333908986575c1608c75f2d85a7246f7557e0d82566b95601e973`, 23,411,247
 bytes, built from commit **`3755966`** with `npm run release:mac` on a clean tree.
 (Commits after `3755966` are documentation only — including this paragraph — and
@@ -924,7 +932,7 @@ Result: ____ (date, reqwest version).
 | # | Check | Status |
 |---|---|---|
 | A0 | Artefact integrity, per slice — **0.2.0 `bd019d8d…`** | ✅ passed 16 Aug 2026 (by hand; CI does not run while the repo is private) |
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | ✅ **passed 16 Aug 2026, second run** — blocked while quarantined, launched after `xattr -rd`. The first run that day was VOID (dev login already trusted the app); see §A for why that distinction is kept |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | ✅ **passed 16 Aug 2026, second run** — blocked while quarantined, launched after `xattr -rd`. The first run that day was VOID (dev login already trusted the app); see §A for why that distinction is kept. **0.2.0 published; cask bumped and the anonymous download three-way-matched** |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
