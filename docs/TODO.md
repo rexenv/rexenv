@@ -120,6 +120,44 @@ evidence cited.
   `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
   transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
   nothing to bump yet.
+- [ ] ⚠ **Three text tokens fail WCAG AA on every surface, in both themes — and one
+  of them carries a comment claiming it doesn't** (ledger #337, reported 16 Aug
+  2026 by an outside reader building the docs site, confirmed by measurement).
+  `src/styles/tokens.css:236` reads
+  `--rex-text-label: #6d7482; /* mono section labels (darker: small type needs AA) */`.
+  That comment is the **only** contrast claim in the codebase — `docs/DESIGN.md`
+  states no contrast rule at all — so it reads as the house position, and it is
+  true on exactly one surface:
+
+  | token (usages) | dark range | light range | AA-normal 4.5:1 |
+  |---|---|---|---|
+  | `--rex-text-dim` (120) | 3.24–4.20 | 3.38–4.14 | fails everywhere |
+  | `--rex-text-faint` (7) | 2.58–3.35 | 2.58–3.17 | fails everywhere |
+  | `--rex-text-label` (16) | 2.14–2.78 | 3.83–**4.70** | passes ONLY on light `surface-1` |
+  | `--rex-text-muted` | 4.66–6.04 | 5.07–6.22 | passes — the nearest safe token |
+
+  Size makes it worse, not better: `StatusFooter` renders these at
+  `0.59375–0.65625rem` = **9.5–10.5px**, which is AA-normal's 4.5:1 threshold,
+  not the 3:1 large-text one. **Same family as the four false guards in the
+  ledger** — a claim about small type generally, verified at one place inside the
+  surface it claims.
+
+  **NOT fixed on the 0.2.0 branch, deliberately.** `tokens.css` compiles into the
+  artefact; the tagged dmg `bd019d8d…` is built and §A0-passed, and this is a
+  design decision (promote consumers to `--rex-text-muted` / lighten the tokens /
+  darken the surfaces) across 143 usages, not a defect repair. Doing it here would
+  cost a rebuild and a re-run of §A0 to change how the app looks, mid-release.
+
+  **The deliverable is the scan, not the three token edits.** A derived L0 check
+  over `tokens.css` — every text-token × surface-token pair, per theme, failing
+  under 4.5:1, with an explicit allow-list for pairings that are decorative or
+  never composed. That is the `core::copy_scan` shape: the comment stops being
+  prose and becomes a check, and it answers what a hand-audit cannot — which
+  pairs the app actually COMPOSES versus which are merely possible. Write the
+  scan first, then let it tell you the real blast radius; picking replacement
+  colours before that is guessing at the size of the job.
+  **Also settle DESIGN.md's silence in the same pass** — an unstated standard is
+  why one comment got to speak for the whole system unchallenged.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
