@@ -9,7 +9,13 @@ notarized by Apple), so the **first launch needs one extra click** — see below
 
 ## Requirements
 
-- **macOS 11 (Big Sur) or later.**
+- **macOS 15 (Sequoia) or later.** (Raised from the previously stated 11 on
+  15 Aug 2026 — that number was never true: the pinned nginx and cloudflared
+  builds require macOS 15, MySQL/MariaDB/Redis require 14, so on macOS 11–14
+  the app installed and then could not run its own web server. The stated
+  floor now matches the measured one — `docs/PORTS.md` carries the per-binary
+  numbers.) **PostgreSQL is the one exception in the other direction: its
+  pinned builds currently require macOS 26** — tracked in `docs/TODO.md`.
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.
 - An internet connection on **first run** (rexenv downloads its components — PHP,
   Nginx, MySQL, Caddy, etc. — the first time; after that it works offline).

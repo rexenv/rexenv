@@ -344,8 +344,18 @@ evidence cited.
   - [ ] Still open: the `validate_linked_docroot` per-call `list(conn)` cost note
     (`core/sites.rs` — fine at current scale, hoist if imports grow).
 
-- [ ] ⚠ **The macOS floor we CLAIM and the one our binaries have are different
-  numbers.** `tauri.conf.json` sets `minimumSystemVersion: "11.0"` and
+- [x] ⚠ **The macOS floor we CLAIM and the one our binaries have are different
+  numbers - RULED 'fix the claim, not the binaries' and DONE 15 Aug 2026, with the
+  full measurement worse than this item knew.** The complete cache sweep
+  (`docs/PORTS.md` now carries every number): PHP/caddy/mailpit/FrankenPHP 12.0,
+  MySQL/MariaDB/Redis **14.0**, nginx/cloudflared **15.0**, PostgreSQL **26.0**.
+  ✓ `minimumSystemVersion` 11.0→**15.0** and INSTALL.md says macOS 15 (Sequoia),
+  because 15 is what the DEFAULT stack (edge+nginx+PHP+MySQL) actually requires -
+  the ruling's 12.0 shape assumed nginx could be re-pinned ≤12, and it cannot:
+  jirutka publishes nothing below minos 14 (checked 1.24.0→1.31.3), and the only
+  14.0 builds are stale 1.24/1.26.1-2, a security downgrade to gain one macOS
+  version. ✓ PORTS.md carries the per-binary `minos` beside the pins with the
+  re-measure rule. Two follow-ups filed below. Original finding kept for the record: `tauri.conf.json` sets `minimumSystemVersion: "11.0"` and
   `docs/INSTALL.md:12` says "macOS 11 (Big Sur) or later" — but the pinned
   binaries, measured 14 Aug 2026 on the real cache, are: **php 8.1.34 / 8.3.31 /
   8.5.8 → `minos 12.0`** (static-php-cli's macOS default), **caddy → 12.0**,
@@ -360,6 +370,18 @@ evidence cited.
   number nobody records drifts again. Do NOT fold this into the 7.4 work: 7.4
   matches the 12.0 the other PHP rows already have, so it neither causes nor
   worsens this.
+- [ ] ⚠ **PostgreSQL is broken on every macOS below 26 - feature-dead, not
+  floor-adjacent** (found 15 Aug 2026 during the floor sweep). All three pinned
+  theseus-rs builds carry `minos 26.0`: on macOS 15 dyld refuses `postgres` and
+  the engine cannot start at all. Fix = re-pin to theseus-rs releases built with
+  a lower deployment target (or another source); until then the Databases screen
+  offers an engine that cannot run for most users, with no honest tell. Worth
+  checking what error the user actually SEES today - a dyld kill may surface as
+  a meaningless spawn failure.
+- [ ] **Option, not a commitment: a self-built nginx (deployment target 12)
+  would drop the app floor from 15 to 14** (MySQL's floor). Same
+  `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -
+  known, waiting for a reason (e.g. macOS-14 users actually asking).
 - [ ] **A FrankenPHP site's `php_version` is a promise it cannot keep.** FrankenPHP
   serves every site with the PHP compiled into it (`FRANKENPHP_EMBEDDED_PHP`,
   currently 8.5.8) — never the site's pool — so an 8.1 site on FrankenPHP is

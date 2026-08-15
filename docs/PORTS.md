@@ -52,6 +52,27 @@ binary, update THIS file in the same commit.
 | Adminer | 5.4.2 | single `.php`, OS-agnostic |
 | cloudflared | 2026.6.1 | |
 
+### Measured macOS floors (`minos`, per binary)
+
+Measured 15 Aug 2026 on the real cache (`otool -l | grep minos`) — recorded because
+this drifted silently: the app claimed macOS 11 while shipping binaries below, and a
+number nobody records drifts again. **The app's stated floor
+(`tauri.conf.json` `minimumSystemVersion`, INSTALL.md) must equal the MAX across the
+binaries the default stack requires** — today that is nginx/cloudflared at 15.0.
+Re-measure and update this table whenever a pin changes.
+
+| Binary | minos |
+|---|---|
+| Caddy 2.11.4, Mailpit 1.30.3, FrankenPHP 1.12.4, PHP (all minors incl. 7.4) | 12.0 |
+| MySQL 8.0.44 / 8.4.6, MariaDB 11.4.12 / 12.3.2, Redis 8.8.0 | 14.0 |
+| **nginx 1.30.3, cloudflared 2026.6.1** | **15.0** — the default stack's floor |
+| **PostgreSQL 16.14.0 / 17.10.0 / 18.4.0** | **26.0** — broken below macOS 26; open TODO (theseus-rs builds target the runner OS) |
+
+jirutka publishes NO darwin nginx below minos 14 (checked 1.24.0→1.31.3, 15 Aug
+2026: only the stale 1.24.0/1.26.1/1.26.2 are 14.0; everything current is 15.0), so
+lowering the floor below 15 means a self-built nginx — recorded as an option in
+TODO, not a commitment.
+
 All checksum-locked (SHA-256/512 by source). macOS `prepare_binary` order is non-negotiable:
 **de-quarantine → relink Homebrew dylibs → codesign LAST** (relinking invalidates the
 signature; Apple Silicon kills unsigned binaries). The bundle counterpart
