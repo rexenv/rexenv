@@ -554,7 +554,11 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
 /// re-upload, so a pin can 404 but can never silently change bytes.
 fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
     match version {
-        "7.4.33" => Some("php-7.4.33-1"),
+        // -4, not -1. Builds 1–3 are still there and still immutable; that is
+        // the contract working, not a mess. -1 shipped without `phar` (WP-CLI
+        // and Composer ARE phars, so no WordPress action could run) and -2 with
+        // a PCRE JIT that cannot allocate on Apple Silicon.
+        "7.4.33" => Some("php-7.4.33-4"),
         _ => None,
     }
 }
@@ -579,8 +583,20 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
     }
 }
 
-// Self-built 7.4 artifacts — OURS (rexenv/runtimes, release `php-7.4.33-1`).
-// Pinned 14 Aug 2026 from the published release: each file downloaded over the
+// Self-built 7.4 artifacts — OURS (rexenv/runtimes, release `php-7.4.33-4`).
+//
+// **Re-pinned 15 Aug 2026 after -1 shipped broken.** It had no `phar`, and both
+// WP-CLI and Composer ARE phars run through the SITE's PHP, so every WordPress
+// action on a 7.4 site died with `Class 'Phar' not found` — while `php -v`,
+// `php -m` and the whole build gate looked healthy. -2 fixed that and exposed
+// the next one: PHP 7.4 bundles PCRE2 10.35 (May 2020), too old for Apple
+// Silicon JIT, so Composer died on `Allocation of JIT memory failed`; -4 builds
+// `--without-pcre-jit`. Both failures were invisible to CI — the runner's OS
+// permits the allocation and a developer's Mac does not — which is why the
+// pin ceremony below now RUNS the tools locally instead of trusting a green
+// build. `examples/php_tools_check` makes that permanent.
+//
+// Pinned from the published release: each file downloaded over the
 // real `releases/download` URL rexenv itself uses, hashed here, and
 // cross-checked against the release's own SHA256SUMS. The arm64 cli was then
 // EXTRACTED AND RUN — `PHP 7.4.33 (cli)`, `mysqli=1 gd=1 intl=1`, and an
@@ -590,10 +606,10 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
 // Unlike static-php.dev and FrankenPHP, these bytes CANNOT change under the
 // URL: the release is immutable and the tag is never reused (a rebuild is
 // `php-7.4.33-2`). A pin here can 404; it can never drift.
-const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "11264980dabae562ed778cf8c5db2190f67b9461fcf48b13698734a0dc3fcfe9";
-const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "77a240b2d8738854ce0dda7786498d1c1232d184af250ff826ebea6ba350c018";
-const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "b4590389e28796ca2f19d1d08ea71db8ca48af742df8cc686b5a1a0e347ac4dc";
-const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "ae9f0097630671b83fc27171771bd9d9e8c606af2e266bb3be64058a70eb6300";
+const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "0a06e653feb4b4595b9ee860cd2b467ca3e7ddfbbb002df960a068052cc3f5e4";
+const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "c2e53cefe9af0e7c1f1081e3d28fbc0697431133d3c98bdcbe9a3b94af93cff9";
+const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "74943cc0f750d41aa35e8ea199c008f3591dacb21f924ba0b56b0aaf7a340588";
+const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "724f48b675163b41902437182da13f4728a531fe2bfe5935071f285541a6bccb";
 
 /// Pinned SHA-256 for a PHP artifact, or `None` if the version isn't pinned.
 /// `kind` is `"cli"` or `"fpm"`. Both arches are pinned together, so a `Some` for
@@ -666,6 +682,44 @@ fn php_debug_spec(kind: &str, arch: Arch) -> BinarySpec {
         archive: Archive::TarGz,
         member: if kind == "fpm" { "php-fpm" } else { "php" },
     }
+}
+
+/// File recording WHICH pinned bytes a published cache dir was built from.
+///
+/// The cache is keyed `<name>-<version>`, and `resolve` returns early when the
+/// binary simply EXISTS — so when a pin's BYTES change while its version string
+/// does not, every machine that already downloaded the old artifact keeps it
+/// forever. That is not hypothetical: rexenv's own PHP 7.4.33 shipped without
+/// `phar`, was rebuilt at the same version, and the fixed artifact could not
+/// reach anyone who had installed the broken one. Upstream has the same shape —
+/// static-php.dev and FrankenPHP both rebuild release assets in place.
+///
+/// The extracted binary cannot be hashed to detect this: the pin is the
+/// ARCHIVE's digest, not the member's. So the digest we verified at download
+/// time is recorded beside the result, and compared as a string afterwards —
+/// no re-hashing, no cost on the warm path.
+const PIN_MARKER: &str = ".pinned-digest";
+
+/// Whether a published cache dir holds the bytes `checksum` names.
+///
+/// A MISSING marker is only treated as stale for artifacts rexenv hosts itself
+/// (`php_self_hosted_tag`), and that asymmetry is deliberate: those are exactly
+/// the pins whose bytes can legitimately be re-issued at an unchanged version,
+/// so they are the ones worth re-fetching once. Making an absent marker stale
+/// for EVERYTHING would re-download every binary on every existing install to
+/// catch a case upstream has not yet caused.
+fn cache_matches_pin(dir: &Path, version: &str, checksum: &Checksum) -> bool {
+    match std::fs::read_to_string(dir.join(PIN_MARKER)) {
+        Ok(recorded) => recorded.trim() == checksum_hex(checksum),
+        Err(_) => php_self_hosted_tag(version).is_none(),
+    }
+}
+
+/// Record the digest a published dir was built from. Best-effort: a marker we
+/// fail to write reads as "unknown", which is the same state as before it
+/// existed — never a reason to fail a download that otherwise succeeded.
+fn write_pin_marker(dir: &Path, checksum: &Checksum) {
+    let _ = std::fs::write(dir.join(PIN_MARKER), checksum_hex(checksum));
 }
 
 /// Look up the download spec for `name`@`version` on `os`+`arch`, or `None` if
@@ -1226,10 +1280,9 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     let bin_dir = platform.paths().bin_dir()?;
     let dir = bin_dir.join(format!("{name}-{version}"));
     let bin_path = dir.join(name);
-    if bin_path.exists() {
-        return Ok(bin_path);
-    }
 
+    // The manifest is consulted BEFORE the cache check, because "is this cached"
+    // now means "are these the bytes we pin" — not merely "is a file there".
     let spec = manifest(name, version, os, arch).ok_or_else(|| {
         Error::Other(format!(
             "no binary manifest for {name} {version} on {os}/{}",
@@ -1240,6 +1293,14 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         return Err(Error::Other(format!(
             "{name} is a directory distribution — use resolve_dir"
         )));
+    }
+    if bin_path.exists() && cache_matches_pin(&dir, version, &spec.checksum) {
+        return Ok(bin_path);
+    }
+    // Present but NOT the pinned bytes: a re-issued artifact at an unchanged
+    // version. Drop it and fetch, rather than serving it forever.
+    if bin_path.exists() {
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // Stage in a temp dir on the same filesystem, prepare it there, then publish
@@ -1272,6 +1333,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         }
         platform.permissions().set_executable(&staged_bin)?;
         platform.binaries().prepare_binary(&staged_bin)?;
+        write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, name)
     }
     .await;
@@ -2585,6 +2647,43 @@ mod tests {
         }
     }
 
+    /// The cache must key on the pinned BYTES, not on a file existing.
+    ///
+    /// rexenv's own 7.4.33 shipped without `phar`, was rebuilt at the SAME
+    /// version, and every machine holding the broken artifact would have kept it
+    /// forever — `resolve` returned early on existence and the dir name
+    /// (`<name>-<version>`) had not changed. Proven against a real stale cache on
+    /// 15 Aug 2026: the marker mismatched, the dir was dropped, the fixed build
+    /// downloaded, and `php_tools_check` went from FAIL to PASS.
+    #[test]
+    fn a_cache_dir_is_stale_when_its_recorded_digest_is_not_the_pin() {
+        let dir = std::env::temp_dir().join(format!("rexenv-pin-marker-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pin = Checksum::Sha256("a".repeat(64));
+
+        // Recorded and matching → cached.
+        write_pin_marker(&dir, &pin);
+        assert!(cache_matches_pin(&dir, "7.4.33", &pin));
+
+        // Recorded but DIFFERENT → stale, which is the re-issued-artifact case.
+        write_pin_marker(&dir, &Checksum::Sha256("b".repeat(64)));
+        assert!(!cache_matches_pin(&dir, "7.4.33", &pin));
+
+        // ABSENT is asymmetric on purpose. A self-hosted version is one whose
+        // bytes can be re-issued at an unchanged version, so an unmarked cache
+        // of one is refetched once; an upstream version is grandfathered, or
+        // every existing install would re-download everything to catch a case
+        // upstream has not caused.
+        std::fs::remove_file(dir.join(PIN_MARKER)).unwrap();
+        assert!(php_self_hosted_tag("7.4.33").is_some());
+        assert!(!cache_matches_pin(&dir, "7.4.33", &pin), "self-hosted, unmarked → refetch");
+        assert!(php_self_hosted_tag(PHP_VERSION).is_none());
+        assert!(cache_matches_pin(&dir, PHP_VERSION, &pin), "upstream, unmarked → grandfathered");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// The trap this branch exists to defuse. `manifest`'s PHP arms gate ONLY on
     /// `php_sha256(..).is_some()`, so pinning a self-built version's four hashes
     /// while the URL was still hardcoded to static-php.dev would have produced a
@@ -2602,8 +2701,12 @@ mod tests {
                 let url = php_url(kind, "7.4.33", arch);
                 assert!(!url.contains("dl.static-php.dev"), "{url}");
                 // The FULL immutable tag is in the URL, not a stable base that a
-                // rebuild could quietly refill (see `php_self_hosted_tag`).
-                assert!(url.contains("/releases/download/php-7.4.33-1/"), "{url}");
+                // rebuild could quietly refill (see `php_self_hosted_tag`). The
+                // tag is READ, not spelled: it was written as `php-7.4.33-1`
+                // here and the pin moved to -4 two rebuilds later, so a literal
+                // would fail for being right about the wrong thing.
+                let tag = php_self_hosted_tag("7.4.33").expect("7.4.33 is self-hosted");
+                assert!(url.contains(&format!("/releases/download/{tag}/")), "{url}");
                 assert!(url.ends_with(&format!("php-7.4.33-{kind}-macos-{}.tar.gz", php_arch(arch))));
                 // A version static-php.dev DOES publish still comes from there.
                 assert!(php_url(kind, PHP_VERSION, arch).contains("dl.static-php.dev"));

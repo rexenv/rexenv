@@ -138,6 +138,7 @@ php_fpm_serve sandbox
 php_per_site_serve service
 php_pools_serve service
 php_switch_serve service
+php_tools_check network
 php_versions_check network
 port_check sandbox
 prefetch_responsiveness_check network

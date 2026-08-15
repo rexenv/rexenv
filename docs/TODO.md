@@ -431,11 +431,20 @@ evidence cited.
     **Still owed, and not claimed:** a 7.4 SITE answering over HTTPS end to end
     (browser → Caddy → nginx → 9774 → WordPress). Needs a real site; it is a
     SMOKE-TEST item, not an example. Neither tier runs in `verify.sh`.
-  - [ ] **S1.2 — grow the 7.4 extension set toward the 8.x rows.** Shipped set is the
-    WordPress/Laravel-critical core (39 modules). The 8.x bulk rows also carry dba,
-    pgsql, redis, soap, xsl, sysv*, gmp, bz2, ftp, calendar, posix, pcntl, readline,
-    shmop. Add back one at a time with CI as the judge: every extension drags
-    libraries into the one shared LIBS line, which is what made gd expensive.
+  - [x] **S1.2 — grow the 7.4 extension set toward the 8.x rows.** ✓ 55 modules
+    (was 36) — dba, pgsql, soap, xsl, gmp, bz2, ftp, calendar, posix, pcntl,
+    readline, shmop, sysv* and, critically, **phar**. Forced by a real failure:
+    the narrow set was a diagnostic narrowing during the gd hunt, the hypothesis
+    was wrong, and it shipped. Still absent with reasons: opcache
+    (spc's static patch starts at 8.0), opentelemetry/protobuf (spc guards on
+    < 8.0), swoole/event (dropped 7.4), random (8.2 core), and the four PECL
+    ones (apcu/redis/imagick/imap) which are a follow-up, not a blocker.
+  - [ ] **PCRE JIT is compiled OUT of 7.4** — PHP 7.4 bundles PCRE2 10.35 (May
+    2020), too old for Apple Silicon JIT, so Composer died on `Allocation of JIT
+    memory failed`. `--without-pcre-jit` removes the capability. Regex throughput
+    on 7.4 is therefore lower than on the 8.x rows. Worth revisiting ONLY if
+    someone builds 7.4 against a newer external PCRE2; not worth it for an EOL
+    version nobody runs for speed.
 
 ## Ledger-driven proof backlog
 
