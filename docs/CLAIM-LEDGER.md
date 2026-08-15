@@ -821,7 +821,24 @@ Security postures resting on unproven third-party assumptions — the shape that
    because Caddy's bodyless `respond` returns an empty 200 — status proof without
    content proof. Removing the guard entirely is the plant that matches the other two:
    the `.env` secret served and the dot-dir PHP executed.
-4. **#175** — login-autostart "never download / never prompt": untested at any level.
+4. **#175** — login-autostart "never download / never prompt". **The "untested at any
+   level" this entry used to say was WRONG** (corrected 15 Aug 2026 — the third stale
+   cluster line found this week, each time by working the row it summarises). Both
+   DECISIONS are L0-proven and both are CALLED by `auto_start_inner`:
+   `downloads::uncached_names` aborts before anything starts, and
+   `service_manager::login_edge_action` skips a privileged edge plan.
+   What is genuinely open is the WIRING and it is not cheaply reachable: proving that
+   `auto_start_inner` consults them in that ORDER — download-check before `start_core`,
+   not after — needs the function driven with fakes, and **nothing in this repo
+   constructs `AppState` outside `lib.rs` setup**, so neither a test nor an example can
+   call it today. The recording-fake shape that proved #210 (`RecordingPrivileges`,
+   which returns Ok so the path keeps RUNNING and the test measures whether an
+   escalation was attempted rather than whether it worked) is the right instrument and
+   has nothing to attach to.
+   So the options are: make `auto_start_inner`'s guard sequence drivable — a production
+   refactor of a LOGIN path on a released product; or a source-shape order guard (weak,
+   but it is what would catch a refactor moving the download check after the start); or
+   leave the wiring to L3. **Not decided.**
 5. **#36** — wp_login's PHP-injection safety inherited, not re-checked at the injection
    point (its sibling has a dedicated test).
 6. **#44** — DNS answer-anything justified by a loopback bind nothing asserts.
