@@ -186,12 +186,17 @@ that only runs when an unrelated feature is enabled is not a gate for this one.
   7.4 pool is **9774**, below the 8.x block, not 9779); no EOL warning anywhere
   (the honest-UI promise, ledger #322); the Xdebug toggle offered on 7.4 (it
   must not be — that build cannot dlopen, ledger #320/#321).
-- [ ] **WP-CLI and Composer run on it.** In that site's terminal: `wp core
-  version` and `composer --version`. Both are **phars run through the SITE's
-  PHP**, and both have broken on this row before — the first 7.4 build shipped
-  without `phar` (every WordPress action died `Class 'Phar' not found`) and the
-  second died on `Allocation of JIT memory failed`. Both were invisible to CI
-  and visible only on a real Mac, which is why they are a hand step.
+- [ ] **A real WordPress action, through the site.** WP Manager → install and
+  activate a plugin on the 7.4 site. Both WP-CLI and Composer are **phars run
+  through the SITE's PHP**, and both have broken on this row before — the first
+  7.4 build shipped without `phar` (every WordPress action died `Class 'Phar' not
+  found`) and the second died on `Allocation of JIT memory failed`, each
+  invisible to CI because the runner's OS permits what a developer's Mac does not.
+  **Scope, so this is not read as the only proof:** `php_tools_check` (network
+  tier) already runs `wp --version` and `composer --version` on EVERY pinned
+  minor including 7.4, and is the guard against those two regressions. What this
+  step adds is the part it deliberately skips — a phar driven against a real
+  WordPress install over the running stack, rather than `--version` in isolation.
 
 ## FrankenPHP × the PHP version — the picker and the refusal (15 Aug 2026)
 FrankenPHP serves every site with **its own embedded PHP**, never the site's

@@ -36,7 +36,14 @@ mod common;
 
 /// Full-download budget for the digest half — enough for every phar, static
 /// binary and bottle, deliberately excluding the multi-hundred-MB trees
-/// (MySQL, Postgres, PHP builds), which get HEAD-only.
+/// (MySQL, Postgres, MariaDB), which get HEAD-only and are NAMED when skipped.
+///
+/// **PHP builds are under this cap and ARE re-hashed** — every minor, both
+/// arches, ~31–35 MB each. This comment used to list them beside MySQL and
+/// Postgres as HEAD-only, which was wrong in the direction that matters: it
+/// describes the pins rexenv is the DISTRIBUTOR of (7.4, self-built and
+/// self-hosted) as byte-unverified by the sweep, when they are exactly the ones
+/// it verifies. Ledger #335 records the real behaviour.
 const DIGEST_CAP_BYTES: u64 = 40_000_000;
 
 struct Target {
