@@ -84,19 +84,25 @@ one that ships in one slice.
 
 ## A) 🚧 0.2.0 — §A0 ✅ PASSED, §A **NOT RUN** (yours; it needs a GUI)
 
-**0.2.0 candidate (2026-08-15).** `rexenv_0.2.0_universal.dmg`, sha256
-`1cb01ead2382c4b4fdb8b7be90aa2840b1264a7b78fbc8aba41e7513929362c6`, 23,393,958
-bytes, built from commit **`3a03610`** with `npm run release:mac` on a clean tree.
-(Commits after `3a03610` are documentation only — including this paragraph — and
-are not in the artefact. The tag belongs on `3a03610`.)
+**0.2.0 candidate (2026-08-16).** `rexenv_0.2.0_universal.dmg`, sha256
+`bd019d8d5a9333908986575c1608c75f2d85a7246f7557e0d82566b95601e973`, 23,411,247
+bytes, built from commit **`3755966`** with `npm run release:mac` on a clean tree.
+(Commits after `3755966` are documentation only — including this paragraph — and
+are not in the artefact. The tag belongs on `3755966`, and `v0.2.0` is there.)
 
-**§A0 ✅** — run by hand, every leg: exactly one dmg; `Contents/MacOS/rexenv` and
-`Contents/MacOS/rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in the arm64
-slice and ×5 in the x86_64 slice **separately**; `codesign --verify --deep
---strict` → *valid on disk* / *satisfies its Designated Requirement*; and the
-bundled `rex --version` → `rex 0.2.0`, so the sidecar carries the release version
-rather than a stale build. Release gate `verify-full: all green` ran first, at
-this commit, on a clean tree.
+_(Superseded before §A: `1cb01ead…`, built 15 Aug from `3a03610`. It shipped PHP
+7.4 without the licence texts beside it — reproduced in `THIRD-PARTY-NOTICES.md`
+only. That was rebuilt rather than shipped-then-fixed, because the licence
+obligation is the one thing in this release that a follow-up release cannot
+repair for the copies already distributed. Ledger #336.)_
+
+**§A0 ✅** — run by hand on the rebuilt artefact, every leg: exactly one dmg;
+`Contents/MacOS/rexenv` and `Contents/MacOS/rex` both `x86_64 arm64`;
+`Dist_Archive_Command` ×5 in the arm64 slice and ×5 in the x86_64 slice
+**separately**; `codesign --verify --deep --strict` clean; and the bundled
+`rex --version` → `rex 0.2.0`, so the sidecar carries the release version rather
+than a stale build. Release gate `verify-full: all green` ran first, at this
+commit, on a clean tree.
 
 **§A 🚧 NOT RUN — it is the human gate and cannot be automated.** Quarantine the
 dmg, confirm Gatekeeper BLOCKS it, `xattr -rd`, confirm it launches. Publishing IS
@@ -862,8 +868,8 @@ Result: ____ (date, reqwest version).
 
 | # | Check | Status |
 |---|---|---|
-| A0 | Artefact integrity, per slice — **0.2.0 `1cb01ead…`** | ✅ passed 15 Aug 2026 (by hand; CI does not run while the repo is private) |
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `1cb01ead…`** | 🚧 **publish-blocking; publishing IS the sign-off** |
+| A0 | Artefact integrity, per slice — **0.2.0 `bd019d8d…`** | ✅ passed 16 Aug 2026 (by hand; CI does not run while the repo is private) |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | 🚧 **publish-blocking; publishing IS the sign-off** |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
