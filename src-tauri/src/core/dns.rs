@@ -1047,13 +1047,31 @@ mod tests {
     #[test]
     fn port_bound_true_when_held_false_when_free() {
         use std::net::{Ipv4Addr, UdpSocket};
-        // While we hold an ephemeral UDP port, `port_bound` sees it as in use…
-        let held = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        let port = held.local_addr().unwrap().port();
-        assert!(port_bound(port), "a held UDP port should read as bound");
-        // …and free again once released.
-        drop(held);
-        assert!(!port_bound(port), "a released UDP port should read as free");
+        // The free half is RACY as a single shot: between `drop` and the
+        // check, anything on the machine can re-bind that exact ephemeral
+        // port — under the parallel suite this failed a full `verify.sh` run
+        // on 15 Aug 2026 ("a released UDP port should read as free") and then
+        // passed standalone, the transient shape docs/TODO.md tracks. So each
+        // half retries across fresh sockets: what is being proven is that
+        // `port_bound` answers correctly for a port in a KNOWN state, not
+        // that this process can reserve a port against the whole OS.
+        let mut freed_ok = false;
+        for _ in 0..5 {
+            let held = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let port = held.local_addr().unwrap().port();
+            assert!(port_bound(port), "a held UDP port should read as bound");
+            drop(held);
+            if !port_bound(port) {
+                freed_ok = true;
+                break;
+            }
+            // Lost the race — someone re-bound it. Try a fresh port.
+        }
+        assert!(
+            freed_ok,
+            "five consecutive released ports all read as bound — port_bound is \
+             stuck on true, not five lost races"
+        );
     }
 
     /// A conflict on the fixed resolver port must surface ports::ensure_free's

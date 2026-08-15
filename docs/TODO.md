@@ -198,11 +198,13 @@ evidence cited.
     a package that hooks WP-CLI another way, and by design not the terminal
     wrapper — leg D pins that the OPPOSITE way, because the tell's last sentence
     depends on it staying ambient.
-- [ ] **B29b — fpm pool reap is still one-miss** (`core/php.rs:534-535`): a single
-  failed port probe with a dead-looking master reaps the pool, with no
-  `ADOPTED_MISS_LIMIT`-style counter and no positive php-fpm title identification
-  (the adopted-service reap got both in B29). Surfaced in the July codebase review;
-  previously tracked only there.
+- [x] **B29b — fpm pool reap is still one-miss** — ✓ DONE 15 Aug 2026, ledger #330.
+  `Pool::misses` + `pool_fate` (the shared `adopted_reap_decision` arithmetic, one
+  definition): probe evidence reaps only after `POOL_MISS_LIMIT` consecutive misses;
+  a spawned child's `try_wait` exit still reaps on sight; an ADOPTED master is judged
+  by `pid_command` containing `php-fpm`, never `kill -0` — a recycled pid or orphan
+  workers on a green port accrue misses instead of living forever. Plant-proven both
+  ways (limit=1 and identification-always-true each fail the named leg).
 - [x] **New Site "Laravel" card promises an installer that doesn't exist** —
   the flow was BUILT rather than the copy softened (9 Aug 2026, `cfe4be3` +
   `fb4ae08` + `52c4783`). ✓ Evidence: `phase_defs` gains db → app_install →
@@ -702,6 +704,17 @@ first:
   reason survives to the tail and a re-run no longer destroys the evidence
   (plant-proven). The remaining work is to diagnose the third occurrence when it
   is captured, not to guess now.
+  **15 Aug 2026 — a third occurrence WAS captured, with a name and a mechanism.**
+  `core::dns::tests::port_bound_true_when_held_false_when_free` failed a full
+  `verify.sh` run ("a released UDP port should read as free") and passed standalone —
+  and reading it explains itself: it dropped an ephemeral UDP socket and asserted the
+  port reads free in a single shot, but nothing stops a parallel test or any process
+  on the machine re-binding that exact port in the gap. Fixed by retrying across
+  fresh sockets (the subject is `port_bound`'s answer for a known state, not this
+  process's ability to reserve a port against the OS). Whether the un-named 3 Aug
+  lib-test transient was this same test is NOT claimable — its name was never
+  captured — but the shape fits, and this instance is closed. `apache_site_check`'s
+  transient remains unexplained.
 
 - [ ] **Verdict receipt — bind the COMMIT path, not just the verdict.** 3 Aug
   2026: `live-checks.sh ... | tail -3 && git commit` landed a commit on a RED
