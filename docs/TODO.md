@@ -748,11 +748,18 @@ first:
   measurements, both instant — the weight now leans hard toward the 14 Aug sighting
   having been the zombie artifact.
 
-- [ ] Tier-1 cluster: tunnel second-Host negative (#10/#13), CF-header
-  discriminator probes (#2/#33), Adminer-as-origin negative (#37), share-lifetime
-  races (#25/#26/#29/#30/#31), second-brain drift guards (#54/#59), cancelled
-  takeover rollback (#49), ~~cancelled-dump server-side (#116)~~ (closed 15 Aug 2026, db_dump_check §8), ~~delete-kill ordering (#190)~~ (closed 15 Aug 2026 — `tunnel_delete_order_check` run live + plant-proven with a real leaked cloudflared, caught and reaped)
-  (#190).
+- [x] Tier-1 cluster — WORKED DRY 15 Aug 2026. Every automatable item is closed
+  (the strikethrough history moved to the rows themselves; this line stops
+  restating them — the 13 Aug and 15 Aug stale-cluster incidents both happened
+  in exactly this list). What remains is not backlog:
+  - **#2 is a WATCH** on Cloudflare's header set — not automatable, goes false
+    silently, re-observed on every live `tunnel_exposure_check` run.
+  - **#25/#26/#29/#30/#31's live legs ride the next `tunnel_exposure_check`
+    run** (group A's one tunnel example), alongside the tunnel-replay leg (3)'s
+    end-to-end denial observation.
+  Everything else in the old list (#10/#13, #33, #37, #49, #54/#59, #103,
+  #104/#191, #116, #190, #242, the manifest sweep) is ✅/◐-watch in the ledger —
+  run `grep '^| <n> '` there, don't trust a list here.
 - [x] Live re-point (#242 L1) ✓ 15 Aug 2026 — `linked_site_check`'s re-point leg:
   real rename, a 404 control proving the reload is load-bearing, the command's
   core sequence, and a post-move-only marker served through the vhost.
