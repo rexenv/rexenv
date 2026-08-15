@@ -132,6 +132,7 @@ Two rules with teeth, learned the hard way:
 | MCP server — agents drive rexenv, scratch sites, capability tiers (proposed) | `docs/PLAN-mcp-server.md` |
 | `wp dist-archive` — distributable zip from a repo asset (ruled, not started) | `docs/PLAN-dist-archive.md` |
 | In-app PHP/engine patch updates — signed manifest, trust model (proposed) | `docs/PLAN-binary-updates.md` |
+| WebKit/wry dialog + custom-scheme claims — why they are NOT L2-provable, where each leg lives | `docs/PLAN-webview-dialog-proofs.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Cutting a release — CI pipeline, draft gate, tap auto-bump | `docs/RELEASING.md` (cask itself lives in `rexenv/homebrew-tap`) |
 | Release QA checklist (clean Mac) | `docs/SMOKE-TEST.md` |

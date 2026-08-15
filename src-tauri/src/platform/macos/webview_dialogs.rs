@@ -220,3 +220,102 @@ pub unsafe fn install_js_dialog_panels(wk_webview: *mut c_void) {
     webview.setUIDelegate(Some(&delegate));
     log::info!("webview dialogs: JS alert/confirm/prompt panels installed");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use objc2::runtime::{AnyClass, ClassBuilder};
+
+    // The two imps must have DIFFERENT bodies: identical functions can be
+    // merged by the linker into one address, which would make the
+    // imp-identity assertion below a tautology (it could never observe a
+    // replacement). The test also asserts they are distinct, so the guard
+    // does not rest on the optimiser's mood.
+    unsafe extern "C-unwind" fn imp_first(
+        _this: *mut AnyObject,
+        _cmd: Sel,
+        _a: *mut AnyObject,
+        _b: *mut AnyObject,
+        _c: *mut AnyObject,
+        _d: *mut AnyObject,
+    ) {
+        std::hint::black_box(1u8);
+    }
+    unsafe extern "C-unwind" fn imp_second(
+        _this: *mut AnyObject,
+        _cmd: Sel,
+        _a: *mut AnyObject,
+        _b: *mut AnyObject,
+        _c: *mut AnyObject,
+        _d: *mut AnyObject,
+    ) {
+        std::hint::black_box(2u8);
+    }
+
+    /// Ledger #166, leg A. The module's whole conflict story rests on ONE fact
+    /// about the ObjC runtime: `class_addMethod` ADDS and never REPLACES, so a
+    /// future wry that ships its own panel methods wins automatically and ours
+    /// become dead code rather than a fight. That is a claim about Apple's
+    /// runtime, not about our code — so it is measured against the real
+    /// runtime, with a control first: adding to a class WITHOUT the selector
+    /// must succeed, or "the second add failed" would also be what a broken
+    /// registration looks like and the test would pass vacuously.
+    #[test]
+    fn class_add_method_is_additive_only_so_a_wry_with_native_panels_wins() {
+        // Unique name: a class can be registered once per process, and the
+        // runtime has no unregister for classes with registered subclasses.
+        let name =
+            std::ffi::CString::new(format!("RexDialogAdditiveTest{}", std::process::id()))
+                .unwrap();
+        let superclass = AnyClass::get(c"NSObject").expect("NSObject");
+        let builder = ClassBuilder::new(&name, superclass).expect("fresh class name");
+        let cls = builder.register();
+        let sel = sel!(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:);
+
+        type PanelImp = unsafe extern "C-unwind" fn(
+            *mut AnyObject,
+            Sel,
+            *mut AnyObject,
+            *mut AnyObject,
+            *mut AnyObject,
+            *mut AnyObject,
+        );
+        let add = |imp: PanelImp| unsafe {
+            class_addMethod(
+                cls as *const AnyClass as *mut _,
+                sel,
+                std::mem::transmute::<PanelImp, Imp>(imp),
+                ENC_PANEL.as_ptr() as *const c_char,
+            )
+        };
+
+        assert_ne!(
+            imp_first as PanelImp as *const () as usize,
+            imp_second as PanelImp as *const () as usize,
+            "the two test imps were merged to one address — the identity assertion \
+             below cannot see a replacement; give them different bodies"
+        );
+        // Control: the mechanism works at all.
+        assert!(
+            add(imp_first).as_bool(),
+            "control broken: adding a panel method to a class without one failed — \
+             every later assertion would be vacuous"
+        );
+        // The claim: a second add of the SAME selector fails…
+        assert!(
+            !add(imp_second).as_bool(),
+            "class_addMethod REPLACED an existing selector — the 'a wry with native \
+             panels wins automatically' story in this module's header is false"
+        );
+        // …and fails HARMLESSLY: the first implementation is still the one installed.
+        let installed = cls
+            .instance_method(sel)
+            .expect("the selector answers after the first add")
+            .implementation();
+        assert_eq!(
+            installed as usize, imp_first as PanelImp as *const () as usize,
+            "the losing add clobbered the installed implementation — 'fails' without \
+             'harmlessly'"
+        );
+    }
+}

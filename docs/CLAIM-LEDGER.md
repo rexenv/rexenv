@@ -90,7 +90,7 @@ L3 = scripted manual.
 | 37 | adminer.rs:5 | ⚠ Not a Site row ⇒ can never be a tunnel origin | ✅ `a_tunnel_target_can_only_ever_be_a_site_row` — the point is that this is a CONSEQUENCE, not a check: the only way to start a tunnel is a site id resolved through `tunnel_site`, Adminer has no row, and `tunnel_site` errors rather than falling back. So the guard pins the SHAPE — a second target source (a domain parameter, a host string) would turn "a passwordless database browser can never be published" from impossible into a validation someone has to get right. Plant-proven by swapping the lookup for an inline `get` |
 | 38 | adminer.rs:88 | Loopback gate is exact host match, never prefix | ✅ `adminer_login_gate_check` (real PHP matrix) + lib test |
 | 39 | adminer.rs:186 | Not frameable by a local `:1420` squatter; no wildcard | ◐ string ✅; browser enforcement 🔨 L2 |
-| 40 | adminer.rs:288 | ⚠ WKWebView never follows a custom-scheme redirect | 🔨 L2 |
+| 40 | adminer.rs:319/359 | ⚠ WKWebView never follows a custom-scheme redirect (`WKURLSchemeTask` has no redirect mechanism) — so the proxy follows hops itself and a replayed 3xx dead-ends harmlessly | ◐ **re-verdicted 15 Aug 2026 after MEASURING the old `🔨 L2` label** (`docs/PLAN-webview-dialog-proofs.md` §1/§3): Playwright cannot register a `WKURLSchemeTask` scheme, so an L2 check would measure Playwright's own network layer and prove nothing — the label contradicted TESTING.md's stated schemes limit and nobody had noticed. The OUR-CODE half is proven (#42, server-side following stays on-vhost). The PREMISE half is a fact about Apple's scheme-handler API in the packaged app: 🚫-shaped, mapped to SMOKE — every release's §Database deep-link login exercises Adminer's POST-redirect-GET (server-side following broken ⇒ blank frame on first login), and the drop-table step covers the confirm path. True of WebKit as shipped through macOS 15, observed live when the module was written |
 | 41 | adminer.rs:130 | Autologin guard keyed per target server | ✅ `autologin_guard_is_keyed_per_target_server` |
 | 42 | adminer.rs:342 | Never follow off the vhost | ✅ `relative_locations_resolve_on_the_vhost` |
 | 43 | adminer.rs:44 | Partitioned-cookie rewrite defeats ITP in the iframe | ◐ behavior ✅ `adminer_proxy_check`; ITP causal attribution 🚫 |
@@ -381,7 +381,7 @@ L3 = scripted manual.
 | 165 | traits.rs:346 | `env -0` parse survives rc noise | ✅ lib test |
 | 261 | macos/mod.rs (`open_in_browser`) + traits.rs (`ShellRunner::open_in_browser` doc) | **A chosen browser is handed URLs, never paths — in EVERY mode.** `open -a "Google Chrome" /etc/hosts` doesn't fail — it DISPLAYS the file, so the difference between "open my site in Firefox" and "read this file out of my home directory in Firefox" is one argument. The scheme is checked before the browser is looked up, so the refusal can't depend on what happens to be installed, and paths keep going through `open` (the OS handler), which is the only route that ever needed them. **Scope widened 14 Aug 2026 with the private-window target**: the private path was deliberately built as an ARGUMENT to this function rather than a sibling `open_in_browser_private`, because a second entrance carries its own copy of the guard and this ledger already records four claims that checked one place inside the surface they claimed. One function, one check, both modes | ✅ `browser_detect_check` (a bare path, a `file://` URL and a directory all refused against the machine's real first browser — now looped over `private=false` AND `private=true`, six refusals; the check fails loudly if any one OPENS) |
 | 309 | macos/mod.rs (`BROWSERS` private column + `open_in_browser`'s private arm) + open-in.tsx (`useBrowserMenu`) | **A private target opens a PRIVATE window or nothing — it never degrades to an ordinary one.** The affordance's whole content is "this visit isn't recorded", so a silent fallback is the one outcome worse than an error: the user sees the window they asked for and the session they wanted kept out of it is already logged. Two halves. (a) The table carries a private flag per browser and it is only filled where the flag has been SEEN to work (Chromium `--incognito`/`--inprivate`/`--private`, Gecko `-private-window`); Safari has no such command line, and Arc/Atlas/Orion are left `None` because a fork is free to swallow the flag it inherited — an IGNORED flag is precisely the silent-normal-window failure. (b) The UI renders no private target where the flag is absent, and the backend refuses rather than falling back if one is ever asked for anyway. `open -n` is load-bearing on the working path: without a new instance macOS DROPS `--args` for an already-running app, which would open the url in an ordinary tab under a control that said private | ✅ both halves. L1 `browser_detect_check` — the refusal is exercised against the machine's real first browser with no private flag (Safari), and it prints the flag per detected browser so a table edit shows up. L2 `openin.js` (plant-proven ×2) — the private target exists exactly for the browsers that support it and NOT on Safari's row, is a sibling `<button>` (WKWebView swallows a nested one, so the icon would look right and do nothing), carries the same seam the chevrons must have, and its click sends `open_in_browser private:true` while the row beside it still sends `private:false`. Plants: routing the icon to the ordinary open fails naming the args; deleting the divider fails naming both rows. 🚫 that the window macOS opened is REALLY private is a human eye — SMOKE-TEST step |
-| 166 | webview_dialogs.rs:8 | ⚠ class_addMethod additive-only; main-thread guaranteed; JS suspension = confirm contract | 🔨 L2 — module has ZERO tests |
+| 166 | webview_dialogs.rs:8 | ⚠ class_addMethod additive-only (a wry with native panels wins); the panels install on wry's delegate without touching the file picker; sheet + completion handler = `confirm()`'s blocking contract | ◐ **re-verdicted 15 Aug 2026; the old `🔨 L2` was measured and found impossible** — Playwright WebKit answers dialogs with its OWN machinery, so an L2 check would have been the string-proven kind (`docs/PLAN-webview-dialog-proofs.md` §1). Two automated legs at the layers that contain the subject: **leg A** L0 `class_add_method_is_additive_only_so_a_wry_with_native_panels_wins` (real ObjC runtime; control-first; the losing add proven to leave the FIRST imp installed, with the two imps asserted distinct so linker merging can't make it a tautology) + **leg B** L1 `webview_dialogs_check` (sandbox tier: real `WKWebView`, wry-shaped stub delegate with ONLY the file-picker selector; negative control before install; all three panels answer after; file-picker imp byte-identical; SAME delegate object survives the re-set; second install a no-op — plant-proven: skipping the install fails legs 2 and 5 by name). **The unproven half, stated:** a sheet RENDERS, `confirm()` returns the button pressed, JS suspends — needs an eye (native sheets can't be clicked without synthetic events, which are barred on the dev machine), so it is SMOKE §Database's drop-table step (leg C), the exact 2026 incident |
 
 ## state/
 
@@ -495,8 +495,10 @@ install source's own gate #259 and the cursor it can never advance #260; the
 WP-CLI packages tell #301; the per-site artifact sweep #302 and the sites-folder rule #303 and the edge-wire tri-state #304 its four callers #305 and the onboarding notice #306; the leftmost-XFF finding #307 and the mu-plugin ordering pairing #308; the
 end-of-output cut #316 and the diagnostics-to-stderr flag #317, the two halves
 that stopped a plugin's shutdown hook and PHP's own deprecations from breaking
-every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #329):
-**✅ 246 · ◐ 49 · 🔨 29 · 🚫 5** of 329 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
+every WordPress screen on a PHP 8.4 / 8.5 site; the `SqlClient` witness type #329;
+the webview-dialog legs A+B and the measured retirement of #40/#166's impossible
+L2 labels):
+**✅ 246 · ◐ 51 · 🔨 27 · 🚫 5** of 329 rows, plus 5 🚫 premises living inside ◐/✅ rows (#15, #43, #52, #149, #154).
 Recomputed mechanically with the one-liner above. The working backlog = every 🔨
 row + the noted half of every ◐ row, ranked below.
 
@@ -768,7 +770,7 @@ Rank = what a FALSE claim costs, not how easy the proof is.
 | #246 | a created Laravel site's migrations landed in the skeleton's SQLite file, not in the MySQL database the Databases screen shows ⇒ a database the app never fills, and nothing says so |
 | #12, #20, #23 | tunnel sentinel/gate/argv drift ⇒ wrong lifecycle decisions |
 | #28-half, #32, #174-half | UI renders Live/agreeing status that the registry already knows is false |
-| #40, #166 | WebKit internals assumptions (redirect replay, dialog wiring) |
+| ~~#40, #166~~ | *(closed for automation, 15 Aug 2026 — see the rows.)* WebKit internals assumptions (redirect replay, dialog wiring). The queued `L2` legs were MEASURED as impossible (Playwright contains neither subject — `docs/PLAN-webview-dialog-proofs.md`); what is automatable landed at L0+L1 (legs A/B), and the remainder is eye-only, mapped to SMOKE §Database |
 | #1, #4-half, #9 | tunnel semantics (URL invisibility, relaunch bound, multisite scope) |
 | #19-half | reqwest `.resolve()` fallback (procedure now exists: PUBLISH-TESTING §L) |
 | #71, #178, #181-half, #182-half, #186-half | guard escapes: cfg(test) hatch, panic on read, import cross-guard, crash ordering, cancel boundary |
@@ -795,9 +797,10 @@ lookup.
 Open, in order:
 
 1. **#2** — the CF-header watch (a fact about Cloudflare; can go false silently).
-2. **#40 / #166** — WebKit/wry internals claims; `webview_dialogs.rs` has zero tests.
-3. **#175** (wiring half) — rides SMOKE-TEST's cold-cache login item.
+2. **#175** (wiring half) — rides SMOKE-TEST's cold-cache login item.
 
 Closed since this list was first ranked — see the rows: #33, #307, #308 (tunnel
 replay + ordering), #10, #13 (cross-site + override fallthrough), #103 (dotfiles,
-all three backends), #37, #36, #44.
+all three backends), #37, #36, #44; #40/#166 (webview dialogs + custom-scheme
+redirect — automatable halves landed at L0+L1, the L2 idea measured impossible,
+the eye-only remainder mapped to SMOKE).

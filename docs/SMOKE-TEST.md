@@ -252,6 +252,13 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 
 ## Database (Adminer deep-link)
 - [ ] Site → **Database** tab (or Sites row → Open database) lands **inside the site's DB** (tables listed), no manual login.
+- [ ] **Native confirm works** (ledger #166 leg C — the automated legs prove the panels
+  are INSTALLED, only an eye can see one render): create a throwaway table, select it,
+  **Drop** → a native sheet appears (not a silent no-op, which was the 2026 incident —
+  wry ships no JS-dialog panels, so an unpatched webview resolves `confirm()` to false).
+  **Cancel** leaves the table; repeat and **OK** drops it. While the sheet is up the
+  page behind it must be inert (WebKit suspends the calling frame — `confirm()`'s
+  blocking contract).
 - [ ] Overview → Quick links → **Database** opens THIS site's Database tab, not the engines screen (8 Aug).
 - [ ] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
 

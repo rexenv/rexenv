@@ -176,6 +176,7 @@ tunnel_muplugin_check sandbox
 tunnel_sweep sandbox
 valet_import_check sandbox
 valet_scan_check sandbox
+webview_dialogs_check sandbox
 wire_probe_check stack
 wp_create_serve network
 wp_debug_log_check demo

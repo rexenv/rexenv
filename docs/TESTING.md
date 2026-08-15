@@ -294,6 +294,12 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 
 - `commands/` orchestration honesty (ledger #175, #181–182, #186, #188–190).
 - `webview_dialogs.rs` — zero tests, three stacked wry/WebKit claims (#166).
+  **Closed 15 Aug 2026, and the layer moved during the measuring** — the queued L2
+  check would have tested Playwright's own dialog machinery, not wry's (the subject
+  is absent from that harness), so the proofs landed where the subject lives: an L0
+  against the real ObjC runtime, `webview_dialogs_check` (L1, real `WKWebView`,
+  plant-proven), and SMOKE's drop-table step for the render/eye half.
+  `docs/PLAN-webview-dialog-proofs.md` records the measurement.
 - Frontend honest-UI surface: StatusPill non-running states, StartStopToggle,
   StatusFooter, Tunnels tri-state — the WKWebView pill-metrics fix was verified once by
   hand and never committed as a check. **Both halves of this bullet have since been
@@ -325,7 +331,8 @@ testing backlog, worked highest-risk first:
 4. login-autostart "never download / never prompt" — untested at any level — L0+L1
 5. wp_login PHP-injection safety inherited, not tested at the injection point — L0
 6. DNS answer-anything justified by an unasserted loopback bind — L0
-7. `webview_dialogs.rs` wry/WebKit claims — L2
+7. `webview_dialogs.rs` wry/WebKit claims — L2 *(measured 15 Aug 2026: L2 cannot
+   see the subject; closed at L0+L1+SMOKE instead — see #166)*
 
 Ledger discipline: a new "must never / always / is safe because" comment adds a row in
 the same commit. A proof-commit flips the verdict and names the proof. That keeps the
@@ -515,5 +522,6 @@ commit lands standalone value.
 Backlog after T13 (ledger-driven, next sessions): tunnel second-Host negative (#10),
 CF-header discriminator probes (#2/#33), manifest HEAD+digest sweep, Bedrock live
 provision, fpm candidate isolation (#104), sandbox adoption cohorts (§4.4),
-`webview_dialogs` L2 coverage (#166), import-graph lint (#163), rusqlite-outside-state
+~~`webview_dialogs` L2 coverage (#166)~~ (closed 15 Aug 2026 at L0+L1+SMOKE — the L2
+shape was measured impossible), import-graph lint (#163), rusqlite-outside-state
 guard (#167).

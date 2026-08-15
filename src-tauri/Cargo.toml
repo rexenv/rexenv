@@ -66,3 +66,9 @@ objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKUIDelegate", "obj
 # MockRuntime app for cli_server tests + the cli_socket_check example — lets us
 # exercise the real command dispatch without a GUI event loop.
 tauri = { version = "2.11.3", features = ["test"] }
+# webview_dialogs_check builds a REAL WKWebView + a wry-shaped stub delegate to
+# prove the panel installation mechanics (ledger #166 leg B). Same versions as
+# [dependencies]; WKWebViewConfiguration is the one extra feature it needs.
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSGeometry"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "WKUIDelegate", "WKWebViewConfiguration", "objc2-app-kit"] }

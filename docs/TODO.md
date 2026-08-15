@@ -678,7 +678,10 @@ first:
   `download_progress_check`'s bin-cache delete off the REAL shared cache
   (surface-coverage finding 29 Jul: the sandbox invariant is structural for only
   ~20 of 109 examples, and this one deletes a real content-addressed entry),
-  `webview_dialogs` L2 (#166), import-graph lint (#163), rusqlite-outside-state
+  ~~`webview_dialogs` L2 (#166)~~ (closed 15 Aug 2026 — the L2 shape was measured
+  impossible before building, which was the queued instruction; legs landed at
+  L0+L1, eye-half in SMOKE; `docs/PLAN-webview-dialog-proofs.md`),
+  import-graph lint (#163), rusqlite-outside-state
   guard (#167 — must scan SQL-STRING content, not just the `rusqlite` import, or
   it repeats the surface-coverage shape; see "Defect families" in the ledger).
 
