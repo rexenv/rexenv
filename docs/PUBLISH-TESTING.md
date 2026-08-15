@@ -293,11 +293,36 @@ at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
 7. Take it over again, then this time run **Settings → Remove system changes**. Verify the
    same restore happened as part of the single privileged prompt.
 8. **Drift:** take it over, then run `valet install` (or relaunch Herd) so they reclaim the
-   file. Restart rexenv → expect the startup **log** to warn naming the TLD (`lib.rs`
-   `log::warn`); there is **no on-launch UI toast/banner** — the drift shows in the UI only
-   on `/import` and Settings → DNS & SSL, and `rex doctor` reports it under `resolverDrift`.
+   file. Restart rexenv. This step CHANGED on 15 Aug 2026 — it used to end "there is **no
+   on-launch UI toast/banner**", which was true when written and is now the opposite of
+   what must happen. A reviewer holding the old sentence would read the banner as a bug.
+   Expect ALL FOUR surfaces, and check them in this order:
+   - a) the **Sites banner** (ledger #334) — headline naming the SYMPTOM ("Your `.test`
+     sites stopped resolving"), body naming Valet or Herd, and the way back ("You can
+     take it back from Import"). Not a toast: it stays.
+   - b) **Dismiss it, then reload the app.** It stays dismissed. Dismissal is **per-TLD**:
+     if a second TLD is also drifted, dismissing one must not hide the other.
+   - c) **Take that TLD back** (step 6's hand-back, then re-take it) so it reads as ours
+     again, then lose it again → the banner **RE-SHOWS** despite the earlier dismissal.
+     The dismissal set self-heals against the live answer; a dismissal that outlived the
+     condition would silence the next real loss.
+   - d) `rex doctor` → a **`Resolvers`** line that NAMES the TLDs, counts toward findings,
+     and makes the **exit code non-zero** (a reclaimed TLD is a failure, not a warning —
+     the sites are dark while DNS still reads ✓ on :15353). Also still the startup
+     `log::warn`, `/import`, and Settings → DNS & SSL.
+   **Tell:** `rex doctor` printing `Resolvers ✓` or omitting the line. Against an app whose
+   payload predates the field it must read **⚠ unknown**, never ✓ — an absent field
+   collapsing into "empty" is a question nobody asked reporting a confident pass.
+
    Then remove system changes and verify we left THEIR file alone and dropped our record +
    backup.
+
+8b. **The zero-render control, and it belongs to every machine — run it even if you skip
+   the rest of §F.** With NO drifted TLD (the ordinary state on any machine), the Sites
+   route must render **no banner at all** and `rex doctor` must read `Resolvers ✓` with a
+   zero exit. Nothing-taken-back is normal and must never grow a notice (#306's rule).
+   **Tell:** a banner, an empty banner frame, or a doctor finding on a healthy machine —
+   inventing a problem out of normality is the import bug in a new place.
 9. **Backup-missing path:** take it over, delete `<app-data>/resolver-backups/test` by
    hand, then remove system changes. Expect our file removed and an honest message saying
    the backup was gone and to run `valet install`.

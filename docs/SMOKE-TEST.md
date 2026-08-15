@@ -11,6 +11,21 @@ Environment: macOS ____  ·  Intel / Apple Silicon ____  ·  rexenv version ____
 - [ ] First launch via **right-click → Open** (or Privacy & Security → Open Anyway); app opens, no "damaged".
 - [ ] Subsequent launches open with a normal double-click.
 
+## Onboarding — the :443 notice, and the silence that matters more
+Onboarding runs BEFORE any service starts, so "is what answers :443 ours?" is
+false on every clean first run. The rule is: **Foreign warns, NoAnswer says
+nothing.** The silent case is the one that ships to everybody.
+- [ ] **Clean Mac, nothing on :443 → NO warning anywhere in onboarding**, and it
+  never blocks. This is the ordinary state; reporting it would invent a problem
+  out of normality. **Tell:** any foreign-proxy notice on a machine with a free
+  port — that would have shown to every user alive.
+- [ ] **Only if you can arrange it** (start Herd, or any other proxy on :443,
+  before first launch): the LAST onboarding step shows a notice, directly under
+  the sentence promising rexenv "will serve it instantly" — the one claim a
+  foreign proxy makes false. It **warns and does not block**: you can finish
+  onboarding. Someone trying rexenv with Herd running is in a deliberate state,
+  not a broken one.
+
 ## Cold first run (downloads + system setup) — also exercises §2.4
 - [ ] On first use the app downloads its components (PHP, Nginx, MySQL, Caddy, WP-CLI…) with visible progress.
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
@@ -152,6 +167,68 @@ WKWebView, the real login-shell env (your nvm/ssh-agent), and a real remote.
 
 ## Site Settings tab
 - [ ] Site → **Settings** shows real content: rename sticks (Sites list updates), DB name matches Adminer, cert card shows issued/expires dates + SANs.
+
+## PHP 7.4 — the one leg no automated tier covers
+**Moved here 15 Aug 2026 from the MCP section, where it was step "11b".** The
+pools, the binary, the download and the generated config are all proven by
+examples; **a 7.4 site answering over HTTPS end to end is not**, and it was the
+only proof of that — sitting inside "M2b — the PHP matrix and mail", four HOLD
+steps deep in an optional section a reviewer skips whenever MCP is off. A gate
+that only runs when an unrelated feature is enabled is not a gate for this one.
+- [ ] **A PHP 7.4 site actually serves.** Settings → PHP versions → install
+  **7.4**, then create a WordPress site on it and open it. Expect: the site
+  loads over HTTPS, `phpinfo()`/Site Health reports **7.4.33**, and WordPress
+  shows its own "outdated PHP" notice — **which rexenv should already have
+  warned about** in the create dialog and on the site's Environment card. That
+  warning arriving FIRST is the thing being tested; WordPress saying it first
+  reads as a rexenv bug.
+  **Tells:** the site serves but reports 8.x (it landed on the wrong pool — the
+  7.4 pool is **9774**, below the 8.x block, not 9779); no EOL warning anywhere
+  (the honest-UI promise, ledger #322); the Xdebug toggle offered on 7.4 (it
+  must not be — that build cannot dlopen, ledger #320/#321).
+- [ ] **WP-CLI and Composer run on it.** In that site's terminal: `wp core
+  version` and `composer --version`. Both are **phars run through the SITE's
+  PHP**, and both have broken on this row before — the first 7.4 build shipped
+  without `phar` (every WordPress action died `Class 'Phar' not found`) and the
+  second died on `Allocation of JIT memory failed`. Both were invisible to CI
+  and visible only on a real Mac, which is why they are a hand step.
+
+## FrankenPHP × the PHP version — the picker and the refusal (15 Aug 2026)
+FrankenPHP serves every site with **its own embedded PHP**, never the site's
+php-fpm pool. Two behaviours shipped together and they are deliberately
+different: at 8.x the mismatch is annotated, at 7.4 it is refused. Nothing
+automated covers the rendered state (ledger #333 is filed 🔨 at L2 — no wk-check
+asserts a disabled control), so this is the only place it is seen.
+- [ ] **The annotated picker.** Switch an 8.1 site to **FrankenPHP**, then open its
+  Environment card. The PHP select is **disabled**, reads `8.5 — FrankenPHP's
+  embedded PHP` (whatever the pin says — it comes from `frankenphp_embedded_php`,
+  one backend constant, so a second copy cannot drift), and carries the sentence
+  *"Fixed by FrankenPHP. Switch the web server to Nginx or Apache to choose a
+  version."*
+  **Tells:** the select still offers 8.1 and pretends switching works (the old
+  silent-skew bug — the site is served by 8.5 while the UI says 8.1); or the card
+  hardcodes a version rather than reading the backend's.
+- [ ] **Switch it back to Nginx** → the stored version RE-APPLIES: the picker is
+  live again and reads **8.1**, not 8.5. FrankenPHP never overwrote the row.
+- [ ] **⚠ The 7.4 refusal, at all THREE doors** (#326). A major mismatch is not
+  skew — the removals PHP 8.0 made are the whole reason a site is pinned to 7.4,
+  so "silently served by 8.5" means silently broken. Each must refuse:
+  1. **Create** a site with PHP 7.4 **and** FrankenPHP selected.
+  2. Take an existing **7.4 site** and switch its **server** to FrankenPHP.
+  3. Take an existing **FrankenPHP site** and switch its **PHP** to 7.4.
+  **Tells:** any one of the three going through (covering only the two obvious
+  doors is exactly the partial-surface shape this repo keeps paying for); or a
+  refusal naming a hardcoded version instead of the majors it compared.
+
+## Apache override — the per-site files go on delete AND on rename
+- [ ] Create a site, switch it to **Apache**, then **rename** it. In
+  `<app-data>/config/` and `<app-data>/logs/`, `apache-<OLD-domain>.conf` and
+  `apache-<OLD-domain>-stdout.log` must be **gone**. Then **delete** the site and
+  check the new names are gone too.
+  **Why it is worth a step:** these outlived every delete and every rename for as
+  long as the Apache override has existed. Nothing broke — it is app-data litter,
+  never a user's own files — which is precisely why nobody noticed. A check that
+  only ran on delete would still pass while rename leaked.
 
 ## WordPress Manager
 - [ ] Plugins tab lists plugins; install + activate a plugin works.
@@ -317,6 +394,33 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 - [ ] Theme switch Dark ↔ Light ↔ System re-skins the app correctly.
 - [ ] DNS & SSL shows Running + Resolver; "Make default" moves the default PHP version.
 - [ ] "Start rexenv on login" toggles (LaunchAgent created/removed).
+- [ ] **PHP versions list shows SEVEN rows, 7.4 first** (7.4, 8.0–8.5). 7.4 and 8.0
+  carry an **EOL** chip with the date; 8.1's says Dec 2025. Neither 7.4 nor 8.0
+  offers the Xdebug toggle. **Tell:** six rows — that is the app running against a
+  build that predates 7.4.
+- [ ] **Sites folder: refused, never quietly cleaned** (15 Aug 2026). Settings →
+  the sites folder. Type a path containing a `"` (e.g. `~/My "Sites"`), and a
+  **relative** path. Both must be **REFUSED with a message** — not accepted, and
+  not silently corrected. Then confirm a path with **spaces, an apostrophe or
+  unicode is ACCEPTED**: the rule is "what a generated config cannot carry", not
+  "anything unusual".
+  **Tell:** `~/My "Sites"` being accepted as `~/My Sites`. That is a wrong answer
+  delivered as a success — the folder becomes a docroot and goes into quoted Caddy
+  and nginx directives, where the stray quote ends the string and the tail becomes
+  config. Your existing folder setting must be untouched throughout (validation is
+  on the write path only, so a value that predates the rule is left alone).
+- [ ] **WP-CLI command pin — the standing tell.** Settings shows a card saying the
+  wp-cli command set is pinned and NAMING the packages in `~/.wp-cli/packages` it
+  therefore excludes. On a machine with no such packages it must claim **none** —
+  never "the 0 packages in …", which is a confident wrong answer rather than a
+  degraded one. **Tell:** a count guessed rather than read from that directory's
+  own `composer.json` `require`.
+- [ ] **WP-CLI command pin — at the failure moment.** With a global wp-cli package
+  installed (`wp package install <something>`), run one of its commands from the
+  site's terminal. Expect WP-CLI's **own** `not a registered wp command` line
+  intact, with the explanation **appended after it** — never replacing it. The
+  upstream line is the string a user pastes into a search box; a friendlier message
+  that swallowed it would cost them the one thing that finds an answer.
 
 ## AI agents (MCP) — opt-in endpoint (ships only if this passes)
 **Covers M1 (1–5), M2a (6–11) and M2b (12–14).** HOLDs: 4, 8, 11, 14.
@@ -405,17 +509,10 @@ YOUR OWN sites in the list. Keep the Sites page visible.
 Steps 6–11 gate what an agent can CREATE and RUN. These two surfaces are
 different: one refuses rather than guessing, and the other is the second place a
 user consents to something. Keep a scratch site from step 6 alive for these.
-- [ ] **11b. A PHP 7.4 site actually serves.** Settings → PHP versions → install
-  **7.4**, then create a WordPress site on it and open it. Expect: the site loads,
-  `phpinfo()`/Site Health reports **7.4.33**, and WordPress shows its own
-  "outdated PHP" notice — **which rexenv should already have warned about** in the
-  create dialog and on the site's Environment card. That warning arriving first is
-  the thing being tested; WordPress saying it first reads as a rexenv bug.
-  **Tells:** the site serves but reports 8.x (it landed on the wrong pool);
-  no EOL warning anywhere (the honest-UI promise, ledger #322); the Xdebug toggle
-  is offered on 7.4 (it must not be — 7.4's build cannot dlopen, ledger #320/#321).
-  This is the ONE leg no automated tier covers: the pools, the binary and the
-  generated config are all proven, a served page is not.
+*(Step 11b — "a PHP 7.4 site actually serves" — **moved out of this section** to
+"PHP 7.4 — the one leg no automated tier covers" above. It is not an MCP
+behaviour and it was the only proof that a 7.4 site serves at all; leaving it
+here meant it ran only when MCP was enabled. Run it there, before this section.)*
 - [ ] **12. PHP, refused by name.** Ask: *"switch that scratch site to PHP 7.2."*
   → REFUSED, and the refusal must **name the versions rexenv does have**. Ask for
   whatever `php::unshipped_minor()` currently returns if 7.2 ever ships — this step
