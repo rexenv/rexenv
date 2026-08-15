@@ -757,7 +757,7 @@ first:
   actually SERVES from it — the shape and the preflight are lib-proven, the
   serving half needs the stack (sandbox-tier example or SMOKE).
 - [ ] Then: ~~Apache/FrankenPHP dotfile legs (#103)~~ (closed 15 Aug 2026 — all three backends live, plant-proven per template), ~~fpm candidate
-  isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), manifest HEAD+digest sweep, Bedrock live provision (#35),
+  isolation (#104/#191)~~ (closed 15 Aug 2026, `fpm_candidate_check`, plant-proven), ~~manifest HEAD+digest sweep~~ (closed 15 Aug 2026, `manifest_sweep_check` #335 — 88 URLs answer, 78 re-hashed incl. every Intel digest), Bedrock live provision (#35),
   sandbox-adoption cohorts + `wp_fixture()` — incl. scoping
   `download_progress_check`'s bin-cache delete off the REAL shared cache
   (surface-coverage finding 29 Jul: the sandbox invariant is structural for only

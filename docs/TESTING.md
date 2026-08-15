@@ -266,6 +266,9 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 - **Manifest tests named as if they fetch** (`core/binaries.rs` — 18 tests):
   `every_offered_db_version_is_pinned_and_resolves` — "resolves" means a HashMap lookup.
   No fetch proof at all for cloudflared, composer, non-default DB versions.
+  **Closed 15 Aug 2026** (`manifest_sweep_check`, network tier, #335): every pin
+  HEAD-probed on both arches and everything under the size cap re-hashed against
+  its digest — including the Intel pins that were hashed once and never re-run.
 - **SQL text under `sql_mode`** (`dbmirror.rs:282`): backslash-escape assertions that
   change meaning under `NO_BACKSLASH_ESCAPES`; the live restore example is the real
   proof.
@@ -448,8 +451,9 @@ Workstreams, in order:
 5. **New examples the gaps demand** (from the ledger and §3.4): dump-flag acceptance
    matrix per bundled vendor+version; MariaDB-client-vs-MySQL8 negative auth; confedit/
    confrewrite output through real `php -l`; Bedrock live provision; dotfile-guard live
-   404 (all three templates); fpm candidate-vs-live `-t` isolation; tunnel second-Host
-   negative probe; manifest HEAD+digest sweep (network tier).
+   404 (all three templates — landed 15 Aug 2026); fpm candidate-vs-live `-t`
+   isolation (landed 15 Aug 2026); tunnel second-Host negative probe; manifest
+   HEAD+digest sweep (network tier — landed 15 Aug 2026, #335).
 
 **What moves down from manual:** the frankenphp validate step (was: human pipes
 output), fpm reload isolation, dotfile 404s, Bedrock login flow, dump-tool flags —
@@ -529,7 +533,8 @@ commit lands standalone value.
 - **T13** SMOKE-TEST/PUBLISH-TESTING additions from §5 + ledger re-tally.
 
 Backlog after T13 (ledger-driven, next sessions): tunnel second-Host negative (#10),
-CF-header discriminator probes (#2/#33), manifest HEAD+digest sweep, Bedrock live
+CF-header discriminator probes (#2/#33), ~~manifest HEAD+digest sweep~~ (closed
+15 Aug 2026, #335), Bedrock live
 provision, ~~fpm candidate isolation (#104)~~ (closed 15 Aug 2026), sandbox adoption cohorts (§4.4),
 ~~`webview_dialogs` L2 coverage (#166)~~ (closed 15 Aug 2026 at L0+L1+SMOKE — the L2
 shape was measured impossible), ~~import-graph lint (#163)~~ (closed 15 Aug 2026), rusqlite-outside-state

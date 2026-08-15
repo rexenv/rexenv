@@ -118,6 +118,7 @@ mail_adopt_settings_check system
 mail_api_check service
 mail_route_check service
 mailpit_check service
+manifest_sweep_check network
 mariadb_bundle_check network
 mariadb_site_check network
 mcp_control_check sandbox
