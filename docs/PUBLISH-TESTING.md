@@ -82,7 +82,7 @@ count in **each** slice separately. A zero on either side is a HOLD — do not r
 is only as complete as its list of payloads, and a payload nobody added is the
 one that ships in one slice.
 
-## A) 🚧 0.2.0 — §A0 ✅ PASSED, §A **NOT RUN** (yours; it needs a GUI)
+## A) 🚧 0.2.0 — §A0 ✅ PASSED, §A ATTEMPTED AND **VOID** (re-run on a clean account)
 
 **0.2.0 candidate (2026-08-16).** `rexenv_0.2.0_universal.dmg`, sha256
 `bd019d8d5a9333908986575c1608c75f2d85a7246f7557e0d82566b95601e973`, 23,411,247
@@ -110,11 +110,21 @@ and `rexenv_0.2.0_universal.dmg.sha256`, whose digest was re-checked against the
 dmg with `shasum -c` before upload). A draft is invisible to `brew` and to the
 tap's `update-cask.yml` poller, so nothing reaches a user until it is published.
 
-**§A 🚧 NOT RUN — it is the human gate and cannot be automated.** Quarantine the
-dmg, confirm Gatekeeper BLOCKS it, `xattr -rd`, confirm it launches. Publishing IS
-the §A sign-off; that rule does not relax for this release. **Do not press Publish
-before §A passes** — on this flow the button is the signature, and the cask starts
-tracking the release within 15 minutes of it.
+**§A 🚧 ATTEMPTED 16 Aug 2026 AND VOID — NOT a pass.** Run on the developer's own
+login, the app launched **without** Gatekeeper blocking it. That is not a failure of
+the artefact: `spctl` rejects the signature, assessments are enabled, the synthetic
+quarantine flag matches a real browser download, and `cp -R` propagates it. It is a
+failure of the INSTRUMENT — that account had already approved rexenv repeatedly and
+`/Applications/rexenv.app` already existed, so the copy landed over a bundle the
+account already trusted. A first-launch test on a machine that knows the app cannot
+fail, so its green means nothing and is recorded as void rather than as a pass.
+
+**Re-run required before publishing**, per the boxed note in §A-orig: delete
+`/Applications/rexenv.app` first, download through a **browser** (not `curl` — it
+sets no quarantine), install by Finder drag, and do it on the clean account or a
+fresh user. Publishing IS the §A sign-off; that rule does not relax for this
+release. **Do not press Publish before a valid §A** — on this flow the button is the
+signature, and the cask starts tracking the release within 15 minutes of it.
 
 ## A-prev) ✅ PASSED for 0.1.1 (and 0.1.0) — Apple-Silicon ad-hoc launch test
 
@@ -208,9 +218,42 @@ open /Applications/rexenv.app                            # EXPECT: it launches
 ```
 
 **Expected:** blocked while quarantined → **launches after `xattr -rd`**.
-(If step 1's synthetic xattr doesn't trip Gatekeeper on your macOS, the definitive test is
-to `curl -LO` the dmg from any URL — a genuine download applies the quarantine for sure;
-that's also the exact tap-user path once it's on GitHub Releases, i.e. section D.)
+
+> ### ⚠ This script cannot produce a trustworthy result on a machine that already knows the app (16 Aug 2026)
+>
+> Run on the developer's own account during 0.2.0, it **did not block** — and the
+> measurements say the setup was fine, which is what makes this worth writing down
+> rather than retrying:
+>
+> - `spctl --assess --type execute` on the installed app → **`rejected`**, and
+>   `spctl --status` → **assessments enabled**. Gatekeeper does refuse this
+>   signature; there is nothing wrong with the artefact.
+> - The synthetic flag `0083` is **exactly what a real Chrome download carries** on
+>   that machine (114 files in `~/Downloads` have it). The value is not the problem.
+> - `cp -R` from the mounted quarantined dmg **does** propagate quarantine
+>   (`0283;…`), so step 2 works.
+>
+> So the artefact is blockable and the setup is faithful, yet no block appeared. The
+> difference is the ACCOUNT: that login has approved rexenv many times, and
+> `/Applications/rexenv.app` already existed — `cp -R` copies **over** it rather than
+> replacing it. A first-launch test on an account that already knows the app is a
+> test that cannot fail, which is the vacuous-green shape this repo keeps finding.
+>
+> **Two fixes to the procedure, both required:**
+> 1. **`rm -rf /Applications/rexenv.app` before copying.** Copying over an existing
+>    bundle leaves a hybrid whose approval state is not the new build's.
+> 2. **Run it on the clean account** (`rexenv-tester-1`, the fixture §D already
+>    uses), or a fresh macOS user, or a VM. The dev login cannot answer this
+>    question about itself.
+>
+> **And delete the old advice, which was measurably wrong:** this note used to say
+> that if the synthetic xattr doesn't trip Gatekeeper, "the definitive test is to
+> `curl -LO` the dmg from any URL — a genuine download applies the quarantine for
+> sure." **`curl` applies no quarantine at all** — measured 16 Aug 2026, no
+> `com.apple.quarantine` on the fetched file. Quarantine is set by the *downloading
+> application*, so the definitive path is a **browser** download (which is also the
+> real tap-user path, §D). Following the old sentence would have produced a second
+> no-op and read as a second pass.
 
 **If it launches:** the tap is real — announce it. **If it's rejected even after `xattr
 -rd`:** stop and tell me; the ad-hoc approach won't work and we reconsider (signing /
@@ -877,7 +920,7 @@ Result: ____ (date, reqwest version).
 | # | Check | Status |
 |---|---|---|
 | A0 | Artefact integrity, per slice — **0.2.0 `bd019d8d…`** | ✅ passed 16 Aug 2026 (by hand; CI does not run while the repo is private) |
-| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | 🚧 **publish-blocking; publishing IS the sign-off** |
+| A | Apple-Silicon ad-hoc launch (de-quarantine → launches) — **on the 0.2.0 dmg `bd019d8d…`** | 🚧 **publish-blocking.** Attempted 16 Aug on the dev login and VOID — no block appeared because that account already trusted the app. Re-run on the clean account, browser download, `/Applications/rexenv.app` deleted first |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
 | D | Full tap install dry-run (after Release + tap push) | 🚧 do once the dmg is released |
