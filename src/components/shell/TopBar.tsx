@@ -34,7 +34,7 @@ export function TopBar({
           {title}
         </div>
         {subtitle && (
-          <div className="mt-[3px] font-mono text-[0.6875rem] text-rex-text-dim">
+          <div className="mt-[3px] font-mono text-[0.6875rem] text-rex-text-muted">
             {subtitle}
           </div>
         )}

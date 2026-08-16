@@ -55,8 +55,6 @@
   --rex-text-bright: #c7cbd4;
   --rex-text-muted: #8a90a0;
   --rex-text-dim: #6e7681;
-  --rex-text-faint: #5f6675;
-  --rex-text-label: #525a68; /* mono section labels */
   --rex-placeholder: #4f5663; /* unbuilt-screen placeholder icon/label */
   --rex-placeholder-hint: #5a6170; /* unbuilt-screen placeholder hint */
   --rex-lock-secure: #7e8492; /* SSL: trusted (closed lock, neutral) */
@@ -232,8 +230,6 @@
   --rex-text-bright: #0c0e13;
   --rex-text-muted: #5a6170;
   --rex-text-dim: #767d8a;
-  --rex-text-faint: #8b919d;
-  --rex-text-label: #6d7482; /* mono section labels (darker: small type needs AA) */
   --rex-text-value: #3d4453; /* neutral value text in detail/summary rows */
   --rex-text-hero: #17131f; /* display headings on the onboarding hero */
   --rex-link: #17618f; /* mono URL links */
@@ -259,7 +255,7 @@
   --rex-warning-bright: #8a5d00;
 
   /* ── Accent hues (darkened for AA chip/badge text on light) ── */
-  --rex-accent-blue: #2e6f94;
+  --rex-accent-blue: #2e6e93; /* 1% darker than the comp: #2e6f94 read 4.49:1 on surface-3, one hundredth under AA (#337) */
   --rex-accent-red: #bb3f38;
   --rex-accent-periwinkle: #5a5fae;
   --rex-accent-teal: #177a66;

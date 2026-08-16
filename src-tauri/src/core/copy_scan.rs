@@ -383,7 +383,50 @@ const LINK = "https://example.test/a//b";
     /// stripper, because a guard that reads its own explanation is the defect
     /// this module exists for.
     fn used_rex_classes(prefix: &str) -> Vec<(String, String, usize)> {
-        fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<(String, String, usize)>) {
+        used_rex_classes_classified(prefix).into_iter().map(|(n, f, l, _)| (n, f, l)).collect()
+    }
+
+    /// Whether the `className` at `lines[i]` sits on an ICON rather than on text.
+    ///
+    /// An icon is a capitalised JSX component (lucide) carrying a size or stroke
+    /// hint. The `className` is often on its own line, so the opening tag is
+    /// found by walking BACK — a same-line-only test would classify every
+    /// multi-line element as text and quietly stop exempting anything.
+    fn sits_on_an_icon(lines: &[&str], i: usize) -> bool {
+        let mut tag = "";
+        for j in (i.saturating_sub(12)..=i).rev() {
+            if let Some(k) = lines[j].rfind('<') {
+                let rest = &lines[j][k + 1..];
+                let end = rest
+                    .find(|c: char| !c.is_ascii_alphanumeric() && c != '.')
+                    .unwrap_or(rest.len());
+                if end > 0 {
+                    tag = &rest[..end];
+                    break;
+                }
+            }
+        }
+        if !tag.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            return false;
+        }
+        let lo = i.saturating_sub(2);
+        // Normalise `"` and `=` to spaces BEFORE tokenising. Without this the
+        // first class in an attribute arrives glued to it — `className="h-3.5`
+        // does not start with `h-` — and `Mail.tsx`'s <Globe/>, the one icon
+        // with no `strokeWidth`, was classified as text. It cost a failing plant
+        // to find, which is the argument for planting rather than eyeballing.
+        let ctx: String = lines[lo..(i + 2).min(lines.len())]
+            .join(" ")
+            .replace(['"', '='], " ");
+        let sized = |p: &str| {
+            ctx.split_whitespace()
+                .any(|w| w.starts_with(p) && w.len() <= 7 && w[p.len()..].starts_with(|c: char| c.is_ascii_digit() || c == '['))
+        };
+        ctx.contains("strokeWidth") || (sized("h-") && sized("w-"))
+    }
+
+    fn used_rex_classes_classified(prefix: &str) -> Vec<(String, String, usize, bool)> {
+        fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<(String, String, usize, bool)>) {
             let Ok(entries) = std::fs::read_dir(dir) else { return };
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -396,7 +439,9 @@ const LINK = "https://example.test/a//b";
                     continue;
                 }
                 let Ok(raw) = std::fs::read_to_string(&path) else { continue };
-                for (n, line) in strip_ts_comments(&raw).lines().enumerate() {
+                let stripped = strip_ts_comments(&raw);
+                let all: Vec<&str> = stripped.lines().collect();
+                for (n, &line) in all.iter().enumerate() {
                     let mut rest = line;
                     while let Some(i) = rest.find(prefix) {
                         // Must start at a class boundary, or `hover:bg-rex-x`
@@ -409,7 +454,8 @@ const LINK = "https://example.test/a//b";
                             .unwrap_or(rest.len());
                         let name = rest[..end].trim_end_matches('-').to_string();
                         if ok && !name.is_empty() {
-                            out.push((name, path.display().to_string(), n + 1));
+                            let icon = sits_on_an_icon(&all, n);
+                            out.push((name, path.display().to_string(), n + 1, icon));
                         }
                     }
                 }
@@ -421,6 +467,37 @@ const LINK = "https://example.test/a//b";
             .join("src");
         let mut out = Vec::new();
         walk(&root, prefix, &mut out);
+        out
+    }
+
+    /// Token names used as a text colour in RAW CSS (`color: var(--rex-x)`),
+    /// which Tailwind never sees. Kept deliberately narrow — `color:` only, in
+    /// `src/styles` — because a broader sweep would start guessing at what is
+    /// text.
+    fn raw_css_text_tokens() -> Vec<String> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .join("src/styles");
+        let mut out = Vec::new();
+        let Ok(entries) = std::fs::read_dir(&dir) else { return out };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("css") {
+                continue;
+            }
+            let Ok(css) = std::fs::read_to_string(&path) else { continue };
+            for line in css.lines() {
+                let t = line.trim();
+                if let Some(rest) = t.strip_prefix("color:") {
+                    if let Some(v) = rest.trim().strip_prefix("var(--rex-") {
+                        if let Some(name) = v.split(')').next() {
+                            out.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
         out
     }
 
@@ -529,75 +606,47 @@ const LINK = "https://example.test/a//b";
             // colour in two places AND a tab LABEL in SiteDetail.tsx at 13.5px,
             // so the text threshold applies to it and exempting by token name
             // would have quietly covered the label too.
-            Exempt { text: "accent-teal", surface: "*", why: "icon-only (Onboarding Shield/Globe); WCAG 1.4.11 non-text is 3:1 and it clears 4.27:1" },
+            // NOTE: there is no icon exemption here any more. `accent-teal` and
+            // `text-dim` had one BY NAME, and a plant walked through it — moving
+            // `text-rex-text-dim` onto a <span> kept the exemption and the guard
+            // stayed green. Icons are now excluded STRUCTURALLY, where the class
+            // is read, so the exemption cannot outlive the fact it rests on.
         ];
 
-        let text_tokens: std::collections::BTreeSet<String> =
-            used_rex_classes("text-rex-").into_iter().map(|(n, _, _)| n).collect();
+        // Only tokens used on something that is NOT an icon. This is the
+        // exemption, and it is STRUCTURAL rather than declared: a token used
+        // solely on lucide glyphs never enters the set, and the day one lands on
+        // a <span> it does. The first version exempted `text-dim` BY NAME and a
+        // plant walked straight through it — a class moved onto real text stayed
+        // exempt because the exemption trusted a label instead of checking the
+        // thing. Same family as every other guard-covers-claimed-surface row here.
+        let mut text_tokens: std::collections::BTreeSet<String> =
+            used_rex_classes_classified("text-rex-")
+                .into_iter()
+                .filter(|(_, _, _, icon)| !icon)
+                .map(|(n, _, _, _)| n)
+                .collect();
+        // ...plus text colours set in RAW CSS rather than through Tailwind.
+        // This was a hole and it was load-bearing: `globals.css` styled EVERY
+        // input's `::placeholder` with `--rex-text-faint` — the app's most
+        // widespread piece of text, at 2.58-3.35:1 — and a Tailwind-only scan
+        // could not see it. A selector like `::placeholder` can sit on any
+        // surface, so it is checked against all of them, which is the same
+        // over-approximation the cross-product already makes.
+        for name in raw_css_text_tokens() {
+            text_tokens.insert(name);
+        }
         let bg_tokens: std::collections::BTreeSet<String> =
             used_rex_classes("bg-rex-").into_iter().map(|(n, _, _)| n).collect();
         assert!(!text_tokens.is_empty() && !bg_tokens.is_empty(), "no classes found — the walk is broken");
 
-        /// Pairings that fail TODAY, recorded so the gate can be live while the
-        /// fix is scoped — `(theme, text token, surface token)`.
-        ///
-        /// **This is a debt list, not an exemption list, and the difference is
-        /// enforced below:** the failing set must equal this EXACTLY. A new
-        /// failure is red, and so is a pairing that starts passing — because a
-        /// stale debt list is how "we are working on it" turns into "we forgot",
-        /// and making progress edit this file is what keeps the number honest.
-        ///
-        /// Every entry here is a real WCAG AA failure a user is looking at right
-        /// now. Ledger #337 stays 🔨 until this list is EMPTY; the plan for
-        /// emptying it is in `docs/TODO.md`, and the short version is that
-        /// `text-dim`, `text-faint` and `text-label` cannot all be lightened to
-        /// pass without collapsing onto `text-muted`, so the work is deciding
-        /// which of their consumers are text and which are ornament.
-        const KNOWN_DEBT: &[(&str, &str, &str)] = &[
-            ("dark", "text-dim", "bg"),
-            ("dark", "text-dim", "surface-1"),
-            ("dark", "text-dim", "surface-2"),
-            ("dark", "text-dim", "surface-2-hover"),
-            ("dark", "text-dim", "surface-3"),
-            ("dark", "text-dim", "well"),
-            ("dark", "text-dim", "well-deep"),
-            ("dark", "text-faint", "bg"),
-            ("dark", "text-faint", "surface-1"),
-            ("dark", "text-faint", "surface-2"),
-            ("dark", "text-faint", "surface-2-hover"),
-            ("dark", "text-faint", "surface-3"),
-            ("dark", "text-faint", "well"),
-            ("dark", "text-faint", "well-deep"),
-            ("dark", "text-label", "bg"),
-            ("dark", "text-label", "surface-1"),
-            ("dark", "text-label", "surface-2"),
-            ("dark", "text-label", "surface-2-hover"),
-            ("dark", "text-label", "surface-3"),
-            ("dark", "text-label", "well"),
-            ("dark", "text-label", "well-deep"),
-            ("light", "accent-blue", "surface-3"),
-            ("light", "text-dim", "bg"),
-            ("light", "text-dim", "surface-1"),
-            ("light", "text-dim", "surface-2"),
-            ("light", "text-dim", "surface-2-hover"),
-            ("light", "text-dim", "surface-3"),
-            ("light", "text-dim", "well"),
-            ("light", "text-faint", "bg"),
-            ("light", "text-faint", "surface-1"),
-            ("light", "text-faint", "surface-2"),
-            ("light", "text-faint", "surface-2-hover"),
-            ("light", "text-faint", "surface-3"),
-            ("light", "text-faint", "well"),
-            ("light", "text-label", "bg"),
-            ("light", "text-label", "surface-2"),
-            ("light", "text-label", "surface-2-hover"),
-            ("light", "text-label", "surface-3"),
-            ("light", "text-label", "well"),
-        ];
+        // NO DEBT LIST, and there was one for exactly two commits. It held 39
+        // failing pairs while the fix was scoped, refused to let the number grow,
+        // and then failed on "38 now PASS" — which is what forced the repayment
+        // to be written down instead of absorbed. It was deleted with the debt.
+        // The assertion below is the permanent one: no pairing under AA, ever.
 
         let mut fails: Vec<String> = Vec::new();
-        let mut failing: std::collections::BTreeSet<(String, String, String)> =
-            std::collections::BTreeSet::new();
         let mut checked = 0usize;
         for t in &text_tokens {
             for b in &bg_tokens {
@@ -609,7 +658,6 @@ const LINK = "https://example.test/a//b";
                     let Some(r) = contrast(tv, bv) else { continue };
                     checked += 1;
                     if r < 4.5 {
-                        failing.insert((theme.to_string(), t.clone(), b.clone()));
                         fails.push(format!("  {theme:<5} text-rex-{t} on bg-rex-{b}  {r:.2}:1  ({tv} on {bv})"));
                     }
                 }
@@ -618,35 +666,15 @@ const LINK = "https://example.test/a//b";
         assert!(checked > 50, "only {checked} pairs computed — the cross-product is not being built");
         fails.sort();
 
-        let debt: std::collections::BTreeSet<(String, String, String)> = KNOWN_DEBT
-            .iter()
-            .map(|(a, b, c)| (a.to_string(), b.to_string(), c.to_string()))
-            .collect();
-        assert_eq!(debt.len(), KNOWN_DEBT.len(), "KNOWN_DEBT has a duplicate row");
-
-        let fresh: Vec<_> = failing.difference(&debt).collect();
         assert!(
-            fresh.is_empty(),
-            "{} NEW text/surface pairing(s) fall below WCAG AA 4.5:1 — these are not in \
-             KNOWN_DEBT, so something got worse. These render at 9.5-10.5px in places, so \
-             AA-large's 3:1 does not apply. Move the consumer to a passing token, or add an \
-             EXEMPT entry WITH A REASON if it is ornament or never composed:\n{:#?}\n\n\
-             (full current failing set:\n{}\n)",
-            fresh.len(),
-            fresh,
+            fails.is_empty(),
+            "{} text/surface pairing(s) fall below WCAG AA 4.5:1 for normal text (of {checked} \
+             computed). Some of these render at 9.5-10.5px, so AA-large's 3:1 does not apply. \
+             Move the consumer to a passing token, or add an EXEMPT entry WITH A REASON if it \
+             is ornament or never composed — and read the call site before writing that reason, \
+             which is how the four existing exemptions were decided:\n{}",
+            fails.len(),
             fails.join("\n")
-        );
-
-        let repaid: Vec<_> = debt.difference(&failing).collect();
-        assert!(
-            repaid.is_empty(),
-            "{} pairing(s) in KNOWN_DEBT now PASS. That is good news and it is still a \
-             failure, on purpose: a debt list nobody removes from stops describing the debt, \
-             and this is the one moment the progress is visible. Delete these rows from \
-             KNOWN_DEBT — and if it is now empty, delete the list, flip ledger #337 to ✅, \
-             and tick the row in docs/TODO.md:\n{:#?}",
-            repaid.len(),
-            repaid
         );
     }
 

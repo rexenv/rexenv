@@ -93,7 +93,7 @@ export function Onboarding() {
         {/* No "Skip setup": skipping lands in an app where no site can load
             (resolver/CA missing) — the same hole the locked Continue closes. */}
         <div className="min-w-[90px]" />
-        <div className="font-mono text-[0.6875rem] text-rex-text-label">{meta.label}</div>
+        <div className="font-mono text-[0.6875rem] text-rex-text-muted">{meta.label}</div>
         <div className="flex min-w-[90px] justify-end">
           <button
             onClick={next}
@@ -225,7 +225,7 @@ function InstallRow({ planned, item }: { planned: PlannedDownload; item?: Downlo
             Retry
           </button>
         ) : (
-          <span className="flex flex-none items-center gap-1 font-mono text-[0.65625rem] uppercase tracking-[0.1em] text-rex-text-dim">
+          <span className="flex flex-none items-center gap-1 font-mono text-[0.65625rem] uppercase tracking-[0.1em] text-rex-text-muted">
             {(phase === "cached" || phase === "done") && (
               <Check className="h-[12px] w-[12px] text-status-running" strokeWidth={2.4} />
             )}
@@ -271,14 +271,14 @@ function Install() {
       />
       <div className="mt-[26px] flex flex-col gap-[10px] text-left">
         {plan === null ? (
-          <div className="py-4 text-center font-mono text-[0.6875rem] text-rex-text-dim">
+          <div className="py-4 text-center font-mono text-[0.6875rem] text-rex-text-muted">
             Checking components…
           </div>
         ) : (
           plan.map((p) => <InstallRow key={p.id} planned={p} item={items.get(p.id)} />)
         )}
       </div>
-      <div className="mt-6 text-center font-mono text-[0.6875rem] text-rex-text-dim">
+      <div className="mt-6 text-center font-mono text-[0.6875rem] text-rex-text-muted">
         {ready ? "All components ready · no system changes" : "Downloads continue in the background · no system changes"}
       </div>
     </div>
@@ -353,7 +353,7 @@ function Domains() {
           >
             {state === "error" ? "Try again" : "Set up domains & SSL"}
           </button>
-          <div className="mt-3 font-mono text-[0.65625rem] text-rex-text-faint">
+          <div className="mt-3 font-mono text-[0.65625rem] text-rex-text-muted">
             macOS will ask for permission (resolver + certificate)
           </div>
           {state === "error" && (

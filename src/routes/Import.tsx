@@ -80,7 +80,7 @@ function statusPill(c: ImportCandidate, outcome?: ImportOutcome) {
     default:
       return {
         label: "can't import",
-        tone: "border-rex-border-strong bg-rex-surface-2 text-rex-text-dim",
+        tone: "border-rex-border-strong bg-rex-surface-2 text-rex-text-muted",
         title: c.status.reason,
       };
   }
@@ -260,7 +260,7 @@ export function Import() {
                   <span className="text-[0.84375rem] font-medium text-rex-text">
                     {s.kind === "herd" ? "Herd" : "Valet"}
                   </span>
-                  <span className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+                  <span className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
                     {s.home}
                   </span>
                 </div>
@@ -269,7 +269,7 @@ export function Import() {
                   {s.parked.length > 0 && ` · ${s.parked.length} parked folder(s)`}
                 </div>
                 {s.notes.map((n) => (
-                  <div key={n} className="mt-1 text-[0.6875rem] text-rex-text-dim">
+                  <div key={n} className="mt-1 text-[0.6875rem] text-rex-text-muted">
                     {n}
                   </div>
                 ))}
@@ -382,12 +382,12 @@ export function Import() {
                           </span>
                         )}
                         {c.alsoIn && (
-                          <span className="flex-none text-[0.625rem] text-rex-text-dim">
+                          <span className="flex-none text-[0.625rem] text-rex-text-muted">
                             also in {c.alsoIn === "herd" ? "Herd" : "Valet"}
                           </span>
                         )}
                       </div>
-                      <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+                      <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
                         {c.servePath ?? c.path ?? "—"}
                         {c.docrootRel ? ` (serving ${c.docrootRel}/)` : ""}
                       </div>
@@ -500,7 +500,7 @@ function ImportProgressCard({
         <Track pct={p.pct} state={running ? "run" : p.stage === "done" ? "ok" : "stopped"} />
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-3">
-        <span className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+        <span className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
           {p.detail ?? (running ? "working…" : "stopped")}
         </span>
         {running && (
@@ -559,7 +559,7 @@ function ResolverConsent({ tld, onDone }: { tld: ResolverTldStatus; onDone: () =
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div>
-          <div className="mb-1 text-[0.625rem] uppercase tracking-wide text-rex-text-dim">
+          <div className="mb-1 text-[0.625rem] uppercase tracking-wide text-rex-text-muted">
             Theirs now
           </div>
           <pre className="overflow-x-auto rounded-md border border-rex-border-strong bg-rex-well px-2.5 py-2 font-mono text-[0.6875rem] text-rex-text">
@@ -567,7 +567,7 @@ function ResolverConsent({ tld, onDone }: { tld: ResolverTldStatus; onDone: () =
           </pre>
         </div>
         <div>
-          <div className="mb-1 text-[0.625rem] uppercase tracking-wide text-rex-text-dim">
+          <div className="mb-1 text-[0.625rem] uppercase tracking-wide text-rex-text-muted">
             rexenv would write
           </div>
           <pre className="overflow-x-auto rounded-md border border-rex-border-strong bg-rex-well px-2.5 py-2 font-mono text-[0.6875rem] text-rex-text">

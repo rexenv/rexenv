@@ -144,7 +144,7 @@ export function WpInstallCard({
         {label}
       </div>
       {running && silentFor >= 10 && (
-        <div className="mt-0.5 font-mono text-[0.625rem] text-rex-text-dim">
+        <div className="mt-0.5 font-mono text-[0.625rem] text-rex-text-muted">
           waiting on wp-cli · no output for {silentFor}s (downloads print nothing until they
           finish — Cancel is safe)
         </div>

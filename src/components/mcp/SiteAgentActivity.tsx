@@ -17,7 +17,7 @@ export function SiteAgentActivity({ siteId }: { siteId: string }) {
   if (rows.length === 0) return null;
   return (
     <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
         Agent activity
       </div>
       <AgentActivityFeed rows={rows} empty="" hideTarget />

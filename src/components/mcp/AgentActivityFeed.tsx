@@ -64,7 +64,7 @@ export function AgentActivityFeed({
   hideTarget?: boolean;
 }) {
   if (rows.length === 0) {
-    return <div className="px-1 py-5 text-center text-[0.75rem] text-rex-text-dim">{empty}</div>;
+    return <div className="px-1 py-5 text-center text-[0.75rem] text-rex-text-muted">{empty}</div>;
   }
   return (
     <div className="flex flex-col">
@@ -86,7 +86,7 @@ export function AgentActivityFeed({
                Two `[a-z0-9-]` tokens, clamped in Rust at the write — it cannot
                carry a separator or impersonate the client slot below. */
             <span
-              className="flex-none font-mono text-[0.6875rem] text-rex-text-dim"
+              className="flex-none font-mono text-[0.6875rem] text-rex-text-muted"
               title={`WP-CLI command and subcommand. Not the full command — arguments (which plugin, which option, what code) are not recorded.`}
             >
               {r.argsSummary}
@@ -100,13 +100,13 @@ export function AgentActivityFeed({
           <span
             className={cn(
               "font-mono text-[0.6875rem]",
-              r.concerning ? "text-status-warning-bright" : "text-rex-text-dim",
+              r.concerning ? "text-status-warning-bright" : "text-rex-text-muted",
             )}
             title={r.detail ?? undefined}
           >
             {OUTCOME_LABEL[r.outcome]}
           </span>
-          <span className="ml-auto flex flex-none items-center gap-1.5 text-[0.6875rem] text-rex-text-dim">
+          <span className="ml-auto flex flex-none items-center gap-1.5 text-[0.6875rem] text-rex-text-muted">
             {r.actor === "rexenv" ? (
               <span
                 className="max-w-[130px] truncate italic"

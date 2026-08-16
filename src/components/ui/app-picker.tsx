@@ -64,7 +64,7 @@ export function AppPicker({
         >
           <span className="flex-1 truncate">
             {c.name}
-            {c.hint && <span className="ml-1.5 text-rex-text-dim">{c.hint}</span>}
+            {c.hint && <span className="ml-1.5 text-rex-text-muted">{c.hint}</span>}
           </span>
           {c.id === current.id && (
             <Check className="h-[13px] w-[13px] flex-none text-brand-tint" strokeWidth={2.2} />

@@ -92,7 +92,7 @@ function SiteMetrics({ res }: { res?: SiteResources }) {
         : "not running";
     return (
       <span
-        className="w-[168px] flex-none truncate text-right font-mono text-[0.65625rem] text-rex-text-dim"
+        className="w-[168px] flex-none truncate text-right font-mono text-[0.65625rem] text-rex-text-muted"
         title="Dedicated FrankenPHP process — real CPU/RAM for this site (plus its DB size)"
       >
         {own}
@@ -103,10 +103,10 @@ function SiteMetrics({ res }: { res?: SiteResources }) {
   const req = res.requestsPerMin ?? 0;
   return (
     <span
-      className="flex w-[168px] flex-none items-center justify-end gap-[6px] font-mono text-[0.65625rem] text-rex-text-dim"
+      className="flex w-[168px] flex-none items-center justify-end gap-[6px] font-mono text-[0.65625rem] text-rex-text-muted"
       title="Shared nginx + PHP pool — a per-site CPU/RAM number doesn't exist here; showing real activity (requests in the last 60s) and DB size instead"
     >
-      <span className="rounded-[5px] border border-rex-border bg-rex-surface-2 px-[5px] py-px text-[0.5625rem] uppercase tracking-[0.08em] text-rex-text-faint">
+      <span className="rounded-[5px] border border-rex-border bg-rex-surface-2 px-[5px] py-px text-[0.5625rem] uppercase tracking-[0.08em] text-rex-text-muted">
         shared
       </span>
       <span className="truncate">
@@ -819,7 +819,7 @@ export function Sites() {
             <div className="text-[0.875rem] font-medium text-rex-text-bright">
               {query ? `No sites match “${query}”` : "No sites in this view"}
             </div>
-            <div className="text-[0.78125rem] text-rex-text-dim">
+            <div className="text-[0.78125rem] text-rex-text-muted">
               Try a different name, domain, or clear the filter.
             </div>
           </div>
@@ -936,11 +936,11 @@ export function Sites() {
 export function ScratchGroupHeading({ count, tight }: { count: number; tight?: boolean }) {
   return (
     <div className={cn("flex items-center gap-2 px-3 pb-1 pt-5", tight && "pt-1")}>
-      <Bot className="h-3.5 w-3.5 flex-none text-rex-text-faint" strokeWidth={1.8} />
+      <Bot className="h-3.5 w-3.5 flex-none text-rex-text-dim" strokeWidth={1.8} />
       <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-[var(--rex-placeholder)]">
         Agent scratch
       </span>
-      <span className="font-mono text-[0.625rem] text-rex-text-faint">{count}</span>
+      <span className="font-mono text-[0.625rem] text-rex-text-muted">{count}</span>
       <span className="min-w-0 truncate text-[0.71875rem] text-rex-text-muted">
         Disposable sites an AI agent created — rexenv deletes them once nothing has used them for a
         while. Keep one to make it yours.

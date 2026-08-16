@@ -13,7 +13,7 @@ import type { Site, TunnelInfo } from "@/types";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mb-[10px] px-0.5 font-mono text-[0.625rem] uppercase tracking-[0.12em] text-rex-text-label">
+    <div className="mb-[10px] px-0.5 font-mono text-[0.625rem] uppercase tracking-[0.12em] text-rex-text-muted">
       {children}
     </div>
   );
@@ -121,7 +121,7 @@ export function Tunnels() {
                   <span className="font-mono">.env</span>) stay blocked.
                 </p>
               </div>
-              <span className="flex-none whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-[9px] py-1 font-mono text-[0.625rem] text-rex-text-dim">
+              <span className="flex-none whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-[9px] py-1 font-mono text-[0.625rem] text-rex-text-muted">
                 via cloudflared
               </span>
             </div>
@@ -201,7 +201,7 @@ function DefaultCredsSummary({ sites }: { sites: Site[] }) {
               </span>
             ))}
           </div>
-          <div className="mt-2 text-[0.71875rem] text-rex-text-dim">
+          <div className="mt-2 text-[0.71875rem] text-rex-text-muted">
             To change one: Site → WordPress → Users → key icon on the admin user.
           </div>
         </div>
@@ -363,7 +363,7 @@ function TunnelCard({
             </div>
           )}
           {/* TODO(backend): request count + uptime aren't tracked on TunnelInfo yet. */}
-          <div className="mt-2 flex items-center justify-between px-0.5 text-[0.6875rem] text-rex-text-dim">
+          <div className="mt-2 flex items-center justify-between px-0.5 text-[0.6875rem] text-rex-text-muted">
             <span>
               {health === "reachable" && "Public link confirmed reachable — checked every 30 s."}
               {health === "unverified" &&

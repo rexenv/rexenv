@@ -463,13 +463,13 @@ function StepDot({ n, label, active, current }: { n: number; label: string; acti
     <span
       className={cn(
         "flex items-center gap-[7px] font-mono text-[0.65625rem]",
-        active ? "text-rex-text-bright" : "text-rex-text-dim",
+        active ? "text-rex-text-bright" : "text-rex-text-muted",
       )}
     >
       <span
         className={cn(
           "flex h-[18px] w-[18px] items-center justify-center rounded-full text-[0.625rem]",
-          current ? "bg-brand text-white" : active ? "bg-brand-tint-bg text-brand-tint" : "bg-rex-surface-3 text-rex-text-dim",
+          current ? "bg-brand text-white" : active ? "bg-brand-tint-bg text-brand-tint" : "bg-rex-surface-3 text-rex-text-muted",
         )}
       >
         {n}
@@ -845,7 +845,7 @@ function Step2(p: {
               onChange={(e) => p.onDomainBase(e.target.value.replace(new RegExp(`\\.${p.tld}$`), ""))}
               className="min-w-0 flex-1 bg-transparent font-mono text-[0.78125rem] text-rex-text outline-none focus-visible:shadow-none"
             />
-            <span className="flex-none font-mono text-[0.78125rem] text-rex-text-dim">.{p.tld}</span>
+            <span className="flex-none font-mono text-[0.78125rem] text-rex-text-muted">.{p.tld}</span>
             {p.domainOk && <Check className="ml-2 h-[15px] w-[15px] flex-none text-status-running" strokeWidth={2} />}
             {p.domainTaken && <XIcon className="ml-2 h-[15px] w-[15px] flex-none text-status-error" strokeWidth={2} />}
           </div>
@@ -913,7 +913,7 @@ function Step2(p: {
 
       {p.isWordpress && (
         <div className="mt-1 flex flex-col gap-[14px] border-t border-rex-border-subtle pt-[15px]">
-          <div className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+          <div className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
             WordPress install
           </div>
           <div className="grid grid-cols-2 gap-[13px]">

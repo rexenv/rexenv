@@ -227,14 +227,14 @@ export function SiteLogs({
                   "rounded-full border px-2 py-0.5 font-mono text-[0.65625rem]",
                   loggingOn
                     ? "border-rex-border text-status-running"
-                    : "border-rex-border text-rex-text-dim",
+                    : "border-rex-border text-rex-text-muted",
                 )}
               >
                 {status.indeterminate ? "can't determine" : loggingOn ? "logging on" : "logging off"}
               </span>
             )}
             {status?.exists && (
-              <span className="font-mono text-[0.65625rem] text-rex-text-dim">
+              <span className="font-mono text-[0.65625rem] text-rex-text-muted">
                 {fmtBytes(status.sizeBytes)}
               </span>
             )}
@@ -312,7 +312,7 @@ export function SiteLogs({
       {pathShown && (
         <div className="border-b border-rex-border-subtle px-3 py-1.5">
           <span
-            className="truncate font-mono text-[0.6875rem] text-rex-text-dim"
+            className="truncate font-mono text-[0.6875rem] text-rex-text-muted"
             title={pathShown}
           >
             {pathShown}
@@ -357,7 +357,7 @@ export function SiteLogs({
           ) : wpLines.length === 0 ? (
             <div className="text-rex-text-muted">The debug log is empty.</div>
           ) : !loggingOn && !status.indeterminate ? (
-            <div className="mb-2 text-rex-text-dim">
+            <div className="mb-2 text-rex-text-muted">
               Note: logging is currently off (
               {!status.debug ? "WP_DEBUG is false" : "WP_DEBUG_LOG is false"}) — these are
               older entries.

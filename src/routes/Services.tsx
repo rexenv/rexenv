@@ -87,7 +87,7 @@ const GROUPS: { kind: ServiceKind; title: string; icon: LucideIcon; color: strin
 function StackedMeters({ cpu, ram }: { cpu: number; ram: number }) {
   const bar = (label: string, pct: number, value: string) => (
     <div className="flex items-center gap-[7px]">
-      <span className="w-[22px] font-mono text-[0.53125rem] tracking-[0.06em] text-rex-text-dim">
+      <span className="w-[22px] font-mono text-[0.53125rem] tracking-[0.06em] text-rex-text-muted">
         {label}
       </span>
       <span className="h-1 flex-1 overflow-hidden rounded-full bg-rex-well-deep">
@@ -154,15 +154,15 @@ function ServiceRow({
               {svc.domain ? "FrankenPHP" : svc.name}
             </span>
             {svc.domain && svc.version && (
-              <span className="font-mono text-[0.65625rem] text-rex-text-dim">{svc.version}</span>
+              <span className="font-mono text-[0.65625rem] text-rex-text-muted">{svc.version}</span>
             )}
           </div>
           {svc.domain && (
-            <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">{svc.domain}</div>
+            <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">{svc.domain}</div>
           )}
         </div>
       </div>
-      <div className="w-[54px] flex-none font-mono text-[0.71875rem] text-rex-text-dim">
+      <div className="w-[54px] flex-none font-mono text-[0.71875rem] text-rex-text-muted">
         :{svc.port}
       </div>
       <StackedMeters cpu={svc.cpuPercent} ram={svc.ramMb} />
@@ -215,7 +215,7 @@ function ServiceRow({
           // Serving core (edge → web server → PHP): ONE organism — stopping a
           // single piece would 502 every site, so no per-row toggle by design.
           <span
-            className="cursor-help whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[0.59375rem] uppercase tracking-[0.07em] text-rex-text-dim"
+            className="cursor-help whitespace-nowrap rounded-md border border-rex-border-subtle bg-rex-well px-2 py-1 font-mono text-[0.59375rem] uppercase tracking-[0.07em] text-rex-text-muted"
             title="Part of the serving stack (edge → web server → PHP). These start and stop together — use Start all / Stop all / Restart in the sidebar. Stopping one alone would break every site."
           >
             via Start/Stop all
@@ -304,7 +304,7 @@ export function Services() {
                       <Icon className="h-[15px] w-[15px]" strokeWidth={1.7} />
                     </span>
                     <span className="text-[0.84375rem] font-semibold text-rex-text">{g.title}</span>
-                    <span className="font-mono text-[0.6875rem] text-rex-text-dim">
+                    <span className="font-mono text-[0.6875rem] text-rex-text-muted">
                       {run}/{rows.length} running
                     </span>
                   </div>
@@ -334,11 +334,11 @@ export function Services() {
             {dns && (
               <div className="mb-[18px] last:mb-0">
                 <div className="mb-[9px] flex items-center gap-2.5 px-0.5">
-                  <span className="flex text-rex-text-dim">
+                  <span className="flex text-rex-text-muted">
                     <Globe className="h-[15px] w-[15px]" strokeWidth={1.7} />
                   </span>
                   <span className="text-[0.84375rem] font-semibold text-rex-text">Always on</span>
-                  <span className="font-mono text-[0.6875rem] text-rex-text-dim">
+                  <span className="font-mono text-[0.6875rem] text-rex-text-muted">
                     {dns.mode === "agent"
                       ? "survives app quits — not affected by Stop all"
                       : "runs with the app — not affected by Stop all"}
@@ -367,7 +367,7 @@ export function Services() {
                             the app to retry the always-on agent)
                           </div>
                         ) : (
-                          <div className="text-[0.6875rem] text-rex-text-dim">
+                          <div className="text-[0.6875rem] text-rex-text-muted">
                             Resolves <span className="font-mono">*.{tld}</span> —{" "}
                             {dns.mode === "agent"
                               ? "always on, resolves even when rexenv is closed"
@@ -376,7 +376,7 @@ export function Services() {
                         )}
                       </div>
                     </div>
-                    <div className="w-[62px] flex-none font-mono text-[0.71875rem] text-rex-text-dim">
+                    <div className="w-[62px] flex-none font-mono text-[0.71875rem] text-rex-text-muted">
                       :{dns.port}
                     </div>
                     {/* Down = red error, not gray "Idle": always-on means a dead

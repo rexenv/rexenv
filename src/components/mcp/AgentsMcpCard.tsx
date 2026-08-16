@@ -213,7 +213,7 @@ export function AgentsMcpCard() {
             </pre>
             <CopyButton value={CLIENT_JSON} />
           </div>
-          <p className="mt-1.5 text-[0.6875rem] text-rex-text-dim">
+          <p className="mt-1.5 text-[0.6875rem] text-rex-text-muted">
             If <span className="font-mono">rex</span> isn't found, install it from Settings →
             General → Command-line tool, then reconnect.
           </p>

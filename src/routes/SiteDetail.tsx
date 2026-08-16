@@ -344,7 +344,7 @@ function SiteHeader({
     >
       <button
         onClick={onBack}
-        className="mb-[13px] inline-flex items-center gap-1.5 text-[0.75rem] text-rex-text-dim transition-colors hover:text-rex-text-bright"
+        className="mb-[13px] inline-flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted transition-colors hover:text-rex-text-bright"
       >
         <ChevronLeft className="h-[13px] w-[13px]" strokeWidth={2} />
         All sites
@@ -366,7 +366,7 @@ function SiteHeader({
             </div>
             <div className="mt-1 flex items-center gap-2 font-mono text-[0.78125rem] text-rex-text-muted">
               <span className="truncate">{site.domain}</span>
-              <span className="flex-none text-[0.6875rem] text-rex-text-dim">· :443</span>
+              <span className="flex-none text-[0.6875rem] text-rex-text-muted">· :443</span>
             </div>
           </div>
         </div>
@@ -453,7 +453,7 @@ function Overview({
   return (
     <>
       <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-        <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+        <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
           Environment
         </div>
         {/* A site already running on a dead runtime is told here, not only at
@@ -529,7 +529,7 @@ function Overview({
                   <Lock className="h-[17px] w-[17px] text-status-running" strokeWidth={1.8} />
                   <span className="text-[0.84375rem] font-semibold text-rex-text">Trusted</span>
                 </div>
-                <span className="font-mono text-[0.65625rem] text-rex-text-dim">rexenv&nbsp;CA</span>
+                <span className="font-mono text-[0.65625rem] text-rex-text-muted">rexenv&nbsp;CA</span>
               </>
             ) : (
               <div className="flex items-center gap-2">
@@ -547,7 +547,7 @@ function Overview({
 
       <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-[14px]">
         <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
             Paths
           </div>
           <div className="flex flex-col gap-3">
@@ -561,7 +561,7 @@ function Overview({
         </div>
 
         <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
             Quick links
           </div>
           <div className="grid grid-cols-2 gap-[9px]">
@@ -648,7 +648,7 @@ function fmtCertDate(iso: string): string {
 function SettingsCard({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
         {label}
       </div>
       {children}
@@ -786,7 +786,7 @@ function SettingsTab({ site }: { site: Site }) {
       ? "text-status-error-bright"
       : days < 30
         ? "text-status-warning-bright"
-        : "text-rex-text-dim";
+        : "text-rex-text-muted";
   const expiryNote = days < 0 ? `expired ${-days} days ago` : `in ${days} days`;
 
   return (
@@ -815,7 +815,7 @@ function SettingsTab({ site }: { site: Site }) {
             {rename.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
-        <div className="mt-2 text-[0.75rem] text-rex-text-dim">
+        <div className="mt-2 text-[0.75rem] text-rex-text-muted">
           Display name only — the domain, folder and database are unchanged.
         </div>
       </SettingsCard>
@@ -823,7 +823,7 @@ function SettingsTab({ site }: { site: Site }) {
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="font-mono text-[0.8125rem] text-rex-text-bright">{site.domain}</div>
-            <div className="mt-1 text-[0.75rem] text-rex-text-dim">
+            <div className="mt-1 text-[0.75rem] text-rex-text-muted">
               {site.multisite !== "none"
                 ? "Domain change isn't supported on a multisite network yet — the network stores the domain in wp-config and per-site tables."
                 : site.type === "wordpress"
@@ -845,7 +845,7 @@ function SettingsTab({ site }: { site: Site }) {
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="truncate font-mono text-[0.78125rem] text-rex-text-bright">{site.path}</div>
-            <div className="mt-1 text-[0.75rem] text-rex-text-dim">
+            <div className="mt-1 text-[0.75rem] text-rex-text-muted">
               {site.docrootManaged === false
                 ? "Your own folder — rexenv serves it in place and never moves or deletes it. Moved it yourself? Point rexenv at the new location."
                 : "Move the site's files to another folder — domain, database and certificate stay the same."}
@@ -882,14 +882,14 @@ function SettingsTab({ site }: { site: Site }) {
                 <CopyButton value={site.dbName} />
               </span>
             ) : (
-              <span className="text-rex-text-dim">— (no database)</span>
+              <span className="text-rex-text-muted">— (no database)</span>
             )}
           </InfoRow>
           {hasDb && (
             <InfoRow label="Database engine">
               <span className="font-mono text-[0.78125rem]">
                 {site.dbEngine === "mariadb" ? "MariaDB" : "MySQL"}
-                <span className="ml-2 text-rex-text-dim">
+                <span className="ml-2 text-rex-text-muted">
                   127.0.0.1:{site.dbEngine === "mariadb" ? 13307 : 13306}
                 </span>
               </span>
@@ -900,10 +900,10 @@ function SettingsTab({ site }: { site: Site }) {
       </SettingsCard>
           <SettingsCard label="HTTPS certificate">
         {certLoading ? (
-          <div className="text-[0.78125rem] text-rex-text-dim">Reading certificate…</div>
+          <div className="text-[0.78125rem] text-rex-text-muted">Reading certificate…</div>
         ) : !cert ? (
           <div className="flex items-center justify-between gap-4">
-            <div className="text-[0.78125rem] text-rex-text-dim">
+            <div className="text-[0.78125rem] text-rex-text-muted">
               No certificate on disk — issue one so HTTPS works (normally created when the site
               is provisioned).
             </div>
@@ -929,7 +929,7 @@ function SettingsTab({ site }: { site: Site }) {
               onOpen={() => void revealPath(cert.certDir)}
             />
             <div className="mt-1 flex items-center justify-between gap-4 border-t border-rex-border-subtle pt-3">
-              <div className="text-[0.75rem] text-rex-text-dim">
+              <div className="text-[0.75rem] text-rex-text-muted">
                 Re-issue from the local CA — for a cert nearing expiry, a corrupted file, or after
                 the CA was re-created. Briefly reloads the edge.
               </div>
@@ -994,7 +994,7 @@ function XdebugCard({ site }: { site: Site }) {
   return (
     <SettingsCard label="Xdebug">
       <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0 text-[0.75rem] text-rex-text-dim">
+        <div className="min-w-0 text-[0.75rem] text-rex-text-muted">
           {blocked ??
             (site.xdebug ? (
               <>
@@ -1083,7 +1083,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
     <SettingsCard label="Environment variables">
       <div className="flex flex-col gap-2">
         {shown.length === 0 && (
-          <div className="text-[0.78125rem] text-rex-text-dim">
+          <div className="text-[0.78125rem] text-rex-text-muted">
             No variables set. They're injected per request — the shared PHP pools are untouched.
           </div>
         )}
@@ -1140,7 +1140,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
             {save.isPending ? "Saving…" : "Save"}
           </Button>
         </div>
-        <div className="mt-1 text-[0.75rem] text-rex-text-dim">
+        <div className="mt-1 text-[0.75rem] text-rex-text-muted">
           Available to PHP via getenv(), $_SERVER and $_ENV. Stored as plain text in the local
           server config; not for secrets.
         </div>
@@ -1274,7 +1274,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
               autoFocus
               className="mt-1.5 h-[32px] w-full rounded-md border border-rex-border bg-rex-surface-2 px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-status-error-border"
             />
-            <div className="mt-1.5 text-[0.71875rem] text-rex-text-dim">
+            <div className="mt-1.5 text-[0.71875rem] text-rex-text-muted">
               Lowercase letters, digits and hyphens, ending in a development TLD (e.g.{" "}
               <span className="font-mono">.rex</span> or <span className="font-mono">.test</span>).
               First use of a new TLD asks for your password once to register it with macOS.
@@ -1321,7 +1321,7 @@ function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => vo
   return (
     <div className="rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
       <div className="mb-[13px] flex items-center justify-between">
-        <div className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+        <div className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
           Recent logs
         </div>
         <button
@@ -1334,7 +1334,7 @@ function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => vo
       </div>
       <div className="rounded-[11px] border border-rex-well-border bg-rex-well-deep px-[14px] py-3 font-mono text-[0.71875rem] leading-[1.95]">
         {recent.length === 0 ? (
-          <div className="text-rex-text-dim">
+          <div className="text-rex-text-muted">
             No recent activity — start the site to see logs here.
           </div>
         ) : (
@@ -1465,7 +1465,7 @@ export function QuickTile({
             // The SEAM is the affordance: without a divider the chevron reads
             // as decoration on one wide button, and "what happens if I click
             // there" has no answer. Same seam the header split button gets.
-            className="flex h-full flex-none items-center rounded-r-[10px] border-l border-rex-border-subtle px-[7px] text-rex-text-dim transition-colors hover:bg-rex-hover hover:text-rex-text"
+            className="flex h-full flex-none items-center rounded-r-[10px] border-l border-rex-border-subtle px-[7px] text-rex-text-muted transition-colors hover:bg-rex-hover hover:text-rex-text"
           >
             <ChevronDown className="h-[13px] w-[13px]" strokeWidth={2} />
           </button>

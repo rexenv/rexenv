@@ -122,7 +122,7 @@ function Row({ item }: { item: DownloadItem }) {
         <span
           className={cn(
             "flex flex-none items-center gap-1 font-mono text-[0.625rem]",
-            item.phase === "failed" ? "text-status-error-bright" : "text-rex-text-dim",
+            item.phase === "failed" ? "text-status-error-bright" : "text-rex-text-muted",
           )}
         >
           {(item.phase === "done" || item.phase === "cached") && (
@@ -133,7 +133,7 @@ function Row({ item }: { item: DownloadItem }) {
       </div>
       <Track pct={pct} state={trackState} />
       {detail && (
-        <div className="mt-1 truncate font-mono text-[0.59375rem] text-rex-text-dim">{detail}</div>
+        <div className="mt-1 truncate font-mono text-[0.59375rem] text-rex-text-muted">{detail}</div>
       )}
       {item.phase === "failed" && (
         <div className="mt-1.5 flex items-start justify-between gap-2">
@@ -169,7 +169,7 @@ export function DownloadPanel({ snapshot }: { snapshot: DownloadsSnapshot }) {
           <span className="text-[0.6875rem] font-semibold text-rex-text-bright">
             {snapshot.batch.action}
           </span>
-          <span className="font-mono text-[0.625rem] text-rex-text-dim">
+          <span className="font-mono text-[0.625rem] text-rex-text-muted">
             {snapshot.batch.done}/{snapshot.batch.total}
           </span>
         </div>
@@ -179,7 +179,7 @@ export function DownloadPanel({ snapshot }: { snapshot: DownloadsSnapshot }) {
           <Row key={i.id} item={i} />
         ))}
         {snapshot.items.length === 0 && (
-          <div className="px-2 py-3 text-center text-[0.6875rem] text-rex-text-dim">
+          <div className="px-2 py-3 text-center text-[0.6875rem] text-rex-text-muted">
             No downloads this session
           </div>
         )}

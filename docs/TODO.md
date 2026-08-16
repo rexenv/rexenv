@@ -120,150 +120,51 @@ evidence cited.
   `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
   transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
   nothing to bump yet.
-- [ ] ⚠ **Three text tokens fail WCAG AA on every surface, in both themes — and one
-  of them carries a comment claiming it doesn't** (ledger #337, reported 16 Aug
-  2026 by an outside reader building the docs site, confirmed by measurement).
-  `src/styles/tokens.css:236` reads
-  `--rex-text-label: #6d7482; /* mono section labels (darker: small type needs AA) */`.
-  That comment is the **only** contrast claim in the codebase — `docs/DESIGN.md`
-  states no contrast rule at all — so it reads as the house position, and it is
-  true on exactly one surface:
+- [x] ✅ **Three text tokens failed WCAG AA on every surface, in both themes — and
+  one carried a comment claiming it didn't** (ledger #337, reported 16 Aug 2026 by
+  an outside reader building the docs site; **closed the same day**).
+  `tokens.css` said `--rex-text-label: /* mono section labels (darker: small type
+  needs AA) */` — the only contrast claim in the codebase, true on pure white and
+  false on every other light surface.
 
-  | token (usages) | dark range | light range | AA-normal 4.5:1 |
-  |---|---|---|---|
-  | `--rex-text-dim` (120) | 3.24–4.20 | 3.38–4.14 | fails everywhere |
-  | `--rex-text-faint` (7) | 2.58–3.35 | 2.58–3.17 | fails everywhere |
-  | `--rex-text-label` (16) | 2.14–2.78 | 3.83–**4.70** | passes ONLY on light `surface-1` |
-  | `--rex-text-muted` | 4.66–6.04 | 5.07–6.22 | passes — the nearest safe token |
+  ✓ **The scan first, and it decided the fix.** `every_text_on_surface_pairing_meets_wcag_aa`
+  + `every_rex_colour_class_names_a_token_that_exists` (`core::copy_scan`), both
+  sets DERIVED from the frontend's own class usage. It sized the debt at 39 pairs
+  and then answered the design question with data: **135 of 142 usages sat on
+  `<div>/<span>/<li>`** — emails, versions, paths, a status pill, placeholders —
+  and only 7 on icons. They were text tokens below AA, not ornament tokens.
 
-  Size makes it worse, not better: `StatusFooter` renders these at
-  `0.59375–0.65625rem` = **9.5–10.5px**, which is AA-normal's 4.5:1 threshold,
-  not the 3:1 large-text one. **Same family as the four false guards in the
-  ledger** — a claim about small type generally, verified at one place inside the
-  surface it claims.
+  ✓ **The repair.** 135 consumers → `text-muted` (AA-clean everywhere); `text-faint`
+  and `text-label` went unused and were **deleted**, which the sibling guard now
+  polices for free since a deleted token names nothing; `text-dim` survives on its
+  7 lucide glyphs; light `accent-blue` darkened one step (`#2e6f94` → `#2e6e93`)
+  for a pair reading 4.49:1, one hundredth under. Every replacement's contrast was
+  computed BEFORE it was written.
 
-  **NOT fixed on the 0.2.0 branch, deliberately.** `tokens.css` compiles into the
-  artefact; the tagged dmg `bd019d8d…` is built and §A0-passed, and this is a
-  design decision across 143 usages, not a defect repair. Doing it there would
-  cost a rebuild and a re-run of §A0 to change how the app looks, mid-release.
-  **Do this after 0.2.0 ships** (§A → SMOKE → §D), on its own branch.
+  ✓ **The scan found the worst instance in a place it could not originally see.**
+  `globals.css` styled EVERY input's `::placeholder` with `--rex-text-faint` in raw
+  CSS at 2.58–3.35:1 — the most widespread text in the app, invisible to a
+  Tailwind-only scan. It now reads `color: var(--rex-*)` from `src/styles` too.
 
-  ### The measurement that decides the approach — do this arithmetic first
+  ⚠ **And the exemptions had to be rebuilt, because a plant walked through them.**
+  They were declared BY TOKEN NAME ("`text-dim` is icon-only"), so moving
+  `text-rex-text-dim` onto a `<span>` kept the exemption and the guard stayed
+  green — **the guard-covers-claimed-surface defect, committed inside the guard
+  written to end that family**. Icons are now excluded STRUCTURALLY, by reading
+  which element the class sits on. The same plant now fails with 13 pairs. The
+  lesson is not "be careful with allow-lists" — it is that an exemption keyed on a
+  NAME cannot notice when the thing changes underneath it, and the only version
+  that holds reads the thing.
 
-  Lightening each token until it clears 4.5:1 against the WORST surface it can
-  sit on (dark `--rex-surface-2-hover` `#232734`; light `--rex-surface-3`
-  `#e6e8ed`) gives:
+  ✓ **The ratchet's lifecycle, which is the reusable part.** 39 pairs recorded so
+  the gate could go live while the fix was scoped (a red `verify.sh` blocks every
+  commit through the pre-commit receipt), then a forced failure at "38 now PASS"
+  that made the repayment be written down rather than absorbed, then deleted along
+  with the debt. Both lists are gone; both assertions are unconditional.
 
-  | token | dark now | dark needs | light now | light needs |
-  |---|---|---|---|---|
-  | `--rex-text-dim` | `#6e7681` | `#888e97` | `#767d8a` | `#636974` |
-  | `--rex-text-faint` | `#5f6675` | `#888e99` | `#8b919d` | `#646972` |
-  | `--rex-text-label` | `#525a68` | `#888e97` | `#6d7482` | `#626975` |
-  | `--rex-text-muted` | `#8a90a0` — already passes | | `#5a6170` — already passes | |
-
-  **All three land on `--rex-text-muted`.** At 9.5–10.5px you cannot keep a
-  four-level text hierarchy AND pass AA — retuning the values yields four tokens
-  that look identical and a hierarchy that is dead in the design but still alive
-  in the code. So the real decision is **not which colours**, it is **which of
-  these 143 things are text somebody must read**, and which are ornament.
-
-  ### The work, in order
-
-  1. **[x] Write the scan FIRST, before touching a colour.** ✓ 16 Aug 2026,
-     `core::copy_scan`: `every_text_on_surface_pairing_meets_wcag_aa` +
-     `every_rex_colour_class_names_a_token_that_exists`. **The sets are DERIVED
-     from the frontend's own class usage** (`text-rex-*` / `bg-rex-*`), not
-     listed, so a token joins the check by being used. All three traps below were
-     real and are handled. It sized the job at **39 failing pairs of 130
-     computed**, in exactly three text tokens — plus a second bug it was not
-     looking for, below.
-     **Shipped as a RATCHET, not as a red bar** — the plan said "RED today", and
-     that is unrunnable: a red `verify.sh` blocks every commit through the
-     pre-commit receipt, and this repo's bar being red is the thing it never
-     does. So the 39 pairs are recorded in `KNOWN_DEBT` and the failing set must
-     equal it EXACTLY: a new failure is red, and so is a pairing that starts
-     passing, which forces the progress to be recorded instead of absorbed.
-     Plant-proven three ways (worsen a token → 7 new failures named; improve one
-     → 7 "now PASS" named; a new bad class name → named).
-     Original trap list, kept because each one bit:
-     - `tokens.css` has TWO theme blocks. A parser that reads only `:root`
-       silently checks dark alone and stays green — the same defect as cutting
-       at the first `#[cfg(test)]`. Assert both themes were found with non-zero
-       token counts.
-     - **Landmark canary** (`copy_scan`'s own rule): a parser that returns an
-       empty map makes every check pass vacuously. Assert a known-good pair
-       (`text-bright` on `surface-1` > 10:1) so a broken parser fails loudly.
-     - **Every allow-list entry is itself a claim** — "this pair is never
-       composed" — and claims rot. Each needs a written reason, and the scan
-       should print the pairs it found so the list can be audited.
-     **Done when:** the scan is in `verify.sh` and **RED today**. Red is the
-     proof it works. Plant-prove by lifting one token over 4.5 and seeing green.
-  2. **[x] Let the scan size the job.** ✓ **39 pairs, 130 computed**, all in
-     `text-dim` (13), `text-faint` (13), `text-label` (12), plus one marginal
-     `accent-blue` on light `surface-3` at 4.49:1. Four exemptions were written
-     only after reading their call sites: three translucent `rgba` fills (they
-     composite over the surface beneath, which is checked directly) and
-     `accent-teal` (icon-only — WCAG 1.4.11 asks 3:1 of non-text and it clears
-     4.27:1). `accent-blue` was deliberately NOT exempted beside it: it is an
-     icon colour in two places **and a tab label at 13.5px** in `SiteDetail.tsx`,
-     so exempting by token name would have quietly covered the label too.
-     Ornament used as a FILL is exempt for the same reason and by the same
-     method: `border-strong` is a `w-px` divider, `text-dim` a status dot,
-     `text-bright` a toggle knob — each read at its call site, not inferred from
-     the name.
-  - [x] **The scan found a second bug it was not looking for: 17 Tailwind classes
-    named a token that does not exist** ✓ FIXED 16 Aug 2026. Tailwind emits no rule
-    for such a class, so the element got NO colour and inherited — which looks
-    deliberate and cannot be reviewed.
-    Proven from the built CSS, not from reading the config: `text-rex-text-dim`
-    is in `dist/assets/*.css` and these are not.
-    - `text-rex-text-secondary` × **16, all in `DbImportCard.tsx`** — 16 of that
-      file's 18 text classes. Every "secondary" line in that card is therefore
-      rendering at FULL body brightness, the opposite of the intent.
-    - `bg-rex-surface-0` × 1, `Settings.tsx:1236` — a log `<pre>` whose
-      background is simply transparent.
-    ✓ `text-rex-text-secondary` → `text-rex-text-muted` (the intended "secondary"
-    semantic AND AA-clean), `bg-rex-surface-0` → `bg-rex-well` (what the other
-    three log `<pre>` blocks already use — the odd one out was the broken one).
-    **Both replacements' contrast was computed BEFORE they were written**, not
-    after: 5.61/6.22 on `surface-1`, 5.96/5.16 on `well`. `KNOWN_DEBT` did not
-    move, because `text-muted` was already in the used set.
-    **A visible change, and that is the point**: those 16 lines rendered at full
-    body brightness and now render as secondary, which is what the author wrote.
-    The `KNOWN_UNDEFINED` ratchet lasted exactly one commit — it forced the
-    progress to be recorded, then was DELETED with the debt, and the assertion is
-    now the unconditional "no undefined name, ever". That is the lifecycle a debt
-    list is supposed to have.
-  3. **Resolve it, and the arithmetic above forces the shape.** Migrate
-     `text-dim`'s 120 consumers to `--rex-text-muted` (no new colour to choose;
-     it already passes). Keep `text-faint`/`text-label` only where the thing is
-     **not text anyone reads** — icons, separators, decorative rules. Ornament
-     is exempt from AA; a service version number in the status footer is
-     information, not ornament, so that exemption does not cover most of the
-     120. **Do not tune the token values to pass** — see above.
-     **Size is not a lever**: AA-large's 3:1 needs ≥24px (or ≥18.66px bold), and
-     9.5px text is not becoming 24px. Contrast is the only road.
-  4. **Write the rule into `docs/DESIGN.md` in the same pass.** It states no
-     contrast rule at all today, and that silence is why one comment spoke for
-     the whole system unchallenged. Body/label text AA 4.5:1, ornament exempt —
-     with the scan as the enforcement, not the paragraph.
-  5. **Migrate the consumers.** `text-dim` 120 · `text-label` 16 · `text-faint`
-     7. Mechanical once the scan is red: it names every remaining failure.
-  6. **Close it.** Ledger #337 `🔨` → `✅` with the scan's name; tick this row
-     with ✓ evidence; the tally is already enforced by `verify.sh`. **Delete the
-     comment at `tokens.css:236`** — once the scan exists it is redundant, and
-     the comment was the defect.
-
-  ### What not to do
-
-  - **Do not pick colours first.** Scan → scope → colours.
-  - **Do not grow the allow-list without reasons.** A reasonless entry silently
-    shrinks the check — the fifth "guard covers claimed surface" in this repo.
-  - **Do not touch `tokens.css` on the release branch.** It compiles into the
-    artefact.
-  - **Do not close this by rewriting the comment.** §6.5 just proved that the
-    most specific written warning in the repo still shipped false. The
-    deliverable is the scan, not the paragraph.
+  **Still owed, and stated:** no L2 render check — the app's look changed in ~40
+  files and nothing but an eye has confirmed it. Worth a pass on the packaged app,
+  or a wk-check that samples a dense screen.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control

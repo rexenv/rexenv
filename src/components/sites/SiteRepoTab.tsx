@@ -43,7 +43,7 @@ export function SiteRepoTab({ site }: { site: Site }) {
           pointing at it.
         </p>
         <div className="mt-2 flex items-center gap-1.5">
-          <code className={"min-w-0 flex-1 truncate rounded bg-rex-well px-2 py-1 font-mono text-[0.6875rem] text-rex-text-dim"}>
+          <code className={"min-w-0 flex-1 truncate rounded bg-rex-well px-2 py-1 font-mono text-[0.6875rem] text-rex-text-muted"}>
             {info.data.projectRoot}
           </code>
           <CopyButton value={info.data.projectRoot} title="Copy the project folder path" />

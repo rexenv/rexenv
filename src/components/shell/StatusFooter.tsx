@@ -40,7 +40,7 @@ function Meter({ label, value, pct }: { label: string; value: string; pct: numbe
   return (
     <div>
       <div className="mb-1.5 flex justify-between">
-        <span className="font-mono text-[0.625rem] tracking-wide text-rex-text-dim">
+        <span className="font-mono text-[0.625rem] tracking-wide text-rex-text-muted">
           {label}
         </span>
         <span className="font-mono text-[0.65625rem] text-rex-text-bright">{value}</span>
@@ -168,7 +168,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                 {meta.label}
               </span>
             </div>
-            <span className="font-mono text-[0.65625rem] text-rex-text-dim">
+            <span className="font-mono text-[0.65625rem] text-rex-text-muted">
               {status.running}/{status.total}
             </span>
           </div>
@@ -222,7 +222,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                   </span>
                 </span>
                 {current && (
-                  <span className="flex-none font-mono text-[0.625rem] text-rex-text-dim">
+                  <span className="flex-none font-mono text-[0.625rem] text-rex-text-muted">
                     {pctOf(current) != null ? `${pctOf(current)}%` : "…"}
                   </span>
                 )}
@@ -232,7 +232,7 @@ export function StatusFooter({ status }: { status: GlobalStatus }) {
                 state={failed.length > 0 && !batchActive ? "error" : batchActive ? "run" : "idle"}
               />
               {current && (
-                <div className="mt-1 truncate font-mono text-[0.59375rem] text-rex-text-dim">
+                <div className="mt-1 truncate font-mono text-[0.59375rem] text-rex-text-muted">
                   {current.label}
                 </div>
               )}

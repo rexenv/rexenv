@@ -225,7 +225,7 @@ export function SiteProvisionCard({
           </span>
         )}
         {phase && (running || failedish) && detail && (
-          <span className="flex-none text-rex-text-dim">·</span>
+          <span className="flex-none text-rex-text-muted">·</span>
         )}
         <span
           className={`min-w-0 flex-1 truncate ${
@@ -237,7 +237,7 @@ export function SiteProvisionCard({
         </span>
       </div>
       {running && silentFor >= 10 && (
-        <div className="mt-0.5 font-mono text-[0.625rem] text-rex-text-dim">
+        <div className="mt-0.5 font-mono text-[0.625rem] text-rex-text-muted">
           waiting on {phase?.label ?? "the current step"} · no output for {silentFor}s (long
           steps print nothing until they finish — Cancel is safe)
         </div>

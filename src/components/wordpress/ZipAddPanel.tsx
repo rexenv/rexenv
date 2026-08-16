@@ -80,7 +80,7 @@ export function ZipAddPanel({
               <button
                 type="button"
                 aria-label={`Remove ${baseName(f)}`}
-                className="flex-none rounded p-0.5 text-rex-text-dim hover:text-rex-text"
+                className="flex-none rounded p-0.5 text-rex-text-muted hover:text-rex-text"
                 onClick={() => setFiles((cur) => cur.filter((x) => x !== f))}
               >
                 <X className="h-3 w-3" />

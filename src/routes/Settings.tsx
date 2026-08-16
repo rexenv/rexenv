@@ -342,7 +342,7 @@ function PhpVersionRow({
       <div className="flex flex-wrap items-center gap-3 py-2.5">
         <div className="min-w-0 flex-1 basis-[9rem]">
           <span className="font-mono text-[0.8125rem] text-rex-text">PHP {v.minor}</span>
-          <span className="ml-2 font-mono text-[0.6875rem] text-rex-text-dim">{v.patch}</span>
+          <span className="ml-2 font-mono text-[0.6875rem] text-rex-text-muted">{v.patch}</span>
           {v.isDefault && (
             <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
               Default
@@ -443,7 +443,7 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
               value={current(s)}
               placeholder={s.default}
               onChange={(e) => setDraft((d) => ({ ...d, [s.key]: e.target.value }))}
-              className="h-[30px] w-full rounded-[7px] border border-rex-border-strong bg-rex-well px-[9px] font-mono text-[0.75rem] text-rex-text outline-none transition-colors placeholder:text-rex-text-dim focus:border-brand"
+              className="h-[30px] w-full rounded-[7px] border border-rex-border-strong bg-rex-well px-[9px] font-mono text-[0.75rem] text-rex-text outline-none transition-colors placeholder:text-rex-text-muted focus:border-brand"
             />
           </div>
         ))}
@@ -452,7 +452,7 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
         <Button variant="primary" disabled={!dirty || apply.isPending} onClick={() => apply.mutate()}>
           {apply.isPending ? "Applying…" : "Save & restart pool"}
         </Button>
-        <div className="text-[0.6875rem] leading-snug text-rex-text-dim">
+        <div className="text-[0.6875rem] leading-snug text-rex-text-muted">
           Empty = PHP default (placeholder). Applies to every nginx-served site on PHP {minor};
           FrankenPHP sites use their own embedded PHP. Requests are still recycled after 5&nbsp;min
           wall-clock unless max_execution_time is set higher (0 keeps the 5-min cap).
@@ -504,7 +504,7 @@ function PhpVersionsSetting() {
           onExpand={() => setExpanded((e) => (e === v.minor ? null : v.minor))}
         />
       ))}
-      <div className="mt-2.5 text-[0.6875rem] text-rex-text-dim">
+      <div className="mt-2.5 text-[0.6875rem] text-rex-text-muted">
         Installed versions each run a php-fpm pool; new sites use the default. A site can pick its own
         version in its detail view.
       </div>
@@ -585,7 +585,7 @@ function DnsSslSetting() {
   return (
     <>
       <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-        <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+        <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
           Status
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -879,7 +879,7 @@ function DefaultTldCard() {
           </div>
         </div>
         <div className="flex h-9 w-[150px] items-center rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] transition-colors has-[input:focus]:border-brand">
-          <span className="flex-none font-mono text-[0.78125rem] text-rex-text-dim">.</span>
+          <span className="flex-none font-mono text-[0.78125rem] text-rex-text-muted">.</span>
           <input
             {...TECH_INPUT}
             value={input ?? current}
@@ -910,7 +910,7 @@ function DefaultTldCard() {
           collide.
         </div>
       )}
-      <div className="mt-2.5 text-[0.71875rem] text-rex-text-dim">
+      <div className="mt-2.5 text-[0.71875rem] text-rex-text-muted">
         <span className="font-mono">.rex</span> is rexenv's home TLD — its resolver is set up
         during onboarding and rexenv's own tools use it. Any other TLD (including{" "}
         <span className="font-mono">.test</span>) asks for your password once, when its first
@@ -1016,7 +1016,7 @@ function DefaultPortsCard() {
   );
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
         Default ports
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -1083,7 +1083,7 @@ function BlueprintsSetting() {
             <div key={b.id} className="flex items-center gap-2 border-b border-rex-border-subtle px-3 py-2 last:border-b-0">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[0.78125rem] text-rex-text">{b.name}</div>
-                <div className="truncate font-mono text-[0.65625rem] text-rex-text-dim">
+                <div className="truncate font-mono text-[0.65625rem] text-rex-text-muted">
                   {b.spec.multisite !== "none" ? `multisite:${b.spec.multisite} · ` : ""}
                   {b.spec.plugins.length} plugin(s){b.spec.wpDebug ? " · WP_DEBUG" : ""}
                 </div>
@@ -1265,7 +1265,7 @@ function AboutSetting() {
       </span>
       <span className="flex-1 text-[0.84375rem] text-rex-text">{label}</span>
       {typeof target === "string" && (
-        <span className="font-mono text-[0.6875rem] text-rex-text-dim">
+        <span className="font-mono text-[0.6875rem] text-rex-text-muted">
           {target.replace(/^https?:\/\//, "")}
         </span>
       )}
@@ -1293,7 +1293,7 @@ function AboutSetting() {
               code I just changed?" should be answerable at a glance. */}
           {info && (
             <div
-              className="mt-0.5 font-mono text-[0.6875rem] text-rex-text-dim"
+              className="mt-0.5 font-mono text-[0.6875rem] text-rex-text-muted"
               title={`Built ${info.builtAt} from commit ${info.commit}`}
             >
               {info.commit} · built {info.builtAt.replace("T", " ").replace("Z", " UTC")}
@@ -1328,7 +1328,7 @@ function AboutSetting() {
 
       {showLicenses && <LicensesDialog onClose={() => setShowLicenses(false)} />}
 
-      <div className="text-center text-[0.71875rem] leading-[1.6] text-rex-text-faint">
+      <div className="text-center text-[0.71875rem] leading-[1.6] text-rex-text-muted">
         Built on open source — nginx, PHP, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared.
         <br />
         Made for developers who run their kingdom locally.

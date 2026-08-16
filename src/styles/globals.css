@@ -49,7 +49,7 @@
   }
 
   ::placeholder {
-    color: var(--rex-text-faint);
+    color: var(--rex-text-muted);
   }
 
   /* Form controls: opt OUT of native rendering (QA P3-3). Native select /

@@ -648,13 +648,13 @@ export function RepoPanel({
               Refresh
             </button>
           </div>
-          <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+          <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
             {s.remote ?? (asset.url || "(no remote)")}
             {asset.gitRef ? ` · added @ ${asset.gitRef}` : ""}
           </div>
           {s.linkTarget && (
             <div
-              className="truncate font-mono text-[0.6875rem] text-rex-text-dim"
+              className="truncate font-mono text-[0.6875rem] text-rex-text-muted"
               title="Symlink target — deleting this asset removes only the link"
             >
               → {s.linkTarget}
@@ -782,7 +782,7 @@ export function RepoPanel({
               remote, and one of them cannot be undone. Mixed into the fetch/pull
               row, Reset sat one tab-stop from Pull. */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label">
+            <span className="font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
               Working tree
             </span>
             <button

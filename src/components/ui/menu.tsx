@@ -159,7 +159,7 @@ export function MenuItem({
           action.onSelect();
           close();
         }}
-        className="flex flex-none items-center rounded-r-[7px] px-[9px] text-rex-text-dim transition-colors hover:bg-rex-hover hover:text-rex-text-bright"
+        className="flex flex-none items-center rounded-r-[7px] px-[9px] text-rex-text-muted transition-colors hover:bg-rex-hover hover:text-rex-text-bright"
       >
         {action.icon}
       </button>

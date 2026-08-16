@@ -66,7 +66,7 @@ function NavButton({ item }: { item: NavItem }) {
                   <span className="relative h-1.5 w-1.5 rounded-full bg-status-running" />
                 </span>
               )}
-              <span className="font-mono text-[0.65625rem] text-rex-text-faint">
+              <span className="font-mono text-[0.65625rem] text-rex-text-muted">
                 {item.badge}
               </span>
             </span>
@@ -133,7 +133,7 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-0.5 overflow-auto p-2.5">
         {groups.map((group) => (
           <div key={group} className="contents">
-            <div className="mb-1.5 mt-1.5 px-3.5 font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-label first:mt-1.5">
+            <div className="mb-1.5 mt-1.5 px-3.5 font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted first:mt-1.5">
               {group}
             </div>
             {main

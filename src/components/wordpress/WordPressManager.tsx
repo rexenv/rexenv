@@ -1201,7 +1201,7 @@ function ToolsPanel({
               </option>
             ))}
           </select>
-          <div className="font-mono text-[0.71875rem] text-rex-text-dim">
+          <div className="font-mono text-[0.71875rem] text-rex-text-muted">
             {permalink === undefined ? "…" : permalink === "" ? "?p=123 (plain)" : permalink}
           </div>
           <button className={maintBtn} disabled={flush.isPending} onClick={() => flush.mutate()}>
@@ -1249,7 +1249,7 @@ function ToolsPanel({
               {langBusyLabel}
             </span>
           )}
-          <div className="text-[0.71875rem] leading-[1.5] text-rex-text-dim">
+          <div className="text-[0.71875rem] leading-[1.5] text-rex-text-muted">
             Core translations only — plugins and themes fetch their own packs.
             {isNetwork && " On a multisite network this switches the main site; subsites set theirs in their own admin."}
           </div>
@@ -1490,7 +1490,7 @@ function ChecksumResult({
         </pre>
       )}
       {r.benign.length > 0 && (
-        <div className="font-mono text-[0.65625rem] text-rex-text-dim" title={r.benign.join("\n")}>
+        <div className="font-mono text-[0.65625rem] text-rex-text-muted" title={r.benign.join("\n")}>
           {pass
             ? r.benign.join("  ·  ")
             : `+ ${r.benign.length} OS system file(s) (.DS_Store etc.) — harmless.`}
@@ -1617,7 +1617,7 @@ function CronCard({ siteId }: { siteId: string }) {
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
+              <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
                 <span className="flex-1">Hook</span>
                 <span className="w-[170px]">Next run</span>
                 <span className="w-[110px]">Recurrence</span>
@@ -1879,7 +1879,7 @@ function CoreVersionSwitch({ siteId }: { siteId: string }) {
         </div>
       )}
       {result && (
-        <div className="text-[0.71875rem] text-rex-text-dim">
+        <div className="text-[0.71875rem] text-rex-text-muted">
           Now on <span className="font-mono">{result.version}</span>.{" "}
           {result.dbUpdateRequired
             ? "WordPress will ask to update the database on the next wp-admin visit (normally one click)."
@@ -1951,7 +1951,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
   return (
     <Card title="Site options">
       {isLoading ? (
-        <div className="text-[0.78125rem] text-rex-text-dim">Reading options…</div>
+        <div className="text-[0.78125rem] text-rex-text-muted">Reading options…</div>
       ) : isError ? (
         <div className="text-[0.78125rem] text-status-warning-bright">
           Could not read options: {String(error)}
@@ -2007,7 +2007,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
                   />
                 )}
                 {!row.editable && row.note && (
-                  <span className="min-w-0 truncate text-[0.71875rem] text-rex-text-dim" title={row.note}>
+                  <span className="min-w-0 truncate text-[0.71875rem] text-rex-text-muted" title={row.note}>
                     {row.note}
                   </span>
                 )}
@@ -2027,7 +2027,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
                 )}
                 {dirty && (
                   <button
-                    className="text-[0.71875rem] text-rex-text-dim hover:underline"
+                    className="text-[0.71875rem] text-rex-text-muted hover:underline"
                     onClick={() => setDrafts((d) => {
                       const next = { ...d };
                       delete next[row.name];
@@ -2040,7 +2040,7 @@ function OptionsCard({ siteId }: { siteId: string }) {
               </div>
             );
           })}
-          <div className="mt-1 text-[0.71875rem] text-rex-text-dim">
+          <div className="mt-1 text-[0.71875rem] text-rex-text-muted">
             Only this curated, known-safe set is editable — site URLs, plugin/theme state and
             serialized options can't be changed here. Saves apply immediately (no undo).
           </div>
@@ -2199,7 +2199,7 @@ function UsersPanel({ siteId, domain }: { siteId: string; domain: string }) {
           <div className="p-6 text-center text-[0.78125rem] text-rex-text-muted">No users.</div>
         ) : (
           <>
-            <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
+            <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
               <span className="flex-1">User</span>
               <span className="w-[120px]">Role</span>
               <span className="w-[84px]" />
@@ -2268,7 +2268,7 @@ function UserRow({
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-[0.8125rem] font-medium text-rex-text">{u.login}</div>
-        <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">{u.email}</div>
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">{u.email}</div>
       </div>
       <span className="w-[120px]">
         {primary ? (
@@ -2322,18 +2322,18 @@ function WpOrgThemeHit({ t, onPick }: { t: WpOrgTheme; onPick: () => void }) {
       {t.screenshot ? (
         <img src={t.screenshot} alt="" loading="lazy" className="h-9 w-12 flex-none rounded-[5px] border border-rex-border-subtle object-cover" />
       ) : (
-        <span className="flex h-9 w-12 flex-none items-center justify-center rounded-[5px] border border-rex-border bg-rex-surface-2 text-rex-text-dim">
+        <span className="flex h-9 w-12 flex-none items-center justify-center rounded-[5px] border border-rex-border bg-rex-surface-2 text-rex-text-muted">
           <Palette className="h-4 w-4" strokeWidth={1.5} />
         </span>
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[0.78125rem] font-medium text-rex-text">{t.name}</span>
-        <span className="block truncate text-[0.6875rem] text-rex-text-dim">
+        <span className="block truncate text-[0.6875rem] text-rex-text-muted">
           {t.author && `by ${t.author} · `}
           <span className="font-mono">{t.slug}</span>
         </span>
       </span>
-      <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-dim">
+      <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-muted">
         {t.rating > 0 && (
           <span className="flex items-center gap-0.5">
             <Star className="h-3 w-3 fill-current text-amber-400" />
@@ -2599,7 +2599,7 @@ function ThemesPanel({ siteId }: { siteId: string }) {
 
       {!isLoading && themes.length > 0 && (
         <div className="flex items-center gap-2 px-0.5">
-          <div className="font-mono text-[0.6875rem] text-rex-text-dim">
+          <div className="font-mono text-[0.6875rem] text-rex-text-muted">
             {themes.length} {themes.length === 1 ? "theme" : "themes"} ·{" "}
             {themes.filter((t) => t.status === "active").length} active
           </div>
@@ -2695,7 +2695,7 @@ function ThemeCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-rex-text-dim">
+          <div className="flex h-full w-full items-center justify-center text-rex-text-muted">
             <Palette className="h-7 w-7" strokeWidth={1.4} />
           </div>
         )}
@@ -2741,7 +2741,7 @@ function ThemeCard({
             </span>
           )}
         </div>
-        <div className="font-mono text-[0.6875rem] text-rex-text-dim">
+        <div className="font-mono text-[0.6875rem] text-rex-text-muted">
           v{t.version}
           {/* Drawn only from the checked pass's own target — never guessed
               from the badge. */}
@@ -2865,12 +2865,12 @@ function WpOrgHit({ p, onPick }: { p: WpOrgPlugin; onPick: () => void }) {
       )}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[0.78125rem] font-medium text-rex-text">{p.name}</span>
-        <span className="block truncate text-[0.6875rem] text-rex-text-dim">
+        <span className="block truncate text-[0.6875rem] text-rex-text-muted">
           {p.author && `by ${p.author} · `}
           <span className="font-mono">{p.slug}</span>
         </span>
       </span>
-      <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-dim">
+      <span className="flex flex-none items-center gap-2 font-mono text-[0.65625rem] text-rex-text-muted">
         {p.rating > 0 && (
           <span className="flex items-center gap-0.5">
             <Star className="h-3 w-3 fill-current text-amber-400" />
@@ -3284,7 +3284,7 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
           </div>
         ) : (
           <>
-          <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-label">
+          <div className="flex items-center gap-3 border-b border-rex-border-subtle px-3 py-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
             <input
               type="checkbox"
               checked={allSelected}
@@ -3595,7 +3595,7 @@ function PluginRow({
             </span>
           )}
         </div>
-        <div className="truncate font-mono text-[0.6875rem] text-rex-text-dim">
+        <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
           {p.name}
           {/* Drop-ins/mu often have no version — show nothing, never a bare "v". */}
           {p.version && <span> · v{p.version}</span>}

@@ -176,7 +176,7 @@ export function RefPicker({
                 {...TECH_INPUT}
                 autoFocus
                 placeholder={placeholder ?? "Filter refs…"}
-                className="w-full border-b border-rex-border bg-transparent px-3 py-2 font-mono text-[0.71875rem] text-rex-text placeholder:text-rex-text-dim focus:outline-none"
+                className="w-full border-b border-rex-border bg-transparent px-3 py-2 font-mono text-[0.71875rem] text-rex-text placeholder:text-rex-text-muted focus:outline-none"
               />
               <Command.List className="max-h-[260px] overflow-y-auto overscroll-contain p-[5px]">
                 <Command.Empty className="px-[9px] py-2 font-mono text-[0.6875rem] text-rex-text-muted">

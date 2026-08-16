@@ -14,7 +14,7 @@ import type { DbStatus } from "@/types";
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
     <div className="w-24">
-      <div className="mb-1 flex justify-between font-mono text-[0.625rem] text-rex-text-dim">
+      <div className="mb-1 flex justify-between font-mono text-[0.625rem] text-rex-text-muted">
         <span>{label}</span>
         <span className="text-rex-text-bright">{value}</span>
       </div>
@@ -75,11 +75,11 @@ function DbRow({
             </select>
           ) : (
             db.version && (
-              <span className="ml-2 font-mono text-[0.65625rem] text-rex-text-dim">{db.version}</span>
+              <span className="ml-2 font-mono text-[0.65625rem] text-rex-text-muted">{db.version}</span>
             )
           )}
         </div>
-        <div className="font-mono text-[0.6875rem] text-rex-text-dim">
+        <div className="font-mono text-[0.6875rem] text-rex-text-muted">
           127.0.0.1:{db.port}
           {db.pid != null && ` · pid ${db.pid}`}
         </div>
@@ -98,7 +98,7 @@ function DbRow({
         ) : (
           <span
             title={`No browser for ${db.label} — connect with redis-cli -p ${db.port}`}
-            className="font-mono text-[0.6875rem] text-rex-text-dim"
+            className="font-mono text-[0.6875rem] text-rex-text-muted"
           >
             redis-cli -p {db.port}
           </span>

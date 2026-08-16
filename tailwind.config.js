@@ -24,8 +24,6 @@ export default {
           "text-bright": "var(--rex-text-bright)",
           "text-muted": "var(--rex-text-muted)",
           "text-dim": "var(--rex-text-dim)",
-          "text-faint": "var(--rex-text-faint)",
-          "text-label": "var(--rex-text-label)",
           "text-value": "var(--rex-text-value)",
           "text-hero": "var(--rex-text-hero)",
           link: "var(--rex-link)",

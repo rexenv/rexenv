@@ -69,7 +69,7 @@ export function useBrowserMenu(
     >
       <span className="flex-1 truncate">{b.name}</span>
       {b.id === current?.id && (
-        <span className="flex-none text-[0.6875rem] text-rex-text-dim">default</span>
+        <span className="flex-none text-[0.6875rem] text-rex-text-muted">default</span>
       )}
     </MenuItem>
   ));
@@ -87,7 +87,7 @@ export function useEditorMenu(path: string): ReactNode | undefined {
     >
       <span className="flex-1 truncate">{e.name}</span>
       {e.id === current?.id && (
-        <span className="flex-none text-[0.6875rem] text-rex-text-dim">default</span>
+        <span className="flex-none text-[0.6875rem] text-rex-text-muted">default</span>
       )}
     </MenuItem>
   ));

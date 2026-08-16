@@ -417,7 +417,7 @@ export function Mail() {
                           {g.unread}
                         </span>
                       )}
-                      <span className="rounded-md border border-rex-border-strong bg-rex-surface-2 px-1.5 py-px font-mono text-[0.625rem] text-rex-text-dim">
+                      <span className="rounded-md border border-rex-border-strong bg-rex-surface-2 px-1.5 py-px font-mono text-[0.625rem] text-rex-text-muted">
                         {g.messages.length}
                       </span>
                     </span>
@@ -443,7 +443,7 @@ export function Mail() {
             )}
           </div>
           {list && (
-            <div className="flex-none border-t border-rex-border px-3 py-2 font-mono text-[0.65625rem] text-rex-text-dim">
+            <div className="flex-none border-t border-rex-border px-3 py-2 font-mono text-[0.65625rem] text-rex-text-muted">
               {list.total} messages · {list.unread} unread
             </div>
           )}
@@ -455,7 +455,7 @@ export function Mail() {
             <Preview id={selectedId} tab={tab} onTab={setTab} />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-              <div className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-rex-border-strong bg-rex-surface-1 text-rex-text-faint">
+              <div className="flex h-[46px] w-[46px] items-center justify-center rounded-xl border border-rex-border-strong bg-rex-surface-1 text-rex-text-muted">
                 <MailIcon className="h-[22px] w-[22px]" strokeWidth={1.6} />
               </div>
               <div>
@@ -468,7 +468,7 @@ export function Mail() {
                     : "Outgoing email from your sites is captured here."}
                 </div>
               </div>
-              <span className="rounded-md border border-rex-border-strong bg-rex-surface-1 px-2.5 py-1 font-mono text-[0.65625rem] text-rex-text-dim">
+              <span className="rounded-md border border-rex-border-strong bg-rex-surface-1 px-2.5 py-1 font-mono text-[0.65625rem] text-rex-text-muted">
                 SMTP · 127.0.0.1:{mp?.smtpPort ?? 11025} · auto-configured
               </span>
             </div>
@@ -540,7 +540,7 @@ function MessageRow({
         </div>
         <div className="truncate text-[0.75rem] text-rex-text">{m.subject || "(no subject)"}</div>
         <div className="truncate font-mono text-[0.6875rem] text-rex-text-muted">
-          <span className="text-rex-text-dim">to </span>
+          <span className="text-rex-text-muted">to </span>
           {recipient}
         </div>
       </div>
