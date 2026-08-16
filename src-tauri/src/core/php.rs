@@ -224,6 +224,14 @@ pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
             },
         )?;
     }
+    // Exactly-one-default is an invariant the whole registry leans on
+    // (`scratch.rs` and `available_minors` both do `find(|v| v.is_default)`), and
+    // the seed no longer forces it — that was what reset the user's choice. So
+    // assert it here instead: a registry carrying NO default gets the pinned
+    // minor back, rather than handing `None` to every caller.
+    if !store::list_php_versions(conn)?.iter().any(|v| v.is_default) {
+        store::set_default_php_version(conn, &default_minor)?;
+    }
     Ok(bumped)
 }
 
@@ -1125,6 +1133,59 @@ mod tests {
         assert_eq!(row(&conn).patch, patch_for_minor("8.3").unwrap());
         assert!(row(&conn).installed, "confirming a patch must not disturb `installed`");
         assert!(seed_registry(&conn).unwrap().is_empty());
+    }
+
+    /// **The user's default PHP version survives a relaunch.**
+    ///
+    /// `seed_registry` re-seeds every row at every launch, and `upsert_php_version`
+    /// listed `is_default` in its `ON CONFLICT DO UPDATE SET` — sourced from
+    /// `minor == minor_of(PHP_VERSION)`, i.e. the compiled-in pin. So "Make
+    /// default" held until the next app start and then silently snapped back to
+    /// 8.3. `installed` sits in the same statement and was deliberately excluded
+    /// from that SET list for exactly this reason; `is_default` was not, and the
+    /// doc comment above the function discussed only `installed`.
+    ///
+    /// Same family as the bump-signal bug two functions down: a statement that
+    /// both seeds a derived fact and overwrites a USER fact, where nobody asked
+    /// which of the columns the user owns. The existing
+    /// `set_default_switches_exclusively_and_requires_installed` stayed green
+    /// because it asserts inside the same transaction and never re-seeds.
+    #[test]
+    fn the_users_default_php_version_survives_a_relaunch() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+
+        // A minor that is NOT the pinned default, installed then chosen.
+        let pinned = minor_of(binaries::PHP_VERSION);
+        let chosen = all_minors().into_iter().find(|m| *m != pinned).expect("a second minor");
+        set_installed(&conn, &chosen, true).unwrap();
+        set_default(&conn, &chosen).unwrap();
+
+        // Relaunch.
+        seed_registry(&conn).unwrap();
+
+        let rows = store::list_php_versions(&conn).unwrap();
+        let defaults: Vec<&str> =
+            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
+        assert_eq!(defaults, vec![chosen.as_str()], "the seed reset the user's default");
+        // …and the one-default invariant the whole registry relies on holds.
+        assert_eq!(defaults.len(), 1);
+    }
+
+    /// A registry that somehow carries NO default gets one back, rather than
+    /// leaving `find(|v| v.is_default)` returning `None` to every caller.
+    #[test]
+    fn a_registry_with_no_default_regains_the_pinned_one() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        conn.execute("UPDATE php_versions SET is_default = 0", []).unwrap();
+
+        seed_registry(&conn).unwrap();
+
+        let rows = store::list_php_versions(&conn).unwrap();
+        let defaults: Vec<&str> =
+            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
+        assert_eq!(defaults, vec![minor_of(binaries::PHP_VERSION).as_str()]);
     }
 
     /// **A patch bump that fails is retried; it is not silently swallowed.**

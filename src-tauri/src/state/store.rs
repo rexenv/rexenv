@@ -1081,21 +1081,30 @@ fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
     })
 }
 
-/// Insert a PHP version, or update its `patch`/`fpm_port`/`is_default` if it
-/// already exists. The `installed` flag is **preserved** on update so re-seeding
-/// never clobbers a user's enable/disable choice.
-/// **`patch` is written on INSERT and never on UPDATE.** A fresh row has nothing
-/// running, so the pin is the truth; an existing row's patch is what that minor
-/// was last CONFIRMED to be serving, and moving it here would move it before the
-/// binary is downloaded and the pool is restarted. [`set_php_patch`] is the only
-/// writer for an existing row, and it is called after the restart is ready.
+/// Insert a PHP version, or refresh the DERIVED part of an existing row.
+///
+/// **Only `fpm_port` is updated.** The other three columns are split by who owns
+/// the fact, which is the question this statement kept getting wrong:
+///
+/// - `fpm_port` is computed from the minor ([`core::php::fpm_port`]) and owned by
+///   the app, so re-seeding may refresh it.
+/// - `installed` is the user's enable/disable choice ([`set_php_installed`]).
+/// - `is_default` is the user's "Make default" choice ([`set_default_php_version`]).
+///   It used to be in this SET list, sourced from the compiled-in pin, so every
+///   launch silently reset the user's chosen default back to the pinned minor —
+///   `installed` sat one line away, deliberately excluded for exactly this reason.
+/// - `patch` is what the minor was last CONFIRMED to be serving
+///   ([`set_php_patch`]); writing the pin here would move it before the bytes are
+///   downloaded and the pool restarted.
+///
+/// On INSERT all four are seeded from the pin, which is right: a fresh row has no
+/// user choice to protect and nothing running to contradict.
 pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
     conn.execute(
         "INSERT INTO php_versions (minor, patch, fpm_port, installed, is_default)
          VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(minor) DO UPDATE SET
-             fpm_port = excluded.fpm_port,
-             is_default = excluded.is_default",
+             fpm_port = excluded.fpm_port",
         params![
             v.minor,
             v.patch,
