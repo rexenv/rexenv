@@ -516,10 +516,15 @@ Being worked now, in this order (the order is load-bearing):**
    `restart_pools_for` lets the GC unlink a live master's tree (§6). **First** because it
    only ever keeps *more*, so it is safe before any change to what the registry stores
    and unsafe after. — *done 16 Aug 2026, `8be6810`, ledger #338, plant-proven.*
-2. **The licence obligation is host-derived and enforced on every resolve path.** Closes
-   §9 route 2 (latent today, live the moment a self-distributed artifact is a tree — and
-   `php-debug` already is one), and makes route 1 impossible by construction rather than
-   by a list somebody must remember to extend.
+2. ◐ **The licence obligation is host-derived and enforced on every resolve path.**
+   **Route 1 done** 16 Aug 2026 — the obligation now reads the artifact's HOST, the
+   licence URL is a sibling of the artifact's own URL (same release by construction), and
+   ours-but-unpinned is a refusal rather than a silent "nothing owed". Ledger #336
+   amended, plant-proven. It also closed a live gap the old rule could not see: the
+   already-wired self-hosted `php-debug` was excluded by its `name` check.
+   **Route 2 still open** — enforcement remains only on the single-file `resolve`;
+   `resolve_dir` / `resolve_bundle` / `resolve_file` still have none, which is what a
+   `targztree` entry would exploit.
 3. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
    planned download with hub progress, not a silent delete-and-refetch.
 

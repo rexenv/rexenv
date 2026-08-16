@@ -650,46 +650,101 @@ pub const LICENSES_DIR: &str = "licenses";
 /// self-built runtime inherits the obligation by existing, and if the day comes
 /// that 7.4 is published upstream and the tag goes away, this goes quiet on its
 /// own. The rule is "we built it, so its licences travel with it".
-/// Whether rexenv is the DISTRIBUTOR of `name`@`version` — it built the bytes
-/// and hosts them — and therefore owes the licence texts beside them.
+/// The hosts that serve artifacts **rexenv itself built**. Bytes downloaded from
+/// one of these are ours to distribute, and the licence obligation attaches.
+///
+/// Deliberately narrow prefixes, not a bare domain: `github.com` also serves
+/// nginx (jirutka), Caddy, cloudflared, WP-CLI, Adminer and PHP upstream, and
+/// none of those are ours. Only `github.com/rexenv/` is.
+const SELF_DISTRIBUTED_HOSTS: &[&str] = &["https://github.com/rexenv/", "https://dl.rexenv.dev/"];
+
+/// Whether rexenv is the DISTRIBUTOR of the artifact at `url` — it built the
+/// bytes and hosts them — and therefore owes the licence texts beside them.
 ///
 /// The one question that decides the obligation, in one place, so the answer
 /// cannot be given differently by a manifest arm, a cache check and a doc.
-pub fn is_self_distributed(name: &str, version: &str) -> bool {
-    (name == "php" || name == "php-fpm") && php_self_hosted_tag(version).is_some()
+///
+/// # Why this reads the HOST and not the name or the version
+///
+/// It used to be `(name == "php" || name == "php-fpm") && php_self_hosted_tag(version)`,
+/// carrying a comment that a second self-built runtime would "inherit the
+/// obligation by existing". **It would not, and the counter-example was already
+/// in this file**: `php-debug` / `php-fpm-debug` are self-built (a custom
+/// static-php compile — `docs/xdebug-debug-build.md`) and self-hosted at
+/// `PHP_DEBUG_BASE_URL`, and the name check excluded both. The day their digests
+/// are pinned they would have shipped with no licences and nothing would have
+/// said so. Same family as the four guards in the ledger that claimed a whole
+/// surface and checked one place inside it.
+///
+/// A host cannot be forgotten the way a list entry can: to escape this rule an
+/// artifact has to stop being served from our own infrastructure, at which point
+/// we are genuinely not the distributor. That is the property worth having, and
+/// it is worth more than the shorter expression it replaced.
+pub fn is_self_distributed(url: &str) -> bool {
+    SELF_DISTRIBUTED_HOSTS.iter().any(|h| url.starts_with(h))
 }
 
-fn php_licenses_spec(name: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
-    if !is_self_distributed(name, version) {
-        return None;
+/// [`is_self_distributed`] for a NAMED artifact, resolving its pinned URL first.
+///
+/// The shape callers outside this module need (`examples/php_versions_check`),
+/// so a live check cannot answer the ownership question differently from the
+/// resolve that acts on it. An unresolvable artifact is not ours to distribute,
+/// because it is not distributed at all.
+pub fn artifact_is_self_distributed(name: &str, version: &str, arch: Arch) -> bool {
+    manifest(name, version, "macos", arch).is_some_and(|s| is_self_distributed(&s.url))
+}
+
+/// A sibling of `url` in the same directory — same release, by construction.
+fn sibling_url(url: &str, file: &str) -> Option<String> {
+    let cut = url.rfind('/')?;
+    Some(format!("{}/{file}", &url[..cut]))
+}
+
+/// The licence-text download that must ride alongside the artifact at `url`.
+///
+/// `Ok(None)` means nothing is owed — the ordinary case, every binary somebody
+/// else distributes. `Err` means **we owe licences and cannot name them**, which
+/// is a bug rather than a default: it means shipping somebody's code without its
+/// licence, so it refuses to resolve instead of resolving without them.
+///
+/// The URL is derived as a SIBLING of the artifact's own URL, so the licences
+/// necessarily come from the same immutable release as the bytes they cover —
+/// previously a property asserted in prose beside a separately-formatted URL.
+/// Only the digest stays a pin, because a digest cannot be derived.
+fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Option<BinarySpec>> {
+    if !is_self_distributed(url) {
+        return Ok(None);
     }
-    let tag = php_self_hosted_tag(version)?;
     let (arm, amd) = match version {
         "7.4.33" => (
             PHP_7_4_33_LICENSES_MAC_ARM64_SHA256,
             PHP_7_4_33_LICENSES_MAC_AMD64_SHA256,
         ),
-        // A self-hosted version with no licence pin is a BUG, not a default:
-        // it means we shipped somebody's code without its licence. Refuse to
-        // resolve rather than resolve without them.
-        _ => return None,
+        _ => ("", ""),
     };
     let hex = match arch {
         Arch::Arm64 => arm,
         Arch::X86_64 => amd,
     };
-    if hex.is_empty() {
-        return None;
-    }
-    Some(BinarySpec {
-        url: format!(
-            "https://github.com/rexenv/runtimes/releases/download/{tag}/licenses-{}.tar.gz",
+    let missing = || {
+        Error::Other(format!(
+            "{name} {version} is served from rexenv's own infrastructure ({url}) — rexenv is \
+             its distributor and PHP License 3.01 §2 attaches — but no licence archive is \
+             pinned for it. Pin `licenses-{}.tar.gz` from the same release, or serve the \
+             artifact from whoever built it.",
             php_arch(arch)
-        ),
+        ))
+    };
+    if hex.is_empty() {
+        return Err(missing());
+    }
+    Ok(Some(BinarySpec {
+        url: sibling_url(url, &format!("licenses-{}.tar.gz", php_arch(arch)))
+            .ok_or_else(missing)?,
         checksum: Checksum::Sha256(hex.to_string()),
         archive: Archive::TarGzTree,
         member: LICENSES_DIR,
-    })
+    }))
 }
 
 /// Whether a published cache dir carries the licence texts it owes.
@@ -702,8 +757,13 @@ fn php_licenses_spec(name: &str, version: &str, arch: Arch) -> Option<BinarySpec
 /// the right bytes" was true of those caches — they are missing something the
 /// pin never described. One refetch is the price of repairing the field, and
 /// the field here is a licence obligation rather than a broken dylib.
-fn licenses_satisfied(dir: &Path, name: &str, version: &str, arch: Arch) -> bool {
-    if php_licenses_spec(name, version, arch).is_none() {
+/// Keyed on the artifact's HOST, so an artifact we owe licences for but have no
+/// licence pin for reads as UNSATISFIED rather than as nothing-owed. That is the
+/// fail direction that matters: the old form asked `php_licenses_spec(..).is_none()`,
+/// which answered "nothing owed" for both "somebody else built it" and "we built
+/// it and forgot to pin its licences" — one of which is a licence violation.
+fn licenses_satisfied(dir: &Path, url: &str) -> bool {
+    if !is_self_distributed(url) {
         return true;
     }
     std::fs::read_dir(dir.join(LICENSES_DIR)).is_ok_and(|mut d| d.next().is_some())
@@ -1488,7 +1548,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     }
     if bin_path.exists()
         && cache_matches_pin(&dir, version, &spec.checksum)
-        && licenses_satisfied(&dir, name, version, arch)
+        && licenses_satisfied(&dir, &spec.url)
     {
         return Ok(bin_path);
     }
@@ -1539,7 +1599,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         // A failure here fails the resolve. That is the point: shipping the
         // interpreter and silently skipping its licence is the outcome being
         // prevented, so it cannot be the fallback when the network is unkind.
-        if let Some(lic) = php_licenses_spec(name, version, arch) {
+        if let Some(lic) = licenses_spec(&spec.url, name, version, arch)? {
             let archive = staging.join(".licenses.tar.gz");
             download(&lic.url, &archive, Some(&lic.checksum), Some(&id)).await?;
             extract_tar_gz_tree_filtered(open_buffered(&archive)?, &staging, 0, None)?;
@@ -2991,48 +3051,52 @@ mod tests {
     /// **If we built it, its licence texts ship with it — derived, never listed.**
     ///
     /// The obligation attaches to the act of DISTRIBUTING, so the guard is keyed
-    /// on `php_self_hosted_tag` rather than on the string "7.4". A second
-    /// self-built runtime therefore inherits the check by existing: pin its
-    /// binaries, forget its licences, and this fails by name before it ships.
-    /// That direction matters more than today's row — the 7.4 licences are
-    /// present and will stay present; the NEXT one is the one nobody is thinking
-    /// about, and shipping somebody's code without its licence is not a defect
-    /// you get to fix in the following release.
+    /// on the artifact's HOST. A second self-built runtime therefore inherits the
+    /// check by existing: pin its binaries, forget its licences, and this fails
+    /// before it ships. That direction matters more than today's row — the 7.4
+    /// licences are present and will stay present; the NEXT one is the one nobody
+    /// is thinking about, and shipping somebody's code without its licence is not
+    /// a defect you get to fix in the following release.
+    ///
+    /// **The previous version of this guard said exactly that and was wrong.** It
+    /// keyed on `php_self_hosted_tag` behind a `name == "php" || name == "php-fpm"`
+    /// check, and the second self-built runtime was already in the file:
+    /// `php-debug` is a custom static-php compile hosted at `PHP_DEBUG_BASE_URL`,
+    /// and the name check excluded it. See `the_debug_build_is_ours_too`.
     #[test]
     fn every_php_we_distribute_ourselves_ships_its_licences() {
-        let mut self_hosted = 0;
+        let mut ours = 0;
         for v in PHP_VERSIONS {
-            let Some(tag) = php_self_hosted_tag(v) else {
-                // Somebody else's build: we owe nothing, and must not invent an
-                // obligation by fetching a licence archive that does not exist.
-                for name in ["php", "php-fpm"] {
-                    for arch in [Arch::Arm64, Arch::X86_64] {
-                        assert!(
-                            php_licenses_spec(name, v, arch).is_none(),
-                            "{name} {v} is upstream's build — rexenv is not its distributor"
-                        );
-                    }
-                }
-                continue;
-            };
-            self_hosted += 1;
             for name in ["php", "php-fpm"] {
                 for arch in [Arch::Arm64, Arch::X86_64] {
-                    let lic = php_licenses_spec(name, v, arch).unwrap_or_else(|| {
-                        panic!(
-                            "rexenv BUILDS and hosts {name} {v} (release {tag}), so it is the \
-                             distributor and PHP License 3.01 §2 attaches — but no licence \
-                             archive is pinned for it. Pin `licenses-<arch>.tar.gz` from the \
-                             same release, or stop shipping this version."
-                        )
-                    });
-                    // Same immutable release as the bytes it covers. A licence
-                    // archive from a DIFFERENT build documents a different set of
-                    // statically linked deps, which is a quiet way to be wrong.
+                    let spec = manifest(name, v, "macos", arch).expect("pinned");
+                    if !is_self_distributed(&spec.url) {
+                        // Somebody else's build: we owe nothing, and must not
+                        // invent an obligation by fetching an archive that does
+                        // not exist.
+                        assert!(
+                            licenses_spec(&spec.url, name, v, arch).unwrap().is_none(),
+                            "{name} {v} is upstream's build — rexenv is not its distributor"
+                        );
+                        continue;
+                    }
+                    ours += 1;
+                    // An artifact we host with no licence pin is an ERROR, never
+                    // a quiet "nothing owed" — that is the whole fail direction.
+                    let lic = licenses_spec(&spec.url, name, v, arch)
+                        .unwrap_or_else(|e| panic!("{e}"))
+                        .expect("ours ⇒ a licence spec");
+                    // Same immutable release as the bytes it covers, and now by
+                    // CONSTRUCTION rather than by assertion: the licence URL is a
+                    // sibling of the artifact's own URL. A licence archive from a
+                    // DIFFERENT build documents a different set of statically
+                    // linked deps, which is a quiet way to be wrong.
+                    let dir = &spec.url[..spec.url.rfind('/').unwrap()];
                     assert!(
-                        lic.url.contains(&format!("/releases/download/{tag}/")),
-                        "licences must come from the same release as the binary: {}",
-                        lic.url
+                        lic.url.starts_with(dir),
+                        "licences must come from the same release as the binary: {} vs {}",
+                        lic.url,
+                        spec.url
                     );
                     assert_eq!(checksum_hex(&lic.checksum).len(), 64, "real digest, not a stub");
                     assert_eq!(lic.archive, Archive::TarGzTree, "a tree of texts, not one file");
@@ -3040,17 +3104,83 @@ mod tests {
                     // carry the same file list but are distinct artifacts, and a
                     // copy-paste that pointed both at one digest would fail the
                     // download for the other rather than being caught here.
+                    let arm = manifest(name, v, "macos", Arch::Arm64).unwrap().url;
+                    let amd = manifest(name, v, "macos", Arch::X86_64).unwrap().url;
                     assert_ne!(
-                        checksum_hex(&php_licenses_spec(name, v, Arch::Arm64).unwrap().checksum),
-                        checksum_hex(&php_licenses_spec(name, v, Arch::X86_64).unwrap().checksum),
+                        checksum_hex(
+                            &licenses_spec(&arm, name, v, Arch::Arm64).unwrap().unwrap().checksum
+                        ),
+                        checksum_hex(
+                            &licenses_spec(&amd, name, v, Arch::X86_64).unwrap().unwrap().checksum
+                        ),
                         "both arches share a licence digest — one of them is wrong"
                     );
                 }
             }
-            // Only the binaries are ours to cover; nothing else grows the duty.
-            assert!(php_licenses_spec("caddy", v, Arch::Arm64).is_none());
+            // Only what WE host is ours to cover; nothing else grows the duty.
+            let caddy = manifest("caddy", CADDY_VERSION, "macos", Arch::Arm64).unwrap();
+            assert!(!is_self_distributed(&caddy.url));
+            assert!(licenses_spec(&caddy.url, "caddy", v, Arch::Arm64).unwrap().is_none());
         }
-        assert!(self_hosted > 0, "no self-hosted PHP — this guard is now vacuous, delete or fix it");
+        assert!(ours > 0, "no self-hosted PHP — this guard is now vacuous, delete or fix it");
+    }
+
+    /// **The Xdebug debug build is ours, and the old guard could not see it.**
+    ///
+    /// `php-debug` / `php-fpm-debug` are a custom static-php compile
+    /// (`docs/xdebug-debug-build.md`) hosted at `PHP_DEBUG_BASE_URL` — rexenv
+    /// builds those bytes and serves them, so PHP License 3.01 §2 attaches
+    /// exactly as it does to 7.4. The obligation used to be
+    /// `(name == "php" || name == "php-fpm") && php_self_hosted_tag(version)`,
+    /// which answered **false** for both, under a doc comment promising that a
+    /// second self-built runtime "inherits the obligation by existing".
+    ///
+    /// It is unreachable today only because the debug digests are empty, so
+    /// `manifest()` returns `None` and nothing resolves. That is a pin away from
+    /// shipping, which is precisely when nobody re-reads a licence guard.
+    #[test]
+    fn the_debug_build_is_ours_too() {
+        for kind in ["cli", "fpm"] {
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                let spec = php_debug_spec(kind, arch);
+                assert!(
+                    is_self_distributed(&spec.url),
+                    "rexenv builds and hosts the debug build: {}",
+                    spec.url
+                );
+                // …and with no licence pin, resolving it is an ERROR rather than
+                // a silent publish. This is the fail-closed half.
+                let err = licenses_spec(&spec.url, "php-debug", PHP_DEBUG_VERSION, arch)
+                    .expect_err("ours + unpinned licences ⇒ refuse");
+                let msg = err.to_string();
+                assert!(msg.contains("distributor"), "{msg}");
+                assert!(msg.contains(PHP_DEBUG_VERSION), "{msg}");
+            }
+        }
+    }
+
+    /// The host rule must not sweep in the seven OTHER `github.com` orgs rexenv
+    /// downloads from — a bare-domain prefix would make us the distributor of
+    /// Caddy, cloudflared, WP-CLI, Adminer, nginx and PHP upstream.
+    #[test]
+    fn the_self_distributed_host_rule_is_not_a_bare_domain() {
+        assert!(is_self_distributed(
+            "https://github.com/rexenv/runtimes/releases/download/php-7.4.33-6/php.tar.gz"
+        ));
+        assert!(is_self_distributed("https://dl.rexenv.dev/php-debug/php.tar.gz"));
+        for foreign in [
+            "https://github.com/caddyserver/caddy/releases/download/v2/caddy.tar.gz",
+            "https://github.com/cloudflare/cloudflared/releases/download/x/cloudflared",
+            "https://github.com/wp-cli/wp-cli/releases/download/x/wp-cli.phar",
+            "https://github.com/php/frankenphp/releases/download/x/frankenphp",
+            "https://github.com/vrana/adminer/releases/download/x/adminer.php",
+            "https://github.com/axllent/mailpit/releases/download/x/mailpit.tar.gz",
+            "https://github.com/theseus-rs/postgresql-binaries/releases/download/x/pg.tar.gz",
+            "https://jirutka.github.io/nginx-binaries/nginx-1.30.3-arm64-darwin",
+            "https://dl.static-php.dev/static-php-cli/bulk/php-8.3.31-cli-macos-aarch64.tar.gz",
+        ] {
+            assert!(!is_self_distributed(foreign), "not ours: {foreign}");
+        }
     }
 
     /// **The notices file cannot claim rexenv distributes nothing while it does.**
@@ -3090,8 +3220,11 @@ mod tests {
 
         // The live fact. Everything below is conditional on it, so this reads as
         // a rule rather than as a list of today's strings.
-        let distributing: Vec<&str> =
-            PHP_VERSIONS.iter().copied().filter(|v| is_self_distributed("php", v)).collect();
+        let distributing: Vec<&str> = PHP_VERSIONS
+            .iter()
+            .copied()
+            .filter(|v| is_self_distributed(&php_url("cli", v, Arch::Arm64)))
+            .collect();
         if distributing.is_empty() {
             return; // rexenv distributes nobody else's bytes — nothing is owed.
         }
@@ -3173,18 +3306,27 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
+        let upstream = php_url("cli", PHP_VERSION, Arch::Arm64);
+        let ours = php_url("cli", "7.4.33", Arch::Arm64);
+
         // Upstream's build: nothing owed, so an empty dir is fine.
-        assert!(licenses_satisfied(&tmp, "php", PHP_VERSION, Arch::Arm64));
+        assert!(licenses_satisfied(&tmp, &upstream));
         // Ours: the same empty dir is stale — this is the pre-existing-cache case.
-        assert!(!licenses_satisfied(&tmp, "php", "7.4.33", Arch::Arm64));
+        assert!(!licenses_satisfied(&tmp, &ours));
+        // …and one we host but have NOT pinned licences for is stale too, rather
+        // than reading as nothing-owed. The old form asked the licence SPEC, and
+        // so answered "satisfied" for exactly the case that is a violation:
+        // an artifact rexenv serves whose licences nobody remembered to pin.
+        assert!(!licenses_satisfied(&tmp, &php_debug_spec("cli", Arch::Arm64).url));
         // An EMPTY licenses/ is stale too. A tarball that unpacked to nothing
         // would otherwise read as satisfied, which is the vacuous-green shape.
         std::fs::create_dir_all(tmp.join(LICENSES_DIR)).unwrap();
-        assert!(!licenses_satisfied(&tmp, "php", "7.4.33", Arch::Arm64));
+        assert!(!licenses_satisfied(&tmp, &ours));
         std::fs::write(tmp.join(LICENSES_DIR).join("PHP-3.01.txt"), "…").unwrap();
-        assert!(licenses_satisfied(&tmp, "php", "7.4.33", Arch::Arm64));
+        assert!(licenses_satisfied(&tmp, &ours));
         // A binary we do not distribute never gains the requirement.
-        assert!(licenses_satisfied(&tmp, "caddy", CADDY_VERSION, Arch::Arm64));
+        let caddy = manifest("caddy", CADDY_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(licenses_satisfied(&tmp, &caddy.url));
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

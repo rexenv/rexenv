@@ -28,6 +28,7 @@
 
 use rexenv_lib::core::binaries;
 use rexenv_lib::platform;
+use rexenv_lib::platform::traits::Arch;
 use std::path::Path;
 use std::process::Command;
 
@@ -44,15 +45,15 @@ const MIN_LICENCE_FILES: usize = 10;
 /// Returns empty for every build somebody ELSE distributes: asserting a
 /// `licenses/` beside static-php.dev's 8.x would invent an obligation rexenv
 /// does not have, and would fail on seven of the eight rows. The question of
-/// who owes what is asked of `binaries::is_self_distributed`, so this example
+/// who owes what is asked of `binaries::artifact_is_self_distributed`, so this example
 /// cannot answer it differently from the code that acts on it.
 ///
 /// L0 proves the pin exists and that a cache without the texts is stale. Only a
 /// real resolve proves the archive fetches, unpacks where the code expects, and
 /// survives the atomic publish — and the obligation is discharged by FILES next
 /// to the binary, so files are what this looks at.
-fn licence_problems(v: &str, bin: &Path, kind: &str) -> Vec<String> {
-    if !binaries::is_self_distributed(kind, v) {
+fn licence_problems(v: &str, bin: &Path, kind: &str, arch: Arch) -> Vec<String> {
+    if !binaries::artifact_is_self_distributed(kind, v, arch) {
         return Vec::new();
     }
     let dir = bin.parent().unwrap().join(binaries::LICENSES_DIR);
@@ -163,7 +164,7 @@ async fn main() {
                     Err(e) => fail(format!("php {v}: file(1) failed: {e}")),
                 }
 
-                for p in licence_problems(v, &path, "php") {
+                for p in licence_problems(v, &path, "php", plat.binaries().arch()) {
                     fail(p);
                 }
             }
@@ -188,7 +189,7 @@ async fn main() {
                 // Separately, for the same reason the version is: `php-fpm-7.4.33`
                 // is its own cache dir published by its own resolve, so the cli's
                 // licences say nothing about it.
-                for p in licence_problems(v, &path, "php-fpm") {
+                for p in licence_problems(v, &path, "php-fpm", plat.binaries().arch()) {
                     fail(p);
                 }
             }
