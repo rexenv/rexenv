@@ -177,10 +177,24 @@ pub fn debug_fpm_port(minor: &str) -> Option<u16> {
     Some(DEBUG_FPM_PORT_BASE + major * 10 + min)
 }
 
-/// Seed/refresh the `php_versions` registry from the pinned build set. Idempotent:
-/// inserts unknown versions (the default minor enabled, others available), and on
-/// re-run updates `patch`/`fpm_port`/`is_default` while **preserving** the user's
-/// `installed` choices. Safe to call on every app start.
+/// Seed/refresh the `php_versions` registry from the pinned build set. Idempotent
+/// and safe to call on every app start.
+///
+/// **On re-run it updates exactly one column: `fpm_port`.** Everything else the
+/// row carries is either the user's (`installed`, `is_default`) or gone
+/// (`patch`, dropped in v36). This sentence has been wrong twice — it used to
+/// promise that the seed "updates `patch`/`fpm_port`/`is_default` while
+/// preserving the user's `installed` choices", which described two shipped bugs
+/// as intended behaviour and is how a reader would put #340 back by implementing
+/// what they read.
+///
+/// **The seed never sets `is_default`, not even on INSERT.** New rows arrive with
+/// it false and the zero-default backstop below elects the pin, so a fresh
+/// database still ends with exactly one default and an existing user's choice is
+/// never joined by a second. Setting it on INSERT was the third defect in this
+/// one statement (#344): a release that adds a NEW minor and moves the pin to it
+/// takes the INSERT arm for that row, so the user's default survived via
+/// `ON CONFLICT` and the new pin arrived beside it claiming to be default too.
 ///
 /// Returns nothing: there is no stored patch to compare against any more.
 ///
@@ -203,24 +217,29 @@ pub fn seed_registry(conn: &Connection) -> Result<()> {
             .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
         let port =
             fpm_port(&minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
-        let is_default = minor == default_minor;
+        let is_pin = minor == default_minor;
         store::upsert_php_version(
             conn,
             &PhpVersion {
                 minor: minor.clone(),
                 fpm_port: port,
-                // On first insert the default is enabled; others are available but
-                // off until the user installs them (Phase 2 §1.5). Preserved on update.
-                installed: is_default,
-                is_default,
+                // On first insert the pinned minor is enabled; others are available
+                // but off until the user installs them (Phase 2 §1.5). Preserved on
+                // update.
+                installed: is_pin,
+                // NEVER here — the backstop below elects it. See the doc comment:
+                // a new minor that is also the new pin takes this arm while the
+                // user's existing default survives via ON CONFLICT, so setting it
+                // here produces TWO defaults (#344).
+                is_default: false,
             },
         )?;
     }
     // Exactly-one-default is an invariant the whole registry leans on
     // (`scratch.rs` and `available_minors` both do `find(|v| v.is_default)`), and
-    // the seed no longer forces it — that was what reset the user's choice. So
-    // assert it here instead: a registry carrying NO default gets the pinned
-    // minor back, rather than handing `None` to every caller.
+    // the seed sets it NOWHERE else — so this is the only thing that elects one.
+    // It fires on a fresh database (no row is default yet) and stands down on
+    // every launch after, which is what keeps the user's choice untouched.
     if !store::list_php_versions(conn)?.iter().any(|v| v.is_default) {
         store::set_default_php_version(conn, &default_minor)?;
     }
@@ -1157,6 +1176,88 @@ mod tests {
         assert_eq!(rows.iter().filter(|v| v.is_default).count(), 1);
         // The derived port IS refreshed — that one the app owns.
         assert_eq!(row.fpm_port, fpm_port(&chosen).unwrap());
+    }
+
+    /// **A release that adds a new minor AND moves the pin to it must not create
+    /// a second default.**
+    ///
+    /// The third defect in one statement (#344), and the one the previous two
+    /// fixes could not see: #339 and #340 both corrected the `ON CONFLICT DO
+    /// UPDATE SET` list, while the INSERT arm went unread. A new minor has no row
+    /// yet, so it takes that arm — and it arrived with `is_default = 1` while the
+    /// user's existing default survived, untouched, via the conflict clause.
+    ///
+    /// **Not a rare shape: it fires for every user the first time the pin moves
+    /// to a newly-added minor**, which is exactly what shipping 7.4 did. The
+    /// user's own default need not have been chosen — a row that has been default
+    /// since the first seed collides just the same.
+    ///
+    /// The fixture deletes the pinned minor's row and re-seeds, which is what a
+    /// release adding that minor looks like from the database's side. The
+    /// surviving regression test cannot see this: it seeds first, so only the
+    /// conflict arm is ever exercised.
+    #[test]
+    fn a_newly_pinned_minor_does_not_arrive_claiming_to_be_a_second_default() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let pinned = minor_of(binaries::PHP_VERSION);
+        let chosen = all_minors().into_iter().find(|m| *m != pinned).expect("a second minor");
+        set_installed(&conn, &chosen, true).unwrap();
+        set_default(&conn, &chosen).unwrap();
+
+        // The pinned minor arrives with this release: no row for it yet.
+        conn.execute("DELETE FROM php_versions WHERE minor = ?1", [&pinned]).unwrap();
+        seed_registry(&conn).unwrap();
+
+        let rows = store::list_php_versions(&conn).unwrap();
+        let defaults: Vec<&str> =
+            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
+        assert_eq!(
+            defaults,
+            vec![chosen.as_str()],
+            "the new pin joined the user's default instead of leaving it alone"
+        );
+        // The new row still exists and is still seeded installed — the fix must
+        // not have removed the row, only its claim to be default.
+        assert!(rows.iter().any(|v| v.minor == pinned), "the new minor lost its row");
+    }
+
+    /// A registry that somehow carries NO default gets one back, rather than
+    /// leaving `find(|v| v.is_default)` returning `None` to every caller.
+    ///
+    /// **Restored 17 Aug 2026 — it was deleted with the v36 migration and not
+    /// replaced, and ledger #340 went on citing it.** That mattered more after
+    /// the fix above than before it: the backstop is now the ONLY thing that ever
+    /// elects a default, so it went from a belt-and-braces repair to the
+    /// mechanism, with zero coverage in between.
+    #[test]
+    fn a_registry_with_no_default_regains_the_pinned_one() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        conn.execute("UPDATE php_versions SET is_default = 0", []).unwrap();
+
+        seed_registry(&conn).unwrap();
+
+        let rows = store::list_php_versions(&conn).unwrap();
+        let defaults: Vec<&str> =
+            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
+        assert_eq!(defaults, vec![minor_of(binaries::PHP_VERSION).as_str()]);
+    }
+
+    /// A FRESH database ends with exactly one default, which is the pin — the
+    /// case the fix above moved from the INSERT arm to the backstop, so it is
+    /// asserted directly rather than assumed.
+    #[test]
+    fn a_fresh_registry_ends_with_exactly_one_default_and_it_is_the_pin() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let rows = store::list_php_versions(&conn).unwrap();
+        let defaults: Vec<&str> =
+            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
+        assert_eq!(defaults, vec![minor_of(binaries::PHP_VERSION).as_str()]);
+        // …and the pinned minor is the one seeded installed.
+        let pin = rows.iter().find(|v| v.minor == minor_of(binaries::PHP_VERSION)).unwrap();
+        assert!(pin.installed, "a fresh install must have its default minor enabled");
     }
 
     /// **The row says what is PINNED and, separately, what is SERVING.**
