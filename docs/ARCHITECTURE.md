@@ -318,6 +318,18 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   datadir so the `mysql/`-dir marker can't lie.
 - The `php-debug` (Xdebug) variant is fully wired but returns `None` from `manifest()`
   until its checksums are pinned — see `docs/xdebug-debug-build.md`.
+- **PHP patch bumps ride app releases (Option A), and the launch sweep keeps what RUNS.**
+  A release that moves a pin makes `seed_registry` report the bumped minors; `lib.rs`
+  then prefetches, restarts each bumped minor's live pool, and sweeps the superseded
+  `php-<patch>/` trees (~136–208MB per minor — two trees, cli + fpm). The sweep's
+  keep-set is `{compiled-in pins} ∪ {each minor's REGISTERED patch}`
+  (`php_caches_to_keep`), read from the registry, never from the pin table: it also runs
+  on the path where a pool restart failed partway and later minors still serve from
+  their old masters, and unlinking a running master's tree leaves it alive on the inode
+  but unrestartable. Keeping the pins is what makes "falls back to the pins" an OFFLINE
+  fallback rather than a download — **a floor whose bytes were deleted is not a floor**.
+  An unreadable registry skips the sweep rather than sweeping with an empty keep-set.
+  Ledger #338; the runtime-selectable successor is `docs/PLAN-binary-updates.md`.
 - **A PHP version resolves to the source that PUBLISHES it.** Most come from
   static-php.dev's bulk builds; the ones nobody publishes portably are built by
   `rexenv/runtimes` CI and hosted as GitHub Release assets (`php_url` /

@@ -368,8 +368,36 @@ pub fn run() {
                                 log::warn!("php: a patch-updated pool did not become ready: {e}");
                             }
                         }
-                        for dir in core::binaries::gc_outdated_php_caches(platform) {
-                            log::info!("php: removed outdated binary cache {dir}");
+                        // Keyed on what the REGISTRY says each minor runs, never
+                        // on the pin table: this same block reaches here after a
+                        // restart_pools_for that failed partway, with later
+                        // minors still serving from their old masters. Keeping
+                        // the pinned trees too is what makes "falls back to the
+                        // pins" an offline fallback rather than a download
+                        // (docs/PLAN-binary-updates.md §6).
+                        //
+                        // A registry we could not read SKIPS the sweep rather
+                        // than sweeping with an empty keep-set: deleting nothing
+                        // is always safe, deleting the wrong tree is not, and an
+                        // empty list is indistinguishable from "no minor runs
+                        // anything".
+                        let registered = state
+                            .db
+                            .lock()
+                            .ok()
+                            .and_then(|conn| core::php::registered_patches(&conn).ok());
+                        match registered {
+                            Some(registered) => {
+                                for dir in
+                                    core::binaries::gc_outdated_php_caches(platform, &registered)
+                                {
+                                    log::info!("php: removed outdated binary cache {dir}");
+                                }
+                            }
+                            None => log::warn!(
+                                "php: skipped the outdated-cache sweep — could not read which \
+                                 patch each minor runs"
+                            ),
                         }
                     });
 

@@ -1346,14 +1346,48 @@ fn cached_bundle_dir_in(bin_dir: &Path, name: &str, version: &str, member: &str)
     dir.join(member).exists().then_some(dir)
 }
 
-/// Whether a binary-cache dir name holds an OUTDATED patch of a pinned PHP
-/// minor — `php-8.3.30/` or `php-fpm-8.3.30/` once the pin moved to 8.3.31.
-/// Pure (name-only) so the GC rule is unit-testable. Deliberately narrow:
-/// only `php-`/`php-fpm-` dirs, only a strict `x.y.z` numeric version, only
-/// minors that HAVE a pin, and never the pinned patch itself — so the debug
+/// Every PHP patch whose cache tree must SURVIVE the launch GC.
+///
+/// Two halves, and both are load-bearing:
+///
+/// - **The compiled-in pins.** A floor whose bytes were deleted is not a floor.
+///   "No network, bad signature, stale manifest → rexenv falls back to the
+///   pins" is a *download* rather than a fallback unless the pinned tree is
+///   still on disk, and offline it is not a fallback at all.
+/// - **Each minor's REGISTERED patch** — what a pool actually runs, read from
+///   the registry rather than assumed. Today `seed_registry` writes the pin into
+///   that row, so the two halves are the same set and this changes nothing. They
+///   stop being the same set the moment a patch can be chosen at runtime, and
+///   then this function is the only thing standing between the GC and the tree
+///   the user just selected and is serving from (`docs/PLAN-binary-updates.md`
+///   §6 — the 8 Aug draft promised "the new tree is not deleted" while the GC
+///   was keyed on the pin, which is exactly what would have deleted it).
+///
+/// Passing the registered set in rather than reading it here keeps this pure and
+/// keeps `core/binaries.rs` off the database.
+pub fn php_caches_to_keep(registered: &[String]) -> Vec<String> {
+    let mut keep: Vec<String> = PHP_VERSIONS.iter().map(|v| (*v).to_string()).collect();
+    for patch in registered {
+        if !keep.iter().any(|k| k == patch) {
+            keep.push(patch.clone());
+        }
+    }
+    keep
+}
+
+/// Whether a binary-cache dir name holds a PHP patch that nothing needs any
+/// more — `php-8.3.30/` or `php-fpm-8.3.30/` once 8.3 moved to 8.3.31 and no
+/// pool is on 8.3.30.
+///
+/// `keep` is [`php_caches_to_keep`]'s answer; a version in it is never
+/// outdated, whatever the pin says. Pure (name + set) so the GC rule is
+/// unit-testable without a `Platform` or a database.
+///
+/// Deliberately narrow otherwise: only `php-`/`php-fpm-` dirs, only a strict
+/// `x.y.z` numeric version, and only minors that HAVE a pin — so the debug
 /// builds (`php-debug-…`), other binaries, staging dirs, and versions from a
 /// NEWER app (downgrade) are all left alone.
-pub fn is_outdated_php_cache(dir_name: &str) -> bool {
+pub fn is_outdated_php_cache(dir_name: &str, keep: &[String]) -> bool {
     // Strip the longer prefix first — `php-` also matches `php-fpm-…`.
     let Some(version) = dir_name
         .strip_prefix("php-fpm-")
@@ -1366,27 +1400,38 @@ pub fn is_outdated_php_cache(dir_name: &str) -> bool {
         return false; // not a plain x.y.z (e.g. `php-debug-8.3.31`)
     }
     let minor = crate::core::php::minor_of(version);
-    match crate::core::php::patch_for_minor(&minor) {
-        Some(pinned) => version != pinned,
-        None => false, // unpinned minor (newer app's cache) — don't touch
+    if crate::core::php::patch_for_minor(&minor).is_none() {
+        return false; // unpinned minor (newer app's cache) — don't touch
     }
+    !keep.iter().any(|k| k == version)
 }
 
 /// Remove cache dirs left behind by a PHP patch bump (Option A updates: pins
 /// move with an app release; the old `php-<oldpatch>/` trees would otherwise
-/// accumulate ~60MB per bump forever). Best-effort — a dir that can't be
-/// removed is skipped, never an error. Returns the removed dir names.
-pub fn gc_outdated_php_caches(platform: &dyn Platform) -> Vec<String> {
+/// accumulate — measured ~136-208MB per minor, two trees of 68-104MB each).
+/// Best-effort — a dir that can't be removed is skipped, never an error.
+/// Returns the removed dir names.
+///
+/// `registered` is what the registry says each minor runs (`php::registered_patches`).
+/// It is a PARAMETER rather than a read, because the caller already knows and
+/// because this module stays off the database — but it must be passed honestly:
+/// this GC runs unconditionally at launch, including on the path where
+/// `restart_pools_for` failed partway and later minors are still serving from
+/// their old masters (`lib.rs`). Deleting a running master's tree does not kill
+/// it — macOS keeps the process alive on the unlinked inode — it just makes the
+/// pool unrestartable later, which is the worst of both.
+pub fn gc_outdated_php_caches(platform: &dyn Platform, registered: &[String]) -> Vec<String> {
     let Ok(bin_dir) = platform.paths().bin_dir() else {
         return Vec::new();
     };
     let Ok(entries) = std::fs::read_dir(&bin_dir) else {
         return Vec::new();
     };
+    let keep = php_caches_to_keep(registered);
     let mut removed = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if is_outdated_php_cache(&name) && std::fs::remove_dir_all(entry.path()).is_ok() {
+        if is_outdated_php_cache(&name, &keep) && std::fs::remove_dir_all(entry.path()).is_ok() {
             removed.push(name);
         }
     }
@@ -3165,32 +3210,92 @@ mod tests {
 
     #[test]
     fn outdated_php_cache_rule_is_narrow() {
+        // Nothing registered beyond the pins — today's state, and the set this
+        // rule was originally written against.
+        let keep = php_caches_to_keep(&[]);
         // An old patch of a pinned minor — for both the cli and fpm dirs.
-        assert!(is_outdated_php_cache("php-8.3.30"));
-        assert!(is_outdated_php_cache("php-fpm-8.3.30"));
+        assert!(is_outdated_php_cache("php-8.3.30", &keep));
+        assert!(is_outdated_php_cache("php-fpm-8.3.30", &keep));
         // The pinned patch itself is never outdated.
         for v in PHP_VERSIONS {
-            assert!(!is_outdated_php_cache(&format!("php-{v}")));
-            assert!(!is_outdated_php_cache(&format!("php-fpm-{v}")));
+            assert!(!is_outdated_php_cache(&format!("php-{v}"), &keep));
+            assert!(!is_outdated_php_cache(&format!("php-fpm-{v}"), &keep));
         }
         // Everything else is left alone: debug builds, other binaries, staging
         // dirs, non-x.y.z names, unpinned minors (a newer app's cache).
-        assert!(!is_outdated_php_cache("php-debug-8.3.31"));
-        assert!(!is_outdated_php_cache("php-fpm-debug-8.3.31"));
-        assert!(!is_outdated_php_cache("caddy-2.11.4"));
-        assert!(!is_outdated_php_cache("nginx-1.30.3"));
-        assert!(!is_outdated_php_cache(".staging-php-8.3.31-123-0"));
-        assert!(!is_outdated_php_cache("php-8.3"));
-        assert!(!is_outdated_php_cache("php-8.3.31.1"));
-        assert!(!is_outdated_php_cache("php-8.6.1")); // unpinned minor (newer app)
+        assert!(!is_outdated_php_cache("php-debug-8.3.31", &keep));
+        assert!(!is_outdated_php_cache("php-fpm-debug-8.3.31", &keep));
+        assert!(!is_outdated_php_cache("caddy-2.11.4", &keep));
+        assert!(!is_outdated_php_cache("nginx-1.30.3", &keep));
+        assert!(!is_outdated_php_cache(".staging-php-8.3.31-123-0", &keep));
+        assert!(!is_outdated_php_cache("php-8.3", &keep));
+        assert!(!is_outdated_php_cache("php-8.3.31.1", &keep));
+        assert!(!is_outdated_php_cache("php-8.6.1", &keep)); // unpinned minor (newer app)
         // …and an unpinned minor OLDER than the set. This was `php-7.4.33`, and
         // that literal would keep this assert GREEN the day 7.4 gains a pin —
         // for the opposite reason (7.4.33 becomes the pinned patch, so "not
         // outdated" is trivially true and the unpinned branch stops being
         // covered). Derived, so it cannot rot that way. See `php::unshipped_minor`.
         let older = format!("php-{}", crate::core::php::unshipped_patch());
-        assert!(!is_outdated_php_cache(&older), "{older}");
-        assert!(!is_outdated_php_cache(&format!("php-fpm-{}", crate::core::php::unshipped_patch())));
+        assert!(!is_outdated_php_cache(&older, &keep), "{older}");
+        assert!(!is_outdated_php_cache(
+            &format!("php-fpm-{}", crate::core::php::unshipped_patch()),
+            &keep
+        ));
+    }
+
+    /// **The GC must never delete a tree a pool is running.**
+    ///
+    /// The launch sweep is keyed on the REGISTERED patch, not on the pin. While
+    /// the two are equal — today, because `seed_registry` writes the pin into
+    /// the row — this is invisible. It stops being invisible the moment a patch
+    /// can be selected at runtime, and the failure it prevents is the app
+    /// deleting, at the next launch, the exact tree the user just chose and is
+    /// serving from (`docs/PLAN-binary-updates.md` §6).
+    ///
+    /// The fixture is a patch of a REAL pinned minor that is not the pin, so it
+    /// takes the same branch a runtime selection would: prefix-stripped, `x.y.z`,
+    /// minor has a pin. Under the old pin-keyed rule this asserted the opposite.
+    #[test]
+    fn the_gc_keeps_the_registered_patch_and_the_pinned_floor() {
+        let minor = crate::core::php::minor_of(PHP_VERSION);
+        let selected = format!("{minor}.9999"); // a patch of a pinned minor, not the pin
+
+        // Registered nowhere: it is garbage, exactly as before.
+        let bare = php_caches_to_keep(&[]);
+        assert!(is_outdated_php_cache(&format!("php-{selected}"), &bare));
+        assert!(is_outdated_php_cache(&format!("php-fpm-{selected}"), &bare));
+
+        // Registered: both of its trees survive.
+        let keep = php_caches_to_keep(&[selected.clone()]);
+        assert!(!is_outdated_php_cache(&format!("php-{selected}"), &keep));
+        assert!(!is_outdated_php_cache(&format!("php-fpm-{selected}"), &keep));
+
+        // …and the pinned floor survives ALONGSIDE it, not instead of it. A
+        // floor whose bytes were deleted is not a floor: "no network → falls
+        // back to the pins" is a download unless the pinned tree is still there.
+        for v in PHP_VERSIONS {
+            assert!(
+                !is_outdated_php_cache(&format!("php-{v}"), &keep),
+                "the pinned floor {v} must survive a runtime selection"
+            );
+            assert!(!is_outdated_php_cache(&format!("php-fpm-{v}"), &keep));
+        }
+        assert!(keep.iter().any(|k| k == &selected));
+        assert!(keep.iter().any(|k| k == PHP_VERSION));
+
+        // A superseded patch is still collected while a selection is live —
+        // keeping the registered tree must not turn the sweep off.
+        assert!(is_outdated_php_cache(&format!("php-{minor}.9998"), &keep));
+    }
+
+    /// The keep-set never duplicates, so a registered patch that IS the pin
+    /// (every row today) does not grow the list on each launch.
+    #[test]
+    fn the_keep_set_is_deduplicated() {
+        let keep = php_caches_to_keep(&[PHP_VERSION.to_string(), PHP_VERSION.to_string()]);
+        assert_eq!(keep.iter().filter(|k| *k == PHP_VERSION).count(), 1);
+        assert_eq!(keep.len(), PHP_VERSIONS.len());
     }
 
     #[test]

@@ -218,6 +218,25 @@ pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
     Ok(bumped)
 }
 
+/// The patch each minor is REGISTERED to run, from the registry rather than
+/// from the pin table.
+///
+/// Today every row equals `patch_for_minor` because `seed_registry` writes it
+/// there, so this returns the pinned set — but it is read, not assumed, which is
+/// the whole point: it is what the launch GC keeps
+/// ([`binaries::php_caches_to_keep`]), and the day a patch can be selected at
+/// runtime the two stop agreeing. Reading the pin table in the GC's keep-set
+/// would then delete the tree the user selected.
+///
+/// Includes rows that are not `installed`: a disabled minor's tree is still not
+/// garbage, and enabling it must not need a re-download.
+pub fn registered_patches(conn: &Connection) -> Result<Vec<String>> {
+    Ok(store::list_php_versions(conn)?
+        .into_iter()
+        .map(|v| v.patch)
+        .collect())
+}
+
 /// All registered PHP versions (installed + available), for the UI.
 ///
 /// The stored row plus what is DERIVED from the pinned build set — Xdebug
