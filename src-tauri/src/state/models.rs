@@ -409,8 +409,6 @@ pub struct SiteServing {
 pub struct PhpVersion {
     /// Minor series, e.g. `8.3` — the primary key and what a `Site.php_version` references.
     pub minor: String,
-    /// Pinned patch build, e.g. `8.3.31`.
-    pub patch: String,
     /// Deterministic loopback FastCGI port of this version's pool.
     pub fpm_port: u16,
     /// Whether this version is enabled (the app starts a pool for it).
@@ -438,7 +436,22 @@ pub struct PhpVersion {
 #[serde(rename_all = "camelCase")]
 pub struct PhpVersionView {
     pub minor: String,
+    /// The patch this build PINS for the minor — derived from `PHP_VERSIONS`,
+    /// never stored. It used to be a column, which meant a mirror that could
+    /// disagree with the thing it mirrored (ledger #339/#340).
     pub patch: String,
+    /// The patch the live pool is ACTUALLY executing, when that differs from
+    /// `patch` — read from the running master's executable (ledger #342).
+    ///
+    /// `None` covers three different states on purpose, because none of them is
+    /// a disagreement: no pool running, a pool running the pinned patch, or a
+    /// pool we could not identify. The UI says something extra only when there
+    /// is something extra to say. **This field is why deleting the column is a
+    /// simplification rather than a cover-up**: without it a failed patch bump
+    /// renders as the pin while the pool serves the old bytes — the identical
+    /// silent lie ledger #339 was shipped to end, just moved somewhere harder
+    /// to see.
+    pub serving: Option<String>,
     pub fpm_port: u16,
     pub installed: bool,
     pub is_default: bool,

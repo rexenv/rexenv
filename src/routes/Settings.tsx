@@ -343,6 +343,18 @@ function PhpVersionRow({
         <div className="min-w-0 flex-1 basis-[9rem]">
           <span className="font-mono text-[0.8125rem] text-rex-text">PHP {v.minor}</span>
           <span className="ml-2 font-mono text-[0.6875rem] text-rex-text-muted">{v.patch}</span>
+          {/* The pool is running bytes this build does not pin — say so, rather
+              than rendering the pin and letting it read as what is serving. Only
+              ever present when the two genuinely disagree (core sends `null`
+              otherwise), so the ordinary row grows nothing. */}
+          {v.serving && (
+            <span
+              className="ml-2 font-mono text-[0.6875rem] text-rex-accent-amber"
+              title={`This build pins ${v.patch}. The running pool is still on ${v.serving} — it restarts on the next launch, or on Start all.`}
+            >
+              serving {v.serving}
+            </span>
+          )}
           {v.isDefault && (
             <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
               Default

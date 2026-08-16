@@ -566,16 +566,17 @@ on content, only on order — the kind of conflict that survives review.
 
 **Remaining:**
 
-6. **Delete `php_versions.patch`; derive it** (P4), in **two** commits, never one:
-   first make "what a pool RUNS" a live fact (read the patch from the running master's
-   EXECUTABLE PATH, never argv — php-fpm rewrites its title, and the 7.4 pool still
-   showing raw argv is a trap that makes a wrong derivation look right), and feed the GC
-   keep-set from that instead of `registered_patches`; only then drop the column.
-   Combining them hides the #338 regression window in review, because the keep-set change
-   and the keep-set's reason to exist would land in the same diff. Retire ledger #339
-   explicitly in the second — it is a shipped, plant-proven row whose code goes away.
-   **§15B is RULED: the live pool fact must reach the view**, so the row can say
-   `pinned 8.3.32, serving 8.3.31` rather than deriving the pin and asserting it.
+6. ✓ **Delete `php_versions.patch`; derive it** (P4). Landed as two commits as required.
+   Part one (`67f17c8`): what a pool RUNS became a live fact, read from the master's
+   EXECUTABLE via `lsof -d txt` — `ps -o comm=` returns the rewritten title, which names
+   the minor and never the patch, and the 7.4/8.0 masters still showing their real path
+   is exactly what makes an argv implementation pass a hand check. Part two (`c9c2eb0`):
+   migration v36 drops the column, `list_versions` derives `patch` from the pin, and
+   bump detection moved after adoption. Ledger #339 RETIRED with its reason, #338/#340
+   amended, #342 added. **§15B honoured**: `PhpVersionView::serving` carries the live
+   fact beside the pin so the row says both — without it the deletion would have traded
+   a fixed bug for a hidden one.
+
 7. **The read-only "a newer patch exists" row** (P2, §13). Last, so it compares against
    `patch_for_minor` rather than a column that no longer exists.
 

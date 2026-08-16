@@ -17,10 +17,21 @@ fn lock<'a>(
 }
 
 /// All registered PHP versions (installed + available) for the Settings UI.
+///
+/// `try_lock` on the services, deliberately: this is a UI read, and a long
+/// start/stop holding that lock must not block the Settings screen — the same
+/// rule the status polls follow. A missed lock costs the `serving` line (the row
+/// then says only what is pinned), never the list.
 #[tauri::command]
 pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersionView>> {
+    let running = state
+        .services
+        .try_lock()
+        .ok()
+        .and_then(|mgr| mgr.running_php_patches(state.platform.as_ref()))
+        .unwrap_or_default();
     let conn = lock(&state)?;
-    core::php::list_versions(&conn)
+    core::php::list_versions(&conn, &running)
 }
 
 /// The PHP minor FrankenPHP actually serves — its embedded build, never the

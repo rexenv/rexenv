@@ -333,11 +333,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   A release that moves a pin makes `seed_registry` report the bumped minors; `lib.rs`
   then prefetches, restarts each bumped minor's live pool, and sweeps the superseded
   `php-<patch>/` trees (~136–208MB per minor — two trees, cli + fpm). **The bump loop
-  is per-minor and the registry row moves only on success** (`confirm_patch`, after
-  `await_ready`): the seed detects by comparing the stored patch to the pin, so writing
-  the pin at seed time consumed the signal before the work was tried and a failed bump
-  never retried (ledger #339). One minor's failure `continue`s rather than abandoning
-  the rest. The sweep's
+  is per-minor**, and **which minors need one is a LIVE question**: after adoption, each
+  running master's EXECUTABLE path is read (`lsof -d txt` — argv is a rewritten title
+  that names only the minor) and compared to the pin. There is no stored patch to
+  consume, so a failed bump is simply asked again next launch. `php_versions.patch` was
+  that store and was deleted in migration v36: it mirrored a compile-time pin, and the
+  mirror produced two live bugs in one statement (#339 the consumed bump signal, #340 the
+  user's default reset every launch). The Settings row says **both** the pinned patch and,
+  when they differ, the one actually serving (`PhpVersionView::serving`) — without that a
+  derived row could only show the pin, which is the same silent lie in a nicer place.
+  One minor's failure `continue`s rather than abandoning the rest. Ledger #338/#342. The sweep's
   keep-set is `{compiled-in pins} ∪ {each minor's REGISTERED patch}`
   (`php_caches_to_keep`), read from the registry, never from the pin table: it also runs
   on the path where a pool restart failed partway and later minors still serve from

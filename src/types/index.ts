@@ -531,7 +531,14 @@ export interface SiteServing {
  *  `binaries::xdebug_supported` that could silently disagree with it. */
 export interface PhpVersion {
   minor: string; // "8.3" — the key + what Site.phpVersion references
+  /** The patch this BUILD pins for the minor — derived in core, never stored. */
   patch: string; // "8.3.31"
+  /** The patch the live pool is ACTUALLY executing, when it differs from `patch`.
+   *  `null` covers "no pool", "pool is on the pin" and "pool unidentifiable"
+   *  alike — none of those is a disagreement, so the row says nothing extra.
+   *  Present so a failed patch bump cannot render as the pin while the pool
+   *  serves older bytes. */
+  serving: string | null;
   fpmPort: number;
   installed: boolean;
   isDefault: boolean;

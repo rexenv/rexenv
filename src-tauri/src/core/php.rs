@@ -182,40 +182,32 @@ pub fn debug_fpm_port(minor: &str) -> Option<u16> {
 /// re-run updates `patch`/`fpm_port`/`is_default` while **preserving** the user's
 /// `installed` choices. Safe to call on every app start.
 ///
-/// Returns the minors whose stored patch is BEHIND this build's pin — a bump
-/// riding an app release (Option A patch updates: pins only move with a release,
-/// there is no in-app updater). The startup task restarts those minors' live
-/// pools so an adopted survivor doesn't keep serving the old patch, and GCs the
-/// old caches.
+/// Returns nothing: there is no stored patch to compare against any more.
 ///
-/// **The seed does not move `patch` for an existing row** — [`confirm_patch`]
-/// does, after that minor's pool is back and ready. It used to move here, in the
-/// same iteration that detected the bump, which meant the signal was consumed
-/// before any of the work it triggers had been attempted: a failed prefetch left
-/// `lib.rs`'s `// retry next launch` **false**, because the next launch saw the
-/// row already at the pin and reported no bump. The user kept a registry saying
-/// 8.3.32 and a pool serving 8.3.31, silently and permanently.
-pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
+/// **Which minors need a pool restart after a pin moves is a LIVE question now**,
+/// answered after adoption by comparing each running master's executable against
+/// the pin ([`patch_of_exe`], [`PhpFpmPools::running_patches`]) rather than by a
+/// column this function used to write. That column was a mirror of the pin, and
+/// the seed both detected the bump and committed it in the same statement — so a
+/// failed prefetch consumed the signal and the retry never happened (#339), and
+/// `is_default` beside it was overwritten from the pin on every launch (#340).
+/// Deriving the fact makes both unrepresentable rather than fixed.
+pub fn seed_registry(conn: &Connection) -> Result<()> {
     let default_minor = minor_of(binaries::PHP_VERSION);
-    let existing: std::collections::HashMap<String, String> = store::list_php_versions(conn)?
-        .into_iter()
-        .map(|v| (v.minor, v.patch))
-        .collect();
-    let mut bumped = Vec::new();
     for minor in all_minors() {
-        let patch = patch_for_minor(&minor)
+        // Resolvable-ness is still asserted here even though the patch is no
+        // longer stored: a minor in `all_minors()` with no pinned build is a
+        // packaging mistake, and finding it at seed time beats finding it when
+        // a user presses Start.
+        patch_for_minor(&minor)
             .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
         let port =
             fpm_port(&minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
-        if existing.get(&minor).is_some_and(|old| old != patch) {
-            bumped.push(minor.clone());
-        }
         let is_default = minor == default_minor;
         store::upsert_php_version(
             conn,
             &PhpVersion {
                 minor: minor.clone(),
-                patch: patch.to_string(),
                 fpm_port: port,
                 // On first insert the default is enabled; others are available but
                 // off until the user installs them (Phase 2 §1.5). Preserved on update.
@@ -232,19 +224,6 @@ pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
     if !store::list_php_versions(conn)?.iter().any(|v| v.is_default) {
         store::set_default_php_version(conn, &default_minor)?;
     }
-    Ok(bumped)
-}
-
-/// Record that `minor` is now serving this build's pinned patch.
-///
-/// Called after the bytes are cached AND the pool has come back ready — never
-/// before, because this is the value [`seed_registry`] compares against to
-/// decide whether the bump still needs doing. Writing it early is what made a
-/// failed bump un-retryable.
-pub fn confirm_patch(conn: &Connection, minor: &str) -> Result<()> {
-    let patch = patch_for_minor(minor)
-        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
-    store::set_php_patch(conn, minor, patch)?;
     Ok(())
 }
 
@@ -262,25 +241,6 @@ pub fn patch_of_exe(exe: &std::path::Path) -> Option<String> {
     .then(|| patch.to_string())
 }
 
-/// The patch each minor is REGISTERED to run, from the registry rather than
-/// from the pin table.
-///
-/// Today every row equals `patch_for_minor` because `seed_registry` writes it
-/// there, so this returns the pinned set — but it is read, not assumed, which is
-/// the whole point: it is what the launch GC keeps
-/// ([`binaries::php_caches_to_keep`]), and the day a patch can be selected at
-/// runtime the two stop agreeing. Reading the pin table in the GC's keep-set
-/// would then delete the tree the user selected.
-///
-/// Includes rows that are not `installed`: a disabled minor's tree is still not
-/// garbage, and enabling it must not need a re-download.
-pub fn registered_patches(conn: &Connection) -> Result<Vec<String>> {
-    Ok(store::list_php_versions(conn)?
-        .into_iter()
-        .map(|v| v.patch)
-        .collect())
-}
-
 /// All registered PHP versions (installed + available), for the UI.
 ///
 /// The stored row plus what is DERIVED from the pinned build set — Xdebug
@@ -289,18 +249,30 @@ pub fn registered_patches(conn: &Connection) -> Result<Vec<String>> {
 /// read and there is no column to migrate; and returned as a distinct view type
 /// so no caller can hold a [`PhpVersion`] whose derived fields were never
 /// filled (see [`PhpVersionView`]).
-pub fn list_versions(conn: &Connection) -> Result<Vec<PhpVersionView>> {
+pub fn list_versions(conn: &Connection, running: &[String]) -> Result<Vec<PhpVersionView>> {
     Ok(store::list_php_versions(conn)?
         .into_iter()
-        .map(|v| PhpVersionView {
-            xdebug_supported: binaries::xdebug_supported(&v.minor),
-            xdebug_version: binaries::xdebug_version_for(&v.minor),
-            eol_since: eol_since(&v.minor),
-            minor: v.minor,
-            patch: v.patch,
-            fpm_port: v.fpm_port,
-            installed: v.installed,
-            is_default: v.is_default,
+        .map(|v| {
+            let pinned = patch_for_minor(&v.minor).unwrap_or_default().to_string();
+            PhpVersionView {
+                xdebug_supported: binaries::xdebug_supported(&v.minor),
+                xdebug_version: binaries::xdebug_version_for(&v.minor),
+                eol_since: eol_since(&v.minor),
+                // What the live pool is EXECUTING, said only when it differs
+                // from the pin. Three states collapse to `None` deliberately —
+                // no pool, a pool on the pin, or a pool we could not identify —
+                // because none of them is a disagreement, and the UI must not
+                // invent one.
+                serving: running
+                    .iter()
+                    .find(|p| minor_of(p) == v.minor && **p != pinned)
+                    .cloned(),
+                patch: pinned,
+                minor: v.minor,
+                fpm_port: v.fpm_port,
+                installed: v.installed,
+                is_default: v.is_default,
+            }
         })
         .collect())
 }
@@ -1102,7 +1074,7 @@ mod tests {
     fn the_version_list_carries_the_eol_date() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let rows = list_versions(&conn).unwrap();
+        let rows = list_versions(&conn, &[]).unwrap();
         for r in &rows {
             assert_eq!(r.eol_since, eol_since(&r.minor), "{}", r.minor);
         }
@@ -1126,7 +1098,7 @@ mod tests {
     fn the_version_list_carries_cores_xdebug_rule_rather_than_the_ui_guessing() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let rows = list_versions(&conn).unwrap();
+        let rows = list_versions(&conn, &[]).unwrap();
         assert!(!rows.is_empty());
         for r in &rows {
             assert_eq!(
@@ -1146,175 +1118,74 @@ mod tests {
         assert!(rows.iter().any(|r| r.xdebug_supported));
     }
 
+    /// The seed refreshes what it OWNS and touches nothing the user owns.
+    ///
+    /// Replaces the two tests that guarded `php_versions.patch` (ledger #339):
+    /// the column is gone as of migration v36, so a patch bump is no longer a
+    /// stored comparison that can be consumed — it is asked of the running
+    /// masters after adoption (`running_patches`, #342). What still matters
+    /// here is that re-seeding preserves the two USER facts beside it.
     #[test]
-    fn seed_registry_reports_patch_bumps_and_preserves_installed() {
-        let conn = db::open_in_memory().unwrap();
-        // First seed (fresh DB) and a same-pin re-seed report no bumps.
-        assert!(seed_registry(&conn).unwrap().is_empty());
-        assert!(seed_registry(&conn).unwrap().is_empty());
-        // Simulate a prior app release: 8.3 installed at an older patch.
-        conn.execute(
-            "UPDATE php_versions SET patch = '8.3.30', installed = 1 WHERE minor = '8.3'",
-            [],
-        )
-        .unwrap();
-        // This app's seed REPORTS the bump and keeps `installed` — but leaves
-        // the patch where it was, because nothing has been downloaded yet.
-        assert_eq!(seed_registry(&conn).unwrap(), vec!["8.3".to_string()]);
-        let row = |c: &Connection| {
-            store::list_php_versions(c).unwrap().into_iter().find(|v| v.minor == "8.3").unwrap()
-        };
-        assert_eq!(row(&conn).patch, "8.3.30", "the seed must not move a patch it has not confirmed");
-        assert!(row(&conn).installed);
-        // **The bump is NOT one-shot.** Until it is confirmed, every launch
-        // reports it again — which is what makes the retry real.
-        assert_eq!(seed_registry(&conn).unwrap(), vec!["8.3".to_string()]);
-        // Confirmed (bytes cached, pool ready): the row moves and the bump stops.
-        confirm_patch(&conn, "8.3").unwrap();
-        assert_eq!(row(&conn).patch, patch_for_minor("8.3").unwrap());
-        assert!(row(&conn).installed, "confirming a patch must not disturb `installed`");
-        assert!(seed_registry(&conn).unwrap().is_empty());
-    }
-
-    /// **The patch a pool runs comes from its EXECUTABLE, and argv cannot give it.**
-    ///
-    /// Measured on this machine 16 Aug 2026, which is the only reason the shape
-    /// of this parse is right. php-fpm rewrites its process title, so macOS
-    /// `ps -o comm=` returns `php-fpm: master process (…/config/php-fpm-8.3.conf)`
-    /// — the CONF path, naming the MINOR and never the patch. The 7.4.33 and
-    /// 8.0.30 masters happened to still show their real executable path, so an
-    /// argv-based implementation passes a hand check on exactly the two pools a
-    /// developer is most likely to test and is silently wrong for every other
-    /// minor. That is the fixture-friendlier-than-production shape living in the
-    /// VERIFICATION rather than the code, which is the harder one to notice.
-    ///
-    /// `lsof -p <pid> -a -d txt` reads the text (executable) descriptor, which a
-    /// title rewrite cannot touch: it answered `php-fpm-8.3.31/php-fpm` for the
-    /// same master whose argv said only `8.3`.
-    #[test]
-    fn the_patch_is_parsed_from_the_executable_path_not_the_title() {
-        let base = "/Users/x/Library/Application Support/dev.rexenv.rexenv/bin";
-        // What lsof's txt descriptor actually returns (both cache prefixes).
-        assert_eq!(
-            patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8.3.31/php-fpm"))),
-            Some("8.3.31".into())
-        );
-        assert_eq!(
-            patch_of_exe(std::path::Path::new(&format!("{base}/php-7.4.33/php"))),
-            Some("7.4.33".into())
-        );
-        // The wrong derivation this exists to reject. `ps -o comm=` gives
-        // `php-fpm: master process (…/config/php-fpm-8.3.conf)` for a
-        // title-rewritten master, from which the only extractable version is
-        // the MINOR — so an implementation that fell back to argv would end up
-        // asking about `php-fpm-8.3`, which must not answer. A patch is three
-        // numeric parts or it is not a patch.
-        assert_eq!(
-            patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8.3/php-fpm"))),
-            None,
-            "a minor is not a patch — this is what an argv-derived answer looks like"
-        );
-        assert_eq!(patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8/php-fpm"))), None);
-        assert_eq!(
-            patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8.3.x/php-fpm"))),
-            None
-        );
-        // Neither may the debug trees, nor anything that is not x.y.z.
-        assert_eq!(patch_of_exe(std::path::Path::new(&format!("{base}/php-debug-8.3.31/php"))), None);
-        assert_eq!(patch_of_exe(std::path::Path::new(&format!("{base}/caddy-2.11.4/caddy"))), None);
-        assert_eq!(patch_of_exe(std::path::Path::new("php-fpm")), None);
-    }
-
-    /// **The user's default PHP version survives a relaunch.**
-    ///
-    /// `seed_registry` re-seeds every row at every launch, and `upsert_php_version`
-    /// listed `is_default` in its `ON CONFLICT DO UPDATE SET` — sourced from
-    /// `minor == minor_of(PHP_VERSION)`, i.e. the compiled-in pin. So "Make
-    /// default" held until the next app start and then silently snapped back to
-    /// 8.3. `installed` sits in the same statement and was deliberately excluded
-    /// from that SET list for exactly this reason; `is_default` was not, and the
-    /// doc comment above the function discussed only `installed`.
-    ///
-    /// Same family as the bump-signal bug two functions down: a statement that
-    /// both seeds a derived fact and overwrites a USER fact, where nobody asked
-    /// which of the columns the user owns. The existing
-    /// `set_default_switches_exclusively_and_requires_installed` stayed green
-    /// because it asserts inside the same transaction and never re-seeds.
-    #[test]
-    fn the_users_default_php_version_survives_a_relaunch() {
+    fn the_seed_preserves_every_user_choice_and_returns_nothing_to_consume() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
 
-        // A minor that is NOT the pinned default, installed then chosen.
         let pinned = minor_of(binaries::PHP_VERSION);
         let chosen = all_minors().into_iter().find(|m| *m != pinned).expect("a second minor");
         set_installed(&conn, &chosen, true).unwrap();
         set_default(&conn, &chosen).unwrap();
 
-        // Relaunch.
+        // Re-seed twice: idempotent, and neither user fact moves.
+        seed_registry(&conn).unwrap();
         seed_registry(&conn).unwrap();
 
         let rows = store::list_php_versions(&conn).unwrap();
-        let defaults: Vec<&str> =
-            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
-        assert_eq!(defaults, vec![chosen.as_str()], "the seed reset the user's default");
-        // …and the one-default invariant the whole registry relies on holds.
-        assert_eq!(defaults.len(), 1);
+        let row = rows.iter().find(|v| v.minor == chosen).unwrap();
+        assert!(row.installed, "the seed cleared the user's install choice");
+        assert!(row.is_default, "the seed cleared the user's default choice");
+        assert_eq!(rows.iter().filter(|v| v.is_default).count(), 1);
+        // The derived port IS refreshed — that one the app owns.
+        assert_eq!(row.fpm_port, fpm_port(&chosen).unwrap());
     }
 
-    /// A registry that somehow carries NO default gets one back, rather than
-    /// leaving `find(|v| v.is_default)` returning `None` to every caller.
+    /// **The row says what is PINNED and, separately, what is SERVING.**
+    ///
+    /// This is what makes deleting `php_versions.patch` a simplification rather
+    /// than a cover-up. A view that could only show the pin would render 8.3.32
+    /// while the pool served 8.3.31 — the identical silent lie ledger #339 was
+    /// shipped to end, just moved somewhere harder to see. `serving` is `None`
+    /// unless there is a real disagreement, so the UI gains a line only when
+    /// there is something to say.
     #[test]
-    fn a_registry_with_no_default_regains_the_pinned_one() {
+    fn the_view_says_both_the_pinned_patch_and_the_one_actually_running() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        conn.execute("UPDATE php_versions SET is_default = 0", []).unwrap();
+        let minor = minor_of(binaries::PHP_VERSION);
+        let pinned = patch_for_minor(&minor).unwrap().to_string();
+        let row = |rows: Vec<PhpVersionView>| rows.into_iter().find(|r| r.minor == minor).unwrap();
 
-        seed_registry(&conn).unwrap();
+        // Nothing running: pinned only, and no invented disagreement.
+        let r = row(list_versions(&conn, &[]).unwrap());
+        assert_eq!(r.patch, pinned);
+        assert_eq!(r.serving, None);
 
-        let rows = store::list_php_versions(&conn).unwrap();
-        let defaults: Vec<&str> =
-            rows.iter().filter(|v| v.is_default).map(|v| v.minor.as_str()).collect();
-        assert_eq!(defaults, vec![minor_of(binaries::PHP_VERSION).as_str()]);
+        // A pool running the pinned patch is not a disagreement either.
+        let r = row(list_versions(&conn, &[pinned.clone()]).unwrap());
+        assert_eq!(r.serving, None, "running the pin is not worth a second line");
+
+        // A pool running something else IS, and the row carries both.
+        let stale = format!("{minor}.0");
+        assert_ne!(stale, pinned);
+        let r = row(list_versions(&conn, &[stale.clone()]).unwrap());
+        assert_eq!(r.patch, pinned, "the pin is still the pin");
+        assert_eq!(r.serving, Some(stale), "…and the row must say what is serving");
+
+        // Another minor's pool never leaks into this row.
+        let other = all_minors().into_iter().find(|m| *m != minor).unwrap();
+        let r = row(list_versions(&conn, &[format!("{other}.0")]).unwrap());
+        assert_eq!(r.serving, None);
     }
 
-    /// **A patch bump that fails is retried; it is not silently swallowed.**
-    ///
-    /// `seed_registry` used to `upsert_php_version` the new pin in the SAME
-    /// iteration that detected the bump, so the signal was consumed before any
-    /// of the work it triggers had been attempted. A failed prefetch then left
-    /// `lib.rs`'s `// retry next launch` false: the next launch compared the
-    /// already-moved row against the pin, found no difference, and reported
-    /// nothing. The user kept a registry saying one patch and a pool serving
-    /// another — silently, and forever, because nothing ever looked again.
-    ///
-    /// This is the L0 half. That `lib.rs` only calls `confirm_patch` after
-    /// `await_ready` succeeds is a call-site fact, stated in the ledger, not
-    /// provable here.
-    #[test]
-    fn an_unconfirmed_patch_bump_is_reported_again_on_every_launch() {
-        let conn = db::open_in_memory().unwrap();
-        seed_registry(&conn).unwrap();
-        conn.execute("UPDATE php_versions SET patch = '8.3.30' WHERE minor = '8.3'", [])
-            .unwrap();
-
-        // Three launches in a row, none of them confirming: three reports.
-        for launch in 1..=3 {
-            assert_eq!(
-                seed_registry(&conn).unwrap(),
-                vec!["8.3".to_string()],
-                "launch {launch} lost the bump — the retry is not real"
-            );
-        }
-        // The row still says what is actually SERVING, not what is pinned.
-        let patch = store::list_php_versions(&conn)
-            .unwrap()
-            .into_iter()
-            .find(|v| v.minor == "8.3")
-            .unwrap()
-            .patch;
-        assert_eq!(patch, "8.3.30");
-    }
 
     #[test]
     fn seed_registry_marks_default_installed_and_is_idempotent() {

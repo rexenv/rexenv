@@ -204,16 +204,13 @@ pub fn run() {
             ) {
                 (Ok(conn), Ok(ca)) => {
                     // Seed/refresh the PHP version registry (Phase 2 §1.2);
-                    // preserves the user's installed choices on re-run. `bumped`
-                    // = minors whose pinned patch moved with THIS app release
-                    // (Option A updates) — their live pools are restarted below.
-                    let bumped = match core::php::seed_registry(&conn) {
-                        Ok(b) => b,
-                        Err(e) => {
-                            log::error!("php: failed to seed version registry: {e}");
-                            Vec::new()
-                        }
-                    };
+                    // preserves the user's installed and default choices on
+                    // re-run. It no longer reports patch bumps: which minors
+                    // need a restart is a LIVE question, asked below of the
+                    // adopted masters themselves (migration v36, ledger #342).
+                    if let Err(e) = core::php::seed_registry(&conn) {
+                        log::error!("php: failed to seed version registry: {e}");
+                    }
                     // B20 §4 Phase B: record each existing override site's port
                     // BEFORE any site is read or adopted. One-time + idempotent;
                     // non-colliding sites keep their exact current port (the
@@ -336,29 +333,26 @@ pub fn run() {
                             return;
                         };
                         let platform = state.platform.as_ref();
-                        // Confirm = "this minor is now serving the pin", written
-                        // ONLY after that is true. The seed no longer writes it,
-                        // so an unconfirmed minor is re-reported next launch and
-                        // the retry actually happens.
-                        let confirm = |minor: &str| match state.db.lock() {
-                            Ok(conn) => {
-                                if let Err(e) = core::php::confirm_patch(&conn, minor) {
-                                    log::warn!("php: could not record {minor}'s patch: {e}");
-                                }
-                            }
-                            Err(_) => log::warn!("php: could not record {minor}'s patch: db lock"),
-                        };
+                        // Which minors are serving bytes that are not this
+                        // build's pin — asked of the RUNNING masters, so an
+                        // adopted survivor from a previous app version answers
+                        // for itself. No stored patch, nothing to consume, and
+                        // a failure simply leaves the pool where it is: the next
+                        // launch asks the same live question and gets the same
+                        // answer, which is what makes the retry real.
                         let live: Vec<String> = {
                             let mgr = state.services.lock().await;
-                            bumped.iter().filter(|m| mgr.has_php_pool(m)).cloned().collect()
+                            mgr.running_php_patches(platform)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .filter(|running| {
+                                    core::php::patch_for_minor(&core::php::minor_of(running))
+                                        .is_some_and(|pinned| pinned != running)
+                                })
+                                .map(|running| core::php::minor_of(&running))
+                                .filter(|m| mgr.has_php_pool(m))
+                                .collect()
                         };
-                        // Nothing running for this minor: there is no work that
-                        // can fail and the next start resolves the new pin, so
-                        // the bump is already true. Confirm without touching the
-                        // network — this is also the whole-stack-stopped case.
-                        for minor in bumped.iter().filter(|m| !live.contains(m)) {
-                            confirm(minor);
-                        }
                         // Per minor, in order: fetch, restart, wait, THEN confirm.
                         // `continue` rather than `return` — one minor's failure is
                         // not another minor's, and the batch form let the first
@@ -399,7 +393,6 @@ pub fn run() {
                                 );
                                 continue;
                             }
-                            confirm(minor);
                         }
                         // Repair caches that are PRESENT but incomplete — the
                         // bytes are there and something beside them is not
@@ -415,7 +408,7 @@ pub fn run() {
                                 .db
                                 .lock()
                                 .ok()
-                                .and_then(|conn| core::php::list_versions(&conn).ok())
+                                .and_then(|conn| core::php::list_versions(&conn, &[]).ok())
                                 .unwrap_or_default();
                             installed
                                 .into_iter()

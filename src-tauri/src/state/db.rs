@@ -509,6 +509,25 @@ const MIGRATIONS: &[&str] = &[
     // method (`Site::builds_assets`, `Site::runs_migrations`) instead of an
     // `unwrap_or` a reader has to guess at.
     "ALTER TABLE sites ADD COLUMN git_build_assets INTEGER;",
+    // v36 — `php_versions.patch` is DERIVED, so it stops being stored.
+    //
+    // The column mirrored `binaries::PHP_VERSIONS`' pin for each minor, and a
+    // mirror that can disagree with the thing it mirrors is the shape this
+    // codebase removes everywhere else. It had already produced two live bugs
+    // in one statement: the patch was overwritten at seed time, consuming the
+    // patch-bump signal before the work it triggers was attempted (#339), and
+    // `is_default` beside it was overwritten from the pin, resetting the user's
+    // chosen default on every launch (#340).
+    //
+    // Nothing is lost. The pin is what a pool actually resolves and runs
+    // (`php::patch_for_minor`, thirteen call sites, none of which hold a
+    // `Connection`), and what a pool is REALLY executing is read from the
+    // running master itself (`php::patch_of_exe`, #342) — so the two facts the
+    // column tried to be are both available and neither can drift.
+    //
+    // No backfill: the value was a copy of a compile-time constant, so there is
+    // nothing here a fresh read cannot reproduce.
+    "ALTER TABLE php_versions DROP COLUMN patch;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1043,6 +1062,57 @@ mod tests {
     /// nothing before it could clone into a docroot, so NULL is a FACT about
     /// every existing row rather than an unknown. A future reader tempted to
     /// "fill these in" should fail this test first.
+    /// **v36 drops `php_versions.patch` and every user choice beside it survives.**
+    ///
+    /// The column was a mirror of the compile-time pin, so nothing is lost — but
+    /// the row it lived on also carries two USER facts (`installed`,
+    /// `is_default`), and a table rebuild is exactly where those get quietly
+    /// reset. Both had already been clobbered once by the statement that wrote
+    /// this column (#339, #340), which is why the migration is asserted on them
+    /// rather than on the drop.
+    #[test]
+    fn v36_drops_the_mirrored_patch_and_keeps_what_the_user_chose() {
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..35].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        // A pre-v36 registry: the user runs 8.1 and made it their default, and
+        // 8.1's row records a patch OLDER than anything this build pins.
+        conn.execute(
+            "INSERT INTO php_versions (minor, patch, fpm_port, installed, is_default)
+             VALUES ('8.1', '8.1.0', 9781, 1, 1), ('8.3', '8.3.30', 9783, 0, 0)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        // The column is gone…
+        assert!(
+            conn.query_row("SELECT patch FROM php_versions", [], |r| r.get::<_, String>(0))
+                .is_err(),
+            "php_versions.patch must not survive v36"
+        );
+        // …and both user choices came through it untouched.
+        let (minor, installed, is_default): (String, i64, i64) = conn
+            .query_row(
+                "SELECT minor, installed, is_default FROM php_versions WHERE is_default = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(minor, "8.1", "the migration moved the user's default");
+        assert_eq!(installed, 1);
+        assert_eq!(is_default, 1);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM php_versions", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2,
+            "no row was dropped with the column"
+        );
+    }
+
     #[test]
     fn v33_leaves_every_existing_site_with_no_repo_because_none_could_have_one() {
         let conn = Connection::open_in_memory().unwrap();

@@ -1074,10 +1074,9 @@ pub fn site_with_db_name(conn: &Connection, db_name: &str) -> Result<Option<Site
 fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
     Ok(PhpVersion {
         minor: row.get(0)?,
-        patch: row.get(1)?,
-        fpm_port: row.get::<_, i64>(2)? as u16,
-        installed: row.get::<_, i64>(3)? != 0,
-        is_default: row.get::<_, i64>(4)? != 0,
+        fpm_port: row.get::<_, i64>(1)? as u16,
+        installed: row.get::<_, i64>(2)? != 0,
+        is_default: row.get::<_, i64>(3)? != 0,
     })
 }
 
@@ -1093,21 +1092,18 @@ fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
 ///   It used to be in this SET list, sourced from the compiled-in pin, so every
 ///   launch silently reset the user's chosen default back to the pinned minor —
 ///   `installed` sat one line away, deliberately excluded for exactly this reason.
-/// - `patch` is what the minor was last CONFIRMED to be serving
-///   ([`set_php_patch`]); writing the pin here would move it before the bytes are
-///   downloaded and the pool restarted.
 ///
-/// On INSERT all four are seeded from the pin, which is right: a fresh row has no
-/// user choice to protect and nothing running to contradict.
+/// On INSERT all three are seeded, which is right: a fresh row has no user choice
+/// to protect. (`patch` used to be a fourth column here and is now DERIVED — see
+/// migration v36.)
 pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
     conn.execute(
-        "INSERT INTO php_versions (minor, patch, fpm_port, installed, is_default)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO php_versions (minor, fpm_port, installed, is_default)
+         VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(minor) DO UPDATE SET
              fpm_port = excluded.fpm_port",
         params![
             v.minor,
-            v.patch,
             v.fpm_port as i64,
             v.installed as i64,
             v.is_default as i64,
@@ -1116,24 +1112,10 @@ pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
     Ok(())
 }
 
-/// Record the patch a minor is now CONFIRMED to be serving. Returns whether a
-/// row was updated.
-///
-/// Separate from [`upsert_php_version`] on purpose: the seed runs at every
-/// launch and must not move this value, because a patch bump is only real once
-/// the bytes are on disk and the pool has come back ready.
-pub fn set_php_patch(conn: &Connection, minor: &str, patch: &str) -> Result<bool> {
-    let affected = conn.execute(
-        "UPDATE php_versions SET patch = ?1 WHERE minor = ?2",
-        params![patch, minor],
-    )?;
-    Ok(affected > 0)
-}
-
 /// All registered PHP versions, ordered by minor series.
 pub fn list_php_versions(conn: &Connection) -> Result<Vec<PhpVersion>> {
     let mut stmt = conn.prepare(
-        "SELECT minor, patch, fpm_port, installed, is_default
+        "SELECT minor, fpm_port, installed, is_default
          FROM php_versions ORDER BY minor",
     )?;
     let rows = stmt.query_map([], row_to_php_version)?;
