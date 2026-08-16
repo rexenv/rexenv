@@ -437,30 +437,18 @@ const LINK = "https://example.test/a//b";
         let (dark, _light) = parse_tokens();
         assert!(dark.contains_key("surface-1"), "tokens.css parsed to nothing usable");
 
-        /// Names that are already wrong, with how many times — `(class, count)`.
-        ///
-        /// A debt list on the same terms as the contrast one: the set AND the
-        /// counts must match exactly, so a NEW bad name is red and so is
-        /// SPREADING an existing one, which a name-only list would have allowed.
-        /// Removing the last use of a name is also red, because that is the
-        /// moment the progress should be recorded rather than absorbed.
-        ///
-        /// What these actually do: nothing. Tailwind emits no rule, so the
-        /// element inherits — and `DbImportCard.tsx` is written almost entirely
-        /// against `text-rex-text-secondary` (16 of its 18 text classes), which
-        /// means every "secondary" line in that card renders at FULL body
-        /// brightness. The fix is a token that exists and passes AA, which is
-        /// `text-muted`; it is a visual change to a shipped card, so it is the
-        /// owner's call rather than a drive-by. `docs/TODO.md` carries it.
-        const KNOWN_UNDEFINED: &[(&str, usize)] =
-            &[("bg-rex-surface-0", 1), ("text-rex-text-secondary", 16)];
-
+        // NO BASELINE HERE, and there was one for exactly one commit. 17 classes
+        // named a token that does not exist — `text-rex-text-secondary` x16 (16 of
+        // DbImportCard's 18 text classes, so every "secondary" line in that card
+        // rendered at FULL body brightness) and `bg-rex-surface-0` x1. They were
+        // held in a `KNOWN_UNDEFINED` ratchet while the fix was decided, then
+        // repaid, and the ratchet was deleted with them — which is the shape a
+        // debt list is supposed to have. The assertion below is the permanent
+        // version: no undefined name, ever, no list to keep honest.
         let mut bad: Vec<String> = Vec::new();
-        let mut seen: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for (prefix, role) in [("text-rex-", "text colour"), ("bg-rex-", "background")] {
             for (name, file, line) in used_rex_classes(prefix) {
                 if !dark.contains_key(&name) {
-                    *seen.entry(format!("{prefix}{name}")).or_default() += 1;
                     bad.push(format!(
                         "  {file}:{line}  {prefix}{name}  ({role}) — no `--rex-{name}` in tokens.css"
                     ));
@@ -468,16 +456,12 @@ const LINK = "https://example.test/a//b";
             }
         }
         bad.sort();
-
-        let expected: std::collections::BTreeMap<String, usize> =
-            KNOWN_UNDEFINED.iter().map(|(n, c)| (n.to_string(), *c)).collect();
-        assert_eq!(
-            seen, expected,
-            "the set of Tailwind classes naming a NON-EXISTENT rex token changed. Such a \
-             class generates no rule at all, so the element gets NO colour and inherits — \
-             which looks deliberate on screen and cannot be reviewed. If a name is new or \
-             spreading, point it at a token that exists; if you removed the last use, delete \
-             its row from KNOWN_UNDEFINED.\n\nEvery occurrence:\n{}",
+        assert!(
+            bad.is_empty(),
+            "a Tailwind class names a rex token that does not exist. Tailwind emits NO rule \
+             for it, so the element gets no colour and inherits — which looks deliberate on \
+             screen, survives review, and is invisible to every other test here. Point it at \
+             a token that exists:\n{}",
             bad.join("\n")
         );
     }

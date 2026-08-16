@@ -211,9 +211,10 @@ evidence cited.
      method: `border-strong` is a `w-px` divider, `text-dim` a status dot,
      `text-bright` a toggle knob — each read at its call site, not inferred from
      the name.
-  - [ ] **The scan found a second bug it was not looking for: 17 Tailwind classes
-    name a token that does not exist**, so Tailwind emits no rule and the element
-    gets NO colour — it inherits, which looks deliberate and cannot be reviewed.
+  - [x] **The scan found a second bug it was not looking for: 17 Tailwind classes
+    named a token that does not exist** ✓ FIXED 16 Aug 2026. Tailwind emits no rule
+    for such a class, so the element got NO colour and inherited — which looks
+    deliberate and cannot be reviewed.
     Proven from the built CSS, not from reading the config: `text-rex-text-dim`
     is in `dist/assets/*.css` and these are not.
     - `text-rex-text-secondary` × **16, all in `DbImportCard.tsx`** — 16 of that
@@ -221,11 +222,18 @@ evidence cited.
       rendering at FULL body brightness, the opposite of the intent.
     - `bg-rex-surface-0` × 1, `Settings.tsx:1236` — a log `<pre>` whose
       background is simply transparent.
-    Fix is a token that exists and passes AA — `text-muted` (4.66–6.04 dark,
-    5.07–6.22 light) is both the intended "secondary" semantic and AA-clean. Not
-    done here because it is a visible change to a shipped card and the choice is
-    the owner's. Held by `KNOWN_UNDEFINED`, which pins the names AND the counts,
-    so the typo cannot spread while it waits.
+    ✓ `text-rex-text-secondary` → `text-rex-text-muted` (the intended "secondary"
+    semantic AND AA-clean), `bg-rex-surface-0` → `bg-rex-well` (what the other
+    three log `<pre>` blocks already use — the odd one out was the broken one).
+    **Both replacements' contrast was computed BEFORE they were written**, not
+    after: 5.61/6.22 on `surface-1`, 5.96/5.16 on `well`. `KNOWN_DEBT` did not
+    move, because `text-muted` was already in the used set.
+    **A visible change, and that is the point**: those 16 lines rendered at full
+    body brightness and now render as secondary, which is what the author wrote.
+    The `KNOWN_UNDEFINED` ratchet lasted exactly one commit — it forced the
+    progress to be recorded, then was DELETED with the debt, and the assertion is
+    now the unconditional "no undefined name, ever". That is the lifecycle a debt
+    list is supposed to have.
   3. **Resolve it, and the arithmetic above forces the shape.** Migrate
      `text-dim`'s 120 consumers to `--rex-text-muted` (no new colour to choose;
      it already passes). Keep `text-faint`/`text-label` only where the thing is

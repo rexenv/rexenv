@@ -1233,7 +1233,7 @@ function LicensesDialog({ onClose }: { onClose: () => void }) {
         rexenv © 2026 Linkon Miyan — Apache License 2.0. Everything below ships inside this
         app bundle; the server binaries rexenv downloads at runtime carry their own licenses.
       </div>
-      <pre className="mt-4 max-h-[62vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-rex-border-subtle bg-rex-surface-0 p-4 font-mono text-[0.6875rem] leading-[1.6] text-rex-text-muted">
+      <pre className="mt-4 max-h-[62vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-rex-border-subtle bg-rex-well p-4 font-mono text-[0.6875rem] leading-[1.6] text-rex-text-muted">
         {noticesText}
         {"\n\n" + "─".repeat(72) + "\n\n"}
         {licenseText}

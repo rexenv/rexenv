@@ -54,7 +54,7 @@ function SkippedTables({ tables }: { tables: string[] }) {
       </p>
       <ul className="mt-1.5 space-y-0.5">
         {tables.map((t) => (
-          <li key={t} className="font-mono text-[0.6875rem] text-rex-text-secondary">
+          <li key={t} className="font-mono text-[0.6875rem] text-rex-text-muted">
             {t}
           </li>
         ))}
@@ -195,7 +195,7 @@ export function DbImportCard({ site }: { site: Site }) {
     <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Database className="h-4 w-4 text-rex-text-secondary" />
+          <Database className="h-4 w-4 text-rex-text-muted" />
           <span className="text-sm font-medium">Database import</span>
         </div>
         {!running && (
@@ -218,7 +218,7 @@ export function DbImportCard({ site }: { site: Site }) {
               style={{ width: `${job.pct}%` }}
             />
           </div>
-          <div className="flex items-center gap-2 text-xs text-rex-text-secondary">
+          <div className="flex items-center gap-2 text-xs text-rex-text-muted">
             <Loader2 className="h-3 w-3 animate-spin" />
             {job.phases[job.phaseCursor]?.label ?? "working"} · {job.pct}%
           </div>
@@ -232,7 +232,7 @@ export function DbImportCard({ site }: { site: Site }) {
             <span className="min-w-0 whitespace-pre-wrap break-words">{job.error}</span>
           </div>
           {job.keptArtifact && (
-            <p className="text-xs text-rex-text-secondary">
+            <p className="text-xs text-rex-text-muted">
               The copy taken so far was kept at{" "}
               <span className="font-mono">{job.keptArtifact}</span> — it contains this
               database's data. Retry replaces it; Settings can delete it.
@@ -281,7 +281,7 @@ export function DbImportCard({ site }: { site: Site }) {
                 </p>
                 <SkippedTables tables={record.skippedTables} />
                 {preview?.status === "ready" && preview.laravelCacheWarning && (
-                  <p className="text-xs text-rex-text-secondary">
+                  <p className="text-xs text-rex-text-muted">
                     This site has a cached config (
                     <span className="font-mono">bootstrap/cache/config.php</span>) — Laravel
                     keeps reading the cache until you run{" "}
@@ -443,7 +443,7 @@ export function DbImportCard({ site }: { site: Site }) {
                diff was open. The preview below is already the refreshed one. */
             <div className="rounded-lg border border-rex-border bg-rex-surface-2 p-3 text-sm">
               <p className="whitespace-pre-wrap break-words">{applyOutcome.message}</p>
-              <p className="mt-1 text-xs text-rex-text-secondary">
+              <p className="mt-1 text-xs text-rex-text-muted">
                 The change shown below is against the file as it is now.
               </p>
             </div>
@@ -459,7 +459,7 @@ export function DbImportCard({ site }: { site: Site }) {
             <div className="rounded-lg border border-status-warning-border bg-status-warning-bg p-3 text-sm">
               <p className="font-medium">Change applied — not verified.</p>
               <p className="mt-1 whitespace-pre-wrap break-words">{applyOutcome.message}</p>
-              <p className="mt-1 text-xs text-rex-text-secondary">{applyOutcome.reason}</p>
+              <p className="mt-1 text-xs text-rex-text-muted">{applyOutcome.reason}</p>
               <Button
                 size="sm"
                 variant="secondary"
@@ -488,7 +488,7 @@ export function DbImportCard({ site }: { site: Site }) {
               <p className="text-sm font-medium">Connect this site to the rexenv copy</p>
               {preview.diff.length > 0 ? (
                 <>
-                  <p className="text-xs text-rex-text-secondary">
+                  <p className="text-xs text-rex-text-muted">
                     One change to <span className="font-mono">{preview.file}</span>, shown
                     exactly as it will be written — nothing else in the file is touched:
                   </p>
@@ -509,7 +509,7 @@ export function DbImportCard({ site }: { site: Site }) {
                   </pre>
                 </>
               ) : (
-                <p className="text-xs text-rex-text-secondary">
+                <p className="text-xs text-rex-text-muted">
                   <span className="font-mono">{preview.file}</span> already points at{" "}
                   <span className="font-mono">{preview.target}</span> — nothing needs to be
                   written. Verifying signs in with the file's own settings and, if that
@@ -517,7 +517,7 @@ export function DbImportCard({ site }: { site: Site }) {
                 </p>
               )}
               {preview.createsUser && (
-                <p className="text-xs text-rex-text-secondary">
+                <p className="text-xs text-rex-text-muted">
                   Because this site connects as{" "}
                   <span className="font-mono">root</span>, rexenv will create the dedicated
                   account <span className="font-mono">{preview.createsUser}</span> on its
@@ -530,7 +530,7 @@ export function DbImportCard({ site }: { site: Site }) {
                   writes nothing, so the note reduces to the backup fact
                   when one exists and disappears when there is none. */}
               {preview.diff.length > 0 ? (
-                <p className="text-xs text-rex-text-secondary">
+                <p className="text-xs text-rex-text-muted">
                   {preview.backupExists ? (
                     <>
                       An earlier backup of this file already exists on rexenv's side and
@@ -548,7 +548,7 @@ export function DbImportCard({ site }: { site: Site }) {
                 </p>
               ) : (
                 preview.backupExists && (
-                  <p className="text-xs text-rex-text-secondary">
+                  <p className="text-xs text-rex-text-muted">
                     rexenv still holds the backup taken before the rewrite (private,
                     mode 600) — revert restores it. It is the whole original file, so
                     it includes your old password.
@@ -558,7 +558,7 @@ export function DbImportCard({ site }: { site: Site }) {
               {site.dbEngine === "mariadb" && (
                 /* D5's tell-only surface, in the site's own panel: the socket
                    shortcut serves MySQL only. */
-                <p className="text-xs text-rex-text-secondary">
+                <p className="text-xs text-rex-text-muted">
                   MariaDB note: always use{" "}
                   <span className="font-mono">127.0.0.1:13307</span> in this site's config —
                   the <span className="font-mono">localhost</span> socket shortcut doesn't
@@ -595,10 +595,10 @@ export function DbImportCard({ site }: { site: Site }) {
                   HERE (not in the panel above) because it is an instruction
                   about the lines below — beside the consent card it
                   contradicted the dedicated-user note (§C1.3's class). */}
-              <p className="mb-2 text-xs text-rex-text-secondary">
+              <p className="mb-2 text-xs text-rex-text-muted">
                 The one-click change isn't available for this site: {preview.reason}
               </p>
-              <p className="mb-2 text-xs text-rex-text-secondary">
+              <p className="mb-2 text-xs text-rex-text-muted">
                 {record.mirroredUser ? (
                   <>
                     The database user{" "}
@@ -620,7 +620,7 @@ export function DbImportCard({ site }: { site: Site }) {
               <pre className="overflow-x-auto font-mono text-[0.75rem] leading-relaxed">
                 {connectionSnippet(site, record.dbName, record.mirroredUser).join("\n")}
               </pre>
-              <p className="mt-2 text-xs text-rex-text-secondary">
+              <p className="mt-2 text-xs text-rex-text-muted">
                 rexenv never edits your project files without the diff-and-consent step
                 above being possible.
                 {site.type === "laravel" &&
