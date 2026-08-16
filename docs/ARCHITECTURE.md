@@ -297,6 +297,17 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   (`@@HOMEBREW_*@@` placeholders) to `@loader_path`-relative paths into the bundle's
   `lib/`, errors loudly on any dep NOT bundled, and ad-hoc re-signs each Mach-O LAST.
   Resolves stage + atomically publish so a failed prepare can't poison the cache (H4).
+- **One cache predicate, one dispatch.** `binaries::shape_of` is the ONE name→resolver
+  mapping (`Single`/`File`/`Dir`/`Bundle`) — `downloads::resolve_any` and the planner both
+  read it, after they disagreed about `composer` (member `composer.phar`, consumers call
+  `resolve_file`, planner routed it to `resolve` → the same artifact downloaded twice).
+  `binaries::cached_path` is the ONE answer to "would this resolve without downloading":
+  member present + pin marker matches + licence texts satisfied, per shape. `is_cached`
+  (planner), `cached_bin` (sync adoption) and every resolve's fast path return it — they
+  used to answer differently, so the planner promised "cached" about trees `resolve` then
+  deleted and re-fetched with no hub row. `needs_repair` separates *never downloaded* from
+  *downloaded, now incomplete*; the launch task repairs the second, which is what keeps
+  login-start strictly offline (#175) without weakening the predicate. Ledger #341.
 - MySQL is Oracle-signed (never re-sign) and needs a direct CDN URL + browser UA.
 - **Multi-version engines (per-engine DB version switch):** `MYSQL/POSTGRES/MARIADB/
   REDIS_VERSIONS` are the offered sets (default first); the mysql/postgres manifests

@@ -1350,39 +1350,136 @@ fn ensure_member_extracted(staging: &Path, name: &str, version: &str, member: &s
 /// published dir never has its marker: the staging→rename publish is atomic,
 /// H4). Unknown manifest = not cached. Used by the download planner to split
 /// an action's binary set into cached vs to-download without resolving.
-pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
-    let Ok(bin_dir) = platform.paths().bin_dir() else {
-        return false;
-    };
-    let dir = bin_dir.join(format!("{name}-{version}"));
-    let arch = platform.binaries().arch();
-    match manifest(name, version, std::env::consts::OS, arch) {
-        // `member` is the marker for file/tree distributions; executables are
-        // published at `dir/<name>` (for those, member == name anyway).
-        Some(spec) => dir.join(spec.member).exists() || dir.join(name).exists(),
-        // Bottle bundles (redis) publish their own `member` marker — AND must
-        // carry a current prepare receipt, or `resolve_bundle` will refetch
-        // and the planner would have promised "cached" about a tree the
-        // resolve is about to drop (S0.3).
-        None => match bundle_manifest(name, version, std::env::consts::OS, arch) {
-            Some(bundle) => dir.join(bundle.member).exists() && bundle_prepared_current(&dir),
-            None => false,
-        },
+/// Which resolver an artifact's distribution shape needs.
+///
+/// **The ONE place the name → resolver mapping lives.** It used to be a `match`
+/// in `downloads::resolve_any` and, separately, a disjunction inside
+/// `is_cached` — two answers to one question, and they disagreed: `composer` is
+/// `Archive::Raw` with `member: "composer.phar"` and every consumer calls
+/// [`resolve_file`], but `resolve_any` let it fall through to [`resolve`], which
+/// publishes under `name`. So a prefetch cached `composer` and the consumer then
+/// downloaded `composer.phar` into the same dir — twice the bytes, and
+/// `prepare_binary` ad-hoc signing a PHP archive on the way past.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    /// A single executable, published at `dir/<name>` ([`resolve`]).
+    Single,
+    /// A plain file kept under its own name, no chmod/codesign ([`resolve_file`]).
+    File,
+    /// A directory distribution ([`resolve_dir`]).
+    Dir,
+    /// A merged bottle bundle ([`resolve_bundle`]).
+    Bundle,
+}
+
+/// The distribution shape of `name` — see [`Shape`].
+pub fn shape_of(name: &str) -> Shape {
+    match name {
+        "mysql" | "postgres" => Shape::Dir,
+        "redis" | "mariadb" | "httpd" => Shape::Bundle,
+        n if n.starts_with("xdebug-") => Shape::Bundle,
+        "wp-cli" | "adminer" | "composer" => Shape::File,
+        _ => Shape::Single,
     }
 }
 
+/// **The ONE cache predicate**: the path a resolve of `name`@`version` would
+/// return *without downloading anything*, or `None` if it would fetch.
+///
+/// Every caller that wants to know "is this already here" asks this — the
+/// planner ([`is_cached`]), the sync adoption path ([`cached_bin`]), and each
+/// resolve's own fast path. They gave three different answers before:
+///
+/// - [`resolve`] required the pin marker AND the licence texts;
+/// - [`is_cached`] tested existence only, so the planner reported "cached,
+///   nothing to do" about a tree `resolve` was about to delete and re-fetch —
+///   a silent ~100MB download with no hub row, which is exactly what an
+///   upstream in-place rebuild plus a re-pin produces (it happened 5 Jul 2026);
+/// - [`cached_bin`] tested existence only under a doc comment calling itself
+///   "`resolve`'s cache-hit fast path", and fed mailpit/frankenphp adoption.
+///
+/// A predicate that three callers answer differently is not a predicate.
+/// The path whose existence says "something was published here" — the member
+/// each shape's resolve looks for, before any pin or licence question.
+fn published_member(platform: &dyn Platform, name: &str, version: &str) -> Option<PathBuf> {
+    let dir = platform.paths().bin_dir().ok()?.join(format!("{name}-{version}"));
+    let arch = platform.binaries().arch();
+    let os = std::env::consts::OS;
+    Some(match shape_of(name) {
+        Shape::Bundle => dir.join(bundle_manifest(name, version, os, arch)?.member),
+        Shape::Single => dir.join(name),
+        _ => dir.join(manifest(name, version, os, arch)?.member),
+    })
+}
+
+/// A cache that is PRESENT but would not satisfy its resolve: the bytes are on
+/// disk and something beside them is not.
+///
+/// The distinction matters because "never downloaded" and "downloaded, now
+/// incomplete" want different handling. The second is a REPAIR — the user
+/// already has this artifact and something changed under it (a re-pinned digest,
+/// or the licence texts an artifact we distribute must carry, which every cache
+/// predating ledger #336 is missing). Repairing it at app launch keeps the
+/// login-start path strictly offline (ledger #175: never download, never
+/// prompt), instead of making that path fetch or making the predicate lie.
+pub fn needs_repair(platform: &dyn Platform, name: &str, version: &str) -> bool {
+    published_member(platform, name, version).is_some_and(|m| m.exists())
+        && cached_path(platform, name, version).is_none()
+}
+
+pub fn cached_path(platform: &dyn Platform, name: &str, version: &str) -> Option<PathBuf> {
+    let bin_dir = platform.paths().bin_dir().ok()?;
+    let dir = bin_dir.join(format!("{name}-{version}"));
+    let arch = platform.binaries().arch();
+    let os = std::env::consts::OS;
+
+    match shape_of(name) {
+        Shape::Bundle => {
+            // Bundles carry a prepare RECEIPT rather than a pin marker: they are
+            // merged from many part digests, so there is no single checksum to
+            // record (#331). The receipt is the equivalent gate.
+            let bundle = bundle_manifest(name, version, os, arch)?;
+            let member = dir.join(bundle.member);
+            (member.exists() && bundle_prepared_current(&dir)).then_some(dir)
+        }
+        shape => {
+            let spec = manifest(name, version, os, arch)?;
+            let member = match shape {
+                Shape::Single => dir.join(name),
+                _ => dir.join(spec.member),
+            };
+            if !member.exists()
+                || !cache_matches_pin(&dir, version, &spec.checksum)
+                || !licenses_satisfied(&dir, &spec.url)
+            {
+                return None;
+            }
+            Some(match shape {
+                Shape::Dir => dir,
+                _ => member,
+            })
+        }
+    }
+}
+
+/// Whether `name`@`version` resolves without a download. See [`cached_path`].
+pub fn is_cached(platform: &dyn Platform, name: &str, version: &str) -> bool {
+    cached_path(platform, name, version).is_some()
+}
+
 /// Path of an ALREADY-CACHED executable — [`resolve`]'s cache-hit fast path
-/// without the download. `None` when absent. For deriving config values that
-/// only need the binary's location (e.g. the Mailpit sendmail shim) in sync
-/// contexts like startup adoption, where triggering a download is wrong.
+/// without the download. `None` when absent OR when the cached copy is one
+/// `resolve` would refetch. For deriving config values that only need the
+/// binary's location (e.g. the Mailpit sendmail shim) in sync contexts like
+/// startup adoption, where triggering a download is wrong.
+///
+/// Only ever answers for [`Shape::Single`]: its callers want an executable to
+/// run, and handing back a tree or a `.phar` would be a different thing wearing
+/// the same type.
 pub fn cached_bin(platform: &dyn Platform, name: &str, version: &str) -> Option<PathBuf> {
-    let bin = platform
-        .paths()
-        .bin_dir()
-        .ok()?
-        .join(format!("{name}-{version}"))
-        .join(name);
-    bin.exists().then_some(bin)
+    (shape_of(name) == Shape::Single)
+        .then(|| cached_path(platform, name, version))
+        .flatten()
 }
 
 /// The cached bundle tree dir for `name`/`version` iff it's actually present —
@@ -1546,11 +1643,8 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
             "{name} is a directory distribution — use resolve_dir"
         )));
     }
-    if bin_path.exists()
-        && cache_matches_pin(&dir, version, &spec.checksum)
-        && licenses_satisfied(&dir, &spec.url)
-    {
-        return Ok(bin_path);
+    if let Some(hit) = cached_path(platform, name, version) {
+        return Ok(hit);
     }
     // Present but NOT the pinned bytes: a re-issued artifact at an unchanged
     // version. Drop it and fetch, rather than serving it forever. Also reached
@@ -1655,8 +1749,8 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
     let bin_dir = platform.paths().bin_dir()?;
     let dir = bin_dir.join(format!("{name}-{version}"));
     let path = dir.join(spec.member);
-    if path.exists() {
-        return Ok(path);
+    if let Some(hit) = cached_path(platform, name, version) {
+        return Ok(hit);
     }
     // Stage + publish atomically so an interrupted write never caches a truncated
     // script (task 2.5 / H4): the stream lands in the staging dir and is only
@@ -1703,8 +1797,8 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
     // extract, Gatekeeper/AV quarantine of a large Mach-O) must re-extract, else
     // every later resolve returns a broken tree that fails at spawn with an opaque
     // "No such file or directory" (task 2.5 / H4).
-    if dir.join(spec.member).exists() {
-        return Ok(dir);
+    if let Some(hit) = cached_path(platform, name, version) {
+        return Ok(hit);
     }
 
     if spec.archive != Archive::TarGzTree {
@@ -2353,6 +2447,160 @@ fn publish(staging: &Path, dir: &Path, marker: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `Platform` that answers only the two questions [`cached_path`] asks:
+    /// where the bin dir is, and which arch this machine is. Everything else
+    /// panics, so a future caller that starts needing more is loud rather than
+    /// silently served a default.
+    struct CachePlatform {
+        paths: CachePaths,
+        binaries: CacheBinaries,
+    }
+    struct CachePaths(PathBuf);
+    struct CacheBinaries;
+
+    impl crate::platform::traits::Paths for CachePaths {
+        fn bin_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.clone())
+        }
+        fn app_data_dir(&self) -> Result<PathBuf> { unimplemented!() }
+        fn config_dir(&self) -> Result<PathBuf> { unimplemented!() }
+        fn log_dir(&self) -> Result<PathBuf> { unimplemented!() }
+        fn hosts_file(&self) -> PathBuf { unimplemented!() }
+    }
+    impl crate::platform::traits::BinaryProvider for CacheBinaries {
+        fn arch(&self) -> Arch {
+            Arch::Arm64
+        }
+        fn prepare_binary(&self, _path: &Path) -> Result<()> { unimplemented!() }
+        fn prepare_binary_tree(&self, _root: &Path) -> Result<()> { unimplemented!() }
+    }
+    impl Platform for CachePlatform {
+        fn paths(&self) -> &dyn crate::platform::traits::Paths {
+            &self.paths
+        }
+        fn binaries(&self) -> &dyn crate::platform::traits::BinaryProvider {
+            &self.binaries
+        }
+        fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor { unimplemented!() }
+        fn dns(&self) -> &dyn crate::platform::traits::DnsManager { unimplemented!() }
+        fn cert_trust(&self) -> &dyn crate::platform::traits::CertTrustManager { unimplemented!() }
+        fn privileges(&self) -> &dyn crate::platform::traits::PrivilegeManager { unimplemented!() }
+        fn autostart(&self) -> &dyn crate::platform::traits::AutostartManager { unimplemented!() }
+        fn permissions(&self) -> &dyn crate::platform::traits::PermissionManager { unimplemented!() }
+        fn shell(&self) -> &dyn crate::platform::traits::ShellRunner { unimplemented!() }
+        fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor { unimplemented!() }
+        fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager { unimplemented!() }
+    }
+
+    /// A throwaway bin dir. Named per-test AND per-pid so two tests in the same
+    /// binary cannot share one — `cached_path` writes nothing, but the fixtures
+    /// below plant and remove files, and a shared dir makes that order-dependent.
+    fn cache_fixture(tag: &str) -> (CachePlatform, PathBuf) {
+        let root =
+            std::env::temp_dir().join(format!("rexenv-cache-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        (
+            CachePlatform { paths: CachePaths(root.clone()), binaries: CacheBinaries },
+            root,
+        )
+    }
+
+    /// **One question, one answer.** `is_cached` (the planner), `cached_bin`
+    /// (sync adoption) and `resolve`'s own fast path all route through
+    /// [`cached_path`], and the case that used to split them is a cache whose
+    /// bytes are present but whose PIN MARKER names different bytes — an
+    /// upstream in-place rebuild plus a re-pin, which happened 5 Jul 2026.
+    /// The planner said "cached, nothing to do" and `resolve` then deleted the
+    /// dir and re-downloaded with no hub row.
+    #[test]
+    fn the_planner_and_the_resolve_agree_about_what_is_cached() {
+        let (platform, root) = cache_fixture("agree");
+        let v = "7.4.33"; // self-hosted: an ABSENT marker is stale for it
+        let dir = root.join(format!("php-{v}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("php"), "not really a binary").unwrap();
+
+        // The binary exists — the OLD `is_cached` stopped here and said yes.
+        assert!(dir.join("php").exists());
+        // …but it is not resolvable: no pin marker, and 7.4 is ours, so an
+        // absent marker is stale. Planner and resolve now agree it is not.
+        assert!(!is_cached(&platform, "php", v));
+        assert!(cached_path(&platform, "php", v).is_none());
+        assert!(cached_bin(&platform, "php", v).is_none());
+        // And it reads as a REPAIR, not as "never downloaded" — the distinction
+        // that keeps login-start offline (ledger #175).
+        assert!(needs_repair(&platform, "php", v));
+
+        // Give it the right marker and the licences it owes, and all three flip.
+        let spec = manifest("php", v, "macos", Arch::Arm64).unwrap();
+        write_pin_marker(&dir, &spec.checksum);
+        std::fs::create_dir_all(dir.join(LICENSES_DIR)).unwrap();
+        std::fs::write(dir.join(LICENSES_DIR).join("PHP-3.01.txt"), "…").unwrap();
+        assert!(is_cached(&platform, "php", v));
+        assert_eq!(cached_path(&platform, "php", v).unwrap(), dir.join("php"));
+        assert_eq!(cached_bin(&platform, "php", v).unwrap(), dir.join("php"));
+        assert!(!needs_repair(&platform, "php", v), "a whole cache needs no repair");
+
+        // Nothing on disk at all is neither cached nor a repair.
+        assert!(!is_cached(&platform, "php", PHP_VERSION));
+        assert!(!needs_repair(&platform, "php", PHP_VERSION));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// **The name → resolver mapping is ONE fact.** It lived in
+    /// `downloads::resolve_any` as a `match` and in `is_cached` as a
+    /// `member || name` disjunction, and they disagreed about `composer`:
+    /// `resolve_any` let it fall through to `resolve` (publishing `dir/composer`)
+    /// while every consumer calls `resolve_file` (reading `dir/composer.phar`).
+    /// So a prefetch cached one path and the consumer downloaded the other.
+    ///
+    /// Derived from the manifest rather than asserted as a list, so a new
+    /// artifact joins by existing.
+    #[test]
+    fn the_shape_of_an_artifact_matches_where_its_resolve_publishes_it() {
+        // composer is the regression: Raw archive, member != name, File shape.
+        let composer = manifest("composer", COMPOSER_VERSION, "macos", Arch::Arm64).unwrap();
+        assert_eq!(composer.member, "composer.phar");
+        assert_ne!(composer.member, "composer");
+        assert_eq!(shape_of("composer"), Shape::File, "composer publishes under its member");
+
+        // The other two file artifacts, for the same reason.
+        for n in ["wp-cli", "adminer"] {
+            assert_eq!(shape_of(n), Shape::File);
+        }
+        // Tree distributions, and the bundles (which have no plain manifest).
+        for n in ["mysql", "postgres"] {
+            assert_eq!(shape_of(n), Shape::Dir);
+            assert_eq!(manifest(n, MYSQL_VERSION, "macos", Arch::Arm64).map(|s| s.archive)
+                .or(Some(Archive::TarGzTree)).unwrap(), Archive::TarGzTree);
+        }
+        for n in ["redis", "mariadb", "httpd", "xdebug-8.4"] {
+            assert_eq!(shape_of(n), Shape::Bundle);
+            assert!(manifest(n, "1", "macos", Arch::Arm64).is_none(), "{n} is not a plain spec");
+        }
+        // Everything else is a single executable published at `dir/<name>`.
+        for n in ["php", "php-fpm", "caddy", "nginx", "mailpit", "frankenphp", "cloudflared"] {
+            assert_eq!(shape_of(n), Shape::Single, "{n}");
+        }
+    }
+
+    /// `cached_bin` hands back an executable or nothing — never a tree or a
+    /// `.phar` wearing the same type. Its callers (mailpit/frankenphp adoption)
+    /// go on to SPAWN what they are given.
+    #[test]
+    fn cached_bin_only_ever_answers_for_a_single_executable() {
+        let (platform, root) = cache_fixture("bin-shape");
+        // Plant a complete-looking cache for a File-shaped artifact.
+        let dir = root.join(format!("composer-{COMPOSER_VERSION}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("composer.phar"), "#!/usr/bin/env php").unwrap();
+        assert!(is_cached(&platform, "composer", COMPOSER_VERSION), "it IS cached…");
+        assert!(cached_bin(&platform, "composer", COMPOSER_VERSION).is_none(), "…but not a binary");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn download_ceiling_allows_slack_and_caps_unknown_length() {

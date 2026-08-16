@@ -408,6 +408,46 @@ pub fn run() {
                         // the pinned trees too is what makes "falls back to the
                         // pins" an offline fallback rather than a download
                         // (docs/PLAN-binary-updates.md §6).
+                        // Repair caches that are PRESENT but incomplete — the
+                        // bytes are there and something beside them is not
+                        // (a re-pinned digest, or the licence texts every cache
+                        // predating ledger #336 is missing). Done HERE, at app
+                        // launch, rather than in `auto_start_inner`: login-start
+                        // stays strictly offline (ledger #175 — never download,
+                        // never prompt), and by the next login the cache is
+                        // whole. Only ever repairs what already exists, so a
+                        // minor the user never installed is never fetched.
+                        let repairs: Vec<String> = {
+                            let installed = state
+                                .db
+                                .lock()
+                                .ok()
+                                .and_then(|conn| core::php::list_versions(&conn).ok())
+                                .unwrap_or_default();
+                            installed
+                                .into_iter()
+                                .filter(|v| v.installed)
+                                .filter(|v| {
+                                    ["php", "php-fpm"].iter().any(|n| {
+                                        core::binaries::needs_repair(platform, n, &v.patch)
+                                    })
+                                })
+                                .map(|v| v.minor)
+                                .collect()
+                        };
+                        for minor in &repairs {
+                            log::info!("php: repairing an incomplete {minor} cache");
+                            let plan = core::downloads::plan_for_php(platform, minor);
+                            if let Err(e) = core::downloads::prefetch(
+                                platform,
+                                &format!("Repair PHP {minor}"),
+                                &plan,
+                            )
+                            .await
+                            {
+                                log::warn!("php: could not repair the {minor} cache: {e}");
+                            }
+                        }
                         //
                         // A registry we could not read SKIPS the sweep rather
                         // than sweeping with an empty keep-set: deleting nothing

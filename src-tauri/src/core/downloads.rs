@@ -368,16 +368,13 @@ pub fn plan_for_override(platform: &dyn Platform, server: WebServer) -> Vec<Plan
 /// The per-item retry command reuses this — idempotent, so retrying something
 /// that meanwhile resolved returns instantly.
 pub async fn resolve_any(platform: &dyn Platform, name: &str, version: &str) -> Result<()> {
-    match name {
-        "mysql" | "postgres" => binaries::resolve_dir(platform, name, version).await.map(drop),
-        "redis" | "mariadb" | "httpd" => {
+    match binaries::shape_of(name) {
+        binaries::Shape::Dir => binaries::resolve_dir(platform, name, version).await.map(drop),
+        binaries::Shape::Bundle => {
             binaries::resolve_bundle(platform, name, version).await.map(drop)
         }
-        n if n.starts_with("xdebug-") => {
-            binaries::resolve_bundle(platform, name, version).await.map(drop)
-        }
-        "wp-cli" | "adminer" => binaries::resolve_file(platform, name, version).await.map(drop),
-        _ => binaries::resolve(platform, name, version).await.map(drop),
+        binaries::Shape::File => binaries::resolve_file(platform, name, version).await.map(drop),
+        binaries::Shape::Single => binaries::resolve(platform, name, version).await.map(drop),
     }
 }
 

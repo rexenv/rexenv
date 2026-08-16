@@ -260,8 +260,13 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors, &db_versions);
     let missing = core::downloads::uncached_names(&plan);
     if !missing.is_empty() {
+        // "not ready" rather than "not downloaded": since ledger #336 a cache can
+        // be present and still not resolvable — the bytes are there and the
+        // licence texts beside them are not. Opening the app repairs that
+        // (`lib.rs`'s launch task) as well as downloading anything genuinely
+        // absent, so one sentence covers both without claiming which it was.
         return Err(Error::Other(format!(
-            "binaries not downloaded yet ({}) — open rexenv and press Start all once",
+            "binaries not ready yet ({}) — open rexenv once and press Start all",
             missing.join(", ")
         )));
     }
