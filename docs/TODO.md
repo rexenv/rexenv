@@ -1406,7 +1406,7 @@ first:
   the root LaunchDaemon. Open: key custody (**the ruling everything else waits on**),
   pin cadence, mirror-or-not, PHP-only vs engines too. §13 has the half-day
   read-only version ("8.3.32 exists") if the release-side work isn't wanted.
-  **§12 tasks 1–4 are unblocked and worth doing regardless** — they are corrections
+  **§12 tasks 1–3 are unblocked and worth doing regardless** (task 1 ✓ `8be6810`) — they are corrections
   to shipped code, not scaffolding for this feature.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by

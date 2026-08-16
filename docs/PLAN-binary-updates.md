@@ -363,8 +363,16 @@ a newer pin than the user's selection, the pin wins and today's launch-bump path
 unchanged. There is no boolean anyone can get backwards.
 
 **`patch_for_minor` returns `Option<&'static str>`** (`php.rs:62`). A runtime patch cannot
-be `&'static`, so this becomes `Option<String>` — the single most invasive type change in
-the work, and the reason task 2 in §12 is sized the way it is.
+be `&'static`, so this becomes `Option<String>`.
+
+**And the pin — not the registry — is what a pool actually runs today.**
+`PoolManager::ensure` resolves its binary with `patch_for_minor(minor)` (`php.rs:599-604`)
+and holds no `Connection`; the same is true of thirteen other call sites (`downloads`,
+`sites`, `commands/terminal`, `commands/wordpress`, `commands/php`,
+`mcp_server/scratch`, and four examples). `php_versions.patch` is therefore a **mirror of
+the pin for the UI and for bump detection**, not a source of truth — which is why moving
+the source of truth is the feature's core architectural change and not a tidy-up. See
+§12 P4.
 
 ---
 
@@ -382,11 +390,16 @@ that is supposed to catch it cannot see the case by construction.
    publishes an interpreter it distributes, with no licence texts, and nothing anywhere
    says so.
 2. **Enforcement exists on one resolve path out of four.** Only the single-file `resolve`
-   calls `licenses_satisfied` (`binaries.rs:1446`) and fetches the licence archive
-   (`:1497-1507`). `resolve_dir` / `resolve_bundle` / `resolve_file` never do — **and a
-   manifest entry chooses which path it takes, via its `archive` field.** An entry
-   declaring `"archive": "targztree"` routes around the obligation entirely, even for
-   `7.4.33` itself.
+   calls `licenses_satisfied` and fetches the licence archive. `resolve_dir` /
+   `resolve_bundle` / `resolve_file` never do — **and a manifest entry chooses which path
+   it takes, via its `archive` field.** An entry declaring `"archive": "targztree"`
+   routes around the obligation entirely.
+   **Latent today, not live** — checked before relying on it: `php`/`php-fpm` are
+   `Archive::TarGz` single-file specs (`binaries.rs:882-893`), so `7.4.33`, the only
+   artifact that currently owes licences, takes the enforcing path. It goes live the
+   moment a self-distributed artifact is a **tree or a bundle** — which is precisely what
+   the self-hosted `php-debug` build already wired at `PHP_DEBUG_BASE_URL` will be, and
+   what any manifest entry may simply declare itself to be.
 3. **The guard that should catch this iterates `PHP_VERSIONS`.**
    `every_php_we_distribute_ourselves_ships_its_licences` (`binaries.rs:2957`) loops the
    compile-time slice. A manifest-supplied version is not in it. Same for every other pin
@@ -409,8 +422,10 @@ list to forget to update. Then:
   is owed;
 - enforcement moves to a point all four resolve paths pass through.
 
-**Doing this is correct today, on its own merits, with no manifest anywhere** — route 2
-is a live hole in shipped code for `7.4.33` right now. It is task 3 in §12.
+**Doing this is correct today, on its own merits, with no manifest anywhere** — it closes
+a latent hole in the exact direction the project is already moving (`php-debug` is wired,
+self-hosted, and will not be a single file), and it converts route 1 from a list somebody
+must remember to extend into a fact nobody can forget.
 
 ---
 
@@ -463,7 +478,7 @@ is a live hole in shipped code for `7.4.33` right now. It is task 3 in §12.
 
 - **P1. Key custody.** Who holds the ed25519 private key, and where? Offline/hardware
   token, or a CI secret? §2 says plainly that a CI secret in the account that also hosts
-  the manifest and the app reduces the signature to ceremony. **Everything from task 5
+  the manifest and the app reduces the signature to ceremony. **Everything from task 4
   onward depends on this answer**, so it is the ruling to give first.
 - **P2. Ship the button, or §13's read-only version?** The read-only variant ("8.3.32
   exists") is ~half a day, needs no key, and removes the "am I on something stale?"
@@ -471,40 +486,58 @@ is a live hole in shipped code for `7.4.33` right now. It is task 3 in §12.
 - **P3. Mirror or not.** Publishing only checksums keeps rexenv out of the bandwidth
   business but leaves availability with static-php.dev, which has rebuilt in place before.
   A manifest fixes the *reporting*; only a mirror fixes the *availability*.
+- **P4. What does `php_versions.patch` MEAN?** Parked after scoping it, because the two
+  answers are different products and picking one by guess is how a second source of truth
+  gets created for a value that has exactly one:
+  - *"the pin this app ships"* (what it is today — a mirror). Then the honest fix is to
+    **delete the column and derive it**, the way `list_versions` already derives
+    `xdebug_supported` / `eol_since` / `xdebug_version` precisely so a pin change moves
+    the UI with no column to migrate. Bump detection then needs its own mechanism.
+  - *"the patch this minor is confirmed running"*. Then it must be written on
+    confirmation, not on seed — and it only starts to *mean* anything once there is
+    something other than the pin to record, which is P1/P2.
+
+  **The defect this was going to fix, recorded so it is not lost:** `seed_registry`
+  (`php.rs:189-219`) computes `bumped` from the stored patch and then `upsert_php_version`s
+  the new pin **unconditionally in the same iteration**, so the row moves before anything
+  is downloaded. When the prefetch then fails, `lib.rs`'s `// retry next launch` is
+  **false** — the next launch sees no bump, because the row already moved on the launch
+  that failed. A user is left with a registry saying 8.3.32 and a pool serving 8.3.31,
+  permanently and silently. Task 1 (shipped) removes the worst consequence — the GC no
+  longer deletes the running tree underneath that state — but the stuck bump itself is
+  a real bug that outlives this plan, and its fix is whichever answer P4 gets.
 
 **Unblocked — correct today on their own merits, and the foundation the feature needs.
 Being worked now, in this order (the order is load-bearing):**
 
-1. **The GC keeps what is running, not what is pinned.** `gc_outdated_php_caches` keeps
-   `{compiled-in pin} ∪ {each minor's registered patch}`. Today those are equal, so this
+1. ✓ **The GC keeps what is running, not what is pinned.** `gc_outdated_php_caches` keeps
+   `{compiled-in pins} ∪ {each minor's registered patch}`. Today those are equal, so this
    is behaviour-identical — and it closes the existing foot-gun where a failed
    `restart_pools_for` lets the GC unlink a live master's tree (§6). **First** because it
-   only ever keeps *more*, so it is safe before task 2 and unsafe after.
-2. **`php_versions.patch` records what is installed, not what is pinned.** Fixes the live
-   bug in §5: the row currently moves before the prefetch is attempted, so a failed bump
-   never retries and the DB lies about what is running. Includes
-   `patch_for_minor → Option<String>`.
-3. **The licence obligation is host-derived and enforced on every resolve path.** Fixes
-   §9 route 2, which is a live hole for `7.4.33` today, and makes route 1 impossible by
-   construction rather than by a list.
-4. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
+   only ever keeps *more*, so it is safe before any change to what the registry stores
+   and unsafe after. — *done 16 Aug 2026, `8be6810`, ledger #338, plant-proven.*
+2. **The licence obligation is host-derived and enforced on every resolve path.** Closes
+   §9 route 2 (latent today, live the moment a self-distributed artifact is a tree — and
+   `php-debug` already is one), and makes route 1 impossible by construction rather than
+   by a list somebody must remember to extend.
+3. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
    planned download with hub progress, not a silent delete-and-refetch.
 
 **Blocked on P1:**
 
-5. `feat(core)` — `core/updates.rs`: manifest struct, ed25519 verify via `ring`, serial
+4. `feat(core)` — `core/updates.rs`: manifest struct, ed25519 verify via `ring`, serial
    rule, §3's four structural limits, settings-backed cache storing **document +
    signature**, merge-over-pins by `max(pin, selected)`. Lib tests for every §11 L0 row.
    No UI, no network wired in — pure, testable, inert.
-6. `feat(commands)` — `php_update_check` / `php_update_apply` IPC; apply = prefetch →
+5. `feat(commands)` — `php_update_check` / `php_update_apply` IPC; apply = prefetch →
    prepare → persist → restart pool → verify → revert-on-failure.
-7. `feat(ui)` — §10's Settings row and the checked-N-ago line.
-8. `chore(release)` — `scripts/pin-binaries.sh`: download → hash → emit manifest entries →
+6. `feat(ui)` — §10's Settings row and the checked-N-ago line.
+7. `chore(release)` — `scripts/pin-binaries.sh`: download → hash → emit manifest entries →
    sign → attach to the release. **It must also emit the compiled-in `const` block**, so
    the two sources of truth are generated by one run and cannot drift. Documented in
    `CONTRIBUTING.md` so the step is not tribal knowledge. (No pin script exists today;
    pinning is done by hand.)
-9. `docs` — `PORTS.md` gains "how a version reaches a user"; this file flips to SHIPPED.
+8. `docs` — `PORTS.md` gains "how a version reaches a user"; this file flips to SHIPPED.
 
 ---
 
@@ -516,5 +549,5 @@ manifest **read-only, no update button, no signature required**, because a manif
 can only make the UI say "newer exists" cannot make the app run anything. ~half a day, and
 it removes the "am I on something stale?" question while leaving the upgrade to a release.
 
-Tasks 1–4 above are worth doing **regardless of which of these ships**, including if
+Tasks 1–3 above are worth doing **regardless of which of these ships**, including if
 neither does.
