@@ -526,22 +526,42 @@ analysis that produced the decision, not as a design queued for implementation.
    **Deliberately fixed standalone ahead of P4, which supersedes it by design**: it is
    live on the shipped path, and a fix that waits on a refactor is a fix that has not
    happened.
-3. ◐ **The licence obligation is host-derived and enforced on every resolve path.**
-   **Route 1 done** 16 Aug 2026 — the obligation reads the artifact's HOST, the licence
-   URL is a sibling of the artifact's own URL (same release by construction), and
-   ours-but-unpinned is a refusal rather than a silent "nothing owed". Ledger #336
-   amended, plant-proven. It also closed a live gap the old rule could not see: the
-   already-wired self-hosted `php-debug` was excluded by its `name` check.
-   **Route 2 open** — enforcement remains only on the single-file `resolve`;
-   `resolve_dir` / `resolve_bundle` / `resolve_file` still have none, which is what a
-   tree-shaped self-distributed artifact would walk straight through.
-4. **Delete `php_versions.patch`; derive it** (P4). Migration, `list_versions` derives it
-   the way it already derives `xdebug_supported` / `eol_since` / `xdebug_version`, and
-   bump detection moves to the live pool's own binary. Supersedes task 2's mechanism.
-5. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
-   planned download with hub progress, not a silent delete-and-refetch.
-6. **The read-only "a newer patch exists" row** (P2, §13). No key, no executable fetch,
-   best-effort, offline-safe, with the `checked N ago` honesty line.
+3. ✓ **The user's default PHP version survives a relaunch.** Not on the original list —
+   found by a scoping pass over the code task 2 had just edited. `upsert_php_version`
+   listed `is_default` in its `ON CONFLICT SET`, sourced from the pin, so "Make default"
+   silently snapped back to 8.3 on every launch. `installed` sat one line away,
+   excluded for exactly that reason. — *done 16 Aug 2026, `89b7599`, ledger #340,
+   plant-proven both directions.*
+
+**Order below is load-bearing and was nearly wrong.** The natural reading — "close the
+licence gap next, it is the security one" — actively destroys work: `is_cached` currently
+**agrees** with `resolve_dir` and `resolve_file` (all three are member-existence only),
+and only `resolve` diverges. Adding `licenses_satisfied` to those paths first would turn
+one divergence into three, so the `is_cached` unification would then have to reconcile
+three predicates instead of extracting one seam. The two items do not conflict on
+content, only on order, which is the kind of conflict that survives review.
+
+4. **Close the `is_cached` / `resolve` divergence** (§7). Extract the single
+   `cache_matches_pin && licenses_satisfied` predicate — both are called from exactly one
+   production site today, `resolve`'s cache check — and have `is_cached` call it too.
+   Also fix `cached_bin`, a THIRD predicate whose doc claims to be "`resolve`'s cache-hit
+   fast path" while checking existence only, and which feeds mailpit/frankenphp adoption.
+   **Carries an open product question — see §15.**
+5. **Licence enforcement on the remaining resolve paths** (§9 route 2). Cheap once 4
+   builds the seam. For `resolve_bundle` the honest rule is fail-closed: `BundlePart` has
+   no version, so a self-distributed part cannot key a licence digest, and refusing while
+   naming the gap beats silently pinning the wrong archive. Amend ledger #336.
+6. **Delete `php_versions.patch`; derive it** (P4), in **two** commits, never one:
+   first make "what a pool RUNS" a live fact (read the patch from the running master's
+   EXECUTABLE PATH, never argv — php-fpm rewrites its title, and the 7.4 pool still
+   showing raw argv is a trap that makes a wrong derivation look right), and feed the GC
+   keep-set from that instead of `registered_patches`; only then drop the column.
+   Combining them hides the #338 regression window in review, because the keep-set change
+   and the keep-set's reason to exist would land in the same diff. Retire ledger #339
+   explicitly in the second — it is a shipped, plant-proven row whose code goes away.
+   **Carries an open product question — see §15.**
+7. **The read-only "a newer patch exists" row** (P2, §13). Last, so it compares against
+   `patch_for_minor` rather than a column that no longer exists.
 
 Everything §11 lists for the *manifest* is not owed, because the manifest is not being
 built. The rows that survive are the ones about the GC keep-set, the retry, and the
@@ -574,6 +594,29 @@ depend on:
 
 Header line for whoever picks this up: the fetched document is UI input and nothing
 else. The moment anything downstream of it selects bytes, §1–§3 apply again in full.
+
+## 15. Two product questions inside the remaining work
+
+Both are zero-disruption calls, which makes them the user's, not the implementer's.
+
+**A. Closing the `is_cached` divergence adds a login-time refusal.** `uncached_names`
+feeds auto-start's guard, which refuses login-start by name ("binaries not downloaded
+yet (php-fpm) — open rexenv and press Start all once"). Once `is_cached` checks the
+licence leg, that fires on the first launch of **every existing install whose 7.4 cache
+predates 1f979c5** — which ledger #336 already records as every install predating it.
+The refetch happens either way (`resolve` repairs it silently today), so what the change
+buys is moving an invisible download into a visible planned one; what it costs is a new
+login-time refusal on upgrade. Options: exempt the licence leg from the planner
+(pin-only), or let auto-start prefetch the licence delta instead of refusing.
+
+**B. Deleting `php_versions.patch` can hide the very bug that fixing it made visible.**
+With the column gone the Settings row derives from the pin, so during a failed bump the
+UI would assert 8.3.32 while the pool serves 8.3.31 — the identical silent lie #339
+shipped to end, now structurally unsayable rather than merely absent. "Unrepresentable"
+is only true if step 6's live fact reaches the view. If it does, the row can say
+`pinned 8.3.32, serving 8.3.31`, which is strictly better than today. If it does not,
+this trades a fixed bug for a hidden one, and `docs/DESIGN.md`'s honest-UI promise should
+record which way it went.
 
 ## 14. Status of the signed manifest
 
