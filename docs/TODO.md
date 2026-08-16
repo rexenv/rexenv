@@ -9,6 +9,33 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [ ] **Read-only "a newer PHP patch exists"** (`docs/PLAN-binary-updates.md` §13, ruled
+  16 Aug 2026). The PHP row states the patch it runs and that a newer one exists.
+  Best-effort, off the startup path, gates nothing; offline is a first-class state, not
+  an error; `checked N ago` beside the header so a check that finds nothing still
+  visibly ran. **The fetched document is UI input and nothing else** — the moment
+  anything downstream of it selects bytes, the whole trust analysis (§1-§3) applies again.
+
+- [ ] **Delete `php_versions.patch`; derive it** (`docs/PLAN-binary-updates.md` §12 P4,
+  ruled 16 Aug 2026). The pin is what a pool runs — thirteen call sites resolve through
+  `patch_for_minor` and hold no `Connection` — so the column is a mirror that can
+  disagree with what it mirrors, which is the two-sources-of-truth shape removed
+  everywhere else here. It already produced one live bug (ledger #339, fixed standalone
+  in `c44d717`); deriving makes it unrepresentable rather than fixed. Bump detection
+  moves to the running master's own binary path, which `Supervisor::owned_listeners`
+  already reads (`ps -p <pid> -o command=`). Supersedes #339's mechanism.
+
+- [ ] **`fpm_port` collides at an x.10 minor.** `fpm_port` is
+  `FPM_PORT_BASE + major * 10 + min` (`core/php.rs:153-160`), so `fpm_port("8.10")` and
+  `fpm_port("9.0")` both return **9790**; `debug_fpm_port` has the same shape on its own
+  base. It needs no new feature to bite — it needs PHP to ship an x.10 minor, which is a
+  matter of time, and PHP 8.4/8.5 are current. Unreachable today only because
+  `PHP_VERSIONS` is a curated compile-time list. **Constraint on any fix: existing
+  users' ports must not move** — `php_versions.fpm_port` is STORED, so check whether it
+  is read back and trusted or always recomputed before choosing between widening the
+  formula (`major * 100 + min`), indexing by position, or refusing an x.10 minor loudly.
+  Found 16 Aug 2026 while scoping the manifest's structural limits.
+
 - [x] **Create a site FROM a git repository — Stage 1, Laravel + Blank PHP** (planned +
   built 11 Aug 2026, `docs/PLAN-git-site-clone.md`). Laravel developers keep their
   projects in git; the Laravel card could only make a NEW app, so an existing repo meant
@@ -1387,27 +1414,27 @@ first:
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- [ ] **In-app PHP/engine patch updates** (`docs/PLAN-binary-updates.md`, proposed
-  8 Aug 2026, **premise re-checked 16 Aug 2026**): Herd updates PHP patches from
-  its own UI; we ship one pinned patch per minor and a user waits for a rexenv
-  release. Blocker is NOT the UI, and **not "upstream publishes no checksums"** —
-  that clause was the premise of the objection, not the objection. The recorded
-  reasoning (`c786ea3`, archived at `docs/archive/SHIPPED-2026-07.md:1278-1280`) is
-  that a runtime pin "would move pin trust from the signed app binary to the user's
-  machine", and that **still stands**: every source that DOES publish checksums
-  (Caddy, PostgreSQL, Composer, and our own 7.4 `SHA256SUMS`) is a compiled-in pin
-  too, because a checksum served from the artifact's own origin is documentation,
-  not a trust root (`PLAN-php-74-support.md:461-462` says exactly this, for the
-  self-hosted case). Self-hosting 7.4 resolved the SIBLING objection recorded in the
-  same commit (self-build was a blocked path), not this one. Needs a signed version
-  manifest (ed25519 — `ring` is already in the dep tree via `rcgen`, so no new crate
-  — pubkey compiled in, monotonic serial, compiled-in pins as the floor) **plus the
-  four structural limits in §3**, without which the signature's blast radius reaches
-  the root LaunchDaemon. Open: key custody (**the ruling everything else waits on**),
-  pin cadence, mirror-or-not, PHP-only vs engines too. §13 has the half-day
-  read-only version ("8.3.32 exists") if the release-side work isn't wanted.
-  **§12 tasks 1–3 are unblocked and worth doing regardless** (task 1 ✓ `8be6810`) — they are corrections
-  to shipped code, not scaffolding for this feature.
+- **DECIDED 16 Aug 2026 — the signed manifest is NOT being built.** (Kept here so the
+  next person finds the reasoning where they would look for the feature.) (`docs/PLAN-binary-updates.md` §12.) The premise was re-checked first, and
+  the summary this had been carried by was wrong: "upstream publishes no checksums" was
+  the *premise* of the recorded objection, not the objection. The reasoning
+  (`c786ea3`, archived at `docs/archive/SHIPPED-2026-07.md:1278-1280`) is that a runtime
+  pin "would move pin trust from the signed app binary to the user's machine" — and every
+  source that DOES publish checksums (Caddy, PostgreSQL, Composer, our own 7.4
+  `SHA256SUMS`) is a compiled-in pin too, because a checksum served from the artifact's
+  own origin is documentation, not a trust root (`PLAN-php-74-support.md:461-462` says
+  exactly that, for the self-hosted case). Self-hosting 7.4 retired the SIBLING objection
+  from the same commit (self-build as a blocked path), not this one.
+  **Why not built:** the signature's value is entirely custody, and a key in a CI secret
+  in the account that hosts the manifest and the app is ceremony — one compromise takes
+  all three. Offline/hardware-token is a practice kept for years, not a commit, and
+  nobody owns it. Compounding that: there is no signed app binary at all
+  (`tauri.conf.json` is ad-hoc `"-"`), so the manifest key would be the first signed
+  thing here and instantly the most valuable secret — protecting PHP patches with a key
+  that outranks everything it protects. **If signing happens, it starts with the app**
+  (`docs/SIGNING.md`, blocked on a paid Apple account). No mirror either.
+  **Shipping instead:** the read-only "8.3.32 exists, this build pins 8.3.31" row —
+  §13, no key, nothing executable fetched, offline-safe. Tracked below.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If

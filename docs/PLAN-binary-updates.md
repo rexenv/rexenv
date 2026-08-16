@@ -474,85 +474,112 @@ must remember to extend into a fact nobody can forget.
 
 ## 12. Task list
 
-**Parked — needs a ruling before anything downstream of it is built:**
+**RULED 16 Aug 2026. The signed manifest is NOT being built.** §1–§3 stand as the
+analysis that produced the decision, not as a design queued for implementation.
 
-- **P1. Key custody.** Who holds the ed25519 private key, and where? Offline/hardware
-  token, or a CI secret? §2 says plainly that a CI secret in the account that also hosts
-  the manifest and the app reduces the signature to ceremony. **Everything from task 4
-  onward depends on this answer**, so it is the ruling to give first.
-- **P2. Ship the button, or §13's read-only version?** The read-only variant ("8.3.32
-  exists") is ~half a day, needs no key, and removes the "am I on something stale?"
-  question entirely.
-- **P3. Mirror or not.** Publishing only checksums keeps rexenv out of the bandwidth
-  business but leaves availability with static-php.dev, which has rebuilt in place before.
-  A manifest fixes the *reporting*; only a mirror fixes the *availability*.
-- **P4. What does `php_versions.patch` MEAN?** Parked after scoping it, because the two
-  answers are different products and picking one by guess is how a second source of truth
-  gets created for a value that has exactly one:
-  - *"the pin this app ships"* (what it is today — a mirror). Then the honest fix is to
-    **delete the column and derive it**, the way `list_versions` already derives
-    `xdebug_supported` / `eol_since` / `xdebug_version` precisely so a pin change moves
-    the UI with no column to migrate. Bump detection then needs its own mechanism.
-  - *"the patch this minor is confirmed running"*. Then it must be written on
-    confirmation, not on seed — and it only starts to *mean* anything once there is
-    something other than the pin to record, which is P1/P2.
+### The rulings, with the reasoning that produced them
 
-  **The defect this was going to fix, recorded so it is not lost:** `seed_registry`
-  (`php.rs:189-219`) computes `bumped` from the stored patch and then `upsert_php_version`s
-  the new pin **unconditionally in the same iteration**, so the row moves before anything
-  is downloaded. When the prefetch then fails, `lib.rs`'s `// retry next launch` is
-  **false** — the next launch sees no bump, because the row already moved on the launch
-  that failed. A user is left with a registry saying 8.3.32 and a pool serving 8.3.31,
-  permanently and silently. Task 1 (shipped) removes the worst consequence — the GC no
-  longer deletes the running tree underneath that state — but the stuck bump itself is
-  a real bug that outlives this plan, and its fix is whichever answer P4 gets.
+- **P1 — key custody: don't build it.** The caveat in §2 is disqualifying, not a
+  footnote. A key in a CI secret in the account that hosts the manifest and the app is
+  ceremony: one compromise takes all three, and we would have spent real complexity to
+  move a trust boundary six inches. Offline or in a hardware token is the only version
+  worth having, and that is **a custody practice kept for years, not a commit** — an
+  unowned practice is worse than no signature, because the signature is what everyone
+  downstream would then be trusting.
 
-**Unblocked — correct today on their own merits, and the foundation the feature needs.
-Being worked now, in this order (the order is load-bearing):**
+  And the sharper argument is §0's third finding: **there is no signed app binary at
+  all.** A manifest key would be the first signed thing in this project and instantly
+  its most valuable secret. Protecting PHP patches with a key that outranks everything
+  it protects is backwards. **If signing ever happens here, it starts with the app.**
+
+- **P2 — ship the read-only version (§13).** "8.3.32 exists, this build pins 8.3.31":
+  no key, no fetch of anything executable, no new trust surface. It turns the actual
+  user complaint — *I don't know I'm behind* — into information without moving the
+  security model an inch. If people then ask for the button, that is evidence, and it
+  arrives alongside whatever has been learned about custody by then.
+
+- **P3 — no mirror.** Another host to keep honest, for a feature we are not building.
+
+- **P4 — delete `php_versions.patch` and derive it.** The pin is what a pool runs:
+  thirteen call sites resolve through `patch_for_minor` and hold no `Connection` (§8).
+  A mirror that can disagree with the thing it mirrors is the two-sources-of-truth shape
+  removed everywhere else in this codebase, and it has already produced one live bug.
+  Deriving it makes that bug **unrepresentable rather than fixed**.
+
+  Bump detection has to move with it. It can: a running master's command line names its
+  patch, and that is already how adoption identifies a pool
+  (`Supervisor::owned_listeners` → `ps -p <pid> -o command=`). Derived from the live
+  process, the comparison cannot disagree with reality, because it *is* reality.
+
+### Work
 
 1. ✓ **The GC keeps what is running, not what is pinned.** `gc_outdated_php_caches` keeps
    `{compiled-in pins} ∪ {each minor's registered patch}`. Today those are equal, so this
    is behaviour-identical — and it closes the existing foot-gun where a failed
-   `restart_pools_for` lets the GC unlink a live master's tree (§6). **First** because it
-   only ever keeps *more*, so it is safe before any change to what the registry stores
-   and unsafe after. — *done 16 Aug 2026, `8be6810`, ledger #338, plant-proven.*
-2. ◐ **The licence obligation is host-derived and enforced on every resolve path.**
-   **Route 1 done** 16 Aug 2026 — the obligation now reads the artifact's HOST, the
-   licence URL is a sibling of the artifact's own URL (same release by construction), and
+   `restart_pools_for` lets the GC unlink a live master's tree (§6). — *done 16 Aug 2026,
+   `8be6810`, ledger #338, plant-proven.*
+2. ✓ **A failed patch bump is retried, not swallowed.** `seed_registry` detected the bump
+   and committed it in the same statement, so a failed prefetch left `lib.rs`'s
+   `// retry next launch` false and the registry permanently lying about what runs. The
+   row now moves only in `confirm_patch`, after that minor's own pool is ready, and the
+   launch loop is per-minor. — *done 16 Aug 2026, `c44d717`, ledger #339, plant-proven.*
+   **Deliberately fixed standalone ahead of P4, which supersedes it by design**: it is
+   live on the shipped path, and a fix that waits on a refactor is a fix that has not
+   happened.
+3. ◐ **The licence obligation is host-derived and enforced on every resolve path.**
+   **Route 1 done** 16 Aug 2026 — the obligation reads the artifact's HOST, the licence
+   URL is a sibling of the artifact's own URL (same release by construction), and
    ours-but-unpinned is a refusal rather than a silent "nothing owed". Ledger #336
    amended, plant-proven. It also closed a live gap the old rule could not see: the
    already-wired self-hosted `php-debug` was excluded by its `name` check.
-   **Route 2 still open** — enforcement remains only on the single-file `resolve`;
+   **Route 2 open** — enforcement remains only on the single-file `resolve`;
    `resolve_dir` / `resolve_bundle` / `resolve_file` still have none, which is what a
-   `targztree` entry would exploit.
-3. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
+   tree-shaped self-distributed artifact would walk straight through.
+4. **Delete `php_versions.patch`; derive it** (P4). Migration, `list_versions` derives it
+   the way it already derives `xdebug_supported` / `eol_since` / `xdebug_version`, and
+   bump detection moves to the live pool's own binary. Supersedes task 2's mechanism.
+5. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
    planned download with hub progress, not a silent delete-and-refetch.
+6. **The read-only "a newer patch exists" row** (P2, §13). No key, no executable fetch,
+   best-effort, offline-safe, with the `checked N ago` honesty line.
 
-**Blocked on P1:**
-
-4. `feat(core)` — `core/updates.rs`: manifest struct, ed25519 verify via `ring`, serial
-   rule, §3's four structural limits, settings-backed cache storing **document +
-   signature**, merge-over-pins by `max(pin, selected)`. Lib tests for every §11 L0 row.
-   No UI, no network wired in — pure, testable, inert.
-5. `feat(commands)` — `php_update_check` / `php_update_apply` IPC; apply = prefetch →
-   prepare → persist → restart pool → verify → revert-on-failure.
-6. `feat(ui)` — §10's Settings row and the checked-N-ago line.
-7. `chore(release)` — `scripts/pin-binaries.sh`: download → hash → emit manifest entries →
-   sign → attach to the release. **It must also emit the compiled-in `const` block**, so
-   the two sources of truth are generated by one run and cannot drift. Documented in
-   `CONTRIBUTING.md` so the step is not tribal knowledge. (No pin script exists today;
-   pinning is done by hand.)
-8. `docs` — `PORTS.md` gains "how a version reaches a user"; this file flips to SHIPPED.
+Everything §11 lists for the *manifest* is not owed, because the manifest is not being
+built. The rows that survive are the ones about the GC keep-set, the retry, and the
+licence obligation — all three already landed or scoped above.
 
 ---
 
-## 13. If we don't do this
+## 13. What ships instead
 
-The honest small version, worth shipping alone and compatible with everything above: the
-PHP row states the patch it runs and that a newer one exists — checked against the
-manifest **read-only, no update button, no signature required**, because a manifest that
-can only make the UI say "newer exists" cannot make the app run anything. ~half a day, and
-it removes the "am I on something stale?" question while leaving the upgrade to a release.
+**This is the decision, not the fallback.** The PHP row states the patch it runs and
+that a newer one exists — read-only, no update button, no key, and nothing executable
+fetched. A document that can only make the UI say "newer exists" cannot make the app run
+anything, which is why it needs none of §2's machinery.
 
-Tasks 1–3 above are worth doing **regardless of which of these ships**, including if
-neither does.
+It answers the complaint that actually motivated all of this — *am I on something
+stale?* — and leaves the upgrade itself to a rexenv release, where the trust anchor
+already is.
+
+Constraints it inherits from §7, which are not negotiable for a check nobody asked to
+depend on:
+
+- **Best-effort, off the startup path, gates nothing.** A failed check reads
+  `couldn't check` with the reason on hover. Never a toast, never a blocked screen.
+- **Offline is a first-class state**, not an error: a check that has never succeeded says
+  so plainly rather than implying the build is current.
+- **`checked N ago` beside the section header** — a check that finds nothing must still
+  visibly have run, the same honesty as the Import screen's `scanned 12s ago`.
+- **The row still reads the same when the network is gone**, because everything it
+  states about the *installed* patch is local.
+
+Header line for whoever picks this up: the fetched document is UI input and nothing
+else. The moment anything downstream of it selects bytes, §1–§3 apply again in full.
+
+## 14. Status of the signed manifest
+
+Not being built (§12, ruled 16 Aug 2026). §0–§11 are kept as the analysis behind that
+decision — specifically §0 (what the recorded objection actually said), §1 (what a
+compromise reaches on this machine), and §2's table (what each option costs and what it
+really protects). If the question is reopened, **it reopens at P1, not at the code**:
+the blocker is a custody practice nobody owns, and it is downstream of the app itself
+being unsigned.
