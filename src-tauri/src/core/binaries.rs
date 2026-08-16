@@ -1314,6 +1314,7 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
         // published tree is self-contained — no Homebrew install needed.
         platform.binaries().prepare_binary_tree(&staging)?;
         ensure_member_extracted(&staging, name, version, spec.member)?;
+        refuse_self_distributed_bundle(&spec, name, version)?;
         write_prepare_receipt(&staging)?;
         publish(&staging, &dir, spec.member)
     }
@@ -1324,6 +1325,31 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
     finish_item(&id, &staged);
     staged?;
     Ok(dir)
+}
+
+/// A bundle assembled from bytes rexenv itself hosts is REFUSED, loudly.
+///
+/// Every bundle today is Homebrew bottles from `ghcr.io` — somebody else's
+/// build, so nothing is owed and this never fires. It is a tripwire for the day
+/// that changes, and it refuses rather than fetching because **a `BundlePart`
+/// carries no version**: there is nothing to key a licence digest on, so the
+/// honest options are "refuse and say why" or "silently pin the wrong archive",
+/// and the second is worse than the gap it papers over.
+///
+/// Whoever trips this is adding a self-hosted bundle part, and the message tells
+/// them the actual work: give `BundlePart` a version, or publish the licences
+/// under the merged tree's own name/version like the single-spec paths do.
+fn refuse_self_distributed_bundle(spec: &BundleSpec, name: &str, version: &str) -> Result<()> {
+    let Some(part) = spec.parts.iter().find(|p| is_self_distributed(&p.url)) else {
+        return Ok(());
+    };
+    Err(Error::Other(format!(
+        "bundle {name} {version} includes '{}', which rexenv builds and hosts ({}) — so rexenv \
+         is its distributor and owes its licence texts. A BundlePart carries no version to pin a \
+         licence archive against, so this refuses rather than publishing without them: give \
+         BundlePart a version, or publish the licences under the merged tree's own name.",
+        part.formula, part.url
+    )))
 }
 
 /// A prepared bundle MUST contain its pinned `member` before we publish it — the
@@ -1410,6 +1436,46 @@ fn published_member(platform: &dyn Platform, name: &str, version: &str) -> Optio
         Shape::Single => dir.join(name),
         _ => dir.join(manifest(name, version, os, arch)?.member),
     })
+}
+
+/// Fetch the licence texts `spec`'s artifact owes into its STAGING dir, so they
+/// ride the same atomic publish as the bytes they cover: a published artifact
+/// either carries `licenses/` or does not exist.
+///
+/// A failure here fails the resolve. That is the point — shipping the artifact
+/// and silently skipping its licence is the outcome being prevented, so it must
+/// not be the fallback when the network is unkind.
+///
+/// Called by every single-spec resolve. It used to be inline in [`resolve`]
+/// only, which meant the obligation applied to the shape 7.4 happens to have and
+/// not to the artifact: an entry declaring itself a tree or a plain file took a
+/// path with no licence step at all, and `php-debug` — self-hosted, and a tree —
+/// was one pin away from taking exactly that path.
+async fn stage_licenses(
+    spec: &BinarySpec,
+    name: &str,
+    version: &str,
+    arch: Arch,
+    staging: &Path,
+    id: &str,
+) -> Result<()> {
+    let Some(lic) = licenses_spec(&spec.url, name, version, arch)? else {
+        return Ok(());
+    };
+    let archive = staging.join(".licenses.tar.gz");
+    download(&lic.url, &archive, Some(&lic.checksum), Some(id)).await?;
+    extract_tar_gz_tree_filtered(open_buffered(&archive)?, staging, 0, None)?;
+    std::fs::remove_file(&archive)?;
+    let dir = staging.join(LICENSES_DIR);
+    if !std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()) {
+        return Err(Error::Other(format!(
+            "{name} {version} is an artifact rexenv builds and distributes, but its licence \
+             archive unpacked to nothing at {} — refusing to publish it without the licences \
+             that must ship beside it",
+            dir.display()
+        )));
+    }
+    Ok(())
 }
 
 /// A cache that is PRESENT but would not satisfy its resolve: the bytes are on
@@ -1693,21 +1759,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         // A failure here fails the resolve. That is the point: shipping the
         // interpreter and silently skipping its licence is the outcome being
         // prevented, so it cannot be the fallback when the network is unkind.
-        if let Some(lic) = licenses_spec(&spec.url, name, version, arch)? {
-            let archive = staging.join(".licenses.tar.gz");
-            download(&lic.url, &archive, Some(&lic.checksum), Some(&id)).await?;
-            extract_tar_gz_tree_filtered(open_buffered(&archive)?, &staging, 0, None)?;
-            std::fs::remove_file(&archive)?;
-            let dir = staging.join(LICENSES_DIR);
-            if !std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()) {
-                return Err(Error::Other(format!(
-                    "{name} {version} is an artifact rexenv builds and distributes, but its \
-                     licence archive unpacked to nothing at {} — refusing to publish an \
-                     interpreter without the licences that must ship beside it",
-                    dir.display()
-                )));
-            }
-        }
+        stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, name)
     }
@@ -1763,6 +1815,8 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
         std::fs::create_dir_all(&staging)?;
         download(&spec.url, &staging.join(spec.member), Some(&spec.checksum), Some(&id)).await?;
         downloads::hub().item_preparing(&id);
+        stage_licenses(&spec, name, version, arch, &staging, &id).await?;
+        write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, spec.member)
     }
     .await;
@@ -1826,6 +1880,8 @@ pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> 
         // Drop the archive BEFORE publishing so the cached tree doesn't carry a
         // dead 600MB tarball into the final dir.
         std::fs::remove_file(&archive)?;
+        stage_licenses(&spec, name, version, arch, &staging, &id).await?;
+        write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, spec.member)
     }
     .await;
@@ -3371,6 +3427,113 @@ mod tests {
             assert!(licenses_spec(&caddy.url, "caddy", v, Arch::Arm64).unwrap().is_none());
         }
         assert!(ours > 0, "no self-hosted PHP — this guard is now vacuous, delete or fix it");
+    }
+
+    /// **Every artifact rexenv hosts takes a path that carries the obligation.**
+    ///
+    /// The whole-surface version of #336, and the reason it exists: the licence
+    /// step lived inside [`resolve`] only, so the obligation attached to the
+    /// SHAPE 7.4 happens to have rather than to the artifact. An entry that is a
+    /// tree or a plain file took a path with no licence step at all — and
+    /// `php-debug` is self-hosted AND will be a tree, one pin away from exactly
+    /// that.
+    ///
+    /// Derived by enumerating every artifact the manifests can produce, so a new
+    /// one joins by existing rather than by being added to a list here. It goes
+    /// green today (only 7.4 is ours, and it is `Single`); its whole value is
+    /// failing the day something we host moves shape.
+    #[test]
+    fn nothing_we_host_can_reach_a_resolve_path_without_the_licence_step() {
+        // Shapes whose resolve calls `stage_licenses` + `licenses_satisfied`.
+        const CARRIES_OBLIGATION: &[Shape] = &[Shape::Single, Shape::File, Shape::Dir];
+        let mut ours = 0;
+
+        for (name, versions) in every_pinned_artifact() {
+            for v in versions {
+                for arch in [Arch::Arm64, Arch::X86_64] {
+                    // Bundles are handled by their own refusal (no part has a
+                    // version to pin a licence against) — asserted separately.
+                    if shape_of(&name) == Shape::Bundle {
+                        if let Some(b) = bundle_manifest(&name, &v, "macos", arch) {
+                            assert!(
+                                refuse_self_distributed_bundle(&b, &name, &v).is_ok(),
+                                "a bundle part is now self-hosted — see the refusal's message"
+                            );
+                        }
+                        continue;
+                    }
+                    let Some(spec) = manifest(&name, &v, "macos", arch) else {
+                        continue;
+                    };
+                    if !is_self_distributed(&spec.url) {
+                        continue;
+                    }
+                    ours += 1;
+                    assert!(
+                        CARRIES_OBLIGATION.contains(&shape_of(&name)),
+                        "{name} {v} is served from our own infrastructure ({}) but resolves \
+                         through a path with no licence step",
+                        spec.url
+                    );
+                    // …and it must actually be able to name them.
+                    licenses_spec(&spec.url, &name, &v, arch)
+                        .unwrap_or_else(|e| panic!("{e}"))
+                        .unwrap_or_else(|| panic!("{name} {v} is ours but names no licences"));
+                }
+            }
+        }
+        assert!(ours > 0, "nothing self-hosted — this guard is now vacuous, delete or fix it");
+
+        // The assert above says "these shapes carry the obligation". That is only
+        // true if their resolves actually call it, which is SOURCE TEXT here, not
+        // behaviour — the same honest limit ledger #175's ordering guard states.
+        // A real proof needs a resolve against a self-hosted tree, which is L1
+        // (`php_versions_check`). Worth having anyway: the defect being prevented
+        // is someone deleting the call, and that is exactly what this sees.
+        // Matched on the CALL FORM, not on the name: a substring search finds
+        // this assertion's own literal too, which is the scanner-counts-itself
+        // trap the copy-scan guards already record.
+        const SRC: &str = include_str!("binaries.rs");
+        let calls = SRC
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("stage_licenses(&spec") && l.ends_with(".await?;"))
+            .count();
+        assert_eq!(
+            calls, 3,
+            "each single-spec resolve (resolve, resolve_file, resolve_dir) must stage the \
+             licences it owes — found {calls} call sites"
+        );
+    }
+
+    /// Every (name, versions) pair the manifests can produce. Derived from the
+    /// version constants rather than listed, so this cannot silently stop
+    /// covering something.
+    fn every_pinned_artifact() -> Vec<(String, Vec<String>)> {
+        let one = |v: &str| vec![v.to_string()];
+        let mut out: Vec<(String, Vec<String>)> = vec![
+            ("caddy".into(), one(CADDY_VERSION)),
+            ("nginx".into(), one(NGINX_VERSION)),
+            ("mailpit".into(), one(MAILPIT_VERSION)),
+            ("frankenphp".into(), one(FRANKENPHP_VERSION)),
+            ("composer".into(), one(COMPOSER_VERSION)),
+            ("wp-cli".into(), one(WP_CLI_VERSION)),
+            ("adminer".into(), one(ADMINER_VERSION)),
+            ("cloudflared".into(), one(CLOUDFLARED_VERSION)),
+        ];
+        let all = |vs: &[&str]| vs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for n in ["php", "php-fpm"] {
+            out.push((n.into(), all(PHP_VERSIONS)));
+        }
+        for n in ["php-debug", "php-fpm-debug"] {
+            out.push((n.into(), one(PHP_DEBUG_VERSION)));
+        }
+        out.push(("mysql".into(), all(MYSQL_VERSIONS)));
+        out.push(("postgres".into(), all(POSTGRES_VERSIONS)));
+        out.push(("mariadb".into(), all(MARIADB_VERSIONS)));
+        out.push(("redis".into(), all(REDIS_VERSIONS)));
+        out.push(("httpd".into(), one(HTTPD_VERSION)));
+        out
     }
 
     /// **The Xdebug debug build is ours, and the old guard could not see it.**

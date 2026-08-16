@@ -533,24 +533,39 @@ analysis that produced the decision, not as a design queued for implementation.
    excluded for exactly that reason. — *done 16 Aug 2026, `89b7599`, ledger #340,
    plant-proven both directions.*
 
-**Order below is load-bearing and was nearly wrong.** The natural reading — "close the
-licence gap next, it is the security one" — actively destroys work: `is_cached` currently
-**agrees** with `resolve_dir` and `resolve_file` (all three are member-existence only),
-and only `resolve` diverges. Adding `licenses_satisfied` to those paths first would turn
-one divergence into three, so the `is_cached` unification would then have to reconcile
-three predicates instead of extracting one seam. The two items do not conflict on
-content, only on order, which is the kind of conflict that survives review.
+**The order was nearly wrong, and the reason is worth keeping.** The natural reading —
+"close the licence gap next, it is the security one" — would have destroyed work:
+`is_cached` **agreed** with `resolve_dir` and `resolve_file` (all three member-existence
+only) and only `resolve` diverged, so adding `licenses_satisfied` to those paths first
+would have turned one divergence into three, and the unification would then have had to
+reconcile three predicates instead of extracting one seam. The two items did not conflict
+on content, only on order — the kind of conflict that survives review.
 
-4. **Close the `is_cached` / `resolve` divergence** (§7). Extract the single
-   `cache_matches_pin && licenses_satisfied` predicate — both are called from exactly one
-   production site today, `resolve`'s cache check — and have `is_cached` call it too.
-   Also fix `cached_bin`, a THIRD predicate whose doc claims to be "`resolve`'s cache-hit
-   fast path" while checking existence only, and which feeds mailpit/frankenphp adoption.
-   **Carries an open product question — see §15.**
-5. **Licence enforcement on the remaining resolve paths** (§9 route 2). Cheap once 4
-   builds the seam. For `resolve_bundle` the honest rule is fail-closed: `BundlePart` has
-   no version, so a self-distributed part cannot key a licence digest, and refusing while
-   naming the gap beats silently pinning the wrong archive. Amend ledger #336.
+4. ✓ **One cache predicate, one dispatch** (§7). `cached_path` is the single answer to
+   "would this resolve without downloading", returned by `is_cached` (planner),
+   `cached_bin` (sync adoption) and all four resolves — three callers had answered it
+   differently, so the planner promised "cached" about trees `resolve` then deleted and
+   re-fetched with no hub row. `Shape`/`shape_of` is the single name→resolver mapping,
+   which also fixed `composer` being planned through `resolve` (publishing `dir/composer`)
+   while every consumer called `resolve_file` (reading `dir/composer.phar`) — the same
+   artifact downloaded twice. **§15A ruled and shipped**: `needs_repair` separates "never
+   downloaded" from "downloaded, now incomplete", and the app's launch task repairs the
+   second — so login-start stays offline rather than prefetching there, which would have
+   retired ledger #175 ("never download, never prompt", L0-proven and smoke-tested).
+   Residual window stated, not closed: upgrade → never open the app → reboot → login-start
+   still refuses, now worded "not ready yet" because the bytes ARE there.
+   — *done 16 Aug 2026, `2add15e`, ledger #341, both defects plant-proven separately.*
+5. ✓ **The licence obligation is host-derived and enforced on every resolve path.**
+   Route 1 (`1f979c5`): the duty reads the artifact's HOST, the licence URL is a sibling
+   of the artifact's own URL, ours-but-unpinned refuses — and it closed a gap the old
+   `name`-keyed rule could not see, the already-wired self-hosted `php-debug`. Route 2
+   (`f0c04d1`): `stage_licenses` is called by `resolve`, `resolve_file` and `resolve_dir`
+   alike, so the duty attaches to the artifact rather than to the shape 7.4 happens to
+   have; bundles REFUSE rather than fetch, because a `BundlePart` has no version to key a
+   digest on. Ledger #336 amended twice, plant-proven both times.
+
+**Remaining:**
+
 6. **Delete `php_versions.patch`; derive it** (P4), in **two** commits, never one:
    first make "what a pool RUNS" a live fact (read the patch from the running master's
    EXECUTABLE PATH, never argv — php-fpm rewrites its title, and the 7.4 pool still
@@ -559,7 +574,8 @@ content, only on order, which is the kind of conflict that survives review.
    Combining them hides the #338 regression window in review, because the keep-set change
    and the keep-set's reason to exist would land in the same diff. Retire ledger #339
    explicitly in the second — it is a shipped, plant-proven row whose code goes away.
-   **Carries an open product question — see §15.**
+   **§15B is RULED: the live pool fact must reach the view**, so the row can say
+   `pinned 8.3.32, serving 8.3.31` rather than deriving the pin and asserting it.
 7. **The read-only "a newer patch exists" row** (P2, §13). Last, so it compares against
    `patch_for_minor` rather than a column that no longer exists.
 
@@ -598,8 +614,12 @@ else. The moment anything downstream of it selects bytes, §1–§3 apply again 
 ## 15. Two product questions inside the remaining work
 
 Both are zero-disruption calls, which makes them the user's, not the implementer's.
+**Both were ruled 16 Aug 2026 — A is shipped, B binds the P4 work.**
 
-**A. Closing the `is_cached` divergence adds a login-time refusal.** `uncached_names`
+**A. Closing the `is_cached` divergence adds a login-time refusal.** — *RULED: repair at
+app launch. Prefetching at login was rejected because it retires ledger #175, which is
+L0-proven and smoke-tested; exempting the licence leg was rejected because it re-splits
+the predicate. Shipped in `2add15e`.* `uncached_names`
 feeds auto-start's guard, which refuses login-start by name ("binaries not downloaded
 yet (php-fpm) — open rexenv and press Start all once"). Once `is_cached` checks the
 licence leg, that fires on the first launch of **every existing install whose 7.4 cache
@@ -609,7 +629,9 @@ buys is moving an invisible download into a visible planned one; what it costs i
 login-time refusal on upgrade. Options: exempt the licence leg from the planner
 (pin-only), or let auto-start prefetch the licence delta instead of refusing.
 
-**B. Deleting `php_versions.patch` can hide the very bug that fixing it made visible.**
+**B. Deleting `php_versions.patch` can hide the very bug that fixing it made visible.** —
+*RULED: get the live pool fact to the view and say both. A derived row that can only show
+the pin is the same silent lie in nicer clothes; it just moves where the lie lives.*
 With the column gone the Settings row derives from the pin, so during a failed bump the
 UI would assert 8.3.32 while the pool serves 8.3.31 — the identical silent lie #339
 shipped to end, now structurally unsayable rather than merely absent. "Unrepresentable"
