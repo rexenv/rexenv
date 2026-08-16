@@ -152,6 +152,78 @@ const LINK = "https://example.test/a//b";
         assert!(out.contains("https://example.test/a//b"));
     }
 
+    /// **The PHP version rows may say a newer patch EXISTS; they may never say
+    /// one is AVAILABLE, or that this build is UP TO DATE.**
+    ///
+    /// rexenv installs pinned builds from static-php.dev; php.net is the source
+    /// of the "newer exists" fact. **The two disagree by weeks.** Measured 16
+    /// Aug 2026: php.net listed 8.4.24 and 8.5.9 while static-php.dev's newest
+    /// were 8.4.23 and 8.5.8 — exactly rexenv's pins. So for those minors a
+    /// newer version genuinely exists and rexenv cannot ship it.
+    ///
+    /// "8.4.24 exists · this build pins 8.4.23" survives that. "Update
+    /// available" does not — it promises something no button can deliver, and
+    /// there is deliberately no button (`docs/PLAN-binary-updates.md` §12/§13).
+    /// "Up to date" is worse in the other direction: unprovable before the
+    /// first successful check, and false whenever static-php lags.
+    ///
+    /// The wording is the entire mechanism by which a read-only check stays
+    /// honest, so it is guarded rather than remembered.
+    #[test]
+    fn the_version_rows_never_promise_an_update_they_cannot_deliver() {
+        const BANNED: &[&str] = &["update available", "up to date", "up-to-date", "updates available"];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let mut offences: Vec<String> = Vec::new();
+
+        fn walk(dir: &std::path::Path, banned: &[&str], out: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, banned, out);
+                    continue;
+                }
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext != "tsx" && ext != "ts" {
+                    continue;
+                }
+                let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+                // Comments stripped, so the prose EXPLAINING the ban does not
+                // trip it — the scanner-reads-its-own-explanation shape this
+                // module already records twice.
+                let text = strip_ts_comments(&raw).to_ascii_lowercase();
+                for (i, line) in text.lines().enumerate() {
+                    // Only where a PHP version is being described. The words are
+                    // fine elsewhere (WordPress core genuinely has an updater).
+                    if !line.contains("php") && !line.contains("upstream") && !line.contains("patch")
+                    {
+                        continue;
+                    }
+                    for b in banned {
+                        if line.contains(b) {
+                            out.push(format!("{}:{} — {b}", path.display(), i + 1));
+                        }
+                    }
+                }
+            }
+        }
+        walk(&root, BANNED, &mut offences);
+        assert!(
+            offences.is_empty(),
+            "a PHP version row promises an update rexenv cannot deliver:\n{}",
+            offences.join("\n")
+        );
+
+        // …and the honest phrasing is actually present, so this cannot pass by
+        // the feature having been deleted.
+        let settings = std::fs::read_to_string(root.join("routes/Settings.tsx")).unwrap();
+        let settings = strip_ts_comments(&settings);
+        assert!(
+            settings.contains("exists"),
+            "the 'newer patch exists' line is gone — either restore it or delete this guard"
+        );
+    }
+
     /// A Tailwind class name built by interpolation is never generated, because
     /// the scanner reads SOURCE LITERALS — so `mt-${x ? "0" : "3"}` produces no
     /// margin at all and looks exactly like a margin of zero. That is the worst

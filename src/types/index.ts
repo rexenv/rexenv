@@ -539,6 +539,13 @@ export interface PhpVersion {
    *  Present so a failed patch bump cannot render as the pin while the pool
    *  serves older bytes. */
   serving: string | null;
+  /** A newer patch php.net says EXISTS for this minor, or null.
+   *  An upstream FACT, never an offer — rexenv installs from static-php.dev,
+   *  which lags php.net by weeks, so this can name a version rexenv cannot ship.
+   *  That is why there is no Update button and why the copy says "exists". */
+  upstream: string | null;
+  /** When the upstream list was last fetched successfully, or null if never. */
+  upstreamCheckedAt: string | null;
   fpmPort: number;
   installed: boolean;
   isDefault: boolean;

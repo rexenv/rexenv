@@ -577,8 +577,14 @@ on content, only on order — the kind of conflict that survives review.
    fact beside the pin so the row says both — without it the deletion would have traded
    a fixed bug for a hidden one.
 
-7. **The read-only "a newer patch exists" row** (P2, §13). Last, so it compares against
-   `patch_for_minor` rather than a column that no longer exists.
+7. ✓ **The read-only "a newer patch exists" row** (P2, §13) — *done 16 Aug 2026,
+   `core/php_upstream.rs`, ledger #343, plant-proven.* Landed last as planned, so it
+   compares against `patch_for_minor` rather than a column that no longer exists — which
+   also dissolved the risk that it would compare against "last confirmed serving" and be
+   wrong in exactly the moment a user most needs it honest.
+
+**All seven done.** The signed manifest is not being built (§12), and what shipped
+instead answers the question that motivated it without moving the security model.
 
 Everything §11 lists for the *manifest* is not owed, because the manifest is not being
 built. The rows that survive are the ones about the GC keep-set, the retry, and the

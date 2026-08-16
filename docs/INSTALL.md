@@ -19,6 +19,10 @@ notarized by Apple), so the **first launch needs one extra click** — see below
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.
 - An internet connection on **first run** (rexenv downloads its components — PHP,
   Nginx, MySQL, Caddy, etc. — the first time; after that it works offline).
+- After first run, rexenv makes ONE routine outbound request of its own: a small
+  read-only GET to `www.php.net` at launch, so Settings can say whether a newer PHP
+  patch exists. It downloads nothing and installs nothing; if it fails, the row simply
+  says so. Everything else already cached keeps working with no network at all.
 
 ## Install
 

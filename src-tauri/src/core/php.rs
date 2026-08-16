@@ -250,6 +250,8 @@ pub fn patch_of_exe(exe: &std::path::Path) -> Option<String> {
 /// so no caller can hold a [`PhpVersion`] whose derived fields were never
 /// filled (see [`PhpVersionView`]).
 pub fn list_versions(conn: &Connection, running: &[String]) -> Result<Vec<PhpVersionView>> {
+    let upstream = crate::core::php_upstream::cached(conn);
+    let checked_at = (!upstream.checked_at.is_empty()).then(|| upstream.checked_at.clone());
     Ok(store::list_php_versions(conn)?
         .into_iter()
         .map(|v| {
@@ -267,6 +269,15 @@ pub fn list_versions(conn: &Connection, running: &[String]) -> Result<Vec<PhpVer
                     .iter()
                     .find(|p| minor_of(p) == v.minor && **p != pinned)
                     .cloned(),
+                // Only ever set when it is genuinely newer than the pin, so
+                // the UI cannot render an "exists" line that says the same
+                // version twice.
+                upstream: upstream
+                    .latest
+                    .get(&v.minor)
+                    .filter(|u| crate::core::php_upstream::is_newer(u, &pinned))
+                    .cloned(),
+                upstream_checked_at: checked_at.clone(),
                 patch: pinned,
                 minor: v.minor,
                 fpm_port: v.fpm_port,

@@ -452,6 +452,17 @@ pub struct PhpVersionView {
     /// silent lie ledger #339 was shipped to end, just moved somewhere harder
     /// to see.
     pub serving: Option<String>,
+    /// A newer patch php.net says EXISTS for this minor, when one does.
+    ///
+    /// An upstream fact, never an offer: rexenv installs from static-php.dev,
+    /// which lags php.net by weeks, so this can name a version rexenv could not
+    /// ship. That is why there is no Update button and why the copy says
+    /// "exists" rather than "available" (`core::php_upstream`).
+    pub upstream: Option<String>,
+    /// When the upstream list was last fetched successfully (`db_now` format),
+    /// or `None` if it never has been. Drives "checked N ago" — a check that
+    /// finds nothing must still visibly have run.
+    pub upstream_checked_at: Option<String>,
     pub fpm_port: u16,
     pub installed: bool,
     pub is_default: bool,

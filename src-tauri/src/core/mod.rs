@@ -37,6 +37,7 @@ pub mod mail;
 pub mod mariadb;
 pub mod monitor;
 pub mod php;
+pub mod php_upstream;
 pub mod phpconf;
 pub mod ports;
 pub mod postgres;

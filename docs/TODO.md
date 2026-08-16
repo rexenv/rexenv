@@ -9,21 +9,21 @@ evidence cited.
 
 ## Now — actionable code/test work
 
-- [ ] **Read-only "a newer PHP patch exists"** (`docs/PLAN-binary-updates.md` §13, ruled
-  16 Aug 2026). The PHP row states the patch it runs and that a newer one exists.
-  Best-effort, off the startup path, gates nothing; offline is a first-class state, not
-  an error; `checked N ago` beside the header so a check that finds nothing still
-  visibly ran. **The fetched document is UI input and nothing else** — the moment
-  anything downstream of it selects bytes, the whole trust analysis (§1-§3) applies again.
+- [x] **Read-only "a newer PHP patch exists"** ✓ 16 Aug 2026, ledger #343,
+  plant-proven. `core/php_upstream.rs` fetches php.net's `active.php?json` at launch,
+  best-effort, and derives a version STRING per minor — nothing else. `source`/`sha256`
+  are in that document and are never read; a source scan asserts exactly one field is.
+  The Settings row says `8.3.33 exists`, with `checked N ago` beside the section and an
+  explicit "couldn't reach php.net yet" when it never has. **The copy is the mechanism**:
+  php.net leads static-php.dev (where 8.x installs come from) by weeks — measured, 8.4.24
+  vs our pinned 8.4.23 — so "update available" would promise what no button delivers and
+  "up to date" is unprovable; `core::copy_scan` bans both.
 
-- [ ] **Delete `php_versions.patch`; derive it** (`docs/PLAN-binary-updates.md` §12 P4,
-  ruled 16 Aug 2026). The pin is what a pool runs — thirteen call sites resolve through
-  `patch_for_minor` and hold no `Connection` — so the column is a mirror that can
-  disagree with what it mirrors, which is the two-sources-of-truth shape removed
-  everywhere else here. It already produced one live bug (ledger #339, fixed standalone
-  in `c44d717`); deriving makes it unrepresentable rather than fixed. Bump detection
-  moves to the running master's own binary path, which `Supervisor::owned_listeners`
-  already reads (`ps -p <pid> -o command=`). Supersedes #339's mechanism.
+- [x] **Delete `php_versions.patch`; derive it** ✓ 16 Aug 2026, migration v36, two
+  commits (`67f17c8` the live read, `afe5bb6` the drop). Ledger #339 RETIRED with its
+  reason, #338/#340 amended, #342 added. `PhpVersionView::serving` carries what the pool
+  is actually executing beside the pin, so the row says both — without it a derived row
+  could only ever show the pin, which is the same silent lie somewhere harder to see.
 
 - [ ] **`fpm_port` collides at an x.10 minor.** `fpm_port` is
   `FPM_PORT_BASE + major * 10 + min` (`core/php.rs:153-160`), so `fpm_port("8.10")` and

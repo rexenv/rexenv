@@ -435,6 +435,29 @@ pub fn run() {
                             }
                         }
 
+                        // Ask php.net what PHP has actually released, so the
+                        // Settings rows can say "8.3.33 exists · this build pins
+                        // 8.3.31". Best-effort and last: it gates nothing, it
+                        // downloads nothing executable, and a failure leaves the
+                        // previous answer (and the "checked N ago" line honest).
+                        // See core::php_upstream for the line this must not
+                        // cross — it may only ever produce a version STRING.
+                        // Fetch UNLOCKED, then take the db lock only to write —
+                        // the house rule about never holding a lock across a
+                        // wait, and `fetch` takes no Connection so it cannot be
+                        // done the other way round.
+                        match core::php_upstream::fetch().await {
+                            Ok(latest) => match state.db.lock() {
+                                Ok(conn) => {
+                                    if let Err(e) = core::php_upstream::store_check(&conn, latest) {
+                                        log::warn!("php: could not cache the upstream list: {e}");
+                                    }
+                                }
+                                Err(_) => log::warn!("php: upstream check not cached — db lock"),
+                            },
+                            Err(e) => log::info!("php: upstream version check skipped: {e}"),
+                        }
+
                         // Sweep superseded caches, keyed on what the LIVE
                         // MASTERS are executing — never the pin table, and no
                         // longer the registry that mirrors it. This block is

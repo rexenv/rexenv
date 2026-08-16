@@ -8,6 +8,7 @@ import { confirm, Overlay } from "@/components/ui/dialog";
 import licenseText from "../../LICENSE?raw";
 import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverHandBackRow } from "@/routes/Import";
+import { agoLabel } from "@/routes/Sites";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, FileText, FolderOpen, Github, Globe, Info, Lock, Server, Settings as SettingsIcon, Shield, ShieldCheck, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
@@ -355,6 +356,19 @@ function PhpVersionRow({
               serving {v.serving}
             </span>
           )}
+          {/* An upstream FACT, not an offer. rexenv installs from
+              static-php.dev, which lags php.net by weeks, so this can name a
+              version rexenv cannot ship — "exists" stays true where "update
+              available" would not, and there is no button for exactly that
+              reason (docs/PLAN-binary-updates.md §13). */}
+          {v.upstream && (
+            <span
+              className="ml-2 font-mono text-[0.6875rem] text-rex-text-muted"
+              title={`php.net lists ${v.upstream} as the newest ${v.minor} release. rexenv installs a pinned build, so this arrives with a rexenv update rather than from here.`}
+            >
+              · {v.upstream} exists
+            </span>
+          )}
           {v.isDefault && (
             <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
               Default
@@ -519,6 +533,15 @@ function PhpVersionsSetting() {
       <div className="mt-2.5 text-[0.6875rem] text-rex-text-muted">
         Installed versions each run a php-fpm pool; new sites use the default. A site can pick its own
         version in its detail view.
+      </div>
+      {/* A check that finds nothing must still visibly have run — the Import
+          screen's "scanned 12s ago" honesty. Never says "up to date": that is
+          unprovable before the first successful check, and false whenever
+          static-php.dev lags php.net (which it does, by weeks). */}
+      <div className="mt-1 text-[0.6875rem] text-rex-text-muted">
+        {versions[0]?.upstreamCheckedAt
+          ? `Release list from php.net, checked ${agoLabel(versions[0].upstreamCheckedAt)}. rexenv runs pinned builds — a newer patch arrives with a rexenv update.`
+          : "Couldn't reach php.net yet, so nothing here says whether a newer patch exists."}
       </div>
     </div>
   );

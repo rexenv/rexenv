@@ -297,6 +297,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   (`@@HOMEBREW_*@@` placeholders) to `@loader_path`-relative paths into the bundle's
   `lib/`, errors loudly on any dep NOT bundled, and ad-hoc re-signs each Mach-O LAST.
   Resolves stage + atomically publish so a failed prepare can't poison the cache (H4).
+- **`www.php.net` is the ONE read-only egress** (`core/php_upstream.rs`): a launch-time,
+  best-effort GET of `releases/active.php?json` whose ONLY output is a version string per
+  minor, rendered beside the pin as `8.3.33 exists`. It selects nothing — `source`,
+  `sha256` and the rest of that document are never read, and a guard asserts exactly one
+  field is. This is what shipped INSTEAD of a signed manifest (`docs/PLAN-binary-updates.md`
+  §12): no key, no button, no new trust surface. **The copy is load-bearing** — php.net is
+  ahead of static-php.dev (where 8.x actually comes from) by weeks, so a newer patch can
+  exist that rexenv cannot install; "exists" stays true where "update available" would not,
+  and `core::copy_scan` bans the latter. Offline: `cached()` never touches the network and
+  a never-successful check says so rather than implying currency. Ledger #343.
 - **One cache predicate, one dispatch.** `binaries::shape_of` is the ONE name→resolver
   mapping (`Single`/`File`/`Dir`/`Bundle`) — `downloads::resolve_any` and the planner both
   read it, after they disagreed about `composer` (member `composer.phar`, consumers call
