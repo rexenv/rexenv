@@ -336,37 +336,70 @@ pub fn run() {
                             return;
                         };
                         let platform = state.platform.as_ref();
+                        // Confirm = "this minor is now serving the pin", written
+                        // ONLY after that is true. The seed no longer writes it,
+                        // so an unconfirmed minor is re-reported next launch and
+                        // the retry actually happens.
+                        let confirm = |minor: &str| match state.db.lock() {
+                            Ok(conn) => {
+                                if let Err(e) = core::php::confirm_patch(&conn, minor) {
+                                    log::warn!("php: could not record {minor}'s patch: {e}");
+                                }
+                            }
+                            Err(_) => log::warn!("php: could not record {minor}'s patch: db lock"),
+                        };
                         let live: Vec<String> = {
                             let mgr = state.services.lock().await;
-                            bumped.into_iter().filter(|m| mgr.has_php_pool(m)).collect()
+                            bumped.iter().filter(|m| mgr.has_php_pool(m)).cloned().collect()
                         };
-                        if !live.is_empty() {
-                            for minor in &live {
-                                let plan = core::downloads::plan_for_php(platform, minor);
-                                if let Err(e) = core::downloads::prefetch(
-                                    platform,
-                                    &format!("Update PHP {minor}"),
-                                    &plan,
-                                )
-                                .await
-                                {
-                                    log::warn!("php: patch-update prefetch failed: {e}");
-                                    return; // old pool keeps serving; retry next launch
-                                }
+                        // Nothing running for this minor: there is no work that
+                        // can fail and the next start resolves the new pin, so
+                        // the bump is already true. Confirm without touching the
+                        // network — this is also the whole-stack-stopped case.
+                        for minor in bumped.iter().filter(|m| !live.contains(m)) {
+                            confirm(minor);
+                        }
+                        // Per minor, in order: fetch, restart, wait, THEN confirm.
+                        // `continue` rather than `return` — one minor's failure is
+                        // not another minor's, and the batch form let the first
+                        // failure abandon every later minor while the GC below
+                        // still ran (ledger #338).
+                        for minor in &live {
+                            let plan = core::downloads::plan_for_php(platform, minor);
+                            if let Err(e) = core::downloads::prefetch(
+                                platform,
+                                &format!("Update PHP {minor}"),
+                                &plan,
+                            )
+                            .await
+                            {
+                                // Old pool keeps serving, row keeps the old patch,
+                                // so the next launch reports this minor again.
+                                log::warn!("php: patch-update prefetch failed for {minor}: {e}");
+                                continue;
                             }
                             let checks = {
                                 let mut mgr = state.services.lock().await;
-                                match mgr.restart_pools_for(platform, &live).await {
+                                match mgr
+                                    .restart_pools_for(platform, std::slice::from_ref(minor))
+                                    .await
+                                {
                                     Ok(c) => c,
                                     Err(e) => {
-                                        log::warn!("php: patch-update pool restart failed: {e}");
-                                        Vec::new()
+                                        log::warn!(
+                                            "php: patch-update pool restart failed for {minor}: {e}"
+                                        );
+                                        continue;
                                     }
                                 }
                             };
                             if let Err(e) = core::service_manager::await_ready(checks).await {
-                                log::warn!("php: a patch-updated pool did not become ready: {e}");
+                                log::warn!(
+                                    "php: {minor}'s patch-updated pool did not become ready: {e}"
+                                );
+                                continue;
                             }
+                            confirm(minor);
                         }
                         // Keyed on what the REGISTRY says each minor runs, never
                         // on the pin table: this same block reaches here after a

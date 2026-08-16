@@ -182,10 +182,19 @@ pub fn debug_fpm_port(minor: &str) -> Option<u16> {
 /// re-run updates `patch`/`fpm_port`/`is_default` while **preserving** the user's
 /// `installed` choices. Safe to call on every app start.
 ///
-/// Returns the minors whose stored patch CHANGED — a pin bump riding an app
-/// release (Option A patch updates: pins only move with a release, there is no
-/// in-app updater). The startup task restarts those minors' live pools so an
-/// adopted survivor doesn't keep serving the old patch, and GCs the old caches.
+/// Returns the minors whose stored patch is BEHIND this build's pin — a bump
+/// riding an app release (Option A patch updates: pins only move with a release,
+/// there is no in-app updater). The startup task restarts those minors' live
+/// pools so an adopted survivor doesn't keep serving the old patch, and GCs the
+/// old caches.
+///
+/// **The seed does not move `patch` for an existing row** — [`confirm_patch`]
+/// does, after that minor's pool is back and ready. It used to move here, in the
+/// same iteration that detected the bump, which meant the signal was consumed
+/// before any of the work it triggers had been attempted: a failed prefetch left
+/// `lib.rs`'s `// retry next launch` **false**, because the next launch saw the
+/// row already at the pin and reported no bump. The user kept a registry saying
+/// 8.3.32 and a pool serving 8.3.31, silently and permanently.
 pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
     let default_minor = minor_of(binaries::PHP_VERSION);
     let existing: std::collections::HashMap<String, String> = store::list_php_versions(conn)?
@@ -216,6 +225,19 @@ pub fn seed_registry(conn: &Connection) -> Result<Vec<String>> {
         )?;
     }
     Ok(bumped)
+}
+
+/// Record that `minor` is now serving this build's pinned patch.
+///
+/// Called after the bytes are cached AND the pool has come back ready — never
+/// before, because this is the value [`seed_registry`] compares against to
+/// decide whether the bump still needs doing. Writing it early is what made a
+/// failed bump un-retryable.
+pub fn confirm_patch(conn: &Connection, minor: &str) -> Result<()> {
+    let patch = patch_for_minor(minor)
+        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
+    store::set_php_patch(conn, minor, patch)?;
+    Ok(())
 }
 
 /// The patch each minor is REGISTERED to run, from the registry rather than
@@ -1087,17 +1109,60 @@ mod tests {
             [],
         )
         .unwrap();
-        // This app's seed bumps the pin: reported, patch updated, installed kept.
+        // This app's seed REPORTS the bump and keeps `installed` — but leaves
+        // the patch where it was, because nothing has been downloaded yet.
         assert_eq!(seed_registry(&conn).unwrap(), vec!["8.3".to_string()]);
-        let row = store::list_php_versions(&conn)
+        let row = |c: &Connection| {
+            store::list_php_versions(c).unwrap().into_iter().find(|v| v.minor == "8.3").unwrap()
+        };
+        assert_eq!(row(&conn).patch, "8.3.30", "the seed must not move a patch it has not confirmed");
+        assert!(row(&conn).installed);
+        // **The bump is NOT one-shot.** Until it is confirmed, every launch
+        // reports it again — which is what makes the retry real.
+        assert_eq!(seed_registry(&conn).unwrap(), vec!["8.3".to_string()]);
+        // Confirmed (bytes cached, pool ready): the row moves and the bump stops.
+        confirm_patch(&conn, "8.3").unwrap();
+        assert_eq!(row(&conn).patch, patch_for_minor("8.3").unwrap());
+        assert!(row(&conn).installed, "confirming a patch must not disturb `installed`");
+        assert!(seed_registry(&conn).unwrap().is_empty());
+    }
+
+    /// **A patch bump that fails is retried; it is not silently swallowed.**
+    ///
+    /// `seed_registry` used to `upsert_php_version` the new pin in the SAME
+    /// iteration that detected the bump, so the signal was consumed before any
+    /// of the work it triggers had been attempted. A failed prefetch then left
+    /// `lib.rs`'s `// retry next launch` false: the next launch compared the
+    /// already-moved row against the pin, found no difference, and reported
+    /// nothing. The user kept a registry saying one patch and a pool serving
+    /// another — silently, and forever, because nothing ever looked again.
+    ///
+    /// This is the L0 half. That `lib.rs` only calls `confirm_patch` after
+    /// `await_ready` succeeds is a call-site fact, stated in the ledger, not
+    /// provable here.
+    #[test]
+    fn an_unconfirmed_patch_bump_is_reported_again_on_every_launch() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        conn.execute("UPDATE php_versions SET patch = '8.3.30' WHERE minor = '8.3'", [])
+            .unwrap();
+
+        // Three launches in a row, none of them confirming: three reports.
+        for launch in 1..=3 {
+            assert_eq!(
+                seed_registry(&conn).unwrap(),
+                vec!["8.3".to_string()],
+                "launch {launch} lost the bump — the retry is not real"
+            );
+        }
+        // The row still says what is actually SERVING, not what is pinned.
+        let patch = store::list_php_versions(&conn)
             .unwrap()
             .into_iter()
             .find(|v| v.minor == "8.3")
-            .unwrap();
-        assert_eq!(row.patch, patch_for_minor("8.3").unwrap());
-        assert!(row.installed);
-        // And the bump is one-shot: the next launch reports nothing.
-        assert!(seed_registry(&conn).unwrap().is_empty());
+            .unwrap()
+            .patch;
+        assert_eq!(patch, "8.3.30");
     }
 
     #[test]

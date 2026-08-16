@@ -1084,12 +1084,16 @@ fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
 /// Insert a PHP version, or update its `patch`/`fpm_port`/`is_default` if it
 /// already exists. The `installed` flag is **preserved** on update so re-seeding
 /// never clobbers a user's enable/disable choice.
+/// **`patch` is written on INSERT and never on UPDATE.** A fresh row has nothing
+/// running, so the pin is the truth; an existing row's patch is what that minor
+/// was last CONFIRMED to be serving, and moving it here would move it before the
+/// binary is downloaded and the pool is restarted. [`set_php_patch`] is the only
+/// writer for an existing row, and it is called after the restart is ready.
 pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
     conn.execute(
         "INSERT INTO php_versions (minor, patch, fpm_port, installed, is_default)
          VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(minor) DO UPDATE SET
-             patch = excluded.patch,
              fpm_port = excluded.fpm_port,
              is_default = excluded.is_default",
         params![
@@ -1101,6 +1105,20 @@ pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
         ],
     )?;
     Ok(())
+}
+
+/// Record the patch a minor is now CONFIRMED to be serving. Returns whether a
+/// row was updated.
+///
+/// Separate from [`upsert_php_version`] on purpose: the seed runs at every
+/// launch and must not move this value, because a patch bump is only real once
+/// the bytes are on disk and the pool has come back ready.
+pub fn set_php_patch(conn: &Connection, minor: &str, patch: &str) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE php_versions SET patch = ?1 WHERE minor = ?2",
+        params![patch, minor],
+    )?;
+    Ok(affected > 0)
 }
 
 /// All registered PHP versions, ordered by minor series.
