@@ -163,6 +163,23 @@ pub trait ProcessSupervisor: Send + Sync {
     /// killed on the bare number (§5 ownership doctrine, ported off ports:
     /// cloudflared listens on nothing, so its identity lives in its argv).
     /// Default: unknown — callers must treat that as "not identified".
+    /// The EXECUTABLE path of `pid` — what the kernel is running, not what the
+    /// process calls itself.
+    ///
+    /// Distinct from [`Self::pid_command`] and not derivable from it: php-fpm
+    /// rewrites its process title, so on macOS `ps -o comm=` returns
+    /// `php-fpm: master process (…/config/php-fpm-8.3.conf)` — the CONF path,
+    /// which names the minor and never the patch. Measured on a live 8.3 master
+    /// 16 Aug 2026. The 7.4 and 8.0 masters happen to still show their real
+    /// path, which is exactly the trap: an argv-based implementation passes a
+    /// hand check and is silently wrong for every other minor.
+    ///
+    /// Default: unknown — a platform that cannot answer must not guess, and
+    /// callers must treat `None` as "cannot tell", never as "not ours".
+    fn pid_exe(&self, _pid: u32) -> Option<PathBuf> {
+        None
+    }
+
     fn pid_command(&self, _pid: u32) -> Option<String> {
         None
     }

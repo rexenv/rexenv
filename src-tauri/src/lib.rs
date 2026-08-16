@@ -401,13 +401,6 @@ pub fn run() {
                             }
                             confirm(minor);
                         }
-                        // Keyed on what the REGISTRY says each minor runs, never
-                        // on the pin table: this same block reaches here after a
-                        // restart_pools_for that failed partway, with later
-                        // minors still serving from their old masters. Keeping
-                        // the pinned trees too is what makes "falls back to the
-                        // pins" an offline fallback rather than a download
-                        // (docs/PLAN-binary-updates.md §6).
                         // Repair caches that are PRESENT but incomplete — the
                         // bytes are there and something beside them is not
                         // (a re-pinned digest, or the licence texts every cache
@@ -415,7 +408,7 @@ pub fn run() {
                         // launch, rather than in `auto_start_inner`: login-start
                         // stays strictly offline (ledger #175 — never download,
                         // never prompt), and by the next login the cache is
-                        // whole. Only ever repairs what already exists, so a
+                        // whole. Only ever repairs what already EXISTS, so a
                         // minor the user never installed is never fetched.
                         let repairs: Vec<String> = {
                             let installed = state
@@ -448,28 +441,37 @@ pub fn run() {
                                 log::warn!("php: could not repair the {minor} cache: {e}");
                             }
                         }
+
+                        // Sweep superseded caches, keyed on what the LIVE
+                        // MASTERS are executing — never the pin table, and no
+                        // longer the registry that mirrors it. This block is
+                        // reached after a restart that failed partway, with
+                        // later minors still serving from their old masters,
+                        // and the process is the only thing that cannot be
+                        // wrong about which bytes it is running. Keeping the
+                        // pinned trees too is what makes "falls back to the
+                        // pins" an offline fallback rather than a download
+                        // (docs/PLAN-binary-updates.md §6).
                         //
-                        // A registry we could not read SKIPS the sweep rather
-                        // than sweeping with an empty keep-set: deleting nothing
-                        // is always safe, deleting the wrong tree is not, and an
-                        // empty list is indistinguishable from "no minor runs
-                        // anything".
-                        let registered = state
-                            .db
-                            .lock()
-                            .ok()
-                            .and_then(|conn| core::php::registered_patches(&conn).ok());
-                        match registered {
-                            Some(registered) => {
+                        // A pool we could not identify SKIPS the sweep rather
+                        // than sweeping with a short keep-set: the sweep deletes
+                        // what is NOT in the set, so not-knowing must cost a
+                        // skipped sweep and never a live tree.
+                        let running = {
+                            let mgr = state.services.lock().await;
+                            mgr.running_php_patches(platform)
+                        };
+                        match running {
+                            Some(running) => {
                                 for dir in
-                                    core::binaries::gc_outdated_php_caches(platform, &registered)
+                                    core::binaries::gc_outdated_php_caches(platform, &running)
                                 {
                                     log::info!("php: removed outdated binary cache {dir}");
                                 }
                             }
                             None => log::warn!(
-                                "php: skipped the outdated-cache sweep — could not read which \
-                                 patch each minor runs"
+                                "php: skipped the outdated-cache sweep — a running pool could \
+                                 not be identified, and the sweep deletes what it cannot see"
                             ),
                         }
                     });

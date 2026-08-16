@@ -248,6 +248,20 @@ pub fn confirm_patch(conn: &Connection, minor: &str) -> Result<()> {
     Ok(())
 }
 
+/// The PHP patch a `php-fpm-<patch>/php-fpm` executable path names, if it does.
+///
+/// Pure so the parse is testable without a process: the cache layout
+/// (`bin/php-fpm-8.3.31/php-fpm`) is the only thing that says which patch a
+/// running master is actually serving.
+pub fn patch_of_exe(exe: &std::path::Path) -> Option<String> {
+    let dir = exe.parent()?.file_name()?.to_str()?;
+    let patch = dir.strip_prefix("php-fpm-").or_else(|| dir.strip_prefix("php-"))?;
+    let parts: Vec<&str> = patch.split('.').collect();
+    (parts.len() == 3
+        && parts.iter().all(|p: &&str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())))
+    .then(|| patch.to_string())
+}
+
 /// The patch each minor is REGISTERED to run, from the registry rather than
 /// from the pin table.
 ///
@@ -829,6 +843,33 @@ impl PhpFpmPools {
         self.pools.iter().any(|p| p.minor == minor && p.debug == debug)
     }
 
+    /// The patches the LIVE pools are actually executing, or `None` when any of
+    /// them cannot be identified.
+    ///
+    /// The live fact behind the GC keep-set (ledger #338/#341). Read from each
+    /// master's EXECUTABLE path, never from its argv: php-fpm rewrites its
+    /// process title, so `ps -o comm=` shows the conf path — the minor, never
+    /// the patch. An adopted survivor from a previous app version is precisely
+    /// the case that matters here and precisely the case argv cannot answer.
+    ///
+    /// `None` on ANY unidentifiable pool rather than a partial list: the caller
+    /// deletes what is not in this set, so a short answer is a delete-the-wrong-
+    /// tree answer. Not-knowing must cost a skipped sweep, never a lost tree.
+    pub fn running_patches(&self, platform: &dyn Platform) -> Option<Vec<String>> {
+        let mut out = Vec::new();
+        for p in &self.pools {
+            let patch = platform
+                .supervisor()
+                .pid_exe(p.child.id())
+                .as_deref()
+                .and_then(patch_of_exe)?;
+            if !out.contains(&patch) {
+                out.push(patch);
+            }
+        }
+        Some(out)
+    }
+
     /// Per-pool status, ordered by minor series (a minor's normal pool before
     /// its debug pool).
     pub fn status(&self) -> Vec<PoolStatus> {
@@ -1133,6 +1174,55 @@ mod tests {
         assert_eq!(row(&conn).patch, patch_for_minor("8.3").unwrap());
         assert!(row(&conn).installed, "confirming a patch must not disturb `installed`");
         assert!(seed_registry(&conn).unwrap().is_empty());
+    }
+
+    /// **The patch a pool runs comes from its EXECUTABLE, and argv cannot give it.**
+    ///
+    /// Measured on this machine 16 Aug 2026, which is the only reason the shape
+    /// of this parse is right. php-fpm rewrites its process title, so macOS
+    /// `ps -o comm=` returns `php-fpm: master process (…/config/php-fpm-8.3.conf)`
+    /// — the CONF path, naming the MINOR and never the patch. The 7.4.33 and
+    /// 8.0.30 masters happened to still show their real executable path, so an
+    /// argv-based implementation passes a hand check on exactly the two pools a
+    /// developer is most likely to test and is silently wrong for every other
+    /// minor. That is the fixture-friendlier-than-production shape living in the
+    /// VERIFICATION rather than the code, which is the harder one to notice.
+    ///
+    /// `lsof -p <pid> -a -d txt` reads the text (executable) descriptor, which a
+    /// title rewrite cannot touch: it answered `php-fpm-8.3.31/php-fpm` for the
+    /// same master whose argv said only `8.3`.
+    #[test]
+    fn the_patch_is_parsed_from_the_executable_path_not_the_title() {
+        let base = "/Users/x/Library/Application Support/dev.rexenv.rexenv/bin";
+        // What lsof's txt descriptor actually returns (both cache prefixes).
+        assert_eq!(
+            patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8.3.31/php-fpm"))),
+            Some("8.3.31".into())
+        );
+        assert_eq!(
+            patch_of_exe(std::path::Path::new(&format!("{base}/php-7.4.33/php"))),
+            Some("7.4.33".into())
+        );
+        // The wrong derivation this exists to reject. `ps -o comm=` gives
+        // `php-fpm: master process (…/config/php-fpm-8.3.conf)` for a
+        // title-rewritten master, from which the only extractable version is
+        // the MINOR — so an implementation that fell back to argv would end up
+        // asking about `php-fpm-8.3`, which must not answer. A patch is three
+        // numeric parts or it is not a patch.
+        assert_eq!(
+            patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8.3/php-fpm"))),
+            None,
+            "a minor is not a patch — this is what an argv-derived answer looks like"
+        );
+        assert_eq!(patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8/php-fpm"))), None);
+        assert_eq!(
+            patch_of_exe(std::path::Path::new(&format!("{base}/php-fpm-8.3.x/php-fpm"))),
+            None
+        );
+        // Neither may the debug trees, nor anything that is not x.y.z.
+        assert_eq!(patch_of_exe(std::path::Path::new(&format!("{base}/php-debug-8.3.31/php"))), None);
+        assert_eq!(patch_of_exe(std::path::Path::new(&format!("{base}/caddy-2.11.4/caddy"))), None);
+        assert_eq!(patch_of_exe(std::path::Path::new("php-fpm")), None);
     }
 
     /// **The user's default PHP version survives a relaunch.**

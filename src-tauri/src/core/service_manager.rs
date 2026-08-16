@@ -1166,6 +1166,13 @@ impl ServiceManager {
         self.pools.has(minor, false) || self.pools.has(minor, true)
     }
 
+    /// The patches the live php-fpm masters are executing, or `None` if any is
+    /// unidentifiable. See [`php::PhpFpmPools::running_patches`] — the live fact
+    /// behind the binary-cache sweep's keep-set.
+    pub fn running_php_patches(&self, platform: &dyn Platform) -> Option<Vec<String>> {
+        self.pools.running_patches(platform)
+    }
+
     /// Restart a minor's pools IF currently managed — BOTH the normal and the
     /// debug pool, since per-version settings and patch bumps apply to each:
     /// stop (reaping orphaned workers so the port gate passes) and

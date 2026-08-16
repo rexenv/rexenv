@@ -422,6 +422,22 @@ impl ProcessSupervisor for MacosSupervisor {
         Err(Error::Other(format!("process group {pgid} survived SIGKILL")))
     }
 
+    /// `lsof`'s `txt` (text/executable) descriptor, which survives a process
+    /// title rewrite where `ps -o comm=` does not — `-Fn` gives one
+    /// `n<path>` line per record, machine-readable and space-safe (our app-data
+    /// paths contain spaces). Same tool `owned_listeners` already depends on,
+    /// with the same "missing lsof → unknown" fallback.
+    fn pid_exe(&self, pid: u32) -> Option<PathBuf> {
+        let out = std::process::Command::new("lsof")
+            .args(["-p", &pid.to_string(), "-a", "-d", "txt", "-Fn"])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .find_map(|l| l.strip_prefix('n'))
+            .map(PathBuf::from)
+    }
+
     fn owned_listeners(&self, port: u16, owner_marker: &str) -> Vec<u32> {
         // `lsof -t` → pids with a LISTEN socket on this TCP port.
         let out = match std::process::Command::new("lsof")
