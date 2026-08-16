@@ -169,12 +169,23 @@ evidence cited.
 
   ### The work, in order
 
-  1. **Write the scan FIRST, before touching a colour.** Home is
-     `core::copy_scan` — it already owns "reading frontend source from a Rust
-     test" and already carries a build-mechanism lint of exactly this shape
-     (`no_tailwind_class_name_is_built_by_interpolation`). Parse `tokens.css`
-     per theme block, compute WCAG relative luminance, fail any pair under
-     4.5:1. **Three traps, all from this repo's own history:**
+  1. **[x] Write the scan FIRST, before touching a colour.** ✓ 16 Aug 2026,
+     `core::copy_scan`: `every_text_on_surface_pairing_meets_wcag_aa` +
+     `every_rex_colour_class_names_a_token_that_exists`. **The sets are DERIVED
+     from the frontend's own class usage** (`text-rex-*` / `bg-rex-*`), not
+     listed, so a token joins the check by being used. All three traps below were
+     real and are handled. It sized the job at **39 failing pairs of 130
+     computed**, in exactly three text tokens — plus a second bug it was not
+     looking for, below.
+     **Shipped as a RATCHET, not as a red bar** — the plan said "RED today", and
+     that is unrunnable: a red `verify.sh` blocks every commit through the
+     pre-commit receipt, and this repo's bar being red is the thing it never
+     does. So the 39 pairs are recorded in `KNOWN_DEBT` and the failing set must
+     equal it EXACTLY: a new failure is red, and so is a pairing that starts
+     passing, which forces the progress to be recorded instead of absorbed.
+     Plant-proven three ways (worsen a token → 7 new failures named; improve one
+     → 7 "now PASS" named; a new bad class name → named).
+     Original trap list, kept because each one bit:
      - `tokens.css` has TWO theme blocks. A parser that reads only `:root`
        silently checks dark alone and stays green — the same defect as cutting
        at the first `#[cfg(test)]`. Assert both themes were found with non-zero
@@ -187,9 +198,34 @@ evidence cited.
        should print the pairs it found so the list can be audited.
      **Done when:** the scan is in `verify.sh` and **RED today**. Red is the
      proof it works. Plant-prove by lifting one token over 4.5 and seeing green.
-  2. **Let the scan size the job.** The cross-product is the strict bound; some
-     pairs are never composed. Read the output before deciding anything —
-     picking colours before this is guessing at the size of the work.
+  2. **[x] Let the scan size the job.** ✓ **39 pairs, 130 computed**, all in
+     `text-dim` (13), `text-faint` (13), `text-label` (12), plus one marginal
+     `accent-blue` on light `surface-3` at 4.49:1. Four exemptions were written
+     only after reading their call sites: three translucent `rgba` fills (they
+     composite over the surface beneath, which is checked directly) and
+     `accent-teal` (icon-only — WCAG 1.4.11 asks 3:1 of non-text and it clears
+     4.27:1). `accent-blue` was deliberately NOT exempted beside it: it is an
+     icon colour in two places **and a tab label at 13.5px** in `SiteDetail.tsx`,
+     so exempting by token name would have quietly covered the label too.
+     Ornament used as a FILL is exempt for the same reason and by the same
+     method: `border-strong` is a `w-px` divider, `text-dim` a status dot,
+     `text-bright` a toggle knob — each read at its call site, not inferred from
+     the name.
+  - [ ] **The scan found a second bug it was not looking for: 17 Tailwind classes
+    name a token that does not exist**, so Tailwind emits no rule and the element
+    gets NO colour — it inherits, which looks deliberate and cannot be reviewed.
+    Proven from the built CSS, not from reading the config: `text-rex-text-dim`
+    is in `dist/assets/*.css` and these are not.
+    - `text-rex-text-secondary` × **16, all in `DbImportCard.tsx`** — 16 of that
+      file's 18 text classes. Every "secondary" line in that card is therefore
+      rendering at FULL body brightness, the opposite of the intent.
+    - `bg-rex-surface-0` × 1, `Settings.tsx:1236` — a log `<pre>` whose
+      background is simply transparent.
+    Fix is a token that exists and passes AA — `text-muted` (4.66–6.04 dark,
+    5.07–6.22 light) is both the intended "secondary" semantic and AA-clean. Not
+    done here because it is a visible change to a shipped card and the choice is
+    the owner's. Held by `KNOWN_UNDEFINED`, which pins the names AND the counts,
+    so the typo cannot spread while it waits.
   3. **Resolve it, and the arithmetic above forces the shape.** Migrate
      `text-dim`'s 120 consumers to `--rex-text-muted` (no new colour to choose;
      it already passes). Keep `text-faint`/`text-label` only where the thing is

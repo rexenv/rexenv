@@ -269,6 +269,17 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   **Closed 15 Aug 2026** (`manifest_sweep_check`, network tier, #335): every pin
   HEAD-probed on both arches and everything under the size cap re-hashed against
   its digest — including the Intel pins that were hashed once and never re-run.
+- **The design system's colour contrast was asserted in one comment and checked
+  nowhere** (#337, scan landed 16 Aug 2026). `every_text_on_surface_pairing_meets_wcag_aa`
+  and `every_rex_colour_class_names_a_token_that_exists` in `core::copy_scan` derive
+  both the text set and the surface set from the frontend's own `text-rex-*` /
+  `bg-rex-*` usage, so a token joins the check by being used. **They ship as a
+  RATCHET, not as a red bar** — `verify.sh` red would block every commit through the
+  pre-commit receipt — so today's 39 failing pairs and 17 non-existent class names are
+  recorded and the sets must match EXACTLY: getting worse is red, and so is getting
+  better, which is what forces progress to be written down. Read `KNOWN_DEBT` /
+  `KNOWN_UNDEFINED` as the live debt, never as exemptions; the exemption list is
+  separate and every entry carries the call site it was read from.
 - **A licence obligation asserted only in prose** (#336, closed 16 Aug 2026). The
   claim "an artifact rexenv BUILT ships its licence texts beside its bytes" is
   discharged by FILES on disk, so a manifest arm returning `Some` proves nothing
