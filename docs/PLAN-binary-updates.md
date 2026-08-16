@@ -1,188 +1,422 @@
 # In-app binary updates — a signed version manifest (proposed)
 
 **Status: PROPOSED, not started.** Written 8 Aug 2026 against `3bac4bc`.
+**Revised 16 Aug 2026** after re-reading the record: the premise the original draft
+argued from was a paraphrase of the objection, not the objection, and three of the
+mechanisms it proposed to build already exist in shipped code. §0 is the correction;
+§1–§3 are the trust decision; §4–§9 are what actually gets built. §12 is the task list.
 
 Goal: PHP 8.3.32 ships upstream; a rexenv user gets it from **Settings → PHP → Update**,
-not from waiting on a rexenv release. Same for MySQL/MariaDB/PostgreSQL/Caddy once the
-mechanism exists. Herd does this for PHP and Node; today we cannot, and the reason is
-not UI.
+not from waiting on a rexenv release. Herd does this for PHP and Node; today we cannot,
+and the reason is not UI.
 
-## 1. Why this isn't just a button
+---
 
-PHP comes from static-php.dev's bulk builds:
+## 0. What the record actually says (and what it does not)
 
-```
-https://dl.static-php.dev/static-php-cli/bulk/php-<version>-{cli,fpm}-macos-<arch>.tar.gz
-```
+The objection is recorded in three places. Its canonical text is `c786ea3` (11 Jul 2026),
+now archived at `docs/archive/SHIPPED-2026-07.md:1278-1280`:
 
-**static-php publishes no checksums** (`core/binaries.rs:198`). So rexenv downloads each
-artifact at pin time, hashes it, and hardcodes the digest —
-`PHP_8_3_31_CLI_MAC_ARM64_SHA256` and its eleven siblings, resolved by
-`php_sha256(kind, version, arch)` (`binaries.rs:478`), which returns `None` for any
-version not in that table. `manifest()` (`binaries.rs:545`) then `unwrap()`s it, so an
-unpinned version is unresolvable by construction.
+> NO in-app TOFU updater — static-php publishes no checksums, so runtime
+> update-discovery would **move pin trust from the signed app binary to the user's
+> machine**; keep the signed-pin security model.
 
-That is the non-negotiable from `CLAUDE.md` working as designed:
+**Read the clause order.** "static-php publishes no checksums" is the premise of that
+sentence; the objection is the emphasis. It is a *trust-anchor* argument, not an
+availability one. The commonly-repeated summary — "blocked because the download source
+has no hashes" — keeps the premise and drops the conclusion, which inverts what the
+objection is about, because the premise is the half that self-hosting changed.
 
-> Native static binaries, downloaded on demand through `BinaryProvider` (pinned
-> versions, checksum-locked).
+### Does self-hosting 7.4 moot it? No — and this project already wrote down why
 
-An in-app update fetches a version whose digest was never compiled in. Three ways out,
-and only one keeps the invariant:
+`docs/PLAN-php-74-support.md:461-462`, about our own published sums for our own bytes:
 
-| | What it trusts | Verdict |
-|---|---|---|
-| **A. Signed manifest** | An ed25519 signature made by a rexenv release key, verified against a public key compiled into the app | **Take this.** |
-| B. Bare TLS ("it came from dl.static-php.dev over HTTPS") | Any CA in the trust store, plus the upstream host | Reject — deletes the guard that catches a swapped body, and there is nothing upstream to verify against anyway |
-| C. Nothing new; keep pins in code | — | The honest fallback (§9) if we don't want the release-side work |
+> Publish a detached `.sha256` and a `SHA256SUMS` … and say in writing that **they are
+> documentation, not a trust root — the pin in `binaries.rs` is.**
 
-Herd can offer its button because it builds and hosts its own PHP and serves a manifest
-it signed. Option A is the same shape: **the trust anchor moves from a `const` in the
-binary to a signed document whose public key is a `const` in the binary.** It never
-moves to TLS.
+That is the whole answer in one line, written *for the self-hosted case*, by the work
+that did the self-hosting. A checksum served from the same origin as the artifact
+defends against transport corruption and nothing else: whoever can serve you a bad
+tarball can serve you its matching digest. The discriminator was never "does a hash
+exist upstream" — it is "does a hash exist that something other than the download host
+vouches for."
 
-## 2. Trust model
+The proof that this is the real rule, not a rationalisation: **every source that DOES
+publish checksums is still a compiled-in pin.** Caddy (`checksums.txt`), PostgreSQL
+(`.sha256`), Composer (`.sha256sum`), and rexenv's own 7.4 `SHA256SUMS` are all pinned
+in `binaries.rs` exactly like static-php's unchecksummed bulk builds. Self-hosting moved
+7.4 from "no published hash" to "our published hash" and changed the pin not at all.
 
-- One **ed25519 release keypair.** Private key lives with whoever cuts releases (offline
-  / in a hardware token — never in CI env vars, never in the repo).
-- The **public key is compiled in** (`core/updates.rs`, `RELEASE_PUBKEY`). Rotating it
-  requires an app release, which is the point: a stolen manifest host cannot hand out a
-  new key.
-- The **manifest is signed as a whole** (detached signature over the exact bytes), so a
-  single entry cannot be swapped, and old entries cannot be silently dropped.
-- The manifest carries **`generated_at` + a monotonically increasing `serial`**. The app
-  stores the highest serial it has accepted and **refuses a lower one** — otherwise a
-  host that keeps serving an old signed manifest can hold a user on a version with a
-  known CVE forever (rollback attack; the signature alone does not stop it).
-- **Every artifact is still SHA-256 verified after download, exactly as today.** The
-  manifest only supplies the expected digest; `binaries.rs`'s existing stream-hash +
-  compare (`binaries.rs:1662-1690`) is untouched. Nothing new executes a binary that
-  didn't match.
-- **Compiled-in pins remain the floor.** No network, unreachable host, bad signature,
-  stale serial → rexenv runs exactly what it runs today. The manifest can only ever ADD
-  versions and MOVE a minor forward; it can never make the app run less-verified code.
+### So the verdict: it was about something else, and it still stands
 
-### What this does not defend against
+| The premise | Then | Now | Verdict |
+|---|---|---|---|
+| Upstream publishes no checksums | true of static-php | still true of static-php; **false** for our 7.4 | **moot, and it never was the blocker** |
+| A runtime pin moves trust off the app binary | true | **still true** | **stands, unchanged** |
+| Self-build + self-hosting is a blocked path | true | **false** — retired 14–15 Aug 2026 | superseded (that was the *sibling* objection, about 7.4, and it is the one that got resolved) |
 
-The upstream artifact itself. If static-php.dev ships a compromised 8.3.32, we hash it
-faithfully, sign it faithfully, and distribute it. Our signature attests **"this is the
-byte string rexenv's maintainer saw at pin time,"** never "this build is safe."
-That is exactly today's posture — the pin script is what a human runs — so the update
-path must not *claim* more. It goes in the ledger as a stated, accepted limit (§8).
+The two objections travelled together in the same commit (`c786ea3` records both) and
+are easy to merge in memory. Only the 7.4 one was resolved.
 
-## 3. The manifest
+### Three things self-hosting genuinely changed
 
-Hosted as a **GitHub release asset** on the rexenv repo (`manifest/latest`) — no new
-infrastructure, no `dl.rexenv.dev` needed for this. Two files:
+1. **It proved the distributor contract works.** `rexenv/runtimes` releases are immutable
+   by construction — a rebuild is a new tag (`php-7.4.33-6`), never a re-upload — so a
+   pin can 404 but can never silently drift (`binaries.rs:548-565, 610-612`). That is the
+   availability half of a manifest, already built and already load-bearing.
+2. **It created a licence obligation that the runtime path does not carry.** A *new*
+   blocker that did not exist in July. See §9 — it fails open, silently, by two routes.
+3. **It did not create any signing infrastructure.** There is still no key of any kind:
+   no Developer ID (`tauri.conf.json:43` → `"signingIdentity": "-"`, ad-hoc), no
+   notarization, no Tauri updater, no minisign, no pinned pubkey anywhere.
 
-```
-manifest.json        the document
-manifest.json.sig    detached ed25519 signature over manifest.json's exact bytes
-```
+Point 3 deserves saying plainly, because it embarrasses the objection's own wording: the
+phrase **"the signed app binary" describes something that does not exist.** The app is
+ad-hoc signed and distributed through a Homebrew cask; the pin's actual anchor today is
+the cask's `sha256` plus GitHub's account security. That does not argue for skipping a
+manifest signature — it argues the opposite, and it means the manifest key would be the
+**first signed thing in this project and immediately its most valuable secret.**
 
-```jsonc
-{
-  "serial": 7,                       // monotonic; app refuses a lower one than it has seen
-  "generatedAt": "2026-08-08T10:00:00Z",
-  "minAppVersion": "0.4.0",          // entries below assume this app's extract/prepare logic
-  "artifacts": [
-    {
-      "name": "php",                 // matches manifest()'s `name` argument
-      "kind": "cli",                 // cli | fpm | (engines: single) — the existing spec split
-      "version": "8.3.32",
-      "os": "macos",
-      "arch": "arm64",
-      "url": "https://dl.static-php.dev/static-php-cli/bulk/php-8.3.32-cli-macos-aarch64.tar.gz",
-      "sha256": "…",
-      "archive": "targz",
-      "member": "php"
-    }
-  ]
-}
-```
+---
 
-Notes that are load-bearing, not decoration:
+## 1. What is actually at stake on the user's machine
 
-- **`url` is upstream's**, not a rexenv mirror. We are publishing a *checksum*, not
-  re-hosting binaries. (A mirror is a later, separate decision — it costs bandwidth and
-  makes us the availability bottleneck.)
-- **`minAppVersion`** exists because `prepare_binary` differs per platform and per
-  release (de-quarantine → relink → codesign order). A manifest entry that needs
-  handling an older app lacks must not be offered to it.
-- **Both arches ship together**, matching `php_sha256`'s existing invariant ("a `Some`
-  for one arch implies a `Some` for the other").
-- A minor's entries are **additive**: 8.3.31 stays in the manifest after 8.3.32 lands, so
-  a rollback is a normal install of an already-described version (§6).
+Before comparing options, the honest baseline — because "it's a local dev tool" is doing
+a lot of unexamined work in these arguments, and it is wrong here.
 
-## 4. Where it plugs into the code
+- **`binaries::resolve` is name-generic.** `("caddy", …)` resolves through the identical
+  path as PHP, and the resolved cache path is handed to `proxy::start_edge_daemon`, which
+  runs ONE privileged shell: `cp {src} {bin} && chown root:wheel {bin} && chmod 755 {bin}
+  && launchctl bootstrap system {plist}` (`platform/macos/mod.rs:1056-1062`, invoked at
+  `core/proxy.rs:436-438`). Re-installed on every non-adopted start. **A manifest entry
+  that can name a binary can name `caddy`, and `caddy` is a root LaunchDaemon with
+  `KeepAlive` + `RunAtLoad`.** Live on this machine: `root … /Library/Application
+  Support/dev.rexenv.rexenv/bin/caddy`, `-rwxr-xr-x root wheel`.
+- **There is no low-privilege entry.** Even a PHP-only compromise runs as the user, and
+  the local CA private key is a plain `0600` file (`ca/rexenv-ca-key.pem`) whose cert is
+  trusted with **no policy restriction** (`add-trusted-cert -r trustRoot -k <login>`,
+  no `-p`; live `security dump-trust-settings` → `Number of trust settings : 0` = all
+  policies). Any rexenv-spawned binary reads that key and has browser-wide MITM for this
+  user. The prize does not require root.
+- **macOS is not a backstop.** `prepare_binary` de-quarantines, relinks, then
+  **manufactures** a signature: `codesign --force --sign -` (`macos/mod.rs:1597-1601`).
+  Live: `spctl -a -t exec` **rejects** the prepared binary and rexenv executes it anyway.
+  For a tree distribution it ad-hoc signs *every* Mach-O in the archive
+  (`macos/mod.rs:1917-1922`). The pinned digest is the entire trust decision; nothing
+  downstream re-checks anything.
+- **A cached binary is never re-hashed.** The warm path compares a marker file the app
+  itself wrote (`cache_matches_pin`, `binaries.rs:809-814`). The digest gates the
+  *download*, never the *file at exec time*.
 
-One choke point per fact, both already single functions:
+Existing ledger rows #67/#155 assert the root daemon never executes a *user-writable*
+file — a claim about the file's **location**. A manifest changes its **provenance**,
+which that guard never inspects.
+
+---
+
+## 2. The trust decision
+
+The one fact that decides it: **the digest gate verifies the bytes against whoever
+supplied the digest.** `binaries.rs:1998-2005` compares the streamed hash to
+`spec.checksum`; an attacker-chosen `url` paired with an attacker-chosen `sha256` matches
+perfectly and the gate is silent. Every option below is judged on that single sentence.
+
+And the property being spent, stated precisely — this is *not* "we know which bytes run":
+
+> Today, eight independent upstream hosts each face a separately compiled-in digest
+> (`binaries.rs:203, 865, 910, 926, 937, 947, 975, 1007`). Compromising any one of them
+> changes **nothing** for an installed user: the download fails closed on a mismatch.
+> **The pin's product is that compromising a download host does not reach existing
+> installs.** A runtime pin source spends exactly that, and concentrates eight
+> independent hosts into one.
+
+| | What it trusts | What it actually protects against | Cost | Verdict |
+|---|---|---|---|---|
+| **A. Signed manifest**, ed25519, pubkey compiled in | a signature made by a key that is *not* on the hosting infrastructure | host compromise, CDN swap, and a stolen GitHub token — none of which reach an installed user | **verify side ≈ free** (see below); **key custody is the real bill** | **Take this — with §3's structural limits, which are not optional** |
+| B. Pin host + TLS | any webpki root, plus the host | nothing that matters here | zero | **Reject.** It grants "the bytes came from the host named in the manifest", which is worthless when the manifest is the thing you are worried about |
+| C. Floor + additions-only, unsigned | the host, for anything new | the versions a user *already has* (they keep their compiled-in digests) | zero | **Not a substitute.** Adding is the whole feature, and every added version is attacker-chosen in both `url` and `sha256`. It is a *containment* property, not an *integrity* one — keep it as a complement to A, never instead of it |
+
+**The verify side is nearly free, which the original draft did not know.** `ring v0.17.14`
+is already in the normal dependency tree (transitively, via `rcgen`) and ships ed25519
+verification. This needs a direct-dependency declaration, not a new crate entering the
+supply chain. (Unconfirmed: whether the feature set `rcgen` enables exposes the signature
+API directly — a build-config question, not a supply-chain one.)
+
+### Which of these threats are theatre, honestly
+
+- **TLS interception is largely theatre here, and by accident we are already ahead.**
+  `reqwest` is built `default-features = false, features = ["rustls-tls", …]` with
+  `webpki-roots` and no `rustls-native-certs` (`Cargo.toml:36`, confirmed in
+  `Cargo.lock`). The downloader does **not** consult the system or login keychain — so
+  neither a corporate MITM root nor *rexenv's own installed CA* can intercept it. Any
+  argument for signing that leans on TLS-layer attacks is weak here.
+- **Archive-level attacks are already hardened** and a manifest adds nothing:
+  `safe_join` rejects `ParentDir | RootDir | Prefix`, `link_stays_within` rejects
+  absolute and escaping symlink targets (`binaries.rs:2167-2209`).
+- **Rollback (serial) defence is real but second-order.** It stops a host that keeps
+  serving an older *validly signed* document to hold a user on a known-CVE patch. Worth
+  building because it is ten lines; not worth leading the argument with.
+- **The signature is not theatre — but its entire value is contingent on custody.** If
+  the private key ends up in a GitHub Actions secret in the same account that hosts both
+  the manifest and the app, then one account compromise gets all three and the signature
+  is ceremony. **It means something only offline or in a hardware token.** Better to say
+  that now than to discover it after building the machinery.
+- **Key custody is a new concentration of risk, not a restatement of today's.** Today a
+  malicious pin must clear a release, a hand-built dmg, and a cask `sha256` bump. A
+  signing key is a direct root-on-every-user primitive in one artifact.
+
+### The keyless option, noted and declined
+
+`rexenv/runtimes` already produces SLSA build provenance via
+`actions/attest-build-provenance`, verified live and unauthenticated
+(`PLAN-php-74-support.md:455-460`). A Sigstore-keyless manifest signature would remove
+long-lived key custody entirely. **Declined for now:** verifying it in-app means
+embedding Fulcio/Rekor roots and materially more code, and it relocates the anchor to
+"whoever can push a tag to the rexenv repo" — which, for a single-maintainer project, is
+the same person as "whoever holds the key", for strictly more machinery. Revisit if the
+project ever has more than one release operator. **The doc's own rule still binds: the
+attestation is a maintainer-side ceremony check and must never move onto the download
+path** (`api.github.com`, 60/hr).
+
+---
+
+## 3. Structural limits — the part that is not optional
+
+A signature answers "did the maintainer say this" and nothing else. These four make the
+blast radius survivable when the answer is wrongly yes. Each is a *construction*, not a
+schema note, because a schema note is a comment.
+
+1. **Name allowlist.** A manifest may describe `php` and `php-fpm`. Nothing else — and
+   specifically never `caddy` (§1). Enforced in the merge, where an entry with an
+   unlisted `name` is **dropped, not rejected**, so one bad row cannot deny the rest.
+   The original draft specified `name` as "matches `manifest()`'s `name` argument", which
+   is precisely the unrestricted form.
+2. **Scheme + host allowlist.** `https://` only, and only hosts rexenv already downloads
+   PHP from. There is **no scheme or host constraint anywhere on the download path
+   today** — `http_client()` sets only a user-agent and a connect timeout
+   (`binaries.rs:1745-1757`) — an absence that has never mattered because every URL is a
+   compiled-in `format!`. A manifest makes `http://attacker/` a valid entry with no code
+   change required to accept it.
+3. **Re-verify on every read, never a stored verdict.** The cached manifest lives in
+   `rexenv.db`, which is `-rw-r--r-- wpdev staff`. Store the **detached signature
+   alongside the document** and check it inside `cached()`, every call. A "verified"
+   boolean in a user-writable file is not verification; a `sqlite3 UPDATE` would bypass
+   ed25519 entirely and land on §1's root path.
+   *(This is the original draft's own contradiction: §4 stored the JSON and the serial and
+   no signature, while §8 demanded an L0 test that `cached()` rejects a tampered manifest.
+   Unsatisfiable as written.)*
+4. **Patch-of-a-known-minor only.** `version` must parse as `x.y.z` where `x.y` is
+   already in `PHP_VERSIONS`. Not cosmetic: `fpm_port` is arithmetic
+   (`9700 + major*10 + minor`, `php.rs:153-160`), so `fpm_port("8.10")` and
+   `fpm_port("9.0")` both return **9790**. That collision is unreachable today only
+   because `PHP_VERSIONS` is a curated compile-time list. See §4 for why new minors are
+   out of scope anyway.
+
+---
+
+## 4. What the feature IS — patch updates, user-pressed, within a minor already installed
+
+Not new minors. Not engines. Reasons, in order of weight:
+
+1. **The mechanism already exists end-to-end.** This is the finding that most changes the
+   shape of the work. Shipped today (`lib.rs:325-373`): bump detection
+   (`php::seed_registry`) → prefetch through the download hub
+   (`downloads::plan_for_php` + `prefetch`) → pool restart
+   (`ServiceManager::restart_pools_for`) → `await_ready` → GC of the superseded trees
+   (`binaries::gc_outdated_php_caches`). **We are not building an update mechanism. We
+   are replacing its trigger and its source of truth**, and everything downstream is
+   unchanged. The original draft proposed to build several of these.
+2. **Minimal trust surface.** The manifest carries `(version, url, sha256)` for two
+   allowlisted names. Nothing else needs to cross the boundary — notably **not the
+   fpm port**, which is computed, never supplied (`php.rs:153-160`).
+3. **A runtime minor would lie in the UI.** `eol_since` and `xdebug_supported` are
+   per-minor compile-time tables. A manifest-delivered 8.6 would render with no EOL date
+   and Xdebug silently unavailable — a capability loss presented as a fact.
+4. **It is the actual reason to want the feature.** Shipping a PHP *security patch*
+   without waiting on a rexenv release is the use case. "Add 8.6 the day it lands" is a
+   convenience, and it can ride the same rails later once the anchor is proven.
+
+---
+
+## 5. What happens to sites — and the premise that needs correcting first
+
+**Today, a patch bump already silently restarts live pools at launch.** `lib.rs:325-373`
+runs on every launch after an app update that moved a pin: it prefetches and restarts
+each bumped minor's pool with no user action and no user-visible notice. So "an update
+that silently restarts someone's stack" is not a risk this feature introduces — it is
+what ships.
+
+That sets the bar in the right direction: **the in-app path must be strictly more
+conservative than the shipped app-update path, not less.**
+
+- **Never automatic. Never at launch.** The refresh is best-effort and silent; the
+  *update* is a button, pressed once, per minor.
+- **Name the restart before it happens**, and report it after: `restarted the 8.3 pool`.
+- **Sites are untouched.** `sites.php_version` stores a **minor** (`"8.3"`), never a
+  patch. No config regeneration, no edge reload, no per-site migration.
+- **Failure leaves the old patch serving**, because the only thing that switches a pool
+  is the persisted patch value.
+
+### The live bug this rests on, which must be fixed first
+
+`seed_registry` (`php.rs:189-219`) pushes a minor onto `bumped` when the stored patch
+differs from the pin — and then calls `upsert_php_version` **unconditionally, in the same
+iteration**. The row therefore already equals the new pin before the caller has tried
+anything. So when the prefetch fails, `lib.rs:352-353` logs and returns with
+`// retry next launch` — and **that comment is false**: the next launch computes no bump,
+because the row moved on the launch that failed. The user is left with a database saying
+8.3.32 and a pool running 8.3.31, permanently, silently.
+
+The root cause is that **`php_versions.patch` records what is *pinned*, not what is
+*installed and running*.** That confusion is survivable while the two are the same value
+by construction. A runtime source makes them different by design, and then it is fatal.
+Fixing it is task 2 (§12) and it is a correctness fix on shipped code, worth doing
+whether or not the rest of this is ever built.
+
+---
+
+## 6. Disk — the premise needs correcting too, and the GC is a landmine
+
+**A GC already exists.** `gc_outdated_php_caches` (`binaries.rs:1375-1394`) runs at every
+launch (`lib.rs:371`) and removes any `php-<version>/` tree whose version is not the
+pinned patch for its minor. Versions do **not** accumulate with no story today.
+
+The real numbers, measured on this machine, are also bigger than "~31 MB": `bin/` is
+**2.9 GB across 34 entries**, and each PHP minor costs **two** trees (`php-<patch>/` CLI
+plus `php-fpm-<patch>/` FPM) at 68–104 MB each — **~136–208 MB per minor.**
+
+**The landmine:** `is_outdated_php_cache` is keyed on `php::patch_for_minor`
+(`binaries.rs:1368-1372`) — the compiled-in pin, and the exact function a runtime source
+re-points. Under runtime selection it therefore deletes, at the next launch, **the tree
+the user just selected and is currently running.** And after §7's revert-on-failure, it
+deletes the newly downloaded tree that the original draft explicitly promised to keep
+("**The new tree is not deleted**"). The draft never mentioned the GC.
+
+There is also a foot-gun in this *today*, independent of the feature:
+`restart_pools_for` propagates with `?` (`service_manager.rs:1216-1219`), so a failure on
+the first minor aborts the loop and every later minor keeps its old master alive — and
+the caller catches the error, logs, and **falls through to the GC**, which unlinks those
+running masters' trees. On macOS the process survives on the unlinked inode, so it looks
+healthy right up until the pool cannot be restarted.
+
+**The rule the GC must implement:** keep `{the compiled-in pin} ∪ {each minor's
+registered patch}`, delete the rest. Both halves are load-bearing —
+
+> **A floor whose bytes were deleted is not a floor.** Keeping the compiled-in pin's tree
+> on disk is what makes "falls back to the pins" an offline guarantee rather than an
+> offline *download*.
+
+Cleanup answers, then: an unused version is removed **by the launch GC, automatically,
+when nothing references it** — never by a user-facing "delete" button, because the two
+things worth keeping are both derivable and neither is a preference.
+
+---
+
+## 7. Offline
+
+The requirement is that a fully-cached install keeps working with the network unplugged,
+doing everything it does today. Concretely:
+
+- `refresh()` is best-effort, off the startup path, and gates nothing. Failure is
+  *silent-but-visible*: the row reads `couldn't check` with the reason on hover — never
+  an error toast, never a blocked screen.
+- `cached()` is pure: no network, and it re-verifies the stored signature (§3.3) rather
+  than trusting a flag.
+- No signature, no manifest, stale serial, no network → the compiled-in pins resolve
+  exactly as today. The manifest can only ever ADD a version or move a minor forward.
+- The floor's bytes stay on disk (§6), so the fallback is a fallback and not a download.
+
+**One existing divergence to close, because offline makes it bite.** The download
+planner's `is_cached` tests file existence only (`binaries.rs:1302`), while `resolve`
+additionally requires `cache_matches_pin` **and** `licenses_satisfied`, and **deletes the
+cache dir** before re-downloading (`binaries.rs:1444-1456`). When a version's expected
+digest changes without its directory name changing — which is exactly what an upstream
+in-place rebuild plus a re-pin produces, and what happened on 5 Jul 2026 — the planner
+reports "cached, nothing to do" and `resolve` then deletes and re-downloads ~100 MB with
+no hub progress row. Offline, that turns a working install into a broken one. Minor
+today; a manifest that can re-pin a digest for an existing version makes it routine.
+
+---
+
+## 8. Where it plugs into the code
 
 | Fact | Today | After |
 |---|---|---|
-| Which patch a minor runs | `php::patch_for_minor(minor)` → `binaries::PHP_VERSIONS` (`core/php.rs:62`) | the SELECTED patch for that minor from app state, defaulting to the compiled-in one |
-| The digest for a version | `binaries::php_sha256(kind, version, arch)` (`binaries.rs:478`) | compiled-in table first, then the verified manifest cache |
-| The URL for a version | `binaries::manifest()`'s `format!` (`binaries.rs:564`) | unchanged for known-shape versions; manifest `url` wins when present |
+| Which patch a minor runs | `php::patch_for_minor(minor)` → `binaries::PHP_VERSIONS` (`php.rs:62`) | the minor's **registered** patch (DB), which the merge sets to `max(compiled pin, manifest selection)` |
+| The digest for a version | `binaries::php_sha256(kind, version, arch)` (`binaries.rs:717`) | compiled-in table first, then the verified manifest cache |
+| The URL for a version | `php_url(kind, version, arch)` (`binaries.rs:575`) | unchanged for known versions; manifest `url` wins when present, subject to §3.2 |
+| Whether we owe licences | `is_self_distributed` → `php_self_hosted_tag` literal match (`binaries.rs:555-565, 658-660`) | **derived from the artifact host** (§9) |
 
-New module `core/updates.rs` (platform-agnostic — fetch, verify, cache, query; the
-`reqwest` call goes through the same path the download hub already uses):
+New module `core/updates.rs` — platform-agnostic; fetch, verify, cache, query:
 
 ```rust
 pub struct VersionCatalog { /* verified entries, merged over the compiled-in pins */ }
-pub fn cached(conn: &Connection) -> VersionCatalog;                 // no network
-pub async fn refresh(conn: &Connection) -> Result<VersionCatalog>;  // fetch + verify + persist
+pub fn cached(conn: &Connection) -> VersionCatalog;                 // no network; re-verifies the stored signature
+pub async fn refresh(conn: &Connection) -> Result<VersionCatalog>;  // fetch + verify + persist (document AND signature)
 pub fn newest_for_minor(cat: &VersionCatalog, minor: &str) -> String;
 ```
 
-Storage: the verified manifest JSON + its serial in **SQLite settings** (`update_manifest`,
-`update_manifest_serial`), and the user's per-minor choice in the existing PHP version
-rows. **No new schema for the manifest itself** — it is a cache, and a corrupt cache must
-degrade to the compiled-in pins, not to an error.
+**The floor is a version comparison, not a flag.** `registered = max(pin, selected)` by
+semver ordering makes "the compiled-in pin is the floor" structural: with no manifest,
+`selected` is absent and the result is today's behaviour byte for byte; when the app ships
+a newer pin than the user's selection, the pin wins and today's launch-bump path runs
+unchanged. There is no boolean anyone can get backwards.
 
-Selected-patch storage does need a row: `php_versions.patch` (nullable; `NULL` = "track
-the compiled-in pin"). Nullable rather than backfilled-to-current on purpose — a user who
-never touches this gets the app's pin even after they update rexenv, which is the
-behaviour they have today.
+**`patch_for_minor` returns `Option<&'static str>`** (`php.rs:62`). A runtime patch cannot
+be `&'static`, so this becomes `Option<String>` — the single most invasive type change in
+the work, and the reason task 2 in §12 is sized the way it is.
 
-## 5. Update flow (PHP, per minor)
+---
 
-1. **Refresh** — on app launch (once, best-effort, never blocking) and on demand from the
-   Settings row. Failure is silent-but-visible: the row says `couldn't check` with the
-   reason on hover, never an error toast.
-2. **Offer** — the PHP row shows `8.3.31 · 8.3.32 available`. No auto-update, ever: a
-   patch swap restarts a pool that is serving the user's sites.
-3. **Update** — reuses the whole existing path:
-   - `downloads::plan_for_php` + `prefetch` (hub progress, Range-resume, real bytes),
-   - cache lands in `bin_dir/php-8.3.32/` — a **new directory**, so 8.3.31 stays on disk,
-   - `prepare_binary` (de-quarantine → relink → codesign LAST, macOS order unchanged),
-   - persist `php_versions.patch = "8.3.32"`,
-   - `service_manager::restart_php_pool` for that minor (`service_manager.rs:1173`) —
-     under the existing locking rule: spawn under the lock, `await_ready` after dropping
-     it.
-4. **Verify then keep** — the pool must come back ready. If it doesn't, revert the stored
-   patch to the previous value, restart on it, and report what happened with the log key.
-   **The new tree is not deleted** (it is a valid, verified artifact — deleting it makes
-   the retry re-download hundreds of MB).
-5. **Sites are untouched.** They pin the minor (`"8.3"`), never the patch. No config
-   regeneration, no edge reload.
+## 9. The licence obligation does NOT survive the move to runtime
 
-Failure at any step before the pool restart leaves the site running the old patch,
-because the only thing that switches it is the persisted `patch` value.
+Asked directly: does the guard written for a compile-time list still hold for versions
+added at runtime? **No. It fails open, silently, by two independent routes**, and the test
+that is supposed to catch it cannot see the case by construction.
 
-## 6. Rollback
+1. **The obligation is keyed on a compile-time literal.** `is_self_distributed`
+   (`binaries.rs:658-660`) delegates to `php_self_hosted_tag`, which is
+   `match version { "7.4.33" => Some(…), _ => None }` (`binaries.rs:555-565`). A
+   runtime-added self-hosted version answers `false` → no obligation is detected →
+   `licenses_satisfied` returns `true` **vacuously** (`binaries.rs:706-708`) → rexenv
+   publishes an interpreter it distributes, with no licence texts, and nothing anywhere
+   says so.
+2. **Enforcement exists on one resolve path out of four.** Only the single-file `resolve`
+   calls `licenses_satisfied` (`binaries.rs:1446`) and fetches the licence archive
+   (`:1497-1507`). `resolve_dir` / `resolve_bundle` / `resolve_file` never do — **and a
+   manifest entry chooses which path it takes, via its `archive` field.** An entry
+   declaring `"archive": "targztree"` routes around the obligation entirely, even for
+   `7.4.33` itself.
+3. **The guard that should catch this iterates `PHP_VERSIONS`.**
+   `every_php_we_distribute_ourselves_ships_its_licences` (`binaries.rs:2957`) loops the
+   compile-time slice. A manifest-supplied version is not in it. Same for every other pin
+   invariant — arch-pairing, 64-hex-digest, source-host — six loops in `binaries.rs`'s
+   test module plus the `manifest_sweep_check` and `php_versions_check` examples all begin
+   `for v in PHP_VERSIONS`. A runtime version gets **none** of them.
 
-Same flow with an older version from the manifest. The old tree is usually still cached,
-so it is a settings write plus a pool restart. UI: the per-minor row's version dropdown
-lists every manifest version for that minor, current one selected — the Databases
-engine-version picker's exact shape (`src/routes/Databases.tsx:63-76`), which users have
-already met.
+This is the same family as ledger #318 and the "one-fact lifetime guard" pattern: a check
+written against a compile-time fact, kept after that fact became mutable.
 
-Unlike the DB engines, **there is no data directory** behind a PHP patch, so this needs
-no "your databases won't be visible" warning. Don't copy that dialog.
+**The fix direction — derive the obligation from the artifact host, never from a version
+match.** If the bytes come from `github.com/rexenv/`, rexenv is the distributor, full
+stop. That is structural: it cannot be forgotten for a new version, because there is no
+list to forget to update. Then:
 
-## 7. UI
+- the merge **refuses** any entry whose host is ours and which carries no licence
+  artifact for **both** arches — fails closed, and it is refused at merge time so it never
+  reaches a download;
+- `licenses_satisfied`'s vacuous `true` becomes reachable only when the host says nothing
+  is owed;
+- enforcement moves to a point all four resolve paths pass through.
 
-`Settings → PHP versions` (`src/routes/Settings.tsx:396 PhpVersionsSetting`), per row:
+**Doing this is correct today, on its own merits, with no manifest anywhere** — route 2
+is a live hole in shipped code for `7.4.33` right now. It is task 3 in §12.
+
+---
+
+## 10. UI
+
+`Settings → PHP versions` (`src/routes/Settings.tsx`, `PhpVersionsSetting`), per row:
 
 ```
 8.3   ● installed · running   8.3.31   [Update to 8.3.32]   [Make default]
@@ -190,69 +424,97 @@ no "your databases won't be visible" warning. Don't copy that dialog.
 ```
 
 - **Update** appears only when the manifest offers a newer patch for a minor that is
-  installed. It is never shown for a minor the user doesn't have.
-- While updating: the existing download-hub byte row + the phase line, same components as
-  the provision card. Real bytes, not a spinner.
-- After: the row states the patch it is now on, and a one-line `restarted the 8.3 pool`.
-- Checked `just now / 2h ago` beside the section header, from the manifest's stored fetch
-  time — the same honesty as the Import screen's `scanned 12s ago`: a refresh that finds
-  nothing new must still visibly have run.
-- **The engines (MySQL/MariaDB/PG) get the same treatment for free** — their picker already
-  exists; the manifest just adds patches to the offered set. Ship PHP first.
+  **installed**. Never shown for a minor the user does not have.
+- While updating: the existing download-hub byte row plus the phase line — real bytes,
+  same components as the provision card, not a spinner.
+- After: the row states the patch it is now on, plus `restarted the 8.3 pool`.
+- `Checked just now / 2h ago` beside the section header, from the stored fetch time — the
+  Import screen's `scanned 12s ago` honesty. **A refresh that finds nothing must still
+  visibly have run.**
+- Rollback is the same flow with an older manifest version; the old tree is usually still
+  cached, so it is a settings write plus a pool restart. Unlike the DB engines there is no
+  data directory behind a PHP patch, so this needs **no** "your databases won't be
+  visible" warning. Do not copy that dialog.
 
-## 8. Claims this introduces (CLAIM-LEDGER rows, same commit as the code)
+---
+
+## 11. Claims this introduces (CLAIM-LEDGER rows, same commit as the code)
 
 | Claim | Layer that can prove it |
 |---|---|
 | A manifest with a bad/absent signature is never used | L0 — tamper each field, assert `cached()` falls back to the compiled-in pins |
+| A stored manifest is re-verified on every read, not trusted from a flag | L0 — `UPDATE` the cached JSON in place, assert `cached()` refuses it |
 | A manifest with a serial ≤ the stored one is refused | L0 — replay an older signed document |
-| No artifact is executed without a SHA-256 match | L0 exists already (`binaries.rs` tests) + L1 for the manifest-supplied digest path |
-| The compiled-in pins run when the network is gone | L0 — `refresh()` error → `cached()` still resolves every current version |
+| A manifest can only describe `php`/`php-fpm`, over https, from an allowlisted host | L0 — entries naming `caddy`, `http://`, or a foreign host are dropped |
+| A manifest version must be a patch of a known minor | L0 — `9.0.0` and `8.10.0` are dropped (the `fpm_port` collision) |
+| No artifact is executed without a SHA-256 match | L0 exists (`binaries.rs`) + L1 for the manifest-supplied digest path |
+| The compiled-in pins run when the network is gone — **and their bytes are still on disk** | L0 for the resolve; L0 for the GC keep-set |
+| The GC never deletes a tree a pool is running | L0 — registered ≠ pin, assert the registered tree survives |
 | A failed pool restart leaves the minor on its previous patch | L1 — point a minor at a deliberately broken tree, assert revert + honest error |
+| A self-distributed artifact ships its licences **however it was described** | L0 — host-derived, across all four resolve paths, incl. a `targztree` entry |
 | ⚠ Our signature attests provenance-at-pin-time, NOT upstream build integrity | 🚫 accepted posture — stated here and in the module doc, not provable by us |
+| ⚠ The manifest key is the app's most valuable secret and its custody is not a code property | 🚫 operator posture |
 
-## 9. If we don't do this
+---
 
-The honest small version, worth shipping on its own and compatible with everything above:
-the PHP row states the patch it runs and that a newer one exists — checked against the
-manifest **read-only, no update button**. That is ~half a day and removes the "am I on
-something stale?" question, while leaving the upgrade to a rexenv release.
+## 12. Task list
 
-## 10. Commit sequence
+**Parked — needs a ruling before anything downstream of it is built:**
 
-1. `feat(core)` — `core/updates.rs`: manifest struct, ed25519 verify, serial rule,
-   settings-backed cache, merge-over-pins. Lib tests for every §8 L0 row. **No UI, no
-   network call wired in** — pure, testable, inert.
-2. `feat(db)` — `php_versions.patch` (nullable) + store accessors; `patch_for_minor`
-   reads the selection, defaults to the pin. Migration test that a pre-migration row
-   keeps today's behaviour.
-3. `feat(commands)` — `php_update_check` / `php_update_apply` IPC; apply = prefetch →
+- **P1. Key custody.** Who holds the ed25519 private key, and where? Offline/hardware
+  token, or a CI secret? §2 says plainly that a CI secret in the account that also hosts
+  the manifest and the app reduces the signature to ceremony. **Everything from task 5
+  onward depends on this answer**, so it is the ruling to give first.
+- **P2. Ship the button, or §13's read-only version?** The read-only variant ("8.3.32
+  exists") is ~half a day, needs no key, and removes the "am I on something stale?"
+  question entirely.
+- **P3. Mirror or not.** Publishing only checksums keeps rexenv out of the bandwidth
+  business but leaves availability with static-php.dev, which has rebuilt in place before.
+  A manifest fixes the *reporting*; only a mirror fixes the *availability*.
+
+**Unblocked — correct today on their own merits, and the foundation the feature needs.
+Being worked now, in this order (the order is load-bearing):**
+
+1. **The GC keeps what is running, not what is pinned.** `gc_outdated_php_caches` keeps
+   `{compiled-in pin} ∪ {each minor's registered patch}`. Today those are equal, so this
+   is behaviour-identical — and it closes the existing foot-gun where a failed
+   `restart_pools_for` lets the GC unlink a live master's tree (§6). **First** because it
+   only ever keeps *more*, so it is safe before task 2 and unsafe after.
+2. **`php_versions.patch` records what is installed, not what is pinned.** Fixes the live
+   bug in §5: the row currently moves before the prefetch is attempted, so a failed bump
+   never retries and the DB lies about what is running. Includes
+   `patch_for_minor → Option<String>`.
+3. **The licence obligation is host-derived and enforced on every resolve path.** Fixes
+   §9 route 2, which is a live hole for `7.4.33` today, and makes route 1 impossible by
+   construction rather than by a list.
+4. **Close the `is_cached` / `resolve` divergence** (§7) so a re-pinned digest is a
+   planned download with hub progress, not a silent delete-and-refetch.
+
+**Blocked on P1:**
+
+5. `feat(core)` — `core/updates.rs`: manifest struct, ed25519 verify via `ring`, serial
+   rule, §3's four structural limits, settings-backed cache storing **document +
+   signature**, merge-over-pins by `max(pin, selected)`. Lib tests for every §11 L0 row.
+   No UI, no network wired in — pure, testable, inert.
+6. `feat(commands)` — `php_update_check` / `php_update_apply` IPC; apply = prefetch →
    prepare → persist → restart pool → verify → revert-on-failure.
-4. `feat(ui)` — the Settings row (§7) + the checked-N-ago line.
-5. `chore(release)` — NEW `scripts/pin-binaries.sh` (no pin script exists today; pinning is
-   done by hand): download → hash → emit manifest entries → sign → attach to the GitHub
-   release. It must also be able to emit the compiled-in `const` block, so the two
-   sources of truth are generated by one run and cannot drift. Documented in
-   `CONTRIBUTING.md` so the step is not tribal knowledge.
-6. `docs` — `PORTS.md` gains a "how a version reaches a user" section; this file flips to
-   SHIPPED with commit hashes.
+7. `feat(ui)` — §10's Settings row and the checked-N-ago line.
+8. `chore(release)` — `scripts/pin-binaries.sh`: download → hash → emit manifest entries →
+   sign → attach to the release. **It must also emit the compiled-in `const` block**, so
+   the two sources of truth are generated by one run and cannot drift. Documented in
+   `CONTRIBUTING.md` so the step is not tribal knowledge. (No pin script exists today;
+   pinning is done by hand.)
+9. `docs` — `PORTS.md` gains "how a version reaches a user"; this file flips to SHIPPED.
 
-Steps 1–2 are useful even if 3–5 are never built: they make the pin table data instead of
-code.
+---
 
-## 11. Open questions
+## 13. If we don't do this
 
-- **Key custody.** Who holds the private key, and what is the rotation story if it leaks?
-  (Compiled-in pubkey means rotation = app release. Acceptable, but it must be a decision,
-  not a discovery.)
-- **Cadence.** PHP patches land the first Thursday monthly. Is a manual pin-and-sign run
-  per release realistic, or does this need CI with the key in a hardware token?
-- **Mirror or not.** Publishing only checksums keeps us out of the bandwidth business but
-  leaves availability with static-php.dev, which has rebuilt artifacts in place before
-  (`binaries.rs:203`) — that is precisely a checksum mismatch users can't fix today. A
-  manifest fixes the *reporting* (we re-hash and re-publish); only a mirror fixes the
-  *availability*.
-- **Scope of the first cut.** PHP only, or PHP + engines? The engines' picker exists, so
-  the marginal cost is small — but each engine's version switch carries the per-series
-  datadir warning, and patch-level updates inside a series do not. Don't let one control
-  mean two things.
+The honest small version, worth shipping alone and compatible with everything above: the
+PHP row states the patch it runs and that a newer one exists — checked against the
+manifest **read-only, no update button, no signature required**, because a manifest that
+can only make the UI say "newer exists" cannot make the app run anything. ~half a day, and
+it removes the "am I on something stale?" question while leaving the upgrade to a release.
+
+Tasks 1–4 above are worth doing **regardless of which of these ships**, including if
+neither does.

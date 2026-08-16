@@ -1388,14 +1388,26 @@ first:
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
 - [ ] **In-app PHP/engine patch updates** (`docs/PLAN-binary-updates.md`, proposed
-  8 Aug 2026): Herd updates PHP patches from its own UI; we ship one pinned patch
-  per minor and a user waits for a rexenv release. Blocker is NOT the UI —
-  static-php publishes no checksums, so every digest is a compiled-in const
-  (`binaries.rs:478`) and an unpinned version is unresolvable by construction.
-  Needs a signed version manifest (ed25519, pubkey compiled in, monotonic serial,
-  compiled-in pins as the floor). Open: key custody, pin cadence, mirror-or-not,
-  PHP-only vs engines too. §9 has the half-day read-only version ("8.3.32 exists")
-  if the release-side work isn't wanted.
+  8 Aug 2026, **premise re-checked 16 Aug 2026**): Herd updates PHP patches from
+  its own UI; we ship one pinned patch per minor and a user waits for a rexenv
+  release. Blocker is NOT the UI, and **not "upstream publishes no checksums"** —
+  that clause was the premise of the objection, not the objection. The recorded
+  reasoning (`c786ea3`, archived at `docs/archive/SHIPPED-2026-07.md:1278-1280`) is
+  that a runtime pin "would move pin trust from the signed app binary to the user's
+  machine", and that **still stands**: every source that DOES publish checksums
+  (Caddy, PostgreSQL, Composer, and our own 7.4 `SHA256SUMS`) is a compiled-in pin
+  too, because a checksum served from the artifact's own origin is documentation,
+  not a trust root (`PLAN-php-74-support.md:461-462` says exactly this, for the
+  self-hosted case). Self-hosting 7.4 resolved the SIBLING objection recorded in the
+  same commit (self-build was a blocked path), not this one. Needs a signed version
+  manifest (ed25519 — `ring` is already in the dep tree via `rcgen`, so no new crate
+  — pubkey compiled in, monotonic serial, compiled-in pins as the floor) **plus the
+  four structural limits in §3**, without which the signature's blast radius reaches
+  the root LaunchDaemon. Open: key custody (**the ruling everything else waits on**),
+  pin cadence, mirror-or-not, PHP-only vs engines too. §13 has the half-day
+  read-only version ("8.3.32 exists") if the release-side work isn't wanted.
+  **§12 tasks 1–4 are unblocked and worth doing regardless** — they are corrections
+  to shipped code, not scaffolding for this feature.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If
