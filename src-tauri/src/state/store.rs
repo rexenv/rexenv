@@ -1423,6 +1423,222 @@ mod tests {
     use super::*;
     use crate::state::db;
 
+    /// Every column an upsert may write in its `DO UPDATE SET` list, per table.
+    ///
+    /// **The list is DERIVED columns only** — values the app computes and owns.
+    /// A column a USER can set must never appear here, because the conflict arm
+    /// runs on writes the user did not ask for. Each entry names its owner so
+    /// the next person adding one has to answer the question rather than pattern-
+    /// match the line above.
+    const DERIVED_UPDATE_COLUMNS: &[(&str, &[&str])] = &[
+        // fpm_port: computed from the minor by `php::fpm_port`. `installed` and
+        // `is_default` are the USER's and are absent on purpose — that absence is
+        // ledger #339/#340/#344, three bugs in this one statement.
+        ("php_versions", &["fpm_port"]),
+        // All app-computed: the resolver file we replaced and where we stashed it.
+        ("resolver_takeovers", &["original", "backup_path", "taken_at"]),
+        // A KV whose OWNER is the key, not the column — every write is either a
+        // user action through a validating setter or an app cache writing its own
+        // key. Guarded separately by `every_gated_setting_key_is_routed_here`.
+        ("settings", &["value"]),
+        // Recomputed per sync; `kind`/`source_path` are the caller's and are
+        // deliberately preserved.
+        ("scratch_packages", &["synced_at", "fingerprint"]),
+        // Every column is a measurement of the import that just ran.
+        (
+            "db_imports",
+            &[
+                "state",
+                "db_name",
+                "table_count",
+                "size_bytes",
+                "source_label",
+                "mirrored_user",
+                "skipped_tables",
+                "verified",
+                "imported_at",
+            ],
+        ),
+    ];
+
+    /// Upserts whose ONLY writers are explicit user (or agent) actions — "save
+    /// this thing", where overwriting the stored values is the entire point.
+    ///
+    /// A separate category rather than a hole in the one above, because the
+    /// question a source scan cannot answer is WHO CALLS IT. Declaring the answer
+    /// is the work: if an automatic caller is ever added to one of these, this
+    /// line is what makes that a decision instead of an accident.
+    const USER_INITIATED_UPSERTS: &[(&str, &str)] = &[(
+        "blueprints",
+        "`upsert_blueprint` runs only from the blueprint save command — the user is \
+         supplying `name`/`spec`, so overwriting them is what they asked for",
+    )];
+
+    /// Upsert statements this codebase is declared to have. Bumping it is the
+    /// point: see the failure message.
+    const DECLARED_UPSERTS: usize = 7;
+
+    /// `INSERT OR REPLACE` statements that deliberately do NOT name every column,
+    /// with the reason. REPLACE deletes the row and re-inserts, so any unnamed
+    /// column silently returns to its default — there is no SET list to read, and
+    /// that is exactly why these need declaring by hand.
+    const PARTIAL_REPLACE_EXCEPTIONS: &[(&str, &str)] = &[(
+        "site_git_assets",
+        "resets composer/node install fingerprints to NULL and re-dates created_at; \
+         a fresh checkout is genuinely unverified (store.rs' own note), and NULL reads \
+         as unverified rather than as stale",
+    )];
+
+    /// **Every `ON CONFLICT … DO UPDATE SET` list contains only DERIVED columns,
+    /// and a new upsert anywhere in the tree must be declared.**
+    ///
+    /// The guard #339, #340 and #344 earned. One statement was wrong three times
+    /// — `patch` and `is_default` in the SET list, then `is_default` again in the
+    /// INSERT arm — and each fix was reasoned about column-by-column while the
+    /// neighbouring arm went unread. The question that catches all three is not
+    /// "is this line right" but "for each column, does the USER own this value or
+    /// does the app?", asked of the whole statement.
+    ///
+    /// **The count assertion is the load-bearing half.** A scan that reads only
+    /// the file it knows about is the guard-covers-claimed-surface defect this
+    /// project has shipped four times — once inside a guard written to end that
+    /// family. So this walks the entire crate, not `store.rs`, and fails when the
+    /// number of upsert sites changes at all.
+    #[test]
+    fn every_upsert_updates_only_columns_the_app_owns() {
+        use crate::core::copy_scan::production_source;
+
+        // Whoever trips this guard is adding or editing an upsert, so the message
+        // teaches the rule rather than reporting a diff. Four guards in this repo
+        // have claimed a surface wider than they checked; the fifth should at
+        // least tell the next person what it is actually asking.
+        const RULE: &str = "\
+THE RULE, because you are probably adding or editing one:\n\
+• A `DO UPDATE SET` list may name ONLY columns the APP owns — values it computes.\n\
+• A column a USER can set must never appear there. The conflict arm runs on writes the \
+user did not ask for, so anything in it is something a launch or a background task can \
+silently take back — the user sets it, restarts, and it is quietly gone.\n\
+• Ask it PER COLUMN, and for the INSERT arm too: a row that does not exist yet takes that \
+arm instead. `php_versions` was wrong three times (ledger #339 `patch`, #340 `is_default`, \
+#344 `is_default` again in the INSERT arm) and every fix read one arm and not the other.\n\n\
+If the app owns it: add the table + its derived columns to DERIVED_UPDATE_COLUMNS, naming \
+each column's owner.\n\
+If only an explicit user action can reach the statement: add it to USER_INITIATED_UPSERTS \
+with the reason — that is the one question a source scan cannot answer for itself.\n\
+Either way, bump DECLARED_UPSERTS. The count exists so a statement in a file this guard \
+has never heard of cannot pass unread.";
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let Ok(raw) = std::fs::read_to_string(&path) else { continue };
+                // Production only (a test fixture writing SQL is not a writer),
+                // and COMMENTS STRIPPED. The first run of this guard counted
+                // three prose mentions of `ON CONFLICT` as statements — one of
+                // them written an hour earlier, in the doc comment explaining
+                // this very defect. A scanner that reads its own explanation is
+                // the trap this repo has now hit four times, and it landed here
+                // in the COUNT, which is the half that is supposed to be
+                // load-bearing.
+                let code: String = production_source(&raw)
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                out.push((path.display().to_string(), code));
+            }
+        }
+
+        let mut files = Vec::new();
+        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        assert!(!files.is_empty(), "scanned nothing — the walk is broken, not the code");
+
+        let mut upserts = 0usize;
+        let mut replaces: Vec<(String, String)> = Vec::new();
+        let mut offences: Vec<String> = Vec::new();
+
+        for (file, src) in &files {
+            // Normalised to one line so a statement split across lines — the one
+            // syntactic form that could hide from a line-wise scan — still parses.
+            let flat = src.split_whitespace().collect::<Vec<_>>().join(" ");
+            for (i, _) in flat.match_indices("ON CONFLICT") {
+                upserts += 1;
+                let after = &flat[i..];
+                // Bound the search to THIS SQL literal. Without this, a
+                // `DO NOTHING` statement finds the NEXT statement's SET list and
+                // reports its columns against the wrong table — which is exactly
+                // what the first run of this guard did.
+                let stmt = &after[..after.find('"').unwrap_or(after.len())];
+                let Some(set_at) = stmt.find("DO UPDATE SET") else {
+                    continue; // DO NOTHING — writes nothing, so nothing to own
+                };
+                let table = flat[..i]
+                    .rmatch_indices("INSERT INTO ")
+                    .next()
+                    .map(|(j, _)| flat[j + "INSERT INTO ".len()..].split_whitespace().next().unwrap_or(""))
+                    .unwrap_or("")
+                    .to_string();
+                let body = &stmt[set_at + "DO UPDATE SET".len()..];
+                let end = body.len();
+                if USER_INITIATED_UPSERTS.iter().any(|(t, _)| *t == table) {
+                    continue; // the user supplied these values; see the constant
+                }
+                let allowed: &[&str] = DERIVED_UPDATE_COLUMNS
+                    .iter()
+                    .find(|(t, _)| *t == table)
+                    .map(|(_, cols)| *cols)
+                    .unwrap_or(&[]);
+                for assign in body[..end].split(',') {
+                    let Some(col) = assign.split('=').next() else { continue };
+                    let col = col.trim().trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                    if col.is_empty() {
+                        continue;
+                    }
+                    if !allowed.contains(&col) {
+                        offences.push(format!(
+                            "{file}: `{table}` upsert updates `{col}`, which is not on that \
+                             table's DERIVED list"
+                        ));
+                    }
+                }
+            }
+            for (i, _) in flat.match_indices("INSERT OR REPLACE INTO ") {
+                let rest = &flat[i + "INSERT OR REPLACE INTO ".len()..];
+                let table = rest.split_whitespace().next().unwrap_or("").to_string();
+                replaces.push((file.clone(), table));
+            }
+        }
+
+        assert!(
+            offences.is_empty(),
+            "{}\n\n{RULE}",
+            offences.join("\n")
+        );
+
+        for (file, table) in &replaces {
+            assert!(
+                PARTIAL_REPLACE_EXCEPTIONS.iter().any(|(t, _)| t == table),
+                "{file}: `INSERT OR REPLACE INTO {table}` names a subset of its columns and \
+                 every unnamed one silently returns to its default. Name them all, or add \
+                 `{table}` to PARTIAL_REPLACE_EXCEPTIONS with the reason it is safe."
+            );
+        }
+
+        assert_eq!(
+            upserts, DECLARED_UPSERTS,
+            "\nThis crate now has {upserts} `ON CONFLICT` statements; {DECLARED_UPSERTS} are \
+             declared.\n\n{RULE}"
+        );
+    }
+
     /// A scratch row in production shape (UUID id, absolute app-data docroot,
     /// a real `datetime('now')`-style expiry).
     fn scratch(agent_client: Option<&str>) -> Site {

@@ -35,12 +35,16 @@ evidence cited.
   "how rexenv gets its components". Ledger #343 has the measurement and the reasoning;
   this is the user-facing half of it.
 
-- [ ] **Audit `sites` and `settings` for the user-fact-vs-derived-fact clobber.**
-  `php_versions` had TWO in one `ON CONFLICT` clause (#339's `patch`, #340's
-  `is_default`), and nobody had asked the per-column question until the second one bit.
-  The other tables have not been asked it either: for every column written by a seed,
-  backfill or upsert, does the USER own that value or does a derived source? Same
-  method that found #340 — read the whole statement cold, asking who owns each field.
+- [x] **Audit every table for the user-fact-vs-derived-fact clobber** ✓ 17 Aug 2026,
+  ledger #344 + #345. Swept every upsert, all 35 `UPDATE … SET` sites, every migration and
+  every launch-path writer: **49 candidates, 48 rejected — no iceberg.** The three `sites`
+  backfills are strict NULL-only set-once; the v6/v32 migrations weld their UPDATE to their
+  own ADD COLUMN inside one batch; migration v9's `default_tld` flip is closed by release
+  history (it shipped inside v0.1.1, so no released build ever sat at `user_version 8`).
+  ONE live defect, in the statement already known to be dangerous: `seed_registry`'s INSERT
+  arm gave a newly-pinned minor `is_default = 1` beside the user's, so every user got two
+  rows badged Default the first time the pin moved to a new minor. Fixed (#344) and guarded
+  (#345), the guard justified by that statement's history rather than by the count.
 
 - [ ] **`fpm_port` collides at an x.10 minor.** `fpm_port` is
   `FPM_PORT_BASE + major * 10 + min` (`core/php.rs:153-160`), so `fpm_port("8.10")` and
