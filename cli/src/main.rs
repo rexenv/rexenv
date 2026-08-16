@@ -686,15 +686,34 @@ fn cmd_php(words: &[String], json_output: bool) {
                 return print_json(&data);
             }
             let Some(versions) = data["versions"].as_array() else { return println!("(none)") };
-            println!("{:<7} {:<9} {:<6} {:<10} DEFAULT", "MINOR", "PATCH", "PORT", "INSTALLED");
+            println!(
+                "{:<7} {:<9} {:<6} {:<10} {:<8} NOTE",
+                "MINOR", "PATCH", "PORT", "INSTALLED", "DEFAULT"
+            );
             for v in versions {
+                // PATCH is what this build PINS. Two facts can differ from it and
+                // both must be said here, not only in the GUI: what the pool is
+                // actually executing (a bump that has not taken yet), and what
+                // php.net says exists. A CLI that prints only the pin is the same
+                // silent lie the desktop row exists to prevent.
+                let mut note = String::new();
+                if let Some(serving) = v["serving"].as_str() {
+                    note.push_str(&format!("serving {serving}"));
+                }
+                if let Some(upstream) = v["upstream"].as_str() {
+                    if !note.is_empty() {
+                        note.push_str(" · ");
+                    }
+                    note.push_str(&format!("{upstream} exists"));
+                }
                 println!(
-                    "{:<7} {:<9} {:<6} {:<10} {}",
+                    "{:<7} {:<9} {:<6} {:<10} {:<8} {}",
                     v["minor"].as_str().unwrap_or("?"),
                     v["patch"].as_str().unwrap_or("?"),
                     v["fpmPort"].as_u64().unwrap_or(0),
                     if v["installed"] == json!(true) { "yes" } else { "-" },
                     if v["isDefault"] == json!(true) { "✓" } else { "" },
+                    note,
                 );
             }
         }

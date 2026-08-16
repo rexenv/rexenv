@@ -25,6 +25,23 @@ evidence cited.
   is actually executing beside the pin, so the row says both — without it a derived row
   could only ever show the pin, which is the same silent lie somewhere harder to see.
 
+- [ ] **Say WHY the "exists" line often names a patch rexenv can't install yet** —
+  one sentence, somewhere a curious user lands, NOT in the row (which stays short).
+  php.net publishes on release day; static-php.dev, where 8.x builds come from, trails —
+  measured 17 days on 16 Aug 2026 (php.net 8.4.24/8.5.9 vs our pinned 8.4.23/8.5.8). So
+  the row will spend most of its life truthfully naming a patch that has no portable
+  build yet. That is honest but reads as a defect to someone who does not know the
+  pipeline. Candidates: the Settings section's existing footer line, or `INSTALL.md`'s
+  "how rexenv gets its components". Ledger #343 has the measurement and the reasoning;
+  this is the user-facing half of it.
+
+- [ ] **Audit `sites` and `settings` for the user-fact-vs-derived-fact clobber.**
+  `php_versions` had TWO in one `ON CONFLICT` clause (#339's `patch`, #340's
+  `is_default`), and nobody had asked the per-column question until the second one bit.
+  The other tables have not been asked it either: for every column written by a seed,
+  backfill or upsert, does the USER own that value or does a derived source? Same
+  method that found #340 — read the whole statement cold, asking who owns each field.
+
 - [ ] **`fpm_port` collides at an x.10 minor.** `fpm_port` is
   `FPM_PORT_BASE + major * 10 + min` (`core/php.rs:153-160`), so `fpm_port("8.10")` and
   `fpm_port("9.0")` both return **9790**; `debug_fpm_port` has the same shape on its own

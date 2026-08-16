@@ -619,6 +619,19 @@ at THING Y ≠ X. They diverge along different axes:
   Each fixed by making the input production-shaped AND baking a probe that fails on the fake
   shape (real UUIDs + a no-bare-UUID probe; a plain-thread bind guard). Memory
   `fixtures-must-look-like-production`; L2's structural blind spot is stated in TESTING.md §1.
+  - **A FOURTH, 16 Aug 2026, and the one that defeats the instinct rather than a
+    fixture: the unrepresentative input was the machine's own live state, and the
+    verification method was "check it by hand."** Deriving which patch a pool runs from
+    `ps -o comm=` looks correct on this Mac: the 7.4.33 and 8.0.30 masters print their real
+    executable path. Every other pool does not — php-fpm rewrites its process title, so
+    8.1–8.4 print `php-fpm: master process (…/config/php-fpm-8.3.conf)`, which names the
+    MINOR and never the patch. So an argv implementation passes a hand check on **exactly
+    the two pools anyone would poke at first** and is silently wrong for the rest. There is
+    no fixture to make production-shaped here — the fixture IS the machine, and it is
+    friendlier than production by accident. `lsof -p <pid> -a -d txt` reads the executable
+    descriptor, which a title rewrite cannot touch (#342). **The lesson is about the method:
+    "verify it by hand" is the instinct this family defeats, because a hand check samples
+    whatever is convenient and convenience correlates with the oldest, simplest cases.**
 
 - **A guard that reads a SUPERSET of the thing it claims about** (5 Aug 2026, #235 —
   and the instance is worth keeping because of where it happened). The archive
