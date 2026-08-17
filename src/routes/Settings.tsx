@@ -365,20 +365,27 @@ function PhpVersionRow({
           {v.serving && (
             <span
               className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-accent-amber"
-              title={`This build pins ${v.patch}. The running pool is still on ${v.serving} — it restarts on the next launch, or on Start all.`}
+              title={`PHP ${v.minor} is set to ${v.patch}. The running pool is still on ${v.serving} — it restarts on the next launch, or on Start all.`}
             >
               serving {v.serving}
             </span>
           )}
-          {/* An upstream FACT, not an offer. rexenv installs from
-              static-php.dev, which lags php.net by weeks, so this can name a
-              version rexenv cannot ship — "exists" stays true where "update
-              available" would not, and there is no button for exactly that
-              reason (docs/PLAN-binary-updates.md §13). */}
-          {v.upstream && (
+          {/* An upstream FACT, not an offer. rexenv installs verified builds
+              from static-php.dev, which trails php.net by weeks, so this can
+              name a version rexenv has no build of — "exists" stays true where
+              "update available" would not (docs/PLAN-binary-updates.md §13).
+              Suppressed when the Update button already names the same version:
+              a chip saying 8.2.32 "exists" next to a button offering 8.2.32
+              reads as two different versions, and the whole point of the chip
+              is that it is the one there is NO button for. */}
+          {v.upstream && v.upstream !== v.updatable && (
             <span
               className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-text-muted"
-              title={`php.net lists ${v.upstream} as the newest ${v.minor} release. rexenv installs a pinned build, so this arrives with a rexenv update rather than from here.`}
+              title={
+                v.updatable
+                  ? `php.net lists ${v.upstream} as the newest ${v.minor} release. rexenv can install ${v.updatable} today — ${v.upstream} arrives once a verified build of it is published.`
+                  : `php.net lists ${v.upstream} as the newest ${v.minor} release. rexenv installs verified builds, so it appears here once one is published.`
+              }
             >
               · {v.upstream} exists
             </span>
@@ -559,28 +566,51 @@ export function PhpVersionsSetting() {
     },
     onError: (e) => toastBackendError(e),
   });
-  // Applying an update restarts a live pool, so the row is busy for it exactly
-  // as it is for install/default — one busy rule, not a second spinner.
+  // An apply takes minutes (a ~100 MB download, then a pool restart), so the
+  // minors in flight are tracked as a SET rather than read off the mutation.
+  // `update.variables` holds only the LAST call's arguments: start 8.2, start
+  // 8.3, and 8.2's button re-enables while its download is still running.
+  const [applying, setApplying] = useState<ReadonlySet<string>>(new Set());
   const update = useMutation({
     mutationFn: ({ minor, patch }: { minor: string; patch: string }) =>
       phpUpdateApply(minor, patch),
-    onSuccess: (_d, v) => {
-      toast.success(`PHP ${v.minor} is now on ${v.patch}`);
+    onSuccess: (out, v) => {
+      // "recorded" and "now running" are different facts. When no pool was
+      // running there is nothing to be "now on", and saying so names a process
+      // that does not exist — the backend reports which one happened.
+      toast.success(
+        out.restarted
+          ? `PHP ${v.minor} is now on ${out.patch}`
+          : `PHP ${v.minor} will use ${out.patch} — nothing was running to restart`,
+      );
       void qc.invalidateQueries({ queryKey: ["php-versions"] });
       void qc.invalidateQueries({ queryKey: ["services"] });
     },
     onError: (e) => toastBackendError(e),
+    onSettled: (_d, _e, v) =>
+      setApplying((s) => {
+        const next = new Set(s);
+        next.delete(v.minor);
+        return next;
+      }),
   });
+  const startUpdate = (minor: string, patch: string) => {
+    setApplying((s) => new Set(s).add(minor));
+    update.mutate({ minor, patch });
+  };
   const busyFor = (minor: string) =>
     (toggle.isPending && toggle.variables?.minor === minor) ||
     (makeDefault.isPending && makeDefault.variables === minor) ||
-    (update.isPending && update.variables?.minor === minor);
+    applying.has(minor);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (isLoading) {
     return <div className="text-[0.78125rem] text-rex-text-muted">Loading…</div>;
   }
-  const anyUpstream = versions.some((v) => v.upstream);
+  // The rows the note is FOR: an upstream version with no button beside it.
+  // Conditioning on `v.upstream` alone printed "a newer patch arrives with a
+  // rexenv update" on a screen with an Update button on it.
+  const anyUnbuildableUpstream = versions.some((v) => v.upstream && v.upstream !== v.updatable);
   return (
     <div>
       {/* Stated BEFORE the chips it explains. "8.3.33 exists" with no button
@@ -588,14 +618,14 @@ export function PhpVersionsSetting() {
           there are two projects involved — which the first person to see it did
           not. Rendered only when a chip is actually on screen, so the ordinary
           case gains no paragraph. */}
-      {anyUpstream && (
+      {anyUnbuildableUpstream && (
         <div
           data-probe="php-upstream-note"
           className="mb-2.5 rounded border border-rex-border bg-rex-well px-2.5 py-2 text-[0.6875rem] leading-relaxed text-rex-text-muted"
         >
-          <span className="text-rex-text">“exists” is not a button.</span> rexenv runs
-          checksum-pinned builds, so a newer patch arrives with a rexenv update — and it
-          usually exists upstream for some weeks first.
+          <span className="text-rex-text">“exists” is not a button.</span> rexenv installs
+          checksum-verified builds, which are published some weeks after php.net announces a
+          release — so a version can exist upstream with nothing here to install yet.
         </div>
       )}
       {versions.map((v) => (
@@ -606,7 +636,7 @@ export function PhpVersionsSetting() {
           expanded={expanded === v.minor}
           onToggle={(installed) => toggle.mutate({ minor: v.minor, installed })}
           onMakeDefault={() => makeDefault.mutate(v.minor)}
-          onUpdate={() => update.mutate({ minor: v.minor, patch: v.updatable ?? "" })}
+          onUpdate={() => v.updatable && startUpdate(v.minor, v.updatable)}
           onExpand={() => setExpanded((e) => (e === v.minor ? null : v.minor))}
         />
       ))}

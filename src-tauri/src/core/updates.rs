@@ -77,6 +77,19 @@ const ALLOWED_HOSTS: &[&str] = &[
 /// and `caddy` is a root LaunchDaemon.** So it cannot.
 const ALLOWED_NAMES: &[&str] = &["php", "php-fpm"];
 
+/// An [`Arch`] in the MANIFEST's vocabulary (`arm64` / `x86_64`).
+///
+/// Here, in the module that owns the document's schema, because this project
+/// already carries six per-source arch spellings in `binaries.rs` and a seventh
+/// written inline at each use is how a machine gets offered the other Mac's
+/// binaries. Every arch string that crosses into the catalog comes from here.
+pub fn catalog_arch(arch: crate::platform::traits::Arch) -> &'static str {
+    match arch {
+        crate::platform::traits::Arch::Arm64 => "arm64",
+        crate::platform::traits::Arch::X86_64 => "x86_64",
+    }
+}
+
 /// Settings keys holding the verified document and its detached signature.
 ///
 /// **Both, always.** Storing the document with a "verified" flag would put the
@@ -131,19 +144,37 @@ pub struct VersionCatalog {
 }
 
 impl VersionCatalog {
-    /// The newest patch this catalog offers for `minor`, if it is newer than
-    /// `have`. Numeric per segment — `8.3.9 < 8.3.10`, which a lexical compare
-    /// gets backwards, and PHP has shipped double-digit patches on every branch.
-    pub fn newer_than(&self, minor: &str, have: &str) -> Option<String> {
+    /// The newest patch this catalog offers for `minor` **on `arch`, with BOTH
+    /// binaries present**, if it is newer than `have`.
+    ///
+    /// Numeric per segment — `8.3.9 < 8.3.10`, which a lexical compare gets
+    /// backwards, and PHP has shipped double-digit patches on every branch.
+    ///
+    /// The completeness rule is not the publisher's job to get right. An apply
+    /// resolves `php` AND `php-fpm` for the machine it is on, so a version
+    /// carrying three of those four offers a button that downloads ~100 MB and
+    /// then fails at the last resolve — and, worse, does it on one developer's
+    /// Mac while working on another's. `scripts/publish-manifest.sh` already
+    /// drops half-published versions whole; this is the same rule enforced where
+    /// it is load-bearing, because a manifest is data and data is exactly the
+    /// thing that must not be trusted to have been generated correctly.
+    pub fn newer_than(&self, minor: &str, have: &str, arch: &str) -> Option<String> {
         self.entries
             .iter()
-            .filter(|a| php::minor_of(&a.version) == minor)
+            .filter(|a| php::minor_of(&a.version) == minor && a.arch == arch)
             .map(|a| a.version.clone())
             .filter(|v| newer(v, have))
+            .filter(|v| {
+                ALLOWED_NAMES
+                    .iter()
+                    .all(|n| self.artifact(n, v, arch).is_some())
+            })
             .max_by(|a, b| segments(a).cmp(&segments(b)))
     }
 
     /// The digest and URL this catalog holds for one artifact, if any.
+    ///
+    /// `arch` is the MANIFEST's spelling — use [`catalog_arch`], never a literal.
     pub fn artifact(&self, name: &str, version: &str, arch: &str) -> Option<&Artifact> {
         self.entries
             .iter()
@@ -754,21 +785,64 @@ mod tests {
         assert!(!newer("8.3.31", "8.3.31"));
         assert!(!newer("8.4.0", "8.3.99"), "another minor must never move this row");
 
-        let cat = VersionCatalog {
-            entries: ["8.3.32", "8.3.9", "8.3.40", "8.4.99"]
+        // A COMPLETE catalog: both binaries, both arches, exactly as a published
+        // manifest carries them. An earlier fixture listed only `php`/`arm64` and
+        // made the completeness rule below untestable — the friendlier-fixture
+        // family this project keeps paying for.
+        let full = |vs: &[&str]| VersionCatalog {
+            entries: vs
                 .iter()
-                .map(|v| Artifact {
-                    name: "php".into(),
-                    version: (*v).to_string(),
-                    arch: "arm64".into(),
-                    url: "https://dl.static-php.dev/x".into(),
-                    sha256: "a".repeat(64),
+                .flat_map(|v| {
+                    ["php", "php-fpm"].into_iter().flat_map(move |n| {
+                        ["arm64", "x86_64"].map(move |a| Artifact {
+                            name: n.into(),
+                            version: (*v).to_string(),
+                            arch: a.into(),
+                            url: "https://dl.static-php.dev/x".into(),
+                            sha256: "a".repeat(64),
+                        })
+                    })
                 })
                 .collect(),
         };
-        assert_eq!(cat.newer_than("8.3", "8.3.31").as_deref(), Some("8.3.40"));
-        assert_eq!(cat.newer_than("8.3", "8.3.40"), None, "nothing newer than the newest");
-        assert_eq!(cat.newer_than("8.5", "8.5.8"), None, "a minor with no entries offers nothing");
+        let cat = full(&["8.3.32", "8.3.9", "8.3.40", "8.4.99"]);
+        assert_eq!(cat.newer_than("8.3", "8.3.31", "arm64").as_deref(), Some("8.3.40"));
+        assert_eq!(cat.newer_than("8.3", "8.3.40", "arm64"), None, "nothing newer than the newest");
+        assert_eq!(cat.newer_than("8.5", "8.5.8", "arm64"), None, "a minor with no entries offers nothing");
+        assert_eq!(
+            cat.newer_than("8.3", "8.3.31", "x86_64").as_deref(),
+            Some("8.3.40"),
+            "a complete manifest serves both Macs"
+        );
+
+        // HALF-PUBLISHED, three ways. An apply resolves php AND php-fpm for the
+        // machine it is on, so each of these would offer a button that downloads
+        // ~100 MB and fails at the last resolve — and the arch case would do it
+        // on one developer's Mac while working on another's.
+        let drop_where = |f: fn(&Artifact) -> bool| VersionCatalog {
+            entries: full(&["8.3.40"]).entries.into_iter().filter(|a| !f(a)).collect(),
+        };
+        assert_eq!(
+            drop_where(|a| a.name == "php-fpm").newer_than("8.3", "8.3.31", "arm64"),
+            None,
+            "cli only: the pool binary is missing, so there is nothing to restart onto"
+        );
+        assert_eq!(
+            drop_where(|a| a.name == "php").newer_than("8.3", "8.3.31", "arm64"),
+            None,
+            "fpm only: the terminal and wp-cli would have no interpreter"
+        );
+        let one_arch = drop_where(|a| a.arch == "x86_64");
+        assert_eq!(
+            one_arch.newer_than("8.3", "8.3.31", "arm64").as_deref(),
+            Some("8.3.40"),
+            "the arch it WAS published for is still offered"
+        );
+        assert_eq!(
+            one_arch.newer_than("8.3", "8.3.31", "x86_64"),
+            None,
+            "…and the arch it was not published for is offered nothing"
+        );
     }
 
     /// A `min_app_version` newer than this build refuses the document, because

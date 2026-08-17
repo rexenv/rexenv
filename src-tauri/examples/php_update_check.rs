@@ -90,7 +90,7 @@ async fn main() -> ExitCode {
         "the serial rule did not hold against the real document",
     );
 
-    let offered = catalog.newer_than(&minor, &pinned);
+    let offered = catalog.newer_than(&minor, &pinned, updates::catalog_arch(plat.binaries().arch()));
     let Some(target) = offered else {
         println!(
             "\nthe manifest offers nothing newer than {pinned} for {minor} — nothing to apply.\n\

@@ -35,6 +35,21 @@ the shipped UI toward one.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".
+- **"Saved" and "now running" are different sentences, and a toast may only write the
+  one the backend measured.** The PHP Update toast said "PHP 8.2 is now on 8.2.32" from
+  a bare `Ok(())` — true when a pool was running, a claim about a process that does not
+  exist when none was. `php_update_apply` reports `restarted`, and the copy follows it
+  ("…will use 8.2.32 — nothing was running to restart"). The general rule: when an
+  action's *effect* depends on state the frontend cannot see, the effect is part of the
+  return value, not an inference at the call site.
+- **A chip that means "there is no button for this" must vanish when a button appears.**
+  The Settings PHP row carries two upstream facts: `updatable` (a signed manifest offers
+  it — a button) and `upstream` (php.net lists it; rexenv may have no verified build yet
+  — the "· 8.2.32 exists" chip). Once static-php.dev catches up the two are the same
+  version, and rendering both put "8.2.32 exists" beside "Update to 8.2.32", which reads
+  as two different versions. The chip renders only when `upstream !== updatable`, and the
+  paragraph explaining it ("'exists' is not a button") renders only when such a row is on
+  screen — it was previously printed on screens that had an Update button on them.
 - **An action that finishes somewhere else says so.** Every button on the repo panel
   (Fetch, Pull, Push, Build zip, Check deps, Run: <script>) starts a streamed job whose
   only completion signal was a glyph inside the job card — so with the panel scrolled

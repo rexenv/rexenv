@@ -307,6 +307,30 @@ pub fn patch_to_run(conn: &Connection, minor: &str) -> Result<String> {
         .ok_or_else(|| Error::Other(format!("unknown PHP version: {minor}")))
 }
 
+/// The registry's default minor, or `None` when nothing is marked default.
+///
+/// Its own accessor because three callers wanted only this and reached for
+/// [`list_versions`] with an EMPTY catalog to get it. That builds a full row
+/// whose `updatable` is `None` by construction — a value that is not "no update
+/// available" but "nobody asked", and one `?` away from being rendered.
+pub fn default_minor(conn: &Connection) -> Result<Option<String>> {
+    Ok(store::list_php_versions(conn)?.into_iter().find(|v| v.is_default).map(|v| v.minor))
+}
+
+/// Every INSTALLED minor paired with the patch it will run — what the launch
+/// cache repair sweeps over. See [`default_minor`] for why this is not a
+/// filtered [`list_versions`].
+pub fn installed_effective(conn: &Connection) -> Result<Vec<(String, String)>> {
+    Ok(store::list_php_versions(conn)?
+        .into_iter()
+        .filter(|v| v.installed)
+        .filter_map(|v| {
+            crate::core::updates::floored(&v.minor, v.selected_patch.as_deref())
+                .map(|p| (v.minor, p))
+        })
+        .collect())
+}
+
 /// Every minor's effective patch, for the snapshot the ServiceManager is handed
 /// before a start (the same shape as `set_php_settings` / `set_db_versions`).
 pub fn effective_patches(conn: &Connection) -> Result<std::collections::HashMap<String, String>> {
@@ -352,6 +376,7 @@ pub fn list_versions(
     conn: &Connection,
     running: &[String],
     catalog: &crate::core::updates::VersionCatalog,
+    arch: &str,
 ) -> Result<Vec<PhpVersionView>> {
     let upstream = crate::core::php_upstream::cached(conn);
     let checked_at = (!upstream.checked_at.is_empty()).then(|| upstream.checked_at.clone());
@@ -389,7 +414,10 @@ pub fn list_versions(
                 // Offered only when the catalog has something newer than what we
                 // will run. Against the pin, this kept offering a patch the user
                 // had already installed.
-                updatable: catalog.newer_than(&v.minor, &effective),
+                // `arch`, because a manifest carrying only the OTHER Mac's
+                // binaries would otherwise render a button that downloads
+                // ~100 MB and then fails at the last resolve.
+                updatable: catalog.newer_than(&v.minor, &effective, arch),
                 patch: effective,
                 minor: v.minor,
                 fpm_port: v.fpm_port,
@@ -1293,7 +1321,7 @@ mod tests {
     fn the_version_list_carries_the_eol_date() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let rows = list_versions(&conn, &[], &Default::default()).unwrap();
+        let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
         for r in &rows {
             assert_eq!(r.eol_since, eol_since(&r.minor), "{}", r.minor);
         }
@@ -1317,7 +1345,7 @@ mod tests {
     fn the_version_list_carries_cores_xdebug_rule_rather_than_the_ui_guessing() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let rows = list_versions(&conn, &[], &Default::default()).unwrap();
+        let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
         assert!(!rows.is_empty());
         for r in &rows {
             assert_eq!(
@@ -1576,11 +1604,17 @@ mod tests {
         // database, where a test cannot put one without a signed document, so
         // `updatable` was `None` for both halves and every assertion about it was
         // vacuous. That is the same trap as three earlier guards in this session.
-        let catalog = crate::core::updates::catalog_for_tests(&[(
-            "php-fpm", &target, "arm64", "https://dl.static-php.dev/x", &"a".repeat(64),
-        )]);
+        // BOTH binaries, because an apply resolves both and `newer_than` now
+        // refuses a half-published version. A one-entry fixture offered a button
+        // no real apply could have completed.
+        let sha = "a".repeat(64);
+        let url = "https://dl.static-php.dev/x";
+        let catalog = crate::core::updates::catalog_for_tests(&[
+            ("php", &target, "arm64", url, &sha),
+            ("php-fpm", &target, "arm64", url, &sha),
+        ]);
         let row = |c: &Connection, running: &[String]| {
-            list_versions(c, running, &catalog)
+            list_versions(c, running, &catalog, "arm64")
                 .unwrap()
                 .into_iter()
                 .find(|r| r.minor == minor)
@@ -1648,24 +1682,24 @@ mod tests {
         let row = |rows: Vec<PhpVersionView>| rows.into_iter().find(|r| r.minor == minor).unwrap();
 
         // Nothing running: pinned only, and no invented disagreement.
-        let r = row(list_versions(&conn, &[], &Default::default()).unwrap());
+        let r = row(list_versions(&conn, &[], &Default::default(), "arm64").unwrap());
         assert_eq!(r.patch, pinned);
         assert_eq!(r.serving, None);
 
         // A pool running the pinned patch is not a disagreement either.
-        let r = row(list_versions(&conn, &[pinned.clone()], &Default::default()).unwrap());
+        let r = row(list_versions(&conn, &[pinned.clone()], &Default::default(), "arm64").unwrap());
         assert_eq!(r.serving, None, "running the pin is not worth a second line");
 
         // A pool running something else IS, and the row carries both.
         let stale = format!("{minor}.0");
         assert_ne!(stale, pinned);
-        let r = row(list_versions(&conn, &[stale.clone()], &Default::default()).unwrap());
+        let r = row(list_versions(&conn, &[stale.clone()], &Default::default(), "arm64").unwrap());
         assert_eq!(r.patch, pinned, "the pin is still the pin");
         assert_eq!(r.serving, Some(stale), "…and the row must say what is serving");
 
         // Another minor's pool never leaks into this row.
         let other = all_minors().into_iter().find(|m| *m != minor).unwrap();
-        let r = row(list_versions(&conn, &[format!("{other}.0")], &Default::default()).unwrap());
+        let r = row(list_versions(&conn, &[format!("{other}.0")], &Default::default(), "arm64").unwrap());
         assert_eq!(r.serving, None);
     }
 

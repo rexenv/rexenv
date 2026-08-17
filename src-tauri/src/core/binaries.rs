@@ -608,10 +608,7 @@ fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
     if !crate::core::updates::nameable(name) {
         return None;
     }
-    let arch_s = match arch {
-        Arch::Arm64 => "arm64",
-        Arch::X86_64 => "x86_64",
-    };
+    let arch_s = crate::core::updates::catalog_arch(arch);
     let guard = CATALOG.read().ok()?;
     let a = guard.as_ref()?.artifact(name, version, arch_s)?;
     Some(BinarySpec {
@@ -1625,17 +1622,20 @@ fn cached_bundle_dir_in(bin_dir: &Path, name: &str, version: &str, member: &str)
 ///   "No network, bad signature, stale manifest → rexenv falls back to the
 ///   pins" is a *download* rather than a fallback unless the pinned tree is
 ///   still on disk, and offline it is not a fallback at all.
-/// - **Each minor's REGISTERED patch** — what a pool actually runs, read from
-///   the registry rather than assumed. Today `seed_registry` writes the pin into
-///   that row, so the two halves are the same set and this changes nothing. They
-///   stop being the same set the moment a patch can be chosen at runtime, and
-///   then this function is the only thing standing between the GC and the tree
-///   the user just selected and is serving from (`docs/PLAN-binary-updates.md`
-///   §6 — the 8 Aug draft promised "the new tree is not deleted" while the GC
-///   was keyed on the pin, which is exactly what would have deleted it).
+/// - **Each minor's EFFECTIVE patch** — the user's in-app update choice floored
+///   by the pin (`php::effective_patches`), plus every patch a pool is live on.
+///   These stopped being the same set as the pins the moment v37 let a patch be
+///   chosen at runtime, and this function is now the only thing standing between
+///   the GC and the tree the user just selected and is serving from. The 8 Aug
+///   draft of `docs/PLAN-binary-updates.md` §6 promised "the new tree is not
+///   deleted" while the GC was keyed on the pin alone — which is precisely what
+///   would have deleted it.
 ///
-/// Passing the registered set in rather than reading it here keeps this pure and
-/// keeps `core/binaries.rs` off the database.
+/// Passing the set in rather than reading it here keeps this pure and keeps
+/// `core/binaries.rs` off the database. The caller (`lib.rs`) unions the LIVE
+/// pools with the effective map, and the union is not belt-and-braces: with the
+/// stack stopped, `running_php_patches` returns an empty set, so a live-only
+/// keep-set falls back to the pins and deletes the updated tree.
 pub fn php_caches_to_keep(registered: &[String]) -> Vec<String> {
     let mut keep: Vec<String> = PHP_VERSIONS.iter().map(|v| (*v).to_string()).collect();
     for patch in registered {
@@ -1683,7 +1683,9 @@ pub fn is_outdated_php_cache(dir_name: &str, keep: &[String]) -> bool {
 /// Best-effort — a dir that can't be removed is skipped, never an error.
 /// Returns the removed dir names.
 ///
-/// `registered` is what the registry says each minor runs (`php::registered_patches`).
+/// `registered` is every patch that must survive: the live pools unioned with
+/// `php::effective_patches` (there is no `registered_patches` — an earlier draft
+/// of this line named one, and the column it would have read was dropped in v36).
 /// It is a PARAMETER rather than a read, because the caller already knows and
 /// because this module stays off the database — but it must be passed honestly:
 /// this GC runs unconditionally at launch, including on the path where

@@ -447,17 +447,16 @@ pub fn run() {
                                 .db
                                 .lock()
                                 .ok()
-                                .and_then(|conn| core::php::list_versions(&conn, &[], &Default::default()).ok())
+                                .and_then(|conn| core::php::installed_effective(&conn).ok())
                                 .unwrap_or_default();
                             installed
                                 .into_iter()
-                                .filter(|v| v.installed)
-                                .filter(|v| {
+                                .filter(|(_, patch)| {
                                     ["php", "php-fpm"].iter().any(|n| {
-                                        core::binaries::needs_repair(platform, n, &v.patch)
+                                        core::binaries::needs_repair(platform, n, patch)
                                     })
                                 })
-                                .map(|v| v.minor)
+                                .map(|(minor, _)| minor)
                                 .collect()
                         };
                         for minor in &repairs {

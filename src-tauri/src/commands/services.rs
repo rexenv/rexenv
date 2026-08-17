@@ -350,8 +350,8 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
         .db
         .lock()
         .ok()
-        .and_then(|conn| core::php::list_versions(&conn, &[], &Default::default()).ok())
-        .and_then(|v| v.into_iter().find(|v| v.is_default).map(|v| v.minor));
+        .and_then(|conn| core::php::default_minor(&conn).ok())
+        .flatten();
     let mut monitor = state
         .monitor
         .lock()

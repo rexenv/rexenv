@@ -523,6 +523,16 @@ export interface SiteServing {
   serving: boolean;
 }
 
+/** What a PHP update actually changed (mirrors `commands::php::PhpUpdateOutcome`).
+ *
+ *  `restarted` exists because "the update worked" and "the running interpreter
+ *  changed" are different facts, and the toast was asserting the second from the
+ *  first: with no pool running there is nothing to be "now on". */
+export interface PhpUpdateOutcome {
+  patch: string;
+  restarted: boolean;
+}
+
 /** A PHP version in the registry (mirrors the Rust PhpVersionView).
  *
  *  `xdebugSupported` / `xdebugVersion` are DERIVED in core from the pinned build
@@ -531,25 +541,32 @@ export interface SiteServing {
  *  `binaries::xdebug_supported` that could silently disagree with it. */
 export interface PhpVersion {
   minor: string; // "8.3" — the key + what Site.phpVersion references
-  /** The patch this BUILD pins for the minor — derived in core, never stored. */
+  /** The patch this minor WILL RUN: the user's in-app update choice, floored by
+   *  the patch this build pins. Derived in core, never stored.
+   *
+   *  **Every other field on this row is relative to THIS**, and reading it as
+   *  "the pin" is how one baseline mistake produced three wrong fields at once:
+   *  after a successful update the row showed the old patch, painted the correct
+   *  new pool as a discrepancy, and kept offering the update already applied. */
   patch: string; // "8.3.31"
   /** The patch the live pool is ACTUALLY executing, when it differs from `patch`.
-   *  `null` covers "no pool", "pool is on the pin" and "pool unidentifiable"
-   *  alike — none of those is a disagreement, so the row says nothing extra.
-   *  Present so a failed patch bump cannot render as the pin while the pool
-   *  serves older bytes. */
+   *  `null` covers "no pool", "pool already on the chosen patch" and "pool
+   *  unidentifiable" alike — none of those is a disagreement, so the row says
+   *  nothing extra. Present so a pending restart cannot render as done. */
   serving: string | null;
   /** A newer patch php.net says EXISTS for this minor, or null.
-   *  An upstream FACT, never an offer — rexenv installs from static-php.dev,
-   *  which lags php.net by weeks, so this can name a version rexenv cannot ship.
-   *  That is why there is no Update button and why the copy says "exists". */
+   *  An upstream FACT, never an offer — rexenv installs verified builds from
+   *  static-php.dev, which trails php.net by weeks, so this can name a version
+   *  rexenv has no build of. The copy says "exists" for exactly that reason.
+   *  May equal `updatable` once a build lands, in which case the row shows the
+   *  button and NOT the chip. */
   upstream: string | null;
-  /** A patch a VERIFIED update manifest offers for this minor, newer than the
-   *  pin — i.e. one rexenv can actually install right now. Distinct from
-   *  `upstream`, which is only php.net saying a release exists: that one has no
-   *  button because rexenv may have no build of it. `null` when this build has
-   *  no update key pinned, when nothing newer is signed for, or when the check
-   *  has never run. */
+  /** A patch a VERIFIED update manifest offers for this minor, newer than
+   *  `patch` — i.e. one rexenv can install right now. Distinct from `upstream`,
+   *  which is only php.net saying a release exists: that one has no button
+   *  because rexenv may have no build of it. `null` when this build has no
+   *  update key pinned, when nothing newer is signed for, or when the check has
+   *  never run. */
   updatable: string | null;
   /** When the upstream list was last fetched successfully, or null if never. */
   upstreamCheckedAt: string | null;

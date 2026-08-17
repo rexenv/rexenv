@@ -358,10 +358,7 @@ where
                         .db
                         .lock()
                         .map_err(|_| Error::Other("database lock poisoned".into()))?;
-                    crate::core::php::list_versions(&conn, &[], &Default::default())?
-                        .into_iter()
-                        .find(|v| v.is_default)
-                        .map(|v| v.minor)
+                    crate::core::php::default_minor(&conn)?
                         .ok_or_else(|| Error::Other("no default PHP version".into()))?
                 }
             };

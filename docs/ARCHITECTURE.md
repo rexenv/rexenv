@@ -349,18 +349,35 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   consume, so a failed bump is simply asked again next launch. `php_versions.patch` was
   that store and was deleted in migration v36: it mirrored a compile-time pin, and the
   mirror produced two live bugs in one statement (#339 the consumed bump signal, #340 the
-  user's default reset every launch). The Settings row says **both** the pinned patch and,
-  when they differ, the one actually serving (`PhpVersionView::serving`) — without that a
-  derived row could only show the pin, which is the same silent lie in a nicer place.
-  One minor's failure `continue`s rather than abandoning the rest. Ledger #338/#342. The sweep's
-  keep-set is `{compiled-in pins} ∪ {each minor's REGISTERED patch}`
-  (`php_caches_to_keep`), read from the registry, never from the pin table: it also runs
-  on the path where a pool restart failed partway and later minors still serve from
-  their old masters, and unlinking a running master's tree leaves it alive on the inode
-  but unrestartable. Keeping the pins is what makes "falls back to the pins" an OFFLINE
-  fallback rather than a download — **a floor whose bytes were deleted is not a floor**.
-  An unreadable registry skips the sweep rather than sweeping with an empty keep-set.
-  Ledger #338; the runtime-selectable successor is `docs/PLAN-binary-updates.md`.
+  user's default reset every launch). The Settings row says **both** the patch the minor
+  will run and, when they differ, the one actually serving (`PhpVersionView::serving`) —
+  without that a derived row could only show one, which is the same silent lie in a nicer
+  place. One minor's failure `continue`s rather than abandoning the rest. Ledger #338/#342.
+  The sweep's keep-set is `{compiled-in pins} ∪ {each minor's EFFECTIVE patch} ∪ {every
+  patch a pool is live on}` (`php_caches_to_keep`): it also runs on the path where a pool
+  restart failed partway and later minors still serve from their old masters, and
+  unlinking a running master's tree leaves it alive on the inode but unrestartable. The
+  union is not belt-and-braces — with the stack stopped, "what is running" is an empty
+  set rather than "I don't know", so a live-only keep-set deletes the tree the user just
+  installed. Keeping the pins is what makes "falls back to the pins" an OFFLINE fallback
+  rather than a download — **a floor whose bytes were deleted is not a floor**. An
+  unreadable registry skips the sweep rather than sweeping with an empty keep-set.
+  Ledger #338.
+- **A user can also move a minor forward BETWEEN app releases, from a signed manifest.**
+  `core::updates` fetches `manifest.json` + `.sig` from `rexenv/runtimes`, verifies an
+  ed25519 signature over the exact bytes against a **public key compiled into the app**
+  (never TLS: rexenv's digest gate compares bytes to whoever supplied the digest, so an
+  attacker-chosen URL paired with an attacker-chosen hash matches perfectly), and keeps
+  only entries surviving four structural limits — `name ∈ {php, php-fpm}` (`caddy` runs
+  as a root LaunchDaemon), https from an allowlisted host, a patch of a minor already
+  shipped, lowercase 64-hex. A **monotonic serial** refuses a replayed older document,
+  and the compiled-in pins stay a **floor**, so a manifest can only move a minor forward.
+  The choice lands in `php_versions.selected_patch` (v37) and `php::patch_to_run` is the
+  ONE answer to "which interpreter" — pool, planner, terminal, WP-CLI, composer, the
+  agent tools and the ini `-t` gate all read it, enforced by a source scan (#353), because
+  the pin needs no `Connection` and so compiles anywhere it does not belong. The publish
+  side is one command in the runtimes repo (`scripts/publish-manifest.sh`). Ledger
+  #348–#355; design in `docs/PLAN-binary-updates.md`.
 - **A PHP version resolves to the source that PUBLISHES it.** Most come from
   static-php.dev's bulk builds; the ones nobody publishes portably are built by
   `rexenv/runtimes` CI and hosted as GitHub Release assets (`php_url` /

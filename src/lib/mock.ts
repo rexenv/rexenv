@@ -94,6 +94,17 @@ export const mockServices: ServiceInfo[] = [
  *  dlopen into them), which is the case the dev UI must render correctly and the
  *  one a tidy all-true fixture would hide.
  *
+ *  **Four update states, because a fixture where every row is the same state
+ *  proves only that one state renders.** 8.1 is POST-UPDATE — `patch` is 8.1.35,
+ *  above what the app pins, with nothing offered: the state the row spent a
+ *  release rendering wrong, because every field was compared against the pin
+ *  instead of what the minor will run. 8.2 has `upstream === updatable`, where
+ *  the chip must vanish and only the button remain — "8.2.32 exists" beside a
+ *  button offering 8.2.32 reads as two versions. 8.3 has all three at once
+ *  (serving behind, a button, and a chip naming something newer than both).
+ *  8.4/8.5 are upstream-only, the chip's actual reason to exist. 8.0 is the only
+ *  row NOT installed, so the Install path has a fixture at all.
+ *
  *  **7.4 leads the list and its port breaks the pattern on purpose.** `fpmPort`
  *  is `9700 + major*10 + minor`, so 7.4 → **9774**, BELOW the contiguous
  *  9780–9785 block. A fixture that quietly renumbered it to 9779 would look
@@ -101,9 +112,9 @@ export const mockServices: ServiceInfo[] = [
  *  or sit in one range. Production is not tidy here; neither is this. */
 export const mockPhpVersions: PhpVersion[] = [
   { minor: "7.4", patch: "7.4.33", serving: null, upstream: null, updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9774, installed: true, isDefault: false, xdebugSupported: false, xdebugVersion: null, eolSince: "2022-11-28" },
-  { minor: "8.0", patch: "8.0.30", serving: null, upstream: null, updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9780, installed: true, isDefault: false, xdebugSupported: false, xdebugVersion: null, eolSince: "2023-11-26" },
-  { minor: "8.1", patch: "8.1.34", serving: null, upstream: null, updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9781, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: "2025-12-31" },
-  { minor: "8.2", patch: "8.2.31", serving: null, upstream: "8.2.33", updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9782, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
+  { minor: "8.0", patch: "8.0.30", serving: null, upstream: null, updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9780, installed: false, isDefault: false, xdebugSupported: false, xdebugVersion: null, eolSince: "2023-11-26" },
+  { minor: "8.1", patch: "8.1.35", serving: null, upstream: null, updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9781, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: "2025-12-31" },
+  { minor: "8.2", patch: "8.2.31", serving: null, upstream: "8.2.32", updatable: "8.2.32", upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9782, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
   { minor: "8.3", patch: "8.3.31", serving: "8.3.30", upstream: "8.3.33", updatable: "8.3.32", upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9783, installed: true, isDefault: true, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
   { minor: "8.4", patch: "8.4.23", serving: null, upstream: "8.4.24", updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9784, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },
   { minor: "8.5", patch: "8.5.8", serving: null, upstream: "8.5.9", updatable: null, upstreamCheckedAt: "2026-08-17 09:12:00", fpmPort: 9785, installed: true, isDefault: false, xdebugSupported: true, xdebugVersion: "3.5.3", eolSince: null },

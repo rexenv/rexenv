@@ -277,20 +277,32 @@ whether or not the rest of this is ever built.
 
 ## 6. Disk — the premise needs correcting too, and the GC is a landmine
 
-**A GC already exists.** `gc_outdated_php_caches` (`binaries.rs:1375-1394`) runs at every
-launch (`lib.rs:371`) and removes any `php-<version>/` tree whose version is not the
-pinned patch for its minor. Versions do **not** accumulate with no story today.
+> **Shipped 18 Aug 2026.** The rule below is what `php_caches_to_keep` implements and
+> `lib.rs` calls; the keep-set is the live pools **unioned with** `php::effective_patches`.
+> The analysis is kept because the landmine is the useful half: this section describes a
+> GC that would have deleted the tree the user just installed, and nothing in the original
+> feature draft mentioned the GC at all.
+
+**A GC already exists.** `gc_outdated_php_caches` runs at every launch and removes any
+`php-<version>/` tree whose version is not in the keep-set. Versions do **not** accumulate
+with no story today.
 
 The real numbers, measured on this machine, are also bigger than "~31 MB": `bin/` is
 **2.9 GB across 34 entries**, and each PHP minor costs **two** trees (`php-<patch>/` CLI
 plus `php-fpm-<patch>/` FPM) at 68–104 MB each — **~136–208 MB per minor.**
 
-**The landmine:** `is_outdated_php_cache` is keyed on `php::patch_for_minor`
-(`binaries.rs:1368-1372`) — the compiled-in pin, and the exact function a runtime source
-re-points. Under runtime selection it therefore deletes, at the next launch, **the tree
-the user just selected and is currently running.** And after §7's revert-on-failure, it
-deletes the newly downloaded tree that the original draft explicitly promised to keep
-("**The new tree is not deleted**"). The draft never mentioned the GC.
+**The landmine (fixed — this is what it was):** `is_outdated_php_cache` was keyed on
+`php::patch_for_minor` — the compiled-in pin, and the exact function a runtime selection
+re-points. Under runtime selection it would have deleted, at the next launch, **the tree
+the user just selected and is currently running.** And after §7's revert-on-failure it
+would have deleted the newly downloaded tree the original draft explicitly promised to
+keep ("**The new tree is not deleted**"). The draft never mentioned the GC.
+
+Two further ways the fixed version was still wrong, both found after it was written:
+`want.values()` alone missed pools running an OLD patch mid-restart, and a keep-set built
+from the LIVE pools alone deletes everything the moment the stack is stopped — with no
+pools running, `running_php_patches` returns an empty set rather than "I don't know". The
+union of both is the answer, and neither half is redundant.
 
 There is also a foot-gun in this *today*, independent of the feature:
 `restart_pools_for` propagates with `?` (`service_manager.rs:1216-1219`), so a failure on
@@ -299,8 +311,8 @@ the caller catches the error, logs, and **falls through to the GC**, which unlin
 running masters' trees. On macOS the process survives on the unlinked inode, so it looks
 healthy right up until the pool cannot be restarted.
 
-**The rule the GC must implement:** keep `{the compiled-in pin} ∪ {each minor's
-registered patch}`, delete the rest. Both halves are load-bearing —
+**The rule the GC implements:** keep `{the compiled-in pins} ∪ {each minor's effective
+patch} ∪ {every patch a pool is live on}`, delete the rest. Both halves are load-bearing —
 
 > **A floor whose bytes were deleted is not a floor.** Keeping the compiled-in pin's tree
 > on disk is what makes "falls back to the pins" an offline guarantee rather than an
