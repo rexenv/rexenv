@@ -66,20 +66,30 @@ above). A local build also dodges the 10× macOS-minute multiplier on a private 
 **Before a release that carries an in-app PHP update:** the manifest must be signed
 and published, or the button offers nothing.
 
-**The key stays on YOUR machine, not in a CI secret** (`~/.rexenv/manifest-key.pem`,
-`chmod 600`). That is not laziness — it follows from the line above: the dmg is
-published locally precisely to avoid a cross-repo credential, and the manifest goes
-to a public repo too, so it inherits the same answer. **With no CI secret holding
-the key, compromising the GitHub account does not get an attacker the signing key**,
-so the signature defends against a compromised CDN or mirror, tampering past TLS,
-AND a repo compromise. That is a strictly stronger property than the CI-held
-version, for one less moving part.
+**Publishing the manifest is not a step in THIS pipeline.** It happens in
+`rexenv/runtimes`, where the artifacts and the signing key live:
+
+> Actions → **“Publish PHP update manifest”** → Run workflow.
+> `dry_run` on for the first look; run it again with it off to publish.
+
+The key is an **Environment secret with required reviewers** (`manifest-signing`),
+not a repo secret. An earlier draft of this file argued the key should never touch
+CI at all — the dmg is published locally to avoid a cross-repo credential, so the
+manifest could inherit that answer. That reasoning was sound about *repo* secrets
+and wrong about the alternative it implied: a procedure that only runs from one
+laptop is not a security property, it is a bus factor. The reviewer gate keeps the
+honest version of the claim — **reading the key needs a human approval GitHub logs**,
+so the key is as safe as approving a run, not as safe as pushing a commit.
 
   - `scripts/gen-release-key.sh` — mints the pair ONCE, wired into no pipeline.
-  - `scripts/publish-php-manifest.sh 8.3.32` — fetches the four artifacts from the
-    URL the app itself will use, hashes them, signs, **verifies its own signature**,
-    checks the signing key against the pinned `RELEASE_PUBKEY`, and prints the
-    publish command.
+    A key a build can mint is a key an attacker who reaches the build can mint.
+  - `scripts/check-php-pins.sh` — the one check only this repo can make: that
+    runtimes' `PINS` list knows about every minor `PHP_VERSIONS` ships. A missing
+    MINOR there means that minor can never be offered an update, silently.
+  - The publisher itself lives in runtimes (`scripts/publish-manifest.sh`, and the
+    workflow that runs it). This repo used to carry a second copy; two
+    implementations of one document format in two repos is drift waiting to
+    happen, and the copy here could not see the `PINS` that drive discovery.
 
 The public half is compiled into `core/updates.rs`, so **rotation is an app
 release** — which is the property that makes a stolen key survivable. Ledger

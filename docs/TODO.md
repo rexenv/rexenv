@@ -1442,12 +1442,34 @@ first:
   token, and custody can improve later for the price of a key rotation.
   Ledger #348 (verify + serial + four structural limits), #349 (`selected_patch`,
   pin as floor, the pool snapshot seam), #350 (the apply flow with revert, the
-  button, the key ceremony). **Remaining, and it is an OPERATOR task, not a code
-  one:** run `scripts/gen-release-key.sh`, put the private half in the CI secret
-  FIRST, then pin `RELEASE_PUBKEY` and commit, then publish a signed manifest
-  before that build reaches anyone. Until then `enabled()` is false, `updatable`
-  is always None and the button does not render — which is the correct dark state,
-  not a bug.
+  button, the key ceremony), #353 (nothing that RUNS php asks for the pin),
+  #354 (the apply reports what it changed; one apply per minor), #355 (never
+  offer a half-published version). **Key ceremony DONE 18 Aug 2026** — key minted,
+  `RELEASE_PUBKEY` pinned, manifest serial 1 published (8.2.32, 8.3.32), and the
+  `manifest-signing` Environment secret + reviewer gate verified live (a dispatched
+  run sat at `waiting` until approved; its CI-computed digests match the local
+  publish byte for byte).
+
+  **The eight-hour lesson, kept because the next feature will earn it again:** the
+  button shipped working and every layer BEHIND it disagreed with it. `patch_to_run`
+  existed in two places while eleven others asked for the pin; the toast asserted a
+  running process from a bare `Ok(())`; the revert threw away both failure results
+  while claiming recovery; the GC would have deleted the tree the user just
+  installed. Each was found by a person using the app, not by a test — because the
+  tests checked MECHANISM (does the signature verify, does the pool restart) and
+  never *what the user sees after the action*. The guards added since fire on the
+  call site, not on the outcome, for the same reason.
+
+- [ ] **Exercise the four PHP-row states in the WebKit harness (L2).** The mock
+  fixtures now carry them — post-update (`patch` above the pin, nothing offered),
+  `upstream === updatable` (button, no chip), all three at once, and one row not
+  installed — but nothing looks at them automatically. Every row bug in this arc
+  was found by a screenshot: the chips overlapping, the EOL badge wrapping
+  mid-pill, "8.2.32 exists" printed beside "Update to 8.2.32". That is the layer.
+- [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
+  to "a pool on the new patch answers on a FIXTURE port". Stopping the running
+  master on the PRODUCTION port and reverting when it does not come back needs
+  the real `ServiceManager` and a deliberately broken tree — `docs/SMOKE-TEST.md`.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If

@@ -10,11 +10,13 @@
 #   - a PUBLIC key (hex) → paste into `RELEASE_PUBKEY` in
 #     src-tauri/src/core/updates.rs and commit. Until you do, the app trusts no
 #     manifest and the Update button never appears, by construction.
-#   - a PRIVATE key (PEM) → save to ~/.rexenv/manifest-key.pem, chmod 600.
-#     NOT a CI secret: releases are published from your machine already (to avoid
-#     a cross-repo credential), so the key has no reason to leave it — and keeping
-#     it off CI means a GitHub account compromise does not get an attacker the
-#     signing key. Strictly stronger, one less moving part.
+#   - a PRIVATE key (PEM) → ~/.rexenv/manifest-key.pem (chmod 600) AND
+#     rexenv/runtimes' `manifest-signing` ENVIRONMENT secret. Environment, not
+#     repository: a repo secret is readable by any workflow on any branch, so one
+#     merged PR exfiltrates the key that can make every install run arbitrary
+#     bytes. With required reviewers on that environment, reading it needs a human
+#     approval GitHub logs — which is the actual property, and the honest way to
+#     say it is "as safe as approving a run", not "as safe as pushing a commit".
 #
 # WHAT THIS KEY IS WORTH, STATED PLAINLY
 #
@@ -57,9 +59,11 @@ PUBLIC KEY — commit this, in src-tauri/src/core/updates.rs:
 
     const RELEASE_PUBKEY: &str = "$PUB";
 
-PRIVATE KEY — save to ~/.rexenv/manifest-key.pem and chmod 600. Do not
-commit it, do not put it in a CI secret, and do not paste it into an issue,
-a chat, or an AI tool's transcript:
+PRIVATE KEY — save to ~/.rexenv/manifest-key.pem and chmod 600, and put the
+same PEM in rexenv/runtimes' `manifest-signing` ENVIRONMENT secret (the one
+with required reviewers — a repo-level secret is readable by any workflow on
+any branch, so one merged PR exfiltrates it). Do not commit it, and do not
+paste it into an issue, a chat, or an AI tool's transcript:
 
 $PRIV
 
@@ -70,13 +74,15 @@ NEXT, in this order — the order matters:
   1. mkdir -p ~/.rexenv && chmod 700 ~/.rexenv
      Save the PEM above to ~/.rexenv/manifest-key.pem, chmod 600.
   2. Pin the public key in src-tauri/src/core/updates.rs and commit.
-  3. ./scripts/publish-php-manifest.sh <patch>   — signs and prints the
-     publish command. Do this BEFORE the build reaches anyone, or the button
-     appears with nothing to offer.
+  3. Put the PEM in rexenv/runtimes → Settings → Environments →
+     `manifest-signing` → secret REXENV_MANIFEST_KEY.
+  4. rexenv/runtimes → Actions → "Publish PHP update manifest" → Run workflow.
+     Do this BEFORE the build reaches anyone, or the button appears with
+     nothing to offer.
 
-     (2 and 3 in that order: the script refuses to publish if the key does
-     not match what the app pins, which is the check that catches a rotation
-     done backwards.)
+     (2 before 4: the publish script refuses if the signing key does not match
+     what the app pins, which is the check that catches a rotation done
+     backwards.)
 
 TO ROTATE (a leak, or moving to a hardware token): run this again, replace
 ~/.rexenv/manifest-key.pem, pin the new public key, and ship a release. Old manifests stop
