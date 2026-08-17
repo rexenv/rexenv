@@ -104,8 +104,13 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
     // failure surfaced (not just the first), and no download ever streams while
     // the services lock is held (status polls stay live on a cold first run).
     // After this, the resolves inside start_core are cache hits.
-    let plan =
-        core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors, &db_versions);
+    let plan = core::downloads::plan_for_start_with(
+        state.platform.as_ref(),
+        &sites,
+        &php_minors,
+        &db_versions,
+        &php_patches,
+    );
     core::downloads::prefetch(state.platform.as_ref(), "Start all", &plan).await?;
     // Phase 1 (locked): spawn everything except the edge; collect the readiness
     // probes + Caddyfile. Spawning is fast — no waiting happens under the lock.
@@ -264,8 +269,16 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         start_inputs(state)?;
     // Guard 1: strictly offline. Every needed binary must already be cached
     // (the decision fn lives in core::downloads with its own test).
-    let plan =
-        core::downloads::plan_for_start(state.platform.as_ref(), &sites, &php_minors, &db_versions);
+    // The EFFECTIVE patches, or login-start checks the pin's cache and then starts
+    // pools that need the selection — downloading on the one path whose whole
+    // contract is that it never does (ledger #175).
+    let plan = core::downloads::plan_for_start_with(
+        state.platform.as_ref(),
+        &sites,
+        &php_minors,
+        &db_versions,
+        &php_patches,
+    );
     let missing = core::downloads::uncached_names(&plan);
     if !missing.is_empty() {
         // "not ready" rather than "not downloaded": since ledger #336 a cache can
@@ -337,7 +350,7 @@ pub fn enriched_status(state: &AppState) -> Result<Vec<ServiceStatus>> {
         .db
         .lock()
         .ok()
-        .and_then(|conn| core::php::list_versions(&conn, &[]).ok())
+        .and_then(|conn| core::php::list_versions(&conn, &[], &Default::default()).ok())
         .and_then(|v| v.into_iter().find(|v| v.is_default).map(|v| v.minor));
     let mut monitor = state
         .monitor

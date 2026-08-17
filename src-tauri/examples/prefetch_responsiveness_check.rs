@@ -35,7 +35,8 @@ async fn main() {
     }
 
     // 1) PLAN — full set resolved up front, split cached vs missing.
-    let plan = downloads::plan_for_start(&*plat, &[], &[], &Default::default());
+    // `_pinned`: this check has no app database, so there is no selection to floor.
+    let plan = downloads::plan_for_start_pinned(&*plat, &[], &[], &Default::default());
     let missing: Vec<String> = plan.iter().filter(|p| !p.cached).map(|p| p.name.clone()).collect();
     let cached: Vec<String> = plan.iter().filter(|p| p.cached).map(|p| p.name.clone()).collect();
     println!("plan: {} binaries — missing {missing:?}, cached {cached:?}", plan.len());

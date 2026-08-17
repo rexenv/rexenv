@@ -174,6 +174,34 @@ pub fn label_for(name: &str, version: &str) -> String {
     }
 }
 
+/// The effective patch for `minor`: the registry's selection if the caller supplied
+/// the map, else this build's pin.
+///
+/// **Every planner resolves through here.** They used to call `php::patch_for_minor`
+/// directly, which planned the PIN while `PhpFpmPools::ensure` resolved the
+/// SELECTION — so after any in-app update, Start-all prefetched bytes nobody would
+/// run and the real ~100MB download then happened INSIDE the services lock, where
+/// every status poll's `try_lock` fails and the UI freezes. Worse, login-start's
+/// "never download" guard checked the pin's cache and then started pools that
+/// needed the selection, so the one path that must never touch the network did.
+///
+/// The map is a parameter rather than a `Connection` read because a planner must
+/// stay callable without a database (`commands/downloads.rs`' plan preview), and
+/// an EMPTY map is exactly right for a caller with no registry: it means "no
+/// selections exist", which is every install that has never pressed Update.
+pub type PatchMap = std::collections::HashMap<String, String>;
+
+fn planned_patch<'a>(patches: &'a PatchMap, minor: &str) -> Option<&'a str> {
+    patches
+        .get(minor)
+        .map(String::as_str)
+        // The PIN, and this is the ONLY place in this module allowed to ask for
+        // it. A blanket rename once replaced this very line with a call to this
+        // very function — infinite recursion, caught by a stack overflow in a
+        // test rather than by review.
+        .or_else(|| php::patch_for_minor(minor))
+}
+
 /// LOGIN-SAFETY guard 1 (`commands::services::auto_start_inner`): the names a
 /// start plan would have to DOWNLOAD. An unattended login start must abort
 /// when this is non-empty — never stream downloads nobody asked for — so the
@@ -213,11 +241,12 @@ impl PlannedBinary {
 /// the shared stack (edge, web server, MySQL, mail sink, DB browser), one
 /// php-fpm per installed minor (the default minor always, mirroring
 /// `start_core`), and FrankenPHP only when a site actually overrides to it.
-pub fn plan_for_start(
+pub fn plan_for_start_with(
     platform: &dyn Platform,
     sites: &[Site],
     php_minors: &[String],
     db_versions: &std::collections::HashMap<DbEngine, String>,
+    patches: &PatchMap,
 ) -> Vec<PlannedBinary> {
     let db_ver = |e: DbEngine| -> String {
         db_versions
@@ -240,7 +269,7 @@ pub fn plan_for_start(
         minors.push(default_minor);
     }
     for minor in &minors {
-        if let Some(patch) = php::patch_for_minor(minor) {
+        if let Some(patch) = planned_patch(patches, minor) {
             set.push(("php-fpm", patch));
         }
     }
@@ -294,8 +323,8 @@ pub fn plan_for_mailpit(platform: &dyn Platform) -> Vec<PlannedBinary> {
 
 /// The binary set for installing a PHP version: its FPM build (the pool) plus
 /// its CLI build (WP-CLI operations). Empty if the minor has no pinned build.
-pub fn plan_for_php(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
-    match php::patch_for_minor(minor) {
+pub fn plan_for_php_with(platform: &dyn Platform, minor: &str, patches: &PatchMap) -> Vec<PlannedBinary> {
+    match planned_patch(patches, minor) {
         Some(patch) => vec![
             PlannedBinary::new(platform, "php-fpm", patch),
             PlannedBinary::new(platform, "php", patch),
@@ -325,8 +354,8 @@ pub fn plan_for_php_patch(platform: &dyn Platform, minor: &str, patch: &str) -> 
 /// Just one minor's php-fpm pool binary — for the site-create / PHP-switch
 /// paths, whose `ensure_php_pool` runs under the services lock and must hit
 /// cache. Empty if the minor has no pinned build (`ensure` then errors clearly).
-pub fn plan_for_pool(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
-    match php::patch_for_minor(minor) {
+pub fn plan_for_pool_with(platform: &dyn Platform, minor: &str, patches: &PatchMap) -> Vec<PlannedBinary> {
+    match planned_patch(patches, minor) {
         Some(patch) => vec![PlannedBinary::new(platform, "php-fpm", patch)],
         None => Vec::new(),
     }
@@ -336,8 +365,8 @@ pub fn plan_for_pool(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary>
 /// bundle — `ensure_php_debug_pool` runs under the services lock and must hit
 /// cache. Empty when the minor has no Xdebug support (core refuses the toggle
 /// with the real message).
-pub fn plan_for_xdebug(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
-    let mut plan = plan_for_pool(platform, minor);
+pub fn plan_for_xdebug_with(platform: &dyn Platform, minor: &str, patches: &PatchMap) -> Vec<PlannedBinary> {
+    let mut plan = plan_for_pool_with(platform, minor, patches);
     if let Some((name, version)) = binaries::xdebug_bundle_id(minor) {
         plan.push(PlannedBinary::new(platform, &name, version));
     }
@@ -345,9 +374,9 @@ pub fn plan_for_xdebug(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinar
 }
 
 /// WP install tooling for a site create: the minor's PHP CLI build + WP-CLI.
-pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+pub fn plan_for_wp_tooling_with(platform: &dyn Platform, minor: &str, patches: &PatchMap) -> Vec<PlannedBinary> {
     let mut plan = Vec::new();
-    if let Some(patch) = php::patch_for_minor(minor) {
+    if let Some(patch) = planned_patch(patches, minor) {
         plan.push(PlannedBinary::new(platform, "php", patch));
     }
     plan.push(PlannedBinary::new(platform, "wp-cli", binaries::WP_CLI_VERSION));
@@ -361,9 +390,13 @@ pub fn plan_for_wp_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedB
 /// Named for COMPOSER rather than for Laravel since a cloned Symfony, Craft or
 /// Statamic site needs exactly the same two binaries — a name that says
 /// "laravel" sends the next reader looking for a second, identical plan.
-pub fn plan_for_composer_tooling(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> {
+pub fn plan_for_composer_tooling_with(
+    platform: &dyn Platform,
+    minor: &str,
+    patches: &PatchMap,
+) -> Vec<PlannedBinary> {
     let mut plan = Vec::new();
-    if let Some(patch) = php::patch_for_minor(minor) {
+    if let Some(patch) = planned_patch(patches, minor) {
         plan.push(PlannedBinary::new(platform, "php", patch));
     }
     plan.push(PlannedBinary::new(platform, "composer", binaries::COMPOSER_VERSION));
@@ -822,7 +855,7 @@ mod tests {
     fn plan_for_start_covers_stack_pools_and_conditional_frankenphp() {
         let plat = crate::platform::current();
         let plan =
-            plan_for_start(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default());
+            plan_for_start_with(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default(), &PatchMap::new());
         let names: Vec<(&str, &str)> = plan
             .iter()
             .map(|p| (p.name.as_str(), p.version.as_str()))
@@ -846,21 +879,90 @@ mod tests {
         assert!(!names.iter().any(|(n, _)| *n == "frankenphp"));
 
         let plan =
-            plan_for_start(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default());
+            plan_for_start_with(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default(), &PatchMap::new());
         assert!(plan.iter().any(|p| p.name == "frankenphp"));
+    }
+
+    /// **A planner plans what the pool will RUN, which is the selection when
+    /// there is one.**
+    ///
+    /// The sibling test below asserts the PIN and was correct as far as it went —
+    /// and that was the whole defect: every planner asked `patch_for_minor` while
+    /// `PhpFpmPools::ensure` asked the selection, so after an in-app update
+    /// Start-all prefetched bytes nobody would run and the real download happened
+    /// INSIDE the services lock, freezing the UI. Login-start was worse: its
+    /// "never download" guard checked the pin's cache, then started pools that
+    /// needed the selection.
+    #[test]
+    fn a_planner_plans_the_selection_when_one_exists_not_the_pin() {
+        let plat = crate::platform::current();
+        let pin = php::patch_for_minor("8.2").unwrap();
+        let selected = "8.2.9999";
+        let map = PatchMap::from([("8.2".to_string(), selected.to_string())]);
+
+        for (label, plan) in [
+            ("plan_for_php", plan_for_php_with(&*plat, "8.2", &map)),
+            ("plan_for_pool", plan_for_pool_with(&*plat, "8.2", &map)),
+            ("plan_for_xdebug", plan_for_xdebug_with(&*plat, "8.2", &map)),
+            ("plan_for_wp_tooling", plan_for_wp_tooling_with(&*plat, "8.2", &map)),
+            ("plan_for_composer_tooling", plan_for_composer_tooling_with(&*plat, "8.2", &map)),
+        ] {
+            let phps: Vec<&str> = plan
+                .iter()
+                .filter(|p| p.name.starts_with("php"))
+                .map(|p| p.version.as_str())
+                .collect();
+            assert!(!phps.is_empty(), "{label} planned no PHP at all");
+            for v in &phps {
+                assert_eq!(*v, selected, "{label} planned the PIN, not the selection");
+                assert_ne!(*v, pin);
+            }
+        }
+
+        // And the START plan, which is the one login-start's guard reads.
+        let start = plan_for_start_with(
+            &*plat,
+            &[site(WebServer::Nginx)],
+            &["8.2".into()],
+            &Default::default(),
+            &map,
+        );
+        let fpm: Vec<&str> = start
+            .iter()
+            .filter(|p| p.name == "php-fpm")
+            .map(|p| p.version.as_str())
+            .collect();
+        // The fixture site is on another minor, so its pool is planned too — the
+        // property is that 8.2's entry is the SELECTION and the pin is absent.
+        assert!(
+            fpm.contains(&selected),
+            "plan_for_start did not plan 8.2's selection — login-start would download it: {fpm:?}"
+        );
+        assert!(
+            !fpm.contains(&pin),
+            "plan_for_start planned 8.2's PIN as well as its selection: {fpm:?}"
+        );
+
+        // With NO selection, every one of them is the pin. That is the whole
+        // install base and must not have moved.
+        let bare = plan_for_php_with(&*plat, "8.2", &PatchMap::new());
+        assert!(bare.iter().all(|p| p.version == pin));
     }
 
     #[test]
     fn plan_for_php_maps_minor_to_pinned_fpm_and_cli() {
         let plat = crate::platform::current();
-        let plan = plan_for_php(&*plat, "8.2");
+        let plan = plan_for_php_with(&*plat, "8.2", &PatchMap::new());
         let patch = php::patch_for_minor("8.2").unwrap();
         let names: Vec<(&str, &str)> = plan
             .iter()
             .map(|p| (p.name.as_str(), p.version.as_str()))
             .collect();
         assert_eq!(names, vec![("php-fpm", patch), ("php", patch)]);
-        assert!(plan_for_php(&*plat, "7.0").is_empty(), "unpinned minor → nothing to fetch");
+        assert!(
+            plan_for_php_with(&*plat, "7.0", &PatchMap::new()).is_empty(),
+            "unpinned minor → nothing to fetch"
+        );
     }
 
     #[test]
@@ -884,4 +986,20 @@ mod tests {
         assert_eq!(i.phase, Phase::Downloading, "live download not reset by plan");
         assert_eq!(i.downloaded_bytes, 5_000_000);
     }
+}
+
+/// Planners for callers with NO registry in hand — the plan PREVIEW and the
+/// onboarding checklist. They see the pins, which is correct there: a preview of
+/// "what a first run downloads" is about a machine with no selections yet.
+///
+/// Named `_pinned` on purpose. Reaching for one of these from a path that HAS a
+/// connection is the bug that shipped: the pin gets planned, the pool resolves the
+/// selection, and the download moves inside the services lock.
+pub fn plan_for_start_pinned(
+    platform: &dyn Platform,
+    sites: &[Site],
+    php_minors: &[String],
+    db_versions: &std::collections::HashMap<DbEngine, String>,
+) -> Vec<PlannedBinary> {
+    plan_for_start_with(platform, sites, php_minors, db_versions, &PatchMap::new())
 }

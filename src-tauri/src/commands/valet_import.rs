@@ -623,9 +623,13 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     }
     // Unlocked, before anything takes the services lock (the prefetch-before-lock
     // invariant), and once per minor rather than per site.
+    let php_patches = {
+        let conn = lock(&state)?;
+        core::php::effective_patches(&conn).unwrap_or_default()
+    };
     for m in &minors {
         batch.tick("php", 0, None, Some(format!("getting PHP {m} ready")), 0);
-        let plan = core::downloads::plan_for_php(state.platform.as_ref(), m);
+        let plan = core::downloads::plan_for_php_with(state.platform.as_ref(), m, &php_patches);
         core::downloads::prefetch(state.platform.as_ref(), &format!("Import (PHP {m})"), &plan)
             .await?;
     }

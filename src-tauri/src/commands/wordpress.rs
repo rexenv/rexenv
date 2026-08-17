@@ -30,9 +30,18 @@ pub(crate) async fn wp_tools(
     state: &State<'_, AppState>,
     php_minor: &str,
 ) -> Result<(PathBuf, PathBuf)> {
-    let patch = php::patch_for_minor(php_minor)
-        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {php_minor}")))?;
-    let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+    // The site's own interpreter — WP-CLI is a phar and runs THROUGH it, so this
+    // must be the patch the site's POOL runs, not the pin. Running WP-CLI on the
+    // old interpreter after an update is invisible until something in the new
+    // patch matters, and then it is a bug nobody can place.
+    let patch = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        php::patch_to_run(&conn, php_minor)?
+    };
+    let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
     // wp-cli is a .phar (not a Mach-O) → resolve_file (no chmod/codesign).
     let wp_phar =
         binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION).await?;
@@ -47,9 +56,14 @@ pub(crate) async fn composer_tools(
     state: &State<'_, AppState>,
     php_minor: &str,
 ) -> Result<(PathBuf, PathBuf)> {
-    let patch = php::patch_for_minor(php_minor)
-        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {php_minor}")))?;
-    let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+    let patch = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        php::patch_to_run(&conn, php_minor)?
+    };
+    let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
     // A .phar (not a Mach-O) → resolve_file: no chmod/codesign step.
     let composer_phar =
         binaries::resolve_file(state.platform.as_ref(), "composer", binaries::COMPOSER_VERSION)

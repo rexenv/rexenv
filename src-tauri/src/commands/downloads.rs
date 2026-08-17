@@ -34,7 +34,7 @@ impl From<&PlannedBinary> for PlannedInfo {
 /// The Start-all binary plan (brief DB lock for sites + installed PHP minors,
 /// never held across an await).
 fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
-    let (sites, minors, db_versions) = {
+    let (sites, minors, patches, db_versions) = {
         let conn = state
             .db
             .lock()
@@ -42,6 +42,7 @@ fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
         (
             crate::core::sites::list(&conn)?,
             crate::core::php::installed_minors(&conn)?,
+            crate::core::php::effective_patches(&conn)?,
             crate::core::db::DbEngine::ALL
                 .into_iter()
                 .filter(|e| e.available())
@@ -49,7 +50,15 @@ fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
                 .collect::<std::collections::HashMap<_, _>>(),
         )
     };
-    Ok(downloads::plan_for_start(state.platform.as_ref(), &sites, &minors, &db_versions))
+    // The map, not the pins: a preview that lists 8.3.31 while the start will
+    // fetch 8.3.32 is a preview of the wrong download.
+    Ok(downloads::plan_for_start_with(
+        state.platform.as_ref(),
+        &sites,
+        &minors,
+        &db_versions,
+        &patches,
+    ))
 }
 
 /// The core binary set (the Start-all plan) with cached flags — the onboarding

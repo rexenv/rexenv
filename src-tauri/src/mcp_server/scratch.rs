@@ -662,13 +662,19 @@ impl<'a> ScratchCtx<'a> {
     /// resolved through the platform trait. Downloads on first use, so the
     /// caller must treat the gap either side of it as a real window.
     async fn wp_tools(&self, php_minor: &str) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
-        let patch = crate::core::php::patch_for_minor(php_minor).ok_or_else(|| {
-            Error::Other(format!(
-                "this site is set to PHP {php_minor}, which rexenv has no pinned build for — the \
-                 person you're working with can change the site's PHP version in rexenv."
-            ))
-        })?;
-        let php_bin = crate::core::binaries::resolve(self.platform(), "php", patch).await?;
+        // The patch the site's POOL runs (selection floored by the pin), not the
+        // pin — an agent running wp-cli on a different interpreter than the site
+        // serves is a disagreement nobody can see from either side.
+        let patch = {
+            let conn = self.db()?;
+            crate::core::php::patch_to_run(&conn, php_minor).map_err(|_| {
+                Error::Other(format!(
+                    "this site is set to PHP {php_minor}, which rexenv has no build for — the \
+                     person you're working with can change the site's PHP version in rexenv."
+                ))
+            })?
+        };
+        let php_bin = crate::core::binaries::resolve(self.platform(), "php", &patch).await?;
         // wp-cli is a .phar, not a Mach-O → resolve_file (no chmod/codesign).
         let wp_phar = crate::core::binaries::resolve_file(
             self.platform(),

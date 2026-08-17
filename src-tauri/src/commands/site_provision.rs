@@ -349,6 +349,7 @@ fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
 /// mirrors `commands/sites.rs` — pool vs override server, engine + wp tooling
 /// only for WordPress).
 fn build_plan(
+    patches: &downloads::PatchMap,
     state: &AppState,
     site: &Site,
     minor: &str,
@@ -358,7 +359,7 @@ fn build_plan(
     let mut plan = if matches!(site.web_server, WebServer::Frankenphp) {
         downloads::plan_for_override(state.platform.as_ref(), site.web_server)
     } else {
-        downloads::plan_for_pool(state.platform.as_ref(), minor)
+        downloads::plan_for_pool_with(state.platform.as_ref(), minor, patches)
     };
     if matches!(site.web_server, WebServer::Apache) {
         plan.extend(downloads::plan_for_override(state.platform.as_ref(), site.web_server));
@@ -371,12 +372,12 @@ fn build_plan(
     let linked = site.docroot_managed == Some(false);
     if matches!(site.site_type, SiteType::Wordpress) && !linked {
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
-        plan.extend(downloads::plan_for_wp_tooling(state.platform.as_ref(), minor));
+        plan.extend(downloads::plan_for_wp_tooling_with(state.platform.as_ref(), minor, patches));
         // A cloned one may be Bedrock, whose CORE comes from Composer — and we
         // cannot know which before the clone, so the phar rides along. It is a
         // couple of megabytes beside wp-cli and the database engine.
         if site.git_url.is_some() {
-            plan.extend(downloads::plan_for_composer_tooling(state.platform.as_ref(), minor));
+            plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
         }
     }
     // Laravel needs the same database engine, and Composer + the PHP CLI to run
@@ -384,14 +385,14 @@ fn build_plan(
     // checks are made against the PHP the app will actually run on.
     if matches!(site.site_type, SiteType::Laravel) && !linked {
         plan.extend(downloads::plan_for_engine(state.platform.as_ref(), engine, engine_version));
-        plan.extend(downloads::plan_for_composer_tooling(state.platform.as_ref(), minor));
+        plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
     }
     // A cloned Blank-PHP site needs Composer and the PHP CLI to run it — but
     // NOT a database engine: `needs_database` says a Php site has none, and
     // fetching ~600 MB of MySQL for a phase that will never run is the exact
     // waste the linked-site carve-out above exists to avoid.
     if matches!(site.site_type, SiteType::Php) && site.git_url.is_some() && !linked {
-        plan.extend(downloads::plan_for_composer_tooling(state.platform.as_ref(), minor));
+        plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
     }
     plan
 }
@@ -586,7 +587,14 @@ pub(crate) fn start<R: tauri::Runtime>(
     let minor = core::php::minor_of(&created.php_version);
     let engine = DbEngine::from_site(created.db_engine);
     let engine_version = super::database::effective_db_version(state, engine)?;
-    let plan = build_plan(state, &created, &minor, engine, &engine_version);
+    let patches = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::php::effective_patches(&conn)?
+    };
+    let plan = build_plan(&patches, state, &created, &minor, engine, &engine_version);
     spawn_job(app, state, jobs, created, wp.unwrap_or_default(), blueprint, plan)
 }
 
@@ -706,7 +714,14 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
     let minor = core::php::minor_of(&site.php_version);
     let engine = DbEngine::from_site(site.db_engine);
     let engine_version = super::database::effective_db_version(&state, engine)?;
-    let plan = build_plan(&state, &site, &minor, engine, &engine_version);
+    let patches = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::php::effective_patches(&conn)?
+    };
+    let plan = build_plan(&patches, &state, &site, &minor, engine, &engine_version);
     // NOTE: the original blueprint id isn't persisted on the site — a retry
     // re-runs the core install path; blueprint items that already installed
     // persist (real installs), missing ones need a manual pass.

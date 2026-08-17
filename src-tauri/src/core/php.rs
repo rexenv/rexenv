@@ -294,6 +294,19 @@ pub fn effective_patch(conn: &Connection, minor: &str) -> Result<Option<String>>
     Ok(crate::core::updates::floored(minor, selected.as_deref()))
 }
 
+/// [`effective_patch`] or an error naming the minor — the shape every caller that
+/// RUNS php actually wants.
+///
+/// Added because eleven call sites reached for `patch_for_minor` (the PIN) to get a
+/// binary to execute: the site terminal, every WP-CLI invocation, the repo
+/// composer steps, the agent scratch tools and the ini `-t` gate. After an in-app
+/// update each of them ran the OLD interpreter while the site's pool served the
+/// new one — so `php -v` in a site's own terminal disagreed with the site.
+pub fn patch_to_run(conn: &Connection, minor: &str) -> Result<String> {
+    effective_patch(conn, minor)?
+        .ok_or_else(|| Error::Other(format!("unknown PHP version: {minor}")))
+}
+
 /// Every minor's effective patch, for the snapshot the ServiceManager is handed
 /// before a start (the same shape as `set_php_settings` / `set_db_versions`).
 pub fn effective_patches(conn: &Connection) -> Result<std::collections::HashMap<String, String>> {
@@ -328,40 +341,56 @@ pub fn patch_of_exe(exe: &std::path::Path) -> Option<String> {
 /// read and there is no column to migrate; and returned as a distinct view type
 /// so no caller can hold a [`PhpVersion`] whose derived fields were never
 /// filled (see [`PhpVersionView`]).
-pub fn list_versions(conn: &Connection, running: &[String]) -> Result<Vec<PhpVersionView>> {
+/// `catalog` is the VERIFIED update catalog — passed in, not read here.
+///
+/// It used to be a hidden `updates::cached(conn)` call, which made the field it
+/// feeds untestable: a test could not put a catalog in scope without a signed
+/// document, so `updatable` was always `None` and the first test written for it
+/// asserted nothing at all. A parameter is the difference between a test that
+/// passes and a test that proves something.
+pub fn list_versions(
+    conn: &Connection,
+    running: &[String],
+    catalog: &crate::core::updates::VersionCatalog,
+) -> Result<Vec<PhpVersionView>> {
     let upstream = crate::core::php_upstream::cached(conn);
-    // What a VERIFIED manifest can actually install, which is a different
-    // question from what php.net says exists.
-    let catalog = crate::core::updates::cached(conn);
     let checked_at = (!upstream.checked_at.is_empty()).then(|| upstream.checked_at.clone());
     Ok(store::list_php_versions(conn)?
         .into_iter()
         .map(|v| {
-            let pinned = patch_for_minor(&v.minor).unwrap_or_default().to_string();
+            // THE BASELINE, and getting it wrong produced three wrong fields at
+            // once. Every question this row answers is relative to what the minor
+            // WILL RUN — the user's selection floored by the pin — NOT to the pin.
+            // Comparing against the pin meant that after a successful update the
+            // row showed the old patch, painted the correct new pool as a
+            // discrepancy, and kept offering an update already applied.
+            let effective = crate::core::updates::floored(&v.minor, v.selected_patch.as_deref())
+                .unwrap_or_default();
             PhpVersionView {
                 xdebug_supported: binaries::xdebug_supported(&v.minor),
                 xdebug_version: binaries::xdebug_version_for(&v.minor),
                 eol_since: eol_since(&v.minor),
-                // What the live pool is EXECUTING, said only when it differs
-                // from the pin. Three states collapse to `None` deliberately —
-                // no pool, a pool on the pin, or a pool we could not identify —
-                // because none of them is a disagreement, and the UI must not
-                // invent one.
+                // What the live pool is EXECUTING, said only when it differs from
+                // what this minor SHOULD be running — i.e. a restart is still
+                // pending. A pool already on the chosen patch is not a
+                // disagreement, and calling it one is how a correct state got
+                // painted amber.
                 serving: running
                     .iter()
-                    .find(|p| minor_of(p) == v.minor && **p != pinned)
+                    .find(|p| minor_of(p) == v.minor && **p != effective)
                     .cloned(),
-                // Only ever set when it is genuinely newer than the pin, so
-                // the UI cannot render an "exists" line that says the same
-                // version twice.
+                // php.net's newest, only when it is newer than what we will run.
                 upstream: upstream
                     .latest
                     .get(&v.minor)
-                    .filter(|u| crate::core::php_upstream::is_newer(u, &pinned))
+                    .filter(|u| crate::core::php_upstream::is_newer(u, &effective))
                     .cloned(),
                 upstream_checked_at: checked_at.clone(),
-                updatable: catalog.newer_than(&v.minor, &pinned),
-                patch: pinned,
+                // Offered only when the catalog has something newer than what we
+                // will run. Against the pin, this kept offering a patch the user
+                // had already installed.
+                updatable: catalog.newer_than(&v.minor, &effective),
+                patch: effective,
                 minor: v.minor,
                 fpm_port: v.fpm_port,
                 installed: v.installed,
@@ -1264,7 +1293,7 @@ mod tests {
     fn the_version_list_carries_the_eol_date() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let rows = list_versions(&conn, &[]).unwrap();
+        let rows = list_versions(&conn, &[], &Default::default()).unwrap();
         for r in &rows {
             assert_eq!(r.eol_since, eol_since(&r.minor), "{}", r.minor);
         }
@@ -1288,7 +1317,7 @@ mod tests {
     fn the_version_list_carries_cores_xdebug_rule_rather_than_the_ui_guessing() {
         let conn = db::open_in_memory().unwrap();
         seed_registry(&conn).unwrap();
-        let rows = list_versions(&conn, &[]).unwrap();
+        let rows = list_versions(&conn, &[], &Default::default()).unwrap();
         assert!(!rows.is_empty());
         for r in &rows {
             assert_eq!(
@@ -1523,6 +1552,85 @@ mod tests {
         assert!(pin.installed, "a fresh install must have its default minor enabled");
     }
 
+    /// **After a successful update the row shows the new patch, no discrepancy,
+    /// and NO update button.**
+    ///
+    /// The test class that was missing, and its absence is why three user-visible
+    /// bugs shipped in a row. Every existing test asked "does this function
+    /// return the right thing for these inputs". None asked **"after the user
+    /// does X, what does the screen say"** — so `list_versions` comparing three
+    /// fields against the PIN instead of the effective patch passed everything
+    /// while producing a row that showed 8.2.31, painted the correct 8.2.32 pool
+    /// as a problem, and offered an update already applied.
+    ///
+    /// Written from the user's report, in their order: apply, then look.
+    #[test]
+    fn after_an_update_the_row_shows_the_new_patch_and_offers_nothing() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let minor = "8.2".to_string();
+        let pin = patch_for_minor(&minor).unwrap().to_string();
+        let target = format!("{minor}.9999");
+        // A catalog offering the newer patch — PASSED IN, so the field it feeds is
+        // actually under test. The first version of this read the catalog from the
+        // database, where a test cannot put one without a signed document, so
+        // `updatable` was `None` for both halves and every assertion about it was
+        // vacuous. That is the same trap as three earlier guards in this session.
+        let catalog = crate::core::updates::catalog_for_tests(&[(
+            "php-fpm", &target, "arm64", "https://dl.static-php.dev/x", &"a".repeat(64),
+        )]);
+        let row = |c: &Connection, running: &[String]| {
+            list_versions(c, running, &catalog)
+                .unwrap()
+                .into_iter()
+                .find(|r| r.minor == minor)
+                .unwrap()
+        };
+
+        // BEFORE: on the pin, pool on the pin — and the button IS offered, which
+        // is what makes the "after" assertions mean something.
+        let before = row(&conn, &[pin.clone()]);
+        assert_eq!(before.patch, pin);
+        assert_eq!(before.serving, None, "a pool on the pin is not a discrepancy");
+        assert_eq!(
+            before.updatable.as_deref(),
+            Some(target.as_str()),
+            "the fixture offers nothing — every assertion below would be vacuous"
+        );
+
+        // THE UPDATE: the selection is recorded and the pool moves onto it.
+        store::set_php_selected_patch(&conn, &minor, Some(&target)).unwrap();
+
+        // AFTER — the three things the user read off the screen and reported.
+        let after = row(&conn, &[target.clone()]);
+        assert_eq!(after.patch, target, "the row still showed the old patch");
+        assert_eq!(
+            after.serving, None,
+            "the row painted the pool it was ASKED to run as a discrepancy"
+        );
+        assert_eq!(
+            after.updatable, None,
+            "the row kept offering an update the user had already applied"
+        );
+
+        // AND the pending-restart case must STILL be reported: selection moved,
+        // pool has not. That is the one time `serving` should appear.
+        let pending = row(&conn, &[pin.clone()]);
+        assert_eq!(pending.patch, target);
+        assert_eq!(
+            pending.serving.as_deref(),
+            Some(pin.as_str()),
+            "a pool still on the old patch after a selection MUST be visible"
+        );
+
+        // A stale selection below the pin never moves the row (the floor), and the
+        // button comes back, because the catalog is still newer than the pin.
+        store::set_php_selected_patch(&conn, &minor, Some(&format!("{minor}.0"))).unwrap();
+        let stale = row(&conn, &[pin.clone()]);
+        assert_eq!(stale.patch, pin);
+        assert_eq!(stale.updatable.as_deref(), Some(target.as_str()));
+    }
+
     /// **The row says what is PINNED and, separately, what is SERVING.**
     ///
     /// This is what makes deleting `php_versions.patch` a simplification rather
@@ -1540,24 +1648,24 @@ mod tests {
         let row = |rows: Vec<PhpVersionView>| rows.into_iter().find(|r| r.minor == minor).unwrap();
 
         // Nothing running: pinned only, and no invented disagreement.
-        let r = row(list_versions(&conn, &[]).unwrap());
+        let r = row(list_versions(&conn, &[], &Default::default()).unwrap());
         assert_eq!(r.patch, pinned);
         assert_eq!(r.serving, None);
 
         // A pool running the pinned patch is not a disagreement either.
-        let r = row(list_versions(&conn, &[pinned.clone()]).unwrap());
+        let r = row(list_versions(&conn, &[pinned.clone()], &Default::default()).unwrap());
         assert_eq!(r.serving, None, "running the pin is not worth a second line");
 
         // A pool running something else IS, and the row carries both.
         let stale = format!("{minor}.0");
         assert_ne!(stale, pinned);
-        let r = row(list_versions(&conn, &[stale.clone()]).unwrap());
+        let r = row(list_versions(&conn, &[stale.clone()], &Default::default()).unwrap());
         assert_eq!(r.patch, pinned, "the pin is still the pin");
         assert_eq!(r.serving, Some(stale), "…and the row must say what is serving");
 
         // Another minor's pool never leaks into this row.
         let other = all_minors().into_iter().find(|m| *m != minor).unwrap();
-        let r = row(list_versions(&conn, &[format!("{other}.0")]).unwrap());
+        let r = row(list_versions(&conn, &[format!("{other}.0")], &Default::default()).unwrap());
         assert_eq!(r.serving, None);
     }
 
@@ -1832,5 +1940,129 @@ mod tests {
             assert!(pools.reap_dead(&ours).is_empty(), "an identified serving master never reaps");
         }
         assert_eq!(pools.pools[0].misses, 0, "health must RESET the count, not just not-reap");
+    }
+
+    /// Every use of the PIN, by name, checked against what it is FOR.
+    ///
+    /// The whole in-app-update feature failed on this once: `selected_patch` was
+    /// honoured in two places while eleven others asked `patch_for_minor` for a
+    /// binary to EXECUTE. After an update the pool served the new patch while the
+    /// site's own terminal, WP-CLI, composer, the agent tools and the `-t` gate all
+    /// still ran the old one — every layer individually correct, the system wrong,
+    /// and `php -v` in a site's terminal disagreeing with the site it belongs to.
+    /// A rename or a review cannot catch that class; only a rule that fires on the
+    /// call itself can, because the tempting call is the one that compiles.
+    ///
+    /// So the pin has exactly three legitimate uses, and this test is the list:
+    ///   1. **Existence** — "is this a minor rexenv ships?" (`.is_some()`,
+    ///      `.is_none()`, `Some(_)`). Never yields a patch to run, so an update
+    ///      cannot make it wrong.
+    ///   2. **The floor** — `updates::floored`, and the ONE planner seam below it.
+    ///   3. This module, which defines both.
+    /// Anything that RUNS php uses [`patch_to_run`]. If you came here to add a
+    /// fourth: you almost certainly want `patch_to_run`.
+    #[test]
+    fn the_pin_is_never_used_as_a_patch_to_run() {
+        // file → why its calls are not "what patch should I run" questions.
+        const ALLOWED: &[(&str, &str)] = &[
+            ("core/php.rs", "defines the pin and the effective-patch accessors"),
+            ("core/updates.rs", "`floored` IS the floor — the pin's one derivation"),
+            (
+                "core/downloads.rs",
+                "`planned_patch`: the single planner seam that falls back to the pin",
+            ),
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files: Vec<std::path::PathBuf> = Vec::new();
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    out.push(p);
+                }
+            }
+        }
+        walk(&root, &mut files);
+        files.sort();
+        assert!(
+            files.len() > 40,
+            "the scan found {} files — it is not walking the tree",
+            files.len()
+        );
+
+        let mut offences: Vec<String> = Vec::new();
+        let mut checked = 0usize;
+        let mut saw_existence = false;
+        for path in &files {
+            let rel = path.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+            let body = std::fs::read_to_string(path).unwrap();
+            // Test code asserting against the pin is legitimate, so test modules
+            // come out — by BRACE DEPTH, never by cutting to end-of-file. In
+            // `mcp_server/scratch.rs` the test module sits in the MIDDLE, and the
+            // naive split silently shrank this scan past 900 production lines on
+            // the first run of this very test.
+            let prod = crate::core::copy_scan::production_lines(&body);
+            for (n, line) in &prod {
+                if !line.contains("patch_for_minor(") {
+                    continue;
+                }
+                let t = line.trim_start();
+                if t.starts_with("//") || t.starts_with('*') {
+                    continue; // prose naming it, not calling it
+                }
+                checked += 1;
+                if ALLOWED.iter().any(|(f, _)| *f == rel) {
+                    continue;
+                }
+                // An existence check puts its predicate on the call's own line or,
+                // for a `match`, in the arm just below it.
+                let here = prod.iter().position(|(m, _)| m == n).unwrap();
+                let window: String = prod[here..(here + 3).min(prod.len())]
+                    .iter()
+                    .map(|(_, l)| *l)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if window.contains(".is_some()")
+                    || window.contains(".is_none()")
+                    || window.contains("Some(_)")
+                {
+                    saw_existence = true;
+                } else {
+                    offences.push(format!("{rel}:{n} — {}", t.trim_end()));
+                }
+            }
+        }
+
+        // Both directions, as `copy_scan`'s contract requires. The comment canary
+        // is assembled at runtime: written as one literal it would survive
+        // stripping as code and prove only its own presence.
+        assert!(checked >= 6, "only {checked} pin uses found — the scan's matcher is broken");
+        assert!(saw_existence, "no existence check classified — the classifier is dead code");
+        let comment_only = format!("{} {} {}", "eleven", "call", "sites reached for");
+        assert!(
+            std::fs::read_to_string(&root.join("core/php.rs")).unwrap().contains(&comment_only),
+            "canary phrase moved — this test can no longer prove comments are stripped"
+        );
+        let scanned_php = crate::core::copy_scan::production_source(
+            &std::fs::read_to_string(&root.join("core/php.rs")).unwrap(),
+        );
+        assert!(
+            scanned_php.contains("pub fn patch_to_run"),
+            "the stripper ate production code in core/php.rs"
+        );
+
+        assert!(
+            offences.is_empty(),
+            "these use the compiled-in PIN where the question is \"what patch should run\":\n  {}\n\
+             After an in-app PHP update the pin is NOT what the pool serves — use \
+             `php::patch_to_run(&conn, minor)`. If a call only asks whether rexenv ships the \
+             minor, say so with `.is_some()`/`.is_none()`; if it is a genuine fourth use, add \
+             the file to ALLOWED with the reason.",
+            offences.join("\n  ")
+        );
     }
 }

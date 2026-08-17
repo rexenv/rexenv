@@ -482,10 +482,14 @@ pub async fn set_site_web_server(
             )?;
         }
     }
-    let (site, sites) = {
+    let (site, sites, php_patches) = {
         let conn = lock(&state)?;
         let updated = core::sites::set_web_server(&conn, &id, server)?;
-        (updated, core::sites::list(&conn)?)
+        (
+            updated,
+            core::sites::list(&conn)?,
+            core::php::effective_patches(&conn)?,
+        )
     };
     if let Some(ref s) = site {
         // The new backend's binary must be cached BEFORE the locked scope below
@@ -493,9 +497,10 @@ pub async fn set_site_web_server(
         let mut plan = if matches!(s.web_server, WebServer::Frankenphp) {
             core::downloads::plan_for_override(state.platform.as_ref(), s.web_server)
         } else {
-            core::downloads::plan_for_pool(
+            core::downloads::plan_for_pool_with(
                 state.platform.as_ref(),
                 &core::php::minor_of(&s.php_version),
+                &php_patches,
             )
         };
         if matches!(s.web_server, WebServer::Apache) {
@@ -565,13 +570,17 @@ pub(crate) async fn switch_php_version(
     id: &str,
     version: &str,
 ) -> Result<Option<Site>> {
-    let (site, sites) = {
+    let (site, sites, php_patches) = {
         let conn = state
             .db
             .lock()
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         let updated = core::sites::set_php_version(&conn, id, version)?;
-        (updated, core::sites::list(&conn)?)
+        (
+            updated,
+            core::sites::list(&conn)?,
+            core::php::effective_patches(&conn)?,
+        )
     };
     if let Some(ref s) = site {
         let minor = core::php::minor_of(&s.php_version);
@@ -580,9 +589,9 @@ pub(crate) async fn switch_php_version(
         let needs_debug = s.xdebug && core::binaries::xdebug_supported(&minor);
         // Pool binary cached before the locked ensure below. No-op when warm.
         let plan = if needs_debug {
-            core::downloads::plan_for_xdebug(state.platform.as_ref(), &minor)
+            core::downloads::plan_for_xdebug_with(state.platform.as_ref(), &minor, &php_patches)
         } else {
-            core::downloads::plan_for_pool(state.platform.as_ref(), &minor)
+            core::downloads::plan_for_pool_with(state.platform.as_ref(), &minor, &php_patches)
         };
         core::downloads::prefetch(state.platform.as_ref(), "Switch PHP version", &plan).await?;
         let checks = {
@@ -617,16 +626,21 @@ pub async fn set_site_xdebug(
     // The user is changing this site's Xdebug — that adopts it (promotion
     // choke point; a scratch site they touched is theirs).
     promote_if_scratch(&state, &id);
-    let (site, sites) = {
+    let (site, sites, php_patches) = {
         let conn = lock(&state)?;
         let updated = core::sites::set_xdebug(&conn, &id, enabled)?;
-        (updated, core::sites::list(&conn)?)
+        (
+            updated,
+            core::sites::list(&conn)?,
+            core::php::effective_patches(&conn)?,
+        )
     };
     if let Some(ref s) = site {
         let minor = core::php::minor_of(&s.php_version);
         if enabled {
             // Pool binary + xdebug bundle cached BEFORE the locked ensure below.
-            let plan = core::downloads::plan_for_xdebug(state.platform.as_ref(), &minor);
+            let plan =
+                core::downloads::plan_for_xdebug_with(state.platform.as_ref(), &minor, &php_patches);
             core::downloads::prefetch(state.platform.as_ref(), "Enable Xdebug", &plan).await?;
         }
         let checks = {

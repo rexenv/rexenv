@@ -346,13 +346,14 @@ pub fn run() {
                         // Read UNDER the lock, push AFTER it drops — an `if let`
                         // holding the guard across the await is not Send, which is
                         // the compiler enforcing the house rule for us.
-                        let patches = state
+                        let want = state
                             .db
                             .lock()
                             .ok()
-                            .and_then(|conn| core::php::effective_patches(&conn).ok());
-                        if let Some(patches) = patches {
-                            state.services.lock().await.set_php_patches(patches);
+                            .and_then(|conn| core::php::effective_patches(&conn).ok())
+                            .unwrap_or_default();
+                        if !want.is_empty() {
+                            state.services.lock().await.set_php_patches(want.clone());
                         }
 
                         // Which minors are serving bytes that are not this
@@ -362,14 +363,23 @@ pub fn run() {
                         // a failure simply leaves the pool where it is: the next
                         // launch asks the same live question and gets the same
                         // answer, which is what makes the retry real.
+                        //
+                        // Compared against the EFFECTIVE patch — the `patches`
+                        // snapshot read above — never against the pin. Against the
+                        // pin, a minor the user had UPDATED read as "serving bytes
+                        // that are not this build's pin" on EVERY launch, so its
+                        // pool was stopped and respawned forever: 502s on that
+                        // minor's sites, a health-log restart, and no cause the
+                        // user could see. The restart put it back on the same patch
+                        // that triggered the check.
                         let live: Vec<String> = {
                             let mgr = state.services.lock().await;
                             mgr.running_php_patches(platform)
                                 .unwrap_or_default()
                                 .into_iter()
                                 .filter(|running| {
-                                    core::php::patch_for_minor(&core::php::minor_of(running))
-                                        .is_some_and(|pinned| pinned != running)
+                                    want.get(&core::php::minor_of(running))
+                                        .is_some_and(|w| w != running)
                                 })
                                 .map(|running| core::php::minor_of(&running))
                                 .filter(|m| mgr.has_php_pool(m))
@@ -381,7 +391,14 @@ pub fn run() {
                         // failure abandon every later minor while the GC below
                         // still ran (ledger #338).
                         for minor in &live {
-                            let plan = core::downloads::plan_for_php(platform, minor);
+                            // The EFFECTIVE patch, not the pin: planning the pin
+                            // prefetches bytes nobody will run and leaves the real
+                            // download to happen inside the services lock, where
+                            // every status poll's `try_lock` then fails.
+                            let plan = match want.get(minor) {
+                                Some(p) => core::downloads::plan_for_php_patch(platform, minor, p),
+                                None => core::downloads::plan_for_php_with(platform, minor, &want),
+                            };
                             if let Err(e) = core::downloads::prefetch(
                                 platform,
                                 &format!("Update PHP {minor}"),
@@ -430,7 +447,7 @@ pub fn run() {
                                 .db
                                 .lock()
                                 .ok()
-                                .and_then(|conn| core::php::list_versions(&conn, &[]).ok())
+                                .and_then(|conn| core::php::list_versions(&conn, &[], &Default::default()).ok())
                                 .unwrap_or_default();
                             installed
                                 .into_iter()
@@ -445,7 +462,14 @@ pub fn run() {
                         };
                         for minor in &repairs {
                             log::info!("php: repairing an incomplete {minor} cache");
-                            let plan = core::downloads::plan_for_php(platform, minor);
+                            // Repair the patch that was FOUND broken. Planning the
+                            // pin here would re-fetch a tree that is already fine
+                            // and leave the incomplete one incomplete, so the
+                            // detect would fire again at every launch.
+                            let plan = match want.get(minor) {
+                                Some(p) => core::downloads::plan_for_php_patch(platform, minor, p),
+                                None => core::downloads::plan_for_php_with(platform, minor, &want),
+                            };
                             if let Err(e) = core::downloads::prefetch(
                                 platform,
                                 &format!("Repair PHP {minor}"),
@@ -530,15 +554,27 @@ pub fn run() {
                         // than sweeping with a short keep-set: the sweep deletes
                         // what is NOT in the set, so not-knowing must cost a
                         // skipped sweep and never a live tree.
+                        //
+                        // The keep-set is the live pools UNION what the registry
+                        // says each minor should run. Live-only was wrong in the
+                        // most ordinary way there is: with the stack stopped —
+                        // after a reboot, or Stop all then quit — `running_patches`
+                        // returns `Some(vec![])`, so the `None` guard never fires,
+                        // the keep-set falls back to the pins alone, and the tree
+                        // the user just installed is DELETED. Start all then
+                        // re-downloads ~150MB, or fails outright offline.
                         let running = {
                             let mgr = state.services.lock().await;
                             mgr.running_php_patches(platform)
                         };
                         match running {
-                            Some(running) => {
-                                for dir in
-                                    core::binaries::gc_outdated_php_caches(platform, &running)
-                                {
+                            Some(mut keep) => {
+                                for p in want.values() {
+                                    if !keep.contains(p) {
+                                        keep.push(p.clone());
+                                    }
+                                }
+                                for dir in core::binaries::gc_outdated_php_caches(platform, &keep) {
                                     log::info!("php: removed outdated binary cache {dir}");
                                 }
                             }

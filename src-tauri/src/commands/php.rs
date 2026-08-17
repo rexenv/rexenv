@@ -31,7 +31,8 @@ pub fn list_php_versions(state: State<'_, AppState>) -> Result<Vec<PhpVersionVie
         .and_then(|mgr| mgr.running_php_patches(state.platform.as_ref()))
         .unwrap_or_default();
     let conn = lock(&state)?;
-    core::php::list_versions(&conn, &running)
+    let catalog = core::updates::cached(&conn);
+    core::php::list_versions(&conn, &running, &catalog)
 }
 
 /// The PHP minor FrankenPHP actually serves — its embedded build, never the
@@ -61,7 +62,11 @@ pub async fn set_php_version_installed(
         core::php::set_installed(&conn, &minor, installed)?;
     }
     if installed {
-        let plan = core::downloads::plan_for_php(state.platform.as_ref(), &minor);
+        let patches = {
+            let conn = lock(&state)?;
+            core::php::effective_patches(&conn).unwrap_or_default()
+        };
+        let plan = core::downloads::plan_for_php_with(state.platform.as_ref(), &minor, &patches);
         core::downloads::prefetch(
             state.platform.as_ref(),
             &format!("Install PHP {minor}"),
@@ -132,8 +137,18 @@ pub async fn apply_php_settings(
     let pairs: Vec<(String, String)> =
         settings.into_iter().map(|s| (s.key, s.value)).collect();
     let pairs = core::php::validate_settings(&pairs)?;
-    let patch = core::php::patch_for_minor(&minor)
-        .ok_or_else(|| Error::Other(format!("unknown PHP version: {minor}")))?;
+    // The patch the pool WILL run after the restart below — not the pin. Gating a
+    // candidate config with the pin's binary while the pool restarts onto the
+    // selection tests a config against an interpreter nobody runs, and an ini key
+    // the new patch rejects would then brick the pool the gate exists to protect.
+    let patch = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::php::patch_to_run(&conn, &minor)?
+    };
+    let patch = patch.as_str();
     let port = core::php::fpm_port(&minor)
         .ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
     let platform = state.platform.as_ref();

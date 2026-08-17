@@ -519,11 +519,14 @@ const MIGRATIONS: &[&str] = &[
     // `is_default` beside it was overwritten from the pin, resetting the user's
     // chosen default on every launch (#340).
     //
-    // Nothing is lost. The pin is what a pool actually resolves and runs
-    // (`php::patch_for_minor`, thirteen call sites, none of which hold a
-    // `Connection`), and what a pool is REALLY executing is read from the
-    // running master itself (`php::patch_of_exe`, #342) — so the two facts the
-    // column tried to be are both available and neither can drift.
+    // Nothing is lost. What a pool resolves and runs is the pin FLOORING v37's
+    // selection (`php::patch_to_run`, which does hold a `Connection` — the first
+    // draft of this note said the pin needed none, and eleven call sites taking
+    // it at its word is exactly how the terminal, WP-CLI and composer kept
+    // running the old interpreter after an update), and what a pool is REALLY
+    // executing is read from the running master itself (`php::patch_of_exe`,
+    // #342) — so the two facts the column tried to be are both available from
+    // their owners and neither can drift.
     //
     // No backfill: the value was a copy of a compile-time constant, so there is
     // nothing here a fresh read cannot reproduce.

@@ -522,10 +522,16 @@ pub async fn repo_run_step<R: tauri::Runtime>(
     let resolve = async {
         match step_key.as_str() {
             "composer" => {
-                let patch = php::patch_for_minor(&entry.php_minor).ok_or_else(|| {
-                    Error::Other(format!("no pinned PHP build for {}", entry.php_minor))
-                })?;
-                let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+                // The patch the site's POOL runs, not the pin — composer resolves
+                // platform requirements against the interpreter it is run WITH.
+                let patch = {
+                    let conn = state
+                        .db
+                        .lock()
+                        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                    php::patch_to_run(&conn, &entry.php_minor)?
+                };
+                let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
                 let phar = binaries::resolve_file(
                     state.platform.as_ref(),
                     "composer",
@@ -703,10 +709,14 @@ pub async fn run_offered_steps<R: tauri::Runtime>(
     let composer_tools = if keys.iter().any(|k| k == "composer") {
         let resolve = async {
             let state = app.state::<AppState>();
-            let patch = php::patch_for_minor(&entry.php_minor).ok_or_else(|| {
-                Error::Other(format!("no pinned PHP build for {}", entry.php_minor))
-            })?;
-            let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+            let patch = {
+                let conn = state
+                    .db
+                    .lock()
+                    .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                php::patch_to_run(&conn, &entry.php_minor)?
+            };
+            let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
             let phar = binaries::resolve_file(
                 state.platform.as_ref(),
                 "composer",
@@ -1522,9 +1532,14 @@ pub async fn repo_dist_archive<R: tauri::Runtime>(
     dist_archive::require_distignore(&canonical)?;
 
     let php_minor = php::minor_of(&site.php_version).to_string();
-    let patch = php::patch_for_minor(&php_minor)
-        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {php_minor}")))?;
-    let php_bin = binaries::resolve(state.platform.as_ref(), "php", patch).await?;
+    let patch = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        php::patch_to_run(&conn, &php_minor)?
+    };
+    let php_bin = binaries::resolve(state.platform.as_ref(), "php", &patch).await?;
     let wp_phar =
         binaries::resolve_file(state.platform.as_ref(), "wp-cli", binaries::WP_CLI_VERSION).await?;
     // Writes ~370 KB once per version, then a single `is_file` on every later

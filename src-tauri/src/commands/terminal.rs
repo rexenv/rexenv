@@ -42,11 +42,18 @@ pub async fn terminal_open(
         sites::get(&conn, &site_id)?.ok_or_else(|| Error::Other(format!("no site {site_id}")))?
     };
     let minor = php::minor_of(&site.php_version);
-    let patch = php::patch_for_minor(&minor)
-        .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
+    // The patch the site's POOL runs, not the pin. `php -v` in a site's own
+    // terminal disagreeing with the site it belongs to is the whole bug.
+    let patch = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        php::patch_to_run(&conn, &minor)?
+    };
 
     let platform = state.platform.as_ref();
-    let php_bin = binaries::resolve(platform, "php", patch).await?;
+    let php_bin = binaries::resolve(platform, "php", &patch).await?;
     let wp_phar = binaries::resolve_file(platform, "wp-cli", binaries::WP_CLI_VERSION).await?;
     let wp_dir = terminal::ensure_wp_wrapper(platform, &php_bin, &wp_phar)?;
     let php_dir = php_bin
