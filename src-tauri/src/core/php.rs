@@ -148,33 +148,60 @@ fn eol_since_on(minor: &str, today: time::Date) -> Option<&'static str> {
     (today > parsed).then_some(end)
 }
 
-/// Deterministic loopback FastCGI port for a minor series (`"8.3"` → `9783`), or
-/// `None` if `minor` isn't exactly `major.minor` numeric.
-pub fn fpm_port(minor: &str) -> Option<u16> {
+/// The `(major, minor)` a port offset is derived from, or `None` when this
+/// scheme cannot express it.
+///
+/// # The ten-slot limit, and why it is a refusal rather than a wider formula
+///
+/// Both port schemes are `base + major * 10 + minor`, which gives each major
+/// exactly TEN slots — so `fpm_port("8.10")` and `fpm_port("9.0")` both land on
+/// 9790. PHP has never shipped an x.10 minor, so this is unreachable today; it
+/// stops being unreachable by the calendar alone, not by anything rexenv does.
+///
+/// **Widening the formula was rejected, because every existing port would move.**
+/// `adopt_startup`, the managed-port set and the orphaned-worker sweep all
+/// enumerate by CALLING these functions, so a moved port strands a running
+/// survivor that is neither adoptable nor sweepable while `ports::ensure_free`
+/// happily binds the new one — the user's sites keep being served by a master
+/// rexenv can no longer see, until something needs the port. That is a worse
+/// failure than the one being fixed, and it would land on every user at once.
+///
+/// So the scheme keeps its ten slots and REFUSES the eleventh. A minor this
+/// cannot express resolves to `None`, `seed_registry` fails loudly by name, and
+/// `every_shipped_minor_has_a_unique_pool_port` fails at `cargo test` — before
+/// any release, which is the only place this can be fixed cheaply. The message
+/// there says what to change.
+fn port_offset(minor: &str) -> Option<u16> {
     let mut parts = minor.split('.');
     let major: u16 = parts.next()?.parse().ok()?;
     let min: u16 = parts.next()?.parse().ok()?;
     if parts.next().is_some() {
         return None; // exactly major.minor, not a patch string
     }
-    Some(FPM_PORT_BASE + major * 10 + min)
+    // The eleventh slot would alias the next major's first.
+    (min < 10).then_some(major * 10 + min)
+}
+
+/// Deterministic loopback FastCGI port for a minor series (`"8.3"` → `9783`), or
+/// `None` if `minor` isn't exactly `major.minor` numeric, or is a minor this
+/// port scheme cannot express ([`port_offset`]).
+pub fn fpm_port(minor: &str) -> Option<u16> {
+    Some(FPM_PORT_BASE + port_offset(minor)?)
 }
 
 /// Deterministic loopback port for a minor's DEBUG (Xdebug) pool, or `None`
 /// when the toggle isn't available for that minor — gated on
 /// [`binaries::xdebug_supported`], so an unsupported minor (8.0: its static
 /// build can't dlopen any .so) can never grow a debug pool by construction.
+///
+/// Shares [`port_offset`] with [`fpm_port`] so the ten-slot rule lives in ONE
+/// place: it used to be two copies of the same arithmetic, which is how a fix to
+/// one would have left the other aliasing.
 pub fn debug_fpm_port(minor: &str) -> Option<u16> {
     if !binaries::xdebug_supported(minor) {
         return None;
     }
-    let mut parts = minor.split('.');
-    let major: u16 = parts.next()?.parse().ok()?;
-    let min: u16 = parts.next()?.parse().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some(DEBUG_FPM_PORT_BASE + major * 10 + min)
+    Some(DEBUG_FPM_PORT_BASE + port_offset(minor)?)
 }
 
 /// Seed/refresh the `php_versions` registry from the pinned build set. Idempotent
@@ -993,6 +1020,77 @@ mod tests {
         assert_eq!(minor_of("8.3.31"), "8.3");
         assert_eq!(minor_of("8.1.34"), "8.1");
         assert_eq!(minor_of("8.3"), "8.3");
+    }
+
+    #[test]
+    /// **Every shipped minor gets a port, and no two pool ports collide — across
+    /// normal pools, debug pools, and every other fixed port in the app.**
+    ///
+    /// The whole-surface version, because the collision that motivated it was
+    /// arithmetic nobody had computed: `base + major * 10 + minor` gives each
+    /// major TEN slots, so `fpm_port("8.10")` and `fpm_port("9.0")` both land on
+    /// 9790. Unreachable only because `PHP_VERSIONS` is a curated list — the
+    /// calendar reaches it on its own.
+    ///
+    /// This is the gate that makes the refusal cheap. The day a maintainer adds
+    /// an x.10 minor, `port_offset` returns `None`, this fails at `cargo test`,
+    /// and the message below says what to change — instead of the collision
+    /// reaching a user as two pools fighting over one port.
+    #[test]
+    fn every_shipped_minor_has_a_unique_pool_port() {
+        let mut seen: std::collections::BTreeMap<u16, String> = std::collections::BTreeMap::new();
+        let mut claim = |port: u16, who: String| {
+            if let Some(prev) = seen.insert(port, who.clone()) {
+                panic!(
+                    "port {port} is claimed by BOTH `{prev}` and `{who}`.\n\n\
+                     The pool port schemes are `base + major * 10 + minor`, which gives each \
+                     major exactly TEN slots — so an x.10 minor aliases the next major's .0 \
+                     (8.10 and 9.0 both want 9790).\n\n\
+                     Widening the formula is NOT the cheap fix: `adopt_startup`, the managed-port \
+                     set and the orphaned-worker sweep all enumerate by CALLING `fpm_port` / \
+                     `debug_fpm_port`, so moving existing ports strands every running master \
+                     where rexenv can no longer see it while `ensure_free` binds the new one. \
+                     Whatever you change must keep every port that exists today exactly where \
+                     it is — a second base for the wide range, or an explicit table."
+                );
+            }
+        };
+        for minor in all_minors() {
+            let port = fpm_port(&minor).unwrap_or_else(|| {
+                panic!(
+                    "PHP {minor} ships but has no pool port. `port_offset` refuses minors this \
+                     scheme cannot express (minor >= 10) — see the collision note above; the \
+                     scheme needs extending before this minor can be offered."
+                )
+            });
+            claim(port, format!("php-fpm {minor}"));
+            if let Some(debug) = debug_fpm_port(&minor) {
+                claim(debug, format!("php-fpm {minor} (debug)"));
+            }
+        }
+        // …and against every other fixed port rexenv binds. A pool landing on
+        // MySQL's port would be a mutual-refusal at start with no obvious cause.
+        for (port, who) in [
+            (services::PHP_FPM_PORT, "the Phase-1 single pool"),
+            (services::NGINX_HTTP_PORT, "nginx"),
+            (crate::core::proxy::DEFAULT_HTTPS_PORT, "the edge"),
+            (crate::core::mail::MAILPIT_SMTP_PORT, "Mailpit SMTP"),
+            (crate::core::mail::MAILPIT_HTTP_PORT, "Mailpit HTTP"),
+            (crate::core::dns::DEFAULT_DNS_PORT, "DNS"),
+        ] {
+            // PHP_FPM_PORT is 8.3's pool BY DESIGN — it is the same port, not a
+            // collision, so it is the one allowed overlap.
+            if port == services::PHP_FPM_PORT {
+                assert_eq!(fpm_port("8.3"), Some(port), "the Phase-1 port must stay 8.3's");
+                continue;
+            }
+            assert!(!seen.contains_key(&port), "a PHP pool port collides with {who} ({port})");
+        }
+        // The collision itself, asserted directly so the rule cannot quietly
+        // loosen: an x.10 minor must not resolve at all.
+        assert_eq!(fpm_port("8.10"), None, "8.10 must be refused, not aliased onto 9.0");
+        assert_eq!(fpm_port("9.0"), Some(9790));
+        assert_eq!(debug_fpm_port("8.10"), None);
     }
 
     #[test]

@@ -46,26 +46,15 @@ evidence cited.
   rows badged Default the first time the pin moved to a new minor. Fixed (#344) and guarded
   (#345), the guard justified by that statement's history rather than by the count.
 
-- [ ] **`fpm_port` collides at an x.10 minor.** `fpm_port` is
-  `FPM_PORT_BASE + major * 10 + min` (`core/php.rs:153-160`), so `fpm_port("8.10")` and
-  `fpm_port("9.0")` both return **9790**; `debug_fpm_port` has the same shape on its own
-  base. It needs no new feature to bite — it needs PHP to ship an x.10 minor, which is a
-  matter of time, and PHP 8.4/8.5 are current. Unreachable today only because
-  `PHP_VERSIONS` is a curated compile-time list.
-  **Correction (16 Aug 2026, same day): the constraint first filed here was wrong.** It
-  said "existing users' ports must not move — `php_versions.fpm_port` is STORED, so check
-  whether it is read back". The stored column is **rewritten from the formula on every
-  launch** (`upsert_php_version`'s `ON CONFLICT … SET fpm_port = excluded.fpm_port`) and
-  is never read operationally, so it pins nothing and needs no migration. The real
-  constraint is the opposite shape: `adopt_startup`, the managed-port set and the orphan-
-  worker sweep all enumerate ports by CALLING `fpm_port()`, so a moved port strands a
-  running survivor that is neither adoptable nor sweepable while `ensure_free` happily
-  binds the new one. Left as a correction rather than a rewrite because a plausible-but-
-  wrong constraint is what sends the next reader to build the wrong thing.
-  Options: refuse `min >= 10` in both `fpm_port` and `debug_fpm_port` (`None`, not a
-  panic) plus a whole-surface uniqueness test; widen to `major * 100 + min`; or index by
-  position in `PHP_VERSIONS`. Found 16 Aug 2026 while scoping the manifest's structural
-  limits.
+- [x] **`fpm_port` collided at an x.10 minor** ✓ 17 Aug 2026, ledger #346,
+  plant-proven both paths. `base + major*10 + minor` gives each major ten slots, so
+  `fpm_port("8.10") == fpm_port("9.0") == 9790`. The scheme keeps its ten slots and
+  REFUSES the eleventh — every current port is byte-identical, because widening would
+  move them all and adoption/managed-ports/the orphan sweep all enumerate by CALLING
+  `fpm_port`, stranding running masters. `every_shipped_minor_has_a_unique_pool_port`
+  turns the day PHP ships 8.10 into a `cargo test` failure that says what to change.
+  **Deferred, not solved** — the scheme still needs a second base or an explicit table
+  then; the guard is what makes that a build failure instead of a field incident.
 
 - [x] **Create a site FROM a git repository — Stage 1, Laravel + Blank PHP** (planned +
   built 11 Aug 2026, `docs/PLAN-git-site-clone.md`). Laravel developers keep their
