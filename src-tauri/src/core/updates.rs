@@ -53,7 +53,7 @@ use serde::{Deserialize, Serialize};
 /// EMPTY = no manifest is ever accepted (see the module doc). Pin the real value
 /// only together with the release-side signing step, never before — a key in the
 /// binary with no signing procedure behind it invites someone to sign by hand.
-const RELEASE_PUBKEY: &str = "";
+const RELEASE_PUBKEY: &str = "faa52f961af3e0542d836ab539823f598ef88b976055809f73247f88af13cb12";
 
 /// Hosts a manifest artifact may be downloaded from.
 ///
@@ -447,16 +447,32 @@ mod tests {
     /// accidentally passed a real document would be testing nothing. When a key
     /// IS pinned this test flips to asserting the key's shape, and the rest of
     /// the suite starts exercising real signatures.
+    /// **The pinned key is a real ed25519 public key, and nothing else verifies
+    /// against it.**
+    ///
+    /// Replaces the inert-state assertion the moment a key exists — a test that
+    /// says "no key is pinned" would otherwise fail the day the feature became
+    /// real, and the tempting fix is to delete it rather than to write this.
     #[test]
-    fn a_build_with_no_key_pinned_trusts_nothing() {
-        assert!(!enabled(), "a key is pinned — update this test and the ledger row together");
-        assert!(RELEASE_PUBKEY.is_empty());
-        let err = verify(br#"{"serial":1}"#, "00").unwrap_err().to_string();
-        assert!(err.contains("no PHP update key is pinned"), "{err}");
-        // …and every read-side entry point degrades rather than erroring.
+    fn the_pinned_key_is_real_and_only_it_verifies() {
+        assert!(enabled(), "the update key was un-pinned — the button silently disappears");
+        assert_eq!(RELEASE_PUBKEY.len(), 64, "an ed25519 public key is 32 bytes of hex");
+        assert!(RELEASE_PUBKEY.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+        assert!(unhex(RELEASE_PUBKEY).is_some(), "the pinned key does not decode");
+
+        // A document signed by SOMEBODY ELSE's key must not verify against ours.
+        // The whole compiled-in-pubkey design rests on exactly this.
+        let (other_pub, other_kp) = keypair();
+        assert_ne!(other_pub, RELEASE_PUBKEY, "the pinned key is a generated test key");
+        let d = br#"{"serial":1,"generatedAt":"x","minAppVersion":"0.0.1","artifacts":[]}"#;
+        assert!(
+            verify(d, &sign(&other_kp, d)).is_err(),
+            "a manifest signed by an unrelated key verified against the pinned one"
+        );
+        // Garbage still refuses, and the read side still degrades rather than errors.
+        assert!(verify(d, "00").is_err());
         let conn = crate::state::db::open_in_memory().unwrap();
-        assert!(cached(&conn).is_empty());
-        assert!(accept(&conn, br#"{"serial":1}"#, "00").is_err());
+        assert!(cached(&conn).is_empty(), "an empty cache must read as no catalog");
     }
 
     /// A throwaway ed25519 keypair, and a signer, so the SIGNATURE CHECK itself
