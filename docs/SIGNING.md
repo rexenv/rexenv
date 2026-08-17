@@ -74,7 +74,7 @@ exported `.p12` and `APPLE_CERTIFICATE_PASSWORD`; Tauri creates a temporary keyc
 
 Then build the universal release as today:
 ```sh
-pnpm release:mac      # = tauri build --target universal-apple-darwin
+pnpm release:mac      # = scripts/release-mac.sh (pre-clean, then tauri build --target universal-apple-darwin)
 ```
 Tauri signs `rexenv.app` (including the bundled `rex` sidecar) with the Developer ID + hardened runtime,
 submits to `notarytool`, and staples the ticket to both the `.app` and the `.dmg`.

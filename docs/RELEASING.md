@@ -89,6 +89,17 @@ release** — which is the property that makes a stolen key survivable. Ledger
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
    `verify: all green` line.
 3. `pnpm release:mac` → `src-tauri/target/universal-apple-darwin/release/bundle/dmg/rexenv_<X.Y.Z>_universal.dmg`.
+   Runs `scripts/release-mac.sh`, which PRE-CLEANS before building. `tauri build`
+   shells out to a generated `bundle_dmg.sh` that attaches a temporary
+   `rw.<pid>.<name>.dmg`; when that dies partway the image stays ATTACHED and every
+   later build fails with only `error running bundle_dmg.sh` — naming neither the
+   volume nor the file. It cost two builds on 18 Aug 2026 and left a volume mounted
+   on the developer's Mac each time. The clean is scoped to images whose backing
+   path is inside `src-tauri/target` — **never widen it to match a volume NAME**,
+   which is random and says nothing about the owner (this machine has iOS simulator
+   runtimes mounted). The previous finished `.dmg` is deliberately NOT deleted, only
+   warned about: a build that fails after we removed it would leave you with
+   neither, and §A0's "exactly one dmg" check is what the warning is for.
 4. Run `docs/PUBLISH-TESTING.md` **§A0 by hand** — CI normally does it (the per-slice
    `lipo`/`strings`/`codesign` checks in `release.yml`'s "§A0 artefact integrity" step
    are the script; copy them). Then **§A**, which was always human-only.

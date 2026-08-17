@@ -9,7 +9,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "release:mac": "tauri build --target universal-apple-darwin",
+    "release:mac": "bash scripts/release-mac.sh",
     "typecheck": "tsc --noEmit",
     "verify": "bash scripts/verify.sh",
     "verify:full": "bash scripts/verify-full.sh"
