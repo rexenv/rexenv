@@ -213,6 +213,35 @@ that only runs when an unrelated feature is enabled is not a gate for this one.
   step adds is the part it deliberately skips — a phar driven against a real
   WordPress install over the running stack, rather than `--version` in isolation.
 
+## PHP update button — the apply and the REVERT (18 Aug 2026)
+
+Only runs once the key ceremony has happened and a signed manifest is published;
+before that the button does not render, which is itself the first check.
+
+- [ ] **Dark without a key.** On a build whose `RELEASE_PUBKEY` is empty, no row
+  shows an Update button and Settings shows no update error. **Tell:** a button
+  that appears and fails — that means a key was pinned without a manifest behind
+  it, and the first user to press it gets a failure with no cause they can see.
+- [ ] **A real update applies.** With a manifest offering a newer patch for an
+  installed minor: press Update. Expect real download bytes in the hub, the row
+  moving to the new patch, and a `restarted the 8.3 pool` style confirmation.
+  Then open a site on that minor — it must still serve, and Site Health must
+  report the NEW patch.
+- [ ] **The site's own setting is untouched.** A site pins the MINOR (`8.3`), never
+  the patch, so nothing about the site should change. **Tell:** a site that
+  switched version, or a config regeneration — neither should happen.
+- [ ] **THE REVERT — the leg nothing automated can prove.** Force the new pool to
+  fail: with the app closed, replace the newly downloaded
+  `bin/php-fpm-<newpatch>/php-fpm` with an empty file, then press Update again (or
+  re-select). Expect: the apply FAILS with a message naming both patches, the
+  registry goes back to the previous selection, the pool restarts onto the OLD
+  patch, and **sites keep serving**. **Tells:** a stack left down; a row showing
+  the new patch after a failure; the old tree gone (the revert must not delete a
+  verified tree — that costs a ~100MB refetch).
+- [ ] **Offline afterwards.** Quit, disconnect, relaunch. The selected patch still
+  resolves from cache and the pool starts — a selection must be as offline-safe as
+  a pin.
+
 ## PHP versions — the read-only "exists" row and the serving/pinned line (17 Aug 2026)
 
 Both shipped after 0.2.0's DMG was built, so neither has a step yet.
