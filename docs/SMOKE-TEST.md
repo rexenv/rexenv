@@ -241,6 +241,39 @@ before that the button does not render, which is itself the first check.
 - [ ] **Offline afterwards.** Quit, disconnect, relaunch. The selected patch still
   resolves from cache and the pool starts — a selection must be as offline-safe as
   a pin.
+- [ ] **Nothing running.** Stop all, then press Update on a minor with an offer.
+  Expect the toast to say the version **will be used**, not that it "is now on" it
+  — there is no pool to be now-on. **Tell:** "PHP 8.2 is now on 8.2.32" with the
+  stack stopped; that sentence names a process that does not exist. Then Start all
+  and confirm the pool comes up on the new patch.
+- [ ] **The tree survives a stopped stack.** After the step above, quit and relaunch
+  BEFORE starting anything. The launch cache sweep must not delete the tree you just
+  installed. **Tell:** Start all re-downloading ~150MB, or failing outright offline.
+- [ ] **Two rows at once.** With offers on two minors, press Update on both in
+  quick succession. Both buttons must stay disabled until their own apply finishes
+  — the first row's button re-enabling while its download runs is the defect. A
+  third press on a row already applying must be refused by name, not queued.
+- [ ] **Everything runs the patch the pool does.** After an update, on a site of
+  that minor: the site terminal's `php -v`, WP-CLI (`wp cli info`), and a composer
+  step must all report the NEW patch. **Tell:** any of them reporting the version
+  the app was built with — that was live for a release, and only the pool agreed
+  with the row.
+
+## PHP ini settings — the revert (18 Aug 2026)
+
+`php-fpm -t` catches values php-fpm rejects at parse time. It cannot catch one it
+accepts and then dies on, and that path used to persist the value anyway.
+
+- [ ] **A value the pool dies on is undone.** Settings → PHP → a minor with a
+  RUNNING pool → set `memory_limit` to something a worker cannot start under
+  (`1K`), Apply. Expect: the apply FAILS naming the minor, the previous settings
+  are back in the form after a refresh, **the pool is running again**, and sites on
+  that minor still serve. **Tells:** the value still stored after the failure (then
+  every later start fails the same way with nothing connecting the two); a stack
+  left down while the message says the settings were restored.
+- [ ] **A normal edit still works.** Set `memory_limit` to `512M`, Apply, and check
+  a `phpinfo()` page on a site of that minor reports it — the revert must not have
+  turned the ordinary path into a no-op.
 
 ## PHP versions — the read-only "exists" row and the serving/pinned line (17 Aug 2026)
 

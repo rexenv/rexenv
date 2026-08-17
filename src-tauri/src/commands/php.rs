@@ -125,10 +125,19 @@ pub fn get_php_settings(state: State<'_, AppState>, minor: String) -> Result<Vec
 /// Replace the ini settings for one PHP minor (submitted keys are stored; omitted
 /// keys revert to PHP defaults), then make them live: validate → `php-fpm -t` a
 /// candidate config → persist → restart that minor's pool → reload nginx (per-site
-/// `client_max_body_size` tracks upload/post sizes). Ordered so a bad value can
-/// never brick a pool: typed validation rejects it first, and the `-t` gate runs
-/// against a candidate file the live pool never reads. FrankenPHP-override sites
-/// are unaffected (own embedded PHP).
+/// `client_max_body_size` tracks upload/post sizes). Ordered so a bad value costs
+/// a restart rather than a pool: typed validation rejects it first, and the `-t`
+/// gate runs against a candidate file the live pool never reads. FrankenPHP-override
+/// sites are unaffected (own embedded PHP).
+///
+/// **And it REVERTS if the pool does not come back**, because the two gates above
+/// are both parse-time and the failure that matters is not. A value php-fpm
+/// accepts and then dies on — a `memory_limit` too small to start a worker — used
+/// to stay stored, so every later start failed the same way with nothing on screen
+/// connecting the two: a pool the user bricked from the Settings screen and could
+/// not unbrick from it. The gate was also validating with the PIN's binary while
+/// the pool restarts onto the user's selected patch, which tested a config against
+/// an interpreter nobody runs (#353).
 #[tauri::command]
 pub async fn apply_php_settings(
     state: State<'_, AppState>,
@@ -168,22 +177,68 @@ pub async fn apply_php_settings(
     }
 
     // Persist + snapshot under ONE brief DB lock, dropped before any await.
-    let (sites, all) = {
+    // `previous` is what the revert below restores; read in the SAME lock as the
+    // write, or a concurrent edit decides what "previous" means.
+    let (previous, sites, all) = {
         let conn = lock(&state)?;
+        let previous =
+            crate::state::store::all_php_settings(&conn)?.remove(&minor).unwrap_or_default();
         crate::state::store::replace_php_settings(&conn, &minor, &pairs)?;
-        (core::sites::list(&conn)?, crate::state::store::all_php_settings(&conn)?)
+        (previous, core::sites::list(&conn)?, crate::state::store::all_php_settings(&conn)?)
     };
 
     // Swap the map in + restart the affected pools (normal + debug when both
     // live) + reload nginx, then await readiness OUTSIDE the services lock
     // (locking rule).
-    let checks = {
-        let mut mgr = state.services.lock().await;
-        mgr.apply_php_settings(platform, &state.ca, &sites, all, &minor)
-            .await?
-    };
-    if !checks.is_empty() {
-        core::service_manager::await_ready(checks).await?;
+    let outcome = async {
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            mgr.apply_php_settings(platform, &state.ca, &sites, all, &minor).await?
+        };
+        if !checks.is_empty() {
+            core::service_manager::await_ready(checks).await?;
+        }
+        Ok::<(), Error>(())
+    }
+    .await;
+
+    // Revert if the pool did not come back. Without this the values stay stored,
+    // so EVERY later start fails the same way with nothing on screen connecting
+    // the two — a pool a user bricked from the Settings screen and cannot unbrick
+    // from it. The `php-fpm -t` gate above catches values php-fpm rejects at
+    // parse time; it cannot catch one it accepts and then dies on (a
+    // `memory_limit` too small to start a worker), and that is the case this
+    // exists for. Same shape as `php_update_apply`, for the same reason.
+    if let Err(e) = outcome {
+        let restore = {
+            let conn = lock(&state)?;
+            crate::state::store::replace_php_settings(&conn, &minor, &previous)?;
+            (core::sites::list(&conn)?, crate::state::store::all_php_settings(&conn)?)
+        };
+        let back = async {
+            let checks = {
+                let mut mgr = state.services.lock().await;
+                mgr.apply_php_settings(platform, &state.ca, &restore.0, restore.1, &minor).await?
+            };
+            if !checks.is_empty() {
+                core::service_manager::await_ready(checks).await?;
+            }
+            Ok::<(), Error>(())
+        }
+        .await;
+        // BOTH results. Reporting only the first would say "put back" on the one
+        // path where the pool is DOWN — the exact lie the update path told.
+        return Err(Error::Other(match back {
+            Ok(()) => format!(
+                "PHP {minor} did not come back with those settings, so the previous ones \
+                 were restored and the pool is running again: {e}"
+            ),
+            Err(back_err) => format!(
+                "PHP {minor} did not come back with those settings ({e}), and restoring the \
+                 previous ones ALSO failed ({back_err}) — the pool is DOWN. The stored \
+                 settings are the previous ones, so starting the services again will use them."
+            ),
+        }));
     }
     Ok(())
 }
