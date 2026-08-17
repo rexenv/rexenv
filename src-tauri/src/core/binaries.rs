@@ -564,6 +564,64 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
     }
 }
 
+/// The verified manifest catalog this process is running with.
+///
+/// A [`VersionCatalog`] can only be built by `updates::verify`, and its field is
+/// private — so the TYPE is the proof that whatever is in here had a valid
+/// signature over it. There is no way to install unverified entries, which is
+/// what makes a process-global acceptable for something this load-bearing.
+///
+/// Empty until `install_catalog` runs, and empty is the whole install base: the
+/// app resolves exactly what its compiled-in pins say.
+static CATALOG: std::sync::RwLock<Option<crate::core::updates::VersionCatalog>> =
+    std::sync::RwLock::new(None);
+
+/// Publish a verified catalog to the resolve path. Called after a refresh and at
+/// launch from the re-verified cache.
+pub fn install_catalog(cat: crate::core::updates::VersionCatalog) {
+    if let Ok(mut w) = CATALOG.write() {
+        *w = Some(cat);
+    }
+}
+
+/// The BinarySpec for a PHP artifact: the compiled-in pin FIRST, then the
+/// verified catalog.
+///
+/// Order is load-bearing. A compiled-in pin can never be overridden by a
+/// manifest — so a signed document, however valid, cannot move a version the app
+/// already knows onto different bytes. The catalog may only ADD versions the app
+/// was built before, which is the whole property `docs/PLAN-binary-updates.md`
+/// §2 calls "the compiled-in pins remain the floor".
+fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
+    if let Some(hex) = php_sha256(kind, version, arch) {
+        return Some(BinarySpec {
+            url: php_url(kind, version, arch),
+            checksum: Checksum::Sha256(hex.to_string()),
+            archive: Archive::TarGz,
+            member: if kind == "fpm" { "php-fpm" } else { "php" },
+        });
+    }
+    // Not pinned: ask the verified catalog. `name` is asserted against the
+    // manifest's own allowlist HERE rather than trusting `updates` to have
+    // filtered — the guard belongs where the value is used.
+    let name = if kind == "fpm" { "php-fpm" } else { "php" };
+    if !crate::core::updates::nameable(name) {
+        return None;
+    }
+    let arch_s = match arch {
+        Arch::Arm64 => "arm64",
+        Arch::X86_64 => "x86_64",
+    };
+    let guard = CATALOG.read().ok()?;
+    let a = guard.as_ref()?.artifact(name, version, arch_s)?;
+    Some(BinarySpec {
+        url: a.url.clone(),
+        checksum: Checksum::Sha256(a.sha256.clone()),
+        archive: Archive::TarGz,
+        member: if kind == "fpm" { "php-fpm" } else { "php" },
+    })
+}
+
 /// The download URL for a pinned PHP build, from whichever source publishes it.
 ///
 /// **This branch must exist BEFORE any checksum is pinned.** `manifest`'s PHP arms
@@ -939,18 +997,8 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         // SOURCE is `php_url`'s job — most versions come from static-php.dev, the
         // ones nobody publishes are built and hosted by us — so a version can
         // never resolve to a URL its artifact was never uploaded to.
-        ("php", "macos", v) if php_sha256("cli", v, arch).is_some() => Some(BinarySpec {
-            url: php_url("cli", v, arch),
-            checksum: Checksum::Sha256(php_sha256("cli", v, arch).unwrap().to_string()),
-            archive: Archive::TarGz,
-            member: "php",
-        }),
-        ("php-fpm", "macos", v) if php_sha256("fpm", v, arch).is_some() => Some(BinarySpec {
-            url: php_url("fpm", v, arch),
-            checksum: Checksum::Sha256(php_sha256("fpm", v, arch).unwrap().to_string()),
-            archive: Archive::TarGz,
-            member: "php-fpm",
-        }),
+        ("php", "macos", v) => php_spec("cli", v, arch),
+        ("php-fpm", "macos", v) => php_spec("fpm", v, arch),
         // Debug builds (Xdebug compiled in) for the §8.2 debug pool. Only resolve
         // once the self-built artifact is hosted + its checksum pinned (§11.2);
         // until then `php_debug_sha256` is None and these stay unresolvable.
@@ -3534,6 +3582,50 @@ mod tests {
         out.push(("redis".into(), all(REDIS_VERSIONS)));
         out.push(("httpd".into(), one(HTTPD_VERSION)));
         out
+    }
+
+    /// **A manifest can ADD a version; it can never move one the app pins.**
+    ///
+    /// `php_spec` asks the compiled-in table FIRST and only then the catalog, so
+    /// a signed document — however valid — cannot point 8.3.31 at different
+    /// bytes. That ordering IS the "compiled-in pins remain the floor" property:
+    /// without it one manifest reaches every version on every install, and the
+    /// signature becomes the only thing between a user and arbitrary bytes for
+    /// software they already have.
+    ///
+    /// Asserted by installing a catalog directly — the TYPE is the proof (only
+    /// `updates::verify` builds one in a shipping build), so this tests the
+    /// PRECEDENCE, not the verification, which `core::updates` covers.
+    #[test]
+    fn a_catalog_can_add_a_version_but_never_override_a_pin() {
+        let pinned = PHP_VERSION;
+        let before = manifest("php", pinned, "macos", Arch::Arm64).expect("the pin resolves");
+        let added = format!("{}.9999", crate::core::php::minor_of(pinned));
+
+        install_catalog(crate::core::updates::catalog_for_tests(&[
+            ("php", pinned, "arm64", "https://dl.static-php.dev/evil", &"b".repeat(64)),
+            ("php", &added, "arm64", "https://dl.static-php.dev/new", &"c".repeat(64)),
+        ]));
+
+        // The pin is UNMOVED — same digest and URL as before the catalog existed.
+        let after = manifest("php", pinned, "macos", Arch::Arm64).unwrap();
+        assert_eq!(checksum_hex(&after.checksum), checksum_hex(&before.checksum));
+        assert_eq!(after.url, before.url);
+        assert_ne!(checksum_hex(&after.checksum), "b".repeat(64), "the manifest moved a pin");
+
+        // …and the ADDED version resolves, which is the feature.
+        let new_spec =
+            manifest("php", &added, "macos", Arch::Arm64).expect("a catalog version must resolve");
+        assert_eq!(checksum_hex(&new_spec.checksum), "c".repeat(64));
+        assert_eq!(new_spec.url, "https://dl.static-php.dev/new");
+        assert_eq!(new_spec.member, "php");
+        // The other arch was not offered, so it must not resolve — `php_sha256`'s
+        // both-arches invariant holds for the catalog too.
+        assert!(manifest("php", &added, "macos", Arch::X86_64).is_none());
+
+        // Leave no catalog behind for the rest of this test binary.
+        install_catalog(crate::core::updates::VersionCatalog::default());
+        assert!(manifest("php", &added, "macos", Arch::Arm64).is_none());
     }
 
     /// **The Xdebug debug build is ours, and the old guard could not see it.**

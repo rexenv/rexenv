@@ -342,6 +342,28 @@ pub fn allowed_hosts() -> &'static [&'static str] {
     ALLOWED_HOSTS
 }
 
+/// Build a catalog directly, for tests in OTHER modules that need to exercise the
+/// resolve path's precedence rather than the verification.
+///
+/// `#[cfg(test)]`-gated on purpose: in a shipping build the only way to obtain a
+/// [`VersionCatalog`] is through [`verify`], and that is the property the private
+/// field exists to enforce. A production constructor here would delete it.
+#[cfg(test)]
+pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCatalog {
+    VersionCatalog {
+        entries: rows
+            .iter()
+            .map(|(name, version, arch, url, sha256)| Artifact {
+                name: (*name).to_string(),
+                version: (*version).to_string(),
+                arch: (*arch).to_string(),
+                url: (*url).to_string(),
+                sha256: (*sha256).to_string(),
+            })
+            .collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
