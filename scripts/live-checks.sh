@@ -142,6 +142,7 @@ php_pools_serve service
 php_switch_serve service
 php_tools_check network
 php_versions_check network
+php_update_check network
 port_check sandbox
 prefetch_responsiveness_check network
 priv_check system

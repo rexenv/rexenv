@@ -289,6 +289,7 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   discharged by FILES on disk, so a manifest arm returning `Some` proves nothing
   about it. L0 covers the derivation (a self-hosted version with no licence pin
   fails by name) and the staleness rule; **only `php_versions_check` (network
+- `php_update_check` (network) — the in-app PHP update chain end to end against the LIVE signed manifest: verify against the compiled-in key, resolve a patch this build was never made with, download it through the existing digest gate (the first time that gate compares against a network-supplied number), run the interpreter, serve FastCGI from it, and check the selection/floor/revert. Does NOT cover the live pool swap on the production port — that is SMOKE-TEST. Ledger #351.
   tier) sees the texts land** — beside `php` AND `php-fpm`, which are separate
   artifacts published by separate resolves. The field-repair path (a cache
   predating the fix) is planted rather than assumed.
