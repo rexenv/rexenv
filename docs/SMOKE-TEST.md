@@ -31,6 +31,21 @@ nothing.** The silent case is the one that ships to everybody.
 - [ ] Admin prompt for the `.rex` DNS resolver appears and is accepted (`/etc/resolver/rex`; NO `/etc/resolver/test` on a fresh machine).
 - [ ] Keychain prompt to trust the local CA appears and is accepted.
 - [ ] Admin prompt for the edge to bind ports 80/443 appears and is accepted.
+- [ ] **The PHP 7.4 licence texts arrive on the COLD path, not by repair.** (Added
+  17 Aug 2026 — this leg has never been exercised.) rexenv BUILDS 7.4, so it is the
+  distributor and its licence texts must ship beside the bytes; `resolve` fetches them
+  into the same staging dir so the publish is atomic — a published 7.4 either carries
+  `licenses/` or does not exist. **On the dev machine they arrived by REPAIR** (the
+  cache predated the obligation, `licenses_satisfied` marked it stale, and the next
+  resolve re-fetched), which exercises a different branch. On a clean Mac:
+  install 7.4, then check
+  `~/Library/Application Support/dev.rexenv.rexenv/bin/php-fpm-7.4.33/licenses/` —
+  expect ~15 files including `PHP-3.01.txt`, and the same beside `php-7.4.33/`
+  (separate artifacts, separate resolves; one says nothing about the other).
+  **Tells:** an interpreter present with no `licenses/` beside it (the atomic publish
+  leaked, and rexenv is distributing somebody's code without its licence — ledger
+  #336); or the install failing with a licence error, which is the correct refusal but
+  means the archive URL or its pin is wrong.
 
 ## Core: WordPress over HTTPS (the headline flow)
 - [ ] **New site** → WordPress → create; install completes without error.
@@ -197,6 +212,37 @@ that only runs when an unrelated feature is enabled is not a gate for this one.
   minor including 7.4, and is the guard against those two regressions. What this
   step adds is the part it deliberately skips — a phar driven against a real
   WordPress install over the running stack, rather than `--version` in isolation.
+
+## PHP versions — the read-only "exists" row and the serving/pinned line (17 Aug 2026)
+
+Both shipped after 0.2.0's DMG was built, so neither has a step yet.
+
+- [ ] **The upstream row is honest, and says when it last looked.** Settings → PHP
+  versions. Expect, beside a minor's pinned patch, `· 8.x.y exists` **only when php.net
+  genuinely lists something newer**, and a footer reading `Release list from php.net,
+  checked <N> ago` followed by the explanation that a patch usually exists for a while
+  before rexenv can ship it. **Expect the row to name a patch rexenv cannot install** —
+  static-php.dev trails php.net by weeks and that is the common case, not the failure
+  case (`docs/INSTALL.md` has the long version).
+  **Tells:** the words "update available" or "up to date" anywhere (both are banned by
+  `core::copy_scan` — the first promises what no button delivers, the second is
+  unprovable before the first successful check); an "exists" line naming the SAME patch
+  the row already pins; a footer claiming a check time when it has never succeeded.
+- [ ] **Offline, it says so rather than implying currency.** Turn off the network and
+  relaunch. Expect `Couldn't reach php.net yet, so nothing here says whether a newer
+  patch exists.` — and every other part of the screen unchanged, because everything
+  about the INSTALLED patch is local. **Tell:** a spinner, an error toast, or a blocked
+  screen; this check gates nothing.
+- [ ] **No row claims to be "serving" a patch it is not.** On a normal install the
+  pinned patch and the running one are the same, so **no `serving …` text should appear
+  on any row.** That negative is the checkable half here.
+  **Scope, stated so this is not read as full cover:** the POSITIVE case — a row reading
+  `8.3.31 · serving 8.3.30` — appears only when a pool is executing a patch this build
+  does not pin, which happens on the first launch after a release that MOVES a pin while
+  a pool is running. **This release moves no pin, so it cannot be produced here without
+  contrivance.** Exercise it on the next release that does: expect the amber `serving`
+  text, the pool to restart onto the new patch, and the text to disappear afterwards.
+  `rex php list` carries the same fact in its NOTE column.
 
 ## FrankenPHP × the PHP version — the picker and the refusal (15 Aug 2026)
 FrankenPHP serves every site with **its own embedded PHP**, never the site's
