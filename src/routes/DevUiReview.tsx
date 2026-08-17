@@ -875,7 +875,16 @@ export function DevUiReview() {
         // that returns the wrong SHAPE is the same defect family as one that
         // returns friendly values.
         case "list_php_versions":
+        // The manifest refresh the PHP section fires on mount. Unmocked, it fell
+        // to the default arm and published `1` into the versions cache, and
+        // `versions.some(…)` threw — the whole view rendered nothing.
+        case "php_update_check":
           return mockPhpVersions;
+        case "php_update_apply":
+          return {
+            patch: String((args as Record<string, unknown> | undefined)?.patch ?? ""),
+            restarted: true,
+          };
         case "db_import_record":
           return record();
         case "db_import_state":
@@ -961,7 +970,16 @@ export function DevUiReview() {
         case "agent_activity_clear":
           return 0;
         default:
-          return 1; // plugin:event|listen etc. — accept quietly.
+          // Tauri's own plumbing is accepted quietly; an APP command is not.
+          // The quiet `return 1` published a number into a query cache and took
+          // a whole view down with `versions.some is not a function` — a harness
+          // that answers every question with a friendly value cannot fail, and
+          // an unmocked command is the harness saying it does not know.
+          if (cmd.startsWith("plugin:") || cmd.startsWith("tauri")) return 1;
+          throw new Error(
+            `DevUiReview has no fixture for "${cmd}" — add a case rather than ` +
+              `letting a placeholder value reach the view under test.`
+          );
       }
     });
     setReady(true);

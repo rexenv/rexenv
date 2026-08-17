@@ -342,6 +342,37 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
 - `uireview.js` cannot fail (assertion-free screenshots, overflow non-fatal, not in
   `run-all.js`). **Fixed:** it asserts now — horizontal overflow is a failure, pageerror
   and console.error are failures, per-scenario probes run — and it is in `run-all.js`.
+- **The `php-versions` probe checks the row's TRUTH as well as its layout** (18 Aug
+  2026). Every defect in the in-app-update row was found by a person looking at a
+  screenshot: chips overlapping, the EOL badge wrapping mid-pill, "8.2.32 exists"
+  printed beside "Update to 8.2.32", and the button still offered after the update was
+  applied. So the probe now asserts a button appears **iff** a verified manifest offers
+  something for an INSTALLED minor, that the "exists" chip disappears once the button
+  names the same version, that a row with nothing pending renders quiet (no amber
+  `serving`), and that the why-no-button note only appears on a screen where some
+  upstream version genuinely has no button. Plus a fixture-coverage assert over five
+  states, because before it every mock row was installed and none was post-update —
+  each rule would have been a branch nothing exercised.
+
+  **What it cannot ask, stated rather than implied:** whether the patch displayed is
+  the post-update one. Nothing in the DOM carries the compiled-in pin, deliberately —
+  the row's job is to show what the minor WILL RUN. That comparison is L0
+  (`after_an_update_the_row_shows_the_new_patch_and_offers_nothing`); this layer adds
+  the half L0 cannot see.
+
+  **Two of these rules were wrong when first written and planting is what said so.**
+  Un-suppressing the chip failed by name (good). But asserting "offers a patch ⇒ has a
+  button" failed a LEGITIMATE state — a manifest carrying 8.0.31 for a minor the user
+  never installed, where the absence of a button is correct — so the rule is now scoped
+  to installed rows. A probe that convicts correct behaviour trains people to ignore it.
+- **The harness itself stopped answering questions it does not know** (18 Aug 2026).
+  `DevUiReview`'s `mockIPC` default arm returned `1` for any unmocked command. The PHP
+  section fires `php_update_check` on mount, so `1` was published into the versions
+  query cache and `versions.some(…)` threw — the whole view rendered nothing, at the
+  exact moment a second reader of that array appeared. The default now accepts Tauri's
+  own plumbing quietly and THROWS for an app command, naming it. A fixture that answers
+  everything with a friendly value cannot fail; an unmocked command is the harness
+  saying it does not know.
 
 ## 2. The claim inventory
 

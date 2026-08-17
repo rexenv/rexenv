@@ -204,6 +204,82 @@ const PROBES = {
       ) {
         problems.push("the note renders AFTER the chips it explains");
       }
+
+      // ── The four update STATES ────────────────────────────────────────────
+      //
+      // Every row defect in this feature was found by a person looking at a
+      // screenshot: chips overlapping, the EOL badge wrapping mid-pill,
+      // "8.2.32 exists" printed beside "Update to 8.2.32", and the button still
+      // showing after the update had been applied. The layout half is checked
+      // above; this is the half that asks whether the row is telling the TRUTH.
+      const rows = [...root.querySelectorAll('[data-probe="php-row"]')];
+      if (rows.length < 5) problems.push(`only ${rows.length} version rows — fixture too thin`);
+      const seen = new Set();
+      for (const row of rows) {
+        const minor = row.dataset.minor;
+        const updatable = row.dataset.updatable;
+        const upstream = row.dataset.upstream;
+        const text = (row.innerText || "").replace(/\s+/g, " ");
+        const button = [...row.querySelectorAll("button")].find((b) =>
+          /^Update to /.test((b.textContent || "").trim())
+        );
+        const chip = [...row.querySelectorAll('[data-probe="php-row-chips"] > span')].find((c) =>
+          /exists$/.test((c.textContent || "").trim())
+        );
+
+        // A button appears IF AND ONLY IF a verified manifest offers something
+        // for a minor the user HAS. `updatable` is set on uninstalled rows too —
+        // it means "the catalog carries this", not "you can press something" —
+        // and the first draft of this rule called that correct state a defect.
+        // Found by planting it, which is the only reason the rule is scoped.
+        const installed = row.dataset.installed === "1";
+        if (updatable && installed && !button)
+          problems.push(`${minor}: offers ${updatable} but has no Update button`);
+        if (!updatable && button)
+          problems.push(`${minor}: an Update button with nothing offered — "${text.slice(0, 60)}"`);
+        if (button && !installed)
+          problems.push(`${minor}: an Update button on a version that is not installed`);
+        if (button && !button.textContent.includes(updatable))
+          problems.push(`${minor}: the button says "${button.textContent.trim()}" but the row offers ${updatable}`);
+
+        // The chip means "there is no button for this version". Beside a button
+        // naming the SAME version it reads as two different versions.
+        if (upstream && upstream === updatable && chip)
+          problems.push(`${minor}: "${chip.textContent.trim()}" rendered next to a button offering the same version`);
+        if (upstream && upstream !== updatable && !chip)
+          problems.push(`${minor}: php.net lists ${upstream} and the row says nothing about it`);
+        if (!upstream && chip) problems.push(`${minor}: an "exists" chip with no upstream version`);
+
+        // A row with nothing to offer must be QUIET. The "serving" chip means
+        // the live pool disagrees with what this minor should run; painting a
+        // correct pool amber is how a successful update read as a failure.
+        if (!updatable && !upstream && / serving /.test(` ${text} `))
+          problems.push(`${minor}: nothing pending, yet the row reports "serving" — ${text.slice(0, 70)}`);
+        if (updatable && installed) seen.add(upstream === updatable ? "button-only" : "button-and-chip");
+        else if (upstream) seen.add("chip-only");
+        else if (installed) seen.add("settled");
+        else seen.add("not-installed");
+      }
+      // The fixture must actually carry every state, or each branch above is a
+      // rule nothing exercises. This is the assert that made the mock honest:
+      // before it, every row was installed and none was post-update.
+      for (const want of ["button-only", "button-and-chip", "chip-only", "settled", "not-installed"]) {
+        if (!seen.has(want)) problems.push(`the fixture has no "${want}" row — that branch is unchecked`);
+      }
+      // NOT checked here, and said out loud rather than implied: whether the
+      // patch shown is the POST-UPDATE one. Nothing in the DOM carries the
+      // compiled-in pin — by design, since the row's job is to show what the
+      // minor WILL RUN — so "8.1.35 is above the pin" is not a question this
+      // layer can ask. That is `after_an_update_the_row_shows_the_new_patch_
+      // and_offers_nothing` (L0). What this layer adds is the half L0 cannot
+      // see: that such a row renders QUIET, and that the chips fit.
+      //
+      // The note only where it is true: it explains a chip, so a screen whose
+      // only upstream version HAS a button must not print "exists is not a button".
+      const anyChipOnly = rows.some(
+        (r) => r.dataset.upstream && r.dataset.upstream !== r.dataset.updatable
+      );
+      if (!anyChipOnly && note) problems.push("the why-no-button note renders on a screen where every upstream version has a button");
       return problems;
     }),
   // Onboarding's :443 notice. The clear case is the load-bearing one: reporting

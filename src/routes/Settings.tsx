@@ -341,7 +341,17 @@ function PhpVersionRow({
       {/* flex-wrap: at the 980px min window the action cluster is wider than
           the row can spare — let it reflow under the version name instead of
           crushing it. */}
-      <div className="flex flex-wrap items-center gap-3 py-2.5">
+      <div
+        className="flex flex-wrap items-center gap-3 py-2.5"
+        // The L2 harness asserts PER STATE (post-update, button-and-chip,
+        // chip-only, not-installed) and cannot tell the rows apart from text —
+        // "8.2.32" appears in a chip, a button and a tooltip.
+        data-probe="php-row"
+        data-minor={v.minor}
+        data-updatable={v.updatable ?? ""}
+        data-upstream={v.upstream ?? ""}
+        data-installed={v.installed ? "1" : ""}
+      >
         {/* A FLEX row with wrapping, not inline spans with `ml-2`. Five chips
             never fit 9rem, and as inline content the badges wrapped INTERNALLY —
             "EOL" on one line and "November 2022" on the next, each carrying half

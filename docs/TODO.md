@@ -1460,12 +1460,15 @@ first:
   never *what the user sees after the action*. The guards added since fire on the
   call site, not on the outcome, for the same reason.
 
-- [ ] **Exercise the four PHP-row states in the WebKit harness (L2).** The mock
-  fixtures now carry them — post-update (`patch` above the pin, nothing offered),
-  `upstream === updatable` (button, no chip), all three at once, and one row not
-  installed — but nothing looks at them automatically. Every row bug in this arc
-  was found by a screenshot: the chips overlapping, the EOL badge wrapping
-  mid-pill, "8.2.32 exists" printed beside "Update to 8.2.32". That is the layer.
+- [x] **Exercise the PHP-row states in the WebKit harness (L2).** ✓ 18 Aug 2026 —
+  `uireview.js`'s `php-versions` probe asserts the row's TRUTH as well as its
+  layout (button iff offered AND installed, chip suppressed once a button names
+  the same version, a settled row renders quiet, the note only where it applies),
+  over five fixture states with a coverage assert so no rule is a branch nothing
+  exercises. Green at both widths; three plants fail by name. Ledger #356. Two of
+  the rules were wrong as first written and planting is what said so — one of them
+  convicted a legitimate state. **Still not askable here:** whether the patch shown
+  is the post-update one; nothing in the DOM carries the pin, so that stays L0.
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs
