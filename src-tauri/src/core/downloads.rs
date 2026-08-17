@@ -304,6 +304,24 @@ pub fn plan_for_php(platform: &dyn Platform, minor: &str) -> Vec<PlannedBinary> 
     }
 }
 
+/// Both binaries of ONE EXPLICIT patch — the in-app update path, which names a
+/// patch the pin table may not contain.
+///
+/// Separate from [`plan_for_php`] rather than a parameter on it, because the two
+/// answer different questions: that one asks "what does this minor run", which is
+/// resolution, and this one says "fetch exactly this", which is a decision the
+/// user already made. Collapsing them would let a caller quietly plan a patch
+/// nobody chose.
+pub fn plan_for_php_patch(platform: &dyn Platform, minor: &str, patch: &str) -> Vec<PlannedBinary> {
+    if php::minor_of(patch) != minor {
+        return Vec::new();
+    }
+    vec![
+        PlannedBinary::new(platform, "php-fpm", patch),
+        PlannedBinary::new(platform, "php", patch),
+    ]
+}
+
 /// Just one minor's php-fpm pool binary — for the site-create / PHP-switch
 /// paths, whose `ensure_php_pool` runs under the services lock and must hit
 /// cache. Empty if the minor has no pinned build (`ensure` then errors clearly).

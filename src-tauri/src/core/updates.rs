@@ -309,6 +309,75 @@ fn accept_with(
     Ok(VersionCatalog { entries: m.artifacts })
 }
 
+/// Where the signed manifest lives.
+///
+/// A GitHub release asset on `rexenv/runtimes` — the public repo the 7.4 build
+/// already comes from, so this adds no infrastructure and no new host: it is
+/// already on [`ALLOWED_HOSTS`]. The `manifest` tag is MOVED by each publish,
+/// which is safe here and nowhere else in this codebase: the bytes are not
+/// trusted for being at a URL, they are trusted for carrying a signature, so a
+/// moved tag is the one case where re-upload cannot hurt.
+const MANIFEST_URL: &str =
+    "https://github.com/rexenv/runtimes/releases/download/manifest/manifest.json";
+const MANIFEST_SIG_URL: &str =
+    "https://github.com/rexenv/runtimes/releases/download/manifest/manifest.json.sig";
+
+/// Refuse a document larger than this before parsing. A manifest of every patch
+/// of every minor is a few KB; this is a poll, not a download.
+const MAX_DOC: usize = 256 * 1024;
+
+/// Fetch the manifest and its detached signature. **Takes no `Connection`**, so
+/// no caller can hold the database lock across this await — the house rule, made
+/// structural.
+///
+/// Returns `(document, signature_hex)`. Verification happens in [`accept`]; this
+/// function is deliberately dumb about trust so there is exactly one place that
+/// decides it.
+pub async fn fetch() -> Result<(Vec<u8>, String)> {
+    if !enabled() {
+        return Err(Error::Other(
+            "this build has no PHP update key pinned, so it does not fetch a manifest".into(),
+        ));
+    }
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            // A hard TOTAL deadline, not the download path's retry-and-backoff:
+            // nobody is waiting on this and it must never be why something else
+            // is slow.
+            .timeout(std::time::Duration::from_secs(15))
+            .user_agent(concat!("rexenv/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("update manifest client")
+    });
+    let get = |url: &'static str| async move {
+        let res = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| Error::Other(format!("could not reach {url}: {e}")))?;
+        if !res.status().is_success() {
+            return Err(Error::Other(format!("{url} answered {}", res.status())));
+        }
+        let body = res.bytes().await.map_err(|e| Error::Other(format!("{url}: {e}")))?;
+        if body.len() > MAX_DOC {
+            return Err(Error::Other(format!("{url} returned {} bytes", body.len())));
+        }
+        Ok(body.to_vec())
+    };
+    let doc = get(MANIFEST_URL).await?;
+    let sig = get(MANIFEST_SIG_URL).await?;
+    let sig = String::from_utf8(sig)
+        .map_err(|_| Error::Other("the signature file is not text".into()))?;
+    Ok((doc, sig))
+}
+
+/// Load the cached catalog into the resolve path. Called at launch, before
+/// anything resolves, so a selected patch is resolvable offline.
+pub fn install_cached(conn: &Connection) {
+    crate::core::binaries::install_catalog(cached(conn));
+}
+
 /// Whether this build can offer in-app PHP updates at all — i.e. whether a key
 /// is pinned. The UI asks so it can leave the button out entirely rather than
 /// showing one that always fails.

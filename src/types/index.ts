@@ -544,6 +544,13 @@ export interface PhpVersion {
    *  which lags php.net by weeks, so this can name a version rexenv cannot ship.
    *  That is why there is no Update button and why the copy says "exists". */
   upstream: string | null;
+  /** A patch a VERIFIED update manifest offers for this minor, newer than the
+   *  pin — i.e. one rexenv can actually install right now. Distinct from
+   *  `upstream`, which is only php.net saying a release exists: that one has no
+   *  button because rexenv may have no build of it. `null` when this build has
+   *  no update key pinned, when nothing newer is signed for, or when the check
+   *  has never run. */
+  updatable: string | null;
   /** When the upstream list was last fetched successfully, or null if never. */
   upstreamCheckedAt: string | null;
   fpmPort: number;
@@ -1217,6 +1224,13 @@ export interface RepoAssetStatus {
   detachedAt: string | null;
   unborn: boolean;
   upstream: string | null;
+  /** A patch a VERIFIED update manifest offers for this minor, newer than the
+   *  pin — i.e. one rexenv can actually install right now. Distinct from
+   *  `upstream`, which is only php.net saying a release exists: that one has no
+   *  button because rexenv may have no build of it. `null` when this build has
+   *  no update key pinned, when nothing newer is signed for, or when the check
+   *  has never run. */
+  updatable: string | null;
   ahead: number | null;
   behind: number | null;
   changed: number;

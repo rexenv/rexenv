@@ -52,8 +52,7 @@ import {
   scanValetImport,
   dbImportLeftovers,
   dbImportDeleteLeftover,
-  uninstallSystem,
-} from "@/lib/ipc";
+  uninstallSystem, phpUpdateApply } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
 import type { Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
@@ -326,6 +325,7 @@ function PhpVersionRow({
   expanded,
   onToggle,
   onMakeDefault,
+  onUpdate,
   onExpand,
 }: {
   v: PhpVersion;
@@ -333,6 +333,7 @@ function PhpVersionRow({
   expanded: boolean;
   onToggle: (installed: boolean) => void;
   onMakeDefault: () => void;
+  onUpdate: () => void;
   onExpand: () => void;
 }) {
   return (
@@ -401,6 +402,23 @@ function PhpVersionRow({
         </div>
         {v.installed ? (
           <>
+            {/* The one control that installs bytes this build was not shipped
+                with. Present ONLY when a VERIFIED manifest offers a newer patch
+                for a minor the user actually has — never for `upstream`, which
+                is php.net saying a release exists and which rexenv may have no
+                build of. No auto-update, ever: this restarts a pool that is
+                serving the user's sites, so it stays a button they press. */}
+            {v.updatable && (
+              <Button
+                variant="ghost"
+                disabled={busy}
+                onClick={onUpdate}
+                title={`Download PHP ${v.updatable}, restart the ${v.minor} pool onto it, and put it back on ${v.patch} if it does not come up. Your sites keep their ${v.minor} setting either way.`}
+                className="text-brand hover:text-brand"
+              >
+                {busy ? "…" : `Update to ${v.updatable}`}
+              </Button>
+            )}
             {/* New sites use the default version; let the user move it (§4.4). */}
             {!v.isDefault && (
               <Button variant="ghost" disabled={busy} onClick={onMakeDefault}>
@@ -522,9 +540,22 @@ export function PhpVersionsSetting() {
     },
     onError: (e) => toastBackendError(e),
   });
+  // Applying an update restarts a live pool, so the row is busy for it exactly
+  // as it is for install/default — one busy rule, not a second spinner.
+  const update = useMutation({
+    mutationFn: ({ minor, patch }: { minor: string; patch: string }) =>
+      phpUpdateApply(minor, patch),
+    onSuccess: (_d, v) => {
+      toast.success(`PHP ${v.minor} is now on ${v.patch}`);
+      void qc.invalidateQueries({ queryKey: ["php-versions"] });
+      void qc.invalidateQueries({ queryKey: ["services"] });
+    },
+    onError: (e) => toastBackendError(e),
+  });
   const busyFor = (minor: string) =>
     (toggle.isPending && toggle.variables?.minor === minor) ||
-    (makeDefault.isPending && makeDefault.variables === minor);
+    (makeDefault.isPending && makeDefault.variables === minor) ||
+    (update.isPending && update.variables?.minor === minor);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (isLoading) {
@@ -556,6 +587,7 @@ export function PhpVersionsSetting() {
           expanded={expanded === v.minor}
           onToggle={(installed) => toggle.mutate({ minor: v.minor, installed })}
           onMakeDefault={() => makeDefault.mutate(v.minor)}
+          onUpdate={() => update.mutate({ minor: v.minor, patch: v.updatable ?? "" })}
           onExpand={() => setExpanded((e) => (e === v.minor ? null : v.minor))}
         />
       ))}

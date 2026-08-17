@@ -330,6 +330,9 @@ pub fn patch_of_exe(exe: &std::path::Path) -> Option<String> {
 /// filled (see [`PhpVersionView`]).
 pub fn list_versions(conn: &Connection, running: &[String]) -> Result<Vec<PhpVersionView>> {
     let upstream = crate::core::php_upstream::cached(conn);
+    // What a VERIFIED manifest can actually install, which is a different
+    // question from what php.net says exists.
+    let catalog = crate::core::updates::cached(conn);
     let checked_at = (!upstream.checked_at.is_empty()).then(|| upstream.checked_at.clone());
     Ok(store::list_php_versions(conn)?
         .into_iter()
@@ -357,6 +360,7 @@ pub fn list_versions(conn: &Connection, running: &[String]) -> Result<Vec<PhpVer
                     .filter(|u| crate::core::php_upstream::is_newer(u, &pinned))
                     .cloned(),
                 upstream_checked_at: checked_at.clone(),
+                updatable: catalog.newer_than(&v.minor, &pinned),
                 patch: pinned,
                 minor: v.minor,
                 fpm_port: v.fpm_port,

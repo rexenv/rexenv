@@ -1434,27 +1434,20 @@ first:
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
-- **DECIDED 16 Aug 2026 — the signed manifest is NOT being built.** (Kept here so the
-  next person finds the reasoning where they would look for the feature.) (`docs/PLAN-binary-updates.md` §12.) The premise was re-checked first, and
-  the summary this had been carried by was wrong: "upstream publishes no checksums" was
-  the *premise* of the recorded objection, not the objection. The reasoning
-  (`c786ea3`, archived at `docs/archive/SHIPPED-2026-07.md:1278-1280`) is that a runtime
-  pin "would move pin trust from the signed app binary to the user's machine" — and every
-  source that DOES publish checksums (Caddy, PostgreSQL, Composer, our own 7.4
-  `SHA256SUMS`) is a compiled-in pin too, because a checksum served from the artifact's
-  own origin is documentation, not a trust root (`PLAN-php-74-support.md:461-462` says
-  exactly that, for the self-hosted case). Self-hosting 7.4 retired the SIBLING objection
-  from the same commit (self-build as a blocked path), not this one.
-  **Why not built:** the signature's value is entirely custody, and a key in a CI secret
-  in the account that hosts the manifest and the app is ceremony — one compromise takes
-  all three. Offline/hardware-token is a practice kept for years, not a commit, and
-  nobody owns it. Compounding that: there is no signed app binary at all
-  (`tauri.conf.json` is ad-hoc `"-"`), so the manifest key would be the first signed
-  thing here and instantly the most valuable secret — protecting PHP patches with a key
-  that outranks everything it protects. **If signing happens, it starts with the app**
-  (`docs/SIGNING.md`, blocked on a paid Apple account). No mirror either.
-  **Shipping instead:** the read-only "8.3.32 exists, this build pins 8.3.31" row —
-  §13, no key, nothing executable fetched, offline-safe. Tracked below.
+- [x] **In-app PHP patch updates — BUILT 17–18 Aug 2026, dark until the key
+  ceremony.** Reverses the 16 Aug decision at the user's direction: the update
+  button is 0.3.0's purpose. The custody objection that blocked it dissolved on a
+  fact neither reading had noticed — the app holds only the PUBLIC key, so the
+  app-side code is identical whether the private half is a CI secret or a hardware
+  token, and custody can improve later for the price of a key rotation.
+  Ledger #348 (verify + serial + four structural limits), #349 (`selected_patch`,
+  pin as floor, the pool snapshot seam), #350 (the apply flow with revert, the
+  button, the key ceremony). **Remaining, and it is an OPERATOR task, not a code
+  one:** run `scripts/gen-release-key.sh`, put the private half in the CI secret
+  FIRST, then pin `RELEASE_PUBKEY` and commit, then publish a signed manifest
+  before that build reaches anyone. Until then `enabled()` is false, `updatable`
+  is always None and the button does not render — which is the correct dark state,
+  not a bug.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If

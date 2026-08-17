@@ -211,6 +211,10 @@ pub fn run() {
                     if let Err(e) = core::php::seed_registry(&conn) {
                         log::error!("php: failed to seed version registry: {e}");
                     }
+                    // The verified update catalog, re-checked from the cache, into
+                    // the resolve path BEFORE anything resolves — so a patch the
+                    // user selected is resolvable offline, exactly like a pin.
+                    core::updates::install_cached(&conn);
                     // B20 §4 Phase B: record each existing override site's port
                     // BEFORE any site is read or adopted. One-time + idempotent;
                     // non-colliding sites keep their exact current port (the
@@ -783,6 +787,8 @@ pub fn run() {
             commands::php::frankenphp_embedded_php,
             commands::php::set_php_version_installed,
             commands::php::set_default_php_version,
+            commands::php::php_update_check,
+            commands::php::php_update_apply,
             commands::php::get_php_settings,
             commands::php::apply_php_settings,
             commands::system::setup_edge_conflict,

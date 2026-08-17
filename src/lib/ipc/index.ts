@@ -452,6 +452,19 @@ export async function listPhpVersions(): Promise<PhpVersion[]> {
   return invoke<PhpVersion[]>("list_php_versions");
 }
 
+/** Refresh the signed update manifest and return the rows it produced.
+ *  Best-effort: the caller renders a failure as "couldn't check", never a block. */
+export async function phpUpdateCheck(): Promise<PhpVersion[]> {
+  if (!isTauri()) return mockPhpVersions;
+  return invoke<PhpVersion[]>("php_update_check");
+}
+
+/** Move a minor onto a patch, or fail leaving it exactly where it was — the
+ *  backend reverts the selection and restarts the pool if it does not come back. */
+export async function phpUpdateApply(minor: string, patch: string): Promise<void> {
+  return invoke("php_update_apply", { minor, patch });
+}
+
 /** The PHP minor FrankenPHP actually serves (its embedded build, never the
  * site's pool). One backend pin, no frontend copy to drift. */
 export async function frankenphpEmbeddedPhp(): Promise<string> {

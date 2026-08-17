@@ -63,6 +63,14 @@ of any kind (`SOURCE_REPO` there points at itself; the cask's `url` +`verified:`
 cross-repo credential — exactly the PAT this pipeline was designed to avoid (see the note
 above). A local build also dodges the 10× macOS-minute multiplier on a private repo.
 
+**Before a release that carries an in-app PHP update:** the manifest must be
+signed and published, or the button offers nothing. The private key lives in the
+CI secret `REXENV_MANIFEST_KEY`; `scripts/gen-release-key.sh` mints the pair and
+is deliberately NOT wired into any pipeline — a key a build can mint is a key an
+attacker who reaches the build can mint. The public half is compiled into
+`core/updates.rs`, so ROTATION IS AN APP RELEASE, which is the property that makes
+a stolen key survivable. Ledger #348/#350.
+
 1. Bump the version in all four manifests as in step 1 below, and commit.
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
    `verify: all green` line.

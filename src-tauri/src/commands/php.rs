@@ -171,3 +171,115 @@ pub async fn apply_php_settings(
     }
     Ok(())
 }
+
+/// Refresh the signed update manifest and report what each installed minor could
+/// move to.
+///
+/// Best-effort by contract: a failure returns an error the row renders as
+/// "couldn't check", never a blocked screen. Verification, the serial rule and
+/// the structural limits all live in `core::updates`; this command only moves
+/// bytes and hands the result to the resolve path.
+#[tauri::command]
+pub async fn php_update_check(state: State<'_, AppState>) -> Result<Vec<PhpVersionView>> {
+    // Fetch UNLOCKED, verify + persist under one brief lock. `fetch` takes no
+    // Connection precisely so this cannot be written the other way round.
+    let (doc, sig) = core::updates::fetch().await?;
+    {
+        let conn = lock(&state)?;
+        let cat = core::updates::accept(&conn, &doc, &sig)?;
+        core::binaries::install_catalog(cat);
+    }
+    list_php_versions(state)
+}
+
+/// Move `minor` onto `patch`, or fail leaving it exactly where it was.
+///
+/// # The shape, and why each step is where it is
+///
+/// 1. **Refuse anything the catalog does not vouch for.** The patch must resolve
+///    through `binaries::manifest`, which consults the compiled-in pins first and
+///    only then the VERIFIED catalog — so a patch nobody signed cannot be named
+///    here even by a caller that bypasses the UI.
+/// 2. **Download BEFORE persisting.** The prefetch runs with no lock held and no
+///    row written, so a failed or cancelled download leaves the minor untouched.
+/// 3. **Persist, then restart.** Only after the bytes are cached does the choice
+///    become the registry's.
+/// 4. **Revert on a pool that does not come back.** The selection returns to what
+///    it was and the pool is restarted onto it, so a bad patch costs a restart
+///    rather than a broken stack. **The downloaded tree is NOT deleted** — it is
+///    valid, verified, and deleting it makes the retry re-fetch ~100MB.
+#[tauri::command]
+pub async fn php_update_apply(
+    state: State<'_, AppState>,
+    minor: String,
+    patch: String,
+) -> Result<()> {
+    let platform = state.platform.as_ref();
+    if core::php::minor_of(&patch) != minor {
+        return Err(Error::Other(format!("{patch} is not a patch of PHP {minor}")));
+    }
+    // (1) Only a version something vouches for. `manifest` returning a spec IS
+    // the check: it means either a compiled-in pin or a signed catalog entry.
+    if core::binaries::manifest(
+        "php-fpm",
+        &patch,
+        std::env::consts::OS,
+        platform.binaries().arch(),
+    )
+    .is_none()
+    {
+        return Err(Error::Other(format!(
+            "PHP {patch} is not in this build's pins or in a verified update manifest"
+        )));
+    }
+
+    // (2) Download first, with nothing written and no lock held.
+    let plan = core::downloads::plan_for_php_patch(platform, &minor, &patch);
+    core::downloads::prefetch(platform, &format!("Update PHP {minor}"), &plan).await?;
+
+    // (3) Persist the choice, then hand the pool manager the new snapshot.
+    let previous = {
+        let conn = lock(&state)?;
+        let prev = crate::state::store::list_php_versions(&conn)?
+            .into_iter()
+            .find(|v| v.minor == minor)
+            .and_then(|v| v.selected_patch);
+        crate::state::store::set_php_selected_patch(&conn, &minor, Some(&patch))?;
+        prev
+    };
+    let checks = {
+        let conn_patches = {
+            let conn = lock(&state)?;
+            core::php::effective_patches(&conn)?
+        };
+        let mut mgr = state.services.lock().await;
+        mgr.set_php_patches(conn_patches);
+        mgr.restart_pools_for(platform, std::slice::from_ref(&minor)).await
+    };
+
+    // (4) Revert if the restart failed to spawn OR failed to come back ready.
+    let outcome = match checks {
+        Err(e) => Err(e),
+        Ok(c) => core::service_manager::await_ready(c).await,
+    };
+    if let Err(e) = outcome {
+        let restore = {
+            let conn = lock(&state)?;
+            crate::state::store::set_php_selected_patch(&conn, &minor, previous.as_deref())?;
+            core::php::effective_patches(&conn)?
+        };
+        let back = {
+            let mut mgr = state.services.lock().await;
+            mgr.set_php_patches(restore);
+            mgr.restart_pools_for(platform, std::slice::from_ref(&minor)).await
+        };
+        if let Ok(c) = back {
+            let _ = core::service_manager::await_ready(c).await;
+        }
+        return Err(Error::Other(format!(
+            "PHP {minor} did not come back on {patch}, so it was put back on the previous \
+             build: {e}"
+        )));
+    }
+    Ok(())
+}

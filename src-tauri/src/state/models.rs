@@ -466,6 +466,12 @@ pub struct PhpVersionView {
     /// ship. That is why there is no Update button and why the copy says
     /// "exists" rather than "available" (`core::php_upstream`).
     pub upstream: Option<String>,
+    /// A patch a VERIFIED manifest offers for this minor, newer than the pin —
+    /// one rexenv can actually install. Distinct from `upstream`, which is only
+    /// php.net saying a release EXISTS: that has no button because rexenv may
+    /// have no build of it. `None` when no key is pinned, nothing newer is
+    /// signed for, or the check has never run.
+    pub updatable: Option<String>,
     /// When the upstream list was last fetched successfully (`db_now` format),
     /// or `None` if it never has been. Drives "checked N ago" — a check that
     /// finds nothing must still visibly have run.

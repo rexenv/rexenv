@@ -474,8 +474,19 @@ must remember to extend into a fact nobody can forget.
 
 ## 12. Task list
 
-**RULED 16 Aug 2026. The signed manifest is NOT being built.** §1–§3 stand as the
-analysis that produced the decision, not as a design queued for implementation.
+**REVERSED 17 Aug 2026, and BUILT.** The signed manifest ships. The 16 Aug ruling
+turned entirely on key custody — "a practice kept for years, not a commit" — and
+that objection dissolved on a fact neither reading had noticed: **the app-side
+code is identical whether the private half sits in a CI secret or a hardware
+token, because the app holds only the public key.** So custody can start weak and
+improve later for the price of a key rotation, with no redesign. §1–§3 stand
+unchanged as the analysis; what changed is that its blocker had an exit.
+
+**Status: code complete, DARK until the key ceremony runs.** `RELEASE_PUBKEY` is
+empty, so nothing is trusted, `fetch` refuses, and the button never renders. The
+ceremony is `scripts/gen-release-key.sh`, by hand, in this order: CI secret
+first, then pin the public half, then publish a signed manifest. Any other order
+ships a build that trusts a key nobody can sign with.
 
 ### The rulings, with the reasoning that produced them
 
