@@ -63,13 +63,27 @@ of any kind (`SOURCE_REPO` there points at itself; the cask's `url` +`verified:`
 cross-repo credential — exactly the PAT this pipeline was designed to avoid (see the note
 above). A local build also dodges the 10× macOS-minute multiplier on a private repo.
 
-**Before a release that carries an in-app PHP update:** the manifest must be
-signed and published, or the button offers nothing. The private key lives in the
-CI secret `REXENV_MANIFEST_KEY`; `scripts/gen-release-key.sh` mints the pair and
-is deliberately NOT wired into any pipeline — a key a build can mint is a key an
-attacker who reaches the build can mint. The public half is compiled into
-`core/updates.rs`, so ROTATION IS AN APP RELEASE, which is the property that makes
-a stolen key survivable. Ledger #348/#350.
+**Before a release that carries an in-app PHP update:** the manifest must be signed
+and published, or the button offers nothing.
+
+**The key stays on YOUR machine, not in a CI secret** (`~/.rexenv/manifest-key.pem`,
+`chmod 600`). That is not laziness — it follows from the line above: the dmg is
+published locally precisely to avoid a cross-repo credential, and the manifest goes
+to a public repo too, so it inherits the same answer. **With no CI secret holding
+the key, compromising the GitHub account does not get an attacker the signing key**,
+so the signature defends against a compromised CDN or mirror, tampering past TLS,
+AND a repo compromise. That is a strictly stronger property than the CI-held
+version, for one less moving part.
+
+  - `scripts/gen-release-key.sh` — mints the pair ONCE, wired into no pipeline.
+  - `scripts/publish-php-manifest.sh 8.3.32` — fetches the four artifacts from the
+    URL the app itself will use, hashes them, signs, **verifies its own signature**,
+    checks the signing key against the pinned `RELEASE_PUBKEY`, and prints the
+    publish command.
+
+The public half is compiled into `core/updates.rs`, so **rotation is an app
+release** — which is the property that makes a stolen key survivable. Ledger
+#348/#350.
 
 1. Bump the version in all four manifests as in step 1 below, and commit.
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own

@@ -494,6 +494,47 @@ mod tests {
         .into_bytes()
     }
 
+    /// **An `openssl`-signed manifest verifies in `ring`.** The interop leg, and
+    /// the one that would otherwise fail on release day.
+    ///
+    /// `scripts/publish-php-manifest.sh` signs with `openssl pkeyutl -rawin`; the
+    /// app verifies with `ring`'s ED25519. Both are "ed25519" and that proves
+    /// nothing about the wire format — key encoding, signature encoding and
+    /// whether the tool pre-hashes are all places two correct implementations
+    /// disagree. Every other test here signs with ring and verifies with ring,
+    /// which cannot see a mismatch at all.
+    ///
+    /// The fixture is REAL output from that script's exact commands, pasted in.
+    /// If openssl's format ever changes, or the script's flags drift, this fails
+    /// here rather than as "the manifest signature does not verify" on a user's
+    /// machine with nobody able to tell whose fault it is.
+    #[test]
+    fn a_manifest_signed_by_openssl_verifies_in_ring() {
+        // Generated 18 Aug 2026 by: openssl genpkey -algorithm ed25519,
+        // then `openssl pkeyutl -sign -rawin`, exactly as the publish script does.
+        const PUB: &str = "380f17a77f4d9b976c0c0c33f2588ef9f2c6c0086c3c4cdeb56765e2f4f14556";
+        const SIG: &str = "b996ad973ac3722ed4691f9944bef02e48916be5b15e152cdf15fcf1022d46f6c2a864d98cb10e1c65379c5ae1cda7140fbbf7d09f20688959c22d12edfd6a0e";
+        // Byte-exact: a single added space changes the signature, which is the
+        // property being relied on.
+        const DOC: &str = r#"{"serial":42,"generatedAt":"2026-08-18T00:00:00Z","minAppVersion":"0.3.0","artifacts":[{"name":"php","version":"8.3.9999","arch":"arm64","url":"https://dl.static-php.dev/static-php-cli/bulk/x.tar.gz","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}"#;
+
+        assert_eq!(PUB.len(), 64, "an ed25519 public key is 32 bytes");
+        assert_eq!(SIG.len(), 128, "an ed25519 signature is 64 bytes");
+
+        let m = verify_with(PUB, DOC.as_bytes(), SIG)
+            .expect("openssl's signature must verify in ring — the release path depends on it");
+        assert_eq!(m.serial, 42);
+        // …and the document survived the structural limits, so the shape the
+        // script emits is a shape the app accepts. A verified document whose
+        // every entry is then dropped would be a silent no-op release.
+        assert_eq!(m.artifacts.len(), 1, "the script's entry shape was rejected");
+        assert_eq!(m.artifacts[0].version, "8.3.9999");
+
+        // And the tamper direction, on the real fixture: one flipped character.
+        let bad = DOC.replacen("42", "43", 1);
+        assert!(verify_with(PUB, bad.as_bytes(), SIG).is_err());
+    }
+
     /// **A real signature verifies; a tampered document or signature does not.**
     ///
     /// The core security property, driven through a generated key because the
