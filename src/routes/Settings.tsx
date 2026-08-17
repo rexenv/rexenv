@@ -540,7 +540,7 @@ function PhpVersionsSetting() {
           static-php.dev lags php.net (which it does, by weeks). */}
       <div className="mt-1 text-[0.6875rem] text-rex-text-muted">
         {versions[0]?.upstreamCheckedAt
-          ? `Release list from php.net, checked ${agoLabel(versions[0].upstreamCheckedAt)}. rexenv runs pinned builds — a newer patch arrives with a rexenv update.`
+          ? `Release list from php.net, checked ${agoLabel(versions[0].upstreamCheckedAt)}. A patch usually “exists” for a while before rexenv can ship it: php.net publishes on release day, and the portable builds rexenv installs are made by a separate project that follows some weeks later. The patch arrives with a rexenv update, not from here.`
           : "Couldn't reach php.net yet, so nothing here says whether a newer patch exists."}
       </div>
     </div>

@@ -24,6 +24,29 @@ notarized by Apple), so the **first launch needs one extra click** — see below
   patch exists. It downloads nothing and installs nothing; if it fails, the row simply
   says so. Everything else already cached keeps working with no network at all.
 
+### "8.4.24 exists" but rexenv is still on 8.4.23 — why that is normal
+
+Expect a gap, usually of some weeks, and it is not a bug in either place.
+
+rexenv does not compile PHP. It installs **pinned, portable static builds**, and for
+PHP 8.x those are made by [static-php.dev](https://dl.static-php.dev/static-php-cli/),
+a separate project that rebuilds after each upstream release. php.net announces a patch
+on the day it ships; the portable build of that patch appears later. Measured on
+16 Aug 2026: php.net listed 8.4.24 and 8.5.9 (released 30 Jul), while the newest
+portable builds were 8.4.23 and 8.5.8 — exactly what rexenv pinned, and it had been that
+way for 17 days.
+
+So the Settings row says a patch **exists**, which is true, rather than "update
+available", which would promise something rexenv cannot deliver on the day you read it.
+There is deliberately no update button: every binary rexenv runs is checksum-pinned into
+the app, so a new patch reaches you through a rexenv update, where the pin can be
+verified before it ships. The row is there to answer "am I on something stale?", not to
+offer an install.
+
+If a patch matters to you urgently — a CVE you are exposed to — that is worth raising as
+an issue rather than waiting: the pin can be moved in a release once a portable build of
+it exists.
+
 ## Install
 
 1. Open `rexenv_<version>_universal.dmg`.
