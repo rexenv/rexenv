@@ -409,6 +409,13 @@ pub struct SiteServing {
 pub struct PhpVersion {
     /// Minor series, e.g. `8.3` — the primary key and what a `Site.php_version` references.
     pub minor: String,
+    /// The patch the USER chose for this minor, or `None` to follow the app's pin.
+    ///
+    /// The only value on this row the app cannot derive, which is the only reason
+    /// it is stored — v36 deleted a `patch` column precisely because that one
+    /// mirrored a compile-time constant (#339/#340/#345). The pin stays the
+    /// FLOOR: a selection can only move a minor forward.
+    pub selected_patch: Option<String>,
     /// Deterministic loopback FastCGI port of this version's pool.
     pub fpm_port: u16,
     /// Whether this version is enabled (the app starts a pool for it).

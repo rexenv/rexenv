@@ -297,6 +297,14 @@ impl ServiceManager {
     /// Replace the selected-DB-version mirror (from settings, at start/adopt/
     /// switch time). The watchdog's respawn reads it, so a crashed engine
     /// comes back on the SELECTED version.
+    /// Mirror the registry's per-minor EFFECTIVE patch (the user's Update choice,
+    /// floored by the pin) into the pool manager. Same seam as
+    /// [`Self::set_php_settings`] and [`Self::set_db_versions`], and set from the
+    /// same snapshot — so `core::php` never touches the database.
+    pub fn set_php_patches(&mut self, patches: std::collections::HashMap<String, String>) {
+        self.pools.set_patches(patches);
+    }
+
     pub fn set_db_versions(&mut self, versions: HashMap<DbEngine, String>) {
         self.db_versions = versions;
     }

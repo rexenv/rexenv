@@ -259,6 +259,10 @@ pub fn seed_registry(conn: &Connection) -> Result<()> {
                 // user's existing default survives via ON CONFLICT, so setting it
                 // here produces TWO defaults (#344).
                 is_default: false,
+                // A new row follows the pin. Only the user's Update sets this,
+                // through `store::set_php_selected_patch` — the seed must never
+                // write a column the user owns (#345).
+                selected_patch: None,
             },
         )?;
     }
@@ -271,6 +275,35 @@ pub fn seed_registry(conn: &Connection) -> Result<()> {
         store::set_default_php_version(conn, &default_minor)?;
     }
     Ok(())
+}
+
+/// The patch a minor should RUN: the user's selection, floored by this build's
+/// pin.
+///
+/// The one place that question is answered, so the pool, the download planner,
+/// the UI and the cache sweep cannot answer it differently. `updates::floored`
+/// makes the floor a version comparison rather than a flag: with no selection the
+/// answer is today's pin byte for byte, and a selection older than the pin is
+/// ignored rather than honoured — so a stale choice can never hold a user below
+/// the patch their app ships.
+pub fn effective_patch(conn: &Connection, minor: &str) -> Result<Option<String>> {
+    let selected = store::list_php_versions(conn)?
+        .into_iter()
+        .find(|v| v.minor == minor)
+        .and_then(|v| v.selected_patch);
+    Ok(crate::core::updates::floored(minor, selected.as_deref()))
+}
+
+/// Every minor's effective patch, for the snapshot the ServiceManager is handed
+/// before a start (the same shape as `set_php_settings` / `set_db_versions`).
+pub fn effective_patches(conn: &Connection) -> Result<std::collections::HashMap<String, String>> {
+    let mut out = std::collections::HashMap::new();
+    for v in store::list_php_versions(conn)? {
+        if let Some(p) = crate::core::updates::floored(&v.minor, v.selected_patch.as_deref()) {
+            out.insert(v.minor, p);
+        }
+    }
+    Ok(out)
 }
 
 /// The PHP patch a `php-fpm-<patch>/php-fpm` executable path names, if it does.
@@ -643,9 +676,36 @@ pub struct PhpFpmPools {
     /// written as `php_value[key]` lines into that pool's config. Set by
     /// `ServiceManager` from the SQLite `php_settings` table.
     settings: std::collections::HashMap<String, Vec<(String, String)>>,
+    /// Per-minor EFFECTIVE patch — the user's Update choice, already floored by
+    /// the pin (`php::effective_patches`). Set by `ServiceManager` from the
+    /// registry, exactly like `settings` above, so this module stays off the
+    /// database: a pool manager that could read SQLite would be a second place
+    /// answering "which patch runs".
+    ///
+    /// An ABSENT minor falls back to the compiled-in pin, which is what makes an
+    /// unset snapshot behave as it did before selections existed.
+    patches: std::collections::HashMap<String, String>,
 }
 
 impl PhpFpmPools {
+    /// The patch `minor` should run: the snapshot's answer, else the pin.
+    ///
+    /// ONE resolution point for both pools, so the normal and debug pool of a
+    /// minor can never execute different bytes — they share a binary by design,
+    /// and two copies of this lookup is how they would stop.
+    fn effective(&self, minor: &str) -> Result<String> {
+        if let Some(p) = self.patches.get(minor) {
+            return Ok(p.clone());
+        }
+        patch_for_minor(minor)
+            .map(str::to_string)
+            .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))
+    }
+
+    /// Mirror the registry's effective patches (`php::effective_patches`).
+    pub fn set_patches(&mut self, patches: std::collections::HashMap<String, String>) {
+        self.patches = patches;
+    }
     /// Set the mail-routing shim used when (re)writing pool configs. Applies to
     /// pools started afterward (a running pool keeps its config until restarted).
     pub fn set_sendmail_path(&mut self, sendmail_path: Option<String>) {
@@ -669,12 +729,11 @@ impl PhpFpmPools {
         if self.has(minor, false) {
             return Ok(());
         }
-        let patch = patch_for_minor(minor)
-            .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
+        let patch = self.effective(minor)?;
         let port =
             fpm_port(minor).ok_or_else(|| Error::Other(format!("no fpm port for {minor}")))?;
         ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM")?;
-        let bin = binaries::resolve(platform, "php-fpm", patch).await?;
+        let bin = binaries::resolve(platform, "php-fpm", &patch).await?;
         let settings = self.settings.get(minor).map(Vec::as_slice).unwrap_or(&[]);
         let conf = services::write_fpm_config(
             platform,
@@ -704,13 +763,12 @@ impl PhpFpmPools {
         if self.has(minor, true) {
             return Ok(());
         }
-        let patch = patch_for_minor(minor)
-            .ok_or_else(|| Error::Other(format!("no pinned PHP build for {minor}")))?;
+        let patch = self.effective(minor)?;
         let port = debug_fpm_port(minor).ok_or_else(|| {
             Error::Other(format!("Xdebug is not available for PHP {minor}"))
         })?;
         ports::ensure_free(platform, port, ports::Proto::Tcp, "PHP-FPM (Xdebug)")?;
-        let bin = binaries::resolve(platform, "php-fpm", patch).await?;
+        let bin = binaries::resolve(platform, "php-fpm", &patch).await?;
         let (bundle, bundle_version) = binaries::xdebug_bundle_id(minor)
             .ok_or_else(|| Error::Other(format!("Xdebug is not available for PHP {minor}")))?;
         let so = binaries::resolve_bundle(platform, &bundle, bundle_version)
@@ -1274,6 +1332,109 @@ mod tests {
         assert_eq!(rows.iter().filter(|v| v.is_default).count(), 1);
         // The derived port IS refreshed — that one the app owns.
         assert_eq!(row.fpm_port, fpm_port(&chosen).unwrap());
+    }
+
+    /// **The effective patch is the user's choice, and the pin is a FLOOR.**
+    ///
+    /// One resolution point for the pool, the planner, the UI and the sweep. The
+    /// floor matters most for the case nobody would test by hand: a selection
+    /// made months ago, then an app update that ships a NEWER pin. The pin wins,
+    /// so a stale choice can never hold someone below what their app ships.
+    #[test]
+    fn the_effective_patch_honours_a_selection_but_never_below_the_pin() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let minor = minor_of(binaries::PHP_VERSION);
+        let pin = patch_for_minor(&minor).unwrap();
+
+        // No selection → the pin, byte for byte. This is the whole install base.
+        assert_eq!(effective_patch(&conn, &minor).unwrap().as_deref(), Some(pin));
+        assert_eq!(effective_patches(&conn).unwrap().get(&minor).map(String::as_str), Some(pin));
+
+        // A NEWER selection is honoured.
+        let up = format!("{minor}.9999");
+        store::set_php_selected_patch(&conn, &minor, Some(&up)).unwrap();
+        assert_eq!(effective_patch(&conn, &minor).unwrap().as_deref(), Some(up.as_str()));
+
+        // An OLDER selection is ignored — the pin is a floor, not a default.
+        store::set_php_selected_patch(&conn, &minor, Some(&format!("{minor}.0"))).unwrap();
+        assert_eq!(
+            effective_patch(&conn, &minor).unwrap().as_deref(),
+            Some(pin),
+            "a stale selection held the minor below the patch this app ships"
+        );
+
+        // Cleared → back to the pin.
+        store::set_php_selected_patch(&conn, &minor, None).unwrap();
+        assert_eq!(effective_patch(&conn, &minor).unwrap().as_deref(), Some(pin));
+        // And the seed never touches it (#345's per-column rule).
+        seed_registry(&conn).unwrap();
+        store::set_php_selected_patch(&conn, &minor, Some(&up)).unwrap();
+        seed_registry(&conn).unwrap();
+        assert_eq!(
+            effective_patch(&conn, &minor).unwrap().as_deref(),
+            Some(up.as_str()),
+            "the seed cleared the user's selected patch"
+        );
+    }
+
+    /// **The seed cannot set a user's selected patch even if it tries.**
+    ///
+    /// Written because a plant FAILED and taught me the property held for a
+    /// different reason than I assumed. I planted `selected_patch:
+    /// patch_for_minor(..)` into the seed's row expecting the floor test to
+    /// catch it; nothing failed, because `upsert_php_version`'s SQL never NAMES
+    /// that column — the struct field is silently dropped. That is the behaviour
+    /// we want and it was entirely implicit, so the next reader "fixing" the
+    /// apparent omission by adding it to the INSERT would reintroduce exactly the
+    /// #339/#340 family with every test still green. This asserts the real
+    /// mechanism instead of the one I guessed at.
+    #[test]
+    fn the_seed_cannot_write_a_selected_patch_even_when_handed_one() {
+        let conn = db::open_in_memory().unwrap();
+        seed_registry(&conn).unwrap();
+        let minor = minor_of(binaries::PHP_VERSION);
+
+        // Hand `upsert_php_version` a row that DOES carry a selection, on a fresh
+        // row (the INSERT arm) and on an existing one (the conflict arm).
+        for m in [minor.clone(), "9.9".to_string()] {
+            let _ = store::upsert_php_version(
+                &conn,
+                &PhpVersion {
+                    minor: m.clone(),
+                    fpm_port: 9999,
+                    installed: true,
+                    is_default: false,
+                    selected_patch: Some("6.6.6".into()),
+                },
+            );
+            let got = store::list_php_versions(&conn)
+                .unwrap()
+                .into_iter()
+                .find(|v| v.minor == m)
+                .and_then(|v| v.selected_patch);
+            assert_eq!(
+                got, None,
+                "the seed wrote a selected patch for {m} — that column is the user's alone"
+            );
+        }
+    }
+
+    /// A pool with NO snapshot runs the pin — the behaviour every install had
+    /// before selections existed, and the fallback the launch path relies on.
+    #[test]
+    fn a_pool_with_no_patch_snapshot_runs_the_compiled_in_pin() {
+        let pools = PhpFpmPools::default();
+        let minor = minor_of(binaries::PHP_VERSION);
+        assert_eq!(pools.effective(&minor).unwrap(), patch_for_minor(&minor).unwrap());
+        // A minor with no pin at all is an error, not a guess.
+        assert!(pools.effective(&unshipped_minor()).is_err());
+
+        // With a snapshot, BOTH the normal and debug pool read the same answer —
+        // they share a binary by design, and two lookups is how they would stop.
+        let mut pools = PhpFpmPools::default();
+        pools.set_patches(std::collections::HashMap::from([(minor.clone(), "8.3.9999".to_string())]));
+        assert_eq!(pools.effective(&minor).unwrap(), "8.3.9999");
     }
 
     /// **A release that adds a new minor AND moves the pin to it must not create

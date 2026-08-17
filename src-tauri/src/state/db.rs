@@ -528,6 +528,23 @@ const MIGRATIONS: &[&str] = &[
     // No backfill: the value was a copy of a compile-time constant, so there is
     // nothing here a fresh read cannot reproduce.
     "ALTER TABLE php_versions DROP COLUMN patch;",
+    // v37 — the patch a user CHOSE for a minor, or NULL to follow the app's pin.
+    //
+    // Not v36's column coming back. That one MIRRORED the compile-time pin and
+    // was deleted for it (#339/#340). This records a decision only the user can
+    // make — "update 8.3 to 8.3.32" — which the app cannot derive from anything.
+    // The distinction is the whole per-column ownership question (#345): `patch`
+    // was app-owned and stored, which is the defect; `selected_patch` is
+    // user-owned and stored, which is the only reason to store anything.
+    //
+    // NULL = follow the pin, and that is deliberately not backfilled to the
+    // current pin: a user who never presses Update must keep getting the app's
+    // pin as it moves with releases, which is exactly today's behaviour.
+    //
+    // The PIN REMAINS THE FLOOR (`updates::floored`): a selection can only move a
+    // minor forward, so a stale selection can never hold a user below the patch
+    // their app ships.
+    "ALTER TABLE php_versions ADD COLUMN selected_patch TEXT;",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1070,6 +1087,47 @@ mod tests {
     /// reset. Both had already been clobbered once by the statement that wrote
     /// this column (#339, #340), which is why the migration is asserted on them
     /// rather than on the drop.
+    /// **v37 leaves every existing row following the PIN, not pinned to today's.**
+    ///
+    /// The opposite of v36's column in every way that matters: `selected_patch` is
+    /// a USER decision the app cannot derive, so it is stored — and it is
+    /// deliberately NOT backfilled, because a user who never presses Update must
+    /// keep receiving the app's pin as it moves with releases, which is exactly
+    /// the behaviour they have today. Backfilling it to the current pin would
+    /// freeze every existing install on 8.3.31 forever.
+    #[test]
+    fn v37_leaves_every_existing_row_following_the_pin_rather_than_freezing_it() {
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..36].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO php_versions (minor, fpm_port, installed, is_default)
+             VALUES ('8.1', 9781, 1, 1), ('8.3', 9783, 1, 0)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let mut stmt = conn
+            .prepare("SELECT minor, selected_patch, installed, is_default FROM php_versions ORDER BY minor")
+            .unwrap();
+        let rows: Vec<(String, Option<String>, i64, i64)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(rows.len(), 2);
+        for (minor, selected, installed, _) in &rows {
+            assert_eq!(*selected, None, "{minor} was frozen to a patch it never chose");
+            assert_eq!(*installed, 1, "{minor} lost the user's install choice");
+        }
+        // …and the user's default survived the migration, as in v36.
+        assert_eq!(rows.iter().filter(|r| r.3 == 1).map(|r| r.0.as_str()).collect::<Vec<_>>(), vec!["8.1"]);
+    }
+
     #[test]
     fn v36_drops_the_mirrored_patch_and_keeps_what_the_user_chose() {
         let conn = Connection::open_in_memory().unwrap();

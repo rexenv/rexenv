@@ -1077,6 +1077,7 @@ fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
         fpm_port: row.get::<_, i64>(1)? as u16,
         installed: row.get::<_, i64>(2)? != 0,
         is_default: row.get::<_, i64>(3)? != 0,
+        selected_patch: row.get(4)?,
     })
 }
 
@@ -1094,10 +1095,18 @@ fn row_to_php_version(row: &Row) -> rusqlite::Result<PhpVersion> {
 ///   `installed` sat one line away, deliberately excluded for exactly this reason.
 ///
 /// On INSERT all three are seeded, which is right: a fresh row has no user choice
-/// to protect. (`patch` used to be a fourth column here and is now DERIVED — see
-/// migration v36.)
+/// to protect — and `selected_patch` is deliberately NOT among them, so a new row
+/// follows the pin until the user says otherwise. (`patch` used to be a column
+/// here and is now DERIVED — migration v36. `selected_patch` is its opposite: a
+/// user fact, so it is stored and never written by the seed.)
 pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
     conn.execute(
+        // `selected_patch` is ABSENT FROM BOTH ARMS ON PURPOSE — not an omission
+        // to tidy up. It is the user's Update choice; `set_php_selected_patch` is
+        // its only writer. Adding it here would reintroduce the #339/#340 family
+        // (a seed overwriting a user fact) and `the_seed_cannot_write_a_selected_patch_even_when_handed_one`
+        // is what stops that, because the struct DOES carry the field and would
+        // happily supply it.
         "INSERT INTO php_versions (minor, fpm_port, installed, is_default)
          VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(minor) DO UPDATE SET
@@ -1112,10 +1121,24 @@ pub fn upsert_php_version(conn: &Connection, v: &PhpVersion) -> Result<()> {
     Ok(())
 }
 
+/// Record (or clear) the patch a user chose for `minor`. `None` = follow the pin.
+///
+/// Its own writer, like `set_php_installed` and `set_default_php_version`, and for
+/// the same reason: it is a USER fact, so nothing that runs unasked may touch it.
+/// The seed writes every other column on this row and must never write this one
+/// (`every_upsert_updates_only_columns_the_app_owns`).
+pub fn set_php_selected_patch(conn: &Connection, minor: &str, patch: Option<&str>) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE php_versions SET selected_patch = ?1 WHERE minor = ?2",
+        params![patch, minor],
+    )?;
+    Ok(affected > 0)
+}
+
 /// All registered PHP versions, ordered by minor series.
 pub fn list_php_versions(conn: &Connection) -> Result<Vec<PhpVersion>> {
     let mut stmt = conn.prepare(
-        "SELECT minor, fpm_port, installed, is_default
+        "SELECT minor, fpm_port, installed, is_default, selected_patch
          FROM php_versions ORDER BY minor",
     )?;
     let rows = stmt.query_map([], row_to_php_version)?;

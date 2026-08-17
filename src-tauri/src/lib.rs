@@ -333,6 +333,24 @@ pub fn run() {
                             return;
                         };
                         let platform = state.platform.as_ref();
+                        // Hand the pool manager the registry's effective patches
+                        // BEFORE any restart below. Without this the launch path
+                        // has an empty snapshot, `effective` falls back to the
+                        // pin, and a bump restart would drop a user's chosen
+                        // patch back to the app's — silently, on the one path
+                        // nobody is watching.
+                        // Read UNDER the lock, push AFTER it drops — an `if let`
+                        // holding the guard across the await is not Send, which is
+                        // the compiler enforcing the house rule for us.
+                        let patches = state
+                            .db
+                            .lock()
+                            .ok()
+                            .and_then(|conn| core::php::effective_patches(&conn).ok());
+                        if let Some(patches) = patches {
+                            state.services.lock().await.set_php_patches(patches);
+                        }
+
                         // Which minors are serving bytes that are not this
                         // build's pin — asked of the RUNNING masters, so an
                         // adopted survivor from a previous app version answers
