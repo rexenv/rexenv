@@ -341,16 +341,29 @@ function PhpVersionRow({
           the row can spare — let it reflow under the version name instead of
           crushing it. */}
       <div className="flex flex-wrap items-center gap-3 py-2.5">
-        <div className="min-w-0 flex-1 basis-[9rem]">
-          <span className="font-mono text-[0.8125rem] text-rex-text">PHP {v.minor}</span>
-          <span className="ml-2 font-mono text-[0.6875rem] text-rex-text-muted">{v.patch}</span>
+        {/* A FLEX row with wrapping, not inline spans with `ml-2`. Five chips
+            never fit 9rem, and as inline content the badges wrapped INTERNALLY —
+            "EOL" on one line and "November 2022" on the next, each carrying half
+            the pill's border, which reads as a rendering bug rather than as a
+            long label. Each chip is `whitespace-nowrap` so it wraps as a UNIT,
+            and the gap survives the wrap where a left margin does not. */}
+        <div
+          data-probe="php-row-chips"
+          className="flex min-w-0 flex-1 basis-[13rem] flex-wrap items-center gap-x-2 gap-y-1"
+        >
+          <span className="whitespace-nowrap font-mono text-[0.8125rem] text-rex-text">
+            PHP {v.minor}
+          </span>
+          <span className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-text-muted">
+            {v.patch}
+          </span>
           {/* The pool is running bytes this build does not pin — say so, rather
               than rendering the pin and letting it read as what is serving. Only
               ever present when the two genuinely disagree (core sends `null`
               otherwise), so the ordinary row grows nothing. */}
           {v.serving && (
             <span
-              className="ml-2 font-mono text-[0.6875rem] text-rex-accent-amber"
+              className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-accent-amber"
               title={`This build pins ${v.patch}. The running pool is still on ${v.serving} — it restarts on the next launch, or on Start all.`}
             >
               serving {v.serving}
@@ -363,14 +376,14 @@ function PhpVersionRow({
               reason (docs/PLAN-binary-updates.md §13). */}
           {v.upstream && (
             <span
-              className="ml-2 font-mono text-[0.6875rem] text-rex-text-muted"
+              className="whitespace-nowrap font-mono text-[0.6875rem] text-rex-text-muted"
               title={`php.net lists ${v.upstream} as the newest ${v.minor} release. rexenv installs a pinned build, so this arrives with a rexenv update rather than from here.`}
             >
               · {v.upstream} exists
             </span>
           )}
           {v.isDefault && (
-            <span className="ml-2 rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
+            <span className="whitespace-nowrap rounded border border-brand/40 bg-brand/10 px-1.5 py-0.5 text-[0.625rem] font-medium text-brand">
               Default
             </span>
           )}
@@ -379,7 +392,7 @@ function PhpVersionRow({
               2023 and 8.1 from Dec 2025 with no tell at all. */}
           {v.eolSince && (
             <span
-              className="ml-2 rounded border border-status-warning-border bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-warning-bright"
+              className="whitespace-nowrap rounded border border-status-warning-border bg-status-warning-bg px-1.5 py-0.5 text-[0.625rem] font-medium text-status-warning-bright"
               title={eolNote(v.minor, v.eolSince)}
             >
               EOL {eolWhen(v.eolSince)}
@@ -488,7 +501,7 @@ function PhpIniSettingsEditor({ minor }: { minor: string }) {
   );
 }
 
-function PhpVersionsSetting() {
+export function PhpVersionsSetting() {
   const qc = useQueryClient();
   const { data: versions = [], isLoading } = useQuery({
     queryKey: ["php-versions"],
@@ -517,8 +530,24 @@ function PhpVersionsSetting() {
   if (isLoading) {
     return <div className="text-[0.78125rem] text-rex-text-muted">Loading…</div>;
   }
+  const anyUpstream = versions.some((v) => v.upstream);
   return (
     <div>
+      {/* Stated BEFORE the chips it explains. "8.3.33 exists" with no button
+          beside it reads as a half-built feature unless the reader already knows
+          there are two projects involved — which the first person to see it did
+          not. Rendered only when a chip is actually on screen, so the ordinary
+          case gains no paragraph. */}
+      {anyUpstream && (
+        <div
+          data-probe="php-upstream-note"
+          className="mb-2.5 rounded border border-rex-border bg-rex-well px-2.5 py-2 text-[0.6875rem] leading-relaxed text-rex-text-muted"
+        >
+          <span className="text-rex-text">“exists” is not a button.</span> rexenv runs
+          checksum-pinned builds, so a newer patch arrives with a rexenv update — and it
+          usually exists upstream for some weeks first.
+        </div>
+      )}
       {versions.map((v) => (
         <PhpVersionRow
           key={v.minor}
@@ -537,10 +566,13 @@ function PhpVersionsSetting() {
       {/* A check that finds nothing must still visibly have run — the Import
           screen's "scanned 12s ago" honesty. Never says "up to date": that is
           unprovable before the first successful check, and false whenever
-          static-php.dev lags php.net (which it does, by weeks). */}
+          static-php.dev lags php.net (which it does, by weeks). The WHY moved
+          ABOVE the rows: as a footer under seven rows it did not reach the first
+          person to read an "exists" chip, who took the missing button for a
+          broken feature. An explanation has to precede the thing it explains. */}
       <div className="mt-1 text-[0.6875rem] text-rex-text-muted">
         {versions[0]?.upstreamCheckedAt
-          ? `Release list from php.net, checked ${agoLabel(versions[0].upstreamCheckedAt)}. A patch usually “exists” for a while before rexenv can ship it: php.net publishes on release day, and the portable builds rexenv installs are made by a separate project that follows some weeks later. The patch arrives with a rexenv update, not from here.`
+          ? `Release list from php.net, checked ${agoLabel(versions[0].upstreamCheckedAt)}.`
           : "Couldn't reach php.net yet, so nothing here says whether a newer patch exists."}
       </div>
     </div>

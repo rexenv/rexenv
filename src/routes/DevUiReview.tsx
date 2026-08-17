@@ -47,6 +47,7 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockPhpVersions } from "@/lib/mock";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
@@ -54,6 +55,7 @@ import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ResolverDriftBanner, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
+import { PhpVersionsSetting } from "@/routes/Settings";
 import { WpCliPackagesCard } from "@/routes/Settings";
 import { Mail as MailScreen } from "@/routes/Mail";
 import { OnboardingDone } from "@/routes/Onboarding";
@@ -574,6 +576,31 @@ function BadgesView() {
  *  `running`), and the pill width is the WKWebView metrics fix (`min-w-[92px]`
  *  after "Running" wrapped into two overlapping words) — measured by
  *  uireview.js instead of the one-off console session that verified it. */
+/** The Settings → PHP versions rows, at the width that broke them.
+ *
+ *  Shipped broken 17 Aug 2026: five chips (patch, serving, exists, Default, EOL)
+ *  inline in a 9rem column, so a badge wrapped INTERNALLY — "EOL" on one line and
+ *  "November 2022" on the next, each carrying half the pill's border. It reads as
+ *  a rendering fault rather than a long label, and nothing caught it because the
+ *  row had no harness scenario at all: every version of it that reviewers saw was
+ *  a fresh install, where `serving` and `exists` are both absent and three chips
+ *  fit.
+ *
+ *  The fixture is the WORST case on purpose — a row carrying every chip at once —
+ *  because the common case is exactly what hid this. */
+function PhpVersionsView() {
+  return (
+    <div className="flex flex-col gap-4">
+      {/* The real Settings content column, not the viewport. The bug lives in
+          the column width; rendering this full-bleed would pass and prove
+          nothing. */}
+      <div data-probe="phpversions" className="w-[22rem] rounded border border-rex-border p-3">
+        <PhpVersionsSetting />
+      </div>
+    </div>
+  );
+}
+
 function PillsView() {
   const noop = () => {};
   return (
@@ -841,6 +868,14 @@ export function DevUiReview() {
           (w.__rexOpens ??= []).push({ cmd, args });
           return null;
         }
+        // The PHP versions rows. Absent until 17 Aug 2026, so the view fell to
+        // the default arm and got `null` — which `versions[0]?.…` tolerated
+        // silently and `versions.some(…)` did not. The harness surfaced it as a
+        // crash the moment a second reader of that array appeared; a fixture
+        // that returns the wrong SHAPE is the same defect family as one that
+        // returns friendly values.
+        case "list_php_versions":
+          return mockPhpVersions;
         case "db_import_record":
           return record();
         case "db_import_state":
@@ -976,6 +1011,7 @@ export function DevUiReview() {
         {view === "onboarding" && <OnboardingDone />}
         {view === "toast" && <ToastView />}
         {view === "pills" && <PillsView />}
+        {view === "phpversions" && <PhpVersionsView />}
         {view === "agents" && <AgentsView />}
         {view === "scratch" && <ScratchView />}
         {view === "keep" && (

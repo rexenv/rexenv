@@ -110,11 +110,102 @@ const SCENARIOS = [
   // dismissed → ours-again heals → re-loss re-shows) by re-navigating itself.
   ["resolver-drift", "view=drift&drift=test", []],
   ["scratch-keep-dialog", "view=keep", []],
+  // Settings → PHP versions, at the Settings column width, with a row carrying
+  // EVERY chip at once. Shipped broken: five chips inline in a 9rem column made a
+  // badge wrap INTERNALLY ("EOL" / "November 2022", each with half the pill's
+  // border). Nothing caught it because the row had no scenario — reviewers only
+  // ever saw a fresh install, where `serving` and `exists` are absent.
+  ["php-versions", "view=phpversions", []],
 ];
 
 /** Per-scenario layout assertions (beyond the universal overflow probe).
  *  Return a list of problem strings; empty = pass. */
 const PROBES = {
+  // Every chip in a PHP version row must wrap as a UNIT, never internally. A
+  // one-line chip is ~18px tall; a badge whose own text broke across two lines
+  // roughly doubles that, which is the tell. Same shape as the `pills` height
+  // check — a wrapped pill is the defect that looks like a rendering bug.
+  "php-versions": async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const root = document.querySelector('[data-probe="phpversions"]');
+      if (!root) return ["the php-versions view rendered nothing"];
+      // DIRECT CHILDREN of the name column, selected STRUCTURALLY. Selecting by
+      // `span.whitespace-nowrap` — the class the fix adds — made this guard blind
+      // to exactly the regression it exists to catch: removing the class removed
+      // the chip from the query, and the plant passed. Same defect as declaring
+      // contrast exemptions by token name (ledger #337), committed inside a probe
+      // written to catch a layout bug.
+      const chips = root.querySelectorAll('[data-probe="php-row-chips"] > span');
+      if (chips.length < 8) problems.push(`only ${chips.length} chips rendered — fixture too thin`);
+      // Three distinct failures, because the planted regression produced the
+      // one a height check cannot see. Measured, not assumed: the pre-fix layout
+      // crushed chips ON TOP OF each other and NONE of them grew taller.
+      const cols = [...document.querySelectorAll('[data-probe="php-row-chips"]')];
+      for (const col of cols) {
+        const cr = col.getBoundingClientRect();
+        const kids = [...col.children].map((s) => ({
+          t: (s.textContent || "?").trim().slice(0, 24),
+          r: s.getBoundingClientRect(),
+        }));
+        for (const k of kids) {
+          // (1) A badge whose own text broke across lines — half a pill per line.
+          if (k.r.height > 26) problems.push(`chip "${k.t}" is ${k.r.height.toFixed(1)}px tall — its text wrapped`);
+          // (2) Escaping the column it lives in.
+          if (k.r.right > cr.right + 0.5) problems.push(`chip "${k.t}" overflows its column by ${(k.r.right - cr.right).toFixed(1)}px`);
+        }
+        // (3b) The column against the CONTROLS beside it. This is where the
+        // planted regression actually collided — "8.4.24 exists" landing on top
+        // of "Make default" — and a check confined to siblings inside the column
+        // could not see it. Measured from the screenshot, not reasoned about.
+        for (const sib of [...col.parentElement.children].filter((n) => n !== col)) {
+          const sr = sib.getBoundingClientRect();
+          for (const k of kids) {
+            const sameLine = k.r.top < sr.bottom - 2 && sr.top < k.r.bottom - 2;
+            const ox = Math.min(k.r.right, sr.right) - Math.max(k.r.left, sr.left);
+            if (sameLine && ox > 1) {
+              problems.push(
+                `chip "${k.t}" overlaps the control "${(sib.textContent || "?").trim().slice(0, 18)}" by ${ox.toFixed(1)}px`
+              );
+            }
+          }
+        }
+        // (3) OVERLAP — two chips occupying the same pixels on the same line.
+        for (let i = 0; i < kids.length; i++) {
+          for (let j = i + 1; j < kids.length; j++) {
+            const a = kids[i].r, b = kids[j].r;
+            const sameLine = a.top < b.bottom - 2 && b.top < a.bottom - 2;
+            const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+            if (sameLine && overlapX > 1) {
+              problems.push(`chips "${kids[i].t}" and "${kids[j].t}" overlap by ${overlapX.toFixed(1)}px`);
+            }
+          }
+        }
+      }
+      // The fixture must actually exercise the worst case, or this goes vacuous.
+      const all = root.innerText;
+      for (const want of ["EOL", "exists", "serving", "Default"]) {
+        if (!all.includes(want)) problems.push(`fixture is missing a "${want}" chip`);
+      }
+      // The explanation must precede the chips it explains — the ordering fix for
+      // "8.3.33 exists with no button reads as half-built".
+      //
+      // Compared by DOM POSITION, not by string index. The first version searched
+      // innerText for "exists" and found it inside the note's OWN first sentence
+      // (“exists” is not an update you can press), so a correctly-ordered page
+      // failed. Fourth time in one session that a check matched its own
+      // explanation; a structural comparison cannot.
+      const note = root.querySelector('[data-probe="php-upstream-note"]');
+      const firstChipRow = root.querySelector('[data-probe="php-row-chips"]');
+      if (!note) problems.push("the why-no-button note is gone");
+      else if (
+        firstChipRow &&
+        !(note.compareDocumentPosition(firstChipRow) & Node.DOCUMENT_POSITION_FOLLOWING)
+      ) {
+        problems.push("the note renders AFTER the chips it explains");
+      }
+      return problems;
+    }),
   // Onboarding's :443 notice. The clear case is the load-bearing one: reporting
   // "nothing is answering" as a problem at onboarding — where the stack has not
   // started — is the same fault the import path shipped, in a new place.
@@ -429,6 +520,7 @@ function probeFor(name) {
   if (name.startsWith("provision")) return PROBES.provisionRow;
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
+  if (name === "php-versions") return PROBES["php-versions"];
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }
