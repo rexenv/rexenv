@@ -457,6 +457,41 @@ pub fn run() {
                             }
                         }
 
+                        // Refresh the SIGNED update manifest, so the catalog is
+                        // populated before the user ever opens Settings.
+                        //
+                        // `install_cached` above loads what was already accepted —
+                        // and on a fresh install that is nothing, so without this
+                        // the catalog stays empty forever and the Update button can
+                        // never appear. It could not: `php_update_check` existed as
+                        // a command and an IPC wrapper and NOTHING called it. The
+                        // door was built and the handle was never hung, which is
+                        // why `every_ipc_wrapper_is_actually_called` now exists.
+                        //
+                        // Best-effort and last: no key pinned, no network, or a bad
+                        // signature all leave the app resolving exactly its pins.
+                        match core::updates::fetch().await {
+                            Ok((doc, sig)) => {
+                                let accepted = state.db.lock().ok().map(|conn| {
+                                    core::updates::accept(&conn, &doc, sig.trim())
+                                });
+                                match accepted {
+                                    Some(Ok(cat)) => {
+                                        log::info!(
+                                            "php: update manifest accepted ({} entries)",
+                                            cat.versions().len()
+                                        );
+                                        core::binaries::install_catalog(cat);
+                                    }
+                                    Some(Err(e)) => {
+                                        log::info!("php: update manifest not accepted: {e}")
+                                    }
+                                    None => log::warn!("php: update manifest not stored — db lock"),
+                                }
+                            }
+                            Err(e) => log::info!("php: update manifest check skipped: {e}"),
+                        }
+
                         // Ask php.net what PHP has actually released, so the
                         // Settings rows can say "8.3.33 exists · this build pins
                         // 8.3.31". Best-effort and last: it gates nothing, it

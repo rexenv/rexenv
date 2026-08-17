@@ -152,6 +152,105 @@ const LINK = "https://example.test/a//b";
         assert!(out.contains("https://example.test/a//b"));
     }
 
+    /// **Every IPC wrapper is actually CALLED somewhere.**
+    ///
+    /// `src/lib/ipc/` is the only door between the UI and the backend, and an
+    /// exported wrapper nothing calls is a feature that cannot happen. That is not
+    /// hypothetical: `phpUpdateCheck` shipped as a Tauri command, a Rust
+    /// implementation, an IPC wrapper and a rendered button — and **nothing ever
+    /// called it**, so the manifest was never fetched, the catalog stayed empty,
+    /// and the Update button could not appear for anyone. Every layer existed and
+    /// the chain had a hole in the middle. Found by a user asking why the button
+    /// was missing, which is the worst way to find it.
+    ///
+    /// Same family as the `probeFor()` dispatch this repo tripped over the same
+    /// day: the thing was written, and the one line that reaches it was not.
+    #[test]
+    fn every_ipc_wrapper_is_actually_called() {
+        // Wrappers with no caller today, each with the reason. This list is
+        // allowed to SHRINK, never to grow silently: a new entry means someone
+        // built a door and left it shut.
+        const UNCALLED: &[(&str, &str)] = &[
+            ("createSite", "superseded by the job-based provision flow; the wrapper predates it"),
+            ("wpThemeEnableNetwork", "multisite theme network-enable has no UI yet"),
+            ("wpThemeDisableNetwork", "the sibling of the above"),
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let ipc = std::fs::read_to_string(root.join("lib/ipc/index.ts"))
+            .expect("the ipc module must exist — this guard is about it");
+
+        // Exported wrappers, by their declaration form.
+        let mut names: Vec<&str> = Vec::new();
+        for line in ipc.lines() {
+            let t = line.trim();
+            for pre in ["export async function ", "export function "] {
+                if let Some(rest) = t.strip_prefix(pre) {
+                    if let Some(n) = rest.split(['(', '<']).next() {
+                        if !n.is_empty() {
+                            names.push(n);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(names.len() > 50, "only {} wrappers parsed — the scan is broken", names.len());
+
+        // Every other .ts/.tsx file, comments stripped so a wrapper merely
+        // MENTIONED in prose does not count as called.
+        fn walk(dir: &std::path::Path, skip: &std::path::Path, out: &mut String) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, skip, out);
+                    continue;
+                }
+                if p == skip {
+                    continue;
+                }
+                let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
+                if ext != "ts" && ext != "tsx" {
+                    continue;
+                }
+                if let Ok(raw) = std::fs::read_to_string(&p) {
+                    out.push_str(&strip_ts_comments(&raw));
+                    out.push('\n');
+                }
+            }
+        }
+        let mut callers = String::new();
+        walk(&root, &root.join("lib/ipc/index.ts"), &mut callers);
+
+        let mut orphans: Vec<&str> = Vec::new();
+        for n in &names {
+            let called = callers
+                .match_indices(n)
+                .any(|(i, _)| {
+                    // A whole identifier, not a prefix of a longer one.
+                    let after = callers[i + n.len()..].chars().next().unwrap_or(' ');
+                    let before = callers[..i].chars().last().unwrap_or(' ');
+                    !after.is_alphanumeric() && after != '_'
+                        && !before.is_alphanumeric() && before != '_'
+                });
+            if !called && !UNCALLED.iter().any(|(u, _)| u == n) {
+                orphans.push(n);
+            }
+        }
+        assert!(
+            orphans.is_empty(),
+            "these IPC wrappers are exported and NEVER called — a feature that cannot happen:\n  {}\n\n             Wire the call, or add it to UNCALLED with the reason. `phpUpdateCheck` shipped this \
+             way: command, implementation, wrapper and button all present, and the one line that \
+             reaches it missing, so the Update button could not appear for anyone.",
+            orphans.join("\n  ")
+        );
+        // The exemption list must not rot either: an entry that IS called now
+        // should be removed, or it hides the next real one.
+        for (u, why) in UNCALLED {
+            assert!(names.contains(u), "UNCALLED names `{u}`, which is not an ipc wrapper ({why})");
+        }
+    }
+
     /// **The PHP version rows may say a newer patch EXISTS; they may never say
     /// one is AVAILABLE, or that this build is UP TO DATE.**
     ///

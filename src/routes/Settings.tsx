@@ -52,7 +52,7 @@ import {
   scanValetImport,
   dbImportLeftovers,
   dbImportDeleteLeftover,
-  uninstallSystem, phpUpdateApply } from "@/lib/ipc";
+  uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
 import type { Blueprint, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
@@ -524,6 +524,25 @@ export function PhpVersionsSetting() {
   const { data: versions = [], isLoading } = useQuery({
     queryKey: ["php-versions"],
     queryFn: listPhpVersions,
+  });
+  // Refresh the SIGNED manifest when this section opens, so a manifest published
+  // since launch is offered without a restart. The launch path does this too; this
+  // is the "I just published one" case.
+  //
+  // Its own query rather than a call inside the one above: a failure here must not
+  // fail the LIST. `retry: false` because a poll nobody asked for should not
+  // hammer, and a stale window so re-opening Settings does not re-fetch.
+  useQuery({
+    queryKey: ["php-update-check"],
+    queryFn: async () => {
+      const rows = await phpUpdateCheck();
+      // The check returns the fresh rows; publish them to the list's cache rather
+      // than invalidating, which would re-run the list query for data we hold.
+      qc.setQueryData(["php-versions"], rows);
+      return rows;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   });
   const toggle = useMutation({
     mutationFn: ({ minor, installed }: { minor: string; installed: boolean }) =>
