@@ -195,6 +195,7 @@ wp_login_client_ip_check sandbox
 wp_noise_check sandbox
 wp_packages_check sandbox
 wp_plugins_check network
+wp_premium_update_check network
 wp_real443_setup demo
 wp_themes_check network
 wp_tools_check network

@@ -9,6 +9,22 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Premium plugins showed no update badge** ✓ 18 Aug 2026, ledger #370,
+  `core/wordpress.rs` (`update_context_arg`, `checked_list`). wp-admin listed BetterDocs
+  Pro 3.9.0 → 4.1.0 and rexenv showed nothing: the vendors' updaters register their
+  `pre_set_site_transient_update_plugins` filter behind
+  `current_user_can( 'manage_options' )`, and a wp-cli run has no user. A second
+  `--require` file grants three named capabilities + `WP_ADMIN` to the checked pass and
+  to the update itself (the package URL comes from the same filter, so a badge without
+  it is a dead button). Measured on the reporting site: **2 of 10 paid plugins reported
+  an update before, 5 after** — the rest are ones wp-admin says nothing about either.
+  Scoped by a source-scanning guard (plant-proven), and the checked pass falls back to
+  the plain list on any non-clock failure.
+  **Open, and the reason this row is not fully closed:** `examples/wp_premium_update_check.rs`
+  (network tier) is written and builds but has **never been run** — it needs MySQL
+  :13306, held by the running stack. Run it with the stack stopped, then flip #370 to ✓
+  and this row's caveat with it.
+
 - [x] **Premium plugins had no icon in the plugin list** ✓ 18 Aug 2026,
   `core/wporg.rs::plugin_icons` + `wporg_icons_check` (L1 network, run green:
   `betterdocs-pro` → `ps.w.org/betterdocs/…`, `wp-security-audit-log-premium` →

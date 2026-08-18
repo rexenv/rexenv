@@ -400,6 +400,17 @@ asserts a disabled control), so this is the only place it is seen.
   Repeat for a git asset: `git checkout -b smoke/x` in a terminal, click back, the
   branch chip follows. The Refresh control does the same on demand.
 - [ ] Tools: toggle WP_DEBUG; run a dry-run search-replace (reports a count, no data change).
+- [ ] **A PREMIUM plugin's update — badge AND button** (18 Aug 2026, #370. Needs a
+  site with a licensed paid plugin; `wp_premium_update_check` plants the vendors'
+  capability gate but cannot own a licence, so the install itself only happens here):
+  open a site whose wp-admin → Updates lists a paid plugin (BetterDocs Pro, Elementor
+  Pro, Rank Math Pro…). rexenv's Plugins tab must show **the same rows with the same
+  target versions** — the two lists disagreeing is the bug this leg exists for. Then
+  press **Update** on one of them: it must actually install (the package URL comes from
+  the vendor's filter, so a badge with a dead button is the failure mode), and the row
+  must settle at the new version with no badge left behind. **Also check what did NOT
+  change:** a plugin with no update stays quiet, and the fast list still paints
+  instantly — the premium context rides the CHECKED pass only.
 - [ ] Tools → Maintenance: toggle **Maintenance mode** on → site shows "briefly unavailable" in a private window; off → normal again.
 - [ ] Tools → Backup & restore: **Export database** writes a `.sql` to Downloads; **Import database** round-trips it (make a post → export → delete the post → import → post is back).
 

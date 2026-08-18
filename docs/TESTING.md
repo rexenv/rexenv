@@ -220,6 +220,21 @@ it can:
   and asserts the two rows that must STAY letter tiles (a private plugin, and a paid
   one no suffix rule reaches) still do — an over-eager rule that borrowed a
   stranger's logo would pass every assertion about the icons that do appear.
+  **`wp_premium_update_check` (network tier, 18 Aug 2026, #370) plants the DISEASE and
+  its control, because a one-sided plant would have passed either way.** The claim is
+  that a paid plugin's update becomes visible once rexenv grants the capabilities the
+  vendor's updater gates on — invisible to L0, since it is WordPress's own update
+  pipeline deciding whether a filter registered. So it writes two fixture plugins and
+  one mu-plugin that offers an update for each, the second behind the measured gate
+  (`current_user_can( 'manage_options' )`), and asks twice: through `wp_run_raw` (which
+  by structural guarantee carries no context) the gated update is ABSENT — the original
+  bug on demand — and through `plugin_list(check_updates: true)` both are present with
+  the offered version. The ungated fixture is what makes a green run mean something: it
+  fails first if the plant itself broke. Each reading drops the update transient first,
+  or WordPress answers from its 12h timer and the two legs differ by ORDER rather than
+  by the grant. A third leg asks a later run whether it still has the capability (it
+  must not). **Cannot prove:** that a premium update INSTALLS — that needs a vendor's
+  real package URL and a licence, so it is `docs/SMOKE-TEST.md`'s leg.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

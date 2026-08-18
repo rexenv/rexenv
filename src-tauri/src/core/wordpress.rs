@@ -347,6 +347,138 @@ fn cut_post_run_tail(mut out: Output) -> Output {
     out
 }
 
+// ── The premium-update context (#370) ───────────────────────────────────────
+//
+// wp-admin lists updates for BetterDocs Pro, BetterLinks Pro, Elementor Pro.
+// rexenv's checked pass listed NONE of them, and the reason is not that wp-cli
+// reads a different transient — it is that the vendors' updaters never register
+// in it. Measured on a real 47-plugin site (18 Aug 2026), the gate is a
+// CAPABILITY check, not the `is_admin()` one it looks like from the outside:
+//
+//     public function plugin_updater(): void {
+//         $doing_cron = defined( 'DOING_CRON' ) && DOING_CRON;
+//         if ( ! current_user_can( 'manage_options' ) && ! $doing_cron ) { return; }
+//         new Updater( … );   // ← the pre_set_site_transient_update_plugins filter
+//     }
+//
+// A wp-cli run has NO user, so `current_user_can` is false for every capability
+// and the filter is never added; WordPress then builds its update data with
+// every premium plugin missing. Of ten premium plugins on that site, two
+// reported an update before this file existed and five after — and the three
+// still silent are ones wp-admin says nothing about either.
+//
+// Two grants, because two gates were measured. Defining `WP_ADMIN` alone moved
+// NOTHING (that experiment ran first); the capabilities moved four of the five;
+// `WP_ADMIN` on top of them moved the fifth. Both are process-scoped: no user
+// is logged in, no session or cookie exists, and the grant dies with the child.
+//
+// **The update ACTION needs the same context, and that is not a nicety.**
+// `wp plugin update betterdocs-pro` without it answers "No plugin updates
+// available", because the package URL lives in the same filter's output — so a
+// badge shown without this on the update path would be a button that cannot
+// work. Both carry it, or neither should.
+//
+// It is scoped to those two paths on purpose. The terminal, the MCP raw runner,
+// install/activate/deactivate/delete and the FAST list all run without it —
+// asserted by `the_premium_update_context_rides_only_the_update_paths`, because
+// "we only pass it where we meant to" is exactly the kind of claim this module
+// has already watched drift (#228's row named four spawn sites out of seven).
+
+/// Version-stamped like [`EOO_REQUIRE_FILE`] and for the same reason: the file
+/// is written once and never rewritten, so a changed body needs a new name or
+/// the old one wins forever.
+const UPDATE_CONTEXT_FILE: &str = ".rexenv-update-context-1.php";
+
+/// The file's body. Nothing is impersonated: capabilities are added to a
+/// process that has no user, rather than a user being logged in.
+fn update_context_php() -> &'static str {
+    "<?php\n\
+     // rexenv — see core/wordpress.rs. Loaded ONLY by the commands that need\n\
+     // WordPress's update data to include PREMIUM plugins and themes: the update\n\
+     // check, and the update itself.\n\
+     //\n\
+     // A premium updater registers its `pre_set_site_transient_update_plugins`\n\
+     // filter behind `current_user_can( 'manage_options' )` (or is_admin()). A\n\
+     // wp-cli run has no user and satisfies neither, so WordPress builds its\n\
+     // update data with every premium plugin missing.\n\
+     //\n\
+     // Nobody is impersonated here: no user is logged in, no session is created,\n\
+     // no cookie is set. These capabilities exist inside THIS process, for the\n\
+     // length of this one command.\n\
+     if ( ! defined( 'WP_ADMIN' ) ) {\n\
+     \tdefine( 'WP_ADMIN', true );\n\
+     }\n\
+     if ( class_exists( 'WP_CLI' ) ) {\n\
+     \t// Queued BEFORE WordPress loads. The gates above run on `init`, which has\n\
+     \t// already fired by the time wp-cli's own `after_wp_load` hook gets a turn,\n\
+     \t// and `add_filter` does not exist yet at `after_wp_config_load` — measured,\n\
+     \t// both of them, before this line was written.\n\
+     \tWP_CLI::add_wp_hook( 'user_has_cap', static function ( $caps ) {\n\
+     \t\t// Named one by one. Handing back a blanket grant would also switch on\n\
+     \t\t// every OTHER capability-gated code path a plugin runs at load.\n\
+     \t\t$caps['manage_options'] = true;\n\
+     \t\t$caps['update_plugins'] = true;\n\
+     \t\t$caps['update_themes']  = true;\n\
+     \t\treturn $caps;\n\
+     \t}, 99, 1 );\n\
+     }\n"
+}
+
+/// `--require=<file>` for the premium-update context, or `None` when the file
+/// is not there.
+///
+/// `None` rather than the flag, for [`eoo_require_arg`]'s reason: wp-cli refuses
+/// to run at all when a required file is missing, so a flag passed hopefully
+/// would turn a failed write into a checked list that FAILS rather than one that
+/// merely misses the premium rows.
+fn update_context_arg(wp_phar: &Path) -> Option<String> {
+    let path = wp_phar.with_file_name(UPDATE_CONTEXT_FILE);
+    if !path.is_file() {
+        let tmp = path.with_file_name(format!("{UPDATE_CONTEXT_FILE}.{}.tmp", std::process::id()));
+        if std::fs::write(&tmp, update_context_php()).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+        let _ = std::fs::remove_file(&tmp);
+    }
+    path.is_file().then(|| format!("--require={}", path.display()))
+}
+
+/// A CHECKED list (plugins or themes) — run WITH the premium-update context,
+/// and then, only if that failed for a reason other than the clock, again
+/// without it.
+///
+/// The retry is the floor: the context runs vendor code that a plain list never
+/// reached, on sites rexenv has never seen. If some plugin's licensing path dies
+/// under it, the cost must be "no premium rows" — what the user had yesterday —
+/// and never "no update badges at all". A CLOCK expiry is the one failure not
+/// worth repeating: the second run would ask the same slow network the same
+/// question, and buy a second full timeout of spinner with it.
+fn checked_list<T: serde::de::DeserializeOwned>(
+    php_bin: &Path,
+    wp_phar: &Path,
+    docroot: &Path,
+    args: &[&str],
+) -> Result<T> {
+    let Some(ctx) = update_context_arg(wp_phar) else {
+        return wp_json_timed(php_bin, wp_phar, docroot, args, WP_LIST_TIMEOUT);
+    };
+    let mut with: Vec<&str> = args.to_vec();
+    with.push(ctx.as_str());
+    match wp_json_timed(php_bin, wp_phar, docroot, &with, WP_LIST_TIMEOUT) {
+        Ok(list) => Ok(list),
+        Err(e) if is_timeout_error(&e) => Err(e),
+        Err(_) => wp_json_timed(php_bin, wp_phar, docroot, args, WP_LIST_TIMEOUT),
+    }
+}
+
+/// Whether an error is [`run_with_timeout`]'s own clock expiry. Reads the
+/// phrase both sides share ([`TIMEOUT_PHRASE`]) rather than a string spelled
+/// twice — and `a_killed_child_reports_a_timeout_this_module_can_recognise`
+/// runs the real kill path so the two cannot drift apart silently.
+fn is_timeout_error(e: &Error) -> bool {
+    e.to_string().contains(TIMEOUT_PHRASE)
+}
+
 /// The bundled PHP running the pinned phar with the command set pinned — the
 /// ONE `Command::new(php_bin)` in the tree, so a captured spawn cannot be
 /// assembled without the pin. Streamed spawns cannot use a `Command` (they go
@@ -393,6 +525,11 @@ pub fn wp_cli(
     Ok(cut_post_run_tail(cmd.output()?))
 }
 
+/// What [`run_with_timeout`]'s expiry error says, in the ONE place both the
+/// formatter and [`is_timeout_error`] read it from — a retry that keys off a
+/// phrase spelled twice starts retrying timeouts the day someone rewords one.
+const TIMEOUT_PHRASE: &str = "timed out after";
+
 /// Run a command with a hard wall-clock cap: poll `try_wait`, SIGKILL on
 /// expiry. For wp-cli subcommands that download from the network — WP's
 /// `download_url` waits up to **300s per attempt**, which offline reads as a
@@ -429,7 +566,7 @@ pub(crate) fn run_with_timeout(mut cmd: Command, timeout: Duration, what: &str) 
             // child's pipes close; blocking on them could hang the caller if
             // anything else held a pipe end (the B7 lesson).
             return Err(Error::Other(format!(
-                "{what} timed out after {}s",
+                "{what} {TIMEOUT_PHRASE} {}s",
                 timeout.as_secs()
             )));
         }
@@ -895,8 +1032,11 @@ pub fn plugin_list(
     ];
     if !check_updates {
         args.push("--skip-update-check");
+        return wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT);
     }
-    wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT)
+    // The checked pass is the one that answers "is there an update", so it is
+    // the one that carries the premium-update context (#370).
+    checked_list(php_bin, wp_phar, docroot, &args)
 }
 
 /// Run `wp <noun> <verb> <names…>` (bulk-capable: one call for many items).
@@ -912,7 +1052,14 @@ fn item_verb(
     if names.is_empty() {
         return Ok(String::new());
     }
-    let args = item_verb_argv(noun, verb, names);
+    let mut args = item_verb_argv(noun, verb, names);
+    // The same context the CHECK runs under: the premium package URL comes out
+    // of the same filter, so without it `wp plugin update <paid-slug>` answers
+    // "No plugin updates available" and the badge is a button that cannot work.
+    let ctx = (verb == "update").then(|| update_context_arg(wp_phar)).flatten();
+    if let Some(flag) = &ctx {
+        args.push(flag.as_str());
+    }
     match item_verb_timeout(verb, names.len()) {
         // "update" downloads one archive per item from wp.org — the same wedge
         // class as install, same scaled cap (B25). The other verbs
@@ -1003,6 +1150,11 @@ pub fn update_streamed(
         "update".into(),
     ];
     args.extend(names.iter().cloned());
+    // The premium-update context (#370) — the streamed path is the one the UI's
+    // Update button runs, so it needs what the captured verb needs.
+    if let Some(flag) = update_context_arg(wp_phar) {
+        args.push(flag);
+    }
     // `--no-color`: the phase text is parsed and shown to a user, not a TTY.
     args.push("--no-color".into());
     args.push(format!("--path={}", docroot.display()));
@@ -1368,8 +1520,13 @@ pub fn theme_list(
     if !check_updates {
         args.push("--skip-update-check");
     }
-    let mut themes: Vec<WpTheme> =
-        wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT)?;
+    // A premium THEME's updater is gated exactly like a premium plugin's, so
+    // the checked pass takes the same context (#370).
+    let mut themes: Vec<WpTheme> = if check_updates {
+        checked_list(php_bin, wp_phar, docroot, &args)?
+    } else {
+        wp_json_timed(php_bin, wp_phar, docroot, &args, WP_LIST_TIMEOUT)?
+    };
     for t in &mut themes {
         t.screenshot = theme_screenshot(docroot, content_rel, &t.name);
     }
@@ -4134,6 +4291,106 @@ mod packages_pin_guards {
     /// each. That is not hypothetical — the #235 copy guard shipped defective
     /// for exactly this reason and only planting found it. Canary in
     /// [`the_scan_reads_code_and_not_its_own_comments`].
+    /// The premium-update context is a CAPABILITY GRANT, so where it rides is
+    /// the whole of its safety story. It belongs on the two paths that need
+    /// WordPress's update data — the checked list and the update itself — and
+    /// nowhere else: not on the fast list, not on install/activate/delete, and
+    /// above all not on `wp_run_raw`, which is the MCP raw runner an agent
+    /// drives. A list of call sites in a comment is what this module already
+    /// watched drift (#228 named four spawn sites when there were seven), so
+    /// the list is read out of the source instead.
+    #[test]
+    fn the_premium_update_context_rides_only_the_update_paths() {
+        let src = strip_comments(include_str!("wordpress.rs"));
+        // Assembled, never written: a literal here is a call site as far as the
+        // scan is concerned, and the guard would convict itself (the RepoPanel
+        // copy guard shipped defective for exactly that reason).
+        let needle = format!("update_context{}(", "_arg");
+        let mut current = String::new();
+        let mut callers: std::collections::BTreeSet<String> = Default::default();
+        for line in src.lines() {
+            if let Some(name) = fn_name_of(line) {
+                current = name;
+            }
+            if line.contains(&needle) {
+                callers.insert(current.clone());
+            }
+        }
+        assert!(!callers.is_empty(), "the scan found nothing — it stopped looking");
+        let expected: std::collections::BTreeSet<String> = [
+            // The definition itself.
+            "update_context_arg",
+            // The checked list (plugins AND themes go through this one fn).
+            "checked_list",
+            // The captured `plugin update` / `theme update`.
+            "item_verb",
+            // The streamed update — what the UI's Update button runs.
+            "update_streamed",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            callers, expected,
+            "the faked-capability context reached a path nobody argued for (or left one \
+             it was needed on) — every entry here is a command that runs a vendor's \
+             licensing code with capabilities it would not otherwise have"
+        );
+    }
+
+    /// `fn foo(` at the start of a top-level item, whatever it is prefixed with.
+    fn fn_name_of(line: &str) -> Option<String> {
+        let t = line.trim_start();
+        let rest = ["pub(crate) fn ", "pub async fn ", "pub fn ", "async fn ", "fn "]
+            .iter()
+            .find_map(|p| t.strip_prefix(p))?;
+        let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        (!name.is_empty()).then_some(name)
+    }
+
+    /// The retry in `checked_list` skips CLOCK expiries, and it recognises one
+    /// by the phrase the killer writes. Both halves are real here: a child that
+    /// genuinely outlives its cap, and an ordinary failure that must NOT read as
+    /// a timeout (or the fallback would stop happening exactly when it matters).
+    #[test]
+    fn a_killed_child_reports_a_timeout_this_module_can_recognise() {
+        let mut sleeper = Command::new("/bin/sh");
+        sleeper.args(["-c", "sleep 5"]);
+        let err = run_with_timeout(sleeper, Duration::from_millis(150), "wp plugin")
+            .expect_err("a 5s child under a 150ms cap must be killed");
+        assert!(
+            is_timeout_error(&err),
+            "the expiry message stopped matching what the retry reads: {err}"
+        );
+
+        let other = Error::Other("wp plugin list failed (exit Some(1)): PHP Fatal error".into());
+        assert!(
+            !is_timeout_error(&other),
+            "an ordinary failure read as a timeout — the plain-list fallback would never run"
+        );
+    }
+
+    /// The grant is enumerated, not blanket. A `return true` here would switch
+    /// on every OTHER capability-gated path a plugin runs at load, in a process
+    /// that already has no user to answer for it.
+    #[test]
+    fn the_context_grants_named_capabilities_and_impersonates_nobody() {
+        let php = update_context_php();
+        for cap in ["manage_options", "update_plugins", "update_themes"] {
+            assert!(php.contains(cap), "{cap} is not granted");
+        }
+        assert!(php.contains("WP_CLI::add_wp_hook( 'user_has_cap'"), "the grant must be queued pre-load");
+        assert!(php.contains("define( 'WP_ADMIN', true )"), "the second measured gate is gone");
+        for banned in ["wp_set_current_user", "wp_set_auth_cookie", "return true;"] {
+            assert!(!php.contains(banned), "{banned} in the context file: that is impersonation, not a grant");
+        }
+        // Version-stamped, like every other write-once file beside the phar.
+        assert!(
+            UPDATE_CONTEXT_FILE.ends_with("-1.php"),
+            "the body changed without the name changing — the old file wins forever"
+        );
+    }
+
     fn strip_comments(text: &str) -> String {
         let mut out = String::with_capacity(text.len());
         for line in text.lines() {

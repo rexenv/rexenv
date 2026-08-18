@@ -928,6 +928,32 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   free half is `…-for-elementor-lite`, is the honest miss). A counterpart installed
   alongside its add-on — the usual case — was already fetched, so the common shape
   costs no extra request.
+- **A PREMIUM plugin's update is invisible to wp-cli until rexenv grants the
+  capabilities its updater asks for** (`core/wordpress.rs`: `update_context_arg`,
+  `checked_list` · #370). wp-admin listed BetterDocs Pro 3.9.0 → 4.1.0 while rexenv's
+  list showed nothing, and the cause is not parsing: the vendors' updaters never
+  REGISTER. Every premium updater measured on a real site adds its
+  `pre_set_site_transient_update_plugins` filter behind
+  `current_user_can( 'manage_options' )` (or `is_admin()`), and a wp-cli run has **no
+  user at all**, so WordPress builds its update data with every paid plugin missing.
+  The fix is a second `--require` file beside the phar — the EOO file's mechanism, a
+  different job: it defines `WP_ADMIN` and grants three named capabilities
+  (`manage_options`, `update_plugins`, `update_themes`) to that ONE process. **Nobody is
+  impersonated** — no user is logged in, no session or cookie exists, and a later
+  wp-cli run has no capabilities of its own. Measured on a 47-plugin site: 2 of 10 paid
+  plugins reported an update before, 5 after, and the two grants each earned their
+  place (`WP_ADMIN` alone moved nothing; the capabilities moved four; `WP_ADMIN` on top
+  moved the fifth). **The UPDATE path carries it too, and that is not symmetry for its
+  own sake:** the premium package URL comes out of the same filter, so
+  `wp plugin update <paid-slug>` without the context answers "No plugin updates
+  available" — a badge whose button cannot work. **Where it does NOT ride** is the
+  claim worth guarding: not the fast list, not install/activate/deactivate/delete, not
+  the terminal, and above all not the MCP raw runner an agent drives — read out of the
+  source by `the_premium_update_context_rides_only_the_update_paths`, because a list of
+  call sites in a comment is exactly what drifted in #228. And the checked pass **falls
+  back**: if the context run fails for any reason other than the clock, the plain list
+  runs, so vendor code dying on an unseen site costs the premium rows and never all
+  the badges.
 - **A finished update SETTLES both caches before it refetches** (`settleAfterUpdate`).
   The checked pass on a real site takes tens of seconds to over a minute (every
   plugin against wp.org, plus every premium plugin's own API), so a check that
