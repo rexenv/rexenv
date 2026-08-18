@@ -619,6 +619,46 @@ fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
     })
 }
 
+/// The pinned Adminer build, else the verified catalog — the same precedence as
+/// [`php_spec`], for the same reason.
+///
+/// A compiled-in pin can never be overridden by a manifest: a signed document,
+/// however valid, cannot move a version the app already knows onto different
+/// bytes. The catalog may only ADD versions the app was built before.
+///
+/// **`archive` and `member` are derived from the NAME here, never carried by the
+/// document.** A manifest that could choose them would be choosing WHICH
+/// EXTRACTOR RUNS — a strictly larger grant than choosing bytes, and it would
+/// reach the tar path with an attacker-chosen member name. `php_spec` hardcodes
+/// its pair for the same reason.
+fn adminer_spec(version: &str) -> Option<BinarySpec> {
+    // One file, identical on every machine — see `updates::ANY_ARCH`.
+    if version == ADMINER_VERSION {
+        return Some(BinarySpec {
+            url: format!(
+                "https://github.com/vrana/adminer/releases/download/v{version}/adminer-{version}-en.php"
+            ),
+            checksum: Checksum::Sha256(ADMINER_5_4_2_SHA256.to_string()),
+            archive: Archive::Raw,
+            member: "adminer.php",
+        });
+    }
+    // Not pinned: ask the verified catalog. The name is asserted against the
+    // manifest's own allowlist HERE rather than trusting `updates` to have
+    // filtered — the guard belongs where the value is used.
+    if !crate::core::updates::nameable("adminer") {
+        return None;
+    }
+    let guard = CATALOG.read().ok()?;
+    let a = guard.as_ref()?.artifact("adminer", version, crate::core::updates::ANY_ARCH)?;
+    Some(BinarySpec {
+        url: a.url.clone(),
+        checksum: Checksum::Sha256(a.sha256.clone()),
+        archive: Archive::Raw,
+        member: "adminer.php",
+    })
+}
+
 /// The download URL for a pinned PHP build, from whichever source publishes it.
 ///
 /// **This branch must exist BEFORE any checksum is pinned.** `manifest`'s PHP arms
@@ -1089,14 +1129,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             member: "cloudflared",
         }),
         // Adminer is a single PHP file (run via the bundled PHP), identical on every OS.
-        ("adminer", _, "5.4.2") => Some(BinarySpec {
-            url: format!(
-                "https://github.com/vrana/adminer/releases/download/v{version}/adminer-{version}-en.php"
-            ),
-            checksum: Checksum::Sha256(ADMINER_5_4_2_SHA256.to_string()),
-            archive: Archive::Raw,
-            member: "adminer.php",
-        }),
+        ("adminer", _, v) => adminer_spec(v),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
         ("wp-cli", _, "2.12.0") => Some(BinarySpec {
             url: format!(
@@ -4378,4 +4411,63 @@ mod tests {
             "the flight lock must be released when the first resolve finishes"
         );
     }
+
+    /// **The pin wins over any manifest, for Adminer as for PHP — and a version
+    /// the app was never built with resolves only through the VERIFIED catalog.**
+    ///
+    /// The precedence is the whole "compiled-in pins remain the floor" property.
+    /// Asserted here rather than reasoned about, because `adminer_spec` is the
+    /// second place in the codebase where a signed document can name bytes this
+    /// build will execute, and the first one (`php_spec`) got its own test.
+    #[test]
+    fn the_adminer_pin_outranks_the_catalog_and_an_unpinned_version_needs_one() {
+        let pinned = manifest("adminer", ADMINER_VERSION, "macos", Arch::Arm64)
+            .expect("the pinned version resolves with no catalog at all");
+        assert!(matches!(pinned.checksum, Checksum::Sha256(ref h) if h == ADMINER_5_4_2_SHA256));
+        assert!(matches!(pinned.archive, Archive::Raw));
+        assert_eq!(pinned.member, "adminer.php");
+        // Same on the other Mac: one file, no arch in the answer.
+        let intel = manifest("adminer", ADMINER_VERSION, "macos", Arch::X86_64).unwrap();
+        assert_eq!(intel.url, pinned.url);
+
+        // Unpinned, no catalog → nothing. The floor is not a default.
+        assert!(manifest("adminer", "6.0.1", "macos", Arch::Arm64).is_none());
+
+        // Install a catalog that ALSO tries to re-point the pinned version.
+        let evil = "b".repeat(64);
+        install_catalog(crate::core::updates::catalog_for_tests(&[
+            (
+                "adminer",
+                ADMINER_VERSION,
+                crate::core::updates::ANY_ARCH,
+                "https://github.com/vrana/adminer/releases/download/v0/x.php",
+                &evil,
+            ),
+            (
+                "adminer",
+                "6.0.1",
+                crate::core::updates::ANY_ARCH,
+                "https://github.com/vrana/adminer/releases/download/v6.0.1/adminer-6.0.1-en.php",
+                &"c".repeat(64),
+            ),
+        ]));
+        let still_pinned = manifest("adminer", ADMINER_VERSION, "macos", Arch::Arm64).unwrap();
+        assert!(
+            matches!(still_pinned.checksum, Checksum::Sha256(ref h) if h == ADMINER_5_4_2_SHA256),
+            "a signed manifest moved a version the app already pins onto other bytes"
+        );
+        assert_eq!(still_pinned.url, pinned.url);
+
+        // …while the version the app was built before now resolves, and takes
+        // its archive/member from the NAME rather than from the document.
+        let offered = manifest("adminer", "6.0.1", "macos", Arch::Arm64)
+            .expect("a catalogued version must resolve");
+        assert!(matches!(offered.checksum, Checksum::Sha256(ref h) if h == &"c".repeat(64)));
+        assert!(matches!(offered.archive, Archive::Raw));
+        assert_eq!(offered.member, "adminer.php");
+        // Arch-free: the same answer on the other Mac.
+        assert_eq!(manifest("adminer", "6.0.1", "macos", Arch::X86_64).unwrap().url, offered.url);
+        install_catalog(Default::default());
+    }
+
 }
