@@ -262,6 +262,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can
   hold ports and defeat probes — the health watchdog + `Proc::terminate` guard this;
   check `logs/health.log` first.
+- **rexenv's OWN log is `<log_dir>/rexenv.log`**, in every build, and it is the first
+  source in the Logs tab — when a service did not start, the reason is there and not in
+  that service's empty file. It goes in `log_dir` beside every service log rather than in
+  macOS's `~/Library/Logs`, because splitting a diagnosis across two directories costs
+  more than the convention is worth. `tauri_plugin_log` was installed inside
+  `if cfg!(debug_assertions)` until 18 Aug 2026, so an INSTALLED app wrote no `log::`
+  output at all — including both "skipped the sweep" warnings that are the cache GC's
+  safety valves. The sink set is a value (`lib.rs::log_sinks`) so the rule is testable
+  without a running Tauri app; `debug` only ADDS stdout. Rotation `KeepSome(3)` at 2 MB.
+  Ledger #359.
 
 ## 6. Resource monitor (`core/monitor.rs`, `commands/services.rs`)
 

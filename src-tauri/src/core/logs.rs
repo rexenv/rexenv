@@ -58,6 +58,11 @@ pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
     };
     use LogCategory::{Database, Git, Server};
     let mut targets = vec![
+        // rexenv's OWN log leads the list: when a service did not start, the
+        // reason is here and not in that service's (empty) file. It was
+        // debug-build-only until 18 Aug 2026, so on an installed app this
+        // source did not exist at all.
+        t("rexenv.log".into(), "rexenv (app)".into(), Server),
         t("nginx-access.log".into(), "Nginx access".into(), Server),
         t("nginx-error.log".into(), "Nginx error".into(), Server),
         t(format!("php-fpm-{minor}.log"), format!("PHP-FPM {minor}"), Server),
@@ -281,6 +286,20 @@ pub fn wp_debug_log_download(docroot: &Path, content_rel: &str, domain: &str) ->
 mod tests {
     use super::*;
     use crate::state::models::{MultisiteMode, ServiceStatus, Site, SiteOrigin, SiteType, WebServer};
+
+    /// **The Logs tab offers the file the app actually writes.** Two independent
+    /// spellings of one name is how a viewer ends up permanently empty while
+    /// every layer looks correct — and this list carried no app log at all until
+    /// 18 Aug 2026, because the plugin that writes it was debug-build-only.
+    #[test]
+    fn the_logs_tab_names_the_file_the_app_writes() {
+        let targets = targets_for_site(&site(WebServer::Nginx), Path::new("/tmp"));
+        let written = format!("{}.log", crate::APP_LOG_STEM);
+        assert!(
+            targets.iter().any(|t| t.key == written),
+            "the Logs tab does not offer {written}, which is the file the app writes"
+        );
+    }
 
     fn site(server: WebServer) -> Site {
         Site {

@@ -88,10 +88,48 @@ pub fn run() {
             },
         )
         .setup(|app| {
-            if cfg!(debug_assertions) {
+            let platform = platform::current();
+
+            // THE APP'S OWN LOG, in every build — this used to be
+            // `if cfg!(debug_assertions)`, which meant the installed app wrote
+            // `log::info!`/`log::warn!` NOWHERE. Every diagnostic this codebase
+            // emits was dev-only: the adoption count, the DNS fallback, and both
+            // "skipped the sweep" warnings that are the GC's safety valves. A
+            // user asked where to read one line and the honest answer was
+            // "you can't" — which also means every bug report from a release
+            // build arrives without the one artefact that would explain it.
+            //
+            // It goes in `log_dir()`, NOT macOS's `~/Library/Logs`, because that
+            // is where nginx, php-fpm, Caddy, the DB and every per-site job log
+            // already are, and because `core::logs` tails that directory — so
+            // the app's own log becomes a source in the app's own Logs tab.
+            // One directory beats the platform convention when the convention
+            // would split a diagnosis across two places.
+            //
+            // Rotation is not optional here: this file now grows on a real
+            // machine for months. `caddy-start.log` in the same directory
+            // reached 1.2 MB unattended, and it is root-owned so a user cannot
+            // even delete it.
+            {
+                use tauri_plugin_log::{Target, TargetKind};
+                let sinks = log_sinks(platform.paths().log_dir().ok(), cfg!(debug_assertions));
+                let targets = sinks.into_iter().map(|s| match s {
+                    LogSink::File(path) => Target::new(TargetKind::Folder {
+                        path,
+                        file_name: Some(APP_LOG_STEM.into()),
+                    }),
+                    LogSink::Stdout => Target::new(TargetKind::Stdout),
+                });
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
+                        .targets(targets)
+                        .max_file_size(2 * 1024 * 1024)
+                        .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
+                        // Local, because every other timestamp in that directory
+                        // is local and a reader correlating them should not have
+                        // to do timezone arithmetic to line up two files.
+                        .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                         .build(),
                 )?;
             }
@@ -107,8 +145,6 @@ pub fn run() {
                     platform::install_js_dialog_panels(pw.inner());
                 });
             }
-
-            let platform = platform::current();
 
             // DNS: the resolution plane must SURVIVE the app — the data plane
             // (nginx/fpm/DB/edge) already outlives a quit, but sites are
@@ -1035,4 +1071,63 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+/// `rexenv.log`'s stem — the file `core::logs` offers in the Logs tab. One
+/// constant, because a viewer pointed at a name nothing writes is a tab that is
+/// permanently empty and says nothing about why.
+pub const APP_LOG_STEM: &str = "rexenv";
+
+/// Where the app's own `log::` output goes.
+#[derive(Debug, PartialEq, Eq)]
+enum LogSink {
+    /// A directory; the plugin writes `<APP_LOG_STEM>.log` inside it.
+    File(std::path::PathBuf),
+    Stdout,
+}
+
+/// The sinks this build installs — **a value, not a condition inside `setup()`**,
+/// because the bug it replaced could not be reached without a running Tauri app.
+///
+/// The file is unconditional. It used to be the whole plugin that was
+/// `if cfg!(debug_assertions)`, so an INSTALLED rexenv wrote `log::info!` and
+/// `log::warn!` nowhere at all: the adoption count, the DNS fallback, and both
+/// "skipped the sweep" warnings that are the cache GC's safety valves were
+/// dev-only. Every bug report from a release build arrived without the one
+/// artefact that would have explained it.
+///
+/// `debug` adds stdout on top; it never takes the file away. A terminal is a
+/// convenience for whoever is watching one — the file is what exists afterwards.
+fn log_sinks(log_dir: Option<std::path::PathBuf>, debug: bool) -> Vec<LogSink> {
+    let mut sinks: Vec<LogSink> = log_dir.map(LogSink::File).into_iter().collect();
+    if debug {
+        sinks.push(LogSink::Stdout);
+    }
+    sinks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// **A release build writes its own log.** The whole plugin was behind
+    /// `cfg!(debug_assertions)`, and the cost was not theoretical: asked where to
+    /// read one line on an installed app, the honest answer was "nowhere".
+    #[test]
+    fn the_app_log_file_is_written_in_every_build() {
+        let dir = PathBuf::from("/tmp/rexenv-log-fixture");
+        for debug in [false, true] {
+            assert!(
+                log_sinks(Some(dir.clone()), debug).contains(&LogSink::File(dir.clone())),
+                "debug={debug}: no file sink — an installed app would log nowhere"
+            );
+        }
+        // Stdout is the DEV extra, never the only sink.
+        assert!(!log_sinks(Some(dir.clone()), false).contains(&LogSink::Stdout));
+        assert_eq!(log_sinks(Some(dir.clone()), true).len(), 2);
+        // An unresolvable log dir must not silently become stdout-only in a
+        // release build: there is no terminal, so that is "no logging" again.
+        assert!(log_sinks(None, false).is_empty());
+    }
 }

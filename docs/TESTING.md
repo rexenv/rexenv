@@ -374,6 +374,16 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   everything with a friendly value cannot fail; an unmocked command is the harness
   saying it does not know.
 
+- **Release builds logged nothing at all** (found 18 Aug 2026 by a user asking where to
+  read one line). `tauri_plugin_log` was installed inside `if cfg!(debug_assertions)`, so
+  every `log::` call in the codebase was dev-only on an installed app — including both
+  "skipped the sweep" warnings that are the cache GC's safety valves. **Fixed:** the sink
+  set is a value (`log_sinks`), the file is unconditional, and `rexenv.log` is a source in
+  the app's own Logs tab. Worth recording as a TESTING fact and not just a bug: it is the
+  purest form of the class this document exists for — **the dev machine is a fixture, and
+  it was friendlier than production**. Nothing failed; a whole diagnostic surface was
+  simply absent, and only on the builds users run.
+
 ## 2. The claim inventory
 
 Full inventory: **`docs/CLAIM-LEDGER.md`** — 194 claims from a sweep of every
