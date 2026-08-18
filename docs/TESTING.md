@@ -233,8 +233,7 @@ it can:
   fails first if the plant itself broke. Each reading drops the update transient first,
   or WordPress answers from its 12h timer and the two legs differ by ORDER rather than
   by the grant. A third leg asks a later run whether it still has the capability (it
-  must not). **Cannot prove:** that a premium update INSTALLS — that needs a vendor's
-  real package URL and a licence, so it is `docs/SMOKE-TEST.md`'s leg.
+  must not). **Ran green 19 Aug 2026** and is plant-proven: dropping the flag from `checked_list` fails leg 2 by name while leg 1 stays green. **Cannot prove:** that a premium update INSTALLS — that needs a vendor's real package URL and a licence, so it is `docs/SMOKE-TEST.md`'s leg.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

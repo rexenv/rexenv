@@ -20,10 +20,9 @@ evidence cited.
   an update before, 5 after** — the rest are ones wp-admin says nothing about either.
   Scoped by a source-scanning guard (plant-proven), and the checked pass falls back to
   the plain list on any non-clock failure.
-  **Open, and the reason this row is not fully closed:** `examples/wp_premium_update_check.rs`
-  (network tier) is written and builds but has **never been run** — it needs MySQL
-  :13306, held by the running stack. Run it with the stack stopped, then flip #370 to ✓
-  and this row's caveat with it.
+  `examples/wp_premium_update_check.rs` (network tier) **ran green 19 Aug 2026** with the
+  stack stopped, and is plant-proven: dropping the flag fails its second leg by name.
+  What stays manual is the INSTALL of a premium update (a real licence) — `docs/SMOKE-TEST.md`.
 
 - [x] **Premium plugins had no icon in the plugin list** ✓ 18 Aug 2026,
   `core/wporg.rs::plugin_icons` + `wporg_icons_check` (L1 network, run green:
