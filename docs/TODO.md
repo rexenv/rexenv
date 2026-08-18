@@ -1485,6 +1485,24 @@ first:
   a declared registry of gated keys next to the setters, since nothing derivable
   distinguishes "has a validating setter" today.
 
+- [x] **In-app ADMINER updates — the SECOND manifest family.** ✓ 18 Aug 2026.
+  Upstream was six releases and a MAJOR ahead of the pin (5.4.2 → 6.0.1) the day
+  it shipped. `updates::Family` replaces the flat name allowlist; the ceiling and
+  the binding probe answer the one axis on which Adminer is worse than PHP
+  (rexenv's login gate and frame protections live inside Adminer's own plugin
+  API). Ledger #361–#369, design in `docs/PLAN-adminer-updates.md`.
+
+  **Three pre-existing bugs fell out of building it, all live:** a publish could
+  reset the serial to 1 from one flaky `gh` call and lock every install out of
+  updates forever; naming an explicit version DELETED every other version from the
+  document; and `/adminer.php` served the real console with no wrapper — no login
+  gate, no frame bound — because every `.php` in that docroot is executable.
+
+  **And the delivery mechanism broke in production while shipping it:** GitHub
+  burns a tag name once an immutable release on it is deleted, so the moved
+  `manifest` tag is gone for good. The manifest is two files on a branch now,
+  which is also atomic where delete-then-create never was (#368).
+
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If
   built: a deliberate site-page action, offered only when the linked folder is

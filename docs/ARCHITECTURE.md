@@ -381,7 +381,10 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   skipped, because without the pins half an empty keep-set means "delete every PHP tree
   on the machine". Ledger #338/#358.
 - **A user can also move a minor forward BETWEEN app releases, from a signed manifest.**
-  `core::updates` fetches `manifest.json` + `.sig` from `rexenv/runtimes`, verifies an
+  `core::updates` fetches `manifest.json` + `.sig` — **two files on `rexenv/runtimes`'
+  default branch**, written by a commit rather than a release (a moved tag broke in
+  production: GitHub burns a tag name once an immutable release on it is deleted, and
+  delete-then-create is an availability hole even when it works — #368) — verifies an
   ed25519 signature over the exact bytes against a **public key compiled into the app**
   (never TLS: rexenv's digest gate compares bytes to whoever supplied the digest, so an
   attacker-chosen URL paired with an attacker-chosen hash matches perfectly), and keeps
@@ -398,6 +401,23 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   the pin needs no `Connection` and so compiles anywhere it does not belong. The publish
   side is one command in the runtimes repo (`scripts/publish-manifest.sh`). Ledger
   #348–#355; design in `docs/PLAN-binary-updates.md`.
+- **ADMINER is the SECOND family in that manifest**, and the limits are per family
+  (`updates::Family`). Its grant is strictly below PHP's — `Shape::File` →
+  `resolve_file`, no chmod, no codesign, never spawned, interpreted by an already-running
+  pool as the user — so admitting it raises no ceiling a key-holder already had. What IS
+  worse is **control ownership**: rexenv's login gate and frame protections for the
+  database console live inside Adminer's OWN plugin API (the wrapper subclasses
+  `\Adminer\Adminer`), so an Adminer update can switch off a control rexenv wrote,
+  silently, with the console still serving. Two things answer that and neither is
+  optional — `ADMINER_MAX_MAJOR`, a ceiling that is EVIDENCE (the newest major actually
+  run against the wrapper, measured by running it), and `adminer::verify_pair`, which
+  runs each candidate before an apply commits. The real console is staged as a DOTFILE
+  (`.adminer.php`): every `.php` in that docroot is directly executable, so
+  `/adminer.php` used to serve Adminer with **no wrapper at all** — no login gate, no
+  frame bound. `adminer::effective_version` is the ONE answer to "which Adminer", the row
+  lives on the Databases screen (its only entry point), and there is no "exists" chip
+  because rexenv downloads Adminer's own release asset. Ledger #361–#369; design in
+  `docs/PLAN-adminer-updates.md`.
 - **A PHP version resolves to the source that PUBLISHES it.** Most come from
   static-php.dev's bulk builds; the ones nobody publishes portably are built by
   `rexenv/runtimes` CI and hosted as GitHub Release assets (`php_url` /

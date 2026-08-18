@@ -266,6 +266,38 @@ before that the button does not render, which is itself the first check.
   the app was built with — that was live for a release, and only the pool agreed
   with the row.
 
+## Adminer update — and the one thing no automated check can see (18 Aug 2026)
+
+Only runs once a manifest carrying Adminer is published.
+
+- [ ] **The row is on the Databases screen and tells the truth.** Databases →
+  below the engine table. Expect the version the console is actually serving, and
+  an **Update to X** button only when a signed manifest offers one. **Tell:** an
+  "exists" chip — Adminer has ONE fact (rexenv downloads its own release asset),
+  so a second one would be a version rendered twice.
+- [ ] **An update applies.** Press Update. Expect real download bytes in the hub
+  and a toast naming what is NOW being served. Then Browse a database: the console
+  opens and the version in Adminer's own footer matches the row.
+- [ ] **THE LEG NOTHING AUTOMATED CAN PROVE — the controls still APPLY.** The probe
+  proves Adminer still *declares* `login`/`headers`/`csp`; it cannot prove Adminer
+  still *calls* them. After an update, on the Databases screen:
+  - the console loads **inside the app's frame** (if it is blank, `headers()` is
+    no longer called and `X-Frame-Options: deny` is back);
+  - Browse logs in with **no password prompt** (if it prompts, `login()` is no
+    longer called — fail-closed, but the feature is gone);
+  - `curl -sI https://adminer.rexenv.rex/ | grep -i x-frame-options` returns
+    nothing, and the CSP header names `frame-ancestors tauri://localhost`.
+  **Tell:** a working console with `X-Frame-Options: deny` in the headers — that is
+  clickjacking on a passwordless database console, and it is exactly what a major
+  bump could reintroduce silently.
+- [ ] **Raw Adminer has no URL.** `curl -o /dev/null -w '%{http_code}\n' -k
+  https://adminer.rexenv.rex/adminer.php` → **404**, and the same for
+  `/.adminer.php`. **Tell:** anything but 404 means the real console is reachable
+  without the wrapper — no login gate, no frame bound.
+- [ ] **A revert is a second press.** There is no revert button by design: the pin
+  is a floor and the old tree is kept, so going back is choosing the older version
+  again. Confirm the older version is still offered after an update.
+
 ## PHP ini settings — the revert (18 Aug 2026)
 
 `php-fpm -t` catches values php-fpm rejects at parse time. It cannot catch one it

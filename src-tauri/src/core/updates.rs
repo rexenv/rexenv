@@ -526,16 +526,37 @@ fn accept_with(
 
 /// Where the signed manifest lives.
 ///
-/// A GitHub release asset on `rexenv/runtimes` — the public repo the 7.4 build
-/// already comes from, so this adds no infrastructure and no new host: it is
-/// already on [`ALLOWED_HOSTS`]. The `manifest` tag is MOVED by each publish,
-/// which is safe here and nowhere else in this codebase: the bytes are not
-/// trusted for being at a URL, they are trusted for carrying a signature, so a
-/// moved tag is the one case where re-upload cannot hurt.
+/// Two files on `rexenv/runtimes`' default branch — the public repo the 7.4 build
+/// already comes from, so this adds no infrastructure. **Trusted for the
+/// signature, never for the location**, which is what makes a mutable path safe
+/// here and nowhere else in this codebase.
+///
+/// # It was a moved release tag, and that broke in production
+///
+/// The publish deleted the `manifest` release and recreated it on the same tag.
+/// Two things went wrong on 18 Aug 2026, in one run:
+///
+/// - GitHub's **immutable releases** permanently burn a tag name once a release
+///   on it is deleted. `release create` failed with "tag_name was used by an
+///   immutable release", after the delete had already succeeded — so the URL
+///   404'd and stayed 404'ing. Deleting the ref did not help; the name is burned
+///   server-side, and a repository ruleset then refused to recreate it.
+/// - Even without that, **delete-then-create is an availability hole by
+///   construction**: between the two calls the manifest simply does not exist,
+///   and every app checking in that window sees "couldn't check".
+///
+/// A commit is atomic and has neither problem, and it gains something the moved
+/// tag deliberately destroyed: git keeps every manifest ever published, so "what
+/// was signed, and when" is answerable after the fact.
+///
+/// The CDN in front of `raw.githubusercontent.com` caches for minutes. That is a
+/// FRESHNESS delay, not a correctness one — a stale read is an older signed
+/// document, which the serial rule already handles, and this poll is best-effort
+/// by contract.
 const MANIFEST_URL: &str =
-    "https://github.com/rexenv/runtimes/releases/download/manifest/manifest.json";
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest.json";
 const MANIFEST_SIG_URL: &str =
-    "https://github.com/rexenv/runtimes/releases/download/manifest/manifest.json.sig";
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest.json.sig";
 
 /// Refuse a document larger than this before parsing. A manifest of every patch
 /// of every minor is a few KB; this is a poll, not a download.

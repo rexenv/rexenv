@@ -72,6 +72,7 @@ adminer_check network
 adminer_deeplink_check network
 adminer_login_gate_check sandbox
 adminer_proxy_check stack
+adminer_update_check network
 adminer_serve_check service
 adopt_check demo
 apache_site_check sandbox
