@@ -77,14 +77,66 @@ fn best_icon(obj: &serde_json::Value) -> Option<String> {
 /// app run. Non-wp.org plugins (custom, mu, drop-ins) and any fetch failure
 /// resolve to `None` (letter-tile fallback in the UI); the map is total over
 /// the input, and this function never fails.
+///
+/// # Why a paid plugin borrows its free counterpart's art
+///
+/// wp-admin shows an icon for BetterDocs Pro, Elementor Pro, Rank Math Pro —
+/// none of which exist in the wp.org directory. It reads those from the
+/// `update_plugins` transient (`update-core.php`: `$plugin_data->update->icons`),
+/// which the vendor's own updater fills in. **rexenv cannot read that**, and the
+/// measurement is the reason this function derives instead: on a real 47-plugin
+/// site (18 Aug 2026) the transient STORED in the database carried no premium
+/// row at all, and a `wp eval` with every plugin loaded produced exactly one of
+/// the nine installed premium plugins — the other eight inject their update data
+/// on an `is_admin()` request, which no wp-cli run is. Faking `WP_ADMIN` to reach
+/// them means running eight vendors' admin-only code paths (license HTTP calls
+/// included) to decorate a list.
+///
+/// So a slug carrying a premium marker falls back to its FREE counterpart's
+/// wp.org icon (`betterdocs-pro` → `betterdocs`, `fluentformpro` →
+/// `fluentform`, `wp-security-audit-log-premium` → `wp-security-audit-log`).
+/// That is the same artwork wp-admin ends up showing for them: the one premium
+/// row rexenv could read pointed its `icons` at `ps.w.org/nelio-content/…`,
+/// the free plugin's assets. It is a derivation and it is kept narrow —
+/// [`free_counterpart`] refuses anything but a real premium marker, and a
+/// counterpart wp.org has never heard of leaves the letter tile alone rather
+/// than borrowing a stranger's logo.
 pub async fn plugin_icons(slugs: &[String]) -> std::collections::HashMap<String, Option<String>> {
+    let mut out = fetch_icons(slugs).await;
+
+    // Only for slugs wp.org itself had nothing for: a premium plugin that IS in
+    // the directory keeps its own art.
+    let pairs = premium_pairs(&out);
+    if pairs.is_empty() {
+        return out;
+    }
+    // A free counterpart installed alongside its paid add-on — the usual case,
+    // because the add-on needs it — was already fetched above, so the common
+    // shape costs no extra request at all.
+    let unasked: Vec<String> = pairs
+        .iter()
+        .map(|(_, base)| base.clone())
+        .filter(|base| !out.contains_key(base))
+        .collect();
+    let extra = fetch_icons(&unasked).await;
+    for (slug, icon) in premium_fills(&pairs, &out, &extra) {
+        out.insert(slug, Some(icon));
+    }
+    out
+}
+
+/// The raw wp.org lookup behind [`plugin_icons`]: one `plugin_information` GET
+/// per slug, concurrent, process-lifetime cached, total over the input.
+async fn fetch_icons(slugs: &[String]) -> std::collections::HashMap<String, Option<String>> {
     static CACHE: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashMap<String, Option<String>>>,
     > = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
 
     let mut out = std::collections::HashMap::new();
-    let mut missing: Vec<String> = Vec::new();
+    // A set, not a `Vec` + `dedup()`: `dedup` drops only ADJACENT repeats, so an
+    // unsorted list with the same slug twice spawned the same GET twice.
+    let mut missing: std::collections::HashSet<String> = std::collections::HashSet::new();
     {
         let cached = cache.lock().expect("wporg icon cache");
         for slug in slugs {
@@ -92,11 +144,12 @@ pub async fn plugin_icons(slugs: &[String]) -> std::collections::HashMap<String,
                 Some(icon) => {
                     out.insert(slug.clone(), icon.clone());
                 }
-                None => missing.push(slug.clone()),
+                None => {
+                    missing.insert(slug.clone());
+                }
             }
         }
     }
-    missing.dedup();
 
     let mut set = tokio::task::JoinSet::new();
     for slug in missing {
@@ -128,6 +181,55 @@ pub async fn plugin_icons(slugs: &[String]) -> std::collections::HashMap<String,
         out.insert(slug, icon);
     }
     out
+}
+
+/// Slug endings that mean "the paid build of another plugin". Deliberately
+/// short: every extra marker is another way to hang the WRONG plugin's logo on
+/// someone's private plugin, and `-pro`/`-premium` is what the ecosystem
+/// actually ships. `-plus`, `-agency`, `-business` and friends stay out until a
+/// real plugin needs one.
+const PREMIUM_MARKERS: [&str; 2] = ["premium", "pro"];
+
+/// The free counterpart's slug for a paid plugin's slug, if the slug carries a
+/// premium marker. The separator is OPTIONAL — `betterdocs-pro` is one real
+/// plugin's directory name and `fluentformpro` is another's.
+///
+/// `None` when what is left is too short to be a plugin slug (`ab-pro`): a
+/// two-letter lookup is a coin flip, not a derivation.
+fn free_counterpart(slug: &str) -> Option<String> {
+    let base = PREMIUM_MARKERS.iter().find_map(|m| slug.strip_suffix(m))?;
+    let base = base.trim_end_matches(['-', '_', '.']);
+    (base.len() >= 3).then(|| base.to_string())
+}
+
+/// (paid slug, free counterpart) for every slug wp.org had no icon for.
+/// Sorted, because a `HashMap`'s order is arbitrary and the fetch list this
+/// drives — and the test that reads it — should not be.
+fn premium_pairs(icons: &std::collections::HashMap<String, Option<String>>) -> Vec<(String, String)> {
+    let mut pairs: Vec<(String, String)> = icons
+        .iter()
+        .filter(|(_, icon)| icon.is_none())
+        .filter_map(|(slug, _)| free_counterpart(slug).map(|base| (slug.clone(), base)))
+        .collect();
+    pairs.sort();
+    pairs
+}
+
+/// The icons to write back, from whichever map holds the counterpart. A
+/// counterpart wp.org does not know — or that has no icon of its own — yields
+/// nothing, so that row keeps its letter tile.
+fn premium_fills(
+    pairs: &[(String, String)],
+    asked: &std::collections::HashMap<String, Option<String>>,
+    extra: &std::collections::HashMap<String, Option<String>>,
+) -> Vec<(String, String)> {
+    pairs
+        .iter()
+        .filter_map(|(slug, base)| {
+            let icon = asked.get(base).or_else(|| extra.get(base))?.clone()?;
+            Some((slug.clone(), icon))
+        })
+        .collect()
 }
 
 /// Pure parser (unit-tested against a captured API shape). Skips malformed
@@ -319,6 +421,94 @@ mod tests {
         // Minimal entry: defaults, no icon.
         assert_eq!(got[1].slug, "minimal");
         assert!(got[1].icon.is_none() && got[1].rating == 0.0);
+    }
+
+    /// The derivation itself: what counts as "the paid build of X", and what
+    /// deliberately does not. `essential-addons-elementor` is the honest miss —
+    /// its free counterpart is `essential-addons-for-elementor-lite`, which no
+    /// suffix rule reaches, so that row keeps its letter tile.
+    #[test]
+    fn derives_the_free_counterpart_of_a_paid_slug() {
+        for (paid, free) in [
+            ("betterdocs-pro", "betterdocs"),
+            ("betterlinks-pro", "betterlinks"),
+            ("wp-analytify-pro", "wp-analytify"),
+            ("seo-by-rank-math-pro", "seo-by-rank-math"),
+            // No separator at all — one real plugin's directory name.
+            ("fluentformpro", "fluentform"),
+            ("nelio-content-premium", "nelio-content"),
+            ("wp-security-audit-log-premium", "wp-security-audit-log"),
+            ("wordpress-seo-premium", "wordpress-seo"),
+        ] {
+            assert_eq!(free_counterpart(paid).as_deref(), Some(free), "{paid}");
+        }
+        for plain in [
+            "elementor",
+            "wp-rocket",
+            "query-monitor",
+            "essential-addons-elementor",
+            // Nothing left to look up, or too little to be a slug.
+            "pro",
+            "premium",
+            "ab-pro",
+        ] {
+            assert_eq!(free_counterpart(plain), None, "{plain} is not a paid companion slug");
+        }
+    }
+
+    /// The fill: a paid row borrows art ONLY from a counterpart that actually
+    /// has some. `elementor-pro` here is the case that must stay a letter tile —
+    /// its counterpart WAS asked and wp.org had no icon, so there is nothing to
+    /// borrow and nothing to invent.
+    #[test]
+    fn a_paid_row_borrows_only_from_a_counterpart_that_has_an_icon() {
+        let icons: std::collections::HashMap<String, Option<String>> = [
+            ("betterdocs", Some("https://ps.w.org/betterdocs/icon-256x256.png")),
+            ("betterdocs-pro", None),
+            ("elementor", None),
+            ("elementor-pro", None),
+            ("wp-rocket", None),
+            ("wp-security-audit-log-premium", None),
+        ]
+        .into_iter()
+        .map(|(s, i)| (s.to_string(), i.map(str::to_string)))
+        .collect();
+
+        let pairs = premium_pairs(&icons);
+        assert_eq!(
+            pairs,
+            vec![
+                ("betterdocs-pro".to_string(), "betterdocs".to_string()),
+                ("elementor-pro".to_string(), "elementor".to_string()),
+                (
+                    "wp-security-audit-log-premium".to_string(),
+                    "wp-security-audit-log".to_string()
+                ),
+            ],
+            "wp-rocket carries no premium marker, so it is never derived from"
+        );
+
+        // Only the counterpart nobody installed costs a second request.
+        let extra: std::collections::HashMap<String, Option<String>> = [(
+            "wp-security-audit-log".to_string(),
+            Some("https://ps.w.org/wp-security-audit-log/icon-256x256.png".to_string()),
+        )]
+        .into_iter()
+        .collect();
+
+        assert_eq!(
+            premium_fills(&pairs, &icons, &extra),
+            vec![
+                (
+                    "betterdocs-pro".to_string(),
+                    "https://ps.w.org/betterdocs/icon-256x256.png".to_string()
+                ),
+                (
+                    "wp-security-audit-log-premium".to_string(),
+                    "https://ps.w.org/wp-security-audit-log/icon-256x256.png".to_string()
+                ),
+            ]
+        );
     }
 
     #[test]

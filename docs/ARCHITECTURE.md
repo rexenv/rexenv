@@ -907,6 +907,27 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
   or a premium plugin's own updater caching its answer for hours). Compared
   segment-by-numeric-segment: a string compare says `1.1.11` is older than
   `1.1.3.8`.
+- **The plugin list's icon column shows art for plugins wp.org has never heard
+  of** (`core/wporg.rs::plugin_icons` · `wp_org_plugin_icons`): one cached
+  `plugin_information` GET per installed slug, and a letter tile when there is no
+  answer. Premium plugins have no answer — `betterdocs-pro`, `elementor-pro`,
+  `wp-security-audit-log-premium` are not in the directory — yet wp-admin's update
+  screen shows the vendor's logo for them, because it reads
+  `$plugin_data->update->icons` out of the `update_plugins` transient the vendor's
+  own updater fills in. **rexenv cannot read that transient**, and the measurement
+  is why: on a real 47-plugin site the STORED transient carried no premium row at
+  all, and a `wp eval` with every plugin loaded produced ONE of the nine installed
+  premium plugins — the other eight inject their update data on an `is_admin()`
+  request, which no wp-cli run is. So the icon is DERIVED: a slug carrying a
+  premium marker (`-pro`/`-premium`, separator optional — `fluentformpro` is a real
+  directory name) falls back to its free counterpart's wp.org icon, which is the
+  same artwork the vendor points wp-admin at. Kept narrow on purpose: only those
+  two markers, only for a slug wp.org itself had nothing for, and a counterpart the
+  directory does not know leaves the letter tile alone rather than hanging a
+  stranger's logo on someone's private plugin (`essential-addons-elementor`, whose
+  free half is `…-for-elementor-lite`, is the honest miss). A counterpart installed
+  alongside its add-on — the usual case — was already fetched, so the common shape
+  costs no extra request.
 - **A finished update SETTLES both caches before it refetches** (`settleAfterUpdate`).
   The checked pass on a real site takes tens of seconds to over a minute (every
   plugin against wp.org, plus every premium plugin's own API), so a check that

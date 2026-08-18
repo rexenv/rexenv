@@ -9,6 +9,22 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Premium plugins had no icon in the plugin list** ✓ 18 Aug 2026,
+  `core/wporg.rs::plugin_icons` + `wporg_icons_check` (L1 network, run green:
+  `betterdocs-pro` → `ps.w.org/betterdocs/…`, `wp-security-audit-log-premium` →
+  `ps.w.org/wp-security-audit-log/…`, 5135-byte `image/png`). Every paid plugin on a
+  real site was a letter tile while wp-admin's update screen showed the vendor's logo:
+  rexenv asks wp.org per slug, and `betterdocs-pro`/`elementor-pro` are not in the
+  directory. wp-admin reads those icons from the `update_plugins` transient — measured
+  unreachable from wp-cli (the STORED transient had no premium row; a fully-loaded
+  `wp eval` produced 1 of 9, the rest inject on `is_admin()` only). So the icon is
+  derived from the free counterpart's slug, narrowly: `-pro`/`-premium` only, only
+  where wp.org itself had nothing, and no counterpart the directory doesn't know.
+  **Still open, deliberately:** a paid plugin whose free half is not a suffix away
+  (`essential-addons-elementor` → `essential-addons-for-elementor-lite`) keeps its
+  letter tile — the fix for that is a real dependency link (`Requires Plugins:`), not
+  a fuzzier rule.
+
 - [x] **Read-only "a newer PHP patch exists"** ✓ 16 Aug 2026, ledger #343,
   plant-proven. `core/php_upstream.rs` fetches php.net's `active.php?json` at launch,
   best-effort, and derives a version STRING per minor — nothing else. `source`/`sha256`

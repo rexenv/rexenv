@@ -210,6 +210,16 @@ it can:
   (24 of 25 packages had just arrived), and `wp core install` pinned to the docroot on
   a Bedrock site whose core Composer puts one level in. `ONLY=bedrock` runs one case;
   each is a real `composer install`.
+  **`wporg_icons_check` (network tier, 18 Aug 2026) is the cheapest shape this layer
+  has: no app data, no ports, no processes — just the real api.wordpress.org.** It
+  exists because the plugin list's premium icons are DERIVED (`betterdocs-pro` →
+  `betterdocs`), and a derivation is only worth anything if the slugs it invents
+  resolve at the other end. A unit test can prove the string arithmetic and nothing
+  else — it would happily bless a rule that produces URLs nobody serves. So the check
+  fetches the derived icon and asserts what came back is an `image/*` of real size,
+  and asserts the two rows that must STAY letter tiles (a private plugin, and a paid
+  one no suffix rule reaches) still do — an over-eager rule that borrowed a
+  stranger's logo would pass every assertion about the icons that do appear.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

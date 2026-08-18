@@ -2925,7 +2925,8 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
 
   const { plugins, isLoading, isError, error, refetch, isFetching } = useWpPlugins(siteId);
 
-  // wp.org icons for the installed list (same source as the live search).
+  // wp.org icons for the installed list (same source as the live search), with
+  // paid plugins answered by their free counterpart's art (core/wporg.rs).
   // Backend caches per app run; failures just mean letter tiles.
   const slugKey = plugins.map((p) => p.name).sort().join(",");
   const { data: iconMap } = useQuery({
@@ -3556,7 +3557,8 @@ function PluginRow({
         className={CHECK_INPUT}
       />
       {/* Icon spans the title + slug lines, wp-admin style; letter tile when
-          the plugin isn't on wp.org (custom, mu, drop-in) or icons are loading. */}
+          nothing on wp.org answers for the plugin — a custom one, an mu-plugin or
+          drop-in, a paid plugin with no free counterpart — or icons are loading. */}
       {icon ? (
         <img src={icon} alt="" className="h-8 w-8 flex-none rounded-[6px] object-cover" />
       ) : (

@@ -199,6 +199,7 @@ wp_real443_setup demo
 wp_themes_check network
 wp_tools_check network
 wpcli_check sandbox
+wporg_icons_check network
 xdebug_pool_check sandbox
 "
 

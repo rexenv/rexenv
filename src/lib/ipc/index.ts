@@ -948,7 +948,9 @@ export async function wpOrgSearchThemes(query: string): Promise<WpOrgTheme[]> {
 }
 
 /** Icon URLs for installed plugins (plugin-list display) — backend-cached per
- *  app run; non-wp.org slugs map to null (letter-tile fallback in the UI). */
+ *  app run; slugs wp.org has nothing for map to null (letter-tile fallback in the
+ *  UI). A paid plugin (`…-pro`/`…-premium`) is answered with its FREE
+ *  counterpart's icon — the artwork wp-admin shows for it too. */
 export async function wpOrgPluginIcons(slugs: string[]): Promise<Record<string, string | null>> {
   if (!isTauri() || slugs.length === 0) return {};
   return invoke<Record<string, string | null>>("wp_org_plugin_icons", { slugs });

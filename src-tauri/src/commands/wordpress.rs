@@ -180,7 +180,9 @@ pub async fn wp_org_search_themes(query: String) -> Result<Vec<core::wporg::WpOr
 }
 
 /// Icon URLs for installed plugins (plugin-list display) — cached per app run;
-/// unknown/non-wp.org slugs map to null. Never fails: icons are decoration.
+/// unknown slugs map to null. A PAID plugin (`…-pro`/`…-premium`), which wp.org
+/// has no entry for, borrows its free counterpart's icon — see
+/// [`core::wporg::plugin_icons`]. Never fails: icons are decoration.
 #[tauri::command]
 pub async fn wp_org_plugin_icons(
     slugs: Vec<String>,
