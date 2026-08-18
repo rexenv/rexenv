@@ -408,11 +408,15 @@ pub struct PhpUpdateOutcome {
     pub restarted: bool,
 }
 
-type MinorSet = std::sync::Mutex<std::collections::HashSet<String>>;
+pub(crate) type MinorSet = std::sync::Mutex<std::collections::HashSet<String>>;
 
-/// The set of minors with an apply in flight, and the guard that releases on
+/// The set of things with an apply in flight, and the guard that releases on
 /// every exit path — including a `?` and a panic.
-struct InFlight {
+///
+/// Keyed, so it serialises PHP minors and Adminer alike: `commands::database`
+/// claims `"adminer"`. One claim set, because the property is "one apply per
+/// thing at a time" and two sets would be two answers to it.
+pub(crate) struct InFlight {
     minor: String,
     set: &'static MinorSet,
 }
@@ -423,7 +427,7 @@ impl InFlight {
         SET.get_or_init(Default::default)
     }
 
-    fn claim(minor: &str) -> Result<Self> {
+    pub(crate) fn claim(minor: &str) -> Result<Self> {
         Self::claim_in(Self::set(), minor)
     }
 
@@ -453,7 +457,7 @@ impl InFlight {
             }
         };
         if !guard.insert(minor.to_string()) {
-            return Err(Error::Other(format!("a PHP {minor} update is already running")));
+            return Err(Error::Other(format!("an update for {minor} is already running")));
         }
         Ok(Self { minor: minor.to_string(), set })
     }

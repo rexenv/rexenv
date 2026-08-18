@@ -1002,6 +1002,13 @@ mod tests {
 /// Named `_pinned` on purpose. Reaching for one of these from a path that HAS a
 /// connection is the bug that shipped: the pin gets planned, the pool resolves the
 /// selection, and the download moves inside the services lock.
+/// The one-artifact plan for an Adminer update — the same shape as
+/// [`plan_for_php_patch`], and for the same reason: the apply must fetch through
+/// the hub (real progress, every failure surfaced) BEFORE anything is persisted.
+pub fn plan_for_adminer(platform: &dyn Platform, version: &str) -> Vec<PlannedBinary> {
+    vec![PlannedBinary::new(platform, "adminer", version)]
+}
+
 pub fn plan_for_start_pinned(
     platform: &dyn Platform,
     sites: &[Site],

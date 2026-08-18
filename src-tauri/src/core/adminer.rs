@@ -443,6 +443,22 @@ pub fn set_selected_version(conn: &Connection, version: Option<&str>) -> Result<
     }
 }
 
+/// Which version the docroot is ACTUALLY serving, or `None` before the first
+/// start has staged anything.
+///
+/// `None` is a state, not a zero value: "nothing staged yet" and "staged, and it
+/// is 5.4.2" are different sentences, and a row that renders them the same is
+/// the honest-UI rule in `docs/DESIGN.md` being broken quietly. Read from the
+/// marker rather than measured from the file, for the reason [`needs_restage`]
+/// gives.
+pub fn staged_version(platform: &dyn Platform) -> Option<String> {
+    let dir = docroot(platform).ok()?;
+    let v = std::fs::read_to_string(dir.join(STAGED_VERSION)).ok()?;
+    let v = v.trim().to_string();
+    // A marker whose file is gone describes nothing.
+    (!v.is_empty() && dir.join(STAGED_ADMINER).is_file()).then_some(v)
+}
+
 /// Web docroot for Adminer, isolated from the binary cache.
 pub fn docroot(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().app_data_dir()?.join("adminer"))
