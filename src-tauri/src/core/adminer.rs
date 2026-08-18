@@ -253,6 +253,144 @@ pub fn wrapper_index_php() -> String {
     WRAPPER_INDEX_PHP.replace("__REXENV_DEV_ANCESTOR__", DEV_FRAME_ANCESTOR)
 }
 
+
+/// The binding probe, run through the bundled PHP before an Adminer version is
+/// ever allowed to become the one this machine serves.
+///
+/// See [`verify_pair`] for what it proves and what it cannot.
+const PROBE_PHP: &str = r####"<?php
+// rexenv Adminer binding probe (generated; see core/adminer.rs — do not edit).
+//
+// The verdict comes from a SHUTDOWN handler, not from code after the require:
+// Adminer exits during its own bootstrap on most requests, so anything asserted
+// afterwards would simply never run and the probe would pass by not executing.
+register_shutdown_function(function () {
+    $need = ['login', 'loginForm', 'headers', 'csp'];
+    $miss = [];
+    if (!class_exists('\\Adminer\\Adminer')) {
+        $miss[] = 'class Adminer\\Adminer';
+    } else {
+        $r = new ReflectionClass('\\Adminer\\Adminer');
+        foreach ($need as $m) {
+            if (!$r->hasMethod($m)) { $miss[] = "override $m has nothing to override"; }
+        }
+    }
+    if (!function_exists('\\Adminer\\nonce')) { $miss[] = 'function Adminer\\nonce'; }
+    $e = error_get_last();
+    if ($e && ($e['type'] & (E_ERROR | E_PARSE | E_COMPILE_ERROR | E_CORE_ERROR))) {
+        $miss[] = 'fatal: ' . $e['message'];
+    }
+    fwrite(STDERR, $miss ? ('REXENV-PROBE-FAIL ' . implode('; ', $miss)) : 'REXENV-PROBE-OK');
+});
+// The same subclass SHAPE the real wrapper declares. Declaring it is half the
+// test: if the base class moved, this is where PHP fatals.
+function adminer_object() {
+    class RexenvProbeAdminer extends \Adminer\Adminer {
+        function login($login, $password) { return false; }
+        function loginForm() { parent::loginForm(); }
+        function headers() {}
+        function csp(array $csp) { return $csp; }
+    }
+    return new \RexenvProbeAdminer();
+}
+require __DIR__ . '/.adminer.php';
+"####;
+
+/// Marker the probe writes on success. Compared exactly — a probe that printed
+/// nothing (killed, PHP missing, a fatal before the handler) must read as a
+/// failure, and "no output" is the shape that would otherwise read as fine.
+const PROBE_OK: &str = "REXENV-PROBE-OK";
+
+/// **Does this Adminer still bind to rexenv's wrapper?** Run before an Adminer
+/// version becomes the one this machine serves.
+///
+/// # Why this exists at all
+///
+/// rexenv's security controls for the Adminer console live inside Adminer's OWN
+/// plugin API: [`WRAPPER_INDEX_PHP`] subclasses `\Adminer\Adminer` and overrides
+/// `login` (the loopback gate that stops a passwordless session reaching a remote
+/// server), `headers` (removing `X-Frame-Options: deny`) and `csp` (the
+/// frame-ancestors bound), and it calls `\Adminer\nonce()`. A PHP update cannot
+/// switch off a control rexenv wrote; **an Adminer update can**, by renaming the
+/// hook it hangs on — and it would do it SILENTLY, with the console still
+/// serving. That is the one axis on which Adminer is worse than PHP, and this is
+/// the answer to it.
+///
+/// # What it proves
+///
+/// The base class resolves, each of the four overrides shadows a method that
+/// still EXISTS on the parent, `\Adminer\nonce()` is there, and requiring the
+/// file raises no fatal. Static inspection cannot do any of this: the released
+/// `adminer-<v>-en.php` is a compressed stub, so grepping it for `class Adminer`
+/// finds nothing in ANY version, including the one running right now.
+///
+/// # What it does NOT prove, stated rather than implied
+///
+/// That Adminer still CALLS those methods. A version that kept `csp()` on the
+/// class and stopped consulting it would pass here while `headers()` still
+/// strips `X-Frame-Options` — clickjacking on a database console. Reflection
+/// cannot see a call site that is gone. The probe converts the FATAL cases (a
+/// renamed or re-namespaced base class, an override with nothing to override,
+/// a truncated file) into a loud refusal; the never-called case is
+/// `docs/SMOKE-TEST.md`'s.
+///
+/// Probed in a throwaway directory, never in the live docroot: a version that
+/// fails must not have been served for the duration of the check.
+pub fn verify_pair(php_bin: &std::path::Path, adminer_php: &std::path::Path) -> Result<()> {
+    let dir = std::env::temp_dir().join(format!(
+        "rexenv-adminer-probe-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir)?;
+    let cleanup = |d: &std::path::Path| {
+        let _ = std::fs::remove_dir_all(d);
+    };
+    let run = (|| -> Result<std::process::Output> {
+        std::fs::copy(adminer_php, dir.join(STAGED_ADMINER))?;
+        let probe = dir.join(".rexenv-probe.php");
+        std::fs::write(&probe, PROBE_PHP)?;
+        Ok(std::process::Command::new(php_bin)
+            .arg("-d")
+            .arg("display_errors=0")
+            // Adminer starts a session at include time; keep it in the throwaway
+            // directory rather than wherever this machine's default points.
+            .arg("-d")
+            .arg(format!("session.save_path={}", dir.display()))
+            .arg(&probe)
+            .current_dir(&dir)
+            .output()?)
+    })();
+    let out = match run {
+        Ok(o) => o,
+        Err(e) => {
+            cleanup(&dir);
+            return Err(e);
+        }
+    };
+    cleanup(&dir);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains(PROBE_OK) {
+        return Ok(());
+    }
+    let why = stderr
+        .lines()
+        .find(|l| l.contains("REXENV-PROBE-FAIL"))
+        .map(|l| l.trim().to_string())
+        .unwrap_or_else(|| {
+            // No verdict at all: killed, or a fatal before the handler was
+            // registered. Never treated as a pass.
+            format!("the probe produced no verdict (exit {:?})", out.status.code())
+        });
+    Err(Error::Other(format!(
+        "this Adminer build does not bind to rexenv's wrapper, so the database console's \
+         login gate and frame protections would not be applied — {why}"
+    )))
+}
+
 /// Where the user's chosen Adminer version is stored.
 ///
 /// A settings ROW, not a column and not a table. One fact with no existing row to
@@ -871,6 +1009,78 @@ mod tests {
         for name in [STAGED_ADMINER, STAGED_VERSION] {
             assert!(name.starts_with('.'), "{name} is a directly executable path");
         }
+    }
+
+
+    /// **The probe refuses a build the wrapper cannot bind to — proven against
+    /// real PHP and hand-built Adminers, not asserted about code.**
+    ///
+    /// Only runs where the bundled PHP is already cached; otherwise it SKIPS
+    /// loudly rather than passing, because a probe test that silently no-ops is
+    /// a probe nobody is testing.
+    #[test]
+    fn the_binding_probe_accepts_a_bound_adminer_and_refuses_every_broken_one() {
+        let Some(php) = cached_php_for_tests() else {
+            eprintln!("SKIP the_binding_probe: no cached PHP CLI on this machine");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("rexenv-probe-t-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let write = |body: &str| {
+            let p = dir.join("candidate.php");
+            std::fs::write(&p, body).unwrap();
+            p
+        };
+
+        // A minimal Adminer carrying the whole surface the wrapper needs.
+        let good = write(
+            "<?php namespace Adminer; class Adminer { function login($a,$b){} \
+             function loginForm(){} function headers(){} function csp(array $c){return $c;} } \
+             function nonce(){} adminer_object();",
+        );
+        assert!(verify_pair(&php, &good).is_ok(), "a bound Adminer was refused");
+
+        // Every way a real upstream change breaks the binding.
+        for (label, body) in [
+            (
+                "csp() renamed",
+                "<?php namespace Adminer; class Adminer { function login($a,$b){} \
+                 function loginForm(){} function headers(){} } function nonce(){}",
+            ),
+            ("the class re-namespaced", "<?php namespace Adminer2; class Adminer {} "),
+            (
+                "nonce() gone",
+                "<?php namespace Adminer; class Adminer { function login($a,$b){} \
+                 function loginForm(){} function headers(){} function csp(array $c){return $c;} }",
+            ),
+            ("a truncated file", "<?php namespace Adminer; class Adminer { function login("),
+            ("an empty file", ""),
+        ] {
+            let bad = write(body);
+            let err = verify_pair(&php, &bad).unwrap_err().to_string();
+            assert!(
+                err.contains("does not bind to rexenv's wrapper"),
+                "{label} was accepted — the console's login gate would not be applied"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The bundled PHP CLI, if this machine already has one cached. Never
+    /// downloads: a unit test must not reach the network.
+    fn cached_php_for_tests() -> Option<std::path::PathBuf> {
+        let base = std::path::PathBuf::from(std::env::var_os("HOME")?)
+            .join("Library/Application Support/dev.rexenv.rexenv/bin");
+        let mut best: Option<std::path::PathBuf> = None;
+        for e in std::fs::read_dir(&base).ok()?.flatten() {
+            let p = e.path();
+            let name = p.file_name()?.to_string_lossy().into_owned();
+            if name.starts_with("php-8.") && p.join("php").is_file() {
+                best = Some(p.join("php"));
+            }
+        }
+        best
     }
 
 }

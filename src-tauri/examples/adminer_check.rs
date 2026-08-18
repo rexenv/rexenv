@@ -1,10 +1,16 @@
 //! Phase-3 §5.1 check: Adminer binary provider. Resolves `adminer.php` via
 //! `BinaryProvider::resolve_file` (download + checksum-pin, no chmod/codesign —
-//! it's a PHP script), then `php -l` on it from the bundled PHP passes.
+//! it's a PHP script), then `php -l` on it from the bundled PHP passes — and
+//! then the thing `php -l` cannot see: that this build still BINDS to rexenv's
+//! wrapper (`adminer::verify_pair`).
+//!
+//! A syntactically perfect Adminer whose base class moved is a console with no
+//! login gate and no frame protection, serving happily. Lint says nothing about
+//! it; only running it does.
 //!
 //! Run: `cargo run --example adminer_check`
 
-use rexenv_lib::core::binaries;
+use rexenv_lib::core::{adminer, binaries};
 use rexenv_lib::platform;
 
 #[tokio::main]
@@ -35,5 +41,12 @@ async fn main() {
     assert!(out.status.success(), "php -l failed: {stderr}");
     assert!(stdout.contains("No syntax errors"), "unexpected lint output: {stdout}{stderr}");
 
-    println!("\nALL GOOD — Adminer resolves via resolve_file and passes php -l.");
+    // The binding. `php -l` proves the file parses; this proves rexenv's
+    // security controls still have something to hang on.
+    adminer::verify_pair(&php, &adminer).expect("the pinned Adminer must bind to the wrapper");
+    println!("✓ binds to rexenv's wrapper (class, four overrides, nonce())");
+
+    println!(
+        "\nALL GOOD — Adminer resolves via resolve_file, passes php -l, and binds to the wrapper."
+    );
 }

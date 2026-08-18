@@ -4239,9 +4239,15 @@ mod packages_pin_guards {
     #[test]
     fn every_captured_wp_cli_spawn_goes_through_the_pinned_command() {
         let sources = rust_sources();
+        // A WP-CLI spawn, not merely a PHP one. `Command::new(php_bin)` alone
+        // convicted `adminer::verify_pair`, which runs PHP against a candidate
+        // Adminer and never goes near wp-cli — a guard matching more than its own
+        // claim, which is the mirror image of the family this file's other
+        // guards exist for. The pin being protected is the wp-cli PACKAGES dir,
+        // so the spawn is in scope exactly when it also carries the wp phar.
         let spawns: Vec<&str> = sources
             .iter()
-            .filter(|(_, t)| t.contains("Command::new(php_bin)"))
+            .filter(|(_, t)| t.contains("Command::new(php_bin)") && t.contains("wp_phar"))
             .map(|(p, _)| p.as_str())
             .collect();
         assert_eq!(
@@ -4250,6 +4256,9 @@ mod packages_pin_guards {
             "a captured wp-cli process is started outside `wp_command`, which is the only \
              place the packages-dir pin is applied to a `Command` (#228)."
         );
+        // The narrowed matcher must still MATCH — an AND that quietly matches
+        // nothing is a guard that passes because it stopped looking.
+        assert_eq!(spawns.len(), 1, "the wp-cli spawn matcher found nothing at all");
         // Brace-depth, not a cut at the first occurrence — a test module can sit
         // anywhere in a file, and the naive split drops everything after it.
         let this = strip_comments(&crate::core::copy_scan::production_source(include_str!(
