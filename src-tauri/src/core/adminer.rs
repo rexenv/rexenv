@@ -9,6 +9,7 @@
 use crate::core::binaries;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
+use rusqlite::Connection;
 use std::path::PathBuf;
 
 /// Custom webview scheme the in-app Database Browser loads Adminer through
@@ -250,6 +251,58 @@ const DEV_FRAME_ANCESTOR: &str = "";
 /// [`WRAPPER_INDEX_PHP`]).
 pub fn wrapper_index_php() -> String {
     WRAPPER_INDEX_PHP.replace("__REXENV_DEV_ANCESTOR__", DEV_FRAME_ANCESTOR)
+}
+
+/// Where the user's chosen Adminer version is stored.
+///
+/// A settings ROW, not a column and not a table. One fact with no existing row to
+/// hang it on is exactly what migration v36 already deleted once, and
+/// `php_versions.selected_patch` is a column only because a row per minor already
+/// existed carrying `fpm_port`/`installed`/`is_default`.
+///
+/// Absent means "follow the pin" — never backfilled, so a user who never presses
+/// Update keeps receiving the version their app ships as releases move it.
+pub const VERSION_KEY: &str = "adminer_version";
+
+/// **The ONE answer to "which Adminer version runs".** Everything that resolves,
+/// stages, plans or displays Adminer asks this — never `binaries::ADMINER_VERSION`.
+///
+/// Three things in order, and each is load-bearing:
+///
+/// 1. the stored selection, if any;
+/// 2. FLOORED by the compiled-in pin ([`updates::adminer_floored`]), so a stale
+///    choice can never hold a user below the version their app ships;
+/// 3. **VOUCHED** — filtered on read through `binaries::manifest`, which consults
+///    the pin first and only then the verified catalog. A selection whose entry
+///    has since left the manifest (a truncating publish, a rotated key, a
+///    downgraded app) is not resolvable, and a version that cannot resolve must
+///    read as "we are on the pin" rather than as a version nothing can produce.
+///
+/// Filtering on READ is deliberate and mirrors `DbEngine::effective_version`: it
+/// makes the generic `set_setting` IPC door inert for this key with no write-path
+/// code to get wrong, which matters because that door's gating guard does not
+/// cover the surface its comment used to claim (`docs/TODO.md`).
+pub fn effective_version(platform: &dyn Platform, conn: &Connection) -> String {
+    effective_version_for(conn, platform.binaries().arch())
+}
+
+/// [`effective_version`] against an explicit arch — the seam the tests use, so
+/// the VOUCHING step is exercised without standing up a `Platform`.
+fn effective_version_for(conn: &Connection, arch: crate::platform::traits::Arch) -> String {
+    let selected = crate::state::store::get_setting(conn, VERSION_KEY).ok().flatten();
+    let want = crate::core::updates::adminer_floored(selected.as_deref());
+    if binaries::manifest("adminer", &want, std::env::consts::OS, arch).is_some() {
+        return want;
+    }
+    binaries::ADMINER_VERSION.to_string()
+}
+
+/// Record the user's chosen Adminer version, or clear it back to the pin.
+pub fn set_selected_version(conn: &Connection, version: Option<&str>) -> Result<()> {
+    match version {
+        Some(v) => crate::state::store::set_setting(conn, VERSION_KEY, v),
+        None => crate::state::store::delete_setting(conn, VERSION_KEY),
+    }
 }
 
 /// Web docroot for Adminer, isolated from the binary cache.
@@ -632,4 +685,86 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains("SameSite=None; Partitioned"));
         assert!(WRAPPER_INDEX_PHP.contains("Secure"));
     }
+
+    /// **The chosen version wins, the pin is a FLOOR, and a version nothing
+    /// vouches for reads as the pin.**
+    ///
+    /// The third leg is the one that is easy to skip. A selection can outlive
+    /// its manifest entry — a truncating publish, a rotated key, an app
+    /// downgrade — and a version that cannot resolve must read as "we are on the
+    /// pin", not as a version nothing can produce. Filtering on READ is also what
+    /// makes the generic `set_setting` IPC door inert for this key: there is no
+    /// write path to get wrong.
+    #[test]
+    fn the_effective_adminer_version_is_the_choice_floored_by_the_pin_and_vouched() {
+        use crate::platform::traits::Arch;
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let pin = binaries::ADMINER_VERSION;
+
+        // No choice → the pin, byte for byte.
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), pin);
+
+        // A choice nothing vouches for → still the pin. This is the state after a
+        // publish that dropped the entry, and it must not be a dangling version.
+        set_selected_version(&conn, Some("6.0.1")).unwrap();
+        assert_eq!(
+            effective_version_for(&conn, Arch::Arm64),
+            pin,
+            "an unvouched selection became the effective version"
+        );
+
+        // Vouched by the catalog → honoured.
+        binaries::install_catalog(crate::core::updates::catalog_for_tests(&[(
+            "adminer",
+            "6.0.1",
+            crate::core::updates::ANY_ARCH,
+            "https://github.com/vrana/adminer/releases/download/v6.0.1/adminer-6.0.1-en.php",
+            &"c".repeat(64),
+        )]));
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), "6.0.1");
+        // Arch-free: the other Mac gets the same answer.
+        assert_eq!(effective_version_for(&conn, Arch::X86_64), "6.0.1");
+
+        // OLDER than the pin → ignored. The pin is a floor, not a default.
+        //
+        // The old version has to be VOUCHED for this to test the floor at all:
+        // with only 6.0.1 catalogued, an unfloored 4.8.1 falls back to the pin
+        // through the vouching step instead, and the assertion passes for the
+        // wrong reason. Found by planting — the floor was removed and nothing
+        // failed. Two guards covering one case is fine; a test that cannot tell
+        // them apart is not.
+        binaries::install_catalog(crate::core::updates::catalog_for_tests(&[
+            (
+                "adminer",
+                "6.0.1",
+                crate::core::updates::ANY_ARCH,
+                "https://github.com/vrana/adminer/releases/download/v6.0.1/adminer-6.0.1-en.php",
+                &"c".repeat(64),
+            ),
+            (
+                "adminer",
+                "4.8.1",
+                crate::core::updates::ANY_ARCH,
+                "https://github.com/vrana/adminer/releases/download/v4.8.1/adminer-4.8.1-en.php",
+                &"d".repeat(64),
+            ),
+        ]));
+        assert!(
+            binaries::manifest("adminer", "4.8.1", std::env::consts::OS, Arch::Arm64).is_some(),
+            "the fixture must VOUCH for the old version, or this tests the wrong guard"
+        );
+        set_selected_version(&conn, Some("4.8.1")).unwrap();
+        assert_eq!(
+            effective_version_for(&conn, Arch::Arm64),
+            pin,
+            "a stale choice held the machine below the version this app ships"
+        );
+
+        // Cleared → the pin, and ABSENT rather than an empty string.
+        set_selected_version(&conn, None).unwrap();
+        assert!(crate::state::store::get_setting(&conn, VERSION_KEY).unwrap().is_none());
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), pin);
+        binaries::install_catalog(Default::default());
+    }
+
 }

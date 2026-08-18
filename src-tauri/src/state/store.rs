@@ -547,6 +547,14 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// Remove a setting, so the next read sees "never chosen" rather than a value
+/// meaning it. Absent and empty-string are different states everywhere settings
+/// are read, and writing `""` to mean "unset" is how they stop being.
+pub fn delete_setting(conn: &Connection, key: &str) -> Result<()> {
+    conn.execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+    Ok(())
+}
+
 /// The database's current timestamp string, matching the `created_at` column
 /// default (`datetime('now')`). Lets `core/` stamp rows without a time crate
 /// and keeps the format identical to DB-generated values.

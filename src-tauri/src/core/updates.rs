@@ -613,6 +613,23 @@ pub fn floored(minor: &str, selected: Option<&str>) -> Option<String> {
     }
 }
 
+/// [`floored`] for Adminer: the user's choice, or the pin when there isn't one or
+/// it is not newer.
+///
+/// A version COMPARISON, not a flag, for the same reason as PHP's: with no
+/// selection the answer is today's pin byte for byte, and a selection older than
+/// the pin is ignored rather than honoured — so a choice made months ago can
+/// never hold a user below the version their app ships. Segment-wise and
+/// track-free, because Adminer's tracks are not a compatibility boundary the way
+/// a PHP minor is (see [`Family::is_upgrade`]).
+pub fn adminer_floored(selected: Option<&str>) -> String {
+    let pin = crate::core::binaries::ADMINER_VERSION;
+    match selected {
+        Some(sel) if segments(sel) > segments(pin) => sel.to_string(),
+        _ => pin.to_string(),
+    }
+}
+
 /// Whether `name` is an artifact a manifest is allowed to describe — exposed so
 /// `binaries` can assert it at the point it consults the catalog rather than
 /// trusting this module to have filtered.
