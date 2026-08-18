@@ -249,6 +249,13 @@ before that the button does not render, which is itself the first check.
 - [ ] **The tree survives a stopped stack.** After the step above, quit and relaunch
   BEFORE starting anything. The launch cache sweep must not delete the tree you just
   installed. **Tell:** Start all re-downloading ~150MB, or failing outright offline.
+- [ ] **The patch it replaced is GONE.** `du -sh ~/Library/Application\ Support/dev.rexenv.rexenv/bin`
+  before and after a relaunch following an update. The superseded `php-<oldpatch>/` and
+  `php-fpm-<oldpatch>/` must both be gone — ~180 MB per updated minor. **Tell:** both
+  patches of a minor still present after a relaunch; that is the leak a user found at
+  358 MB (ledger #358). **The opposite tell matters as much:** every minor you did NOT
+  update must still have its pinned trees — if those vanished, the sweep is deleting
+  floors and Start all will re-download gigabytes.
 - [ ] **Two rows at once.** With offers on two minors, press Update on both in
   quick succession. Both buttons must stay disabled until their own apply finishes
   — the first row's button re-enabling while its download runs is the defect. A

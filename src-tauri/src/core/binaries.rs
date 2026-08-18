@@ -1614,36 +1614,65 @@ fn cached_bundle_dir_in(bin_dir: &Path, name: &str, version: &str, member: &str)
     dir.join(member).exists().then_some(dir)
 }
 
-/// Every PHP patch whose cache tree must SURVIVE the launch GC.
+/// Every PHP patch whose cache tree must SURVIVE the launch GC — or `None` when
+/// the question cannot be answered, in which case the caller must SKIP the sweep.
 ///
 /// Two halves, and both are load-bearing:
 ///
-/// - **The compiled-in pins.** A floor whose bytes were deleted is not a floor.
-///   "No network, bad signature, stale manifest → rexenv falls back to the
-///   pins" is a *download* rather than a fallback unless the pinned tree is
-///   still on disk, and offline it is not a fallback at all.
 /// - **Each minor's EFFECTIVE patch** — the user's in-app update choice floored
-///   by the pin (`php::effective_patches`), plus every patch a pool is live on.
-///   These stopped being the same set as the pins the moment v37 let a patch be
-///   chosen at runtime, and this function is now the only thing standing between
-///   the GC and the tree the user just selected and is serving from. The 8 Aug
-///   draft of `docs/PLAN-binary-updates.md` §6 promised "the new tree is not
-///   deleted" while the GC was keyed on the pin alone — which is precisely what
-///   would have deleted it.
+///   by the pin (`php::effective_patches`). This is the only thing standing
+///   between the GC and the tree the user just selected and is serving from; the
+///   8 Aug draft of `docs/PLAN-binary-updates.md` §6 promised "the new tree is
+///   not deleted" while the GC was keyed on the pin alone, which is precisely
+///   what would have deleted it.
+/// - **Every patch a pool is LIVE on.** Not redundant with the above: this block
+///   is reached after a restart that failed partway, with later minors still
+///   serving from their old masters, and the process is the only thing that
+///   cannot be wrong about which bytes it is running.
 ///
-/// Passing the set in rather than reading it here keeps this pure and keeps
-/// `core/binaries.rs` off the database. The caller (`lib.rs`) unions the LIVE
-/// pools with the effective map, and the union is not belt-and-braces: with the
-/// stack stopped, `running_php_patches` returns an empty set, so a live-only
-/// keep-set falls back to the pins and deletes the updated tree.
-pub fn php_caches_to_keep(registered: &[String]) -> Vec<String> {
-    let mut keep: Vec<String> = PHP_VERSIONS.iter().map(|v| (*v).to_string()).collect();
-    for patch in registered {
+/// # What is deliberately NOT kept, and why the earlier answer was wrong
+///
+/// The compiled-in pins used to be a third, unconditional half, on the argument
+/// that **"a floor whose bytes were deleted is not a floor"** — that "no network
+/// → falls back to the pins" is a download unless the pinned tree is on disk.
+/// That argument does not survive contact with `updates::floored`, which returns
+/// the pin **only when the pin is what the minor will run** — in which case the
+/// pin already IS that minor's effective patch and is kept by the first half.
+/// When a higher selection exists, nothing resolves the pin: not the pool, not
+/// the terminal, not WP-CLI, not the planner. The tree was pure weight, and a
+/// user who updated 8.2 and 8.3 found ~358 MB of it (two trees per minor,
+/// ~90 MB each, and the bin dir was 3.3 GB). It was reported by the person whose
+/// disk it was on, which is where "we keep it just in case" arguments usually go
+/// to die.
+///
+/// The revert path does not need it either: `php_update_apply` restores the
+/// PREVIOUS SELECTION, not the pin, and that patch was the effective one at the
+/// last sweep — so it is on disk. Only a first-ever update reverts to the pin,
+/// and at that moment the pin is still the effective patch. The one thing this
+/// trades away is a hypothetical future "go back to the version this app ships"
+/// control, which would have to re-download. There is no such control.
+///
+/// # `None` is not an empty list
+///
+/// An empty `effective` means the registry could not be read (`lib.rs` builds it
+/// with `unwrap_or_default`), and the pins half used to mask that. Without it, an
+/// empty keep-set would delete **every** PHP tree on the machine. The sweep
+/// deletes what is NOT in the set, so not-knowing must cost a skipped sweep and
+/// never a live tree — the same rule the unidentifiable-pool guard already obeys.
+///
+/// Passing both sets in rather than reading them here keeps this pure and keeps
+/// `core/binaries.rs` off the database.
+pub fn php_caches_to_keep(effective: &[String], running: &[String]) -> Option<Vec<String>> {
+    if effective.is_empty() {
+        return None;
+    }
+    let mut keep: Vec<String> = Vec::with_capacity(effective.len() + running.len());
+    for patch in effective.iter().chain(running) {
         if !keep.iter().any(|k| k == patch) {
             keep.push(patch.clone());
         }
     }
-    keep
+    Some(keep)
 }
 
 /// Whether a binary-cache dir name holds a PHP patch that nothing needs any
@@ -1683,24 +1712,34 @@ pub fn is_outdated_php_cache(dir_name: &str, keep: &[String]) -> bool {
 /// Best-effort — a dir that can't be removed is skipped, never an error.
 /// Returns the removed dir names.
 ///
-/// `registered` is every patch that must survive: the live pools unioned with
-/// `php::effective_patches` (there is no `registered_patches` — an earlier draft
-/// of this line named one, and the column it would have read was dropped in v36).
-/// It is a PARAMETER rather than a read, because the caller already knows and
-/// because this module stays off the database — but it must be passed honestly:
-/// this GC runs unconditionally at launch, including on the path where
-/// `restart_pools_for` failed partway and later minors are still serving from
-/// their old masters (`lib.rs`). Deleting a running master's tree does not kill
-/// it — macOS keeps the process alive on the unlinked inode — it just makes the
-/// pool unrestartable later, which is the worst of both.
-pub fn gc_outdated_php_caches(platform: &dyn Platform, registered: &[String]) -> Vec<String> {
+/// `effective` is `php::effective_patches`' answer and `running` is what the live
+/// masters are executing — see [`php_caches_to_keep`] for why both, and why an
+/// EMPTY `effective` means "skip" rather than "keep nothing". They are PARAMETERS
+/// rather than reads because the caller already knows and this module stays off
+/// the database — but they must be passed honestly: this GC runs unconditionally
+/// at launch, including on the path where `restart_pools_for` failed partway and
+/// later minors are still serving from their old masters (`lib.rs`). Deleting a
+/// running master's tree does not kill it — macOS keeps the process alive on the
+/// unlinked inode — it just makes the pool unrestartable later, which is the
+/// worst of both.
+pub fn gc_outdated_php_caches(
+    platform: &dyn Platform,
+    effective: &[String],
+    running: &[String],
+) -> Vec<String> {
+    let Some(keep) = php_caches_to_keep(effective, running) else {
+        log::warn!(
+            "php: skipped the outdated-cache sweep — the registry gave no effective patches, \
+             and a sweep with an empty keep-set deletes every PHP tree on the machine"
+        );
+        return Vec::new();
+    };
     let Ok(bin_dir) = platform.paths().bin_dir() else {
         return Vec::new();
     };
     let Ok(entries) = std::fs::read_dir(&bin_dir) else {
         return Vec::new();
     };
-    let keep = php_caches_to_keep(registered);
     let mut removed = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -3857,9 +3896,12 @@ mod tests {
 
     #[test]
     fn outdated_php_cache_rule_is_narrow() {
-        // Nothing registered beyond the pins — today's state, and the set this
-        // rule was originally written against.
-        let keep = php_caches_to_keep(&[]);
+        // A registry where no minor has a selection: every effective patch IS
+        // the pin. Built from `PHP_VERSIONS` rather than passed as `&[]`, because
+        // an empty effective set now means "the registry could not be read" and
+        // the keep-set refuses to answer it.
+        let pins: Vec<String> = PHP_VERSIONS.iter().map(|v| (*v).to_string()).collect();
+        let keep = php_caches_to_keep(&pins, &[]).expect("a populated registry answers");
         // An old patch of a pinned minor — for both the cli and fpm dirs.
         assert!(is_outdated_php_cache("php-8.3.30", &keep));
         assert!(is_outdated_php_cache("php-fpm-8.3.30", &keep));
@@ -3891,56 +3933,130 @@ mod tests {
         ));
     }
 
-    /// **The GC must never delete a tree a pool is running.**
+    /// A registry where one minor moved onto a selection and the rest follow
+    /// their pins — the shape every assertion below is about.
+    fn effective_with_selection(selected: &str) -> Vec<String> {
+        let minor = crate::core::php::minor_of(selected);
+        PHP_VERSIONS
+            .iter()
+            .map(|v| {
+                if crate::core::php::minor_of(v) == minor {
+                    selected.to_string()
+                } else {
+                    (*v).to_string()
+                }
+            })
+            .collect()
+    }
+
+    /// **The selected tree survives; the pin it replaced does NOT.**
     ///
-    /// The launch sweep is keyed on the REGISTERED patch, not on the pin. While
-    /// the two are equal — today, because `seed_registry` writes the pin into
-    /// the row — this is invisible. It stops being invisible the moment a patch
-    /// can be selected at runtime, and the failure it prevents is the app
-    /// deleting, at the next launch, the exact tree the user just chose and is
-    /// serving from (`docs/PLAN-binary-updates.md` §6).
+    /// Two failures in one rule, and each was live at some point:
+    ///
+    /// - Keying the sweep on the PIN deleted, at the next launch, the exact tree
+    ///   the user just chose and is serving from — `docs/PLAN-binary-updates.md`
+    ///   §6's landmine.
+    /// - Keeping the pin unconditionally ALONGSIDE the selection leaked ~180 MB
+    ///   per updated minor, forever. A user who updated 8.2 and 8.3 found 358 MB
+    ///   of trees that nothing resolves, in a `bin/` already at 3.3 GB — reported
+    ///   by the person whose disk it was on. The argument for keeping them ("a
+    ///   floor whose bytes were deleted is not a floor") does not survive
+    ///   `updates::floored`, which returns the pin ONLY when the pin is what the
+    ///   minor will run — and then the pin already IS the effective patch.
     ///
     /// The fixture is a patch of a REAL pinned minor that is not the pin, so it
     /// takes the same branch a runtime selection would: prefix-stripped, `x.y.z`,
-    /// minor has a pin. Under the old pin-keyed rule this asserted the opposite.
+    /// minor has a pin.
     #[test]
-    fn the_gc_keeps_the_registered_patch_and_the_pinned_floor() {
+    fn the_gc_keeps_the_selected_patch_and_collects_the_pin_it_replaced() {
         let minor = crate::core::php::minor_of(PHP_VERSION);
-        let selected = format!("{minor}.9999"); // a patch of a pinned minor, not the pin
+        let selected = format!("{minor}.9999");
 
-        // Registered nowhere: it is garbage, exactly as before.
-        let bare = php_caches_to_keep(&[]);
+        // Nowhere in the registry: it is garbage, exactly as before.
+        let pins: Vec<String> = PHP_VERSIONS.iter().map(|v| (*v).to_string()).collect();
+        let bare = php_caches_to_keep(&pins, &[]).unwrap();
         assert!(is_outdated_php_cache(&format!("php-{selected}"), &bare));
         assert!(is_outdated_php_cache(&format!("php-fpm-{selected}"), &bare));
 
-        // Registered: both of its trees survive.
-        let keep = php_caches_to_keep(&[selected.clone()]);
+        let keep = php_caches_to_keep(&effective_with_selection(&selected), &[]).unwrap();
+        // Selected: both of its trees survive.
         assert!(!is_outdated_php_cache(&format!("php-{selected}"), &keep));
         assert!(!is_outdated_php_cache(&format!("php-fpm-{selected}"), &keep));
-
-        // …and the pinned floor survives ALONGSIDE it, not instead of it. A
-        // floor whose bytes were deleted is not a floor: "no network → falls
-        // back to the pins" is a download unless the pinned tree is still there.
-        for v in PHP_VERSIONS {
-            assert!(
-                !is_outdated_php_cache(&format!("php-{v}"), &keep),
-                "the pinned floor {v} must survive a runtime selection"
-            );
-            assert!(!is_outdated_php_cache(&format!("php-fpm-{v}"), &keep));
+        // The PIN IT REPLACED is collected. This is the ~180 MB per minor.
+        assert!(
+            is_outdated_php_cache(&format!("php-{PHP_VERSION}"), &keep),
+            "the superseded pin {PHP_VERSION} must be swept, not kept forever"
+        );
+        assert!(is_outdated_php_cache(&format!("php-fpm-{PHP_VERSION}"), &keep));
+        // …while every minor still FOLLOWING its pin keeps that pin, because for
+        // those the pin IS the effective patch. Deleting these would be the
+        // original landmine wearing the fix's clothes.
+        for v in PHP_VERSIONS.iter().filter(|v| crate::core::php::minor_of(v) != minor) {
+            assert!(!is_outdated_php_cache(&format!("php-{v}"), &keep), "{v}");
+            assert!(!is_outdated_php_cache(&format!("php-fpm-{v}"), &keep), "{v}");
         }
-        assert!(keep.iter().any(|k| k == &selected));
-        assert!(keep.iter().any(|k| k == PHP_VERSION));
-
         // A superseded patch is still collected while a selection is live —
-        // keeping the registered tree must not turn the sweep off.
+        // keeping the selected tree must not turn the sweep off.
         assert!(is_outdated_php_cache(&format!("php-{minor}.9998"), &keep));
     }
 
-    /// The keep-set never duplicates, so a registered patch that IS the pin
-    /// (every row today) does not grow the list on each launch.
+    /// **A pool LIVE on the pin holds its tree against the registry.**
+    ///
+    /// The window is ordinary, not exotic: the apply persists the selection and
+    /// then restarts, so a restart that failed partway leaves the master on the
+    /// old patch — and the launch sweep runs right after. Unlinking a running
+    /// master's tree does not kill it (macOS keeps it alive on the inode); it
+    /// makes the pool unrestartable, which is the worst of both.
+    #[test]
+    fn a_live_master_holds_its_tree_against_the_registry() {
+        let minor = crate::core::php::minor_of(PHP_VERSION);
+        let selected = format!("{minor}.9999");
+        let keep = php_caches_to_keep(
+            &effective_with_selection(&selected),
+            &[PHP_VERSION.to_string()],
+        )
+        .unwrap();
+        assert!(
+            !is_outdated_php_cache(&format!("php-{PHP_VERSION}"), &keep),
+            "swept a tree a live master is executing"
+        );
+        assert!(!is_outdated_php_cache(&format!("php-fpm-{PHP_VERSION}"), &keep));
+    }
+
+    /// **An unreadable registry SKIPS the sweep; it never means "keep nothing".**
+    ///
+    /// `lib.rs` builds the effective map with `unwrap_or_default`, so a DB failure
+    /// arrives here as an EMPTY list. The compiled-in pins used to be an
+    /// unconditional half of the keep-set and masked that; removing them made an
+    /// empty set mean "delete every PHP tree on the machine". The sweep deletes
+    /// what is NOT in the set, so not-knowing must cost a skipped sweep — the same
+    /// rule the unidentifiable-pool guard already obeys.
+    #[test]
+    fn an_empty_registry_refuses_to_answer_rather_than_answering_nothing() {
+        assert!(php_caches_to_keep(&[], &[]).is_none());
+        // Not even a live pool makes it answerable: knowing one master's patch is
+        // not knowing what the OTHER minors should keep.
+        assert!(php_caches_to_keep(&[], &[PHP_VERSION.to_string()]).is_none());
+
+        // And the real entry point removes nothing rather than sweeping — asserted
+        // against files on disk, because "returns an empty Vec" and "deleted
+        // nothing" are different claims and only the second one matters.
+        let (plat, root) = cache_fixture("gc-empty");
+        for d in ["php-0.0.1", &format!("php-{PHP_VERSION}")] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        assert!(gc_outdated_php_caches(&plat, &[], &[]).is_empty());
+        assert!(root.join("php-0.0.1").exists(), "the sweep ran with an empty keep-set");
+        assert!(root.join(format!("php-{PHP_VERSION}")).exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The keep-set never duplicates, so a patch that is both live and effective
+    /// — every minor, on an ordinary launch — does not grow the list.
     #[test]
     fn the_keep_set_is_deduplicated() {
-        let keep = php_caches_to_keep(&[PHP_VERSION.to_string(), PHP_VERSION.to_string()]);
+        let pins: Vec<String> = PHP_VERSIONS.iter().map(|v| (*v).to_string()).collect();
+        let keep = php_caches_to_keep(&pins, &pins).unwrap();
         assert_eq!(keep.iter().filter(|k| *k == PHP_VERSION).count(), 1);
         assert_eq!(keep.len(), PHP_VERSIONS.len());
     }

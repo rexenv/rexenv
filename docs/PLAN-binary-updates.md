@@ -311,12 +311,28 @@ the caller catches the error, logs, and **falls through to the GC**, which unlin
 running masters' trees. On macOS the process survives on the unlinked inode, so it looks
 healthy right up until the pool cannot be restarted.
 
-**The rule the GC implements:** keep `{the compiled-in pins} ∪ {each minor's effective
-patch} ∪ {every patch a pool is live on}`, delete the rest. Both halves are load-bearing —
+**The rule the GC implements:** keep `{each minor's effective patch} ∪ {every patch a
+pool is live on}`, delete the rest.
 
-> **A floor whose bytes were deleted is not a floor.** Keeping the compiled-in pin's tree
-> on disk is what makes "falls back to the pins" an offline guarantee rather than an
-> offline *download*.
+> **The pins are not a third half, and this section argued for two days that they were.**
+> "A floor whose bytes were deleted is not a floor" reads well and is wrong here.
+> `updates::floored` returns the pin only when the pin is what the minor will RUN — and
+> in that case the pin already IS that minor's effective patch, kept by the first half.
+> Beside a higher selection, nothing resolves the pin: not the pool, not the terminal,
+> not WP-CLI, not the planner. Keeping it cost ~180 MB per updated minor, forever, and
+> was reported by the user whose `bin/` had reached 3.3 GB with 358 MB of it dead.
+>
+> The revert does not need it either: `php_update_apply` restores the previous
+> SELECTION, which was the effective patch at the last sweep and is therefore on disk.
+> Only a first-ever update reverts to the pin, and at that moment the pin is still
+> effective. What this trades away is a hypothetical "go back to the version this app
+> ships" control, which would re-download. There is no such control.
+>
+> **The half that replaced it is a refusal.** An unreadable registry arrives as an EMPTY
+> effective set (`lib.rs` uses `unwrap_or_default`), which the pins used to mask. Without
+> them, an empty keep-set means *delete every PHP tree on the machine* — so
+> `php_caches_to_keep` returns `None` there and the caller skips the sweep. Not-knowing
+> costs a skipped sweep, never a live tree.
 
 Cleanup answers, then: an unused version is removed **by the launch GC, automatically,
 when nothing references it** — never by a user-facing "delete" button, because the two
@@ -537,10 +553,12 @@ ships a build that trusts a key nobody can sign with.
 ### Work
 
 1. ✓ **The GC keeps what is running, not what is pinned.** `gc_outdated_php_caches` keeps
-   `{compiled-in pins} ∪ {each minor's registered patch}`. Today those are equal, so this
-   is behaviour-identical — and it closes the existing foot-gun where a failed
-   `restart_pools_for` lets the GC unlink a live master's tree (§6). — *done 16 Aug 2026,
-   `8be6810`, ledger #338, plant-proven.*
+   `{each minor's effective patch} ∪ {every patch a pool is live on}`, and closes the
+   foot-gun where a failed `restart_pools_for` lets the GC unlink a live master's tree
+   (§6). — *done 16 Aug 2026, `8be6810`, ledger #338, plant-proven; **corrected 18 Aug
+   2026** — the first version kept the compiled-in pins as an unconditional third half,
+   which leaked ~180 MB per updated minor forever and was reported by a user with 358 MB
+   of dead trees. Ledger #358.*
 2. ✓ **A failed patch bump is retried, not swallowed.** `seed_registry` detected the bump
    and committed it in the same statement, so a failed prefetch left `lib.rs`'s
    `// retry next launch` false and the registry permanently lying about what runs. The

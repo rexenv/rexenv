@@ -353,16 +353,21 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   will run and, when they differ, the one actually serving (`PhpVersionView::serving`) —
   without that a derived row could only show one, which is the same silent lie in a nicer
   place. One minor's failure `continue`s rather than abandoning the rest. Ledger #338/#342.
-  The sweep's keep-set is `{compiled-in pins} ∪ {each minor's EFFECTIVE patch} ∪ {every
-  patch a pool is live on}` (`php_caches_to_keep`): it also runs on the path where a pool
-  restart failed partway and later minors still serve from their old masters, and
-  unlinking a running master's tree leaves it alive on the inode but unrestartable. The
-  union is not belt-and-braces — with the stack stopped, "what is running" is an empty
-  set rather than "I don't know", so a live-only keep-set deletes the tree the user just
-  installed. Keeping the pins is what makes "falls back to the pins" an OFFLINE fallback
-  rather than a download — **a floor whose bytes were deleted is not a floor**. An
-  unreadable registry skips the sweep rather than sweeping with an empty keep-set.
-  Ledger #338.
+  The sweep's keep-set is `{each minor's EFFECTIVE patch} ∪ {every patch a pool is live
+  on}` (`php_caches_to_keep`): it also runs on the path where a pool restart failed
+  partway and later minors still serve from their old masters, and unlinking a running
+  master's tree leaves it alive on the inode but unrestartable. The union is not
+  belt-and-braces — with the stack stopped, "what is running" is an empty set rather than
+  "I don't know", so a live-only keep-set deletes the tree the user just installed.
+  **The compiled-in pins are NOT a third half**, and were: the argument that "a floor
+  whose bytes were deleted is not a floor" does not survive `updates::floored`, which
+  returns the pin only when the pin is what the minor will RUN — and then the pin already
+  IS that minor's effective patch. Alongside a higher selection nothing resolves the pin,
+  so the tree was ~180 MB per updated minor of pure weight (found on a user's disk at
+  358 MB, in a `bin/` of 3.3 GB). An unreadable registry gives an EMPTY effective set,
+  which `php_caches_to_keep` refuses to answer — it returns `None` and the sweep is
+  skipped, because without the pins half an empty keep-set means "delete every PHP tree
+  on the machine". Ledger #338/#358.
 - **A user can also move a minor forward BETWEEN app releases, from a signed manifest.**
   `core::updates` fetches `manifest.json` + `.sig` from `rexenv/runtimes`, verifies an
   ed25519 signature over the exact bytes against a **public key compiled into the app**

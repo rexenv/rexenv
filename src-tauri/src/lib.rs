@@ -538,42 +538,41 @@ pub fn run() {
                             Err(e) => log::info!("php: upstream version check skipped: {e}"),
                         }
 
-                        // Sweep superseded caches, keyed on what the LIVE
-                        // MASTERS are executing — never the pin table, and no
-                        // longer the registry that mirrors it. This block is
-                        // reached after a restart that failed partway, with
-                        // later minors still serving from their old masters,
-                        // and the process is the only thing that cannot be
-                        // wrong about which bytes it is running. Keeping the
-                        // pinned trees too is what makes "falls back to the
-                        // pins" an offline fallback rather than a download
-                        // (docs/PLAN-binary-updates.md §6).
+                        // Sweep superseded caches. The keep-set is what the
+                        // registry says each minor should RUN (`want`) unioned
+                        // with what the live MASTERS are executing — never the
+                        // pin table. This block is reached after a restart that
+                        // failed partway, with later minors still serving from
+                        // their old masters, and the process is the only thing
+                        // that cannot be wrong about which bytes it is running.
                         //
-                        // A pool we could not identify SKIPS the sweep rather
-                        // than sweeping with a short keep-set: the sweep deletes
-                        // what is NOT in the set, so not-knowing must cost a
-                        // skipped sweep and never a live tree.
+                        // The union is not belt-and-braces in either direction.
+                        // Live-only was wrong in the most ordinary way there is:
+                        // with the stack stopped — after a reboot, or Stop all
+                        // then quit — `running_php_patches` returns `Some(vec![])`
+                        // rather than `None`, so a live-only set would delete the
+                        // tree the user just installed. And `want`-only misses a
+                        // master still on the previous patch mid-restart.
                         //
-                        // The keep-set is the live pools UNION what the registry
-                        // says each minor should run. Live-only was wrong in the
-                        // most ordinary way there is: with the stack stopped —
-                        // after a reboot, or Stop all then quit — `running_patches`
-                        // returns `Some(vec![])`, so the `None` guard never fires,
-                        // the keep-set falls back to the pins alone, and the tree
-                        // the user just installed is DELETED. Start all then
-                        // re-downloads ~150MB, or fails outright offline.
+                        // TWO not-knowing guards, both costing a skipped sweep
+                        // rather than a live tree — the sweep deletes what is NOT
+                        // in the set, so an incomplete set is the dangerous one:
+                        //   - a pool that could not be identified (`None` here);
+                        //   - an empty `want`, which means the registry read
+                        //     failed (`unwrap_or_default` above) and NOT that
+                        //     nothing should be kept — `php_caches_to_keep`
+                        //     refuses that case (see its docs; the pins used to
+                        //     mask it).
                         let running = {
                             let mgr = state.services.lock().await;
                             mgr.running_php_patches(platform)
                         };
                         match running {
-                            Some(mut keep) => {
-                                for p in want.values() {
-                                    if !keep.contains(p) {
-                                        keep.push(p.clone());
-                                    }
-                                }
-                                for dir in core::binaries::gc_outdated_php_caches(platform, &keep) {
+                            Some(live) => {
+                                let effective: Vec<String> = want.values().cloned().collect();
+                                for dir in core::binaries::gc_outdated_php_caches(
+                                    platform, &effective, &live,
+                                ) {
                                     log::info!("php: removed outdated binary cache {dir}");
                                 }
                             }
