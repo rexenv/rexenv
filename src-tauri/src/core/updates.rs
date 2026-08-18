@@ -32,12 +32,16 @@
 //! only the public key, so moving the private half from a CI secret to a hardware
 //! token costs a key rotation, not a redesign.
 //!
-//! # Inert until a key is pinned
+//! # Inert without a key — and the key IS pinned now
 //!
-//! [`RELEASE_PUBKEY`] is empty, so [`verify`] refuses everything and
-//! [`cached`] returns an empty catalog: the app resolves exactly what it resolves
-//! today. Same deliberate shape as the debug build's empty digests — wired,
-//! tested, and unable to trust anything until a maintainer pins the real value.
+//! [`enabled`] is the switch. With an empty [`RELEASE_PUBKEY`], [`verify`]
+//! refuses everything and [`cached`] returns an empty catalog, so the app
+//! resolves exactly what a build with no update feature would. That was the
+//! shipping state until the key ceremony ran on 18 Aug 2026; the const now holds
+//! a real key and this module is live. **The dark state is still the one that
+//! has to work** — it is what every build before the ceremony did, and what a
+//! build whose key was rotated out does — so it stays asserted rather than
+//! described.
 
 use crate::core::php;
 use crate::error::{Error, Result};
@@ -249,11 +253,13 @@ pub fn verify(doc: &[u8], sig_hex: &str) -> Result<Manifest> {
 
 /// [`verify`] against an explicit key.
 ///
-/// Exists so the SIGNATURE CHECK ITSELF is testable. With `RELEASE_PUBKEY` empty
-/// — the shipping state — `verify` refuses before reaching ring, so every test
-/// routed through it would prove only that an unkeyed build trusts nothing, and
-/// the ed25519 path, the tamper rejection and the serial rule would all ship with
-/// zero coverage. Tests generate a real keypair and drive this.
+/// Exists so the SIGNATURE CHECK ITSELF is testable. Tests cannot drive [`verify`]
+/// directly: they have no private half of `RELEASE_PUBKEY` and must never have
+/// one, so every document they can construct fails the signature — proving only
+/// that a wrong key is refused, and leaving the ed25519 path, the tamper
+/// rejection and the serial rule with zero coverage. Tests generate their own
+/// keypair and drive this. (Before the key ceremony the same seam existed for the
+/// opposite reason: `verify` refused everything because the const was empty.)
 fn verify_with(pubkey_hex: &str, doc: &[u8], sig_hex: &str) -> Result<Manifest> {
     let key = unhex(pubkey_hex).ok_or_else(|| {
         Error::Other(
@@ -496,13 +502,6 @@ mod tests {
     // one. Kept out of the module imports so clippy's -D warnings stays clean.
     use crate::core::binaries;
 
-    /// **This build trusts NO manifest, because no key is pinned.**
-    ///
-    /// The inert state is asserted rather than assumed: everything below tests
-    /// the machinery through `verify`, which refuses first, so a test that
-    /// accidentally passed a real document would be testing nothing. When a key
-    /// IS pinned this test flips to asserting the key's shape, and the rest of
-    /// the suite starts exercising real signatures.
     /// **The pinned key is a real ed25519 public key, and nothing else verifies
     /// against it.**
     ///
@@ -569,7 +568,8 @@ mod tests {
     /// **An `openssl`-signed manifest verifies in `ring`.** The interop leg, and
     /// the one that would otherwise fail on release day.
     ///
-    /// `scripts/publish-php-manifest.sh` signs with `openssl pkeyutl -rawin`; the
+    /// `rexenv/runtimes`' `scripts/publish-manifest.sh` signs with
+    /// `openssl pkeyutl -rawin`; the
     /// app verifies with `ring`'s ED25519. Both are "ed25519" and that proves
     /// nothing about the wire format — key encoding, signature encoding and
     /// whether the tool pre-hashes are all places two correct implementations

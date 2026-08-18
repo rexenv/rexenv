@@ -131,7 +131,8 @@ Two rules with teeth, learned the hard way:
 | PHP 7.4 — where the binary comes from, self-build + hosting, EOL honesty (planned) | `docs/PLAN-php-74-support.md` |
 | MCP server — agents drive rexenv, scratch sites, capability tiers (proposed) | `docs/PLAN-mcp-server.md` |
 | `wp dist-archive` — distributable zip from a repo asset (ruled, not started) | `docs/PLAN-dist-archive.md` |
-| In-app PHP/engine patch updates — signed manifest, trust model (proposed) | `docs/PLAN-binary-updates.md` |
+| In-app PHP/engine patch updates — signed manifest, trust model | `docs/PLAN-binary-updates.md` |
+| Adminer in-app updates — the SECOND manifest family, `updates::Family`, the binding probe | `docs/PLAN-adminer-updates.md` |
 | WebKit/wry dialog + custom-scheme claims — why they are NOT L2-provable, where each leg lives | `docs/PLAN-webview-dialog-proofs.md` |
 | User-facing install / first-run prompts | `docs/INSTALL.md` |
 | Cutting a release — CI pipeline, draft gate, tap auto-bump | `docs/RELEASING.md` (cask itself lives in `rexenv/homebrew-tap`) |

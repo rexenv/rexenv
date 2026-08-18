@@ -1474,6 +1474,17 @@ first:
   master on the PRODUCTION port and reverting when it does not come back needs
   the real `ServiceManager` and a deliberately broken tree — `docs/SMOKE-TEST.md`.
 
+- [ ] **`every_gated_setting_key_is_routed_through_its_validating_setter` does
+  not cover its surface.** It iterates a hardcoded `[(DEFAULT_TLD_KEY, …),
+  (SITES_DIR_KEY, …)]` and asserts only that those two are routed, so a THIRD
+  gated key would sail past the generic KV command with no validation and no test
+  failing. `commands/settings.rs` asserted the opposite in prose until 18 Aug 2026
+  ("fails the build when a third one appears"), which is the dangerous half — a
+  doc naming a guard that does not exist. The prose is corrected; the guard is
+  not. Same family as ledger #344 (guard-covers-claimed-surface). Fixing it needs
+  a declared registry of gated keys next to the setters, since nothing derivable
+  distinguishes "has a validating setter" today.
+
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/PLAN-linked-sites.md` decision 2): linking is adopt-only. If
   built: a deliberate site-page action, offered only when the linked folder is

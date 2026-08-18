@@ -25,8 +25,15 @@ pub fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<Str
 /// Insert or update a setting. Keys with a validating setter are routed to it,
 /// so the generic KV command can't smuggle a value past the backend — a blocked
 /// TLD, or a sites folder that would end a quoted path in a generated config.
-/// `every_gated_setting_key_is_routed_here` fails the build when a third one
-/// appears and this match does not learn about it.
+///
+/// **The guard here is narrower than it used to claim.** This comment said
+/// `every_gated_setting_key_is_routed_here` "fails the build when a third one
+/// appears and this match does not learn about it". No such test exists;
+/// `core::sites`' `every_gated_setting_key_is_routed_through_its_validating_setter`
+/// iterates a HARDCODED pair and asserts only that those two are routed. A third
+/// gated key would sail past it — the guard does not cover the surface the
+/// sentence claimed (`docs/TODO.md`). Corrected rather than deleted, because a
+/// doc asserting a guard that does not exist sends the next reader to rely on it.
 #[tauri::command]
 pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<()> {
     let conn = lock(&state)?;
