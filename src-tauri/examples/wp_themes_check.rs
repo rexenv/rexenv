@@ -44,8 +44,13 @@ async fn main() {
     let socket = database::socket_path(&*plat).unwrap();
     std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
     database::initialize(&*plat, &mysql_base, &datadir).unwrap();
-    let mut mysqld =
+    let mysqld =
         database::start(&*plat, &mysql_base, &datadir, database::MYSQL_PORT, &socket).unwrap();
+    // Drop-owned, like `wp_plugins_check`: this example had the raw child, so
+    // the assertion panic on 19 Aug 2026 left mysqld holding :13306 and the
+    // NEXT run refused to start — the corpse-mysqld incident of 14 Aug, again,
+    // in the one example that had not been converted.
+    let mut mysqld = common::OwnedService::new(mysqld, "mysqld");
     for _ in 0..30 {
         if database::mysql_running(database::MYSQL_PORT) {
             break;
@@ -73,6 +78,22 @@ async fn main() {
     )
     .unwrap();
     let docroot = std::path::PathBuf::from(&site.path);
+    // The docroot is rebuilt every run; the DATABASE was not, and that is what
+    // broke this check on 19 Aug 2026 — five days after the previous run. The
+    // example ends with `twentytwenty` ACTIVE, so the surviving schema still
+    // said `stylesheet = twentytwenty`, and the freshly installed theme came
+    // back `active` where the first assertion demands `inactive`. A fixture is
+    // only a fixture if the run owns ALL of it, so this run drops its own
+    // database first rather than inheriting the last one's opinions.
+    //
+    // Guarded rather than trusted: the name is derived, and a future rename of
+    // the fixture domain must not turn this into a DROP of something a person
+    // owns (the July incident where an example's derived path took out the
+    // whole Sites folder).
+    let db_name = wordpress::db_name_for(SiteType::Wordpress, domain);
+    assert_eq!(db_name, "wp_wpthemes_test", "the fixture database name drifted — refusing to drop");
+    database::drop_database(&db_client, database::MYSQL_PORT, &db_name).expect("drop fixture db");
+
     wordpress::install_for_site(
         &php,
         &wp,
@@ -119,7 +140,6 @@ async fn main() {
         println!("✓ delete non-active theme '{victim}' → gone ({} themes remain)", list.len());
     }
 
-    let _ = database::stop(&*plat, mysqld.id());
-    let _ = mysqld.wait();
+    mysqld.stop();
     println!("\nALL GOOD — theme install/activate/delete reflect in wp theme list.");
 }

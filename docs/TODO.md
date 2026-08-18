@@ -9,6 +9,20 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **`wp_themes_check` was not re-runnable, and leaked a mysqld** ✓ 19 Aug 2026,
+  found by running the network tier after #370. Two defects in one example, both of the
+  fixture-ownership family: (1) the run rebuilt the DOCROOT but inherited the DATABASE,
+  and since the example ends with `twentytwenty` active, the surviving `stylesheet`
+  option made a freshly installed theme come back `active` where the first assertion
+  demands `inactive` — it had been red since the previous run (14 Aug), and nobody knew;
+  (2) mysqld was the raw child rather than a `common::OwnedService`, so that panic left
+  it holding :13306 and the next run refused to start — the 14 Aug corpse-mysqld
+  incident in the one example never converted. Now drops its own database first (name
+  asserted before the DROP) and owns its child across the panic path. **Evidence: run
+  twice back to back, green both times, port free after.**
+  **Worth noting for whoever writes the next one:** `wp_plugins_check` survives only
+  because it happens to delete what it installs. Idempotence there is luck, not design.
+
 - [x] **Premium plugins showed no update badge** ✓ 18 Aug 2026, ledger #370,
   `core/wordpress.rs` (`update_context_arg`, `checked_list`). wp-admin listed BetterDocs
   Pro 3.9.0 → 4.1.0 and rexenv showed nothing: the vendors' updaters register their
