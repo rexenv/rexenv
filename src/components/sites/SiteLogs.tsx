@@ -46,6 +46,32 @@ function fmtBytes(n: number): string {
 
 type LogsSection = "wordpress" | LogCategory;
 
+/** Every log category's tab, in tab order.
+ *
+ *  A `Record<LogCategory, …>`, so a category added in `core::logs` fails to
+ *  compile here until it has a tab — the alternative is a source that renders
+ *  nowhere, whose only symptom is its absence.
+ *
+ *  `shared` lives here too. It was two separate `active === "server" || active
+ *  === "database"` expressions — one guarding the confirm dialog, one writing
+ *  the tooltip that promises the dialog — so adding a tab meant remembering both
+ *  and a wrong answer silently wiped a file every site reads.
+ *
+ *  `always`: Server and Database are the canonical pair and show even when
+ *  empty, so their absence never reads as "this build has no server logs". The
+ *  rest appear only when they have a source. */
+const CATEGORY_TABS: Record<LogCategory, { label: string; shared: boolean; always: boolean }> = {
+  // rexenv's OWN log, and deliberately NOT under Server: the tab title
+  // "Server (nginx/PHP)" was simply not true of it. What a service reported and
+  // what rexenv DECIDED are different questions — adoption, the DNS fallback,
+  // the cache sweep, a refused manifest — and the second is where "why did
+  // nothing happen" is answered.
+  app: { label: "rexenv (app)", shared: true, always: false },
+  server: { label: "Server (nginx/PHP)", shared: true, always: true },
+  database: { label: "Database", shared: true, always: true },
+  git: { label: "Git jobs", shared: false, always: false },
+};
+
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
@@ -80,17 +106,29 @@ export function SiteLogs({
     queryKey: ["log-targets", site.id],
     queryFn: () => logTargets(site.id),
   });
-  const grouped: Record<LogCategory, LogTarget[]> = { server: [], database: [], git: [] };
+  const grouped: Record<LogCategory, LogTarget[]> = {
+    app: [],
+    server: [],
+    database: [],
+    git: [],
+  };
   for (const t of targets) grouped[t.category]?.push(t);
 
-  const sections: { key: LogsSection; label: string; show: boolean }[] = [
-    { key: "wordpress", label: "WordPress debug log", show: isWordpress },
-    { key: "server", label: "Server (nginx/PHP)", show: true },
-    { key: "database", label: "Database", show: true },
-    { key: "git", label: "Git jobs", show: grouped.git.length > 0 },
+  const sections: { key: LogsSection; label: string; show: boolean; shared: boolean }[] = [
+    { key: "wordpress", label: "WordPress debug log", show: isWordpress, shared: false },
+    // Derived from CATEGORY_TABS in declaration order, so a category the backend
+    // adds cannot end up with no tab — its sources would render nowhere and the
+    // only symptom would be their absence.
+    ...(Object.keys(CATEGORY_TABS) as LogCategory[]).map((key) => ({
+      key,
+      label: CATEGORY_TABS[key].label,
+      shared: CATEGORY_TABS[key].shared,
+      show: CATEGORY_TABS[key].always || grouped[key].length > 0,
+    })),
   ];
   let active: LogsSection = selectedTab ?? (isWordpress ? "wordpress" : "server");
   if (!sections.find((s) => s.key === active)?.show) active = isWordpress ? "wordpress" : "server";
+  const activeShared = sections.find((s) => s.key === active)?.shared ?? false;
 
   // Selected source per category (defaults: first server log; the site's own
   // DB engine's log; the first Git job).
@@ -160,8 +198,8 @@ export function SiteLogs({
       return;
     }
     if (!fileTarget) return;
-    // Server/DB logs are ONE shared file for all sites — say so before wiping.
-    if (active === "server" || active === "database") {
+    // App/Server/DB logs are ONE shared file for all sites — say so before wiping.
+    if (activeShared) {
       const ok = await confirm({
         title: `Clear ${fileTarget.label}?`,
         message: `${fileTarget.key} is shared by every site — clearing empties it for all sites, not just ${site.domain}.`,
@@ -275,7 +313,7 @@ export function SiteLogs({
             onClick={() => void onClear()}
             disabled={wpMissing || clearPending}
             title={
-              active === "server" || active === "database"
+              activeShared
                 ? "Empty this log file (shared by all sites — asks first)"
                 : "Empty this log file"
             }

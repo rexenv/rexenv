@@ -22,6 +22,13 @@ const TAIL_CAP_BYTES: u64 = 256 * 1024;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogCategory {
+    /// rexenv's OWN log — what the app did, not what a server served. Its own
+    /// category because it answers a different question from every other source
+    /// here: those say what a service reported, this says what rexenv decided
+    /// (adoption, DNS fallback, the cache sweep, a refused manifest). Filed
+    /// under Server for one afternoon, where the tab title — "Server
+    /// (nginx/PHP)" — was simply not true of it.
+    App,
     /// Edge / web server / PHP pools — shared across all sites.
     Server,
     /// Database engine logs — shared across all sites.
@@ -56,13 +63,13 @@ pub fn targets_for_site(site: &Site, log_dir: &Path) -> Vec<LogTarget> {
         label,
         category,
     };
-    use LogCategory::{Database, Git, Server};
+    use LogCategory::{App, Database, Git, Server};
     let mut targets = vec![
-        // rexenv's OWN log leads the list: when a service did not start, the
-        // reason is here and not in that service's (empty) file. It was
-        // debug-build-only until 18 Aug 2026, so on an installed app this
-        // source did not exist at all.
-        t("rexenv.log".into(), "rexenv (app)".into(), Server),
+        // rexenv's OWN log. When a service did not start, the reason is here and
+        // not in that service's (empty) file — which is why it leads the list,
+        // and why it is not a Server source. It was debug-build-only until
+        // 18 Aug 2026, so on an installed app it did not exist at all (#359).
+        t("rexenv.log".into(), "rexenv (app)".into(), App),
         t("nginx-access.log".into(), "Nginx access".into(), Server),
         t("nginx-error.log".into(), "Nginx error".into(), Server),
         t(format!("php-fpm-{minor}.log"), format!("PHP-FPM {minor}"), Server),
@@ -295,9 +302,25 @@ mod tests {
     fn the_logs_tab_names_the_file_the_app_writes() {
         let targets = targets_for_site(&site(WebServer::Nginx), Path::new("/tmp"));
         let written = format!("{}.log", crate::APP_LOG_STEM);
-        assert!(
-            targets.iter().any(|t| t.key == written),
-            "the Logs tab does not offer {written}, which is the file the app writes"
+        let app = targets.iter().find(|t| t.key == written);
+        let Some(app) = app else {
+            panic!("the Logs tab does not offer {written}, which is the file the app writes");
+        };
+        // …and under its OWN category. It shipped as `Server` for one afternoon,
+        // where the tab it landed in is titled "Server (nginx/PHP)" — a heading
+        // that is not true of it, and the user said so. Every other source here
+        // reports what a SERVICE did; this one reports what rexenv DECIDED.
+        assert_eq!(
+            app.category,
+            LogCategory::App,
+            "rexenv's own log is filed under a service category"
+        );
+        // Nothing else may claim that category: the tab is titled for this file,
+        // so a second source in it would be sitting under someone else's heading —
+        // the same mistake in the other direction.
+        assert_eq!(
+            targets.iter().filter(|t| t.category == LogCategory::App).count(),
+            1
         );
     }
 

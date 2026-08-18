@@ -928,8 +928,15 @@ export interface MailpitStatus {
   uiUrl: string;
 }
 
-/** Logs-tab category grouping (mirrors the Rust LogCategory). */
-export type LogCategory = "server" | "database" | "git";
+/** Logs-tab category grouping (mirrors the Rust LogCategory).
+ *
+ *  `app` is rexenv's OWN log and is deliberately not `server`: it answers a
+ *  different question from every other source here — those say what a service
+ *  reported, this says what rexenv decided. It sat under the tab titled
+ *  "Server (nginx/PHP)" for one afternoon, where the title was simply not true
+ *  of it. Adding a member here fails `SiteLogs`'s `CATEGORY_TABS` record until
+ *  it has a tab. */
+export type LogCategory = "app" | "server" | "database" | "git";
 
 /** A selectable log source for the Logs viewer (mirrors the Rust LogTarget DTO). */
 export interface LogTarget {

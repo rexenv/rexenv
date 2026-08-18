@@ -262,9 +262,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   Beware orphan workers after a SIGKILLed master: title-rewritten fpm/nginx workers can
   hold ports and defeat probes — the health watchdog + `Proc::terminate` guard this;
   check `logs/health.log` first.
-- **rexenv's OWN log is `<log_dir>/rexenv.log`**, in every build, and it is the first
-  source in the Logs tab — when a service did not start, the reason is there and not in
-  that service's empty file. It goes in `log_dir` beside every service log rather than in
+- **rexenv's OWN log is `<log_dir>/rexenv.log`**, in every build, and it has its own
+  Logs tab (`LogCategory::App`) — when a service did not start, the reason is there and
+  not in that service's empty file. Its own tab because every other source reports what a
+  SERVICE did and this reports what rexenv DECIDED; filed under `Server` it sat beneath a
+  heading, "Server (nginx/PHP)", that was not true of it. It goes in `log_dir` beside every service log rather than in
   macOS's `~/Library/Logs`, because splitting a diagnosis across two directories costs
   more than the convention is worth. `tauri_plugin_log` was installed inside
   `if cfg!(debug_assertions)` until 18 Aug 2026, so an INSTALLED app wrote no `log::`
