@@ -998,6 +998,21 @@ mod tests {
                 "deny must precede the php location"
             );
         }
+
+        // THE FILE THIS PROTECTS, named. Adminer's docroot stages the real
+        // console as a dotfile precisely because this deny exists — so the two
+        // are one fact, and asserting the ordering without asserting the name is
+        // how they drift apart. Before the move it was `adminer.php`, and
+        // `https://adminer.rexenv.rex/adminer.php` served Adminer with NO
+        // wrapper: no `login()` override (the loopback gate), no `csp()`, no
+        // `headers()` — every control rexenv installs for that console
+        // bypassable by dropping `index.php` from the URL.
+        let staged = crate::core::adminer::STAGED_ADMINER;
+        assert!(
+            staged.starts_with('.'),
+            "`{staged}` does not start with a dot, so the deny above does not cover it and \
+             raw Adminer is served at /{staged}"
+        );
     }
 
     #[test]

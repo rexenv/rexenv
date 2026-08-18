@@ -6,7 +6,7 @@
 //! killed edge must be reported "edge-down" (never auto-restarted: privileged).
 
 use rexenv_lib::core::service_manager::{await_ready, Ports, ServiceManager};
-use rexenv_lib::core::{mail, services, sites, ssl};
+use rexenv_lib::core::{binaries, mail, services, sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
@@ -55,7 +55,7 @@ async fn main() {
 
     let mut mgr = ServiceManager::with_ports(ports);
     println!("starting stack (high ports)…");
-    mgr.start_all(&*plat, &ca, &all, &["8.3".into()]).await.unwrap();
+    mgr.start_all(&*plat, &ca, &all, &["8.3".into()], binaries::ADMINER_VERSION).await.unwrap();
 
     // Baseline: everything green.
     let running = |mgr: &ServiceManager, name: &str| {

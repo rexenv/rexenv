@@ -233,7 +233,7 @@ function adminer_object() {
     }
     return new \RexenvAdminer();
 }
-require __DIR__ . '/adminer.php';
+require __DIR__ . '/.adminer.php';
 "#;
 
 /// The Vite dev server origin, allowed to frame Adminer ONLY in dev builds so
@@ -310,22 +310,84 @@ pub fn docroot(platform: &dyn Platform) -> Result<PathBuf> {
     Ok(platform.paths().app_data_dir()?.join("adminer"))
 }
 
-/// Ensure the Adminer docroot exists: the bundled Adminer as `adminer.php` plus the
-/// rexenv deep-link wrapper as `index.php` (the served entrypoint). Downloads +
-/// caches `adminer.php` (§5.1) on first use. Idempotent: the Adminer copy is
-/// refreshed only when missing / a different size, and the wrapper only when its
-/// content differs (so a wrapper update redeploys on next start).
-pub async fn ensure(platform: &dyn Platform) -> Result<PathBuf> {
+/// The real Adminer's name inside the docroot — a DOTFILE, deliberately.
+///
+/// Every `.php` in this docroot is directly executable: the vhost is built as
+/// `RewriteMode::Single` and the generated nginx block ends in
+/// `location ~ \.php$`. So while it was staged as `adminer.php`,
+/// `https://adminer.rexenv.rex/adminer.php` served **raw Adminer with no
+/// wrapper** — no `login()` override (the loopback gate), no `csp()`
+/// (frame-ancestors), no `headers()` (the `X-Frame-Options: deny` removal). Every
+/// control rexenv installs for this console lives in the wrapper, and that URL
+/// went around all of them.
+///
+/// A dotfile costs nothing and closes it with a guard that already exists:
+/// `NGINX_DOTFILE_DENY` is emitted BEFORE the php location and is ordering-
+/// asserted for all three rewrite modes. Better than a `location = /adminer.php
+/// { deny all; }` — that adds a rule to keep true, while this removes the path.
+pub(crate) const STAGED_ADMINER: &str = ".adminer.php";
+
+/// Records which version the staged copy IS.
+///
+/// Staleness used to be a FILE SIZE comparison against the cached source, which
+/// is a proxy for the question rather than the question — two Adminer releases
+/// can be the same length, and the answer that matters after an update is
+/// "which version is this", not "is it a different size". A dotfile too, so the
+/// same deny rule covers it.
+const STAGED_VERSION: &str = ".adminer-version";
+
+/// Whether the docroot copy has to be rewritten — **a value, not a condition
+/// inside an async fn that downloads**, so the rule is testable without a
+/// `Platform`, a cache or a network.
+///
+/// Both halves are load-bearing. The MARKER answers "which version is this",
+/// which is the question an update asks; the file's EXISTENCE is checked too
+/// because a marker without its file is a docroot that 500s on every request
+/// while claiming to be up to date. The predicate this replaced compared FILE
+/// SIZES against the cached source — a proxy for the question rather than the
+/// question, and two Adminer releases can be the same length.
+fn needs_restage(marker: Option<&str>, staged_exists: bool, want: &str) -> bool {
+    marker != Some(want) || !staged_exists
+}
+
+/// Ensure the Adminer docroot exists: the bundled Adminer as [`STAGED_ADMINER`]
+/// plus the rexenv deep-link wrapper as `index.php` (the served entrypoint).
+/// Downloads + caches the file (§5.1) on first use.
+///
+/// `version` is [`effective_version`]'s answer, passed in rather than read here —
+/// so the download PLANNER and this stager cannot disagree. They must not: the
+/// planner is what login-start's strictly-offline guard reads, and a plan for the
+/// pin while this resolves the selection clears a start that then downloads
+/// inside the services lock (ledger #175).
+///
+/// Idempotent: the Adminer copy is restaged only when the recorded version
+/// differs, and the wrapper only when its content differs (so a wrapper update
+/// redeploys on next start).
+pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
     let dir = docroot(platform)?;
     std::fs::create_dir_all(&dir)?;
 
     // The real Adminer, copied beside the wrapper (the wrapper `require`s it).
-    let adminer_php = dir.join("adminer.php");
-    let src = binaries::resolve_file(platform, "adminer", binaries::ADMINER_VERSION).await?;
-    let stale = std::fs::metadata(&adminer_php).ok().map(|m| m.len())
-        != std::fs::metadata(&src).ok().map(|m| m.len());
-    if stale {
-        std::fs::copy(&src, &adminer_php)?;
+    let adminer_php = dir.join(STAGED_ADMINER);
+    let marker = dir.join(STAGED_VERSION);
+    let staged = std::fs::read_to_string(&marker).ok();
+    if needs_restage(staged.as_deref(), adminer_php.is_file(), version) {
+        let src = binaries::resolve_file(platform, "adminer", version).await?;
+        // Publish by RENAME so a reader never sees a half-written console: the
+        // wrapper `require`s this path on every request, and a truncated PHP
+        // file is a fatal error on a page the user is looking at.
+        let tmp = dir.join(".adminer.php.new");
+        std::fs::copy(&src, &tmp)?;
+        std::fs::rename(&tmp, &adminer_php)?;
+        // The marker LAST: it means "the file beside me is this version", so
+        // writing it before the file would claim a version that is not there.
+        std::fs::write(&marker, version)?;
+    }
+    // The pre-dotfile name, if this install predates the move. Removing it is
+    // stronger than making it unroutable — there is then nothing to route to.
+    let legacy = dir.join("adminer.php");
+    if legacy.is_file() {
+        let _ = std::fs::remove_file(&legacy);
     }
 
     // The served entrypoint: our deep-link wrapper (rewrite only if changed).
@@ -518,7 +580,15 @@ mod tests {
         assert!(WRAPPER_INDEX_PHP.contains(AUTOLOGIN_FLAG));
         assert!(WRAPPER_INDEX_PHP.contains("\\Adminer\\nonce()"));
         // It serves the real Adminer beside it.
-        assert!(WRAPPER_INDEX_PHP.contains("require __DIR__ . '/adminer.php'"));
+        // The literal the wrapper requires and the name `ensure` stages must be
+        // the same string. Two spellings of one filename is a blank console.
+        assert!(
+            WRAPPER_INDEX_PHP.contains(&format!("require __DIR__ . '/{STAGED_ADMINER}'")),
+            "the wrapper requires a file `ensure` does not stage"
+        );
+        // …and it is a DOTFILE, which is what keeps raw Adminer unroutable.
+        assert!(STAGED_ADMINER.starts_with('.'), "{STAGED_ADMINER} is directly executable");
+        assert!(STAGED_VERSION.starts_with('.'), "{STAGED_VERSION} is web-readable");
     }
 
     #[test]
@@ -698,6 +768,7 @@ mod tests {
     #[test]
     fn the_effective_adminer_version_is_the_choice_floored_by_the_pin_and_vouched() {
         use crate::platform::traits::Arch;
+        let _catalog = binaries::catalog_test_lock();
         let conn = crate::state::db::open_in_memory().unwrap();
         let pin = binaries::ADMINER_VERSION;
 
@@ -765,6 +836,41 @@ mod tests {
         assert!(crate::state::store::get_setting(&conn, VERSION_KEY).unwrap().is_none());
         assert_eq!(effective_version_for(&conn, Arch::Arm64), pin);
         binaries::install_catalog(Default::default());
+    }
+
+
+    /// **The restage rule asks which VERSION is staged, not how big it is.**
+    ///
+    /// The size compare it replaced was a proxy for the question: two Adminer
+    /// releases can be the same length, and after an update the thing that
+    /// matters is which one this is. The existence half is not redundant — a
+    /// marker with no file beside it is a docroot that 500s on every request
+    /// while claiming to be current.
+    #[test]
+    fn the_restage_rule_is_a_version_compare_and_a_file_check() {
+        assert!(needs_restage(None, false, "5.4.2"), "a fresh docroot must stage");
+        assert!(needs_restage(None, true, "5.4.2"), "an unmarked file is an unknown version");
+        assert!(needs_restage(Some("5.4.2"), false, "5.4.2"), "the marker outlived its file");
+        assert!(needs_restage(Some("5.4.2"), true, "6.0.1"), "an update must restage");
+        assert!(needs_restage(Some("6.0.1"), true, "5.4.2"), "a revert must restage too");
+        assert!(!needs_restage(Some("5.4.2"), true, "5.4.2"), "an unchanged start must not rewrite");
+    }
+
+    /// **Raw Adminer has no URL, because the file has no servable name.**
+    ///
+    /// Every `.php` in this docroot is directly executable (the vhost is
+    /// `RewriteMode::Single` and the generated block ends in `location ~
+    /// \.php$`), so while the real file was staged as `adminer.php`,
+    /// `/adminer.php` served Adminer with NO wrapper: no `login()` override —
+    /// the loopback gate — no `csp()`, no `headers()`. Every control rexenv
+    /// installs for this console was bypassable by dropping `index.php` from the
+    /// URL. That the deny rule actually covers this name is asserted in
+    /// `services.rs`, against the generated config.
+    #[test]
+    fn the_staged_files_have_no_servable_name() {
+        for name in [STAGED_ADMINER, STAGED_VERSION] {
+            assert!(name.starts_with('.'), "{name} is a directly executable path");
+        }
     }
 
 }

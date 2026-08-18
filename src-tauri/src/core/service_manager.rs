@@ -436,8 +436,10 @@ impl ServiceManager {
         ca: &ssl::LocalCa,
         sites: &[Site],
         php_minors: &[String],
+        adminer_version: &str,
     ) -> Result<()> {
-        let (caddyfile, checks) = self.start_core(platform, ca, sites, php_minors).await?;
+        let (caddyfile, checks) =
+            self.start_core(platform, ca, sites, php_minors, adminer_version).await?;
         await_ready(checks).await?;
         if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
             if plan.privileged {
@@ -465,6 +467,12 @@ impl ServiceManager {
         ca: &ssl::LocalCa,
         sites: &[Site],
         php_minors: &[String],
+        // Passed down rather than mirrored in a field: `adminer::ensure` is
+        // called from exactly one place and there is no watchdog respawn path, so
+        // a mirror would only add a way for the planner and the stager to
+        // disagree — and any fallback for "the field was never set" reproduces
+        // ledger #175 by downloading inside the services lock.
+        adminer_version: &str,
     ) -> Result<(PathBuf, Vec<ReadyCheck>)> {
         self.ensure_bins(platform).await?;
         // Manual intervention resets the watchdog's give-up counters.
@@ -483,9 +491,9 @@ impl ServiceManager {
             checks.extend(self.spawn_db(platform, DbEngine::Mariadb).await?);
         }
 
-        // Adminer docroot (§5.2): download + stage `adminer.php` so the internal
-        // vhost the configs reference is actually served.
-        crate::core::adminer::ensure(platform).await?;
+        // Adminer docroot (§5.2): download + stage the interpreter's copy so the
+        // internal vhost the configs reference is actually served.
+        crate::core::adminer::ensure(platform, adminer_version).await?;
 
         // Mailpit BEFORE the pools so each pool's config can route PHP `mail()` to
         // it (§2.2): resolves the binary (sets `mailpit_bin`) and starts the sink.

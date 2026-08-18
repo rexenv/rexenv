@@ -9,7 +9,7 @@
 //! Run (ports 8443/8080/18088/9783/13306/11025/18025 free): `cargo run --example mail_route_check`
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{mail, services, sites, ssl};
+use rexenv_lib::core::{binaries, mail, services, sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
@@ -64,7 +64,7 @@ async fn main() {
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     println!("starting stack (Caddy :{HTTPS}, Mailpit :{})…", mail::MAILPIT_SMTP_PORT);
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors).await {
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
         return;
     }

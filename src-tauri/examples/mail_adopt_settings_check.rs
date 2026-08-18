@@ -17,7 +17,7 @@
 //! `cargo run --example mail_adopt_settings_check`
 
 use rexenv_lib::core::service_manager::{await_ready, Ports, ServiceManager};
-use rexenv_lib::core::{mail, services, sites, ssl};
+use rexenv_lib::core::{binaries, mail, services, sites, ssl};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
@@ -83,7 +83,7 @@ async fn main() {
     // outlived a quit app) so the port gates see them as ours.
     let pre = a.adopt_startup(&*plat, &all);
     println!("session A: adopted {pre} survivor(s), starting core stack…");
-    match a.start_core(&*plat, &ca, &all, &minors).await {
+    match a.start_core(&*plat, &ca, &all, &minors, binaries::ADMINER_VERSION).await {
         Ok((_caddyfile, checks)) => await_ready(checks).await.expect("core stack ready"),
         Err(e) => {
             eprintln!("start_core failed: {e}");

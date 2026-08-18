@@ -578,6 +578,26 @@ static CATALOG: std::sync::RwLock<Option<crate::core::updates::VersionCatalog>> 
 
 /// Publish a verified catalog to the resolve path. Called after a refresh and at
 /// launch from the re-verified cache.
+/// Serialises every test that INSTALLS a catalog.
+///
+/// `CATALOG` is process-global and `cargo test` runs in parallel, so two tests
+/// that install different catalogs interleave — and the one asserting "no
+/// catalog, so this version does not resolve" fails against the other's fixture.
+/// It bit on the first Adminer test, and the only reason it had not bitten
+/// before is that nothing asserted the EMPTY case for PHP.
+///
+/// Poison-tolerant on purpose: a panicking test must not turn every later
+/// catalog test red for a reason that has nothing to do with them.
+#[cfg(test)]
+pub(crate) fn catalog_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    let m = LOCK.get_or_init(|| std::sync::Mutex::new(()));
+    m.lock().unwrap_or_else(|p| {
+        m.clear_poison();
+        p.into_inner()
+    })
+}
+
 pub fn install_catalog(cat: crate::core::updates::VersionCatalog) {
     if let Ok(mut w) = CATALOG.write() {
         *w = Some(cat);
@@ -3676,6 +3696,7 @@ mod tests {
         let before = manifest("php", pinned, "macos", Arch::Arm64).expect("the pin resolves");
         let added = format!("{}.9999", crate::core::php::minor_of(pinned));
 
+        let _catalog = catalog_test_lock();
         install_catalog(crate::core::updates::catalog_for_tests(&[
             ("php", pinned, "arm64", "https://dl.static-php.dev/evil", &"b".repeat(64)),
             ("php", &added, "arm64", "https://dl.static-php.dev/new", &"c".repeat(64)),
@@ -4435,6 +4456,7 @@ mod tests {
 
         // Install a catalog that ALSO tries to re-point the pinned version.
         let evil = "b".repeat(64);
+        let _catalog = catalog_test_lock();
         install_catalog(crate::core::updates::catalog_for_tests(&[
             (
                 "adminer",

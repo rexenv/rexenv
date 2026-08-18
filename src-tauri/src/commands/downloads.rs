@@ -34,7 +34,7 @@ impl From<&PlannedBinary> for PlannedInfo {
 /// The Start-all binary plan (brief DB lock for sites + installed PHP minors,
 /// never held across an await).
 fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
-    let (sites, minors, patches, db_versions) = {
+    let (sites, minors, patches, db_versions, adminer_version) = {
         let conn = state
             .db
             .lock()
@@ -48,16 +48,18 @@ fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
                 .filter(|e| e.available())
                 .map(|e| (e, e.effective_version(&conn)))
                 .collect::<std::collections::HashMap<_, _>>(),
+            crate::core::adminer::effective_version(state.platform.as_ref(), &conn),
         )
     };
     // The map, not the pins: a preview that lists 8.3.31 while the start will
-    // fetch 8.3.32 is a preview of the wrong download.
+    // fetch 8.3.32 is a preview of the wrong download. Same for Adminer.
     Ok(downloads::plan_for_start_with(
         state.platform.as_ref(),
         &sites,
         &minors,
         &db_versions,
         &patches,
+        &adminer_version,
     ))
 }
 

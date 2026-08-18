@@ -15,7 +15,7 @@
 mod common;
 
 use rexenv_lib::core::service_manager::{Ports, ServiceManager};
-use rexenv_lib::core::{proxy, services, sites, ssl, wordpress, wp_login};
+use rexenv_lib::core::{binaries, proxy, services, sites, ssl, wordpress, wp_login};
 use rexenv_lib::platform;
 use rexenv_lib::state::db;
 use rexenv_lib::state::models::{NewSite, SiteType, WebServer};
@@ -84,7 +84,7 @@ async fn main() {
     let mut mgr = ServiceManager::with_ports(ports);
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
-    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors).await {
+    if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::ADMINER_VERSION).await {
         eprintln!("start_all failed: {e}");
         return;
     }

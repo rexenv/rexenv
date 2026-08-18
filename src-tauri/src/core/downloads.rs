@@ -247,6 +247,12 @@ pub fn plan_for_start_with(
     php_minors: &[String],
     db_versions: &std::collections::HashMap<DbEngine, String>,
     patches: &PatchMap,
+    // The EFFECTIVE Adminer version (`adminer::effective_version`), never the pin.
+    // Planning the pin while the stager resolves the SELECTION is ledger #175 in
+    // a new place: login-start's strictly-offline `uncached_names` guard would
+    // clear a start against a plan for bytes nobody stages, and the real download
+    // then happens inside the services lock.
+    adminer_version: &str,
 ) -> Vec<PlannedBinary> {
     let db_ver = |e: DbEngine| -> String {
         db_versions
@@ -260,7 +266,7 @@ pub fn plan_for_start_with(
         ("nginx", binaries::NGINX_VERSION),
         ("mysql", &mysql_version),
         ("mailpit", binaries::MAILPIT_VERSION),
-        ("adminer", binaries::ADMINER_VERSION),
+        ("adminer", adminer_version),
     ];
     let mariadb_version = db_ver(DbEngine::Mariadb);
     let mut minors = php_minors.to_vec();
@@ -855,7 +861,7 @@ mod tests {
     fn plan_for_start_covers_stack_pools_and_conditional_frankenphp() {
         let plat = crate::platform::current();
         let plan =
-            plan_for_start_with(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default(), &PatchMap::new());
+            plan_for_start_with(&*plat, &[site(WebServer::Nginx)], &["8.1".into()], &Default::default(), &PatchMap::new(), binaries::ADMINER_VERSION);
         let names: Vec<(&str, &str)> = plan
             .iter()
             .map(|p| (p.name.as_str(), p.version.as_str()))
@@ -879,7 +885,7 @@ mod tests {
         assert!(!names.iter().any(|(n, _)| *n == "frankenphp"));
 
         let plan =
-            plan_for_start_with(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default(), &PatchMap::new());
+            plan_for_start_with(&*plat, &[site(WebServer::Frankenphp)], &[], &Default::default(), &PatchMap::new(), binaries::ADMINER_VERSION);
         assert!(plan.iter().any(|p| p.name == "frankenphp"));
     }
 
@@ -926,6 +932,7 @@ mod tests {
             &["8.2".into()],
             &Default::default(),
             &map,
+            binaries::ADMINER_VERSION,
         );
         let fpm: Vec<&str> = start
             .iter()
@@ -1001,5 +1008,12 @@ pub fn plan_for_start_pinned(
     php_minors: &[String],
     db_versions: &std::collections::HashMap<DbEngine, String>,
 ) -> Vec<PlannedBinary> {
-    plan_for_start_with(platform, sites, php_minors, db_versions, &PatchMap::new())
+    plan_for_start_with(
+        platform,
+        sites,
+        php_minors,
+        db_versions,
+        &PatchMap::new(),
+        binaries::ADMINER_VERSION,
+    )
 }
