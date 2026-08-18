@@ -416,8 +416,13 @@ pub fn list_versions(
                 // had already installed.
                 // `arch`, because a manifest carrying only the OTHER Mac's
                 // binaries would otherwise render a button that downloads
-                // ~100 MB and then fails at the last resolve.
-                updatable: catalog.newer_than(&v.minor, &effective, arch),
+                // ~100 MB and then fails at the last resolve. No minor: the
+                // catalog derives it from `effective`, which IS a patch of it.
+                updatable: catalog.newer_than(
+                    crate::core::updates::Family::Php,
+                    &effective,
+                    arch,
+                ),
                 patch: effective,
                 minor: v.minor,
                 fpm_port: v.fpm_port,

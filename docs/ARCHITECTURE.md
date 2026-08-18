@@ -385,9 +385,12 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   ed25519 signature over the exact bytes against a **public key compiled into the app**
   (never TLS: rexenv's digest gate compares bytes to whoever supplied the digest, so an
   attacker-chosen URL paired with an attacker-chosen hash matches perfectly), and keeps
-  only entries surviving four structural limits — `name ∈ {php, php-fpm}` (`caddy` runs
-  as a root LaunchDaemon), https from an allowlisted host, a patch of a minor already
-  shipped, lowercase 64-hex. A **monotonic serial** refuses a replayed older document,
+  only entries surviving four structural limits, **each per FAMILY**
+  (`updates::Family`): a declared name (`caddy` runs as a root LaunchDaemon, so it is
+  not one — nor is any other service, tool or bottle), https from an allowlisted host,
+  a version on a track the family accepts (PHP: a patch of a minor already shipped;
+  Adminer: a major whose plugin API has been probed against rexenv's wrapper),
+  lowercase 64-hex. A **monotonic serial** refuses a replayed older document,
   and the compiled-in pins stay a **floor**, so a manifest can only move a minor forward.
   The choice lands in `php_versions.selected_patch` (v37) and `php::patch_to_run` is the
   ONE answer to "which interpreter" — pool, planner, terminal, WP-CLI, composer, the

@@ -69,17 +69,161 @@ const RELEASE_PUBKEY: &str = "faa52f961af3e0542d836ab539823f598ef88b976055809f73
 const ALLOWED_HOSTS: &[&str] = &[
     "https://dl.static-php.dev/",
     "https://github.com/rexenv/",
+    // Adminer's own releases. A PATH prefix, not a host: `github.com/` alone
+    // would let any GitHub account serve any artifact this app will execute, and
+    // anyone can create an account. `vrana/adminer` is the upstream rexenv
+    // already pins by hash today (`binaries.rs`' adminer arm), so this admits no
+    // publisher the compiled-in pin did not already trust — it lets the SIGNED
+    // catalog name a newer version from the same place.
+    "https://github.com/vrana/adminer/releases/download/",
 ];
 
-/// Artifact names a manifest may describe.
+/// The products a manifest may describe, and the rules each one carries.
 ///
-/// The first structural limit, and the sharpest. `binaries::resolve` is
-/// name-generic: `("caddy", …)` resolves through the identical path as PHP, and
-/// the resolved cache path is then handed to `proxy::start_edge_daemon`, which
-/// copies it to `/Library/…`, chowns it `root:wheel` and bootstraps it into the
-/// system launchd domain. **A manifest that can name a binary can name `caddy`,
-/// and `caddy` is a root LaunchDaemon.** So it cannot.
-const ALLOWED_NAMES: &[&str] = &["php", "php-fpm"];
+/// # The first structural limit, and the sharpest
+///
+/// `binaries::resolve` is name-generic: `("caddy", …)` resolves through the
+/// identical path as PHP, and the resolved cache path is then handed to
+/// `proxy::start_edge_daemon`, which copies it to `/Library/…`, chowns it
+/// `root:wheel` and bootstraps it into the system launchd domain. **A manifest
+/// that can name a binary can name `caddy`, and `caddy` is a root LaunchDaemon.**
+/// So it cannot — and neither can `nginx`, `mysql`, `mariadb`, `postgres`,
+/// `mailpit`, `frankenphp`, `cloudflared`, `httpd`, the Xdebug bottles, nor the
+/// two closest neighbours `wp-cli` and `composer`, which are the other
+/// `Shape::File` artifacts and run as the user against every site's database.
+///
+/// # What each variant GRANTS a key-holder, stated rather than implied
+///
+/// - **`Php`** — `Shape::Single` → `binaries::resolve` → `set_executable` +
+///   `prepare_binary` (de-quarantine, dylib relink, ad-hoc codesign) → spawned by
+///   the `ServiceManager` as a long-lived master. Native code, as the user.
+/// - **`Adminer`** — `Shape::File` → `binaries::resolve_file`, which does
+///   **neither** chmod nor codesign and never spawns anything. The bytes are
+///   interpreted by an already-running php-fpm pool, as the user.
+///
+/// **Adminer is strictly below PHP on every axis**, so admitting it does not
+/// raise the ceiling a key-holder already has. Saying that plainly matters: the
+/// third addition must be argued the same way, and "it is only a text file" is
+/// not the argument — arbitrary PHP as the user is the same grant as arbitrary
+/// native code as the user, reached by a shorter path.
+///
+/// # What IS worse about Adminer, and what answers it
+///
+/// **Control ownership.** rexenv's security controls for the Adminer vhost live
+/// inside the artifact's OWN plugin API — `WRAPPER_INDEX_PHP` subclasses
+/// `\Adminer\Adminer` and overrides `login` (the loopback gate), `headers` and
+/// `csp` (the frame-ancestor bound). A PHP update cannot switch off a control
+/// rexenv wrote; an Adminer update can, by renaming the hook it hangs on — and
+/// it would fail SILENTLY, with the console still serving.
+///
+/// Two things answer that, and neither is optional: the compat ceiling in
+/// [`Family::track`], and `adminer::verify_pair`, which runs the staged pair
+/// through the bundled PHP and refuses an apply whose overrides no longer bind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Family {
+    Php,
+    Adminer,
+}
+
+/// The newest Adminer MAJOR whose plugin API has been checked against rexenv's
+/// wrapper, and therefore the highest a manifest may offer.
+///
+/// **This is evidence, not a guess, and raising it means re-running the probe.**
+/// A ceiling nobody has tested is superstition with a constant name. Measured
+/// 18 Aug 2026 by requiring the wrapper's exact subclass shape through PHP
+/// 8.3.32 against 5.4.2 (the pin), 5.5.1 and 6.0.1: `\Adminer\Adminer`,
+/// `\Adminer\nonce()` and all four overrides bind cleanly in every one. Static
+/// inspection cannot answer this — the released `adminer-<v>-en.php` is a
+/// compressed stub, so grepping it for `class Adminer` finds nothing in ANY
+/// version, including the one running right now.
+///
+/// It is a floor-to-ceiling bound rather than "same major as the pin" because
+/// upstream was already at 6.0.1 while rexenv pinned 5.4.2: a same-major rule
+/// would have refused every version the feature exists to deliver.
+pub const ADMINER_MAX_MAJOR: u32 = 6;
+
+impl Family {
+    /// The family an artifact name belongs to, or `None` — the name allowlist.
+    pub fn of_name(name: &str) -> Option<Family> {
+        match name {
+            "php" | "php-fpm" => Some(Family::Php),
+            "adminer" => Some(Family::Adminer),
+            _ => None,
+        }
+    }
+
+    /// Every artifact name this family needs at one version. An update resolves
+    /// ALL of them, so a version missing any is not offerable (see
+    /// [`VersionCatalog::newer_than`]).
+    pub fn names(self) -> &'static [&'static str] {
+        match self {
+            Family::Php => &["php", "php-fpm"],
+            Family::Adminer => &["adminer"],
+        }
+    }
+
+    /// The TRACK a version belongs to, or `None` if the family will not accept
+    /// it at all — the third structural limit, per family.
+    ///
+    /// - **Php**: the minor, and only if this build already ships it. Not
+    ///   cosmetic: `php::fpm_port` gives each major ten slots, and per-minor
+    ///   facts (`eol_since`, `xdebug_supported`) are compile-time tables, so a
+    ///   runtime-delivered NEW minor would render with no EOL date and Xdebug
+    ///   silently unavailable.
+    /// - **Adminer**: the major, and only up to [`ADMINER_MAX_MAJOR`] — the
+    ///   plugin API the wrapper hangs on is the thing a major bump may move.
+    fn track(self, version: &str) -> Option<String> {
+        match self {
+            Family::Php => {
+                let minor = php::minor_of(version);
+                php::patch_for_minor(&minor).map(|_| minor)
+            }
+            Family::Adminer => {
+                let major: u32 = version.split('.').next()?.parse().ok()?;
+                (major <= ADMINER_MAX_MAJOR).then(|| major.to_string())
+            }
+        }
+    }
+
+    /// Whether an entry's `arch` is the one this family's rows must carry.
+    ///
+    /// `Adminer` is a single `.php` file — the same bytes on every machine — so
+    /// its rows say `"any"` and a per-arch row is refused. Publishing the same
+    /// file twice under two arch labels would be a fiction stated twice, and
+    /// worse: it would make a HALF-published Adminer version structurally legal,
+    /// which is the failure the completeness rule exists for.
+    fn arch_ok(self, arch: &str) -> bool {
+        match self {
+            Family::Php => arch == "arm64" || arch == "x86_64",
+            Family::Adminer => arch == ANY_ARCH,
+        }
+    }
+
+    /// The `arch` this family's rows carry on a machine whose arch is `machine`.
+    fn row_arch(self, machine: &str) -> &str {
+        match self {
+            Family::Php => machine,
+            Family::Adminer => ANY_ARCH,
+        }
+    }
+
+    /// Whether `candidate` is an upgrade from `have`, WITHIN this family's rules.
+    ///
+    /// Php stays minor-scoped: a patch bump only. Adminer is one file with no
+    /// per-version compiled-in facts, and upstream moved 5.4 → 5.5 → 6.0 in five
+    /// weeks, so a track change is an ordinary update there and refusing one
+    /// would refuse the feature.
+    fn is_upgrade(self, candidate: &str, have: &str) -> bool {
+        match self {
+            Family::Php => newer(candidate, have),
+            Family::Adminer => segments(candidate) > segments(have),
+        }
+    }
+}
+
+/// The `arch` an arch-independent artifact carries. Its own const so the string
+/// is written once — `arch_ok`, `row_arch` and the publisher must agree exactly.
+pub const ANY_ARCH: &str = "any";
 
 /// An [`Arch`] in the MANIFEST's vocabulary (`arm64` / `x86_64`).
 ///
@@ -109,7 +253,7 @@ const SERIAL_KEY: &str = "php_update_manifest_serial";
 /// One artifact a manifest describes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Artifact {
-    /// `php` or `php-fpm` — see [`ALLOWED_NAMES`].
+    /// `php`, `php-fpm` or `adminer` — see [`Family`].
     pub name: String,
     /// A full `x.y.z`, whose minor must already be one rexenv ships.
     pub version: String,
@@ -148,31 +292,40 @@ pub struct VersionCatalog {
 }
 
 impl VersionCatalog {
-    /// The newest patch this catalog offers for `minor` **on `arch`, with BOTH
-    /// binaries present**, if it is newer than `have`.
+    /// The newest version this catalog offers for `family` **on `arch`, with
+    /// every one of the family's artifacts present**, if it is an upgrade from
+    /// `have`.
     ///
     /// Numeric per segment — `8.3.9 < 8.3.10`, which a lexical compare gets
     /// backwards, and PHP has shipped double-digit patches on every branch.
+    /// What counts as an upgrade is the family's rule (`Family::is_upgrade`):
+    /// PHP stays inside one minor, Adminer does not.
+    ///
+    /// There is no `minor` parameter and there never needs to be. `have` is the
+    /// EFFECTIVE version, which for PHP comes from [`floored`] and is therefore
+    /// already a patch of the minor being asked about — so a minor filter would
+    /// re-state what `newer` checks. One fact, one place.
     ///
     /// The completeness rule is not the publisher's job to get right. An apply
-    /// resolves `php` AND `php-fpm` for the machine it is on, so a version
-    /// carrying three of those four offers a button that downloads ~100 MB and
-    /// then fails at the last resolve — and, worse, does it on one developer's
-    /// Mac while working on another's. `scripts/publish-manifest.sh` already
-    /// drops half-published versions whole; this is the same rule enforced where
-    /// it is load-bearing, because a manifest is data and data is exactly the
-    /// thing that must not be trusted to have been generated correctly.
-    pub fn newer_than(&self, minor: &str, have: &str, arch: &str) -> Option<String> {
+    /// resolves every name in the family for the machine it is on, so a version
+    /// carrying three of PHP's four artifacts offers a button that downloads
+    /// ~100 MB and then fails at the last resolve — and, worse, does it on one
+    /// developer's Mac while working on another's. `scripts/publish-manifest.sh`
+    /// already drops half-published versions whole; this is the same rule
+    /// enforced where it is load-bearing, because a manifest is data and data is
+    /// exactly the thing that must not be trusted to have been generated
+    /// correctly.
+    ///
+    /// `arch` is the MACHINE's arch — the family maps it to the arch its rows
+    /// actually carry, which for Adminer is [`ANY_ARCH`].
+    pub fn newer_than(&self, family: Family, have: &str, arch: &str) -> Option<String> {
+        let row_arch = family.row_arch(arch);
         self.entries
             .iter()
-            .filter(|a| php::minor_of(&a.version) == minor && a.arch == arch)
+            .filter(|a| Family::of_name(&a.name) == Some(family) && a.arch == row_arch)
             .map(|a| a.version.clone())
-            .filter(|v| newer(v, have))
-            .filter(|v| {
-                ALLOWED_NAMES
-                    .iter()
-                    .all(|n| self.artifact(n, v, arch).is_some())
-            })
+            .filter(|v| family.is_upgrade(v, have))
+            .filter(|v| family.names().iter().all(|n| self.artifact(n, v, row_arch).is_some()))
             .max_by(|a, b| segments(a).cmp(&segments(b)))
     }
 
@@ -226,19 +379,19 @@ fn unhex(s: &str) -> Option<Vec<u8>> {
 /// cannot deny a user every other update. A bad SIGNATURE is the opposite — that
 /// refuses everything, because it says the document is not ours.
 fn acceptable(a: &Artifact) -> bool {
-    ALLOWED_NAMES.contains(&a.name.as_str())
-        && (a.arch == "arm64" || a.arch == "x86_64")
+    let Some(family) = Family::of_name(&a.name) else {
+        return false;
+    };
+    family.arch_ok(&a.arch)
         && ALLOWED_HOSTS.iter().any(|h| a.url.starts_with(h))
         && a.sha256.len() == 64
         && a.sha256.bytes().all(|b| b.is_ascii_hexdigit())
         && a.sha256.bytes().all(|b| !b.is_ascii_uppercase())
-        // A patch of a minor rexenv ALREADY ships. Not cosmetic: `php::fpm_port`
-        // gives each major ten slots, and per-minor facts (`eol_since`,
-        // `xdebug_supported`) are compile-time tables — a runtime-delivered NEW
-        // minor would render with no EOL date and Xdebug silently unavailable.
-        && php::patch_for_minor(&php::minor_of(&a.version)).is_some()
         && segments(&a.version).len() == 3
         && a.version.split('.').all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        // The family's own version limit — a shipped PHP minor, or an Adminer
+        // major whose plugin API has been probed. See `Family::track`.
+        && family.track(&a.version).is_some()
 }
 
 /// Verify a detached signature over `doc` and return the entries that survive
@@ -464,7 +617,7 @@ pub fn floored(minor: &str, selected: Option<&str>) -> Option<String> {
 /// `binaries` can assert it at the point it consults the catalog rather than
 /// trusting this module to have filtered.
 pub fn nameable(name: &str) -> bool {
-    ALLOWED_NAMES.contains(&name)
+    Family::of_name(name).is_some()
 }
 
 /// Every host a manifest artifact may come from, for the guard that asserts the
@@ -701,7 +854,7 @@ mod tests {
         // Re-fetching the IDENTICAL document: accepted, catalog returned.
         let again = accept_with(&pub_hex, &conn, &d7, &sign(&kp, &d7))
             .expect("re-reading our own current manifest must not be an error");
-        assert_eq!(again.newer_than(&minor, binaries::PHP_VERSION, "arm64"), None);
+        assert_eq!(again.newer_than(Family::Php, binaries::PHP_VERSION, "arm64"), None);
         assert!(again.versions().iter().any(|v| v == &newv));
 
         // A DIFFERENT document at the same serial changes nothing on disk.
@@ -856,7 +1009,9 @@ mod tests {
             entries: vs
                 .iter()
                 .flat_map(|v| {
-                    ["php", "php-fpm"].into_iter().flat_map(move |n| {
+                    // DERIVED. A literal here is how adding a second family
+                    // could darken every PHP button while this test stayed green.
+                    Family::Php.names().iter().copied().flat_map(move |n| {
                         ["arm64", "x86_64"].map(move |a| Artifact {
                             name: n.into(),
                             version: (*v).to_string(),
@@ -869,11 +1024,11 @@ mod tests {
                 .collect(),
         };
         let cat = full(&["8.3.32", "8.3.9", "8.3.40", "8.4.99"]);
-        assert_eq!(cat.newer_than("8.3", "8.3.31", "arm64").as_deref(), Some("8.3.40"));
-        assert_eq!(cat.newer_than("8.3", "8.3.40", "arm64"), None, "nothing newer than the newest");
-        assert_eq!(cat.newer_than("8.5", "8.5.8", "arm64"), None, "a minor with no entries offers nothing");
+        assert_eq!(cat.newer_than(Family::Php, "8.3.31", "arm64").as_deref(), Some("8.3.40"));
+        assert_eq!(cat.newer_than(Family::Php, "8.3.40", "arm64"), None, "nothing newer than the newest");
+        assert_eq!(cat.newer_than(Family::Php, "8.5.8", "arm64"), None, "a minor with no entries offers nothing");
         assert_eq!(
-            cat.newer_than("8.3", "8.3.31", "x86_64").as_deref(),
+            cat.newer_than(Family::Php, "8.3.31", "x86_64").as_deref(),
             Some("8.3.40"),
             "a complete manifest serves both Macs"
         );
@@ -886,23 +1041,23 @@ mod tests {
             entries: full(&["8.3.40"]).entries.into_iter().filter(|a| !f(a)).collect(),
         };
         assert_eq!(
-            drop_where(|a| a.name == "php-fpm").newer_than("8.3", "8.3.31", "arm64"),
+            drop_where(|a| a.name == "php-fpm").newer_than(Family::Php, "8.3.31", "arm64"),
             None,
             "cli only: the pool binary is missing, so there is nothing to restart onto"
         );
         assert_eq!(
-            drop_where(|a| a.name == "php").newer_than("8.3", "8.3.31", "arm64"),
+            drop_where(|a| a.name == "php").newer_than(Family::Php, "8.3.31", "arm64"),
             None,
             "fpm only: the terminal and wp-cli would have no interpreter"
         );
         let one_arch = drop_where(|a| a.arch == "x86_64");
         assert_eq!(
-            one_arch.newer_than("8.3", "8.3.31", "arm64").as_deref(),
+            one_arch.newer_than(Family::Php, "8.3.31", "arm64").as_deref(),
             Some("8.3.40"),
             "the arch it WAS published for is still offered"
         );
         assert_eq!(
-            one_arch.newer_than("8.3", "8.3.31", "x86_64"),
+            one_arch.newer_than(Family::Php, "8.3.31", "x86_64"),
             None,
             "…and the arch it was not published for is offered nothing"
         );
@@ -925,4 +1080,202 @@ mod tests {
         assert!(unhex("0").is_none(), "odd length");
         assert!(unhex("zz").is_none());
     }
+
+    /// A complete Adminer entry — the control every rejection below mutates.
+    fn adminer_row(version: &str) -> Artifact {
+        Artifact {
+            name: "adminer".into(),
+            version: version.into(),
+            arch: ANY_ARCH.into(),
+            url: format!(
+                "https://github.com/vrana/adminer/releases/download/v{version}/adminer-{version}-en.php"
+            ),
+            sha256: "a".repeat(64),
+        }
+    }
+
+    /// **The name allowlist is a set of FAMILIES, and everything else rexenv
+    /// resolves is still outside it.**
+    ///
+    /// The list below is a literal, deliberately: there is no production
+    /// enumeration of every binary name to derive from, and inventing one for a
+    /// test would be a second source of truth for a fact `binaries::manifest`
+    /// already owns. What keeps it honest is the count assertion beneath it — a
+    /// third family cannot arrive without this test being edited.
+    #[test]
+    fn only_the_declared_families_are_nameable() {
+        for name in [
+            "caddy", "nginx", "mysql", "mariadb", "postgres", "redis", "mailpit",
+            "frankenphp", "httpd", "cloudflared", "wp-cli", "composer",
+            "xdebug-8.3", "php-debug", "adminer.php", "Adminer", "PHP", "",
+        ] {
+            assert!(
+                Family::of_name(name).is_none(),
+                "`{name}` became nameable by a manifest — every one of these either \
+                 runs as root, runs as a long-lived service, or is a tool this \
+                 design has not argued for"
+            );
+            assert!(!nameable(name));
+        }
+        // `caddy` is the one that matters, and it is worth its own sentence: the
+        // resolved path goes to `proxy::start_edge_daemon`, which chowns it
+        // root:wheel and bootstraps it into the system launchd domain.
+        assert!(Family::of_name("caddy").is_none());
+
+        let known: Vec<&str> =
+            [Family::Php, Family::Adminer].iter().flat_map(|f| f.names().iter().copied()).collect();
+        assert_eq!(known, ["php", "php-fpm", "adminer"], "a family changed its names");
+        for n in &known {
+            assert!(Family::of_name(n).is_some(), "{n}");
+        }
+    }
+
+    /// **Each family's grant matches the SHAPE its bytes actually take.**
+    ///
+    /// `binaries::shape_of` ends in `_ => Shape::Single` — the most privileged
+    /// arm, the one `resolve` handles with `set_executable` + `prepare_binary`.
+    /// So a nameable artifact whose name `shape_of` does not recognise would be
+    /// treated as an executable to codesign and spawn, and nothing said
+    /// otherwise. Exact equality per variant rather than "not Single", because a
+    /// by-name exception collapses back into the membership check it replaces.
+    #[test]
+    fn every_family_name_has_the_shape_its_grant_declares() {
+        use crate::core::binaries::{shape_of, Shape};
+        for n in Family::Php.names() {
+            assert_eq!(shape_of(n), Shape::Single, "{n}: the Php grant says a spawned executable");
+        }
+        for n in Family::Adminer.names() {
+            assert_eq!(
+                shape_of(n),
+                Shape::File,
+                "{n}: the Adminer grant says a plain file — no chmod, no codesign, never spawned"
+            );
+        }
+    }
+
+    /// **Adminer rows are arch-free, and a per-arch one is refused.**
+    ///
+    /// One `.php` file is the same bytes on every machine. Publishing it twice
+    /// under two arch labels would be a fiction stated twice — and worse, it
+    /// would make a HALF-published Adminer version structurally legal, which is
+    /// exactly what the completeness rule exists to prevent (#355).
+    #[test]
+    fn the_adminer_family_carries_one_arch_free_row() {
+        assert!(acceptable(&adminer_row("6.0.1")), "the control must pass");
+        for arch in ["arm64", "x86_64", "", "ANY", "universal"] {
+            assert!(
+                !acceptable(&Artifact { arch: arch.into(), ..adminer_row("6.0.1") }),
+                "an adminer row must carry arch \"{ANY_ARCH}\", not {arch:?}"
+            );
+        }
+        // …and the reverse: PHP must never be arch-free.
+        let minor = php::minor_of(binaries::PHP_VERSION);
+        let php_any = Artifact {
+            name: "php".into(),
+            version: format!("{minor}.9999"),
+            arch: ANY_ARCH.into(),
+            url: "https://dl.static-php.dev/x.tar.gz".into(),
+            sha256: "a".repeat(64),
+        };
+        assert!(!acceptable(&php_any), "a PHP row must name a real arch");
+    }
+
+    /// **The compat ceiling is enforced where it is load-bearing, not trusted to
+    /// the publisher.**
+    ///
+    /// rexenv's controls for the Adminer console live inside Adminer's own
+    /// plugin API — the wrapper subclasses `\Adminer\Adminer` and overrides
+    /// `login` (the loopback gate), `headers` and `csp` (the frame bound). A
+    /// major that moves those hooks turns rexenv's security controls off
+    /// silently, with the console still serving.
+    #[test]
+    fn an_adminer_major_past_the_probed_ceiling_is_dropped() {
+        assert!(acceptable(&adminer_row(&format!("{ADMINER_MAX_MAJOR}.9.9"))));
+        assert!(acceptable(&adminer_row("5.4.2")), "at or below the ceiling is fine");
+        for major in [ADMINER_MAX_MAJOR + 1, ADMINER_MAX_MAJOR + 5, 99] {
+            assert!(
+                !acceptable(&adminer_row(&format!("{major}.0.0"))),
+                "major {major} is past the ceiling and nobody has probed the wrapper against it"
+            );
+        }
+        // The URL host is a PATH prefix, not `github.com/` — anyone can create a
+        // GitHub account, and this artifact is executed as the user.
+        for url in [
+            "https://github.com/attacker/adminer/releases/download/v6.0.1/adminer-6.0.1-en.php",
+            "https://github.com/vrana/adminer-evil/releases/download/v6.0.1/x.php",
+            "https://github.com/x.php",
+        ] {
+            assert!(!acceptable(&Artifact { url: url.into(), ..adminer_row("6.0.1") }), "{url}");
+        }
+    }
+
+    /// **Each family upgrades by its OWN rule, and one family's rows never
+    /// answer for another's.**
+    ///
+    /// PHP stays inside a minor: `fpm_port` gives each major ten slots and the
+    /// EOL/Xdebug tables are compile-time, so a minor jump would render wrong.
+    /// Adminer is one file with no per-version compiled-in facts, and upstream
+    /// moved 5.4 → 5.5 → 6.0 in five weeks — refusing a track change there
+    /// refuses the feature.
+    #[test]
+    fn a_family_offers_only_its_own_versions_and_upgrades_by_its_own_rule() {
+        let minor = php::minor_of(binaries::PHP_VERSION);
+        let php_v = format!("{minor}.9999");
+        let mut entries: Vec<Artifact> = Family::Php
+            .names()
+            .iter()
+            .flat_map(|n| {
+                ["arm64", "x86_64"].map(|a| Artifact {
+                    name: (*n).into(),
+                    version: php_v.clone(),
+                    arch: a.into(),
+                    url: "https://dl.static-php.dev/x.tar.gz".into(),
+                    sha256: "a".repeat(64),
+                })
+            })
+            .collect();
+        entries.push(adminer_row("5.5.1"));
+        entries.push(adminer_row("6.0.1"));
+        let cat = VersionCatalog { entries };
+
+        // Adminer crosses tracks — 5.4.2 to the newest offered, 6.0.1.
+        assert_eq!(
+            cat.newer_than(Family::Adminer, "5.4.2", "arm64").as_deref(),
+            Some("6.0.1"),
+            "the Adminer family must offer across a major boundary"
+        );
+        assert_eq!(cat.newer_than(Family::Adminer, "6.0.1", "arm64"), None);
+        // …and answers the same on the other Mac, because its row is arch-free.
+        assert_eq!(
+            cat.newer_than(Family::Adminer, "5.4.2", "x86_64").as_deref(),
+            Some("6.0.1")
+        );
+
+        // PHP does not cross minors, and does not see Adminer's rows.
+        assert_eq!(
+            cat.newer_than(Family::Php, binaries::PHP_VERSION, "arm64").as_deref(),
+            Some(php_v.as_str())
+        );
+        let other = php::unshipped_patch();
+        assert_eq!(cat.newer_than(Family::Php, &other, "arm64"), None, "{other}");
+
+        // THE REGRESSION THIS WHOLE COMMIT EXISTS TO AVOID: a second family must
+        // not make the first family's completeness rule unsatisfiable. Against a
+        // flat `ALLOWED_NAMES` of three, `newer_than` would have demanded an
+        // `adminer` row at the PHP version and every Update button would have
+        // gone dark — silently, with every other test still green.
+        assert!(
+            cat.newer_than(Family::Php, binaries::PHP_VERSION, "arm64").is_some(),
+            "adding a family darkened the PHP family's offers"
+        );
+
+        // Completeness is still per family: drop one PHP artifact and PHP has
+        // nothing to offer, while Adminer is untouched.
+        let half = VersionCatalog {
+            entries: cat.entries.iter().filter(|a| a.name != "php-fpm").cloned().collect(),
+        };
+        assert_eq!(half.newer_than(Family::Php, binaries::PHP_VERSION, "arm64"), None);
+        assert_eq!(half.newer_than(Family::Adminer, "5.4.2", "arm64").as_deref(), Some("6.0.1"));
+    }
+
 }

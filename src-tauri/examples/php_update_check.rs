@@ -103,7 +103,7 @@ async fn main() -> ExitCode {
         "a same-serial read displaced the stored serial",
     );
 
-    let offered = catalog.newer_than(&minor, &pinned, updates::catalog_arch(plat.binaries().arch()));
+    let offered = catalog.newer_than(updates::Family::Php, &pinned, updates::catalog_arch(plat.binaries().arch()));
     let Some(target) = offered else {
         println!(
             "\nthe manifest offers nothing newer than {pinned} for {minor} — nothing to apply.\n\
