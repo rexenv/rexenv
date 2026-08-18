@@ -48,6 +48,7 @@
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { mockAdminerStatus, mockPhpVersions } from "@/lib/mock";
+import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
@@ -969,12 +970,52 @@ export function DevUiReview() {
           return null;
         }
         case "list_sites":
-          return params.get("view") === "mail"
+          if (params.get("view") === "mail") {
+            return [
+              fixtureSite({ id: "s-shop", name: "shop", domain: "shop.rex" }),
+              fixtureSite({ id: "s-blog", name: "blog", domain: "blog.rex" }),
+            ];
+          }
+          // The tunnels fixture: TWO shared and two not, because the claim
+          // under test is what a filter does to a row that is currently
+          // PUBLIC. One shared site would let a probe pass on a count of 1
+          // where the copy has to say "2 shared sites are".
+          if (params.get("view") === "tunnels") {
+            return [
+              fixtureSite({ id: "s-shop", name: "shop", domain: "shop.rex" }),
+              fixtureSite({ id: "s-blog", name: "blog", domain: "blog.rex", type: "laravel" }),
+              fixtureSite({ id: "s-docs", name: "docs", domain: "docs.rex" }),
+              fixtureSite({ id: "s-api", name: "api", domain: "api.rex", type: "laravel" }),
+            ];
+          }
+          return [];
+        // The two live tunnels behind that fixture. Real trycloudflare-shaped
+        // URLs, because "paste the link you are holding" is one of the three
+        // things the search box is for.
+        case "tunnels_status":
+          return params.get("view") === "tunnels"
             ? [
-                fixtureSite({ id: "s-shop", name: "shop", domain: "shop.rex" }),
-                fixtureSite({ id: "s-blog", name: "blog", domain: "blog.rex" }),
+                {
+                  domain: "shop.rex",
+                  url: "https://odd-cat-42.trycloudflare.com",
+                  running: true,
+                  health: "reachable",
+                  diagnosis: null,
+                },
+                {
+                  domain: "blog.rex",
+                  url: "https://tall-moon-19.trycloudflare.com",
+                  running: true,
+                  health: "reachable",
+                  diagnosis: null,
+                },
               ]
             : [];
+        // No default-credentials warnings in this fixture: the claim under test
+        // is the filter, and a wall of amber would make the ONE amber row that
+        // matters indistinguishable in a screenshot.
+        case "wp_default_creds":
+          return false;
         case "list_editors":
           return params.get("view") === "openin" ? mockEditors() : [];
         case "list_browsers":
@@ -1034,6 +1075,15 @@ export function DevUiReview() {
           </div>
         )}
         {view === "openin" && <OpenInView />}
+        {view === "tunnels" && (
+          // The REAL route, in a frame the height of the app's own region, so
+          // the sections scroll exactly as they do in the app.
+          <div className="h-[720px] overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
+            <div className="flex h-full flex-col">
+              <TunnelsScreen />
+            </div>
+          </div>
+        )}
         {view === "mail" && (
           <div className="h-[620px] overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1">
             <div className="flex h-full flex-col">

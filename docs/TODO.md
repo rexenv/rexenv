@@ -9,6 +9,15 @@ evidence cited.
 
 ## Now — actionable code/test work
 
+- [x] **Search on the Tunnels page** ✓ 19 Aug 2026, ledger #371, L2 plant-proven.
+  Name, domain, or the public URL — the last one because this is the only screen that can
+  answer "which site is this link?". The work was not the filter: a hidden row here is a
+  site the internet can reach, so hidden SHARED sites are counted in amber with the
+  consequence spelled out, on the list and on the no-match screen, while the header's
+  count and Stop all sharing keep describing the machine rather than the view.
+  Four `uireview.js` scenarios at both widths; the fixture runs two live tunnels so the
+  plural copy is exercised.
+
 - [x] **`wp_themes_check` was not re-runnable, and leaked a mysqld** ✓ 19 Aug 2026,
   found by running the network tier after #370. Two defects in one example, both of the
   fixture-ownership family: (1) the run rebuilt the DOCROOT but inherited the DATABASE,

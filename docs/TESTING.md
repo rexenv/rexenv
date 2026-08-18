@@ -234,6 +234,17 @@ it can:
   or WordPress answers from its 12h timer and the two legs differ by ORDER rather than
   by the grant. A third leg asks a later run whether it still has the capability (it
   must not). **Ran green 19 Aug 2026** and is plant-proven: dropping the flag from `checked_list` fails leg 2 by name while leg 1 stays green. **Cannot prove:** that a premium update INSTALLS — that needs a vendor's real package URL and a licence, so it is `docs/SMOKE-TEST.md`'s leg.
+  **The Tunnels filter (`uireview.js`, `tunnels-*`, 19 Aug 2026, #371) is L2 asserting a
+  SENTENCE, not a layout.** The feature is a search box; the risk is that filtering out a
+  live public URL reads as "nothing is shared". So the fixture carries two live tunnels —
+  one would let the probe pass on a count of 1 where the copy must say "2 shared sites
+  are" — and each scenario asserts what the page SAYS while rows are hidden: the count,
+  the consequence clause, and the empty state that must still carry the warning. Typed
+  through the real input rather than assigned, because a controlled input whose `.value`
+  is set behind React's back leaves the state empty and the probe then reads an
+  unfiltered page. **Plant-proven:** deleting the warning's two call sites reddens three
+  of four scenarios by name while `tunnels-plain` stays green — a plant that fails
+  everything only proves the view mounted.
 - **Cannot prove:** a CSS chain resolves, a WKWebView quirk, real-internet DNS
   propagation, anything needing root or a second device (some examples DO take prompts
   — those are L3-adjacent and marked).

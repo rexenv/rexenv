@@ -509,6 +509,13 @@ no SMOKE step today and is covered by `repo_*` examples only.*
 - [ ] Create a sub-site; it appears in the list and loads.
 
 ## Public sharing (Tunnels) — needs internet
+- [ ] **Filter while a share is live** (19 Aug 2026, #371 — the half L2 cannot reach,
+  since the harness has no event transport): share two sites, type a query in the
+  Tunnels search box that matches NEITHER. The amber line must name both ("2 shared
+  sites are hidden by this filter — still public until you stop sharing"), the subtitle
+  must still say 2 shared, and **Stop all sharing must still stop both**. Then, with the
+  query still typed, stop one share from its card: the count in the amber line follows
+  it down to 1 rather than sticking.
 - Timings, not badge-reading: start `scripts/tunnel-measure.sh <url>` the moment the
   URL appears; press ENTER with a note at each physical action (kill -9, wifi off/on).
   It prints the banner→resolver deltas and the break/recovery windows.

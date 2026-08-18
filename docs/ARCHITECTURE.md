@@ -878,7 +878,16 @@ editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) 
     non-evidence. Phase A after start probes via 1.1.1.1 + pinned-address edge
     checks ONLY — never the system resolver, whose negative cache would poison the
     LAN for 30 minutes (trycloudflare SOA MINIMUM = 1800s, measured).
-  - **A share guards its site for the share's LIFETIME:** web-server switch,
+  - **The Tunnels list is searchable by name, domain OR public URL** (`routes/Tunnels.tsx`
+  · #371). The URL is in the match set because this page is the only one that can answer
+  "which of my sites is `https://odd-cat-42.trycloudflare.com`?", and pasting the link is
+  how that question gets asked. **What the filter must not do is hide an exposure
+  quietly:** hidden SHARED sites are counted and named in amber ("2 shared sites are
+  hidden by this filter — still public until you stop sharing"), on the list and on the
+  no-match screen alike, and the header keeps the machine-wide truth — the subtitle's
+  shared count and Stop all sharing both ignore the filter, because they describe the
+  machine rather than the view.
+- **A share guards its site for the share's LIFETIME:** web-server switch,
     multisite convert, docroot move, db-import/rewrite and provision-retry all
     refuse while shared, naming the exposure (and tunnel start refuses while those
     run). rexenv never auto-stops a share on the user's behalf; quitting with live

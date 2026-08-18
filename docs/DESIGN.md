@@ -42,6 +42,17 @@ the shipped UI toward one.
   ("…will use 8.2.32 — nothing was running to restart"). The general rule: when an
   action's *effect* depends on state the frontend cannot see, the effect is part of the
   return value, not an inference at the call site.
+- **A filter may hide a row; it may never hide an EXPOSURE.** Every search box in
+  rexenv shrinks a list, and everywhere else that is free: the rows it removes are
+  still exactly where they were and nothing about them changed. On Tunnels a hidden
+  row is a site the whole internet can reach right now, so the page counts what the
+  filter took away and says it in amber — "2 shared sites are hidden by this filter —
+  still public until you stop sharing" — including on the no-match screen, which is
+  the one a person is most likely to leave the page from. For the same reason the
+  header keeps the MACHINE's numbers while a filter is active: the subtitle still
+  reads "2 sites shared publicly", and Stop all sharing still stops all of them,
+  because both describe the machine and not the view. The L2 probe asserts the count
+  and the consequence clause, not just that some warning rendered.
 - **One fact per row, and Adminer has one.** The PHP row carries `updatable` AND
   `upstream` because static-php.dev lags php.net, so "exists" and "installable" are
   genuinely different. rexenv downloads Adminer's OWN release asset, so for it they are

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toastBackendError } from "@/lib/toast";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ChevronRight, Cloud, Copy, ExternalLink, Lightbulb, Share2, Square } from "lucide-react";
@@ -28,6 +28,26 @@ export function Tunnels() {
     refetchInterval: 5000,
   });
   const byDomain = new Map(tunnels.map((t) => [t.domain, t]));
+
+  // Search over name, domain AND the public URL. The URL is here because this
+  // page is where someone arrives holding a link — "which of my sites is
+  // https://odd-cat-42.trycloudflare.com?" is the question the tunnel list is
+  // uniquely able to answer, and pasting it is how a person asks it.
+  const [query, setQuery] = useState("");
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (s: Site) => {
+      if (!q) return true;
+      const url = byDomain.get(s.domain)?.url ?? "";
+      return (
+        s.name.toLowerCase().includes(q) ||
+        s.domain.toLowerCase().includes(q) ||
+        url.toLowerCase().includes(q)
+      );
+    };
+    // `byDomain` is rebuilt from `tunnels` on every render, so the dependency
+    // that matters is the data behind it.
+  }, [query, tunnels]);
 
   // Default-credentials state per WP site, lifted HERE so the page can warn
   // proportionately: a loud per-card warning ONLY where it matters (a live
@@ -88,7 +108,9 @@ export function Tunnels() {
             ? `${active} ${active === 1 ? "site" : "sites"} shared publicly`
             : `${sites.length} ${sites.length === 1 ? "site" : "sites"} ready to share`
         }
-        showSearch={false}
+        searchPlaceholder="Filter sites or paste a link…"
+        searchValue={query}
+        onSearchChange={setQuery}
         action={stopAllBtn}
       />
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
@@ -133,6 +155,13 @@ export function Tunnels() {
             {(() => {
               const shared = sites.filter((s) => byDomain.get(s.domain)?.running);
               const shareable = sites.filter((s) => !byDomain.get(s.domain)?.running);
+              const sharedShown = shared.filter(matches);
+              const shareableShown = shareable.filter(matches);
+              // A live public URL is not a view preference. The filter may hide
+              // a card, and then it has to SAY so — a page where typing three
+              // letters makes an exposed site disappear silently is the one
+              // place in this app a search box could actually cost something.
+              const hiddenShared = shared.length - sharedShown.length;
               const card = (s: Site) => (
                 <TunnelCard
                   key={s.id}
@@ -143,16 +172,43 @@ export function Tunnels() {
                   onToggle={(on) => share.mutate({ id: s.id, on })}
                 />
               );
+              if (sharedShown.length === 0 && shareableShown.length === 0) {
+                return (
+                  <div
+                    data-probe="tunnels-no-match"
+                    className="flex flex-col items-center justify-center gap-1.5 px-5 py-[54px] text-center"
+                  >
+                    <div className="text-[0.875rem] font-medium text-rex-text-bright">
+                      No sites match “{query.trim()}”
+                    </div>
+                    <div className="text-[0.78125rem] text-rex-text-muted">
+                      Search by site name, domain, or a public link.
+                    </div>
+                    {hiddenShared > 0 && <HiddenSharedNote count={hiddenShared} />}
+                  </div>
+                );
+              }
               return (
                 <>
-                  {shared.length > 0 && (
+                  {sharedShown.length > 0 && (
                     <>
                       <SectionLabel>Shared now</SectionLabel>
-                      <div className="mb-[22px] flex flex-col gap-3">{shared.map(card)}</div>
+                      <div className="mb-[22px] flex flex-col gap-3">{sharedShown.map(card)}</div>
                     </>
                   )}
-                  <SectionLabel>{shared.length ? "Shareable sites" : "All sites"}</SectionLabel>
-                  <div className="flex flex-col gap-3">{shareable.map(card)}</div>
+                  {hiddenShared > 0 && (
+                    <div className="mb-[22px]">
+                      <HiddenSharedNote count={hiddenShared} />
+                    </div>
+                  )}
+                  {shareableShown.length > 0 && (
+                    <>
+                      <SectionLabel>
+                        {shared.length ? "Shareable sites" : "All sites"}
+                      </SectionLabel>
+                      <div className="flex flex-col gap-3">{shareableShown.map(card)}</div>
+                    </>
+                  )}
                 </>
               );
             })()}
@@ -160,6 +216,30 @@ export function Tunnels() {
         )}
       </div>
     </>
+  );
+}
+
+/** What the filter is hiding, when what it hides is a LIVE PUBLIC URL.
+ *
+ *  Every other list in rexenv may quietly shrink under a search box: the sites
+ *  are still there, and nothing about them changed. Here a hidden row is a site
+ *  the whole internet can reach right now, and "I filtered and the shared
+ *  section went empty" must never be readable as "nothing is shared". Stop all
+ *  sharing stays global for the same reason — it is the machine's state, not
+ *  the view's. */
+function HiddenSharedNote({ count }: { count: number }) {
+  return (
+    <div
+      data-probe="tunnels-hidden-shared"
+      data-count={count}
+      className="flex items-center gap-[9px] rounded-lg border border-status-warning-border bg-status-warning-bg px-[13px] py-[9px] text-[0.78125rem] text-rex-text-bright"
+    >
+      <AlertTriangle className="h-[15px] w-[15px] flex-none text-status-warning-bright" strokeWidth={1.8} />
+      <span>
+        {count === 1 ? "1 shared site is" : `${count} shared sites are`} hidden by this filter —
+        still public until you stop sharing.
+      </span>
+    </div>
   );
 }
 
@@ -262,7 +342,12 @@ function TunnelCard({
 
   const t = siteTypeMeta(site.type);
   return (
-    <div className={cn("rounded-[13px] border bg-rex-surface-1 px-4 py-[14px] transition-colors", border)}>
+    <div
+      data-probe="tunnel-card"
+      data-domain={site.domain}
+      data-live={on ? "1" : "0"}
+      className={cn("rounded-[13px] border bg-rex-surface-1 px-4 py-[14px] transition-colors", border)}
+    >
       <div className="flex items-center gap-[13px]">
         <div
           className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border text-[0.75rem] font-bold"

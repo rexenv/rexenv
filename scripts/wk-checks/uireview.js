@@ -124,6 +124,14 @@ const SCENARIOS = [
   ["adminer-current", "view=adminer&adminer=current", []],
   ["adminer-pending", "view=adminer&adminer=pending", []],
   ["adminer-fresh", "view=adminer&adminer=fresh", []],
+  // The Tunnels filter. Every other search box in this app hides rows that are
+  // still exactly where they were; this one can hide a site the whole internet
+  // can reach right now, so three of these four scenarios are about what the
+  // page SAYS while a row is hidden, not about whether the filter works.
+  ["tunnels-plain", "view=tunnels", []],
+  ["tunnels-filtered-hides-shared", "view=tunnels", ["searchDocs"]],
+  ["tunnels-by-url", "view=tunnels", ["searchUrl"]],
+  ["tunnels-no-match", "view=tunnels", ["searchNoMatch"]],
 ];
 
 /** Per-scenario layout assertions (beyond the universal overflow probe).
@@ -633,9 +641,57 @@ const PROBES = {
   },
 };
 
+/** The Tunnels filter, per scenario. The assertion that matters is the third
+ *  one in each list: a hidden LIVE row must be announced. */
+PROBES.tunnelsFilter = async (page, name) =>
+  page.evaluate((scenario) => {
+    const problems = [];
+    const cards = [...document.querySelectorAll('[data-probe="tunnel-card"]')];
+    const domains = cards.map((c) => c.getAttribute("data-domain"));
+    const live = cards.filter((c) => c.getAttribute("data-live") === "1")
+      .map((c) => c.getAttribute("data-domain"));
+    const note = document.querySelector('[data-probe="tunnels-hidden-shared"]');
+    const empty = document.querySelector('[data-probe="tunnels-no-match"]');
+    const noteCount = note ? Number(note.getAttribute("data-count")) : 0;
+
+    if (scenario === "tunnels-plain") {
+      // The fixture itself, or every assertion below is about an empty page.
+      if (domains.length !== 4) problems.push(`unfiltered page shows ${domains.length} cards, expected 4`);
+      if (live.length !== 2) problems.push(`unfiltered page shows ${live.length} live cards, expected 2`);
+      if (note) problems.push("the hidden-shared warning renders with no filter applied");
+      if (empty) problems.push("the no-match block renders with no filter applied");
+    }
+    if (scenario === "tunnels-filtered-hides-shared") {
+      if (!domains.includes("docs.rex")) problems.push("the matching site was filtered out");
+      if (live.length !== 0) problems.push(`expected the two shared cards hidden, ${live.length} still shown`);
+      if (!note) problems.push("TWO live public URLs were hidden by the filter and the page said nothing");
+      if (noteCount !== 2) problems.push(`the warning claims ${noteCount} hidden shared sites, expected 2`);
+      if (note && !/still public/i.test(note.textContent || ""))
+        problems.push("the warning names a count but not the consequence");
+    }
+    if (scenario === "tunnels-by-url") {
+      // Pasting a link must find its site — the one question only this page answers.
+      if (domains.length !== 1 || domains[0] !== "blog.rex")
+        problems.push(`pasting a tunnel URL showed ${JSON.stringify(domains)}, expected ["blog.rex"]`);
+      if (live.length !== 1) problems.push("the matched card is not rendered as live");
+      if (!note || noteCount !== 1)
+        problems.push("the OTHER shared site is hidden and unannounced");
+    }
+    if (scenario === "tunnels-no-match") {
+      if (cards.length !== 0) problems.push(`a non-matching filter still rendered ${cards.length} cards`);
+      if (!empty) problems.push("no rows and no explanation — the page just goes blank");
+      if (!note || noteCount !== 2)
+        problems.push("everything is hidden INCLUDING two live URLs, and only the empty state is shown");
+    }
+    return problems;
+  }, name);
+
 /** Every action `runActions` knows. An unknown one is a scenario bug, not a
  *  no-op — see the throw below. */
-const KNOWN_ACTIONS = new Set(["consent", "apply", "revert", "confirmRevert", "scrollBottom", "lastMenu"]);
+const KNOWN_ACTIONS = new Set([
+  "consent", "apply", "revert", "confirmRevert", "scrollBottom", "lastMenu",
+  "searchDocs", "searchUrl", "searchNoMatch",
+]);
 
 function probeFor(name) {
   if (name.startsWith("onboarding")) return PROBES.onboardingEdge;
@@ -649,6 +705,7 @@ function probeFor(name) {
   if (name === "resolver-drift") return PROBES.resolverDrift;
   if (name === "php-versions") return PROBES["php-versions"];
   if (name.startsWith("adminer-")) return PROBES.adminerVersion;
+  if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
   if (name.startsWith("agents-mail")) return PROBES.agents;
   return null;
 }
@@ -687,6 +744,15 @@ async function runActions(page, actions) {
           .forEach((el) => (el.scrollTop = el.scrollHeight));
       });
       await page.waitForTimeout(150);
+    } else if (a.startsWith("search")) {
+      // Typed, not set: the input is controlled, and assigning `.value`
+      // would leave React's state on the empty string — a probe that then
+      // passed would be reading the unfiltered page.
+      const text = { searchDocs: "docs", searchUrl: "tall-moon", searchNoMatch: "zzzz" }[a];
+      const box = page.getByPlaceholder(/Filter sites or paste a link/);
+      await box.click();
+      await box.fill(text);
+      await page.waitForTimeout(200);
     } else if (a === "lastMenu") {
       // Scroll to the bottom, open the LAST row's actions menu — the clipped
       // case. The shot must show the menu fully inside the viewport.
@@ -739,7 +805,9 @@ async function runActions(page, actions) {
         );
         if (overflow > 1) problems.push(`horizontal overflow ${overflow}px`);
         const probe = probeFor(name);
-        if (probe) problems.push(...(await probe(page)));
+        // The scenario NAME goes with it: some probes assert a different thing
+        // per scenario (the tunnels filter), and the others simply ignore it.
+        if (probe) problems.push(...(await probe(page, name)));
         if (problems.length) {
           failures++;
           console.log(`✗ ${name} @${wName} — ${problems.join("; ")}`);
